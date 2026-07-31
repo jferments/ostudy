@@ -1,4 +1,4 @@
-# Development and quality process
+# ostudy development and quality process
 
 The application must remain runnable after every merged change. Features should
 be delivered as small vertical slices that include UI, IPC, Rust behavior,
@@ -82,3 +82,11 @@ A validation report must distinguish:
 - known limitations.
 
 Static inspection must never be described as a successful native build.
+
+## Agent-maintained changes
+
+Automated maintainers must follow `AGENTS.md` and `docs/agents/`. Their final
+handoff must identify the exact base commit, list changed files, report commands
+actually executed, distinguish unrun checks from passing checks, and describe
+remaining risks. An agent must not merge its own work or push directly to
+`main`.

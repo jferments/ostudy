@@ -2,11 +2,11 @@
 
 ## Editor choice
 
-Study App uses the open-source Tiptap editor core rather than implementing a
+ostudy uses the open-source Tiptap editor core rather than implementing a
 home-grown `contenteditable` editor. Correct selection handling, nested lists,
 paste normalization, undo/redo, links, image nodes, and stable serialization
 would otherwise become a separate editor-engine project. Tiptap is headless:
-Study App still owns the complete toolbar, layout, themes, validation rules, and
+ostudy still owns the complete toolbar, layout, themes, validation rules, and
 storage model.
 
 ## Canonical card content

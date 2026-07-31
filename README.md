@@ -1,6 +1,6 @@
-# Study App
+# ostudy
 
-Study App is a free, local-first desktop flashcard application built with
+**ostudy** is a free, local-first desktop flashcard application built with
 Tauri, React, TypeScript, Rust, and embedded SQLite. It requires no account or
 server. Decks, rich-text cards, review history, settings, and analytics remain
 on the user's computer.
@@ -39,6 +39,11 @@ Read the design documents:
 - [`docs/GIT-WORKFLOW.md`](docs/GIT-WORKFLOW.md)
 - [`docs/decisions/`](docs/decisions/)
 
+Agent and LLM maintainers must start with:
+
+- [`AGENTS.md`](AGENTS.md)
+- [`docs/agents/`](docs/agents/)
+
 ## Ubuntu development setup
 
 The supplied setup script installs the pinned Node, pnpm, and Rust toolchains and
@@ -66,9 +71,10 @@ pnpm-lock.yaml
 src-tauri/Cargo.lock
 ```
 
-The application uses Tauri's stable identifier `com.example.studyapp`, so a new
-source checkout continues to open the same local application-data directory and
-SQLite library.
+The application retains the stable Tauri identifier `com.example.studyapp`.
+That internal compatibility identifier is deliberately not changed by a
+documentation-only rename because changing it can move the application-data
+directory and make an existing SQLite library appear to be missing.
 
 ## Strict quality gate
 
@@ -91,8 +97,8 @@ After the strict check and a manual smoke test pass:
 ```bash
 git init -b main
 git add .
-git commit -m "baseline: functional Study App v0.3.0"
-git tag -a v0.3.0 -m "Known-good Study App v0.3.0 baseline"
+git commit -m "baseline: functional ostudy v0.3.0"
+git tag -a v0.3.0 -m "Known-good ostudy v0.3.0 baseline"
 ```
 
 Future work should be developed on short-lived branches and merged through
