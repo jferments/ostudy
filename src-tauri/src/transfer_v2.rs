@@ -748,7 +748,13 @@ fn read_package(source: &Path) -> Result<PackageData, CommandError> {
             "The selected SQLite deck is damaged.",
         ));
     }
-    validate_package_schema(&package)?;
+    // Version 1 and version 2 packages intentionally share the same small
+    // metadata table. Inspect only that inert table first so the caller can
+    // route a valid legacy package to the compatibility importer. Running the
+    // full version 2 schema check before reading the version would reject every
+    // legitimate version 1 package merely because it lacks the new Phase 2
+    // tables and columns.
+    validate_package_metadata_table(&package)?;
     let metadata = validate_package_metadata(&package)?;
     let format = metadata.get("format").expect("metadata key was validated");
     let version = metadata
@@ -770,6 +776,7 @@ fn read_package(source: &Path) -> Result<PackageData, CommandError> {
             "This deck was created by an unsupported ostudy package version.",
         ));
     }
+    validate_package_schema(&package)?;
 
     enforce_package_row_limit(
         &package,
@@ -1897,6 +1904,14 @@ fn validate_package_schema(connection: &Connection) -> Result<(), CommandError> 
     Ok(())
 }
 
+fn validate_package_metadata_table(connection: &Connection) -> Result<(), CommandError> {
+    let metadata_table = PACKAGE_TABLES
+        .first()
+        .copied()
+        .expect("the package metadata table is part of the compile-time schema");
+    validate_package_table(connection, metadata_table)
+}
+
 fn validate_package_table(
     connection: &Connection,
     expected: ExpectedPackageTable,
@@ -2133,6 +2148,40 @@ mod tests {
             )
             .expect("untrusted metadata can contain an extra row before validation");
         assert!(validate_package_metadata(&connection).is_err());
+    }
+
+    #[test]
+    fn version_one_package_is_routed_to_the_compatibility_importer_before_v2_schema_checks() {
+        let root = temporary_test_directory("legacy-routing");
+        let package_path = root.join("legacy.studydeck");
+        let connection = Connection::open(&package_path).expect("SQLite package should open");
+        connection
+            .execute_batch(
+                "CREATE TABLE package_metadata (
+                     key TEXT PRIMARY KEY,
+                     value TEXT NOT NULL
+                 ) STRICT;",
+            )
+            .expect("legacy metadata table should apply");
+        for (key, value) in [
+            ("format", PACKAGE_FORMAT),
+            ("formatVersion", "1"),
+            ("exportedAt", "1"),
+            ("applicationVersion", "0.1.0"),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO package_metadata(key, value) VALUES (?1, ?2)",
+                    params![key, value],
+                )
+                .expect("metadata should insert");
+        }
+        drop(connection);
+
+        let error = read_package(&package_path)
+            .expect_err("version 1 must be handed to the legacy importer");
+        assert_eq!(error.code, "legacy_deck_package");
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

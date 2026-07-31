@@ -37,8 +37,9 @@ export function Modal({
   useEffect(() => {
     const previouslyFocused =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const dialog = dialogRef.current;
-    if (!dialog) return undefined;
+    const currentDialog = dialogRef.current;
+    if (!currentDialog) return undefined;
+    const dialog: HTMLElement = currentDialog;
 
     const focusFirstControl = () => {
       if (dialog.contains(document.activeElement)) return;

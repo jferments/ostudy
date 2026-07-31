@@ -569,18 +569,19 @@ pub(crate) fn render_card_from_connection(
             .unwrap_or(stored_front_text.clone());
         let blanks = parse_fill_blanks(&source)?;
         let index = usize::try_from(ordinal).unwrap_or(usize::MAX);
-        let target = blanks.get(index).ok_or_else(|| {
+        blanks.get(index).ok_or_else(|| {
             CommandError::new(
                 "invalid_generated_card",
                 "This fill-in-the-blank card no longer matches its note.",
             )
         })?;
         let question = render_fill_question(&source, index)?;
+        let answer = render_fill_answer(&source)?;
         (
             plain_document(&question),
-            plain_document(target),
+            plain_document(&answer),
             question,
-            target.clone(),
+            answer,
         )
     } else if direction == "reverse" {
         (
@@ -1229,6 +1230,20 @@ fn save_template_in_connection(
         let revision = input.revision.filter(|value| *value >= 1).ok_or_else(|| {
             CommandError::new("invalid_revision", "The template revision is invalid.")
         })?;
+        let in_use: i64 = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM notes\n\
+                 WHERE template_id = ?1 AND deleted_at IS NULL)",
+                [id.as_str()],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?;
+        if in_use != 0 {
+            return Err(CommandError::new(
+                "template_in_use",
+                "This template is used by existing cards. Create a new template so those cards keep rendering exactly as saved.",
+            ));
+        }
         let changed = connection
             .execute(
                 "UPDATE card_templates SET name = ?1, description = ?2, fields_json = ?3,\n\
@@ -1681,6 +1696,33 @@ fn render_fill_question(source: &str, target_index: usize) -> Result<String, Com
             }
             blank_index += 1;
             index = end + 2;
+        } else {
+            output.push(chars[index]);
+            index += 1;
+        }
+    }
+    Ok(output)
+}
+
+fn render_fill_answer(source: &str) -> Result<String, CommandError> {
+    // Reuse the strict parser first so malformed or nested markers cannot be
+    // rendered differently from the generated-card validation path.
+    parse_fill_blanks(source)?;
+
+    let chars = source.chars().collect::<Vec<_>>();
+    let mut output = String::new();
+    let mut index = 0;
+    while index < chars.len() {
+        if chars[index] == '[' && index + 1 < chars.len() && chars[index + 1] == '[' {
+            index += 2;
+            while index + 1 < chars.len() && !(chars[index] == ']' && chars[index + 1] == ']') {
+                output.push(chars[index]);
+                index += 1;
+            }
+            if index + 1 >= chars.len() {
+                return Err(invalid_fill_syntax());
+            }
+            index += 2;
         } else {
             output.push(chars[index]);
             index += 1;
@@ -2721,6 +2763,10 @@ mod tests {
             render_fill_question(source, 1).unwrap(),
             "Warfarin is a _____."
         );
+        assert_eq!(
+            render_fill_answer(source).unwrap(),
+            "Warfarin is a vitamin K antagonist."
+        );
     }
 
     #[test]
@@ -3007,6 +3053,84 @@ mod tests {
                 Ok(())
             })
             .expect("move, copy, bulk, and draft flows should succeed");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn templates_in_use_cannot_be_changed_or_deleted() {
+        let database = Database::open_in_memory().expect("database should open");
+        let root = temporary_test_directory("template-in-use");
+        let paths = AppPaths::new(root.clone()).expect("test paths should initialize");
+
+        database
+            .with_connection(|connection| {
+                let deck = crate::decks::create_deck_in_connection(
+                    connection,
+                    crate::decks::CreateDeckInput {
+                        name: "Template safety".to_string(),
+                        description: None,
+                    },
+                )?;
+                let template = save_template_in_connection(
+                    connection,
+                    SaveTemplateInput {
+                        template_id: None,
+                        revision: None,
+                        name: "Medication core".to_string(),
+                        description: "Stable generated cards".to_string(),
+                        fields: vec!["medication".to_string(), "class".to_string()],
+                        cards: vec![TemplateCardSpec {
+                            name: "Drug class".to_string(),
+                            front: "What class is {{medication}}?".to_string(),
+                            back: "{{class}}".to_string(),
+                        }],
+                    },
+                )?;
+                save_note_in_connection(
+                    connection,
+                    &paths,
+                    SaveNoteInput {
+                        note_id: None,
+                        revision: None,
+                        deck_id: deck.id,
+                        mode: "template".to_string(),
+                        front_doc: plain_document(""),
+                        back_doc: plain_document(""),
+                        front_text: String::new(),
+                        back_text: String::new(),
+                        tags: Vec::new(),
+                        create_reverse: false,
+                        fill_blank_text: None,
+                        template_id: Some(template.id.clone()),
+                        fields: BTreeMap::from([
+                            ("medication".to_string(), "warfarin".to_string()),
+                            ("class".to_string(), "vitamin K antagonist".to_string()),
+                        ]),
+                        allow_duplicate: false,
+                    },
+                )?;
+
+                let edit = save_template_in_connection(
+                    connection,
+                    SaveTemplateInput {
+                        template_id: Some(template.id.clone()),
+                        revision: Some(template.revision),
+                        name: "Medication core revised".to_string(),
+                        description: template.description.clone(),
+                        fields: template.fields.clone(),
+                        cards: template.cards.clone(),
+                    },
+                )
+                .expect_err("an in-use template must not change generated cards retroactively");
+                assert_eq!(edit.code, "template_in_use");
+
+                let delete = delete_template_in_connection(connection, &template.id)
+                    .expect_err("an in-use template must not be deleted");
+                assert_eq!(delete.code, "template_in_use");
+                Ok(())
+            })
+            .expect("template safety flow should succeed");
 
         let _ = std::fs::remove_dir_all(root);
     }

@@ -422,7 +422,12 @@ fn submit_study_in_connection(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
 
-    if let Some(existing) = result_for_submission(&transaction, &input.submission_id)? {
+    if let Some(existing) = result_for_submission(
+        &transaction,
+        &input.submission_id,
+        &input.session_id,
+        &input.card_id,
+    )? {
         transaction.commit().map_err(CommandError::database)?;
         return Ok(existing);
     }
@@ -681,39 +686,57 @@ fn snapshot_note_card_states(
 fn result_for_submission(
     connection: &Connection,
     submission_id: &str,
+    session_id: &str,
+    card_id: &str,
 ) -> Result<Option<StudyReviewResultDto>, CommandError> {
-    connection
+    let stored = connection
         .query_row(
-            "SELECT r.card_id, r.rating - 1, r.due_after, r.reviewed_at,\n\
-                    ps.completed_at, ps.rated_count, ps.correct_count,\n\
-                    COALESCE(cs.struggling_after, 0), COALESCE(cs.auto_suspended, 0)\n\
-             FROM review_events r\n\
-             LEFT JOIN review_event_reversals rr ON rr.review_event_id = r.id\n\
-             LEFT JOIN practice_sessions ps ON ps.id = r.session_id\n\
-             LEFT JOIN review_card_state_snapshots cs\n\
-               ON cs.review_event_id = r.id AND cs.card_id = r.card_id\n\
-             WHERE r.submission_id = ?1 AND rr.review_event_id IS NULL",
+            r#"SELECT r.card_id, r.session_id, r.rating - 1, r.due_after, r.reviewed_at,
+                       ps.completed_at, ps.rated_count, ps.correct_count,
+                       COALESCE(cs.struggling_after, 0), COALESCE(cs.auto_suspended, 0)
+                FROM review_events r
+                LEFT JOIN review_event_reversals rr ON rr.review_event_id = r.id
+                LEFT JOIN practice_sessions ps ON ps.id = r.session_id
+                LEFT JOIN review_card_state_snapshots cs
+                  ON cs.review_event_id = r.id AND cs.card_id = r.card_id
+                WHERE r.submission_id = ?1 AND rr.review_event_id IS NULL"#,
             [submission_id],
             |row| {
-                let score: i64 = row.get(1)?;
-                let reviewed_at: i64 = row.get(3)?;
-                let due_at: i64 = row.get(2)?;
-                Ok(StudyReviewResultDto {
-                    card_id: row.get(0)?,
-                    score,
-                    label: score_label(score).to_string(),
-                    due_at,
-                    interval_ms: due_at.saturating_sub(reviewed_at),
-                    completed: row.get::<_, Option<i64>>(4)?.is_some(),
-                    rated_count: row.get::<_, Option<i64>>(5)?.unwrap_or(0),
-                    correct_count: row.get::<_, Option<i64>>(6)?.unwrap_or(0),
-                    struggling: row.get::<_, i64>(7)? != 0,
-                    auto_suspended: row.get::<_, i64>(8)? != 0,
-                })
+                let stored_card_id: String = row.get(0)?;
+                let stored_session_id: Option<String> = row.get(1)?;
+                let score: i64 = row.get(2)?;
+                let due_at: i64 = row.get(3)?;
+                let reviewed_at: i64 = row.get(4)?;
+                Ok((
+                    stored_card_id.clone(),
+                    stored_session_id,
+                    StudyReviewResultDto {
+                        card_id: stored_card_id,
+                        score,
+                        label: score_label(score).to_string(),
+                        due_at,
+                        interval_ms: due_at.saturating_sub(reviewed_at),
+                        completed: row.get::<_, Option<i64>>(5)?.is_some(),
+                        rated_count: row.get::<_, Option<i64>>(6)?.unwrap_or(0),
+                        correct_count: row.get::<_, Option<i64>>(7)?.unwrap_or(0),
+                        struggling: row.get::<_, i64>(8)? != 0,
+                        auto_suspended: row.get::<_, i64>(9)? != 0,
+                    },
+                ))
             },
         )
         .optional()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    let Some((stored_card_id, stored_session_id, result)) = stored else {
+        return Ok(None);
+    };
+    if stored_card_id != card_id || stored_session_id.as_deref() != Some(session_id) {
+        return Err(CommandError::new(
+            "submission_id_conflict",
+            "That review submission identifier was already used for a different card.",
+        ));
+    }
+    Ok(Some(result))
 }
 
 fn bury_sibling_cards(
@@ -768,9 +791,13 @@ fn update_struggling_state(
 ) -> Result<(bool, bool), CommandError> {
     let wrong_count: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM review_events r\n\
-             LEFT JOIN review_event_reversals rr ON rr.review_event_id = r.id\n\
-             WHERE r.card_id = ?1 AND r.rating = 1 AND rr.review_event_id IS NULL",
+            r#"SELECT COUNT(*) FROM review_events r
+                LEFT JOIN review_event_reversals rr ON rr.review_event_id = r.id
+                WHERE r.card_id = ?1 AND r.rating = 1 AND rr.review_event_id IS NULL
+                  AND r.reviewed_at >= COALESCE((
+                      SELECT MAX(cse.created_at) FROM card_state_events cse
+                      WHERE cse.card_id = ?1 AND cse.action = 'reset'
+                  ), 0)"#,
             [card_id],
             |row| row.get(0),
         )
@@ -871,9 +898,9 @@ fn undo_last_review_in_connection(
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
-    let latest: Option<(String, String, i64, i64)> = transaction
+    let latest: Option<(String, String, i64, i64, i64)> = transaction
         .query_row(
-            "SELECT r.id, r.card_id, psc.position, r.reviewed_at\n\
+            "SELECT r.id, r.card_id, psc.position, r.reviewed_at, r.created_at\n\
              FROM review_events r\n\
              JOIN practice_session_cards psc\n\
                ON psc.session_id = r.session_id AND psc.card_id = r.card_id\n\
@@ -882,31 +909,72 @@ fn undo_last_review_in_connection(
              ORDER BY r.reviewed_at DESC, r.created_at DESC, r.id DESC\n\
              LIMIT 1",
             [session_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .optional()
         .map_err(CommandError::database)?;
-    let Some((event_id, card_id, position, reviewed_at)) = latest else {
+    let Some((event_id, card_id, position, reviewed_at, created_at)) = latest else {
         return Err(CommandError::new(
             "nothing_to_undo",
             "There is no completed review to undo in this session.",
         ));
     };
-    let later_review: i64 = transaction
+    let later_related_review: i64 = transaction
         .query_row(
             "SELECT EXISTS(\n\
                  SELECT 1 FROM review_events r\n\
+                 JOIN cards reviewed_card ON reviewed_card.id = r.card_id\n\
+                 JOIN cards original_card ON original_card.id = ?1\n\
                  LEFT JOIN review_event_reversals rr ON rr.review_event_id = r.id\n\
-                 WHERE r.card_id = ?1 AND r.reviewed_at > ?2 AND rr.review_event_id IS NULL\n\
+                 WHERE reviewed_card.note_id = original_card.note_id\n\
+                   AND rr.review_event_id IS NULL\n\
+                   AND r.id <> ?5\n\
+                   AND (\n\
+                     r.reviewed_at > ?2\n\
+                     OR (r.reviewed_at = ?2 AND r.created_at > ?3)\n\
+                     OR (r.reviewed_at = ?2 AND r.created_at = ?3 AND r.id > ?4)\n\
+                   )\n\
+             )",
+            params![card_id, reviewed_at, created_at, event_id, event_id],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    if later_related_review != 0 {
+        return Err(CommandError::new(
+            "review_cannot_be_undone",
+            "This review cannot be undone because this card or a related card has been reviewed again.",
+        ));
+    }
+
+    // Review snapshots intentionally include every generated card belonging to
+    // the note because a Wrong answer can mark or automatically suspend all of
+    // them. Restoring that snapshot after a later manual state change would
+    // silently discard the user's newer action, so fail closed instead.
+    let later_related_state_change: i64 = transaction
+        .query_row(
+            "SELECT EXISTS(\n\
+                 SELECT 1 FROM card_state_events cse\n\
+                 JOIN cards changed_card ON changed_card.id = cse.card_id\n\
+                 JOIN cards original_card ON original_card.id = ?1\n\
+                 WHERE changed_card.note_id = original_card.note_id\n\
+                   AND cse.created_at >= ?2\n\
              )",
             params![card_id, reviewed_at],
             |row| row.get(0),
         )
         .map_err(CommandError::database)?;
-    if later_review != 0 {
+    if later_related_state_change != 0 {
         return Err(CommandError::new(
             "review_cannot_be_undone",
-            "This review cannot be undone because the card has been reviewed again.",
+            "This review cannot be undone because this card or a related card was changed afterward.",
         ));
     }
 
@@ -1282,6 +1350,158 @@ mod tests {
             .expect("review and undo should succeed");
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn undo_rejects_a_later_review_of_a_related_generated_card() {
+        let database = Database::open_in_memory().expect("database should open");
+        let root = temporary_test_directory("undo-related-review");
+        let paths = AppPaths::new(root.clone()).expect("test paths should initialize");
+
+        database
+            .with_connection(|connection| {
+                let (session_id, card_id, sibling_id, _reviewed_at) =
+                    create_reviewed_card_and_later_sibling(connection, &paths)?;
+                let later_event_id = generate_id(connection)?;
+                let later_submission_id = generate_id(connection)?;
+                connection
+                    .execute(
+                        "INSERT INTO review_events (\n\
+                             id, submission_id, session_id, card_id, reviewed_at, rating,\n\
+                             answer_correct, confidence, response_time_ms,\n\
+                             state_before, state_after, due_before, due_after,\n\
+                             stability_before, stability_after, difficulty_before, difficulty_after,\n\
+                             scheduled_days_before, scheduled_days_after,\n\
+                             scheduler_name, scheduler_version, created_at\n\
+                         )\n\
+                         SELECT ?1, ?2, NULL, ?3, reviewed_at + 1, rating,\n\
+                                answer_correct, confidence, response_time_ms,\n\
+                                state_before, state_after, due_before, due_after,\n\
+                                stability_before, stability_after, difficulty_before, difficulty_after,\n\
+                                scheduled_days_before, scheduled_days_after,\n\
+                                scheduler_name, scheduler_version, created_at + 1\n\
+                         FROM review_events\n\
+                         WHERE session_id = ?4 AND card_id = ?5",
+                        params![
+                            later_event_id,
+                            later_submission_id,
+                            sibling_id,
+                            session_id,
+                            card_id
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+
+                let error = undo_last_review_in_connection(connection, &session_id)
+                    .expect_err("a later sibling review must make the snapshot unsafe to restore");
+                assert_eq!(error.code, "review_cannot_be_undone");
+                assert!(error.message.contains("related card has been reviewed again"));
+                Ok(())
+            })
+            .expect("related-review conflict should be detected");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn undo_rejects_a_later_manual_state_change_to_a_related_card() {
+        let database = Database::open_in_memory().expect("database should open");
+        let root = temporary_test_directory("undo-related-state");
+        let paths = AppPaths::new(root.clone()).expect("test paths should initialize");
+
+        database
+            .with_connection(|connection| {
+                let (session_id, _card_id, sibling_id, reviewed_at) =
+                    create_reviewed_card_and_later_sibling(connection, &paths)?;
+                let state_event_id = generate_id(connection)?;
+                connection
+                    .execute(
+                        "INSERT INTO card_state_events(\n\
+                             id, card_id, action, details_json, created_at\n\
+                         ) VALUES (?1, ?2, 'suspend', '{}', ?3)",
+                        params![state_event_id, sibling_id, reviewed_at],
+                    )
+                    .map_err(CommandError::database)?;
+
+                let error = undo_last_review_in_connection(connection, &session_id)
+                    .expect_err("a later sibling state change must not be overwritten by undo");
+                assert_eq!(error.code, "review_cannot_be_undone");
+                assert!(error.message.contains("related card was changed afterward"));
+                Ok(())
+            })
+            .expect("related-state conflict should be detected");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    fn create_reviewed_card_and_later_sibling(
+        connection: &mut Connection,
+        paths: &AppPaths,
+    ) -> Result<(String, String, String, i64), CommandError> {
+        let deck = crate::decks::create_deck_in_connection(
+            connection,
+            crate::decks::CreateDeckInput {
+                name: "Undo conflict test".to_string(),
+                description: None,
+            },
+        )?;
+        let card = crate::cards::create_card_in_connection(
+            connection,
+            paths,
+            &deck.id,
+            crate::cards::validate_content(
+                plain_document("Question"),
+                plain_document("Answer"),
+                "Question".to_string(),
+                "Answer".to_string(),
+            )?,
+        )?;
+        let session = start_study_in_connection(
+            connection,
+            paths,
+            vec![deck.id.clone()],
+            false,
+            0,
+        )?;
+        let revealed_at = unix_time_millis()?;
+        connection
+            .execute(
+                "UPDATE practice_session_cards SET viewed_at = ?1, revealed_at = ?1\n\
+                 WHERE session_id = ?2 AND card_id = ?3",
+                params![revealed_at, session.id.as_str(), card.id.as_str()],
+            )
+            .map_err(CommandError::database)?;
+        let submission_id = generate_id(connection)?;
+        submit_study_in_connection(
+            connection,
+            SubmitStudyReviewInput {
+                session_id: session.id.clone(),
+                card_id: card.id.clone(),
+                submission_id,
+                score: 0,
+                response_time_ms: 1_000,
+                next_day_start_ms: revealed_at + 86_400_000,
+            },
+        )?;
+        let reviewed_at: i64 = connection
+            .query_row(
+                "SELECT reviewed_at FROM review_events\n\
+                 WHERE session_id = ?1 AND card_id = ?2",
+                params![session.id.as_str(), card.id.as_str()],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?;
+        let sibling_id = generate_id(connection)?;
+        connection
+            .execute(
+                "INSERT INTO cards(\n\
+                     id, note_id, deck_id, direction, template_ordinal,\n\
+                     created_at, updated_at, display_name\n\
+                 ) VALUES (?1, ?2, ?3, 'reverse', 0, ?4, ?4, 'Reverse')",
+                params![sibling_id, card.note_id, deck.id, reviewed_at + 1],
+            )
+            .map_err(CommandError::database)?;
+        Ok((session.id, card.id, sibling_id, reviewed_at))
     }
 
     fn plain_document(text: &str) -> serde_json::Value {

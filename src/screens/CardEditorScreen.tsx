@@ -351,7 +351,7 @@ export function CardEditorScreen({
 
   async function removeSelectedTemplate(): Promise<void> {
     if (selectedTemplate === null || selectedTemplate.isBuiltin) return;
-    if (!window.confirm(`Delete the “${selectedTemplate.name}” template? Existing cards will remain readable.`)) {
+    if (!window.confirm(`Delete the “${selectedTemplate.name}” template? Templates that are used by cards cannot be deleted.`)) {
       return;
     }
     try {

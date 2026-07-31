@@ -2,13 +2,14 @@
 
 - **Status:** Accepted
 - **Applies from:** ostudy 0.1.0 / database schema 3
+- **Phase 2 amendment:** ADR 0005 replaces the two-step learner interaction with a direct 0–3 rating while preserving the same canonical FSRS ratings and compatibility columns.
 
 ## Context
 
-The application now grades scheduled reviews. A learner first chooses whether an
-answer was wrong or right; a right answer is refined as not confident, somewhat
-confident, or very confident. Those four product choices map to the four FSRS
-ratings Again, Hard, Good, and Easy.
+The application grades scheduled reviews using four outcomes that map to the
+FSRS ratings Again, Hard, Good, and Easy. Schema 3 originally exposed those
+outcomes through a two-step Right/Wrong and confidence flow. Phase 2 exposes the
+same durable mapping directly as scores 0–3; see ADR 0005.
 
 A single mutable database row is sufficient to find the next due date, but it is
 not sufficient for trustworthy analytics, scheduler migrations, or debugging. If
@@ -35,14 +36,17 @@ unique constraint on that value, and the command returns the existing result
 when the same submission is retried. This prevents double clicks and IPC retries
 from recording duplicate reviews.
 
-The user-facing mapping is:
+The durable mapping is:
 
-| Learner choice | FSRS rating |
-| --- | --- |
-| Wrong | Again (1) |
-| Right → Not confident | Hard (2) |
-| Right → Somewhat confident | Good (3) |
-| Right → Very confident | Easy (4) |
+| Phase 2 learner score | Compatibility confidence | FSRS rating |
+| --- | --- | --- |
+| 0 — Wrong | `wrong` | Again (1) |
+| 1 — Hard | `not_confident` | Hard (2) |
+| 2 — OK | `somewhat_confident` | Good (3) |
+| 3 — Easy | `very_confident` | Easy (4) |
+
+The confidence values remain compatibility data in the released schema and are
+not a second user prompt.
 
 The external `rs-fsrs` crate is isolated in `src-tauri/src/scheduler.rs`.
 Database rows and Tauri DTOs use application-owned types so a dependency update

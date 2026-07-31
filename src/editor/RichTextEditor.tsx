@@ -607,4 +607,3 @@ function normalizeColor(value: unknown, fallback: string): string {
     ? value
     : fallback;
 }
-

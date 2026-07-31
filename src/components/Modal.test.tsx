@@ -25,15 +25,15 @@ describe("Modal accessibility", () => {
     expect(dialog.getAttribute("aria-modal")).toBe("true");
     expect(dialog.getAttribute("aria-describedby")).not.toBeNull();
 
-    const first = screen.getByRole("button", { name: "First action" });
+    const close = screen.getByRole("button", { name: "Close dialog" });
     const last = screen.getByRole("button", { name: "Last action" });
-    first.focus();
+    close.focus();
     fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close dialog" }));
+    expect(document.activeElement).toBe(last);
 
-    screen.getByRole("button", { name: "Close dialog" }).focus();
+    last.focus();
     fireEvent.keyDown(document, { key: "Tab" });
-    expect(document.activeElement).toBe(first);
+    expect(document.activeElement).toBe(close);
 
     last.focus();
     fireEvent.keyDown(document, { key: "Escape" });

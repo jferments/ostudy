@@ -302,6 +302,13 @@ for (const requiredPath of [
   "src-tauri/src/transfer_v2.rs",
   "src-tauri/migrations/0004_standalone_flashcard_core.sql",
   "src-tauri/tests/fixtures/v0.1.0.sql",
+  "docs/PHASE-2-ACCESSIBILITY-AUDIT.md",
+  "docs/PHASE-2-LOCAL-TEST-PLAN.md",
+  "docs/decisions/0004-safe-templates-and-shared-decks.md",
+  "docs/decisions/0005-direct-ratings-limits-and-review-undo.md",
+  "src/components/Modal.test.tsx",
+  "src/editor/richText.test.ts",
+  "src/screens/PracticeScreen.test.tsx",
   ".github/workflows/check.yml",
   ".github/workflows/release.yml",
   ".github/pull_request_template.md",
@@ -309,7 +316,7 @@ for (const requiredPath of [
   try {
     await readFile(join(root, requiredPath), "utf8");
   } catch {
-    failures.push(`required Phase 1 file is missing: ${requiredPath}`);
+    failures.push(`required repository file is missing: ${requiredPath}`);
   }
 }
 
