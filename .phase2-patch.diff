@@ -1,0 +1,71 @@
+diff --git a/src-tauri/src/phase2.rs b/src-tauri/src/phase2.rs
+index 960f2d0..57fba3a 100644
+--- a/src-tauri/src/phase2.rs
++++ b/src-tauri/src/phase2.rs
+@@ -1367,11 +1367,12 @@ fn list_templates_from_connection(
+              ORDER BY is_builtin DESC, name COLLATE NOCASE ASC",
+         )
+         .map_err(CommandError::database)?;
+-    statement
++    let templates = statement
+         .query_map([], template_from_row)
+         .map_err(CommandError::database)?
+         .collect::<Result<Vec<_>, _>>()
+-        .map_err(CommandError::database)
++        .map_err(CommandError::database)?;
++    Ok(templates)
+ }
+ 
+ fn load_template(connection: &Connection, id: &str) -> Result<CardTemplateDto, CommandError> {
+@@ -1892,11 +1893,12 @@ fn load_tags(connection: &Connection, note_id: &str) -> Result<Vec<String>, Comm
+              ORDER BY t.name COLLATE NOCASE",
+         )
+         .map_err(CommandError::database)?;
+-    statement
++    let tags = statement
+         .query_map([note_id], |row| row.get(0))
+         .map_err(CommandError::database)?
+         .collect::<Result<Vec<_>, _>>()
+-        .map_err(CommandError::database)
++        .map_err(CommandError::database)?;
++    Ok(tags)
+ }
+ 
+ fn refresh_note_fts(connection: &Connection, note_id: &str) -> Result<(), CommandError> {
+@@ -2642,11 +2644,12 @@ fn active_card_ids(connection: &Connection, note_id: &str) -> Result<Vec<String>
+     let mut statement = connection
+         .prepare("SELECT id FROM cards WHERE note_id = ?1 AND deleted_at IS NULL")
+         .map_err(CommandError::database)?;
+-    statement
++    let card_ids = statement
+         .query_map([note_id], |row| row.get(0))
+         .map_err(CommandError::database)?
+         .collect::<Result<Vec<_>, _>>()
+-        .map_err(CommandError::database)
++        .map_err(CommandError::database)?;
++    Ok(card_ids)
+ }
+ 
+ fn record_state_events(
+diff --git a/src-tauri/src/transfer_v2.rs b/src-tauri/src/transfer_v2.rs
+index 8d28e5a..ec519bd 100644
+--- a/src-tauri/src/transfer_v2.rs
++++ b/src-tauri/src/transfer_v2.rs
+@@ -1907,7 +1907,7 @@ fn validate_package_metadata(
+         .expect("metadata key was validated")
+         .parse::<i64>()
+         .map_err(|_| CommandError::invalid_package("The deck export time is invalid."))?;
+-    validate_timestamp(exported_at, exported_at, "package metadata")?;
++    validate_timestamps(exported_at, exported_at, "package metadata")?;
+     let application_version = metadata
+         .get("applicationVersion")
+         .expect("metadata key was validated")
+@@ -1923,7 +1923,7 @@ fn validate_package_metadata(
+ fn validate_package_schema(connection: &Connection) -> Result<(), CommandError> {
+     let expected = PACKAGE_TABLES
+         .iter()
+-        .map(|table| table.name)
++        .map(|table| table.name.to_owned())
+         .collect::<BTreeSet<_>>();
+     let mut statement = connection
+         .prepare(
