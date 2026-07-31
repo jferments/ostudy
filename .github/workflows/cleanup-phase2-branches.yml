@@ -1,0 +1,52 @@
+name: Clean up Phase 2 branches
+
+on:
+  push:
+    branches:
+      - agent/phase-2-standalone-flashcard-core
+    paths:
+      - .github/workflows/cleanup-phase2-branches.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase2-branch-cleanup
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out final Phase 2 branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/phase-2-standalone-flashcard-core
+          fetch-depth: 0
+
+      - name: Delete obsolete Phase 2 branches
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for branch in \
+            agent/phase-2-stage-1-authoring-foundation \
+            agent/phase-2-payload-staging \
+            agent/phase-2-payload-staging-v3
+          do
+            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+              git push origin --delete "$branch"
+            fi
+          done
+
+      - name: Remove this one-time workflow
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm .github/workflows/cleanup-phase2-branches.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: remove one-time Phase 2 branch cleanup"
+          git push origin HEAD:agent/phase-2-standalone-flashcard-core
