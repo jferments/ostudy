@@ -1,4 +1,126 @@
- AND deleted_at IS NULL AND archived_at IS NULL",
++use serde::Deserialize;
+ use tauri::State;
+ 
+ use crate::{
+-    cards::{get_card_from_connection, CardDto},
+     database::Database,
+     error::CommandError,
+-    paths::AppPaths,
+-    scheduler::{
+-        apply_review, load_schedule, update_schedule, ReviewOutcome, ScheduleTransition,
+-        SCHEDULER_NAME, SCHEDULER_VERSION,
+-    },
+-    settings::load_settings,
+-    util::{bool_to_integer, generate_id, unix_time_millis, validate_entity_id},
++    util::{unix_time_millis, validate_entity_id},
+ };
+ 
+-const MAX_SESSION_DECKS: usize = 100;
+-const MAX_RESPONSE_TIME_MS: i64 = 86_400_000;
+-
+-#[derive(Debug, Deserialize)]
+-#[serde(rename_all = "camelCase")]
+-pub struct StartPracticeInput {
+-    pub deck_ids: Vec<String>,
+-    pub shuffle: bool,
+-}
+-
+-#[derive(Clone, Debug, Serialize)]
+-#[serde(rename_all = "camelCase")]
+-pub struct PracticeCardDto {
+-    pub card: CardDto,
+-    pub deck_name: String,
+-    pub due_at: i64,
+-}
+-
+-#[derive(Clone, Debug, Serialize)]
+-#[serde(rename_all = "camelCase")]
+-pub struct PracticeSessionDto {
+-    pub id: String,
+-    pub cards: Vec<PracticeCardDto>,
+-    pub shuffle: bool,
+-    pub started_at: i64,
+-}
+-
+ #[derive(Debug, Deserialize)]
+ #[serde(rename_all = "camelCase")]
+ pub struct PracticeCardEventInput {
+@@ -62,40 +22,6 @@ pub struct PracticeCardEventInput {
+     pub card_id: String,
+ }
+ 
+-#[derive(Debug, Deserialize)]
+-#[serde(rename_all = "camelCase")]
+-pub struct SubmitReviewInput {
+-    pub session_id: String,
+-    pub card_id: String,
+-    pub submission_id: String,
+-    pub outcome: String,
+-    pub response_time_ms: i64,
+-}
+-
+-#[derive(Clone, Debug, Serialize)]
+-#[serde(rename_all = "camelCase")]
+-pub struct ReviewResultDto {
+-    pub card_id: String,
+-    pub rating: i64,
+-    pub outcome: String,
+-    pub due_at: i64,
+-    pub completed: bool,
+-    pub rated_count: i64,
+-    pub correct_count: i64,
+-}
+-
+-#[tauri::command]
+-pub fn start_practice(
+-    database: State<'_, Database>,
+-    paths: State<'_, AppPaths>,
+-    input: StartPracticeInput,
+-) -> Result<PracticeSessionDto, CommandError> {
+-    let deck_ids = validate_deck_ids(input.deck_ids)?;
+-    database.with_connection(|connection| {
+-        start_practice_in_connection(connection, &paths, deck_ids, input.shuffle)
+-    })
+-}
+-
+ #[tauri::command]
+ pub fn mark_practice_card_viewed(
+     database: State<'_, Database>,
+@@ -120,15 +46,6 @@ pub fn mark_practice_card_revealed(
+     })
+ }
+ 
+-#[tauri::command]
+-pub fn submit_practice_review(
+-    database: State<'_, Database>,
+-    input: SubmitReviewInput,
+-) -> Result<ReviewResultDto, CommandError> {
+-    validate_review_input(&input)?;
+-    database.with_connection(|connection| submit_review_in_connection(connection, input))
+-}
+-
+ #[tauri::command]
+ pub fn complete_practice_session(
+     database: State<'_, Database>,
+@@ -155,133 +72,6 @@ pub fn complete_practice_session(
+     })
+ }
+ 
+-fn start_practice_in_connection(
+-    connection: &mut Connection,
+-    paths: &AppPaths,
+-    deck_ids: Vec<String>,
+-    shuffle: bool,
+-) -> Result<PracticeSessionDto, CommandError> {
+-    let now = unix_time_millis()?;
+-    let mut deck_names = HashMap::new();
+-    let mut pending_cards = Vec::new();
+-
+-    for deck_id in &deck_ids {
+-        let deck_name: String = connection
+-            .query_row(
+-                "SELECT name FROM decks\n\
+-                 WHERE id = ?1 AND deleted_at IS NULL AND archived_at IS NULL",
 -                [deck_id],
 -                |row| row.get(0),
 -            )
@@ -36,95 +158,3 @@
 -            })
 -            .map_err(CommandError::database)?;
 -
--        for row in rows {
--            let (card_id, note_id, due_at) = row.map_err(CommandError::database)?;
--            pending_cards.push((deck_id.clone(), card_id, note_id, due_at));
--        }
--    }
--
--    if pending_cards.is_empty() {
--        return Err(CommandError::new(
--            "no_cards_due",
--            "No cards are due in the selected decks right now.",
--        ));
--    }
--
--    let transaction = connection
--        .transaction_with_behavior(TransactionBehavior::Immediate)
--        .map_err(CommandError::database)?;
--    let session_id = generate_id(&transaction)?;
--    if shuffle {
--        pending_cards.sort_by_key(|(_, card_id, _, _)| shuffle_key(&session_id, card_id));
--    }
--
--    let selected_deck_ids_json =
--        serde_json::to_string(&deck_ids).map_err(CommandError::serialization)?;
--    transaction
--        .execute(
--            "INSERT INTO practice_sessions (\n\
--                 id, selected_deck_ids_json, shuffle, card_count, started_at\n\
--             ) VALUES (?1, ?2, ?3, ?4, ?5)",
--            params![
--                session_id,
--                selected_deck_ids_json,
--                bool_to_integer(shuffle),
--                i64::try_from(pending_cards.len()).unwrap_or(i64::MAX),
--                now,
--            ],
--        )
--        .map_err(CommandError::database)?;
--
--    for (position, (_, card_id, _, _)) in pending_cards.iter().enumerate() {
--        transaction
--            .execute(
--                "INSERT INTO practice_session_cards (session_id, card_id, position)\n\
--                 VALUES (?1, ?2, ?3)",
--                params![
--                    session_id,
--                    card_id,
--                    i64::try_from(position).unwrap_or(i64::MAX),
--                ],
--            )
--            .map_err(CommandError::database)?;
--    }
--    transaction.commit().map_err(CommandError::database)?;
--
--    let mut cards = Vec::with_capacity(pending_cards.len());
--    for (deck_id, _, note_id, due_at) in pending_cards {
--        let card = get_card_from_connection(connection, paths, &note_id)?;
--        let deck_name = deck_names
--            .get(&deck_id)
--            .cloned()
--            .unwrap_or_else(|| "Deck".to_string());
--        cards.push(PracticeCardDto {
--            card,
--            deck_name,
--            due_at,
--        });
--    }
--
--    Ok(PracticeSessionDto {
--        id: session_id,
--        cards,
--        shuffle,
--        started_at: now,
--    })
--}
--
- fn record_practice_event(
-     connection: &mut Connection,
-     session_id: &str,
-@@ -352,185 +141,6 @@ fn record_practice_event(
-     transaction.commit().map_err(CommandError::database)
- }
- 
--fn submit_review_in_connection(
--    connection: &mut Connection,
--    input: SubmitReviewInput,
--) -> Result<ReviewResultDto, CommandError> {
--    let outcome = ReviewOutcome::parse(&input.outcome)?;
--    let reviewed_at = unix_time_millis()?;
--    let desired_retention = load_settings(connection)?.desired_retention;
--
--    let transaction = connection
--        .transaction_with_behavior(Tra
