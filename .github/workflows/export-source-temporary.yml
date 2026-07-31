@@ -23,7 +23,6 @@ jobs:
           fetch-depth: 0
 
       - name: Download and verify the staged patch
-        if: ${{ !contains(hashFiles('package.json'), '') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
