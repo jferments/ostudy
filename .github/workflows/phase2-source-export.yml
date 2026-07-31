@@ -34,11 +34,12 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          echo "27231d0a5c128c392afb78cf5b85b4aabb86c11495ecb9e5f15d673633c8ca5f  .phase2-final.patch" | sha256sum --check
-          git apply --check .phase2-final.patch
-          git apply .phase2-final.patch
+          base64 --decode .phase2-final.patch.b64 > "$RUNNER_TEMP/phase2-final.patch"
+          echo "27231d0a5c128c392afb78cf5b85b4aabb86c11495ecb9e5f15d673633c8ca5f  $RUNNER_TEMP/phase2-final.patch" | sha256sum --check
+          git apply --check "$RUNNER_TEMP/phase2-final.patch"
+          git apply "$RUNNER_TEMP/phase2-final.patch"
           rm -f \
-            .phase2-final.patch \
+            .phase2-final.patch.b64 \
             .phase2-final-ready \
             .phase2-b64-part-* \
             .phase2-patch-part-* \
