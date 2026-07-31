@@ -1,0 +1,86 @@
+_reject_card_events() {
+@@ -697,91 +250,4 @@ mod tests {
+             .expect_err("completed sessions must reject card events");
+         assert_eq!(error.code, "practice_session_complete");
+     }
+-
+-    #[test]
+-    fn review_submission_is_idempotent_and_updates_the_schedule() {
+-        let database = Database::open_in_memory().expect("database should open");
+-        let now = unix_time_millis().expect("clock should work");
+-
+-        let (session_id, card_id, submission_id) = database
+-            .with_connection(|connection| {
+-                let deck_id = generate_id(connection)?;
+-                let note_id = generate_id(connection)?;
+-                let card_id = generate_id(connection)?;
+-                let session_id = generate_id(connection)?;
+-                let submission_id = generate_id(connection)?;
+-                connection
+-                    .execute(
+-                        "INSERT INTO decks (id, name, description, sort_order, created_at, updated_at, revision)\n\
+-                         VALUES (?1, 'Test', '', 0, ?2, ?2, 1)",
+-                        params![deck_id, now],
+-                    )
+-                    .map_err(CommandError::database)?;
+-                connection
+-                    .execute(
+-                        "INSERT INTO notes (id, deck_id, note_type, content_format, content_schema_version, front_doc, back_doc, front_text, back_text, created_at, updated_at, revision)\n\
+-                         VALUES (?1, ?2, 'basic', 'tiptap-json', 1, '{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}', '{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}', 'Q', 'A', ?3, ?3, 1)",
+-                        params![note_id, deck_id, now],
+-                    )
+-                    .map_err(CommandError::database)?;
+-                connection
+-                    .execute(
+-                        "INSERT INTO cards (id, note_id, deck_id, direction, template_ordinal, created_at, updated_at)\n\
+-                         VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)",
+-                        params![card_id, note_id, deck_id, now],
+-                    )
+-                    .map_err(CommandError::database)?;
+-                insert_new_schedule(connection, &card_id, now)?;
+-                connection
+-                    .execute(
+-                        "INSERT INTO practice_sessions (id, selected_deck_ids_json, shuffle, card_count, viewed_count, revealed_count, started_at)\n\
+-                         VALUES (?1, '[]', 0, 1, 1, 1, ?2)",
+-                        params![session_id, now],
+-                    )
+-                    .map_err(CommandError::database)?;
+-                connection
+-                    .execute(
+-                        "INSERT INTO practice_session_cards (session_id, card_id, position, viewed_at, revealed_at)\n\
+-                         VALUES (?1, ?2, 0, ?3, ?3)",
+-                        params![session_id, card_id, now],
+-                    )
+-                    .map_err(CommandError::database)?;
+-                Ok((session_id, card_id, submission_id))
+-            })
+-            .expect("fixtures should be created");
+-
+-        let make_input = || SubmitReviewInput {
+-            session_id: session_id.clone(),
+-            card_id: card_id.clone(),
+-            submission_id: submission_id.clone(),
+-            outcome: "somewhat_confident".to_string(),
+-            response_time_ms: 1_500,
+-        };
+-        let first = database
+-            .with_connection(|connection| submit_review_in_connection(connection, make_input()))
+-            .expect("first review should succeed");
+-        let retry = database
+-            .with_connection(|connection| submit_review_in_connection(connection, make_input()))
+-            .expect("retry should be idempotent");
+-        assert_eq!(first.card_id, retry.card_id);
+-        assert_eq!(first.due_at, retry.due_at);
+-
+-        database
+-            .with_connection(|connection| {
+-                let review_count: i64 = connection
+-                    .query_row("SELECT COUNT(*) FROM review_events", [], |row| row.get(0))
+-                    .map_err(CommandError::database)?;
+-                let reps: i64 = connection
+-                    .query_row(
+-                        "SELECT reps FROM card_schedules WHERE card_id = ?1",
+-                        [card_id.as_str()],
+-                        |row| row.get(0),
+-                    )
+-                    .map_err(CommandError::datab
