@@ -1,10 +1,157 @@
+diff --git a/src-tauri/src/phase2.rs b/src-tauri/src/phase2.rs
+index 80d9550..fb2f38f 100644
+--- a/src-tauri/src/phase2.rs
++++ b/src-tauri/src/phase2.rs
+@@ -8,7 +8,10 @@
+ //! blank notes use literal `[[answer]]` markers. Rendered values become JSON
+ //! text nodes and are never interpreted as HTML, JavaScript, CSS, or SQL.
+ 
+-use std::collections::{BTreeMap, BTreeSet, HashMap};
++use std::{
++    cmp::Reverse,
++    collections::{BTreeMap, BTreeSet, HashMap},
++};
+ 
+ use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+ use serde::{Deserialize, Serialize};
+@@ -456,30 +459,59 @@ pub fn delete_editor_draft(
+     })
+ }
+ 
++type RenderCardRow = (
++    String,
++    String,
++    String,
++    String,
++    String,
++    i64,
++    i64,
++    i64,
++    String,
++    String,
++    String,
++    String,
++    String,
++    Option<String>,
++    String,
++    String,
++    i64,
++);
++
++type NoteEditorRow = (
++    String,
++    String,
++    String,
++    String,
++    String,
++    String,
++    Option<String>,
++    String,
++    i64,
++);
++
++type CopyNoteRow = (
++    String,
++    String,
++    i64,
++    String,
++    String,
++    String,
++    String,
++    i64,
++    i64,
++    Option<String>,
++    String,
++    String,
++);
++
+ pub(crate) fn render_card_from_connection(
+     connection: &Connection,
+     paths: &AppPaths,
+     card_id: &str,
+ ) -> Result<CardDto, CommandError> {
+-    let raw: Option<(
+-        String,
+-        String,
+-        String,
+-        String,
+-        String,
+-        i64,
+-        i64,
+-        i64,
+-        String,
+-        String,
+-        String,
+-        String,
+-        String,
+-        Option<String>,
+-        String,
+-        String,
+-        i64,
+-    )> = connection
++    let raw: Option<RenderCardRow> = connection
+         .query_row(
+             "SELECT c.id, c.note_id, c.deck_id, c.direction, c.display_name, c.template_ordinal,\n\
+                     c.created_at, c.updated_at, n.front_doc, n.back_doc,\n\
+@@ -978,17 +1010,7 @@ fn get_note_editor(
+     paths: &AppPaths,
+     note_id: &str,
+ ) -> Result<NoteEditorDto, CommandError> {
+-    let row: Option<(
+-        String,
+-        String,
+-        String,
+-        String,
+-        String,
+-        String,
+-        Option<String>,
+-        String,
+-        i64,
+-    )> = connection
++    let row: Option<NoteEditorRow> = connection
+         .query_row(
+             "SELECT deck_id, note_type, front_doc, back_doc, front_text, back_text,\n\
+                     template_id, fields_json, revision\n\
+@@ -1219,8 +1241,8 @@ fn browse_cards_in_connection(
+     }
+ 
+     match input.sort.as_str() {
+-        "updated_desc" => cards.sort_by(|a, b| b.updated_at.cmp(&a.updated_at)),
+-        "created_asc" => cards.sort_by(|a, b| a.created_at.cmp(&b.created_at)),
++        "updated_desc" => cards.sort_by_key(|card| Reverse(card.updated_at)),
++        "created_asc" => cards.sort_by_key(|card| card.created_at),
+         "due_asc" => cards.sort_by_key(|card| card.due_at.unwrap_or(i64::MAX)),
+         "question_asc" => cards.sort_by(|a, b| {
+             a.front_text
+@@ -2328,20 +2350,7 @@ fn move_or_copy_in_connection(
+         });
+     }
+ 
+-    let note: (
+-        String,
+-        String,
+-        i64,
+-        String,
+-        String,
+-        String,
+-        String,
+-        i64,
+-        i64,
+-        Option<String>,
+-        String,
+-        String,
+-    ) = transaction
++    let note: CopyNoteRow = transaction
+         .query_row(
+             "SELECT note_type, content_format, content_schema_version, front_doc, back_doc,\n\
+                     front_text, back_text, created_at, revision, template_id, fields_json, duplicate_key\n\
 diff --git a/src-tauri/src/practice.rs b/src-tauri/src/practice.rs
-index 5339f6d..e25c739 100644
+index 5339f6d..8ca2617 100644
 --- a/src-tauri/src/practice.rs
 +++ b/src-tauri/src/practice.rs
-@@ -1,60 +1,19 @@
+@@ -1,60 +1,20 @@
 -//! Scheduled practice sessions and atomic FSRS review recording.
-+//! Practice-session lifecycle events shared by the Phase 2 study workflow.
++//! Lightweight practice-session event tracking.
  //!
 -//! A session is a snapshot of cards that were due when it started. The answer
 -//! must be revealed before a rating can be submitted. Each accepted rating is
@@ -16,132 +163,10 @@ index 5339f6d..e25c739 100644
 -    collections::{BTreeSet, HashMap},
 -    hash::{Hash, Hasher},
 -};
-+//! `study` owns session selection, direct 0-3 grading, scheduling, limits, and
-+//! review undo. This module keeps only the small session-lifecycle commands
-+//! used by the UI to record card views/reveals and explicitly end a session.
++//! Phase 2 session construction, interval previews, direct 0-3 review scoring,
++//! scheduling, struggling-card detection, and undo live in `study`. This module
++//! retains only the generic viewed/revealed/completed session events shared by
++//! the frontend.
  
  use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 -use serde::{Deserialize, Serialize};
-+use serde::Deserialize;
- use tauri::State;
- 
- use crate::{
--    cards::{get_card_from_connection, CardDto},
-     database::Database,
-     error::CommandError,
--    paths::AppPaths,
--    scheduler::{
--        apply_review, load_schedule, update_schedule, ReviewOutcome, ScheduleTransition,
--        SCHEDULER_NAME, SCHEDULER_VERSION,
--    },
--    settings::load_settings,
--    util::{bool_to_integer, generate_id, unix_time_millis, validate_entity_id},
-+    util::{unix_time_millis, validate_entity_id},
- };
- 
--const MAX_SESSION_DECKS: usize = 100;
--const MAX_RESPONSE_TIME_MS: i64 = 86_400_000;
--
--#[derive(Debug, Deserialize)]
--#[serde(rename_all = "camelCase")]
--pub struct StartPracticeInput {
--    pub deck_ids: Vec<String>,
--    pub shuffle: bool,
--}
--
--#[derive(Clone, Debug, Serialize)]
--#[serde(rename_all = "camelCase")]
--pub struct PracticeCardDto {
--    pub card: CardDto,
--    pub deck_name: String,
--    pub due_at: i64,
--}
--
--#[derive(Clone, Debug, Serialize)]
--#[serde(rename_all = "camelCase")]
--pub struct PracticeSessionDto {
--    pub id: String,
--    pub cards: Vec<PracticeCardDto>,
--    pub shuffle: bool,
--    pub started_at: i64,
--}
--
- #[derive(Debug, Deserialize)]
- #[serde(rename_all = "camelCase")]
- pub struct PracticeCardEventInput {
-@@ -62,40 +21,6 @@ pub struct PracticeCardEventInput {
-     pub card_id: String,
- }
- 
--#[derive(Debug, Deserialize)]
--#[serde(rename_all = "camelCase")]
--pub struct SubmitReviewInput {
--    pub session_id: String,
--    pub card_id: String,
--    pub submission_id: String,
--    pub outcome: String,
--    pub response_time_ms: i64,
--}
--
--#[derive(Clone, Debug, Serialize)]
--#[serde(rename_all = "camelCase")]
--pub struct ReviewResultDto {
--    pub card_id: String,
--    pub rating: i64,
--    pub outcome: String,
--    pub due_at: i64,
--    pub completed: bool,
--    pub rated_count: i64,
--    pub correct_count: i64,
--}
--
--#[tauri::command]
--pub fn start_practice(
--    database: State<'_, Database>,
--    paths: State<'_, AppPaths>,
--    input: StartPracticeInput,
--) -> Result<PracticeSessionDto, CommandError> {
--    let deck_ids = validate_deck_ids(input.deck_ids)?;
--    database.with_connection(|connection| {
--        start_practice_in_connection(connection, &paths, deck_ids, input.shuffle)
--    })
--}
--
- #[tauri::command]
- pub fn mark_practice_card_viewed(
-     database: State<'_, Database>,
-@@ -120,15 +45,6 @@ pub fn mark_practice_card_revealed(
-     })
- }
- 
--#[tauri::command]
--pub fn submit_practice_review(
--    database: State<'_, Database>,
--    input: SubmitReviewInput,
--) -> Result<ReviewResultDto, CommandError> {
--    validate_review_input(&input)?;
--    database.with_connection(|connection| submit_review_in_connection(connection, input))
--}
--
- #[tauri::command]
- pub fn complete_practice_session(
-     database: State<'_, Database>,
-@@ -155,133 +71,6 @@ pub fn complete_practice_session(
-     })
- }
- 
--fn start_practice_in_connection(
--    connection: &mut Connection,
--    paths: &AppPaths,
--    deck_ids: Vec<String>,
--    shuffle: bool,
--) -> Result<PracticeSessionDto, CommandError> {
--    let now = unix_time_millis()?;
--    let mut deck_names = HashMap::new();
--    let mut pending_cards = Vec::new();
--
--    for deck_id in &deck_ids {
--        let deck_name: String = connection
--            .query_row(
--                "SELECT name FROM decks\n\
--                 WHERE id = ?1 
