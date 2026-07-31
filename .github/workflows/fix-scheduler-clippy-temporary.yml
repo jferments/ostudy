@@ -1,0 +1,68 @@
+name: Apply scheduler Clippy fix
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-scheduler-clippy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    if: github.event.pull_request.head.ref == 'chore/phase-1-repository-stabilization'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the Phase 1 branch
+        uses: actions/checkout@v6
+        with:
+          ref: chore/phase-1-repository-stabilization
+          fetch-depth: 0
+
+      - name: Apply the Clippy-safe Parameters initializer
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src-tauri/src/scheduler.rs")
+          text = path.read_text()
+          old = '''    let mut parameters = Parameters::default();
+              parameters.request_retention = desired_retention;
+              // Fuzz is useful for smoothing large real-world workloads, but disabling it
+              // makes this early scheduler deterministic and therefore easier to test,
+              // migrate, and explain. It can be made configurable later.
+              parameters.enable_fuzz = false;
+          '''
+          new = '''    // Fuzz is useful for smoothing large real-world workloads, but disabling it
+              // makes this early scheduler deterministic and therefore easier to test,
+              // migrate, and explain. It can be made configurable later.
+              let parameters = Parameters {
+                  request_retention: desired_retention,
+                  enable_fuzz: false,
+                  ..Parameters::default()
+              };
+          '''
+          if old in text:
+              path.write_text(text.replace(old, new, 1))
+          elif new not in text:
+              raise SystemExit("Expected scheduler Parameters block was not found")
+          PY
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Commit the fix when needed
+        run: |
+          set -Eeuo pipefail
+          git add src-tauri/src/scheduler.rs
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "Scheduler is already Clippy-clean."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: initialize FSRS parameters directly"
+          git push origin HEAD:chore/phase-1-repository-stabilization
