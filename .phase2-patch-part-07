@@ -1,0 +1,78 @@
++++ b/src-tauri/src/transfer_v2.rs
+@@ -285,7 +285,7 @@ pub struct ImportDeckV2ResultDto {
+     pub tag_count: i64,
+ }
+ 
+-#[derive(Clone)]
++#[derive(Clone, Debug)]
+ struct PackageDeck {
+     source_id: String,
+     name: String,
+@@ -295,7 +295,7 @@ struct PackageDeck {
+     revision: i64,
+ }
+ 
+-#[derive(Clone)]
++#[derive(Clone, Debug)]
+ struct PackageTemplate {
+     source_id: String,
+     name: String,
+@@ -307,7 +307,7 @@ struct PackageTemplate {
+     revision: i64,
+ }
+ 
+-#[derive(Clone)]
++#[derive(Clone, Debug)]
+ struct PackageNote {
+     source_id: String,
+     note_type: String,
+@@ -324,7 +324,7 @@ struct PackageNote {
+     revision: i64,
+ }
+ 
+-#[derive(Clone)]
++#[derive(Clone, Debug)]
+ struct PackageCard {
+     source_id: String,
+     source_note_id: String,
+@@ -335,13 +335,14 @@ struct PackageCard {
+     updated_at: i64,
+ }
+ 
+-#[derive(Clone)]
++#[derive(Clone, Debug)]
+ struct PackageTag {
+     source_id: String,
+     name: String,
+     normalized_name: String,
+ }
+ 
++#[derive(Debug)]
+ struct PackageAsset {
+     source_id: String,
+     original_filename: String,
+@@ -350,6 +351,7 @@ struct PackageAsset {
+     data: Vec<u8>,
+ }
+ 
++#[derive(Debug)]
+ struct PackageData {
+     deck: PackageDeck,
+     templates: Vec<PackageTemplate>,
+@@ -1923,7 +1925,7 @@ fn validate_package_metadata(
+ fn validate_package_schema(connection: &Connection) -> Result<(), CommandError> {
+     let expected = PACKAGE_TABLES
+         .iter()
+-        .map(|table| table.name.to_owned())
++        .map(|table| table.name.to_string())
+         .collect::<BTreeSet<_>>();
+     let mut statement = connection
+         .prepare(
+@@ -2219,6 +2221,7 @@ mod tests {
+     #[test]
+     fn version_one_package_is_routed_to_the_compatibility_importer_before_v2_schema_checks() {
+         let root = temporary_test_directory("legacy-routing");
++        fs::create_dir_all(&root).expect("temporary directory should be created");
+         let package_path = root.join("legacy.studydeck");
+         let connection = Connection::open(&package_path).expect("SQLite package should open");
+         connection
