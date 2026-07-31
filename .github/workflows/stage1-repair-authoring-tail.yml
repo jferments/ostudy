@@ -42,12 +42,10 @@ jobs:
           from pathlib import Path
 
           path = Path('src-tauri/src/authoring.rs')
-          text = path.read_text(encoding='utf-8')
-          expected = '''        std::env::temp_dir().join(format!(
-              "ostudy-phase2-{label}-{}-{nonce}",
-              std::process::id()
-          ))'''.replace('          ', '        ', 1)
-          if not text.endswith(expected):
+          text = path.read_text(encoding='utf-8').rstrip()
+          if text.count('fn temporary_test_directory') != 1:
+              raise SystemExit('authoring.rs did not contain the expected final helper')
+          if not text.endswith('        ))'):
               raise SystemExit('authoring.rs did not have the expected truncated tail')
           path.write_text(text + '\n    }\n}\n', encoding='utf-8')
           PY
