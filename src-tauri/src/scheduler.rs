@@ -270,12 +270,14 @@ pub fn apply_review(
         last_review,
     };
 
-    let mut parameters = Parameters::default();
-    parameters.request_retention = desired_retention;
     // Fuzz is useful for smoothing large real-world workloads, but disabling it
     // makes this early scheduler deterministic and therefore easier to test,
     // migrate, and explain. It can be made configurable later.
-    parameters.enable_fuzz = false;
+    let parameters = Parameters {
+        request_retention: desired_retention,
+        enable_fuzz: false,
+        ..Parameters::default()
+    };
 
     let result = FSRS::new(parameters).next(card, now, outcome.rating());
     let next = result.card;
