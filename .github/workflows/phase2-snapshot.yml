@@ -1,0 +1,26 @@
+name: Phase 2 source snapshot
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    if: github.head_ref == 'agent/phase-2-standalone-flashcard-core' || github.ref_name == 'agent/phase-2-standalone-flashcard-core'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+      - name: Package source tree
+        run: tar --exclude=.git -czf "$RUNNER_TEMP/ostudy-source.tar.gz" .
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v7
+        with:
+          name: ostudy-phase2-source
+          path: ${{ runner.temp }}/ostudy-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
