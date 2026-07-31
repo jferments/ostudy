@@ -1,0 +1,34 @@
+name: Apply Phase 2 payload
+
+on:
+  push:
+    branches:
+      - agent/phase-2-standalone-flashcard-core
+    paths:
+      - .phase2/phase2-full.tar.gz.b64
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/phase-2-standalone-flashcard-core
+          fetch-depth: 0
+
+      - name: Replace branch contents with reviewed Phase 2 source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base64 --decode .phase2/phase2-full.tar.gz.b64 > "$RUNNER_TEMP/phase2-full.tar.gz"
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
+          tar -xzf "$RUNNER_TEMP/phase2-full.tar.gz" -C .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: complete the Phase 2 standalone flashcard core"
+          git push origin HEAD:agent/phase-2-standalone-flashcard-core
