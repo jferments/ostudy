@@ -12,12 +12,12 @@ use tauri::State;
 
 use crate::{
     assets::{detect_image_bytes, validate_original_filename},
+    authoring::{compute_duplicate_key, refresh_note_search},
     cards::{collect_asset_ids, validate_content},
     database::Database,
     decks::{get_deck_from_connection, validate_description, validate_name, DeckDto},
     error::CommandError,
     paths::AppPaths,
-    authoring::{compute_duplicate_key, refresh_note_search},
     scheduler::insert_new_schedule,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };

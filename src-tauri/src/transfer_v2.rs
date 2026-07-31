@@ -21,16 +21,16 @@ use tauri::State;
 
 use crate::{
     assets::{detect_image_bytes, validate_original_filename},
-    cards::{collect_asset_ids, validate_content},
-    database::Database,
-    decks::{get_deck_from_connection, validate_description, validate_name, DeckDto},
-    error::CommandError,
-    paths::AppPaths,
     authoring::{
         compute_duplicate_key, refresh_note_search, render_imported_template_card,
         validate_imported_fill_blank, validate_imported_template,
         validate_imported_template_metadata, validate_imported_template_values, TemplateCardSpec,
     },
+    cards::{collect_asset_ids, validate_content},
+    database::Database,
+    decks::{get_deck_from_connection, validate_description, validate_name, DeckDto},
+    error::CommandError,
+    paths::AppPaths,
     scheduler::insert_new_schedule,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
@@ -2220,8 +2220,7 @@ mod tests {
 
     #[test]
     fn version_one_package_is_routed_to_the_compatibility_importer_before_v2_schema_checks() {
-        let package_path = temporary_test_directory("legacy-routing")
-            .with_extension("studydeck");
+        let package_path = temporary_test_directory("legacy-routing").with_extension("studydeck");
         let connection = Connection::open(&package_path).expect("SQLite package should open");
         connection
             .execute_batch(

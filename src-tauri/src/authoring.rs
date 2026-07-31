@@ -298,7 +298,6 @@ pub fn move_or_copy_note(
     database.with_connection(|connection| move_or_copy_in_connection(connection, input))
 }
 
-
 type RenderCardRow = (
     String,
     String,
@@ -330,7 +329,6 @@ type NoteEditorRow = (
     String,
     i64,
 );
-
 
 pub(crate) fn render_card_from_connection(
     connection: &Connection,
@@ -741,12 +739,7 @@ fn move_or_copy_in_connection(
                  SET deck_id = ?1, duplicate_key = ?2, updated_at = ?3, revision = revision + 1
 \
                  WHERE id = ?4 AND deleted_at IS NULL",
-                params![
-                    input.destination_deck_id,
-                    duplicate_key,
-                    now,
-                    input.note_id,
-                ],
+                params![input.destination_deck_id, duplicate_key, now, input.note_id,],
             )
             .map_err(CommandError::database)?;
         if changed != 1 {
@@ -1330,7 +1323,6 @@ fn browse_cards_in_connection(
     let cards = cards.into_iter().skip(input.offset).take(limit).collect();
     Ok(BrowseCardsResultDto { cards, total })
 }
-
 
 fn validate_browser_options(input: &BrowseCardsInput) -> Result<(), CommandError> {
     if !matches!(input.status.as_str(), "all" | "due" | "new") {
@@ -2369,7 +2361,6 @@ fn ensure_active_deck(connection: &Connection, deck_id: &str) -> Result<(), Comm
     Ok(())
 }
 
-
 fn map_unique_template_error(error: rusqlite::Error) -> CommandError {
     if error.to_string().contains("UNIQUE constraint failed") {
         CommandError::new(
@@ -2453,7 +2444,6 @@ fn default_updated_desc() -> String {
 const fn default_page_limit() -> usize {
     100
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -2933,3 +2923,5 @@ mod tests {
             "ostudy-phase2-{label}-{}-{nonce}",
             std::process::id()
         ))
+    }
+}

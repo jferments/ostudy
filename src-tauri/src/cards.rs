@@ -16,10 +16,10 @@ use tauri::State;
 
 use crate::{
     assets::{ensure_assets_exist, get_assets_for_note, AssetDto},
+    authoring::{compute_duplicate_key, refresh_note_search},
     database::Database,
     error::CommandError,
     paths::AppPaths,
-    authoring::{compute_duplicate_key, refresh_note_search},
     scheduler::insert_new_schedule,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
