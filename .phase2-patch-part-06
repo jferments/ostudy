@@ -1,8 +1,9 @@
              Self::Wrong => "wrong",
-@@ -83,18 +70,6 @@ impl ReviewOutcome {
+@@ -82,19 +69,6 @@ impl ReviewOutcome {
+             Self::VeryConfident => Rating::Easy,
          }
      }
- 
+-
 -    pub const fn rating_number(self) -> i64 {
 -        match self {
 -            Self::Wrong => 1,
@@ -18,7 +19,7 @@
  }
  
  /// Complete result of applying one accepted review.
-@@ -377,12 +352,10 @@ mod tests {
+@@ -377,12 +351,10 @@ mod tests {
  
      #[test]
      fn maps_product_wording_to_the_four_fsrs_ratings() {
