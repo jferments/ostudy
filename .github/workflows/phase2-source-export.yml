@@ -1,26 +1,22 @@
 name: Phase 2 source export
 
 on:
-  pull_request:
-    branches: [main]
-    types: [edited]
+  push:
+    branches: [agent/phase-2-standalone-flashcard-core]
+    paths:
+      - .phase2-source-export-trigger
 
 permissions:
   contents: read
 
 jobs:
   export:
-    if: >-
-      github.event.pull_request.number == 4 &&
-      github.event.pull_request.head.ref == 'agent/phase-2-standalone-flashcard-core' &&
-      contains(github.event.pull_request.body, '<!-- phase2-source-export -->')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Check out the Phase 2 branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Package the source tree
