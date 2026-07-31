@@ -6,7 +6,7 @@
 //! Review history records both the adapter version and the before/after state.
 
 use chrono::{DateTime, Utc};
-use rs_fsrs::{Card as FsrsCard, FSRS, Parameters, Rating, State};
+use rs_fsrs::{Card as FsrsCard, Parameters, Rating, State, FSRS};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::CommandError;
@@ -394,13 +394,8 @@ mod tests {
     #[test]
     fn applying_a_review_produces_a_future_schedule() {
         let schedule = new_schedule("a".repeat(32), NOW);
-        let transition = apply_review(
-            schedule,
-            ReviewOutcome::SomewhatConfident,
-            NOW,
-            0.90,
-        )
-        .expect("FSRS should schedule a valid new card");
+        let transition = apply_review(schedule, ReviewOutcome::SomewhatConfident, NOW, 0.90)
+            .expect("FSRS should schedule a valid new card");
 
         assert_eq!(transition.after.reps, 1);
         assert!(transition.after.due_at >= NOW);

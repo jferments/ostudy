@@ -241,7 +241,8 @@ mod tests {
     #[test]
     fn every_released_schema_fixture_upgrades_without_losing_seed_data() {
         for fixture in RELEASED_SCHEMA_FIXTURES {
-            let mut connection = Connection::open_in_memory().expect("fixture database should open");
+            let mut connection =
+                Connection::open_in_memory().expect("fixture database should open");
 
             // A release fixture is a complete historical SQL dump. Loading it
             // before configuring foreign keys avoids making the test depend on
@@ -254,15 +255,24 @@ mod tests {
             let starting_version: i64 = connection
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .expect("fixture user_version should be readable");
-            assert_eq!(starting_version, fixture.schema_version, "fixture {}", fixture.release);
+            assert_eq!(
+                starting_version, fixture.schema_version,
+                "fixture {}",
+                fixture.release
+            );
 
-            apply_migrations(&mut connection)
-                .unwrap_or_else(|error| panic!("{} fixture should upgrade: {error}", fixture.release));
+            apply_migrations(&mut connection).unwrap_or_else(|error| {
+                panic!("{} fixture should upgrade: {error}", fixture.release)
+            });
 
             let version: i64 = connection
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .expect("user_version should be readable");
-            assert_eq!(version, LATEST_SCHEMA_VERSION, "fixture {}", fixture.release);
+            assert_eq!(
+                version, LATEST_SCHEMA_VERSION,
+                "fixture {}",
+                fixture.release
+            );
 
             let preserved: (String, String, String) = connection
                 .query_row(

@@ -212,10 +212,7 @@ fn load_analytics(connection: &mut Connection) -> Result<AnalyticsDto, CommandEr
     })
 }
 
-fn active_card_count(
-    connection: &Connection,
-    deck_id: Option<&str>,
-) -> Result<i64, CommandError> {
+fn active_card_count(connection: &Connection, deck_id: Option<&str>) -> Result<i64, CommandError> {
     let base = "SELECT COUNT(*)\n\
                 FROM cards c\n\
                 JOIN notes n ON n.id = c.note_id\n\
