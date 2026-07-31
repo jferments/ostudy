@@ -37,7 +37,7 @@
  
      #[test]
 diff --git a/src-tauri/src/transfer_v2.rs b/src-tauri/src/transfer_v2.rs
-index ec519bd..ec548f5 100644
+index ec519bd..7b6fb17 100644
 --- a/src-tauri/src/transfer_v2.rs
 +++ b/src-tauri/src/transfer_v2.rs
 @@ -285,7 +285,7 @@ pub struct ImportDeckV2ResultDto {
@@ -109,3 +109,11 @@ index ec519bd..ec548f5 100644
          .collect::<BTreeSet<_>>();
      let mut statement = connection
          .prepare(
+@@ -2219,6 +2221,7 @@ mod tests {
+     #[test]
+     fn version_one_package_is_routed_to_the_compatibility_importer_before_v2_schema_checks() {
+         let root = temporary_test_directory("legacy-routing");
++        fs::create_dir_all(&root).expect("temporary directory should be created");
+         let package_path = root.join("legacy.studydeck");
+         let connection = Connection::open(&package_path).expect("SQLite package should open");
+         connection
