@@ -25,7 +25,23 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          cat .github/phase2-payload/part-* \
+          cat \
+            .github/phase2-payload/part-00 \
+            .github/phase2-payload/part-r00 \
+            .github/phase2-payload/part-r01 \
+            .github/phase2-payload/part-r02 \
+            .github/phase2-payload/part-r03 \
+            .github/phase2-payload/part-r05 \
+            .github/phase2-payload/part-r06 \
+            .github/phase2-payload/part-r07 \
+            .github/phase2-payload/part-r08 \
+            .github/phase2-payload/part-r09 \
+            .github/phase2-payload/part-r10 \
+            .github/phase2-payload/part-r11 \
+            .github/phase2-payload/part-r12 \
+            .github/phase2-payload/part-r13 \
+            .github/phase2-payload/part-r14 \
+            .github/phase2-payload/part-s* \
             | base64 --decode \
             | gzip --decompress \
             > "$RUNNER_TEMP/phase2.patch"
