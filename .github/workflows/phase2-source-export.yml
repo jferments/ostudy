@@ -34,7 +34,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          cat .phase2-b64-part-* | base64 --decode > "$RUNNER_TEMP/phase2-final.patch"
+          cat .phase2-patch-part-* > "$RUNNER_TEMP/phase2-final.patch"
+          echo "a3795963acbdbe76ff1cb322674a6391912d7cf28f70685706d85d505c9f0934  $RUNNER_TEMP/phase2-final.patch" | sha256sum --check
           git apply --check "$RUNNER_TEMP/phase2-final.patch"
           git apply "$RUNNER_TEMP/phase2-final.patch"
           rm -f \
@@ -97,7 +98,7 @@ jobs:
           path: |
             ${{ runner.temp }}/phase2-final-validation.log
             ${{ runner.temp }}/phase2-final-validation-status.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 1
 
       - name: Require validation success
