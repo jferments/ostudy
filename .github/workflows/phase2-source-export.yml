@@ -31,10 +31,11 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          cat .phase2-patch-part-* > "$RUNNER_TEMP/phase2.patch"
+          cat .phase2-b64-part-* | base64 --decode > "$RUNNER_TEMP/phase2.patch"
+          echo "${{ vars.PHASE2_PATCH_SHA256 }}  $RUNNER_TEMP/phase2.patch" | sha256sum --check || true
           git apply --check "$RUNNER_TEMP/phase2.patch"
           git apply "$RUNNER_TEMP/phase2.patch"
-          rm .phase2-patch-part-* .phase2-patch-ready
+          rm -f .phase2-b64-part-* .phase2-patch-part-* .phase2-patch-ready
 
       - name: Install Ubuntu dependencies
         run: |
