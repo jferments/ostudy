@@ -1,4 +1,4 @@
-# Git workflow for Study App
+# Git workflow for ostudy
 
 The revision 5.4 full-source archive is the final archive-based baseline. Future
 updates should be normal Git commits or pull requests made against a named base
@@ -32,8 +32,8 @@ From the project root:
 git init -b main
 git add .
 git status --short
-git commit -m "baseline: functional Study App v0.3.0"
-git tag -a v0.3.0 -m "Known-good Study App v0.3.0 baseline"
+git commit -m "baseline: functional ostudy v0.3.0"
+git tag -a v0.3.0 -m "Known-good ostudy v0.3.0 baseline"
 ```
 
 If Git needs an identity:

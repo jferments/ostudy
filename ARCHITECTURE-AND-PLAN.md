@@ -1,9 +1,10 @@
-# Architecture and implementation plan
+# ostudy architecture and implementation plan
 
 Current documentation is split by purpose:
 
 - [`README.md`](README.md): product scope, launch instructions, and the quality
   gate;
+- [`AGENTS.md`](AGENTS.md): repository-wide instructions for agents and LLMs;
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): implemented component
   boundaries and data flow;
 - [`docs/CARD-FORMAT-AND-DATA-MODEL.md`](docs/CARD-FORMAT-AND-DATA-MODEL.md):
@@ -12,6 +13,8 @@ Current documentation is split by purpose:
   CI, release checks, comments, and documentation policy;
 - [`docs/GIT-WORKFLOW.md`](docs/GIT-WORKFLOW.md): the branch/PR workflow for
   future development;
+- [`docs/agents/`](docs/agents/): implementation, code-style, and validation
+  guidance for automated maintainers;
 - [`docs/decisions/`](docs/decisions/): Architecture Decision Records.
 
 ## Implemented baseline

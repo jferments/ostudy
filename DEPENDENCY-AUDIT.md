@@ -1,6 +1,6 @@
 # Dependency audit — revision 5.4
 
-Study App requires no paid service, hosted database, account system, or cloud
+ostudy requires no paid service, hosted database, account system, or cloud
 runtime. Every direct application dependency is pinned to an exact version.
 
 ## Desktop and frontend
@@ -16,7 +16,7 @@ runtime. Every direct application dependency is pinned to an exact version.
 - TypeScript `5.8.3`
 - esbuild `0.28.1`
 
-The editor uses the MIT-licensed, headless Tiptap/ProseMirror stack. Study App
+The editor uses the MIT-licensed, headless Tiptap/ProseMirror stack. ostudy
 owns the toolbar, visual design, validation rules, and persistence format. It
 does not use Tiptap Cloud, collaboration, AI, or paid extensions.
 
@@ -36,7 +36,7 @@ to one patch version so the editor cannot resolve a mixed internal graph.
 - rs-fsrs `1.2.1`
 
 `rs-fsrs` is isolated behind `src-tauri/src/scheduler.rs`; database rows and
-Tauri DTOs use Study App-owned types. This prevents a scheduler crate update
+Tauri DTOs use ostudy-owned types. This prevents a scheduler crate update
 from silently redefining the durable database format.
 
 The Linux desktop build dynamically uses the operating system's free/open-source

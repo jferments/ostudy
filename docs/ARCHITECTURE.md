@@ -1,6 +1,6 @@
-# Study App architecture
+# ostudy architecture
 
-Study App is a local-first Tauri desktop application. The frontend is React and
+ostudy is a local-first Tauri desktop application. The frontend is React and
 TypeScript; durable behavior is implemented in Rust; SQLite stores structured
 state; the native filesystem stores managed image files.
 
