@@ -112,8 +112,11 @@ log "Installing Rust ${RUST_VERSION}, rustfmt, and Clippy"
 rustup toolchain install "$RUST_VERSION" --profile minimal --component rustfmt --component clippy
 rustup default "$RUST_VERSION"
 
-installed_driver=""
-command -v tauri-driver >/dev/null 2>&1 && installed_driver="$(tauri-driver --version | awk '{print $NF}')"
+installed_driver="$(
+  cargo install --list |
+    sed -n 's/^tauri-driver v\([^:]*\):$/\1/p' |
+    head -n 1
+)"
 if [[ "$installed_driver" != "$TAURI_DRIVER_VERSION" ]]; then
   log "Installing tauri-driver ${TAURI_DRIVER_VERSION} with $CARGO_BUILD_JOBS parallel Cargo jobs"
   cargo install tauri-driver --version "$TAURI_DRIVER_VERSION" --locked --force
