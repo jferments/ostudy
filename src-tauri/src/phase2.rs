@@ -1367,11 +1367,12 @@ fn list_templates_from_connection(
              ORDER BY is_builtin DESC, name COLLATE NOCASE ASC",
         )
         .map_err(CommandError::database)?;
-    statement
+    let templates = statement
         .query_map([], template_from_row)
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(templates)
 }
 
 fn load_template(connection: &Connection, id: &str) -> Result<CardTemplateDto, CommandError> {
@@ -1892,11 +1893,12 @@ fn load_tags(connection: &Connection, note_id: &str) -> Result<Vec<String>, Comm
              ORDER BY t.name COLLATE NOCASE",
         )
         .map_err(CommandError::database)?;
-    statement
+    let tags = statement
         .query_map([note_id], |row| row.get(0))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(tags)
 }
 
 fn refresh_note_fts(connection: &Connection, note_id: &str) -> Result<(), CommandError> {
@@ -2642,11 +2644,12 @@ fn active_card_ids(connection: &Connection, note_id: &str) -> Result<Vec<String>
     let mut statement = connection
         .prepare("SELECT id FROM cards WHERE note_id = ?1 AND deleted_at IS NULL")
         .map_err(CommandError::database)?;
-    statement
+    let card_ids = statement
         .query_map([note_id], |row| row.get(0))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(card_ids)
 }
 
 fn record_state_events(

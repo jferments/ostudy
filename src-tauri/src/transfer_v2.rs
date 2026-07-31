@@ -1907,7 +1907,7 @@ fn validate_package_metadata(
         .expect("metadata key was validated")
         .parse::<i64>()
         .map_err(|_| CommandError::invalid_package("The deck export time is invalid."))?;
-    validate_timestamp(exported_at, exported_at, "package metadata")?;
+    validate_timestamps(exported_at, exported_at, "package metadata")?;
     let application_version = metadata
         .get("applicationVersion")
         .expect("metadata key was validated")
@@ -1923,7 +1923,7 @@ fn validate_package_metadata(
 fn validate_package_schema(connection: &Connection) -> Result<(), CommandError> {
     let expected = PACKAGE_TABLES
         .iter()
-        .map(|table| table.name)
+        .map(|table| table.name.to_owned())
         .collect::<BTreeSet<_>>();
     let mut statement = connection
         .prepare(
