@@ -19,6 +19,7 @@ use crate::{
     database::Database,
     error::CommandError,
     paths::AppPaths,
+    authoring::{compute_duplicate_key, refresh_note_search},
     scheduler::insert_new_schedule,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
@@ -56,6 +57,7 @@ pub struct CardDto {
     pub note_id: String,
     pub deck_id: String,
     pub direction: String,
+    pub display_name: String,
     pub front_doc: Value,
     pub back_doc: Value,
     pub front_text: String,
@@ -80,6 +82,7 @@ struct RawCard {
     note_id: String,
     deck_id: String,
     direction: String,
+    display_name: String,
     pub(crate) front_doc_json: String,
     pub(crate) back_doc_json: String,
     pub(crate) front_text: String,
@@ -166,7 +169,7 @@ pub(crate) fn list_cards_from_connection(
 ) -> Result<Vec<CardDto>, CommandError> {
     let mut statement = connection
         .prepare(
-            "SELECT c.id, n.id, c.deck_id, c.direction, n.front_doc, n.back_doc,\n\
+            "SELECT c.id, n.id, c.deck_id, c.direction, c.display_name, n.front_doc, n.back_doc,\n\
                     n.front_text, n.back_text, n.created_at, n.updated_at, n.revision\n\
              FROM cards c\n\
              JOIN notes n ON n.id = c.note_id\n\
@@ -201,7 +204,7 @@ pub(crate) fn get_card_from_connection(
 ) -> Result<CardDto, CommandError> {
     let raw = connection
         .query_row(
-            "SELECT c.id, n.id, c.deck_id, c.direction, n.front_doc, n.back_doc,\n\
+            "SELECT c.id, n.id, c.deck_id, c.direction, c.display_name, n.front_doc, n.back_doc,\n\
                     n.front_text, n.back_text, n.created_at, n.updated_at, n.revision\n\
              FROM cards c\n\
              JOIN notes n ON n.id = c.note_id\n\
@@ -236,13 +239,16 @@ pub(crate) fn create_card_in_connection(
 
     let note_id = generate_id(&transaction)?;
     let card_id = generate_id(&transaction)?;
+    let duplicate_key =
+        compute_duplicate_key("basic", &content.front_text, &content.back_text, "{}");
 
     transaction
         .execute(
             "INSERT INTO notes (\n\
                  id, deck_id, note_type, content_format, content_schema_version,\n\
-                 front_doc, back_doc, front_text, back_text, created_at, updated_at, revision\n\
-             ) VALUES (?1, ?2, 'basic', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, 1)",
+                 front_doc, back_doc, front_text, back_text, duplicate_key,\n\
+                 created_at, updated_at, revision\n\
+             ) VALUES (?1, ?2, 'basic', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10, 1)",
             params![
                 note_id,
                 deck_id,
@@ -252,6 +258,7 @@ pub(crate) fn create_card_in_connection(
                 content.back_doc_json,
                 content.front_text,
                 content.back_text,
+                duplicate_key,
                 now
             ],
         )
@@ -267,6 +274,7 @@ pub(crate) fn create_card_in_connection(
     insert_new_schedule(&transaction, &card_id, now)?;
 
     replace_note_assets(&transaction, &note_id, &content)?;
+    refresh_note_search(&transaction, &note_id)?;
     transaction.commit().map_err(CommandError::database)?;
 
     get_card_from_connection(connection, paths, &note_id)
@@ -283,17 +291,20 @@ fn update_card_in_connection(
     let transaction = connection.transaction().map_err(CommandError::database)?;
 
     ensure_assets_exist(&transaction, &all_asset_ids(&content))?;
+    let duplicate_key =
+        compute_duplicate_key("basic", &content.front_text, &content.back_text, "{}");
     let changed = transaction
         .execute(
             "UPDATE notes\n\
              SET front_doc = ?1, back_doc = ?2, front_text = ?3, back_text = ?4,\n\
-                 updated_at = ?5, revision = revision + 1\n\
-             WHERE id = ?6 AND revision = ?7 AND deleted_at IS NULL",
+                 duplicate_key = ?5, updated_at = ?6, revision = revision + 1\n\
+             WHERE id = ?7 AND revision = ?8 AND deleted_at IS NULL",
             params![
                 content.front_doc_json,
                 content.back_doc_json,
                 content.front_text,
                 content.back_text,
+                duplicate_key,
                 now,
                 note_id,
                 revision
@@ -315,6 +326,7 @@ fn update_card_in_connection(
         )
         .map_err(CommandError::database)?;
     replace_note_assets(&transaction, note_id, &content)?;
+    refresh_note_search(&transaction, note_id)?;
     transaction.commit().map_err(CommandError::database)?;
 
     get_card_from_connection(connection, paths, note_id)
@@ -349,6 +361,9 @@ fn delete_card_in_connection(
              WHERE note_id = ?2 AND deleted_at IS NULL",
             params![now, note_id],
         )
+        .map_err(CommandError::database)?;
+    transaction
+        .execute("DELETE FROM notes_fts WHERE note_id = ?1", [note_id])
         .map_err(CommandError::database)?;
     transaction.commit().map_err(CommandError::database)
 }
@@ -417,6 +432,7 @@ fn hydrate_card(
         note_id: raw.note_id,
         deck_id: raw.deck_id,
         direction: raw.direction,
+        display_name: raw.display_name,
         front_doc,
         back_doc,
         front_text: raw.front_text,
@@ -434,13 +450,14 @@ fn raw_card_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawCard> {
         note_id: row.get(1)?,
         deck_id: row.get(2)?,
         direction: row.get(3)?,
-        front_doc_json: row.get(4)?,
-        back_doc_json: row.get(5)?,
-        front_text: row.get(6)?,
-        back_text: row.get(7)?,
-        created_at: row.get(8)?,
-        updated_at: row.get(9)?,
-        revision: row.get(10)?,
+        display_name: row.get(4)?,
+        front_doc_json: row.get(5)?,
+        back_doc_json: row.get(6)?,
+        front_text: row.get(7)?,
+        back_text: row.get(8)?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
+        revision: row.get(11)?,
     })
 }
 

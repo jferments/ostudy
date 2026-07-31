@@ -30,9 +30,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "49dd1e24e463c9a08a59e243d90143e2874459dd2a4a8d5f61613d5df7ebcae3",
         sql: include_str!("../migrations/0003_fsrs_reviews.sql"),
     },
+    Migration {
+        version: 4,
+        name: "authoring_foundation",
+        checksum: "52c20c9685bc5f74d6ddfd0ce9de656049abe852c7a6561895844347c236d51a",
+        sql: include_str!("../migrations/0004_authoring_foundation.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 3;
+const LATEST_SCHEMA_VERSION: i64 = 4;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -86,7 +92,8 @@ fn configure_connection(connection: &Connection) -> Result<(), String> {
 
     connection
         .execute_batch(
-            "PRAGMA foreign_keys = ON;\n\
+            "PRAGMA trusted_schema = OFF;\n\
+             PRAGMA foreign_keys = ON;\n\
              PRAGMA journal_mode = WAL;\n\
              PRAGMA synchronous = FULL;",
         )
@@ -227,12 +234,12 @@ mod tests {
 
                 let table_count: i64 = connection
                     .query_row(
-                        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('decks', 'notes', 'cards', 'assets', 'app_settings', 'practice_sessions', 'card_schedules', 'review_events')",
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('decks', 'notes', 'cards', 'assets', 'note_assets', 'app_settings', 'practice_sessions', 'practice_session_cards', 'card_schedules', 'review_events', 'card_templates', 'tags', 'note_tags', 'notes_fts')",
                         [],
                         |row| row.get(0),
                     )
                     .map_err(CommandError::database)?;
-                assert_eq!(table_count, 8);
+                assert_eq!(table_count, 14);
                 Ok(())
             })
             .expect("second migration pass should succeed");

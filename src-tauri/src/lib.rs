@@ -1,5 +1,6 @@
 mod analytics;
 mod assets;
+mod authoring;
 mod cards;
 mod database;
 mod decks;
@@ -10,6 +11,7 @@ mod practice;
 mod scheduler;
 mod settings;
 mod transfer;
+mod transfer_v2;
 mod util;
 
 use std::io;
@@ -60,6 +62,15 @@ pub fn run() {
             cards::create_card,
             cards::update_card,
             cards::delete_card,
+            authoring::list_card_templates,
+            authoring::save_card_template,
+            authoring::delete_card_template,
+            authoring::save_advanced_note,
+            authoring::get_note_for_editing,
+            authoring::browse_cards,
+            authoring::find_note_duplicates,
+            authoring::render_generated_card,
+            authoring::move_or_copy_note,
             assets::import_image,
             settings::get_settings,
             settings::save_settings,
@@ -71,7 +82,9 @@ pub fn run() {
             practice::complete_practice_session,
             analytics::get_analytics,
             transfer::export_deck,
-            transfer::import_deck
+            transfer::import_deck,
+            transfer_v2::export_deck_v2,
+            transfer_v2::import_deck_v2
         ])
         .run(tauri::generate_context!())
         .expect("error while running ostudy");

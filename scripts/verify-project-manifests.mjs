@@ -56,8 +56,11 @@ const [
   migration1,
   migration2,
   migration3,
+  migration4,
   database,
   rustCommands,
+  authoring,
+  transferV2,
   app,
   ipc,
   cards,
@@ -66,6 +69,7 @@ const [
   launcher,
   buildScript,
   checkScript,
+  lockGuard,
   setupScript,
   checkWorkflow,
   releaseWorkflow,
@@ -81,8 +85,11 @@ const [
   read("src-tauri", "migrations", "0001_decks.sql"),
   read("src-tauri", "migrations", "0002_cards_assets_settings_practice.sql"),
   read("src-tauri", "migrations", "0003_fsrs_reviews.sql"),
+  read("src-tauri", "migrations", "0004_authoring_foundation.sql"),
   read("src-tauri", "src", "database.rs"),
   read("src-tauri", "src", "lib.rs"),
+  read("src-tauri", "src", "authoring.rs"),
+  read("src-tauri", "src", "transfer_v2.rs"),
   read("src", "App.tsx"),
   read("src", "ipc.ts"),
   read("src-tauri", "src", "cards.rs"),
@@ -91,6 +98,7 @@ const [
   read("run-app.sh"),
   read("scripts", "build.sh"),
   read("scripts", "check.sh"),
+  read("scripts", "with-immutable-cargo-lock.mjs"),
   read("scripts", "setup-ubuntu.sh"),
   read(".github", "workflows", "check.yml"),
   read(".github", "workflows", "release.yml"),
@@ -182,7 +190,12 @@ for (const permission of ["core:default", "dialog:default", "opener:default"]) {
   if (!capability.permissions?.includes(permission)) failures.push(`capability missing ${permission}`);
 }
 
-for (const [label, text] of [["0001", migration1], ["0002", migration2], ["0003", migration3]]) {
+for (const [label, text] of [
+  ["0001", migration1],
+  ["0002", migration2],
+  ["0003", migration3],
+  ["0004", migration4],
+]) {
   const checksum = createHash("sha256").update(text).digest("hex");
   if (!database.includes(`"${checksum}"`)) failures.push(`database.rs checksum mismatch for ${label}: ${checksum}`);
 }
@@ -199,14 +212,34 @@ if (!releaseFixture.includes("Immutable database fixture captured for the ostudy
 for (const command of [
   "list_decks", "get_deck", "create_deck", "update_deck", "delete_deck",
   "list_cards", "get_card", "create_card", "update_card", "delete_card",
-  "import_image", "get_settings", "save_settings", "get_app_info",
+  "list_card_templates", "save_card_template", "delete_card_template",
+  "save_advanced_note", "get_note_for_editing", "browse_cards", "find_note_duplicates",
+  "render_generated_card", "move_or_copy_note", "import_image", "get_settings", "save_settings", "get_app_info",
   "start_practice", "mark_practice_card_viewed", "mark_practice_card_revealed",
   "submit_practice_review", "complete_practice_session", "get_analytics",
-  "export_deck", "import_deck",
+  "export_deck_v2", "import_deck_v2",
 ]) {
   if (!rustCommands.includes(command)) failures.push(`Rust command not registered: ${command}`);
   if (!ipc.includes(`"${command}"`)) failures.push(`frontend command missing: ${command}`);
 }
+for (const command of ["export_deck", "import_deck"]) {
+  if (!rustCommands.includes(command)) failures.push(`legacy Rust command not registered: ${command}`);
+}
+if (!ipc.includes('"import_deck"')) failures.push("legacy SQLite deck import fallback is not wired");
+
+if (!database.includes("PRAGMA trusted_schema = OFF")) failures.push("SQLite trusted_schema is not disabled");
+for (const [label, source, required] of [
+  ["safe template parser", authoring, "parse_pattern_fields"],
+  ["bound FTS query builder", authoring, "build_fts_query"],
+  ["Fill in the blank parser", authoring, "parse_fill_blanks"],
+  ["read-only deck package", transferV2, "SQLITE_OPEN_READ_ONLY"],
+  ["deck package trusted_schema", transferV2, "trusted_schema = OFF"],
+]) {
+  if (!source.includes(required)) failures.push(`${label} is not present`);
+}
+if (!migration4.includes("CREATE VIRTUAL TABLE notes_fts USING fts5")) failures.push("Stage 1 FTS5 schema is missing");
+if (!migration4.includes("Pharmacology")) failures.push("built-in Pharmacology template is missing");
+if (!authoring.includes('"fill_blank"') || !authoring.includes('"template"')) failures.push("Stage 1 note modes are incomplete");
 
 if (!cards.includes('const CONTENT_FORMAT: &str = "tiptap-json"')) failures.push("canonical card format is not pinned");
 if (!scheduler.includes("FSRS::new(parameters).next")) failures.push("FSRS adapter is not wired to the scheduling crate");
@@ -217,6 +250,7 @@ if (/pnpm run build|cargo build|pnpm tauri dev/u.test(launcher)) {
   failures.push("run-app.sh must launch the existing binary without compiling or starting a dev server");
 }
 for (const required of [
+  "with-immutable-cargo-lock.mjs",
   "pnpm tauri build --debug --no-bundle --ci",
   "ostudy_write_build_stamp",
   "CARGO_BUILD_JOBS",
@@ -228,10 +262,14 @@ for (const required of [
   "cargo fmt",
   "cargo clippy",
   "cargo test",
+  "with-immutable-cargo-lock.mjs",
   "pnpm tauri build --debug --no-bundle --ci",
   "smoke-native.sh",
 ]) {
   if (!checkScript.includes(required)) failures.push(`check.sh missing: ${required}`);
+}
+if (!lockGuard.includes("cargo") || !lockGuard.includes("--locked") || !lockGuard.includes("original.equals")) {
+  failures.push("Cargo.lock immutability guard is incomplete");
 }
 if (!setupScript.includes('"$SCRIPT_DIR/build.sh"')) failures.push("setup does not create the initial build");
 if (!checkWorkflow.includes("./scripts/check.sh")) failures.push("GitHub check workflow does not run the local gate");
@@ -247,13 +285,20 @@ for (const requiredPath of [
   "scripts/export-diagnostics.sh",
   "scripts/log-run.py",
   "scripts/smoke-native.sh",
+  "scripts/with-immutable-cargo-lock.mjs",
+  "scripts/with-immutable-cargo-lock.test.mjs",
   "scripts/release.sh",
   "tests/webdriver/smoke.py",
   "src/test/setup.ts",
   "src/components/Toast.test.tsx",
   "src/screens/SettingsScreen.test.tsx",
   "src-tauri/src/logging.rs",
+  "src-tauri/src/authoring.rs",
+  "src-tauri/src/transfer_v2.rs",
+  "src-tauri/migrations/0004_authoring_foundation.sql",
   "src-tauri/tests/fixtures/v0.1.0.sql",
+  "docs/PHASE-2-ROADMAP.md",
+  "docs/decisions/0004-secure-authoring-foundation.md",
   ".github/workflows/check.yml",
   ".github/workflows/release.yml",
   ".github/pull_request_template.md",
@@ -261,7 +306,7 @@ for (const requiredPath of [
   try {
     await readFile(join(root, requiredPath), "utf8");
   } catch {
-    failures.push(`required Phase 1 file is missing: ${requiredPath}`);
+    failures.push(`required repository file is missing: ${requiredPath}`);
   }
 }
 
@@ -283,4 +328,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("OK   ostudy identity, versions, migrations, tests, build scripts, CI, diagnostics, and release files are internally consistent.");
+console.log("OK   ostudy identity, Stage 1 authoring, migrations, security boundaries, immutable lockfiles, tests, CI, diagnostics, and release files are internally consistent.");

@@ -1,22 +1,33 @@
 # ostudy
 
-**ostudy** is a free, local-first desktop flashcard application built with
-Tauri, React, TypeScript, Rust, and embedded SQLite. It requires no account or
-server. Decks, rich-text cards, review history, settings, and analytics remain
-on the user's computer.
+**ostudy** is a free, local-first desktop flashcard application. It runs on the
+user's computer without an account or hosted service, and stores decks, cards,
+managed images, review history, settings, and analytics locally.
 
-The first release series starts at **0.1.0**. Old archive revision labels are not
-part of the versioning scheme; Git commits describe development history and
-release tags describe published versions.
+The application is built with Tauri, React, TypeScript, Rust, and embedded
+SQLite. Release versioning begins at **0.1.0**.
 
-## Current functionality
+## What ostudy can do
 
 - Create, rename, and delete decks.
-- Create, edit, search, and delete rich-text flashcards.
-- Import and export complete `.studydeck` packages with managed images.
+- Create **Basic**, **Reverse**, **Fill in the blank**, and field-template notes.
+- Generate several study cards from one note without duplicating its source
+  content.
+- Organize notes with tags and find them with full-text search, filters, sorting,
+  and pagination.
+- Warn before saving a duplicate note.
+- Move or copy notes and all of their generated review cards between decks.
+- Use the built-in Pharmacology template or create reusable templates with
+  simple `{{field name}}` placeholders.
+- Import and export complete `.studydeck` SQLite packages, including tags,
+  templates, generated cards, and managed images.
 - Run single-deck or multi-deck FSRS-scheduled practice sessions.
 - Record review history and display deterministic analytics.
 - Configure themes, typography, scale, motion, and review preferences.
+
+Math-specific cards, bulk entry, autosaved drafts, expanded study controls,
+and the direct 0–3 confidence flow are planned in later Phase 2 stages. See
+[`docs/PHASE-2-ROADMAP.md`](docs/PHASE-2-ROADMAP.md).
 
 ## Ubuntu setup
 
@@ -34,28 +45,34 @@ cores by default; override the number when needed:
 CARGO_BUILD_JOBS=24 ./scripts/setup-ubuntu.sh
 ```
 
-## Fast startup and rebuilding
+## Start the application
 
-Start the already-compiled application:
+Launch the already-built application:
 
 ```bash
 ./run-app.sh
 ```
 
-`run-app.sh` does not run Vite, Cargo, or the test suite. It verifies that the
-existing binary matches the current source and then starts it. After editing
-source code, rebuild explicitly:
+`run-app.sh` starts the existing binary without running Vite, Cargo, or the test
+suite. After changing source code, rebuild explicitly:
 
 ```bash
 ./scripts/build.sh
 ```
+
+Build commands protect the committed dependency lockfiles and provide recovery
+instructions rather than leaving a dirty working tree. Dependency and build
+troubleshooting details are kept in
+[`docs/DEVELOPMENT-AND-QUALITY.md`](docs/DEVELOPMENT-AND-QUALITY.md).
 
 Both `build.sh` and `check.sh` keep Cargo's incremental cache. If the repository
 is moved or renamed, they detect the old absolute target path and clear
 `src-tauri/target` once rather than repeatedly failing with stale build-script
 artifacts.
 
-## The normal development loop
+## Development and testing
+
+The normal development loop is:
 
 1. Make a focused change on a branch.
 2. Run the complete automated gate:
@@ -66,70 +83,60 @@ artifacts.
 
 3. Start the current build with `./run-app.sh` and manually exercise the changed
    UI path.
-4. Commit, push, and merge the pull request when both checks pass.
+4. Commit, push, and merge the pull request after both checks pass.
 
-The single gate installs from lockfiles, verifies exact dependencies, runs React
-component tests, checks Rust formatting and Clippy, runs Rust and migration
-fixture tests, creates the standalone Tauri build, and launches a native
-WebDriver smoke test. Set `OSTUDY_SKIP_NATIVE_SMOKE=1` only when diagnosing a
-machine-specific WebDriver problem, and record that the native test was skipped.
+The automated gate installs from lockfiles, verifies exact dependencies, runs
+React tests, checks Rust formatting and Clippy, runs Rust and migration-fixture
+tests, creates the standalone Tauri build, and launches a native WebDriver smoke
+test. Set `OSTUDY_SKIP_NATIVE_SMOKE=1` only while diagnosing a machine-specific
+WebDriver problem, and record that the native test was skipped.
 
-## GitHub Actions
+GitHub Actions repeats the same gate on a clean Ubuntu runner for pull requests
+to `main` and pushes to `main`.
 
-`.github/workflows/check.yml` repeats `./scripts/check.sh` on a clean Ubuntu
-runner for every pull request to `main` and every push to `main`. This catches
-missing local dependencies and uncommitted generated files before a change is
-merged.
+## Deck sharing and safety
 
-## Local diagnostics
+A `.studydeck` file is a versioned SQLite package for one deck. It contains deck
+content and managed images, but excludes application settings and personal
+review history. Imported cards receive fresh local schedules.
 
-`run-app.sh` preserves terminal output in a small JSON Lines log at:
+Shared decks and card text are treated as untrusted data. ostudy stores rich
+content as validated JSON rather than executable HTML, uses literal template and
+Fill in the blank grammars, binds SQL parameters, validates package schemas and
+relationships, and opens imported SQLite packages read-only with SQLite trusted
+schema features disabled.
 
-```text
-${XDG_STATE_HOME:-$HOME/.local/state}/ostudy/ostudy.jsonl
-```
+## Local data and diagnostics
 
-The log rotates at 2 MiB and retains one previous file. Create a support archive
-without including the SQLite library, cards, or managed images:
+The Settings screen displays the active database and managed-image locations.
+To create a support archive without including the library database, cards, or
+managed images, run:
 
 ```bash
 ./scripts/export-diagnostics.sh
 ```
 
-## Release artifacts
+Application output is also written to a small rotating JSON Lines log at:
 
-A version tag such as `v0.1.0` triggers `.github/workflows/release.yml`. The
-workflow runs the clean-source gate and uses `scripts/release.sh` to generate the
-same Linux outputs every time:
+```text
+${XDG_STATE_HOME:-$HOME/.local/state}/ostudy/ostudy.jsonl
+```
 
-- a Debian package;
-- an AppImage;
-- a source archive;
-- build metadata;
-- SHA-256 checksums.
+## Releases
 
-Artifacts are uploaded to the workflow run. Phase 1 intentionally does not add
-code signing, auto-update publishing, or a multi-platform release matrix.
+A version tag such as `v0.1.0` triggers the Linux release workflow. It runs the
+clean-source gate and produces a Debian package, AppImage, source archive, build
+metadata, and SHA-256 checksums.
 
-## Application identifier and data location
+## Project documentation
 
-The Tauri identifier is `io.github.jferments.ostudy`. Changing from the old
-example identifier changes the operating-system application-data directory.
-This is an intentional pre-0.1 compatibility break; old development data is not
-migrated automatically.
-
-The Settings screen displays the active database and managed-image locations.
-`.studydeck` export is for sharing deck content and intentionally excludes
-personal review history and application settings.
-
-## Architecture and contributor documentation
-
+- [`docs/PHASE-2-ROADMAP.md`](docs/PHASE-2-ROADMAP.md)
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - [`docs/CARD-FORMAT-AND-DATA-MODEL.md`](docs/CARD-FORMAT-AND-DATA-MODEL.md)
 - [`docs/DEVELOPMENT-AND-QUALITY.md`](docs/DEVELOPMENT-AND-QUALITY.md)
 - [`docs/GIT-WORKFLOW.md`](docs/GIT-WORKFLOW.md)
-- [`AGENTS.md`](AGENTS.md)
-- [`docs/agents/`](docs/agents/)
+- [`docs/decisions/`](docs/decisions/)
+- [`AGENTS.md`](AGENTS.md) and [`docs/agents/`](docs/agents/)
 
 The project is MIT licensed. Direct dependencies are pinned and free/open
 source. The Linux application uses the operating system's WebKitGTK/GTK runtime

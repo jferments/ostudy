@@ -1,6 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export type RichDocument = Record<string, unknown>;
+export type NoteMode = "basic" | "reverse" | "fill_blank" | "template";
+export type CardBrowserStatus = "all" | "due" | "new";
+export type CardBrowserSort =
+  | "updated_desc"
+  | "created_asc"
+  | "due_asc"
+  | "question_asc";
 
 export interface Deck {
   id: string;
@@ -39,6 +46,7 @@ export interface Flashcard {
   noteId: string;
   deckId: string;
   direction: string;
+  displayName: string;
   frontDoc: RichDocument;
   backDoc: RichDocument;
   frontText: string;
@@ -64,6 +72,114 @@ export interface UpdateCardInput {
   backDoc: RichDocument;
   frontText: string;
   backText: string;
+}
+
+export interface TemplateCardSpec {
+  name: string;
+  front: string;
+  back: string;
+}
+
+export interface CardTemplate {
+  id: string;
+  name: string;
+  description: string;
+  fields: string[];
+  cards: TemplateCardSpec[];
+  isBuiltin: boolean;
+  createdAt: number;
+  updatedAt: number;
+  revision: number;
+}
+
+export interface SaveCardTemplateInput {
+  templateId?: string;
+  revision?: number;
+  name: string;
+  description: string;
+  fields: string[];
+  cards: TemplateCardSpec[];
+}
+
+export interface NoteEditor {
+  noteId: string;
+  deckId: string;
+  mode: NoteMode;
+  frontDoc: RichDocument;
+  backDoc: RichDocument;
+  frontText: string;
+  backText: string;
+  tags: string[];
+  createReverse: boolean;
+  fillBlankText: string | null;
+  templateId: string | null;
+  fields: Record<string, string>;
+  assets: Asset[];
+  generatedCardCount: number;
+  revision: number;
+}
+
+export interface SaveNoteInput {
+  noteId?: string;
+  revision?: number;
+  deckId: string;
+  mode: NoteMode;
+  frontDoc: RichDocument;
+  backDoc: RichDocument;
+  frontText: string;
+  backText: string;
+  tags: string[];
+  createReverse: boolean;
+  fillBlankText: string | null;
+  templateId: string | null;
+  fields: Record<string, string>;
+  allowDuplicate: boolean;
+}
+
+export interface BrowserCard {
+  noteId: string;
+  deckId: string;
+  mode: NoteMode;
+  frontText: string;
+  backText: string;
+  tags: string[];
+  generatedCardCount: number;
+  dueAt: number | null;
+  isNew: boolean;
+  hasImages: boolean;
+  createdAt: number;
+  updatedAt: number;
+  revision: number;
+}
+
+export interface BrowseCardsInput {
+  deckId: string;
+  query: string;
+  tags: string[];
+  status: CardBrowserStatus;
+  mode: "all" | NoteMode;
+  sort: CardBrowserSort;
+  limit: number;
+  offset: number;
+}
+
+export interface BrowseCardsResult {
+  cards: BrowserCard[];
+  total: number;
+}
+
+export interface DuplicateNote {
+  noteId: string;
+  deckId: string;
+  deckName: string;
+  frontText: string;
+  backText: string;
+}
+
+export interface MoveCopyResult {
+  noteId: string;
+  destinationDeckId: string;
+  copied: boolean;
 }
 
 export interface AppSettings {
@@ -175,12 +291,16 @@ export interface ExportResult {
   destinationPath: string;
   cardCount: number;
   assetCount: number;
+  templateCount?: number;
+  tagCount?: number;
 }
 
 export interface ImportResult {
   deck: Deck;
   cardCount: number;
   assetCount: number;
+  templateCount?: number;
+  tagCount?: number;
 }
 
 export interface CommandErrorPayload {
@@ -226,6 +346,61 @@ export async function updateCard(input: UpdateCardInput): Promise<Flashcard> {
 
 export async function deleteCard(noteId: string): Promise<void> {
   return invoke<void>("delete_card", { noteId });
+}
+
+export async function listCardTemplates(): Promise<CardTemplate[]> {
+  return invoke<CardTemplate[]>("list_card_templates");
+}
+
+export async function saveCardTemplate(
+  input: SaveCardTemplateInput,
+): Promise<CardTemplate> {
+  return invoke<CardTemplate>("save_card_template", { input });
+}
+
+export async function deleteCardTemplate(templateId: string): Promise<void> {
+  return invoke<void>("delete_card_template", { templateId });
+}
+
+export async function saveAdvancedNote(input: SaveNoteInput): Promise<NoteEditor> {
+  return invoke<NoteEditor>("save_advanced_note", { input });
+}
+
+export async function getNoteForEditing(noteId: string): Promise<NoteEditor> {
+  return invoke<NoteEditor>("get_note_for_editing", { noteId });
+}
+
+export async function browseCards(input: BrowseCardsInput): Promise<BrowseCardsResult> {
+  return invoke<BrowseCardsResult>("browse_cards", { input });
+}
+
+export async function findNoteDuplicates(
+  deckId: string,
+  frontText: string,
+  backText: string,
+  excludeNoteId?: string,
+): Promise<DuplicateNote[]> {
+  return invoke<DuplicateNote[]>("find_note_duplicates", {
+    deckId,
+    frontText,
+    backText,
+    excludeNoteId,
+  });
+}
+
+export async function renderGeneratedCard(cardId: string): Promise<Flashcard> {
+  return invoke<Flashcard>("render_generated_card", { cardId });
+}
+
+export async function moveOrCopyNote(
+  noteId: string,
+  destinationDeckId: string,
+  operation: "move" | "copy",
+  allowDuplicate = false,
+): Promise<MoveCopyResult> {
+  return invoke<MoveCopyResult>("move_or_copy_note", {
+    input: { noteId, destinationDeckId, operation, allowDuplicate },
+  });
 }
 
 export async function importImage(filePath: string): Promise<Asset> {
@@ -288,17 +463,28 @@ export async function exportDeck(
   deckId: string,
   destinationPath: string,
 ): Promise<ExportResult> {
-  return invoke<ExportResult>("export_deck", {
+  return invoke<ExportResult>("export_deck_v2", {
     input: { deckId, destinationPath },
   });
 }
 
 export async function importDeck(sourcePath: string): Promise<ImportResult> {
-  return invoke<ImportResult>("import_deck", { sourcePath });
+  try {
+    return await invoke<ImportResult>("import_deck_v2", { sourcePath });
+  } catch (error: unknown) {
+    if (getErrorCode(error) !== "legacy_deck_package") throw error;
+    return invoke<ImportResult>("import_deck", { sourcePath });
+  }
 }
 
 export function createSubmissionId(): string {
   return crypto.randomUUID().replaceAll("-", "");
+}
+
+export function getErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const payload = error as CommandErrorPayload;
+  return typeof payload.code === "string" ? payload.code : undefined;
 }
 
 export function getErrorMessage(error: unknown): string {

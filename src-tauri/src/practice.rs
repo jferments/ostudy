@@ -16,7 +16,8 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    cards::{get_card_from_connection, CardDto},
+    authoring::render_card_from_connection,
+    cards::CardDto,
     database::Database,
     error::CommandError,
     paths::AppPaths,
@@ -185,7 +186,7 @@ fn start_practice_in_connection(
 
         let mut statement = connection
             .prepare(
-                "SELECT c.id, c.note_id, s.due_at\n\
+                "SELECT c.id, s.due_at\n\
                  FROM cards c\n\
                  JOIN notes n ON n.id = c.note_id\n\
                  JOIN card_schedules s ON s.card_id = c.id\n\
@@ -199,17 +200,13 @@ fn start_practice_in_connection(
             .map_err(CommandError::database)?;
         let rows = statement
             .query_map(params![deck_id, now], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                ))
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })
             .map_err(CommandError::database)?;
 
         for row in rows {
-            let (card_id, note_id, due_at) = row.map_err(CommandError::database)?;
-            pending_cards.push((deck_id.clone(), card_id, note_id, due_at));
+            let (card_id, due_at) = row.map_err(CommandError::database)?;
+            pending_cards.push((deck_id.clone(), card_id, due_at));
         }
     }
 
@@ -225,7 +222,7 @@ fn start_practice_in_connection(
         .map_err(CommandError::database)?;
     let session_id = generate_id(&transaction)?;
     if shuffle {
-        pending_cards.sort_by_key(|(_, card_id, _, _)| shuffle_key(&session_id, card_id));
+        pending_cards.sort_by_key(|(_, card_id, _)| shuffle_key(&session_id, card_id));
     }
 
     let selected_deck_ids_json =
@@ -245,7 +242,7 @@ fn start_practice_in_connection(
         )
         .map_err(CommandError::database)?;
 
-    for (position, (_, card_id, _, _)) in pending_cards.iter().enumerate() {
+    for (position, (_, card_id, _)) in pending_cards.iter().enumerate() {
         transaction
             .execute(
                 "INSERT INTO practice_session_cards (session_id, card_id, position)\n\
@@ -261,8 +258,8 @@ fn start_practice_in_connection(
     transaction.commit().map_err(CommandError::database)?;
 
     let mut cards = Vec::with_capacity(pending_cards.len());
-    for (deck_id, _, note_id, due_at) in pending_cards {
-        let card = get_card_from_connection(connection, paths, &note_id)?;
+    for (deck_id, card_id, due_at) in pending_cards {
+        let card = render_card_from_connection(connection, paths, &card_id)?;
         let deck_name = deck_names
             .get(&deck_id)
             .cloned()

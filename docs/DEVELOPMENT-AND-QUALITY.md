@@ -23,11 +23,19 @@ Cargo's incremental cache is preserved across builds. The build scripts set
 a value. A target marker records the absolute repository location; moving the
 checkout clears the old target once.
 
+Tauri build and development commands run through
+`scripts/with-immutable-cargo-lock.mjs`. The wrapper first checks
+`Cargo.toml` against the committed lockfile with `cargo metadata --locked`,
+rejects a pre-existing unstaged lockfile change with recovery instructions, and
+restores the original bytes if a child build attempts to rewrite or delete the
+lockfile. Intentional dependency changes must be reviewed and committed as a
+separate source change.
+
 ## What the one-command gate checks
 
 `./scripts/check.sh` performs, in order:
 
-1. pinned environment and repository-manifest diagnostics;
+1. pinned environment, repository-manifest, and immutable-lockfile diagnostics;
 2. frozen pnpm installation and exact dependency verification;
 3. Vitest/Testing Library React tests;
 4. Rust formatting and warning-free Clippy;

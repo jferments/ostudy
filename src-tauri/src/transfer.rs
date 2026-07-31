@@ -17,6 +17,7 @@ use crate::{
     decks::{get_deck_from_connection, validate_description, validate_name, DeckDto},
     error::CommandError,
     paths::AppPaths,
+    authoring::{compute_duplicate_key, refresh_note_search},
     scheduler::insert_new_schedule,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
@@ -27,6 +28,8 @@ const MAX_PACKAGE_FILE_BYTES: u64 = 640 * 1024 * 1024;
 const MAX_PACKAGE_ASSET_BYTES: usize = 512 * 1024 * 1024;
 const MAX_PACKAGE_SINGLE_ASSET_BYTES: usize = 25 * 1024 * 1024;
 const MAX_PACKAGE_NOTES: usize = 100_000;
+const MAX_PACKAGE_ASSETS: usize = 200_000;
+const MAX_PACKAGE_RELATION_ROWS: usize = 2_000_000;
 
 struct TemporaryExportGuard {
     path: PathBuf,
@@ -517,6 +520,7 @@ fn read_package(source: &Path) -> Result<ImportedPackage, CommandError> {
             "The selected deck file is damaged.",
         ));
     }
+    validate_package_schema(&package)?;
 
     let format = metadata_value(&package, "format")?;
     let version = metadata_value(&package, "formatVersion")?;
@@ -525,6 +529,30 @@ fn read_package(source: &Path) -> Result<ImportedPackage, CommandError> {
             "This file is not a supported ostudy deck package.",
         ));
     }
+    enforce_package_row_limit(
+        &package,
+        "notes",
+        MAX_PACKAGE_NOTES,
+        "This deck contains more than 100,000 cards and cannot be imported at once.",
+    )?;
+    enforce_package_row_limit(
+        &package,
+        "cards",
+        MAX_PACKAGE_NOTES,
+        "This deck contains too many generated cards.",
+    )?;
+    enforce_package_row_limit(
+        &package,
+        "assets",
+        MAX_PACKAGE_ASSETS,
+        "This deck contains too many image records.",
+    )?;
+    enforce_package_row_limit(
+        &package,
+        "note_assets",
+        MAX_PACKAGE_RELATION_ROWS,
+        "This deck contains too many note-image relationships.",
+    )?;
 
     let deck_count: i64 = package
         .query_row("SELECT COUNT(*) FROM deck", [], |row| row.get(0))
@@ -819,6 +847,12 @@ fn import_package(
             }
         }
 
+        let reverse_note_ids = package
+            .cards
+            .iter()
+            .filter(|card| card.direction == "reverse")
+            .map(|card| card.source_note_id.as_str())
+            .collect::<BTreeSet<_>>();
         let mut note_map = HashMap::new();
         for note in &package.notes {
             if note.source_deck_id != package.deck.source_id
@@ -841,13 +875,24 @@ fn import_package(
                 note.front_text.clone(),
                 note.back_text.clone(),
             )?;
+            let duplicate_key = compute_duplicate_key(
+                if reverse_note_ids.contains(note.source_id.as_str()) {
+                    "reverse"
+                } else {
+                    "basic"
+                },
+                &validated.front_text,
+                &validated.back_text,
+                "{}",
+            );
 
             transaction
                 .execute(
                     "INSERT INTO notes (\n\
                          id, deck_id, note_type, content_format, content_schema_version,\n\
-                         front_doc, back_doc, front_text, back_text, created_at, updated_at, revision\n\
-                     ) VALUES (?1, ?2, 'basic', 'tiptap-json', 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                         front_doc, back_doc, front_text, back_text, duplicate_key,\n\
+                         created_at, updated_at, revision\n\
+                     ) VALUES (?1, ?2, 'basic', 'tiptap-json', 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                     params![
                         note_id,
                         deck_id,
@@ -855,6 +900,7 @@ fn import_package(
                         validated.back_doc_json,
                         validated.front_text,
                         validated.back_text,
+                        duplicate_key,
                         note.created_at,
                         note.updated_at,
                         note.revision.max(1)
@@ -878,6 +924,7 @@ fn import_package(
                     )
                     .map_err(CommandError::database)?;
             }
+            refresh_note_search(&transaction, &note_id)?;
             note_map.insert(note.source_id.clone(), note_id);
         }
 
@@ -1149,6 +1196,79 @@ fn metadata_value(connection: &Connection, key: &str) -> Result<String, CommandE
         .ok_or_else(|| {
             CommandError::invalid_package(format!("The deck is missing metadata: {key}."))
         })
+}
+
+fn validate_package_schema(connection: &Connection) -> Result<(), CommandError> {
+    let expected = BTreeSet::from([
+        "package_metadata",
+        "deck",
+        "notes",
+        "cards",
+        "assets",
+        "note_assets",
+    ]);
+    let mut statement = connection
+        .prepare(
+            "SELECT type, name FROM sqlite_schema\n\
+             WHERE name NOT LIKE 'sqlite_%' ORDER BY name",
+        )
+        .map_err(|error| {
+            CommandError::invalid_package(format!("Could not inspect the deck schema: {error}"))
+        })?;
+    let objects = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|error| {
+            CommandError::invalid_package(format!("Could not inspect the deck schema: {error}"))
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            CommandError::invalid_package(format!("Could not inspect the deck schema: {error}"))
+        })?;
+    let mut tables = BTreeSet::new();
+    for (object_type, name) in objects {
+        if object_type != "table" || !expected.contains(name.as_str()) {
+            return Err(CommandError::invalid_package(
+                "The deck contains unsupported SQLite objects.",
+            ));
+        }
+        tables.insert(name);
+    }
+    if tables.len() != expected.len() || expected.iter().any(|name| !tables.contains(*name)) {
+        return Err(CommandError::invalid_package(
+            "The deck package schema is incomplete.",
+        ));
+    }
+    Ok(())
+}
+
+fn enforce_package_row_limit(
+    connection: &Connection,
+    table: &str,
+    maximum: usize,
+    message: &str,
+) -> Result<(), CommandError> {
+    let query = match table {
+        "notes" => "SELECT COUNT(*) FROM notes",
+        "cards" => "SELECT COUNT(*) FROM cards",
+        "assets" => "SELECT COUNT(*) FROM assets",
+        "note_assets" => "SELECT COUNT(*) FROM note_assets",
+        _ => {
+            return Err(CommandError::invalid_package(
+                "The package validator requested an unknown table.",
+            ))
+        }
+    };
+    let count: i64 = connection
+        .query_row(query, [], |row| row.get(0))
+        .map_err(|error| {
+            CommandError::invalid_package(format!("The deck package schema is invalid: {error}"))
+        })?;
+    if count < 0 || usize::try_from(count).unwrap_or(usize::MAX) > maximum {
+        return Err(CommandError::invalid_package(message));
+    }
+    Ok(())
 }
 
 fn normalize_export_path(value: &str) -> Result<PathBuf, CommandError> {
