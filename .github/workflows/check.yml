@@ -12,7 +12,6 @@ permissions:
 
 jobs:
   check:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'agent/phase-2-standalone-flashcard-core'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
