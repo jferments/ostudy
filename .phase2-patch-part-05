@@ -1,0 +1,154 @@
+ase)?;
+-                assert_eq!(review_count, 1);
+-                assert_eq!(reps, 1);
+-                Ok(())
+-            })
+-            .expect("review state should load");
+-    }
+ }
+diff --git a/src-tauri/src/scheduler.rs b/src-tauri/src/scheduler.rs
+index 5faf993..928ec7f 100644
+--- a/src-tauri/src/scheduler.rs
++++ b/src-tauri/src/scheduler.rs
+@@ -35,14 +35,11 @@ pub struct ScheduleRecord {
+     pub updated_at: i64,
+ }
+ 
+-/// User-facing answer choices mapped onto FSRS's four canonical ratings.
++/// Application-owned outcomes mapped onto FSRS's four canonical ratings.
+ ///
+-/// The wording is intentionally about recall confidence rather than exposing
+-/// algorithm terminology to learners:
+-/// * wrong -> Again
+-/// * right, not confident -> Hard
+-/// * right, somewhat confident -> Good
+-/// * right, very confident -> Easy
++/// The UI presents these as the direct 0-3 choices Wrong, Hard, OK, and Easy.
++/// The older internal variant names are retained so stored outcome strings stay
++/// compatible with existing review history.
+ #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+ pub enum ReviewOutcome {
+     Wrong,
+@@ -52,19 +49,6 @@ pub enum ReviewOutcome {
+ }
+ 
+ impl ReviewOutcome {
+-    pub fn parse(value: &str) -> Result<Self, CommandError> {
+-        match value {
+-            "wrong" => Ok(Self::Wrong),
+-            "not_confident" => Ok(Self::NotConfident),
+-            "somewhat_confident" => Ok(Self::SomewhatConfident),
+-            "very_confident" => Ok(Self::VeryConfident),
+-            _ => Err(CommandError::new(
+-                "invalid_review_outcome",
+-                "Choose whether the answer was wrong or how confident you were when correct.",
+-            )),
+-        }
+-    }
+-
+     pub const fn as_str(self) -> &'static str {
+         match self {
+             Self::Wrong => "wrong",
+@@ -82,19 +66,6 @@ impl ReviewOutcome {
+             Self::VeryConfident => Rating::Easy,
+         }
+     }
+-
+-    pub const fn rating_number(self) -> i64 {
+-        match self {
+-            Self::Wrong => 1,
+-            Self::NotConfident => 2,
+-            Self::SomewhatConfident => 3,
+-            Self::VeryConfident => 4,
+-        }
+-    }
+-
+-    pub const fn answer_correct(self) -> bool {
+-        !matches!(self, Self::Wrong)
+-    }
+ }
+ 
+ /// Complete result of applying one accepted review.
+@@ -376,13 +347,11 @@ mod tests {
+     const NOW: i64 = 1_735_689_600_000; // 2025-01-01T00:00:00Z
+ 
+     #[test]
+-    fn maps_product_wording_to_the_four_fsrs_ratings() {
+-        assert_eq!(ReviewOutcome::Wrong.rating_number(), 1);
+-        assert_eq!(ReviewOutcome::NotConfident.rating_number(), 2);
+-        assert_eq!(ReviewOutcome::SomewhatConfident.rating_number(), 3);
+-        assert_eq!(ReviewOutcome::VeryConfident.rating_number(), 4);
+-        assert!(!ReviewOutcome::Wrong.answer_correct());
+-        assert!(ReviewOutcome::SomewhatConfident.answer_correct());
++    fn maps_direct_choices_to_the_four_fsrs_ratings() {
++        assert_eq!(ReviewOutcome::Wrong.rating(), Rating::Again);
++        assert_eq!(ReviewOutcome::NotConfident.rating(), Rating::Hard);
++        assert_eq!(ReviewOutcome::SomewhatConfident.rating(), Rating::Good);
++        assert_eq!(ReviewOutcome::VeryConfident.rating(), Rating::Easy);
+     }
+ 
+     #[test]
+diff --git a/src-tauri/src/phase2.rs b/src-tauri/src/phase2.rs
+index 57fba3a..1b2c4f0 100644
+--- a/src-tauri/src/phase2.rs
++++ b/src-tauri/src/phase2.rs
+@@ -8,7 +8,10 @@
+ //! blank notes use literal `[[answer]]` markers. Rendered values become JSON
+ //! text nodes and are never interpreted as HTML, JavaScript, CSS, or SQL.
+ 
+-use std::collections::{BTreeMap, BTreeSet, HashMap};
++use std::{
++    cmp::Reverse,
++    collections::{BTreeMap, BTreeSet, HashMap},
++};
+ 
+ use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+ use serde::{Deserialize, Serialize};
+@@ -271,6 +274,53 @@ struct PreparedNote {
+     duplicate_key: String,
+ }
+ 
++type RenderCardRow = (
++    String,
++    String,
++    String,
++    String,
++    String,
++    i64,
++    i64,
++    i64,
++    String,
++    String,
++    String,
++    String,
++    String,
++    Option<String>,
++    String,
++    String,
++    i64,
++);
++
++type NoteEditorRow = (
++    String,
++    String,
++    String,
++    String,
++    String,
++    String,
++    Option<String>,
++    String,
++    i64,
++);
++
++type CopiedNoteRow = (
++    String,
++    String,
++    i64,
++    String,
++    String,
++    String,
++    String,
++    i64,
++    i64,
++    Option<String>,
++  
