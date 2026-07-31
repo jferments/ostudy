@@ -3,6 +3,8 @@ name: Apply Phase 2 implementation
 on:
   pull_request:
     branches: [main]
+    paths:
+      - .github/phase2-payload/ready
   workflow_dispatch:
 
 permissions:
