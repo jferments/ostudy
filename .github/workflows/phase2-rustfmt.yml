@@ -1,0 +1,37 @@
+name: Format Phase 2 Rust source
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .phase2-rustfmt-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.event.pull_request.head.ref == 'agent/phase-2-standalone-flashcard-core' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/phase-2-standalone-flashcard-core
+          fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+          rustup default 1.97.1
+      - name: Format and publish
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          rm -f .github/workflows/phase2-rustfmt.yml .phase2-rustfmt-trigger
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "style: format Phase 2 Rust source"
+          git push origin HEAD:agent/phase-2-standalone-flashcard-core
