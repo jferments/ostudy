@@ -1,116 +1,110 @@
-   String,
-+    String,
-+);
-+
- #[tauri::command]
- pub fn list_card_templates(
-     database: State<'_, Database>,
-@@ -461,25 +511,7 @@ pub(crate) fn render_card_from_connection(
-     paths: &AppPaths,
-     card_id: &str,
- ) -> Result<CardDto, CommandError> {
--    let raw: Option<(
--        String,
--        String,
--        String,
--        String,
--        String,
--        i64,
--        i64,
--        i64,
--        String,
--        String,
--        String,
--        String,
--        String,
--        Option<String>,
--        String,
--        String,
--        i64,
--    )> = connection
-+    let raw: Option<RenderCardRow> = connection
-         .query_row(
-             "SELECT c.id, c.note_id, c.deck_id, c.direction, c.display_name, c.template_ordinal,\n\
-                     c.created_at, c.updated_at, n.front_doc, n.back_doc,\n\
-@@ -978,17 +1010,7 @@ fn get_note_editor(
-     paths: &AppPaths,
-     note_id: &str,
- ) -> Result<NoteEditorDto, CommandError> {
--    let row: Option<(
--        String,
--        String,
--        String,
--        String,
--        String,
--        String,
--        Option<String>,
--        String,
--        i64,
--    )> = connection
-+    let row: Option<NoteEditorRow> = connection
-         .query_row(
-             "SELECT deck_id, note_type, front_doc, back_doc, front_text, back_text,\n\
-                     template_id, fields_json, revision\n\
-@@ -1219,8 +1241,8 @@ fn browse_cards_in_connection(
+             Self::Wrong => "wrong",
+@@ -83,18 +70,6 @@ impl ReviewOutcome {
+         }
      }
  
-     match input.sort.as_str() {
--        "updated_desc" => cards.sort_by(|a, b| b.updated_at.cmp(&a.updated_at)),
--        "created_asc" => cards.sort_by(|a, b| a.created_at.cmp(&b.created_at)),
-+        "updated_desc" => cards.sort_by_key(|card| Reverse(card.updated_at)),
-+        "created_asc" => cards.sort_by_key(|card| card.created_at),
-         "due_asc" => cards.sort_by_key(|card| card.due_at.unwrap_or(i64::MAX)),
-         "question_asc" => cards.sort_by(|a, b| {
-             a.front_text
-@@ -2328,20 +2350,7 @@ fn move_or_copy_in_connection(
-         });
+-    pub const fn rating_number(self) -> i64 {
+-        match self {
+-            Self::Wrong => 1,
+-            Self::NotConfident => 2,
+-            Self::SomewhatConfident => 3,
+-            Self::VeryConfident => 4,
+-        }
+-    }
+-
+-    pub const fn answer_correct(self) -> bool {
+-        !matches!(self, Self::Wrong)
+-    }
+ }
+ 
+ /// Complete result of applying one accepted review.
+@@ -377,12 +352,10 @@ mod tests {
+ 
+     #[test]
+     fn maps_product_wording_to_the_four_fsrs_ratings() {
+-        assert_eq!(ReviewOutcome::Wrong.rating_number(), 1);
+-        assert_eq!(ReviewOutcome::NotConfident.rating_number(), 2);
+-        assert_eq!(ReviewOutcome::SomewhatConfident.rating_number(), 3);
+-        assert_eq!(ReviewOutcome::VeryConfident.rating_number(), 4);
+-        assert!(!ReviewOutcome::Wrong.answer_correct());
+-        assert!(ReviewOutcome::SomewhatConfident.answer_correct());
++        assert_eq!(ReviewOutcome::Wrong.rating(), Rating::Again);
++        assert_eq!(ReviewOutcome::NotConfident.rating(), Rating::Hard);
++        assert_eq!(ReviewOutcome::SomewhatConfident.rating(), Rating::Good);
++        assert_eq!(ReviewOutcome::VeryConfident.rating(), Rating::Easy);
      }
  
--    let note: (
--        String,
--        String,
--        i64,
--        String,
--        String,
--        String,
--        String,
--        i64,
--        i64,
--        Option<String>,
--        String,
--        String,
--    ) = transaction
-+    let note: CopiedNoteRow = transaction
-         .query_row(
-             "SELECT note_type, content_format, content_schema_version, front_doc, back_doc,\n\
-                     front_text, back_text, created_at, revision, template_id, fields_json, duplicate_key\n\
+     #[test]
 diff --git a/src-tauri/src/transfer_v2.rs b/src-tauri/src/transfer_v2.rs
-index ec519bd..3258264 100644
+index ec519bd..ec548f5 100644
 --- a/src-tauri/src/transfer_v2.rs
 +++ b/src-tauri/src/transfer_v2.rs
-@@ -2244,8 +2244,10 @@ mod tests {
-         }
-         drop(connection);
+@@ -285,7 +285,7 @@ pub struct ImportDeckV2ResultDto {
+     pub tag_count: i64,
+ }
  
--        let error = read_package(&package_path)
--            .expect_err("version 1 must be handed to the legacy importer");
-+        let error = match read_package(&package_path) {
-+            Ok(_) => panic!("version 1 must be handed to the legacy importer"),
-+            Err(error) => error,
-+        };
-         assert_eq!(error.code, "legacy_deck_package");
-         let _ = fs::remove_dir_all(root);
-     }
-@@ -2531,8 +2533,10 @@ mod tests {
-             updated_at: 1,
-             revision: 1,
-         };
--        let error = read_notes(&connection, &deck, &HashMap::new())
--            .expect_err("unsafe rich content must be revalidated before import");
-+        let error = match read_notes(&connection, &deck, &HashMap::new()) {
-+            Ok(_) => panic!("unsafe rich content must be revalidated before import"),
-+            Err(error) => error,
-+        };
-         assert!(matches!(
-             error.code.as_str(),
-             "invalid_link" | "invalid_deck_package"
+-#[derive(Clone)]
++#[derive(Clone, Debug)]
+ struct PackageDeck {
+     source_id: String,
+     name: String,
+@@ -295,7 +295,7 @@ struct PackageDeck {
+     revision: i64,
+ }
+ 
+-#[derive(Clone)]
++#[derive(Clone, Debug)]
+ struct PackageTemplate {
+     source_id: String,
+     name: String,
+@@ -307,7 +307,7 @@ struct PackageTemplate {
+     revision: i64,
+ }
+ 
+-#[derive(Clone)]
++#[derive(Clone, Debug)]
+ struct PackageNote {
+     source_id: String,
+     note_type: String,
+@@ -324,7 +324,7 @@ struct PackageNote {
+     revision: i64,
+ }
+ 
+-#[derive(Clone)]
++#[derive(Clone, Debug)]
+ struct PackageCard {
+     source_id: String,
+     source_note_id: String,
+@@ -335,13 +335,14 @@ struct PackageCard {
+     updated_at: i64,
+ }
+ 
+-#[derive(Clone)]
++#[derive(Clone, Debug)]
+ struct PackageTag {
+     source_id: String,
+     name: String,
+     normalized_name: String,
+ }
+ 
++#[derive(Debug)]
+ struct PackageAsset {
+     source_id: String,
+     original_filename: String,
+@@ -350,6 +351,7 @@ struct PackageAsset {
+     data: Vec<u8>,
+ }
+ 
++#[derive(Debug)]
+ struct PackageData {
+     deck: PackageDeck,
+     templates: Vec<PackageTemplate>,
+@@ -1923,7 +1925,7 @@ fn validate_package_metadata(
+ fn validate_package_schema(connection: &Connection) -> Result<(), CommandError> {
+     let expected = PACKAGE_TABLES
+         .iter()
+-        .map(|table| table.name.to_owned())
++        .map(|table| table.name.to_string())
+         .collect::<BTreeSet<_>>();
+     let mut statement = connection
+         .prepare(
