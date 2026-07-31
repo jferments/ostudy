@@ -1,0 +1,22 @@
+name: Phase 2 source snapshot
+
+on:
+  push:
+    branches: [agent/phase-2-standalone-flashcard-core]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Package source
+        run: tar --exclude=.git -czf "$RUNNER_TEMP/ostudy-phase2-source.tar.gz" .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ostudy-phase2-source
+          path: ${{ runner.temp }}/ostudy-phase2-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
