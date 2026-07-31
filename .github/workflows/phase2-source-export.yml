@@ -1,0 +1,38 @@
+name: Phase 2 source export
+
+on:
+  pull_request:
+    branches: [main]
+    types: [edited]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: >-
+      github.event.pull_request.number == 4 &&
+      github.event.pull_request.head.ref == 'agent/phase-2-standalone-flashcard-core' &&
+      contains(github.event.pull_request.body, '<!-- phase2-source-export -->')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the Phase 2 branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Package the source tree
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tar --exclude=.git -czf "$RUNNER_TEMP/ostudy-phase2-source.tar.gz" .
+
+      - name: Upload the source archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: ostudy-phase2-source
+          path: ${{ runner.temp }}/ostudy-phase2-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
