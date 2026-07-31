@@ -61,9 +61,14 @@ if (( failures == 0 )); then
   exact_version "Cargo" "$(cargo --version | awk '{print $2}')" "$CARGO_VERSION"
 
   if (( CHECK_NATIVE_SMOKE == 1 )); then
+    tauri_driver_version="$(
+      cargo install --list |
+        sed -n 's/^tauri-driver v\([^:]*\):$/\1/p' |
+        head -n 1
+    )"
     exact_version \
       "tauri-driver" \
-      "$(tauri-driver --version | awk '{print $NF}')" \
+      "$tauri_driver_version" \
       "$TAURI_DRIVER_VERSION"
   fi
 
