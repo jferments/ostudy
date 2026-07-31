@@ -3,9 +3,7 @@ name: Finalize Phase 2
 on:
   pull_request:
     branches: [main]
-    types: [synchronize]
-    paths:
-      - .phase2-final-ready
+    types: [edited]
 
 permissions:
   contents: write
@@ -16,7 +14,9 @@ concurrency:
 
 jobs:
   finalize:
-    if: github.event.pull_request.head.ref == 'agent/phase-2-standalone-flashcard-core'
+    if: >-
+      github.event.pull_request.head.ref == 'agent/phase-2-standalone-flashcard-core' &&
+      contains(github.event.pull_request.body, '<!-- phase2-finalize -->')
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     env:
@@ -38,7 +38,6 @@ jobs:
           git apply --check "$RUNNER_TEMP/phase2-final.patch"
           git apply "$RUNNER_TEMP/phase2-final.patch"
           rm -f \
-            .phase2-final-ready \
             .phase2-b64-part-* \
             .phase2-patch-part-* \
             .phase2-patch-ready \
