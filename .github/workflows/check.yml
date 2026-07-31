@@ -3,6 +3,8 @@ name: Check
 on:
   pull_request:
     branches: [main]
+    paths-ignore:
+      - .phase2-source-export-trigger
   push:
     branches: [main]
   workflow_dispatch:
