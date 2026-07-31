@@ -3,11 +3,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    database::Database,
-    error::CommandError,
-    paths::AppPaths,
-    scheduler::validate_desired_retention,
-    util::unix_time_millis,
+    database::Database, error::CommandError, paths::AppPaths,
+    scheduler::validate_desired_retention, util::unix_time_millis,
 };
 
 const THEMES: &[&str] = &["light", "dark", "console", "synthwave"];

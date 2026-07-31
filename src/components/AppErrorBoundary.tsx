@@ -25,7 +25,7 @@ export class AppErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error("Study App screen crashed", error, info.componentStack);
+    console.error("ostudy screen crashed", error, info.componentStack);
   }
 
   render(): ReactNode {
@@ -40,7 +40,7 @@ export class AppErrorBoundary extends Component<
           className="primary-button"
           onClick={() => window.location.reload()}
         >
-          Reload Study App
+          Reload ostudy
         </button>
       </section>
     );

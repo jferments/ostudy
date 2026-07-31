@@ -5,114 +5,132 @@ Tauri, React, TypeScript, Rust, and embedded SQLite. It requires no account or
 server. Decks, rich-text cards, review history, settings, and analytics remain
 on the user's computer.
 
+The first release series starts at **0.1.0**. Old archive revision labels are not
+part of the versioning scheme; Git commits describe development history and
+release tags describe published versions.
+
 ## Current functionality
 
 - Create, rename, and delete decks.
 - Create, edit, search, and delete rich-text flashcards.
-- Format text with headings, lists, indentation, alignment, fonts, sizes,
-  colors, highlights, symbols, links, code, and local images.
-- Import and export complete `.studydeck` packages.
-- Start a scheduled session directly from one deck or select several decks from
-  the Practice screen.
-- Grade reviews as Wrong or Right with three confidence levels.
-- Schedule subsequent reviews with FSRS.
-- View due counts, accuracy, response time, rating distribution, per-deck
-  analytics, and recent reviews.
-- Choose Light, Dark, Console, or Synthwave themes and typography settings.
+- Import and export complete `.studydeck` packages with managed images.
+- Run single-deck or multi-deck FSRS-scheduled practice sessions.
+- Record review history and display deterministic analytics.
+- Configure themes, typography, scale, motion, and review preferences.
 
-## Architecture in one sentence
+## Ubuntu setup
 
-**React displays state and user intent; Rust owns validation and application
-behavior; SQLite owns durable structured data; the filesystem owns managed
-images.**
-
-The frontend never executes SQL. All writes go through typed Tauri commands and
-Rust-side transactions. Rich content is stored as validated, versioned Tiptap
-JSON. Current FSRS state is materialized in `card_schedules`, while every review
-is appended to an immutable `review_events` ledger.
-
-Read the design documents:
-
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- [`docs/CARD-FORMAT-AND-DATA-MODEL.md`](docs/CARD-FORMAT-AND-DATA-MODEL.md)
-- [`docs/DEVELOPMENT-AND-QUALITY.md`](docs/DEVELOPMENT-AND-QUALITY.md)
-- [`docs/GIT-WORKFLOW.md`](docs/GIT-WORKFLOW.md)
-- [`docs/decisions/`](docs/decisions/)
-
-Agent and LLM maintainers must start with:
-
-- [`AGENTS.md`](AGENTS.md)
-- [`docs/agents/`](docs/agents/)
-
-## Ubuntu development setup
-
-The supplied setup script installs the pinned Node, pnpm, and Rust toolchains and
-the Linux libraries required by Tauri:
+From the repository root, run the setup once:
 
 ```bash
 ./scripts/setup-ubuntu.sh
 ```
 
-The script adds `$HOME/.local/bin` and `$HOME/.cargo/bin` to future shell
-sessions. Project scripts also set those PATH entries themselves, so a manual
-`export PATH=...` command is not required.
+The setup script installs the pinned Ubuntu, Node, pnpm, Rust, and WebDriver
+requirements and creates a standalone debug build. Cargo uses all detected CPU
+cores by default; override the number when needed:
 
-## Run the application
+```bash
+CARGO_BUILD_JOBS=24 ./scripts/setup-ubuntu.sh
+```
+
+## Fast startup and rebuilding
+
+Start the already-compiled application:
 
 ```bash
 ./run-app.sh
 ```
 
-On the first run, exact direct dependency pins are resolved and lockfiles are
-generated. Commit both lockfiles before establishing the Git baseline:
+`run-app.sh` does not run Vite, Cargo, or the test suite. It verifies that the
+existing binary matches the current source and then starts it. After editing
+source code, rebuild explicitly:
+
+```bash
+./scripts/build.sh
+```
+
+Both `build.sh` and `check.sh` keep Cargo's incremental cache. If the repository
+is moved or renamed, they detect the old absolute target path and clear
+`src-tauri/target` once rather than repeatedly failing with stale build-script
+artifacts.
+
+## The normal development loop
+
+1. Make a focused change on a branch.
+2. Run the complete automated gate:
+
+   ```bash
+   ./scripts/check.sh
+   ```
+
+3. Start the current build with `./run-app.sh` and manually exercise the changed
+   UI path.
+4. Commit, push, and merge the pull request when both checks pass.
+
+The single gate installs from lockfiles, verifies exact dependencies, runs React
+component tests, checks Rust formatting and Clippy, runs Rust and migration
+fixture tests, creates the standalone Tauri build, and launches a native
+WebDriver smoke test. Set `OSTUDY_SKIP_NATIVE_SMOKE=1` only when diagnosing a
+machine-specific WebDriver problem, and record that the native test was skipped.
+
+## GitHub Actions
+
+`.github/workflows/check.yml` repeats `./scripts/check.sh` on a clean Ubuntu
+runner for every pull request to `main` and every push to `main`. This catches
+missing local dependencies and uncommitted generated files before a change is
+merged.
+
+## Local diagnostics
+
+`run-app.sh` preserves terminal output in a small JSON Lines log at:
 
 ```text
-pnpm-lock.yaml
-src-tauri/Cargo.lock
+${XDG_STATE_HOME:-$HOME/.local/state}/ostudy/ostudy.jsonl
 ```
 
-The application retains the stable Tauri identifier `com.example.studyapp`.
-That internal compatibility identifier is deliberately not changed by a
-documentation-only rename because changing it can move the application-data
-directory and make an existing SQLite library appear to be missing.
-
-## Strict quality gate
+The log rotates at 2 MiB and retains one previous file. Create a support archive
+without including the SQLite library, cards, or managed images:
 
 ```bash
-./scripts/check.sh
+./scripts/export-diagnostics.sh
 ```
 
-This runs formatting, exact dependency verification, the production frontend
-build, Clippy with warnings denied, all Rust tests, and a locked Rust build.
-For release qualification from a clean source copy:
+## Release artifacts
 
-```bash
-./scripts/release-check.sh
-```
+A version tag such as `v0.1.0` triggers `.github/workflows/release.yml`. The
+workflow runs the clean-source gate and uses `scripts/release.sh` to generate the
+same Linux outputs every time:
 
-## Git baseline
+- a Debian package;
+- an AppImage;
+- a source archive;
+- build metadata;
+- SHA-256 checksums.
 
-After the strict check and a manual smoke test pass:
+Artifacts are uploaded to the workflow run. Phase 1 intentionally does not add
+code signing, auto-update publishing, or a multi-platform release matrix.
 
-```bash
-git init -b main
-git add .
-git commit -m "baseline: functional ostudy v0.3.0"
-git tag -a v0.3.0 -m "Known-good ostudy v0.3.0 baseline"
-```
+## Application identifier and data location
 
-Future work should be developed on short-lived branches and merged through
-reviewed pull requests. See [`docs/GIT-WORKFLOW.md`](docs/GIT-WORKFLOW.md).
+The Tauri identifier is `io.github.jferments.ostudy`. Changing from the old
+example identifier changes the operating-system application-data directory.
+This is an intentional pre-0.1 compatibility break; old development data is not
+migrated automatically.
 
-## Data locations and backups
+The Settings screen displays the active database and managed-image locations.
+`.studydeck` export is for sharing deck content and intentionally excludes
+personal review history and application settings.
 
-The SQLite database and managed images live in the operating system's Tauri
-application-data directory. The Settings screen displays the exact paths.
-`.studydeck` export is for sharing content; it intentionally excludes personal
-review history and application settings.
+## Architecture and contributor documentation
 
-## License and dependency policy
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/CARD-FORMAT-AND-DATA-MODEL.md`](docs/CARD-FORMAT-AND-DATA-MODEL.md)
+- [`docs/DEVELOPMENT-AND-QUALITY.md`](docs/DEVELOPMENT-AND-QUALITY.md)
+- [`docs/GIT-WORKFLOW.md`](docs/GIT-WORKFLOW.md)
+- [`AGENTS.md`](AGENTS.md)
+- [`docs/agents/`](docs/agents/)
 
-The project is MIT licensed. Direct dependencies are pinned exactly and are
-free/open-source. The Linux build dynamically uses the operating system's
-WebKitGTK/GTK libraries required by Tauri.
+The project is MIT licensed. Direct dependencies are pinned and free/open
+source. The Linux application uses the operating system's WebKitGTK/GTK runtime
+required by Tauri.

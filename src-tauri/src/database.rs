@@ -27,7 +27,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 3,
         name: "fsrs_reviews",
-        checksum: "0d6e5db5aecd25e7d6e88f104bd5bba59c334164e1a6160acb83d8e0727e41be",
+        checksum: "49dd1e24e463c9a08a59e243d90143e2874459dd2a4a8d5f61613d5df7ebcae3",
         sql: include_str!("../migrations/0003_fsrs_reviews.sql"),
     },
 ];
@@ -58,7 +58,7 @@ impl Database {
         let mut connection = self.connection.lock().map_err(|_| {
             CommandError::new(
                 "database_lock_poisoned",
-                "The local database lock could not be acquired. Restart the application.",
+                "The local database lock could not be acquired. Restart ostudy.",
             )
         })?;
 
@@ -95,7 +95,7 @@ fn configure_connection(connection: &Connection) -> Result<(), String> {
     Ok(())
 }
 
-fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
+fn initialize_migration_ledger(connection: &Connection) -> Result<(), String> {
     connection
         .execute_batch(
             "CREATE TABLE IF NOT EXISTS schema_migrations (\n\
@@ -105,7 +105,11 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
                  applied_at  INTEGER NOT NULL\n\
              ) STRICT;",
         )
-        .map_err(|error| format!("Could not initialize the migration ledger: {error}"))?;
+        .map_err(|error| format!("Could not initialize the migration ledger: {error}"))
+}
+
+fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
+    initialize_migration_ledger(connection)?;
 
     let newest_version: Option<i64> = connection
         .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
@@ -115,7 +119,7 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
 
     if newest_version.unwrap_or(0) > LATEST_SCHEMA_VERSION {
         return Err(format!(
-            "This database was created by a newer Study App version (schema {}).",
+            "This database was created by a newer ostudy version (schema {}).",
             newest_version.unwrap_or_default()
         ));
     }
@@ -187,6 +191,18 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    struct ReleasedSchemaFixture {
+        release: &'static str,
+        schema_version: i64,
+        sql: &'static str,
+    }
+
+    const RELEASED_SCHEMA_FIXTURES: &[ReleasedSchemaFixture] = &[ReleasedSchemaFixture {
+        release: "0.1.0",
+        schema_version: 3,
+        sql: include_str!("../tests/fixtures/v0.1.0.sql"),
+    }];
+
     #[test]
     fn bundled_sqlite_version_is_the_audited_release() {
         assert_eq!(rusqlite::version(), "3.53.2");
@@ -220,5 +236,73 @@ mod tests {
                 Ok(())
             })
             .expect("second migration pass should succeed");
+    }
+
+    #[test]
+    fn every_released_schema_fixture_upgrades_without_losing_seed_data() {
+        for fixture in RELEASED_SCHEMA_FIXTURES {
+            let mut connection =
+                Connection::open_in_memory().expect("fixture database should open");
+
+            // A release fixture is a complete historical SQL dump. Loading it
+            // before configuring foreign keys avoids making the test depend on
+            // the table ordering chosen by SQLite's dump implementation.
+            connection
+                .execute_batch(fixture.sql)
+                .unwrap_or_else(|error| panic!("{} fixture should load: {error}", fixture.release));
+            configure_connection(&connection).expect("fixture connection should configure");
+
+            let starting_version: i64 = connection
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .expect("fixture user_version should be readable");
+            assert_eq!(
+                starting_version, fixture.schema_version,
+                "fixture {}",
+                fixture.release
+            );
+
+            apply_migrations(&mut connection).unwrap_or_else(|error| {
+                panic!("{} fixture should upgrade: {error}", fixture.release)
+            });
+
+            let version: i64 = connection
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .expect("user_version should be readable");
+            assert_eq!(
+                version, LATEST_SCHEMA_VERSION,
+                "fixture {}",
+                fixture.release
+            );
+
+            let preserved: (String, String, String) = connection
+                .query_row(
+                    "SELECT d.name, n.front_text, c.direction
+                     FROM decks d
+                     JOIN notes n ON n.deck_id = d.id
+                     JOIN cards c ON c.note_id = n.id
+                     WHERE d.id = '00000000000000000000000000000001'",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .expect("fixture deck and card should survive migration");
+            assert_eq!(preserved.0, "Released schema fixture");
+            assert_eq!(preserved.1, "Fixture question");
+            assert_eq!(preserved.2, "forward");
+
+            let schedule_count: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM card_schedules
+                     WHERE card_id = '00000000000000000000000000000003'",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("fixture schedule should remain readable");
+            assert_eq!(schedule_count, 1);
+
+            let integrity: String = connection
+                .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+                .expect("integrity check should run");
+            assert_eq!(integrity, "ok", "fixture {}", fixture.release);
+        }
     }
 }

@@ -56,6 +56,10 @@ Run narrow tests during implementation. Before proposing a merge, run:
 ./scripts/check.sh
 ```
 
+This is the single repository gate: it runs frontend tests, Rust checks, release
+schema fixtures, the standalone build, and the native smoke test. Do not require
+contributors to invoke each underlying command separately.
+
 For a release candidate, also run:
 
 ```bash

@@ -56,7 +56,7 @@ all data crossing the IPC boundary and owns multi-step transactions.
 ## Note and card separation
 
 A **note** stores editable question and answer content. A **card** is a
-studyable presentation generated from that note. Version 0.3 creates one forward
+studyable presentation generated from that note. The initial 0.1 release creates one forward
 card per note. This separation permits reverse, cloze, and image-occlusion cards
 later without duplicating the underlying content.
 

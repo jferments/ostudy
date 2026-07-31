@@ -2,56 +2,26 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export OSTUDY_ROOT_DIR="$ROOT_DIR"
 # shellcheck disable=SC1091
-source "$ROOT_DIR/versions.env"
+source "$ROOT_DIR/scripts/build-state.sh"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-cd "$ROOT_DIR"
 
-log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
-die() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
-on_error() {
-  local status=$?
-  local line="${BASH_LINENO[0]:-${LINENO:-unknown}}"
-  printf "\n\033[1;31mStartup failed near line %s (exit %s).\033[0m\n" "$line" "$status" >&2
-  exit "$status"
-}
-trap on_error ERR
-
-log "Checking the pinned toolchain and project manifests"
-"$ROOT_DIR/scripts/doctor.sh"
-node "$ROOT_DIR/scripts/verify-project-manifests.mjs"
-
-# This is the application launcher, not the release-quality gate. It performs
-# the real frontend and Rust builds required to open the program. Formatting,
-# Clippy, and the complete test suite live in scripts/check.sh so a test or
-# style-maintenance mistake cannot make the ordinary launcher unusable.
-if [[ -f pnpm-lock.yaml ]]; then
-  log "Installing JavaScript dependencies from the frozen lockfile"
-  pnpm install --frozen-lockfile
-else
-  log "Resolving the JavaScript graph from exact direct pins"
-  pnpm install --no-frozen-lockfile
-  pnpm install --frozen-lockfile
+if (( $# > 0 )); then
+  printf 'Usage: ./run-app.sh\n' >&2
+  exit 2
 fi
 
-log "Verifying the installed JavaScript/Tiptap dependency graph"
-pnpm run verify:versions
-[[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]] || \
-  die "Expected esbuild $ESBUILD_VERSION, found $(pnpm exec esbuild --version)."
+ostudy_require_current_build
 
-log "Building the complete React/Tiptap frontend"
-pnpm run build
+LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ostudy"
+LOG_PATH="$LOG_DIR/ostudy.jsonl"
+VERSION="$(ostudy_stamp_value version)"
+mkdir -p "$LOG_DIR"
 
-if [[ ! -f src-tauri/Cargo.lock ]]; then
-  log "Resolving the Rust graph from exact crate pins"
-  cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
-fi
-
-log "Compiling and linking the Rust/Tauri application from Cargo.lock"
-cargo build --manifest-path src-tauri/Cargo.toml --locked
-"$ROOT_DIR/scripts/verify-rust-dependencies.sh"
-
-trap - ERR
-log "Starting Study App"
-printf 'The terminal remains attached in development mode. Press Ctrl+C to stop the app.\n\n'
-exec pnpm tauri dev
+printf 'Starting ostudy %s from the existing build.\n' "$VERSION"
+printf 'Log: %s\n\n' "$LOG_PATH"
+exec python3 "$ROOT_DIR/scripts/log-run.py" \
+  --log "$LOG_PATH" \
+  --version "$VERSION" \
+  -- "$OSTUDY_BINARY"

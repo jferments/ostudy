@@ -1,0 +1,73 @@
+name: Check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            jq \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            pkg-config \
+            python3 \
+            sqlite3 \
+            webkit2gtk-driver \
+            xauth \
+            xvfb
+
+      - name: Install pinned Node and pnpm
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.0
+          package-manager-cache: false
+
+      - name: Install pnpm
+        run: npm install --global pnpm@11.14.0
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.97.1
+
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --version 2.0.6 --locked
+
+      - name: Run the repository gate
+        run: ./scripts/check.sh
+
+      - name: Export diagnostics after a failure
+        if: failure()
+        run: ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-diagnostics.tar.gz"
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ostudy-check-diagnostics
+          path: ${{ runner.temp }}/ostudy-diagnostics.tar.gz
+          if-no-files-found: ignore

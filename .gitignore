@@ -2,11 +2,13 @@ node_modules/
 dist/
 src-tauri/target/
 src-tauri/gen/
+artifacts/
 *.log
+*.tar.gz
 .DS_Store
-.study-app-*-validated
-.study-app-backups/
-.hotfix-backups/
-.release-check-*
+.ostudy-build-stamp
 .env
 .env.*
+
+__pycache__/
+*.py[cod]

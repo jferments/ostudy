@@ -1,4 +1,4 @@
--- Revision 5.4 introduces deterministic spaced-repetition scheduling.
+-- Add deterministic spaced-repetition scheduling and review history.
 --
 -- The mutable schedule is stored separately from the immutable review ledger:
 --   * card_schedules answers "what is due now?" efficiently.

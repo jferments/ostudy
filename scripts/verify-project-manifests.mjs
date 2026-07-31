@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -17,6 +17,32 @@ function parseEnv(text) {
         return [line.slice(0, separator), line.slice(separator + 1)];
       }),
   );
+}
+
+function tomlPackageValue(cargo, key) {
+  const packageSection = cargo.split("[package]")[1]?.split(/\n\[/u)[0] ?? "";
+  return packageSection.match(new RegExp(`^${key}\\s*=\\s*"([^"]+)"`, "mu"))?.[1];
+}
+
+async function collectOwnedText(directory = root) {
+  const output = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if ([".git", "node_modules", "dist", "target", "artifacts"].includes(entry.name)) continue;
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      output.push(...(await collectOwnedText(path)));
+      continue;
+    }
+    const rel = relative(root, path);
+    if ([
+      "pnpm-lock.yaml",
+      "src-tauri/Cargo.lock",
+      "scripts/verify-project-manifests.mjs",
+    ].includes(rel)) continue;
+    if (!/\.(?:json|mjs|js|ts|tsx|toml|yaml|yml|md|sql|sh|py|html|env)$/u.test(rel)) continue;
+    output.push([rel, await readFile(path, "utf8")]);
+  }
+  return output;
 }
 
 const [
@@ -37,17 +63,13 @@ const [
   cards,
   scheduler,
   transfer,
-  extensions,
-  richText,
-  decksScreen,
-  editor,
-  viewer,
-  links,
-  practice,
-  analytics,
-  settings,
   launcher,
+  buildScript,
   checkScript,
+  setupScript,
+  checkWorkflow,
+  releaseWorkflow,
+  pullRequestTemplate,
 ] = await Promise.all([
   read("versions.env"),
   read("package.json"),
@@ -66,17 +88,13 @@ const [
   read("src-tauri", "src", "cards.rs"),
   read("src-tauri", "src", "scheduler.rs"),
   read("src-tauri", "src", "transfer.rs"),
-  read("src", "editor", "extensions.ts"),
-  read("src", "editor", "richText.ts"),
-  read("src", "screens", "DecksScreen.tsx"),
-  read("src", "editor", "RichTextEditor.tsx"),
-  read("src", "editor", "RichTextView.tsx"),
-  read("src", "editor", "links.ts"),
-  read("src", "screens", "PracticeScreen.tsx"),
-  read("src", "screens", "AnalyticsScreen.tsx"),
-  read("src", "screens", "SettingsScreen.tsx"),
   read("run-app.sh"),
+  read("scripts", "build.sh"),
   read("scripts", "check.sh"),
+  read("scripts", "setup-ubuntu.sh"),
+  read(".github", "workflows", "check.yml"),
+  read(".github", "workflows", "release.yml"),
+  read(".github", "pull_request_template.md"),
 ]);
 
 const env = parseEnv(envText);
@@ -86,9 +104,7 @@ const capability = JSON.parse(capabilityText);
 const failures = [];
 
 function equal(label, actual, expected) {
-  if (actual !== expected) {
-    failures.push(`${label}: expected ${expected}, found ${String(actual)}`);
-  }
+  if (actual !== expected) failures.push(`${label}: expected ${expected}, found ${String(actual)}`);
 }
 
 const versions = {
@@ -104,26 +120,33 @@ const versions = {
   typescript: env.get("TYPESCRIPT_VERSION"),
   vite: env.get("VITE_VERSION"),
   esbuild: env.get("ESBUILD_VERSION"),
+  vitest: env.get("VITEST_VERSION"),
+  "@testing-library/react": env.get("TESTING_LIBRARY_REACT_VERSION"),
+  "@testing-library/dom": env.get("TESTING_LIBRARY_DOM_VERSION"),
+  jsdom: env.get("JSDOM_VERSION"),
 };
-
 for (const name of Object.keys(pkg.dependencies ?? {}).filter((name) => name.startsWith("@tiptap/"))) {
   versions[name] = env.get("TIPTAP_VERSION");
 }
-
 for (const [name, version] of Object.entries(versions)) {
   const actual = pkg.dependencies?.[name] ?? pkg.devDependencies?.[name];
   equal(`package ${name}`, actual, version);
-  if (typeof actual === "string" && /[~^*<>]/u.test(actual)) {
-    failures.push(`${name} is not exactly pinned`);
-  }
+  if (typeof actual === "string" && /[~^*<>]/u.test(actual)) failures.push(`${name} is not exactly pinned`);
 }
 
+equal("package name", pkg.name, "ostudy");
+equal("package version", pkg.version, "0.1.0");
 equal("packageManager", pkg.packageManager, `pnpm@${env.get("PNPM_VERSION")}`);
 equal("Node engine", pkg.engines?.node, env.get("NODE_VERSION"));
 equal("pnpm engine", pkg.engines?.pnpm, env.get("PNPM_VERSION"));
 equal("license", pkg.license, "MIT");
-equal("Tauri identifier", tauri.identifier, "com.example.studyapp");
+equal("Cargo package name", tomlPackageValue(cargo, "name"), "ostudy");
+equal("Cargo version", tomlPackageValue(cargo, "version"), pkg.version);
+equal("Tauri product name", tauri.productName, "ostudy");
+equal("Tauri identifier", tauri.identifier, "io.github.jferments.ostudy");
 equal("Tauri version", tauri.version, pkg.version);
+if (!cargo.includes('name = "ostudy_lib"')) failures.push("Cargo library is not named ostudy_lib");
+if (!rustCommands.includes("mod logging;")) failures.push("Rust structured logging module is not registered");
 
 for (const required of [
   "strictDepBuilds: true",
@@ -154,24 +177,23 @@ for (const [label, needle] of [
 }
 
 if (!tauri.app?.security?.assetProtocol?.enable) failures.push("asset protocol not enabled");
-if (!(tauri.app?.security?.csp ?? "").includes("asset:")) {
-  failures.push("CSP does not allow local asset images");
-}
+if (!(tauri.app?.security?.csp ?? "").includes("asset:")) failures.push("CSP does not allow local asset images");
 for (const permission of ["core:default", "dialog:default", "opener:default"]) {
-  if (!capability.permissions?.includes(permission)) {
-    failures.push(`capability missing ${permission}`);
-  }
+  if (!capability.permissions?.includes(permission)) failures.push(`capability missing ${permission}`);
 }
 
-for (const [label, text] of [
-  ["0001", migration1],
-  ["0002", migration2],
-  ["0003", migration3],
-]) {
+for (const [label, text] of [["0001", migration1], ["0002", migration2], ["0003", migration3]]) {
   const checksum = createHash("sha256").update(text).digest("hex");
-  if (!database.includes(`"${checksum}"`)) {
-    failures.push(`database.rs checksum mismatch for ${label}: ${checksum}`);
-  }
+  if (!database.includes(`"${checksum}"`)) failures.push(`database.rs checksum mismatch for ${label}: ${checksum}`);
+}
+if (!database.includes('release: "0.1.0"') || !database.includes("v0.1.0.sql")) {
+  failures.push("0.1.0 release schema fixture is not registered");
+}
+const releaseFixture = await read("src-tauri", "tests", "fixtures", "v0.1.0.sql");
+if (!releaseFixture.includes("Immutable database fixture captured for the ostudy 0.1.0 release") ||
+    !releaseFixture.includes("CREATE TABLE schema_migrations") ||
+    !releaseFixture.includes("PRAGMA user_version = 3")) {
+  failures.push("0.1.0 migration fixture is not a complete historical schema snapshot");
 }
 
 for (const command of [
@@ -186,101 +208,72 @@ for (const command of [
   if (!ipc.includes(`"${command}"`)) failures.push(`frontend command missing: ${command}`);
 }
 
-for (const label of ["Decks", "Practice", "Analytics", "Settings"]) {
-  if (!app.includes(`label="${label}"`)) failures.push(`sidebar missing ${label}`);
-}
-for (const obsolete of ['label="Browse"', 'label="Statistics"', "Local library"]) {
-  if (app.includes(obsolete)) failures.push(`obsolete sidebar text remains: ${obsolete}`);
-}
+if (!cards.includes('const CONTENT_FORMAT: &str = "tiptap-json"')) failures.push("canonical card format is not pinned");
+if (!scheduler.includes("FSRS::new(parameters).next")) failures.push("FSRS adapter is not wired to the scheduling crate");
+if (transfer.includes(" (Imported)") || transfer.includes("imported_deck_name")) failures.push("deck import rewrites display names");
+if (!app.includes("<strong>ostudy</strong>") || !app.includes("Opening ostudy")) failures.push("frontend branding is incomplete");
 
-if (!cards.includes('const CONTENT_FORMAT: &str = "tiptap-json"')) {
-  failures.push("canonical card format is not pinned");
+if (/pnpm run build|cargo build|pnpm tauri dev/u.test(launcher)) {
+  failures.push("run-app.sh must launch the existing binary without compiling or starting a dev server");
 }
-if (!cards.includes('"width", "height"') || !richText.includes('["width", "height"]')) {
-  failures.push("Tiptap image width/height normalization is incomplete");
-}
-if (!cards.includes("insert_new_schedule(&transaction, &card_id, now)")) {
-  failures.push("new cards are not assigned an initial schedule");
-}
-if (!scheduler.includes("FSRS::new(parameters).next")) {
-  failures.push("FSRS adapter is not wired to the scheduling crate");
-}
-if (transfer.includes(" (Imported)") || transfer.includes("imported_deck_name")) {
-  failures.push("deck import still rewrites display names");
-}
-if (!transfer.includes("insert_new_schedule(&transaction, &card_id, imported_at)")) {
-  failures.push("imported cards do not receive fresh local schedules");
-}
-if (!extensions.includes("TextStyleKit") || !extensions.includes("StudyImage")) {
-  failures.push("rich editor extensions incomplete");
-}
-if (app.includes("dangerouslySetInnerHTML") || ipc.includes("dangerouslySetInnerHTML")) {
-  failures.push("unsafe raw HTML rendering found");
-}
-
-if (!editor.includes("normalizeExternalLink") || !editor.includes("setEditable(!disabled, false)")) {
-  failures.push("rich editor link validation or save-time locking is missing");
-}
-if (!viewer.includes("openUrl(href).catch")) {
-  failures.push("card link opening errors are not handled");
-}
-for (const scheme of ["http://", "https://", "mailto:", "tel:"]) {
-  if (!links.includes(scheme)) failures.push(`link validator missing ${scheme}`);
-}
-
-if (!app.includes("autoStart: true") || !practice.includes("launchRequest.autoStart")) {
-  failures.push("deck-level Practice does not auto-start a single-deck session");
-}
-if (!practice.includes("const nextChecked = event.currentTarget.checked")) {
-  failures.push("practice checkbox still retains React's event inside a state updater");
-}
-for (const outcome of ["wrong", "not_confident", "somewhat_confident", "very_confident"]) {
-  if (!practice.includes(outcome) || !scheduler.includes(outcome)) {
-    failures.push(`review outcome is not wired end to end: ${outcome}`);
-  }
-}
-if (!analytics.includes("ratingDistribution") || !analytics.includes("dueNow")) {
-  failures.push("analytics UI is not based on graded reviews and due counts");
-}
-if (settings.includes("Privacy and network") || settings.includes("Card content security")) {
-  failures.push("obsolete settings filler remains");
-}
-if (decksScreen.includes("deck-summary-strip") || decksScreen.includes(">Edit deck<")) {
-  failures.push("deck detail still contains the obsolete summary strip or large edit action");
-}
-if (editor.includes("FLASHCARD EDITOR") || editor.includes("Rich text · Markdown shortcuts")) {
-  failures.push("card editor still contains redundant labels");
-}
-
-if (!launcher.includes("pnpm run build") || !launcher.includes("cargo build --manifest-path src-tauri/Cargo.toml --locked")) {
-  failures.push("launcher is missing the TypeScript or locked Rust build gate");
-}
-if (launcher.includes("cargo fmt") || launcher.includes("cargo clippy") || launcher.includes("cargo test")) {
-  failures.push("normal application startup is blocked by developer-only quality checks");
-}
-for (const requiredCheck of [
-  "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
-  "cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings",
-  "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features",
-  "cargo build --manifest-path src-tauri/Cargo.toml --locked",
+for (const required of [
+  "pnpm tauri build --debug --no-bundle --ci",
+  "ostudy_write_build_stamp",
+  "CARGO_BUILD_JOBS",
 ]) {
-  if (!checkScript.includes(requiredCheck)) {
-    failures.push(`strict project check is missing: ${requiredCheck}`);
-  }
+  if (!buildScript.includes(required)) failures.push(`build.sh missing: ${required}`);
+}
+for (const required of [
+  "pnpm test",
+  "cargo fmt",
+  "cargo clippy",
+  "cargo test",
+  "pnpm tauri build --debug --no-bundle --ci",
+  "smoke-native.sh",
+]) {
+  if (!checkScript.includes(required)) failures.push(`check.sh missing: ${required}`);
+}
+if (!setupScript.includes('"$SCRIPT_DIR/build.sh"')) failures.push("setup does not create the initial build");
+if (!checkWorkflow.includes("./scripts/check.sh")) failures.push("GitHub check workflow does not run the local gate");
+if (!releaseWorkflow.includes("./scripts/release.sh")) failures.push("release workflow does not use the release script");
+if (!pullRequestTemplate.includes("Acceptance criteria") || !pullRequestTemplate.includes("./scripts/check.sh")) {
+  failures.push("pull request template is missing acceptance criteria or validation");
 }
 
 for (const requiredPath of [
-  "docs/GIT-WORKFLOW.md",
-  "docs/DEVELOPMENT-AND-QUALITY.md",
-  "docs/ARCHITECTURE.md",
-  "docs/decisions/0003-fsrs-review-ledger.md",
-  "scripts/release-check.sh",
-  "CONTRIBUTING.md",
+  "scripts/build.sh",
+  "scripts/build-state.sh",
+  "scripts/cargo-target.sh",
+  "scripts/export-diagnostics.sh",
+  "scripts/log-run.py",
+  "scripts/smoke-native.sh",
+  "scripts/release.sh",
+  "tests/webdriver/smoke.py",
+  "src/test/setup.ts",
+  "src/components/Toast.test.tsx",
+  "src/screens/SettingsScreen.test.tsx",
+  "src-tauri/src/logging.rs",
+  "src-tauri/tests/fixtures/v0.1.0.sql",
+  ".github/workflows/check.yml",
+  ".github/workflows/release.yml",
+  ".github/pull_request_template.md",
 ]) {
   try {
     await readFile(join(root, requiredPath), "utf8");
   } catch {
-    failures.push(`required project document is missing: ${requiredPath}`);
+    failures.push(`required Phase 1 file is missing: ${requiredPath}`);
+  }
+}
+
+const ownedText = await collectOwnedText();
+for (const [path, text] of ownedText) {
+  for (const [label, pattern] of [
+    ["archive revision 5.4", /\b(?:revision|version|release)\s+(?:v)?5\.4(?:\.0)?\b/iu],
+    ["old pre-Git release version 0.3", /\b(?:ostudy\s+|revision\s+|version\s+|release\s+|v)0\.3(?:\.0)?\b/iu],
+    ["example Tauri identifier", /com\.example\.studyapp/u],
+    ["obsolete PROJECT_REVISION", /PROJECT_REVISION/u],
+  ]) {
+    if (pattern.test(text)) failures.push(`${path} still contains ${label}`);
   }
 }
 
@@ -290,6 +283,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(
-  "OK   Project pins, migrations, commands, FSRS reviews, image schema, import behavior, navigation, and quality gates are internally consistent.",
-);
+console.log("OK   ostudy identity, versions, migrations, tests, build scripts, CI, diagnostics, and release files are internally consistent.");

@@ -31,9 +31,16 @@ crate representations. In particular, `rs-fsrs` remains behind
 SQLite owns durable structured state. Enforce invariants with schema constraints,
 transactions, and tests rather than relying only on UI behavior.
 
-Released migration files are immutable. Add a new numbered migration, checksum
-it through the existing mechanism, and test both a fresh database and an
-upgraded database.
+Released migration files and release-schema fixtures are immutable. Add a new
+numbered migration, checksum it through the existing mechanism, and test both a
+fresh database and upgrades from every released fixture.
+
+
+### Application identity
+
+The product name is `ostudy`, release versioning begins at `0.1.0`, and the
+Tauri identifier is `io.github.jferments.ostudy`. A later identifier change is a
+storage-compatibility decision and requires an explicit migration plan.
 
 ### Managed files
 

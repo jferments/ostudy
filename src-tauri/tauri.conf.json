@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Study App",
-  "version": "0.3.0",
-  "identifier": "com.example.studyapp",
+  "productName": "ostudy",
+  "version": "0.1.0",
+  "identifier": "io.github.jferments.ostudy",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Study App",
+        "title": "ostudy",
         "width": 1100,
         "height": 720,
         "minWidth": 720,

@@ -147,8 +147,8 @@ function App() {
   if (isLoading) {
     return (
       <div className="app-loading">
-        <div className="loading-mark">S</div>
-        <h1>Opening Study App</h1>
+        <div className="loading-mark">O</div>
+        <h1>Opening ostudy</h1>
         <p>Loading your decks…</p>
       </div>
     );
@@ -157,7 +157,7 @@ function App() {
   if (fatalError) {
     return (
       <div className="fatal-screen">
-        <h1>Study App could not open the library</h1>
+        <h1>ostudy could not open the library</h1>
         <p>{fatalError}</p>
         <button type="button" className="primary-button" onClick={() => window.location.reload()}>
           Try again
@@ -170,7 +170,7 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-block">
-          <strong>Study App</strong>
+          <strong>ostudy</strong>
         </div>
 
         <nav className="sidebar-nav" aria-label="Main navigation">

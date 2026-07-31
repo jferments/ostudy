@@ -1,4 +1,4 @@
-//! Stable adapter between the Study App database schema and `rs-fsrs`.
+//! Stable adapter between the ostudy database schema and `rs-fsrs`.
 //!
 //! The external crate is intentionally isolated in this module. Database rows,
 //! Tauri commands, and frontend DTOs use application-owned types so that a
@@ -6,7 +6,7 @@
 //! Review history records both the adapter version and the before/after state.
 
 use chrono::{DateTime, Utc};
-use rs_fsrs::{Card as FsrsCard, FSRS, Parameters, Rating, State};
+use rs_fsrs::{Card as FsrsCard, Parameters, Rating, State, FSRS};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::CommandError;
@@ -270,12 +270,14 @@ pub fn apply_review(
         last_review,
     };
 
-    let mut parameters = Parameters::default();
-    parameters.request_retention = desired_retention;
     // Fuzz is useful for smoothing large real-world workloads, but disabling it
     // makes this early scheduler deterministic and therefore easier to test,
     // migrate, and explain. It can be made configurable later.
-    parameters.enable_fuzz = false;
+    let parameters = Parameters {
+        request_retention: desired_retention,
+        enable_fuzz: false,
+        ..Parameters::default()
+    };
 
     let result = FSRS::new(parameters).next(card, now, outcome.rating());
     let next = result.card;
@@ -394,13 +396,8 @@ mod tests {
     #[test]
     fn applying_a_review_produces_a_future_schedule() {
         let schedule = new_schedule("a".repeat(32), NOW);
-        let transition = apply_review(
-            schedule,
-            ReviewOutcome::SomewhatConfident,
-            NOW,
-            0.90,
-        )
-        .expect("FSRS should schedule a valid new card");
+        let transition = apply_review(schedule, ReviewOutcome::SomewhatConfident, NOW, 0.90)
+            .expect("FSRS should schedule a valid new card");
 
         assert_eq!(transition.after.reps, 1);
         assert!(transition.after.due_at >= NOW);

@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::logging;
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandError {
@@ -16,23 +18,23 @@ impl CommandError {
     }
 
     pub fn database(error: impl std::fmt::Display) -> Self {
-        eprintln!("Database error: {error}");
+        logging::error("database_error", error.to_string());
         Self::new(
             "database_error",
-            "The local database operation failed. See the terminal for details.",
+            "The local database operation failed. See the ostudy diagnostic log for details.",
         )
     }
 
     pub fn io(error: impl std::fmt::Display) -> Self {
-        eprintln!("File operation error: {error}");
+        logging::error("file_error", error.to_string());
         Self::new(
             "file_error",
-            "The file operation failed. See the terminal for details.",
+            "The file operation failed. See the ostudy diagnostic log for details.",
         )
     }
 
     pub fn serialization(error: impl std::fmt::Display) -> Self {
-        eprintln!("Serialization error: {error}");
+        logging::error("serialization_error", error.to_string());
         Self::new(
             "serialization_error",
             "The card content could not be read or saved.",

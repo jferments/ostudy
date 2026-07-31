@@ -88,8 +88,9 @@ invariant.
 
 - Use the product name **ostudy** for human-facing project references.
 - Preserve literal technical identifiers when compatibility depends on them,
-  including `com.example.studyapp`, package names, schema identifiers, and URI
-  schemes, unless the task includes an explicit migration.
+  including package names, schema identifiers, and URI schemes, unless the task
+  includes an explicit migration. The current Tauri application identifier is
+  `io.github.jferments.ostudy`.
 - Update architecture documentation when boundaries change.
 - Add or supersede an ADR when a durable cross-module decision changes.
 - State what was actually tested. Do not convert inference into a validation

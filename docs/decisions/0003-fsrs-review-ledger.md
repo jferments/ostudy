@@ -1,7 +1,7 @@
 # ADR 0003: Separate the FSRS schedule from the immutable review ledger
 
 - **Status:** Accepted
-- **Applies from:** ostudy 0.3.0 / database schema 3
+- **Applies from:** ostudy 0.1.0 / database schema 3
 
 ## Context
 
