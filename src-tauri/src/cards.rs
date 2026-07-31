@@ -1534,7 +1534,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("clock")
             .as_nanos();
-        std::env::temp_dir().join(format!("study-app-card-test-{suffix}"))
+        std::env::temp_dir().join(format!("ostudy-card-test-{suffix}"))
     }
 
     use std::time::{SystemTime, UNIX_EPOCH};

@@ -38,7 +38,7 @@ Tiptap's optional `width` and `height` attributes are normalized to either
 ## Notes and cards
 
 A **note** is the editable question/answer content. A **card** is one studyable
-presentation generated from the note. Revision 5.4 creates one forward card per
+presentation generated from the note. The initial 0.1 release creates one forward card per
 note. The separation is retained so reverse, cloze, and image-occlusion cards
 can be added without duplicating the underlying content.
 

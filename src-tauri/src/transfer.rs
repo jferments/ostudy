@@ -522,7 +522,7 @@ fn read_package(source: &Path) -> Result<ImportedPackage, CommandError> {
     let version = metadata_value(&package, "formatVersion")?;
     if format != PACKAGE_FORMAT || version != PACKAGE_FORMAT_VERSION.to_string() {
         return Err(CommandError::invalid_package(
-            "This file is not a supported Study App deck package.",
+            "This file is not a supported ostudy deck package.",
         ));
     }
 
@@ -1194,7 +1194,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("clock should be valid")
             .as_nanos();
-        std::env::temp_dir().join(format!("study-app-transfer-test-{suffix}"))
+        std::env::temp_dir().join(format!("ostudy-transfer-test-{suffix}"))
     }
 
     #[test]

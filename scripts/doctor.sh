@@ -5,8 +5,17 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/versions.env"
-
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+CHECK_NATIVE_SMOKE=0
+case "${1:-}" in
+  "") ;;
+  --native-smoke) CHECK_NATIVE_SMOKE=1 ;;
+  *)
+    printf 'Usage: ./scripts/doctor.sh [--native-smoke]\n' >&2
+    exit 2
+    ;;
+esac
 
 failures=0
 ok() { printf 'OK   %s\n' "$*"; }
@@ -22,9 +31,7 @@ require_command() {
 }
 
 exact_version() {
-  local label="$1"
-  local actual="$2"
-  local expected="$3"
+  local label="$1" actual="$2" expected="$3"
   if [[ "$actual" == "$expected" ]]; then
     ok "$label $actual"
   else
@@ -32,11 +39,19 @@ exact_version() {
   fi
 }
 
-printf 'Study App development environment diagnostics\n\n'
+printf 'ostudy development environment diagnostics\n\n'
 
-for command_name in git curl jq node npm pnpm rustup rustc cargo rustfmt cargo-clippy pkg-config sqlite3; do
+for command_name in \
+  git curl jq node npm pnpm python3 rustup rustc cargo rustfmt cargo-clippy \
+  pkg-config sqlite3 sha256sum tar; do
   require_command "$command_name"
 done
+
+if (( CHECK_NATIVE_SMOKE == 1 )); then
+  for command_name in xvfb-run WebKitWebDriver tauri-driver; do
+    require_command "$command_name"
+  done
+fi
 
 if (( failures == 0 )); then
   exact_version "Node" "$(node --version | sed 's/^v//')" "$NODE_VERSION"
@@ -44,6 +59,13 @@ if (( failures == 0 )); then
   exact_version "pnpm" "$(pnpm --version)" "$PNPM_VERSION"
   exact_version "Rust" "$(rustc --version | awk '{print $2}')" "$RUST_VERSION"
   exact_version "Cargo" "$(cargo --version | awk '{print $2}')" "$CARGO_VERSION"
+
+  if (( CHECK_NATIVE_SMOKE == 1 )); then
+    exact_version \
+      "tauri-driver" \
+      "$(tauri-driver --version | awk '{print $NF}')" \
+      "$TAURI_DRIVER_VERSION"
+  fi
 
   if pkg-config --exists webkit2gtk-4.1; then
     ok "webkit2gtk-4.1 $(pkg-config --modversion webkit2gtk-4.1)"
@@ -63,4 +85,8 @@ if (( failures > 0 )); then
   exit 1
 fi
 
-printf '\nOK   All exact toolchain and system checks passed.\n'
+if (( CHECK_NATIVE_SMOKE == 1 )); then
+  printf '\nOK   Core and native-smoke requirements passed.\n'
+else
+  printf '\nOK   Core build requirements passed.\n'
+fi

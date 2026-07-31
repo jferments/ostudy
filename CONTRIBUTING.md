@@ -14,6 +14,9 @@ Before changing code, read:
 ./scripts/check.sh
 ```
 
+This is the normal automated command. After it passes, launch `./run-app.sh`
+and manually exercise the UI path changed by the branch.
+
 Do not submit a change with warnings, modified released migrations, missing
 lockfiles, or undocumented command/schema changes.
 
@@ -24,8 +27,8 @@ lockfiles, or undocumented command/schema changes.
 - Comment non-obvious invariants and ordering decisions.
 - Update README, architecture, and ADR documentation in the same change.
 - Separate dependency upgrades from feature work whenever practical.
-- Preserve accessibility, theme behavior, import compatibility, and stable
-  application-data identifiers unless the task explicitly changes them.
+- Preserve accessibility, theme behavior, import compatibility, and stable application-data identifiers unless the task explicitly
+  changes them with a documented compatibility decision.
 
 A useful commit message describes the behavioral result, for example:
 

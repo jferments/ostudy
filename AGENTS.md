@@ -62,10 +62,11 @@ Before editing code, read:
 - Imported decks receive fresh local schedules and do not import another
   learner's personal review history.
 - Analytics remain deterministic and reproducible from stored data.
-- Released migrations are append-only and must never be edited in place.
-- The stable Tauri identifier `com.example.studyapp` is an internal
-  compatibility identifier. Do not rename it as part of a branding or
-  documentation change.
+- Released migrations and release-schema fixtures are append-only and must
+  never be edited after their release is tagged.
+- The Tauri identifier is `io.github.jferments.ostudy`. A future identifier
+  change is a storage-compatibility decision and requires an explicit migration
+  plan.
 
 ## Change discipline
 

@@ -1,92 +1,95 @@
 # ostudy development and quality process
 
-The application must remain runnable after every merged change. Features should
-be delivered as small vertical slices that include UI, IPC, Rust behavior,
-database changes, tests, and documentation only when all are necessary for one
-coherent behavior.
+The process is intentionally small:
+
+1. make a focused change on a branch;
+2. run `./scripts/check.sh`;
+3. launch `./run-app.sh` and manually test the changed UI path;
+4. commit, push, and merge after both are satisfactory.
 
 ## Local commands
 
 ```bash
-./run-app.sh          # build and launch the development application
-./scripts/check.sh    # strict formatting, lint, build, and test gate
-./scripts/release-check.sh  # repeat the strict gate in a clean source copy
+./scripts/setup-ubuntu.sh     # one-time tools, dependencies, and initial build
+./scripts/build.sh            # rebuild after source changes
+./run-app.sh                  # start the existing build without compiling
+./scripts/check.sh            # the complete automated development gate
+./scripts/export-diagnostics.sh  # create a privacy-conscious support archive
+./scripts/release-check.sh    # repeat the complete gate from a clean source copy
 ```
 
-`run-app.sh` is intentionally not a substitute for CI. It checks manifests,
-installs from lockfiles, builds TypeScript and Rust, and launches. Formatting,
-Clippy, and the full test suite live in `scripts/check.sh` so a maintenance-test
-or formatting mistake cannot make the normal development launcher unusable.
+Cargo's incremental cache is preserved across builds. The build scripts set
+`CARGO_BUILD_JOBS` to the machine's logical CPU count unless the caller supplies
+a value. A target marker records the absolute repository location; moving the
+checkout clears the old target once.
 
-## Required checks before merge
+## What the one-command gate checks
 
-1. `cargo fmt --check`
-2. frozen pnpm installation and exact direct-version verification
-3. strict TypeScript/Vite production build
-4. Clippy with warnings denied
-5. all Rust unit/integration tests
-6. locked Rust/Tauri build
-7. exact resolved Rust dependency verification
-8. manual smoke test of the affected UI path
+`./scripts/check.sh` performs, in order:
 
-Both `pnpm-lock.yaml` and `src-tauri/Cargo.lock` must be committed once generated.
-No release should be created from an uncommitted working tree or from dependency
-graphs resolved differently from CI.
+1. pinned environment and repository-manifest diagnostics;
+2. frozen pnpm installation and exact dependency verification;
+3. Vitest/Testing Library React tests;
+4. Rust formatting and warning-free Clippy;
+5. Rust unit/integration tests, including every release-schema fixture;
+6. a standalone Tauri build suitable for `run-app.sh`;
+7. resolved Rust dependency verification;
+8. a native Linux Tauri/WebDriver smoke test under an isolated data directory.
+
+The native smoke test may be skipped temporarily with
+`OSTUDY_SKIP_NATIVE_SMOKE=1`, but a pull request must state that it was skipped
+and why. CI runs it normally.
 
 ## Testing layers
 
-- **Pure Rust tests:** content validation, URL rules, scheduler mapping, settings,
-  and other deterministic domain rules.
-- **SQLite integration tests:** migrations, transactions, CRUD, idempotency,
-  import/export, and review-ledger invariants using temporary databases.
-- **React tests (next infrastructure task):** dialogs, pending states, unsaved
-  changes, selection, practice grading, and error rendering with mocked IPC.
-- **Native Tauri end-to-end tests (next infrastructure task):** launch, create a
-  deck and card, restart, review, verify analytics, export, and import.
+- **React component tests:** important interaction and error-rendering behavior
+  with mocked typed IPC.
+- **Pure Rust tests:** validation, scheduling, settings, and deterministic rules.
+- **SQLite integration tests:** transactions, CRUD, import/export, idempotency,
+  and review-ledger invariants.
+- **Release-schema fixtures:** load the immutable schema snapshot shipped by
+  each release, preserve representative data, apply current migrations, and run
+  SQLite's integrity check.
+- **Native smoke test:** launch the built Linux Tauri binary through WebDriver and
+  navigate from the main shell to Settings.
+- **Manual test:** exercise the changed user workflow and assess visual behavior.
 
-## Change discipline
+## GitHub Actions
 
-Before implementation, write acceptance criteria. Keep unrelated refactors and
-dependency upgrades out of feature changes. Any new dependency needs a written
-reason, license review, exact version pin, supported-platform review, and tests
-that exercise it.
+A GitHub Actions workflow is a YAML recipe executed by GitHub on a clean hosted
+machine when a configured event occurs. The check workflow installs the pinned
+requirements on Ubuntu and runs the same `scripts/check.sh` used locally. It is
+a second environment, not a second development process.
+
+## Diagnostics
+
+Rust emits small JSON records for startup and command failures. `run-app.sh`
+streams output to the terminal and appends it to a rotating JSON Lines log under
+the user's XDG state directory. `export-diagnostics.sh` includes environment,
+toolchain, Git state, and recent log records, but never includes the library
+database, cards, or managed images.
+
+## Release artifacts
+
+A release is created only from a clean tagged commit whose tag matches the three
+application manifests. `scripts/release.sh` runs the clean-source gate and
+produces consistently named Debian, AppImage, and source artifacts plus build
+metadata and SHA-256 checksums. The tag-triggered release workflow uploads these
+files to its GitHub Actions run.
+
+Phase 1 does not introduce signing, automatic GitHub Release publication,
+updaters, or a multi-platform matrix. Those can be added when actual release
+needs justify them.
 
 ## Database changes
 
-Every schema change is an append-only numbered SQL migration with a SHA-256
-checksum embedded in `database.rs`. Migrations run in transactions and must be
-idempotent at the migration-ledger level. Existing migration files are never
-edited after release.
+Schema changes are append-only numbered SQL migrations with checksums embedded
+in `database.rs`. Once a release is tagged, its migrations and fixture are
+immutable. A new release that changes the schema adds a migration and a fixture
+for the prior released schema; it does not edit old migrations.
 
-## Comment standard
+## Honest validation
 
-Add comments for:
-
-- why an ordering requirement exists;
-- why a transaction includes particular operations;
-- security and trust boundaries;
-- retry/idempotency behavior;
-- browser/WebView or React lifecycle traps;
-- compatibility constraints that are not obvious from types.
-
-Do not add comments that merely restate a function or assignment. Stale comments
-are defects and should be updated in the same change as the code.
-
-## Honest validation reports
-
-A validation report must distinguish:
-
-- checks executed in the current environment;
-- checks deferred to the target Ubuntu/Tauri machine;
-- manual UI behavior actually exercised;
-- known limitations.
-
-Static inspection must never be described as a successful native build.
-
-## Agent-maintained changes
-
-Automated maintainers must follow `AGENTS.md` and `docs/agents/`. Their final
-handoff must identify the exact base commit, list changed files, report commands
-actually executed, distinguish unrun checks from passing checks, and describe
-remaining risks. An agent must not merge its own work or push directly to
-`main`.
+Reports must distinguish commands actually executed, CI results, manual UI paths
+actually exercised, skipped checks, and remaining limitations. Static inspection
+is not a native desktop test.

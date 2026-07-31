@@ -4,6 +4,7 @@ mod cards;
 mod database;
 mod decks;
 mod error;
+mod logging;
 mod paths;
 mod practice;
 mod scheduler;
@@ -38,11 +39,14 @@ pub fn run() {
                 return Err(io::Error::other("The database state was already initialized.").into());
             }
 
-            println!(
-                "Study App data directory: {}",
-                paths.app_data_dir().display()
+            logging::info(
+                "application_started",
+                format!(
+                    "data_directory={} database={}",
+                    paths.app_data_dir().display(),
+                    paths.database_path().display()
+                ),
             );
-            println!("Study App database: {}", paths.database_path().display());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -70,5 +74,5 @@ pub fn run() {
             transfer::import_deck
         ])
         .run(tauri::generate_context!())
-        .expect("error while running the Study App");
+        .expect("error while running ostudy");
 }

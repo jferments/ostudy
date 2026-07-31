@@ -1,4 +1,4 @@
-//! Stable adapter between the Study App database schema and `rs-fsrs`.
+//! Stable adapter between the ostudy database schema and `rs-fsrs`.
 //!
 //! The external crate is intentionally isolated in this module. Database rows,
 //! Tauri commands, and frontend DTOs use application-owned types so that a

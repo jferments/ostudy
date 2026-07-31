@@ -207,7 +207,7 @@ export function DecksScreen({
       const destination = await saveDialog({
         title: "Export deck",
         defaultPath: `${safeFilename(deck.name)}.studydeck`,
-        filters: [{ name: "Study App deck", extensions: ["studydeck"] }],
+        filters: [{ name: "ostudy deck", extensions: ["studydeck"] }],
       });
       if (typeof destination !== "string") return;
       const result = await exportDeck(deck.id, destination);
@@ -229,10 +229,10 @@ export function DecksScreen({
     setIsTransferring(true);
     try {
       const selected = await openDialog({
-        title: "Import a Study App deck",
+        title: "Import an ostudy deck",
         multiple: false,
         directory: false,
-        filters: [{ name: "Study App deck", extensions: ["studydeck"] }],
+        filters: [{ name: "ostudy deck", extensions: ["studydeck"] }],
       });
       if (typeof selected !== "string") return;
 
