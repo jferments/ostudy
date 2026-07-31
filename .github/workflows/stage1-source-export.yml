@@ -1,0 +1,35 @@
+name: Stage 1 source export
+
+on:
+  push:
+    branches:
+      - agent/phase-2-stage-1-authoring-foundation
+    paths:
+      - .github/workflows/stage1-source-export.yml
+      - .stage1-source-export-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Archive source tree
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tar --exclude=.git --exclude=target --exclude=node_modules -czf "$RUNNER_TEMP/ostudy-stage1-source.tar.gz" .
+
+      - name: Upload source tree
+        uses: actions/upload-artifact@v7
+        with:
+          name: ostudy-stage1-source
+          path: ${{ runner.temp }}/ostudy-stage1-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
