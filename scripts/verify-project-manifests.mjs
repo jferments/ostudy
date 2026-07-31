@@ -256,7 +256,7 @@ if (/pnpm run build|cargo build|pnpm tauri dev/u.test(launcher)) {
 }
 for (const required of [
   "with-immutable-cargo-lock.mjs",
-  "pnpm tauri build --debug --no-bundle --ci",
+  "pnpm tauri build --debug --no-bundle --ci -- --locked",
   "ostudy_write_build_stamp",
   "CARGO_BUILD_JOBS",
 ]) {
@@ -268,7 +268,7 @@ for (const required of [
   "cargo clippy",
   "cargo test",
   "with-immutable-cargo-lock.mjs",
-  "pnpm tauri build --debug --no-bundle --ci",
+  "pnpm tauri build --debug --no-bundle --ci -- --locked",
   "smoke-native.sh",
 ]) {
   if (!checkScript.includes(required)) failures.push(`check.sh missing: ${required}`);

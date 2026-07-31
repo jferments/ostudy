@@ -8,7 +8,10 @@
 //! blank notes use literal `[[answer]]` markers. Rendered values become JSON
 //! text nodes and are never interpreted as HTML, JavaScript, CSS, or SQL.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, BTreeSet, HashMap},
+};
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -456,30 +459,59 @@ pub fn delete_editor_draft(
     })
 }
 
+type RenderCardRow = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    i64,
+    i64,
+    i64,
+    String,
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    String,
+    String,
+    i64,
+);
+
+type NoteEditorRow = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    String,
+    i64,
+);
+
+type CopyNoteRow = (
+    String,
+    String,
+    i64,
+    String,
+    String,
+    String,
+    String,
+    i64,
+    i64,
+    Option<String>,
+    String,
+    String,
+);
+
 pub(crate) fn render_card_from_connection(
     connection: &Connection,
     paths: &AppPaths,
     card_id: &str,
 ) -> Result<CardDto, CommandError> {
-    let raw: Option<(
-        String,
-        String,
-        String,
-        String,
-        String,
-        i64,
-        i64,
-        i64,
-        String,
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        String,
-        String,
-        i64,
-    )> = connection
+    let raw: Option<RenderCardRow> = connection
         .query_row(
             "SELECT c.id, c.note_id, c.deck_id, c.direction, c.display_name, c.template_ordinal,\n\
                     c.created_at, c.updated_at, n.front_doc, n.back_doc,\n\
@@ -978,17 +1010,7 @@ fn get_note_editor(
     paths: &AppPaths,
     note_id: &str,
 ) -> Result<NoteEditorDto, CommandError> {
-    let row: Option<(
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        Option<String>,
-        String,
-        i64,
-    )> = connection
+    let row: Option<NoteEditorRow> = connection
         .query_row(
             "SELECT deck_id, note_type, front_doc, back_doc, front_text, back_text,\n\
                     template_id, fields_json, revision\n\
@@ -1219,8 +1241,8 @@ fn browse_cards_in_connection(
     }
 
     match input.sort.as_str() {
-        "updated_desc" => cards.sort_by(|a, b| b.updated_at.cmp(&a.updated_at)),
-        "created_asc" => cards.sort_by(|a, b| a.created_at.cmp(&b.created_at)),
+        "updated_desc" => cards.sort_by_key(|card| Reverse(card.updated_at)),
+        "created_asc" => cards.sort_by_key(|card| card.created_at),
         "due_asc" => cards.sort_by_key(|card| card.due_at.unwrap_or(i64::MAX)),
         "question_asc" => cards.sort_by(|a, b| {
             a.front_text
@@ -2328,20 +2350,7 @@ fn move_or_copy_in_connection(
         });
     }
 
-    let note: (
-        String,
-        String,
-        i64,
-        String,
-        String,
-        String,
-        String,
-        i64,
-        i64,
-        Option<String>,
-        String,
-        String,
-    ) = transaction
+    let note: CopyNoteRow = transaction
         .query_row(
             "SELECT note_type, content_format, content_schema_version, front_doc, back_doc,\n\
                     front_text, back_text, created_at, revision, template_id, fields_json, duplicate_key\n\

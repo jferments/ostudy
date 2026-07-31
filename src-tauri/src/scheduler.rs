@@ -52,19 +52,6 @@ pub enum ReviewOutcome {
 }
 
 impl ReviewOutcome {
-    pub fn parse(value: &str) -> Result<Self, CommandError> {
-        match value {
-            "wrong" => Ok(Self::Wrong),
-            "not_confident" => Ok(Self::NotConfident),
-            "somewhat_confident" => Ok(Self::SomewhatConfident),
-            "very_confident" => Ok(Self::VeryConfident),
-            _ => Err(CommandError::new(
-                "invalid_review_outcome",
-                "Choose whether the answer was wrong or how confident you were when correct.",
-            )),
-        }
-    }
-
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Wrong => "wrong",
@@ -81,19 +68,6 @@ impl ReviewOutcome {
             Self::SomewhatConfident => Rating::Good,
             Self::VeryConfident => Rating::Easy,
         }
-    }
-
-    pub const fn rating_number(self) -> i64 {
-        match self {
-            Self::Wrong => 1,
-            Self::NotConfident => 2,
-            Self::SomewhatConfident => 3,
-            Self::VeryConfident => 4,
-        }
-    }
-
-    pub const fn answer_correct(self) -> bool {
-        !matches!(self, Self::Wrong)
     }
 }
 
@@ -377,12 +351,10 @@ mod tests {
 
     #[test]
     fn maps_product_wording_to_the_four_fsrs_ratings() {
-        assert_eq!(ReviewOutcome::Wrong.rating_number(), 1);
-        assert_eq!(ReviewOutcome::NotConfident.rating_number(), 2);
-        assert_eq!(ReviewOutcome::SomewhatConfident.rating_number(), 3);
-        assert_eq!(ReviewOutcome::VeryConfident.rating_number(), 4);
-        assert!(!ReviewOutcome::Wrong.answer_correct());
-        assert!(ReviewOutcome::SomewhatConfident.answer_correct());
+        assert_eq!(ReviewOutcome::Wrong.rating(), Rating::Again);
+        assert_eq!(ReviewOutcome::NotConfident.rating(), Rating::Hard);
+        assert_eq!(ReviewOutcome::SomewhatConfident.rating(), Rating::Good);
+        assert_eq!(ReviewOutcome::VeryConfident.rating(), Rating::Easy);
     }
 
     #[test]
