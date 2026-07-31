@@ -1,0 +1,22 @@
+name: Delete accidental Phase 1 payload branch
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.event.pull_request.head.ref == 'chore/phase-1-repository-stabilization'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Delete only the temporary payload branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          git push \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            --delete automation/phase-1-patch-payload
