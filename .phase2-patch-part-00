@@ -1,3 +1,74 @@
+diff --git a/scripts/build.sh b/scripts/build.sh
+index 13b09c4..4eec412 100755
+--- a/scripts/build.sh
++++ b/scripts/build.sh
+@@ -33,7 +33,7 @@ pnpm run verify:versions
+   die "Expected esbuild $ESBUILD_VERSION, found $(pnpm exec esbuild --version)."
+ 
+ log "Building the standalone ostudy application with $CARGO_BUILD_JOBS Cargo jobs"
+-node "$SCRIPT_DIR/with-immutable-cargo-lock.mjs" pnpm tauri build --debug --no-bundle --ci
++node "$SCRIPT_DIR/with-immutable-cargo-lock.mjs" pnpm tauri build --debug --no-bundle --ci -- --locked
+ "$SCRIPT_DIR/verify-rust-dependencies.sh"
+ 
+ [[ -x "$OSTUDY_BINARY" ]] || die "Expected application binary was not created at $OSTUDY_BINARY."
+diff --git a/scripts/check.sh b/scripts/check.sh
+index 24ef90d..30addce 100755
+--- a/scripts/check.sh
++++ b/scripts/check.sh
+@@ -51,7 +51,7 @@ step "Rust unit, integration, and migration-fixture tests"
+ cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
+ 
+ step "Standalone Tauri build"
+-node "$SCRIPT_DIR/with-immutable-cargo-lock.mjs" pnpm tauri build --debug --no-bundle --ci
++node "$SCRIPT_DIR/with-immutable-cargo-lock.mjs" pnpm tauri build --debug --no-bundle --ci -- --locked
+ "$SCRIPT_DIR/verify-rust-dependencies.sh"
+ [[ -x "$OSTUDY_BINARY" ]]
+ ostudy_write_build_stamp "$(node -p "require('./package.json').version")"
+diff --git a/scripts/dev.sh b/scripts/dev.sh
+index 277c294..a08a760 100755
+--- a/scripts/dev.sh
++++ b/scripts/dev.sh
+@@ -5,4 +5,4 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+ cd "$ROOT_DIR"
+-exec node "$SCRIPT_DIR/with-immutable-cargo-lock.mjs" pnpm tauri dev
++exec node "$SCRIPT_DIR/with-immutable-cargo-lock.mjs" pnpm tauri dev -- --locked
+diff --git a/scripts/release.sh b/scripts/release.sh
+index 93ceb71..092148f 100755
+--- a/scripts/release.sh
++++ b/scripts/release.sh
+@@ -31,7 +31,7 @@ prepare_cargo_target "$ROOT_DIR"
+ pnpm install --frozen-lockfile
+ 
+ printf '\n==> Building Linux Debian and AppImage bundles\n'
+-node "$SCRIPT_DIR/with-immutable-cargo-lock.mjs" pnpm tauri build --bundles deb,appimage --ci
++node "$SCRIPT_DIR/with-immutable-cargo-lock.mjs" pnpm tauri build --bundles deb,appimage --ci -- --locked
+ 
+ case "$(uname -m)" in
+   x86_64) ARCH="x86_64" ;;
+diff --git a/scripts/verify-project-manifests.mjs b/scripts/verify-project-manifests.mjs
+index 0db6cd4..340c035 100644
+--- a/scripts/verify-project-manifests.mjs
++++ b/scripts/verify-project-manifests.mjs
+@@ -256,7 +256,7 @@ if (/pnpm run build|cargo build|pnpm tauri dev/u.test(launcher)) {
+ }
+ for (const required of [
+   "with-immutable-cargo-lock.mjs",
+-  "pnpm tauri build --debug --no-bundle --ci",
++  "pnpm tauri build --debug --no-bundle --ci -- --locked",
+   "ostudy_write_build_stamp",
+   "CARGO_BUILD_JOBS",
+ ]) {
+@@ -268,7 +268,7 @@ for (const required of [
+   "cargo clippy",
+   "cargo test",
+   "with-immutable-cargo-lock.mjs",
+-  "pnpm tauri build --debug --no-bundle --ci",
++  "pnpm tauri build --debug --no-bundle --ci -- --locked",
+   "smoke-native.sh",
+ ]) {
+   if (!checkScript.includes(required)) failures.push(`check.sh missing: ${required}`);
 diff --git a/src-tauri/src/phase2.rs b/src-tauri/src/phase2.rs
 index 80d9550..fb2f38f 100644
 --- a/src-tauri/src/phase2.rs
@@ -83,90 +154,3 @@ index 80d9550..fb2f38f 100644
 -        String,
 -        String,
 -        String,
--        String,
--        Option<String>,
--        String,
--        String,
--        i64,
--    )> = connection
-+    let raw: Option<RenderCardRow> = connection
-         .query_row(
-             "SELECT c.id, c.note_id, c.deck_id, c.direction, c.display_name, c.template_ordinal,\n\
-                     c.created_at, c.updated_at, n.front_doc, n.back_doc,\n\
-@@ -978,17 +1010,7 @@ fn get_note_editor(
-     paths: &AppPaths,
-     note_id: &str,
- ) -> Result<NoteEditorDto, CommandError> {
--    let row: Option<(
--        String,
--        String,
--        String,
--        String,
--        String,
--        String,
--        Option<String>,
--        String,
--        i64,
--    )> = connection
-+    let row: Option<NoteEditorRow> = connection
-         .query_row(
-             "SELECT deck_id, note_type, front_doc, back_doc, front_text, back_text,\n\
-                     template_id, fields_json, revision\n\
-@@ -1219,8 +1241,8 @@ fn browse_cards_in_connection(
-     }
- 
-     match input.sort.as_str() {
--        "updated_desc" => cards.sort_by(|a, b| b.updated_at.cmp(&a.updated_at)),
--        "created_asc" => cards.sort_by(|a, b| a.created_at.cmp(&b.created_at)),
-+        "updated_desc" => cards.sort_by_key(|card| Reverse(card.updated_at)),
-+        "created_asc" => cards.sort_by_key(|card| card.created_at),
-         "due_asc" => cards.sort_by_key(|card| card.due_at.unwrap_or(i64::MAX)),
-         "question_asc" => cards.sort_by(|a, b| {
-             a.front_text
-@@ -2328,20 +2350,7 @@ fn move_or_copy_in_connection(
-         });
-     }
- 
--    let note: (
--        String,
--        String,
--        i64,
--        String,
--        String,
--        String,
--        String,
--        i64,
--        i64,
--        Option<String>,
--        String,
--        String,
--    ) = transaction
-+    let note: CopyNoteRow = transaction
-         .query_row(
-             "SELECT note_type, content_format, content_schema_version, front_doc, back_doc,\n\
-                     front_text, back_text, created_at, revision, template_id, fields_json, duplicate_key\n\
-diff --git a/src-tauri/src/practice.rs b/src-tauri/src/practice.rs
-index 5339f6d..8ca2617 100644
---- a/src-tauri/src/practice.rs
-+++ b/src-tauri/src/practice.rs
-@@ -1,60 +1,20 @@
--//! Scheduled practice sessions and atomic FSRS review recording.
-+//! Lightweight practice-session event tracking.
- //!
--//! A session is a snapshot of cards that were due when it started. The answer
--//! must be revealed before a rating can be submitted. Each accepted rating is
--//! committed in one SQLite transaction with both the immutable review event
--//! and the card's mutable schedule. A unique `submission_id` makes retries and
--//! accidental double-clicks idempotent.
--
--use std::{
--    collections::{BTreeSet, HashMap},
--    hash::{Hash, Hasher},
--};
-+//! Phase 2 session construction, interval previews, direct 0-3 review scoring,
-+//! scheduling, struggling-card detection, and undo live in `study`. This module
-+//! retains only the generic viewed/revealed/completed session events shared by
-+//! the frontend.
- 
- use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
--use serde::{Deserialize, Serialize};
