@@ -7,12 +7,20 @@ on:
     paths:
       - .github/workflows/stage1-source-export.yml
       - .stage1-source-export-trigger
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize]
+    paths:
+      - .github/workflows/stage1-source-export.yml
+      - .stage1-source-export-trigger
 
 permissions:
   contents: read
 
 jobs:
   export:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.ref == 'agent/phase-2-stage-1-authoring-foundation'
     runs-on: ubuntu-24.04
     steps:
       - name: Check out branch
