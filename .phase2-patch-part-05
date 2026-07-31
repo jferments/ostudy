@@ -1,35 +1,82 @@
-ase)?;
+                 connection
+                     .execute(
+-                        "INSERT INTO cards (id, note_id, deck_id, direction, template_ordinal, created_at, updated_at)\n\
+-                         VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)",
++                        "INSERT INTO cards (id, note_id, deck_id, direction, template_ordinal, created_at, updated_at) VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)",
+                         params![card_id, note_id, deck_id, now],
+                     )
+                     .map_err(CommandError::database)?;
+                 insert_new_schedule(connection, &card_id, now)?;
+                 connection
+                     .execute(
+-                        "INSERT INTO practice_sessions (id, selected_deck_ids_json, shuffle, card_count, viewed_count, revealed_count, started_at)\n\
+-                         VALUES (?1, '[]', 0, 1, 1, 1, ?2)",
++                        "INSERT INTO practice_sessions (id, selected_deck_ids_json, shuffle, card_count, started_at) VALUES (?1, '[]', 0, 1, ?2)",
+                         params![session_id, now],
+                     )
+                     .map_err(CommandError::database)?;
+                 connection
+                     .execute(
+-                        "INSERT INTO practice_session_cards (session_id, card_id, position, viewed_at, revealed_at)\n\
+-                         VALUES (?1, ?2, 0, ?3, ?3)",
+-                        params![session_id, card_id, now],
++                        "INSERT INTO practice_session_cards (session_id, card_id, position) VALUES (?1, ?2, 0)",
++                        params![session_id, card_id],
+                     )
+                     .map_err(CommandError::database)?;
+-                Ok((session_id, card_id, submission_id))
++                Ok((session_id, card_id))
+             })
+             .expect("fixtures should be created");
+ 
+-        let make_input = || SubmitReviewInput {
+-            session_id: session_id.clone(),
+-            card_id: card_id.clone(),
+-            submission_id: submission_id.clone(),
+-            outcome: "somewhat_confident".to_string(),
+-            response_time_ms: 1_500,
+-        };
+-        let first = database
+-            .with_connection(|connection| submit_review_in_connection(connection, make_input()))
+-            .expect("first review should succeed");
+-        let retry = database
+-            .with_connection(|connection| submit_review_in_connection(connection, make_input()))
+-            .expect("retry should be idempotent");
+-        assert_eq!(first.card_id, retry.card_id);
+-        assert_eq!(first.due_at, retry.due_at);
+-
+         database
+             .with_connection(|connection| {
+-                let review_count: i64 = connection
+-                    .query_row("SELECT COUNT(*) FROM review_events", [], |row| row.get(0))
+-                    .map_err(CommandError::database)?;
+-                let reps: i64 = connection
++                record_practice_event(connection, &session_id, &card_id, true)?;
++                record_practice_event(connection, &session_id, &card_id, true)?;
++                let counters: (i64, i64) = connection
+                     .query_row(
+-                        "SELECT reps FROM card_schedules WHERE card_id = ?1",
+-                        [card_id.as_str()],
+-                        |row| row.get(0),
++                        "SELECT viewed_count, revealed_count FROM practice_sessions WHERE id = ?1",
++                        [&session_id],
++                        |row| Ok((row.get(0)?, row.get(1)?)),
+                     )
+                     .map_err(CommandError::database)?;
 -                assert_eq!(review_count, 1);
 -                assert_eq!(reps, 1);
--                Ok(())
--            })
++                assert_eq!(counters, (1, 1));
+                 Ok(())
+             })
 -            .expect("review state should load");
--    }
++            .expect("reveal should be recorded");
+     }
  }
 diff --git a/src-tauri/src/scheduler.rs b/src-tauri/src/scheduler.rs
-index 5faf993..928ec7f 100644
+index 5faf993..cd6b489 100644
 --- a/src-tauri/src/scheduler.rs
 +++ b/src-tauri/src/scheduler.rs
-@@ -35,14 +35,11 @@ pub struct ScheduleRecord {
-     pub updated_at: i64,
- }
- 
--/// User-facing answer choices mapped onto FSRS's four canonical ratings.
-+/// Application-owned outcomes mapped onto FSRS's four canonical ratings.
- ///
--/// The wording is intentionally about recall confidence rather than exposing
--/// algorithm terminology to learners:
--/// * wrong -> Again
--/// * right, not confident -> Hard
--/// * right, somewhat confident -> Good
--/// * right, very confident -> Easy
-+/// The UI presents these as the direct 0-3 choices Wrong, Hard, OK, and Easy.
-+/// The older internal variant names are retained so stored outcome strings stay
-+/// compatible with existing review history.
- #[derive(Clone, Copy, Debug, Eq, PartialEq)]
- pub enum ReviewOutcome {
-     Wrong,
-@@ -52,19 +49,6 @@ pub enum ReviewOutcome {
+@@ -52,19 +52,6 @@ pub enum ReviewOutcome {
  }
  
  impl ReviewOutcome {
@@ -48,107 +95,3 @@ index 5faf993..928ec7f 100644
 -
      pub const fn as_str(self) -> &'static str {
          match self {
-             Self::Wrong => "wrong",
-@@ -82,19 +66,6 @@ impl ReviewOutcome {
-             Self::VeryConfident => Rating::Easy,
-         }
-     }
--
--    pub const fn rating_number(self) -> i64 {
--        match self {
--            Self::Wrong => 1,
--            Self::NotConfident => 2,
--            Self::SomewhatConfident => 3,
--            Self::VeryConfident => 4,
--        }
--    }
--
--    pub const fn answer_correct(self) -> bool {
--        !matches!(self, Self::Wrong)
--    }
- }
- 
- /// Complete result of applying one accepted review.
-@@ -376,13 +347,11 @@ mod tests {
-     const NOW: i64 = 1_735_689_600_000; // 2025-01-01T00:00:00Z
- 
-     #[test]
--    fn maps_product_wording_to_the_four_fsrs_ratings() {
--        assert_eq!(ReviewOutcome::Wrong.rating_number(), 1);
--        assert_eq!(ReviewOutcome::NotConfident.rating_number(), 2);
--        assert_eq!(ReviewOutcome::SomewhatConfident.rating_number(), 3);
--        assert_eq!(ReviewOutcome::VeryConfident.rating_number(), 4);
--        assert!(!ReviewOutcome::Wrong.answer_correct());
--        assert!(ReviewOutcome::SomewhatConfident.answer_correct());
-+    fn maps_direct_choices_to_the_four_fsrs_ratings() {
-+        assert_eq!(ReviewOutcome::Wrong.rating(), Rating::Again);
-+        assert_eq!(ReviewOutcome::NotConfident.rating(), Rating::Hard);
-+        assert_eq!(ReviewOutcome::SomewhatConfident.rating(), Rating::Good);
-+        assert_eq!(ReviewOutcome::VeryConfident.rating(), Rating::Easy);
-     }
- 
-     #[test]
-diff --git a/src-tauri/src/phase2.rs b/src-tauri/src/phase2.rs
-index 57fba3a..1b2c4f0 100644
---- a/src-tauri/src/phase2.rs
-+++ b/src-tauri/src/phase2.rs
-@@ -8,7 +8,10 @@
- //! blank notes use literal `[[answer]]` markers. Rendered values become JSON
- //! text nodes and are never interpreted as HTML, JavaScript, CSS, or SQL.
- 
--use std::collections::{BTreeMap, BTreeSet, HashMap};
-+use std::{
-+    cmp::Reverse,
-+    collections::{BTreeMap, BTreeSet, HashMap},
-+};
- 
- use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
- use serde::{Deserialize, Serialize};
-@@ -271,6 +274,53 @@ struct PreparedNote {
-     duplicate_key: String,
- }
- 
-+type RenderCardRow = (
-+    String,
-+    String,
-+    String,
-+    String,
-+    String,
-+    i64,
-+    i64,
-+    i64,
-+    String,
-+    String,
-+    String,
-+    String,
-+    String,
-+    Option<String>,
-+    String,
-+    String,
-+    i64,
-+);
-+
-+type NoteEditorRow = (
-+    String,
-+    String,
-+    String,
-+    String,
-+    String,
-+    String,
-+    Option<String>,
-+    String,
-+    i64,
-+);
-+
-+type CopiedNoteRow = (
-+    String,
-+    String,
-+    i64,
-+    String,
-+    String,
-+    String,
-+    String,
-+    i64,
-+    i64,
-+    Option<String>,
-+  
