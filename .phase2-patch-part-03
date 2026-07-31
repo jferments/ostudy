@@ -1,0 +1,134 @@
+           event_id,
+-                input.submission_id,
+-                input.session_id,
+-                input.card_id,
+-                transition.reviewed_at,
+-                transition.outcome.rating_number(),
+-                bool_to_integer(transition.outcome.answer_correct()),
+-                transition.outcome.as_str(),
+-                input.response_time_ms,
+-                transition.before.state,
+-                transition.after.state,
+-                transition.before.due_at,
+-                transition.after.due_at,
+-                transition.before.stability,
+-                transition.after.stability,
+-                transition.before.difficulty,
+-                transition.after.difficulty,
+-                transition.before.scheduled_days,
+-                transition.after.scheduled_days,
+-                SCHEDULER_NAME,
+-                SCHEDULER_VERSION,
+-                created_at,
+-            ],
+-        )
+-        .map_err(CommandError::database)?;
+-    Ok(())
+-}
+-
+-fn review_result_for_submission(
+-    connection: &Connection,
+-    submission_id: &str,
+-) -> Result<Option<ReviewResultDto>, CommandError> {
+-    connection
+-        .query_row(
+-            "SELECT r.card_id, r.rating, r.confidence, r.due_after,\n\
+-                    ps.completed_at, ps.rated_count, ps.correct_count\n\
+-             FROM review_events r\n\
+-             LEFT JOIN practice_sessions ps ON ps.id = r.session_id\n\
+-             WHERE r.submission_id = ?1",
+-            [submission_id],
+-            |row| {
+-                Ok(ReviewResultDto {
+-                    card_id: row.get(0)?,
+-                    rating: row.get(1)?,
+-                    outcome: row.get(2)?,
+-                    due_at: row.get(3)?,
+-                    completed: row.get::<_, Option<i64>>(4)?.is_some(),
+-                    rated_count: row.get::<_, Option<i64>>(5)?.unwrap_or(0),
+-                    correct_count: row.get::<_, Option<i64>>(6)?.unwrap_or(0),
+-                })
+-            },
+-        )
+-        .optional()
+-        .map_err(CommandError::database)
+-}
+-
+ fn refresh_session_counters(
+     connection: &Connection,
+     session_id: &str,
+@@ -574,70 +184,13 @@ fn refresh_session_counters(
+     Ok(())
+ }
+ 
+-fn validate_review_input(input: &SubmitReviewInput) -> Result<(), CommandError> {
+-    validate_entity_id(&input.session_id, "practice session")?;
+-    validate_entity_id(&input.card_id, "card")?;
+-    validate_entity_id(&input.submission_id, "review submission")?;
+-    ReviewOutcome::parse(&input.outcome)?;
+-    if !(0..=MAX_RESPONSE_TIME_MS).contains(&input.response_time_ms) {
+-        return Err(CommandError::new(
+-            "invalid_response_time",
+-            "The recorded response time is outside the supported range.",
+-        ));
+-    }
+-    Ok(())
+-}
+-
+-fn validate_deck_ids(values: Vec<String>) -> Result<Vec<String>, CommandError> {
+-    let mut unique = BTreeSet::new();
+-    for value in values {
+-        validate_entity_id(&value, "deck")?;
+-        unique.insert(value);
+-    }
+-    if unique.is_empty() {
+-        return Err(CommandError::new(
+-            "no_decks_selected",
+-            "Select at least one deck for the practice session.",
+-        ));
+-    }
+-    if unique.len() > MAX_SESSION_DECKS {
+-        return Err(CommandError::new(
+-            "too_many_decks",
+-            "A practice session can include at most 100 decks.",
+-        ));
+-    }
+-    Ok(unique.into_iter().collect())
+-}
+-
+-fn shuffle_key(session_id: &str, card_id: &str) -> u64 {
+-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+-    session_id.hash(&mut hasher);
+-    card_id.hash(&mut hasher);
+-    hasher.finish()
+-}
+-
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use crate::{scheduler::insert_new_schedule, util::unix_time_millis};
+-
+-    #[test]
+-    fn requires_at_least_one_deck() {
+-        let error = validate_deck_ids(Vec::new()).expect_err("empty selection should fail");
+-        assert_eq!(error.code, "no_decks_selected");
+-    }
+-
+-    #[test]
+-    fn shuffle_key_is_repeatable() {
+-        assert_eq!(
+-            shuffle_key("session", "card"),
+-            shuffle_key("session", "card")
+-        );
+-        assert_ne!(
+-            shuffle_key("session", "card"),
+-            shuffle_key("session", "other")
+-        );
+-    }
++    use crate::{
++        scheduler::insert_new_schedule,
++        util::{generate_id, unix_time_millis},
++    };
+ 
+     #[test]
+     fn completed_sessions 
