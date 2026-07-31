@@ -5,7 +5,7 @@ on:
     branches:
       - agent/phase-2-standalone-flashcard-core
     paths:
-      - .phase2/phase2-full.tar.gz.b64
+      - .phase2/ready
 
 permissions:
   contents: write
@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          base64 --decode .phase2/phase2-full.tar.gz.b64 > "$RUNNER_TEMP/phase2-full.tar.gz"
+          cat .phase2/chunk-* | base64 --decode > "$RUNNER_TEMP/phase2-full.tar.gz"
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
           tar -xzf "$RUNNER_TEMP/phase2-full.tar.gz" -C .
           git config user.name "github-actions[bot]"
