@@ -11,6 +11,9 @@ before merge.
 ./scripts/check.sh
 ```
 
+Run the gate from the repository root without skipping individual stages; the
+matching GitHub Actions run is the clean-environment acceptance record.
+
 The gate covers:
 
 - project identity, command registration, migration checksums, security
