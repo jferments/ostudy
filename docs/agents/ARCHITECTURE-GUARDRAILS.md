@@ -64,9 +64,17 @@ or remote image URLs in card content.
   and commits.
 - `submission_id` idempotency must prevent duplicate reviews caused by retries or
   repeated clicks.
+- Card templates use literal `{{field name}}` substitution only. Do not add an
+  executable template engine, expression evaluator, or raw HTML rendering path.
+- FTS terms are tokenized and quoted before `MATCH`; never concatenate raw search
+  expressions.
 - `.studydeck` packages contain shareable deck content and managed assets, not
   application settings or personal review history.
+- Shared packages are opened read-only with trusted schema disabled and must
+  match the exact interchange schema before data is read for import.
 - Imported cards receive fresh local schedules.
+- Undo records a reversal and restores exact snapshots without deleting review
+  evidence.
 - Analytics are deterministic SQL aggregates over authoritative stored state.
 
 ## Local-first constraints
@@ -88,7 +96,7 @@ Treat the following as compatibility surfaces:
 - database schemas and migration ordering;
 - Tiptap schema version and validation taxonomy;
 - `.studydeck` format and import behavior;
-- FSRS rating mapping and review idempotency;
+- public 0–3 score mapping, FSRS rating mapping, review idempotency, and Undo;
 - the Tauri application identifier and application-data location;
 - user-visible keyboard, accessibility, and theme behavior.
 

@@ -21,6 +21,11 @@ const settings: ipc.AppSettings = {
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
+  newCardsPerDay: 20,
+  reviewsPerDay: 200,
+  strugglingCardThreshold: 8,
+  autoSuspendStrugglingCards: false,
+  buryRelatedCards: true,
 };
 
 describe("SettingsScreen", () => {
@@ -30,7 +35,7 @@ describe("SettingsScreen", () => {
       dataDirectory: "/tmp/ostudy/data",
       databasePath: "/tmp/ostudy/data/library.sqlite3",
       imageDirectory: "/tmp/ostudy/data/assets/images",
-      databaseSchemaVersion: 3,
+      databaseSchemaVersion: 4,
     });
     vi.mocked(ipc.saveSettings).mockImplementation(async (input) => input);
   });

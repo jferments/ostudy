@@ -2,31 +2,67 @@
 
 **ostudy** is a free, local-first desktop flashcard application built with
 Tauri, React, TypeScript, Rust, and embedded SQLite. It requires no account or
-server. Decks, rich-text cards, review history, settings, and analytics remain
-on the user's computer.
+server. Decks, card content, review history, settings, images, search indexes,
+and analytics remain on the learner's computer.
 
-The first release series starts at **0.1.0**. Old archive revision labels are not
-part of the versioning scheme; Git commits describe development history and
-release tags describe published versions.
+The first release series starts at **0.1.0**. Git commits describe development
+history and release tags describe published versions.
 
-## Current functionality
+## Standalone flashcard core
 
-- Create, rename, and delete decks.
-- Create, edit, search, and delete rich-text flashcards.
-- Import and export complete `.studydeck` packages with managed images.
-- Run single-deck or multi-deck FSRS-scheduled practice sessions.
-- Record review history and display deterministic analytics.
-- Configure themes, typography, scale, motion, and review preferences.
+The Phase 2 core supports:
+
+- basic and automatically generated reverse cards;
+- **Fill in the blank** notes using literal `[[answer]]` markers;
+- reusable, field-based card templates, including a built-in Pharmacology
+  template;
+- tags, SQLite FTS5 text search, card browsing, sorting, and status filters;
+- question-and-answer bulk entry without a separate CSV/TSV file format;
+- autosaved editor drafts and recovery after leaving the editor;
+- duplicate detection with an explicit **Save anyway** path;
+- move or copy between decks;
+- suspend/resume, bury/unbury, reset-to-New, and explicit rescheduling;
+- daily new-card and review limits;
+- direct review ratings from `0` through `3`: **Wrong**, **Hard**, **OK**, and
+  **Easy**;
+- interval previews, undo of the most recent review, related-card burying, and
+  **Struggling cards** detection;
+- recent-deck practice summaries with the Wrong/Hard/OK/Easy distribution;
+- managed local images with small/medium/large sizing and left/center/right
+  alignment;
+- keyboard navigation, focus-managed dialogs, live-region announcements, and
+  visible keyboard focus.
+
+Math-specific cards are intentionally deferred to a dedicated later phase.
+Deck interchange remains a single SQLite-based `.studydeck` file; Phase 2 does
+not add CSV/TSV import.
+
+## Safe card and template content
+
+Card content is not stored or rendered as arbitrary HTML. The editor persists
+versioned Tiptap/ProseMirror JSON, and Rust validates every node, mark,
+attribute, link, image reference, and size/alignment value before it enters the
+library. JavaScript URLs, remote image URLs, unknown nodes, arbitrary CSS, and
+unsupported attributes fail closed.
+
+The template language is deliberately non-programmable. It supports literal
+text plus exact placeholders such as `{{medication name}}`; it does not support
+expressions, loops, property access, scripts, SQL, HTML execution, or CSS.
+Imported `.studydeck` databases are opened read-only with SQLite
+`trusted_schema=OFF`, integrity checked, schema checked against an exact
+allowlist, size limited, and fully revalidated before one transactional import.
+Imported cards receive fresh local schedules and never import another learner's
+review history.
 
 ## Ubuntu setup
 
-From the repository root, run the setup once:
+From the repository root, run setup once:
 
 ```bash
 ./scripts/setup-ubuntu.sh
 ```
 
-The setup script installs the pinned Ubuntu, Node, pnpm, Rust, and WebDriver
+The script installs the pinned Ubuntu, Node, pnpm, Rust, and WebDriver
 requirements and creates a standalone debug build. Cargo uses all detected CPU
 cores by default; override the number when needed:
 
@@ -34,102 +70,87 @@ cores by default; override the number when needed:
 CARGO_BUILD_JOBS=24 ./scripts/setup-ubuntu.sh
 ```
 
-## Fast startup and rebuilding
+## Start, rebuild, and test
 
-Start the already-compiled application:
+Start the already compiled application:
 
 ```bash
 ./run-app.sh
 ```
 
-`run-app.sh` does not run Vite, Cargo, or the test suite. It verifies that the
-existing binary matches the current source and then starts it. After editing
-source code, rebuild explicitly:
+`run-app.sh` does not run Vite, Cargo, or the test suite. After editing source,
+rebuild explicitly:
 
 ```bash
 ./scripts/build.sh
 ```
 
-Both `build.sh` and `check.sh` keep Cargo's incremental cache. If the repository
-is moved or renamed, they detect the old absolute target path and clear
-`src-tauri/target` once rather than repeatedly failing with stale build-script
-artifacts.
+Run the complete development gate:
 
-## The normal development loop
+```bash
+./scripts/check.sh
+```
+
+The gate performs frozen dependency installation, exact manifest checks, React
+component tests, Rust formatting, warning-free Clippy, Rust and migration tests,
+a standalone Tauri build, resolved dependency checks, and a native
+Tauri/WebDriver smoke test.
+
+Builds run through `scripts/with-immutable-cargo-lock.mjs`. It first verifies
+that `src-tauri/Cargo.toml` agrees with the committed `Cargo.lock`, then restores
+and rejects any build that attempts to change or delete the lockfile. This
+prevents the build-script problem where an incidental local dependency
+resolution left `Cargo.lock` modified and blocked branch switching.
+
+## Normal development loop
 
 1. Make a focused change on a branch.
-2. Run the complete automated gate:
+2. Run `./scripts/check.sh`.
+3. Start the build with `./run-app.sh` and exercise the changed UI path.
+4. Commit, push, and merge only after the automated and manual checks pass.
 
-   ```bash
-   ./scripts/check.sh
-   ```
+See [`docs/PHASE-2-ACCESSIBILITY-AUDIT.md`](docs/PHASE-2-ACCESSIBILITY-AUDIT.md)
+for the keyboard and accessibility acceptance matrix for this phase.
 
-3. Start the current build with `./run-app.sh` and manually exercise the changed
-   UI path.
-4. Commit, push, and merge the pull request when both checks pass.
-
-The single gate installs from lockfiles, verifies exact dependencies, runs React
-component tests, checks Rust formatting and Clippy, runs Rust and migration
-fixture tests, creates the standalone Tauri build, and launches a native
-WebDriver smoke test. Set `OSTUDY_SKIP_NATIVE_SMOKE=1` only when diagnosing a
-machine-specific WebDriver problem, and record that the native test was skipped.
-
-## GitHub Actions
+## GitHub Actions and diagnostics
 
 `.github/workflows/check.yml` repeats `./scripts/check.sh` on a clean Ubuntu
-runner for every pull request to `main` and every push to `main`. This catches
-missing local dependencies and uncommitted generated files before a change is
-merged.
+runner for pull requests to `main` and pushes to `main`.
 
-## Local diagnostics
-
-`run-app.sh` preserves terminal output in a small JSON Lines log at:
+`run-app.sh` writes a small rotating JSON Lines log to:
 
 ```text
 ${XDG_STATE_HOME:-$HOME/.local/state}/ostudy/ostudy.jsonl
 ```
 
-The log rotates at 2 MiB and retains one previous file. Create a support archive
-without including the SQLite library, cards, or managed images:
+Create a privacy-conscious support archive that excludes the card database and
+managed images with:
 
 ```bash
 ./scripts/export-diagnostics.sh
 ```
 
-## Release artifacts
+## Application data and deck packages
 
-A version tag such as `v0.1.0` triggers `.github/workflows/release.yml`. The
-workflow runs the clean-source gate and uses `scripts/release.sh` to generate the
-same Linux outputs every time:
+The Tauri identifier is `io.github.jferments.ostudy`. The Settings screen shows
+the active database and managed-image paths.
 
-- a Debian package;
-- an AppImage;
-- a source archive;
-- build metadata;
-- SHA-256 checksums.
-
-Artifacts are uploaded to the workflow run. Phase 1 intentionally does not add
-code signing, auto-update publishing, or a multi-platform release matrix.
-
-## Application identifier and data location
-
-The Tauri identifier is `io.github.jferments.ostudy`. Changing from the old
-example identifier changes the operating-system application-data directory.
-This is an intentional pre-0.1 compatibility break; old development data is not
-migrated automatically.
-
-The Settings screen displays the active database and managed-image locations.
-`.studydeck` export is for sharing deck content and intentionally excludes
-personal review history and application settings.
+A `.studydeck` export is one standalone SQLite database containing deck content,
+generated-card definitions, templates used by the deck, tags, and image bytes.
+It intentionally excludes application settings, review events, current
+schedules, struggling/suspended state, and other personal learning data. Legacy
+version-1 SQLite packages remain readable through a compatibility importer;
+new exports use package version 2.
 
 ## Architecture and contributor documentation
 
+- [`ARCHITECTURE-AND-PLAN.md`](ARCHITECTURE-AND-PLAN.md)
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - [`docs/CARD-FORMAT-AND-DATA-MODEL.md`](docs/CARD-FORMAT-AND-DATA-MODEL.md)
 - [`docs/DEVELOPMENT-AND-QUALITY.md`](docs/DEVELOPMENT-AND-QUALITY.md)
 - [`docs/GIT-WORKFLOW.md`](docs/GIT-WORKFLOW.md)
+- [`docs/decisions/`](docs/decisions/)
 - [`AGENTS.md`](AGENTS.md)
-- [`docs/agents/`](docs/agents/)
 
 The project is MIT licensed. Direct dependencies are pinned and free/open
 source. The Linux application uses the operating system's WebKitGTK/GTK runtime

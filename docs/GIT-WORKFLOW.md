@@ -14,6 +14,17 @@ git switch -c feat/short-description
 
 Use `fix/`, `chore/`, `docs/`, or `test/` instead of `feat/` when appropriate.
 
+If switching branches is blocked by an accidental unstaged lockfile change from
+an older build, inspect it before restoring only that file:
+
+```bash
+git diff -- src-tauri/Cargo.lock
+git restore --worktree src-tauri/Cargo.lock
+```
+
+Current build scripts reject and prevent this condition. Do not use a broad
+`git reset --hard` or discard unrelated work.
+
 ## Validate
 
 ```bash
@@ -51,8 +62,8 @@ memory aid for a solo developer, not a bureaucratic approval system.
 
 ## Merge and synchronize local main
 
-After GitHub Actions passes and the manual test is satisfactory, use **Squash and
-merge** in GitHub. Then:
+After GitHub Actions passes and the Phase 2 local test plan is satisfactory, use
+**Squash and merge** in GitHub. Then:
 
 ```bash
 git switch main

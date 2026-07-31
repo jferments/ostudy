@@ -32,6 +32,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
+  newCardsPerDay: 20,
+  reviewsPerDay: 200,
+  strugglingCardThreshold: 8,
+  autoSuspendStrugglingCards: false,
+  buryRelatedCards: true,
 };
 
 function App() {

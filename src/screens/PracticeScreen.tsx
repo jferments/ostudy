@@ -5,15 +5,22 @@ import { RichTextView } from "../editor/RichTextView";
 import {
   completePracticeSession,
   createSubmissionId,
+  getAnalytics,
+  getErrorCode,
   getErrorMessage,
   markPracticeCardRevealed,
   markPracticeCardViewed,
-  startPractice,
-  submitPracticeReview,
+  previewReviewIntervals,
+  startStudy,
+  submitStudyReview,
+  undoLastStudyReview,
   type AppSettings,
   type Deck,
-  type PracticeSession,
-  type ReviewOutcome,
+  type IntervalPreview,
+  type RecentDeckPractice,
+  type ReviewScore,
+  type StudyReviewResult,
+  type StudySession,
 } from "../ipc";
 
 interface PracticeScreenProps {
@@ -24,15 +31,21 @@ interface PracticeScreenProps {
   showToast: (kind: "success" | "error" | "info", text: string) => void;
 }
 
-type RatingStep = "known" | "confidence";
+type PracticeView = "setup" | "session" | "complete";
 
-/**
- * Builds scheduled review sessions from one or more decks.
- *
- * Deck-level Practice actions arrive as an auto-start request, while the
- * sidebar opens the selector. The distinction is kept in one screen so both
- * paths share the same session and error-handling code.
- */
+const SCORE_OPTIONS: Array<{
+  score: ReviewScore;
+  label: string;
+  description: string;
+  keyLabel: string;
+  className: string;
+}> = [
+  { score: 0, label: "Wrong", description: "Could not answer", keyLabel: "0", className: "wrong" },
+  { score: 1, label: "Hard", description: "Answered with difficulty", keyLabel: "1", className: "hard" },
+  { score: 2, label: "OK", description: "Answered adequately", keyLabel: "2", className: "ok" },
+  { score: 3, label: "Easy", description: "Answered immediately", keyLabel: "3", className: "easy" },
+];
+
 export function PracticeScreen({
   decks,
   settings,
@@ -40,507 +53,553 @@ export function PracticeScreen({
   onLaunchConsumed,
   showToast,
 }: PracticeScreenProps) {
-  const [selectedDeckIds, setSelectedDeckIds] = useState<Set<string>>(new Set());
+  const [view, setView] = useState<PracticeView>("setup");
+  const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([]);
   const [shuffle, setShuffle] = useState(settings.practiceShuffle);
-  const [session, setSession] = useState<PracticeSession | null>(null);
-  const [position, setPosition] = useState(0);
-  const [revealed, setRevealed] = useState(false);
-  const [ratingStep, setRatingStep] = useState<RatingStep>("known");
-  const [isStarting, setIsStarting] = useState(false);
-  const [isRevealing, setIsRevealing] = useState(false);
-  const [isRating, setIsRating] = useState(false);
-  const [isEnding, setIsEnding] = useState(false);
-  const [completed, setCompleted] = useState(false);
+  const [session, setSession] = useState<StudySession | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answerRevealed, setAnswerRevealed] = useState(false);
+  const [intervals, setIntervals] = useState<IntervalPreview[]>([]);
   const [ratedCount, setRatedCount] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
+  const [lastResult, setLastResult] = useState<StudyReviewResult | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isRevealing, setIsRevealing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUndoing, setIsUndoing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState("");
+  const [recentPractice, setRecentPractice] = useState<RecentDeckPractice[]>([]);
+  const [isLoadingRecentPractice, setIsLoadingRecentPractice] = useState(false);
+  const shownAtRef = useRef(Date.now());
+  const startRef = useRef(false);
+  const lastLaunchRef = useRef<number | null>(null);
+  const restoreRevealedCardRef = useRef<string | null>(null);
 
-  const startingRef = useRef(false);
-  const revealingRef = useRef(false);
-  const ratingRef = useRef(false);
-  const endingRef = useRef(false);
-  const questionShownAtRef = useRef(Date.now());
-  const handledLaunchRequestRef = useRef<number | null>(null);
-
-  const decksWithCards = useMemo(
-    () => decks.filter((deck) => deck.cardCount > 0),
-    [decks],
-  );
-  const current = session?.cards[position] ?? null;
-  const busy = isRevealing || isRating || isEnding;
-
-  const beginSession = useCallback(
-    async (deckIds: string[], requestedShuffle: boolean): Promise<void> => {
-      if (startingRef.current || deckIds.length === 0) return;
-      startingRef.current = true;
-      setIsStarting(true);
-      setErrorMessage(null);
-      try {
-        const started = await startPractice({
-          deckIds,
-          shuffle: requestedShuffle,
-        });
-        setSession(started);
-        setPosition(0);
-        setRevealed(false);
-        setRatingStep("known");
-        setCompleted(false);
-        setRatedCount(0);
-        setCorrectCount(0);
-        questionShownAtRef.current = Date.now();
-      } catch (error: unknown) {
-        setSession(null);
-        setErrorMessage(getErrorMessage(error));
-      } finally {
-        startingRef.current = false;
-        setIsStarting(false);
-      }
-    },
-    [],
+  const current = session?.cards[currentIndex] ?? null;
+  const intervalByScore = useMemo(
+    () => new Map(intervals.map((interval) => [interval.score, interval])),
+    [intervals],
   );
 
-  useEffect(() => {
-    if (!launchRequest) return;
-    if (handledLaunchRequestRef.current === launchRequest.requestId) return;
-    handledLaunchRequestRef.current = launchRequest.requestId;
-
-    const eligible = launchRequest.deckIds.filter((deckId) =>
-      decks.some((deck) => deck.id === deckId && deck.dueCount > 0),
-    );
-    setSelectedDeckIds(new Set(eligible));
-    setSession(null);
-    setCompleted(false);
+  const startSession = useCallback(async (
+    deckIds: string[],
+    selectedShuffle: boolean,
+  ): Promise<void> => {
+    if (startRef.current || deckIds.length === 0) return;
+    startRef.current = true;
+    setIsStarting(true);
     setErrorMessage(null);
-    onLaunchConsumed();
-
-    if (launchRequest.autoStart && eligible.length > 0) {
-      void beginSession(eligible, settings.practiceShuffle);
-    }
-  }, [beginSession, decks, launchRequest, onLaunchConsumed, settings.practiceShuffle]);
-
-  useEffect(() => {
-    if (!session || !current || completed) return;
-    questionShownAtRef.current = Date.now();
-    void markPracticeCardViewed(session.id, current.card.id).catch((error: unknown) => {
-      showToast("error", getErrorMessage(error));
-    });
-  }, [completed, current, session, showToast]);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (!session || !current || completed || busy) return;
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(target.tagName))
-      ) {
-        return;
+    try {
+      const { dayStartMs, nextDayStartMs } = localDayBoundaries();
+      const started = await startStudy({
+        deckIds,
+        shuffle: selectedShuffle,
+        dayStartMs,
+        nextDayStartMs,
+      });
+      setSession(started);
+      setCurrentIndex(0);
+      setRatedCount(0);
+      setCorrectCount(0);
+      setLastResult(null);
+      setAnswerRevealed(false);
+      setIntervals([]);
+      shownAtRef.current = Date.now();
+      setView("session");
+      setAnnouncement(`Practice started with ${started.cards.length} cards.`);
+    } catch (error: unknown) {
+      const code = getErrorCode(error);
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      if (code === "no_cards_due" || code === "daily_limit_reached") {
+        showToast("info", message);
       }
+      setView("setup");
+    } finally {
+      startRef.current = false;
+      setIsStarting(false);
+    }
+  }, [showToast]);
 
-      if (!revealed && (event.key === " " || event.key === "Enter")) {
+  useEffect(() => {
+    setShuffle(settings.practiceShuffle);
+  }, [settings.practiceShuffle]);
+
+  useEffect(() => {
+    if (view !== "setup") return undefined;
+    let cancelled = false;
+    setIsLoadingRecentPractice(true);
+    void getAnalytics()
+      .then((analytics) => {
+        if (!cancelled) setRecentPractice(analytics.recentDeckPractice);
+      })
+      .catch(() => {
+        if (!cancelled) setRecentPractice([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingRecentPractice(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, decks.length]);
+
+  useEffect(() => {
+    if (launchRequest === null || lastLaunchRef.current === launchRequest.requestId) return;
+    lastLaunchRef.current = launchRequest.requestId;
+    const available = new Set(decks.map((deck) => deck.id));
+    const requested = launchRequest.deckIds.filter((id) => available.has(id));
+    setSelectedDeckIds(requested);
+    setSession(null);
+    setCurrentIndex(0);
+    setView("setup");
+    onLaunchConsumed();
+    if (launchRequest.autoStart && requested.length > 0) {
+      void startSession(requested, settings.practiceShuffle);
+    }
+  }, [decks, launchRequest, onLaunchConsumed, settings.practiceShuffle, startSession]);
+
+  useEffect(() => {
+    if (view !== "session" || session === null || current === null) return;
+    const restoreRevealed = restoreRevealedCardRef.current === current.card.id;
+    restoreRevealedCardRef.current = null;
+    setAnswerRevealed(restoreRevealed);
+    if (!restoreRevealed) setIntervals([]);
+    setLastResult(null);
+    shownAtRef.current = Date.now();
+    setAnnouncement(
+      restoreRevealed
+        ? `Card ${currentIndex + 1} of ${session.cards.length}. Review undone; answer shown.`
+        : `Card ${currentIndex + 1} of ${session.cards.length}. Question shown.`,
+    );
+    void markPracticeCardViewed(session.id, current.card.id).catch((error: unknown) => {
+      setErrorMessage(getErrorMessage(error));
+    });
+  }, [current?.card.id, currentIndex, session, view]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (view !== "session" || current === null) return;
+      const target = event.target;
+      const isTyping =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (isTyping) return;
+      if (!answerRevealed && (event.key === " " || event.key === "Enter")) {
         event.preventDefault();
         void revealAnswer();
         return;
       }
-      if (!revealed) return;
-
-      if (ratingStep === "known") {
-        if (event.key === "1") {
-          event.preventDefault();
-          void submitOutcome("wrong");
-        } else if (event.key.toLocaleLowerCase() === "r" || event.key === "Enter") {
-          event.preventDefault();
-          setRatingStep("confidence");
-        }
+      if (answerRevealed && /^[0-3]$/u.test(event.key)) {
+        event.preventDefault();
+        void rate(Number(event.key) as ReviewScore);
         return;
       }
-
-      if (event.key === "2") {
+      if (event.key.toLowerCase() === "u" || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z")) {
         event.preventDefault();
-        void submitOutcome("not_confident");
-      } else if (event.key === "3") {
-        event.preventDefault();
-        void submitOutcome("somewhat_confident");
-      } else if (event.key === "4") {
-        event.preventDefault();
-        void submitOutcome("very_confident");
+        void undo();
       }
     }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   });
 
   async function revealAnswer(): Promise<void> {
-    if (!session || !current || revealed || revealingRef.current) return;
-    revealingRef.current = true;
+    if (session === null || current === null || answerRevealed || isRevealing) return;
     setIsRevealing(true);
     setErrorMessage(null);
     try {
-      // Persist the reveal before showing the answer so the visible state and
-      // review ledger cannot disagree after an unexpected application exit.
       await markPracticeCardRevealed(session.id, current.card.id);
-      setRevealed(true);
-      setRatingStep("known");
+      setAnswerRevealed(true);
+      setAnnouncement("Answer revealed. Rate the difficulty from 0 through 3.");
+      try {
+        setIntervals(await previewReviewIntervals(current.card.id, Date.now()));
+      } catch (error: unknown) {
+        setIntervals([]);
+        showToast("info", `Interval previews are unavailable: ${getErrorMessage(error)}`);
+      }
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
-      revealingRef.current = false;
       setIsRevealing(false);
     }
   }
 
-  async function submitOutcome(outcome: ReviewOutcome): Promise<void> {
-    if (!session || !current || !revealed || ratingRef.current) return;
-    ratingRef.current = true;
-    setIsRating(true);
+  async function rate(score: ReviewScore): Promise<void> {
+    if (session === null || current === null || !answerRevealed || isSubmitting) return;
+    setIsSubmitting(true);
     setErrorMessage(null);
     try {
-      const responseTimeMs = Math.max(
-        0,
-        Math.min(86_400_000, Date.now() - questionShownAtRef.current),
-      );
-      const result = await submitPracticeReview({
+      const result = await submitStudyReview({
         sessionId: session.id,
         cardId: current.card.id,
         submissionId: createSubmissionId(),
-        outcome,
-        responseTimeMs,
+        score,
+        responseTimeMs: Math.max(0, Date.now() - shownAtRef.current),
+        nextDayStartMs: nextLocalDayStart(),
       });
       setRatedCount(result.ratedCount);
       setCorrectCount(result.correctCount);
-
-      if (result.completed || position + 1 >= session.cards.length) {
-        setCompleted(true);
+      setLastResult(result);
+      if (result.struggling) {
+        showToast(
+          "info",
+          result.autoSuspended
+            ? "This is now a Struggling card and was automatically suspended."
+            : "This card is now marked Struggling so you can find and revise it.",
+        );
+      }
+      const nextIndex = currentIndex + 1;
+      if (result.completed || nextIndex >= session.cards.length) {
+        setView("complete");
+        setAnnouncement(`Session complete. ${result.correctCount} of ${result.ratedCount} answers were not Wrong.`);
       } else {
-        setPosition((value) => value + 1);
-        setRevealed(false);
-        setRatingStep("known");
+        setCurrentIndex(nextIndex);
       }
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
-      ratingRef.current = false;
-      setIsRating(false);
+      setIsSubmitting(false);
+    }
+  }
+
+  async function undo(): Promise<void> {
+    if (session === null || isUndoing || ratedCount === 0) return;
+    setIsUndoing(true);
+    setErrorMessage(null);
+    try {
+      const result = await undoLastStudyReview(session.id);
+      const card = session.cards[result.position];
+      if (!card) {
+        throw new Error("The undone card is no longer available in this practice session.");
+      }
+      setRatedCount(result.ratedCount);
+      setCorrectCount(result.correctCount);
+      restoreRevealedCardRef.current = card.card.id;
+      setIntervals([]);
+      setCurrentIndex(result.position);
+      setView("session");
+      setLastResult(null);
+      try {
+        setIntervals(await previewReviewIntervals(card.card.id, Date.now()));
+      } catch {
+        setIntervals([]);
+      }
+      showToast("success", "Last review undone; the previous schedule was restored exactly.");
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsUndoing(false);
     }
   }
 
   async function endSession(): Promise<void> {
-    if (!session || endingRef.current) return;
-    endingRef.current = true;
-    setIsEnding(true);
-    setErrorMessage(null);
-    try {
-      await completePracticeSession(session.id);
-      resetToSetup();
-    } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
-    } finally {
-      endingRef.current = false;
-      setIsEnding(false);
+    if (session !== null && view === "session") {
+      try {
+        await completePracticeSession(session.id);
+      } catch (error: unknown) {
+        showToast("error", getErrorMessage(error));
+        return;
+      }
     }
-  }
-
-  function resetToSetup(): void {
     setSession(null);
-    setPosition(0);
-    setRevealed(false);
-    setRatingStep("known");
-    setCompleted(false);
-    setRatedCount(0);
-    setCorrectCount(0);
-    setErrorMessage(null);
+    setView("setup");
+    setCurrentIndex(0);
+    setAnswerRevealed(false);
+    setIntervals([]);
+    setLastResult(null);
   }
 
-  if (session && completed) {
-    const accuracy = ratedCount === 0 ? 0 : Math.round((correctCount / ratedCount) * 100);
+  function toggleDeck(deckId: string): void {
+    setSelectedDeckIds((currentIds) =>
+      currentIds.includes(deckId)
+        ? currentIds.filter((id) => id !== deckId)
+        : [...currentIds, deckId],
+    );
+  }
+
+  if (view === "setup") {
     return (
       <div className="screen practice-screen">
+        <header className="screen-header compact-screen-header">
+          <div>
+            <h1>Practice</h1>
+            <p>Choose decks, then rate each revealed answer once from 0 to 3.</p>
+          </div>
+        </header>
+        {errorMessage ? <div className="inline-alert error-alert" role="alert">{errorMessage}</div> : null}
+        <div className="practice-setup-layout">
+          <section className="practice-setup-card" aria-labelledby="select-practice-decks-heading">
+            <div className="section-heading">
+              <div>
+                <h2 id="select-practice-decks-heading">Select decks</h2>
+                <p>Daily limits are shared across all selected decks.</p>
+              </div>
+              <div className="header-actions">
+                <button type="button" className="small-ghost-button" onClick={() => setSelectedDeckIds(decks.map((deck) => deck.id))}>Select all</button>
+                <button type="button" className="small-ghost-button" onClick={() => setSelectedDeckIds([])}>Clear</button>
+              </div>
+            </div>
+            {decks.length === 0 ? (
+              <div className="compact-empty-state"><p>Create a deck and add cards before practicing.</p></div>
+            ) : (
+              <div className="practice-deck-grid">
+                {decks.map((deck) => {
+                  const selected = selectedDeckIds.includes(deck.id);
+                  return (
+                    <label key={deck.id} className={selected ? "practice-deck-option selected" : "practice-deck-option"}>
+                      <input type="checkbox" checked={selected} onChange={() => toggleDeck(deck.id)} />
+                      <span>
+                        <strong>{deck.name}</strong>
+                        <small>{deck.dueCount} due · {deck.cardCount} review cards</small>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <div className="practice-setup-controls">
+              <label className="compact-checkbox practice-shuffle-checkbox">
+                <input type="checkbox" checked={shuffle} onChange={(event) => setShuffle(event.currentTarget.checked)} />
+                <span>Shuffle decks</span>
+              </label>
+              <span className="practice-selection-count">{selectedDeckIds.length} selected</span>
+            </div>
+            <div className="practice-limit-summary" aria-label="Daily practice limits">
+              <span><strong>{settings.newCardsPerDay}</strong> new/day</span>
+              <span><strong>{settings.reviewsPerDay}</strong> reviews/day</span>
+              <span><strong>{settings.strugglingCardThreshold}</strong> misses before Struggling</span>
+            </div>
+            <div className="practice-setup-actions">
+              <button type="button" className="primary-button" disabled={isStarting || selectedDeckIds.length === 0} onClick={() => void startSession(selectedDeckIds, shuffle)}>
+                {isStarting ? "Starting…" : "Start practice"}
+              </button>
+            </div>
+          </section>
+
+          <section className="recent-practice-panel" aria-labelledby="recent-practice-heading">
+            <div className="section-heading recent-practice-heading">
+              <div>
+                <h2 id="recent-practice-heading">Recently practiced</h2>
+                <p>Your latest answer-confidence mix for each deck.</p>
+              </div>
+            </div>
+            {isLoadingRecentPractice ? (
+              <div className="inline-progress compact-progress">Loading recent practice…</div>
+            ) : recentPractice.length === 0 ? (
+              <div className="compact-empty-state">
+                <p>Completed reviews will appear here for quick access.</p>
+              </div>
+            ) : (
+              <div className="recent-practice-list">
+                {recentPractice.map((recent) => (
+                  <article key={`${recent.deckId}:${recent.sessionId}`} className="recent-practice-item">
+                    <div className="recent-practice-title-row">
+                      <div>
+                        <strong>{recent.deckName}</strong>
+                        <span>{formatRecentPracticeTime(recent.practicedAt)} · {recent.reviewCount} reviewed</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="small-ghost-button"
+                        onClick={() => setSelectedDeckIds([recent.deckId])}
+                        aria-label={`Select ${recent.deckName} for practice`}
+                      >
+                        Select
+                      </button>
+                    </div>
+                    <ConfidenceStrip recent={recent} />
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "complete" && session) {
+    const percent = ratedCount === 0 ? 0 : Math.round((correctCount / ratedCount) * 100);
+    return (
+      <div className="screen practice-screen">
+        <div className="sr-only" aria-live="polite">{announcement}</div>
+        {errorMessage ? <div className="inline-alert error-alert" role="alert">{errorMessage}</div> : null}
         <section className="practice-complete-card">
           <span className="completion-mark" aria-hidden="true">✓</span>
-          <h1>Session complete</h1>
-          <p>
-            {correctCount} of {ratedCount} correct · {accuracy}%
-          </p>
-          <div className="completion-actions">
-            <button type="button" className="secondary-button" onClick={resetToSetup}>
-              Choose decks
-            </button>
-            <button
-              type="button"
-              className="primary-button"
-              disabled={isStarting}
-              onClick={() =>
-                void beginSession([...selectedDeckIds], shuffle)
-              }
-            >
-              {isStarting ? "Starting…" : "Practice due cards again"}
-            </button>
+          <h1>Practice complete</h1>
+          <p>You reviewed {ratedCount} cards. {correctCount} were rated Hard, OK, or Easy.</p>
+          <div className="completion-metrics">
+            <div><strong>{ratedCount}</strong><span>Reviewed</span></div>
+            <div><strong>{correctCount}</strong><span>Not wrong</span></div>
+            <div><strong>{percent}%</strong><span>Success rate</span></div>
           </div>
-          {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+          {lastResult ? <p className="muted-copy">Last card returns {formatInterval(lastResult.intervalMs)} from now.</p> : null}
+          <div className="header-actions">
+            <button type="button" className="secondary-button" disabled={isUndoing || ratedCount === 0} onClick={() => void undo()}>{isUndoing ? "Undoing…" : "Undo last review"}</button>
+            <button type="button" className="primary-button" onClick={() => void endSession()}>Choose decks</button>
+          </div>
         </section>
       </div>
     );
   }
 
-  if (session && current) {
-    return (
-      <div className="screen practice-screen active-practice-screen">
-        <header className="practice-session-header">
-          <div>
-            <span className="eyebrow">PRACTICE</span>
-            <h1>{current.deckName}</h1>
-          </div>
-          <div className="practice-progress-copy">
-            <strong>{position + 1} / {session.cards.length}</strong>
-            <span>{ratedCount} reviewed</span>
-          </div>
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={busy}
-            onClick={() => void endSession()}
-          >
-            {isEnding ? "Ending…" : "End session"}
-          </button>
-        </header>
-
-        <div className="practice-progress-track" aria-hidden="true">
-          <span style={{ width: `${(ratedCount / session.cards.length) * 100}%` }} />
-        </div>
-
-        {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
-
-        <section className="practice-card-surface">
-          <span className="practice-side-label">Question</span>
-          <RichTextView
-            document={current.card.frontDoc}
-            assets={current.card.assets}
-            onLinkError={setErrorMessage}
-          />
-
-          {revealed ? (
-            <>
-              <div className="practice-answer-divider" />
-              <span className="practice-side-label">Answer</span>
-              <RichTextView
-                document={current.card.backDoc}
-                assets={current.card.assets}
-                onLinkError={setErrorMessage}
-              />
-            </>
-          ) : null}
-        </section>
-
-        {!revealed ? (
-          <div className="practice-primary-action">
-            <button
-              type="button"
-              className="primary-button large-action-button"
-              disabled={isRevealing}
-              onClick={() => void revealAnswer()}
-            >
-              {isRevealing ? "Revealing…" : "Show answer"}
-            </button>
-          </div>
-        ) : ratingStep === "known" ? (
-          <section className="review-rating-panel" aria-label="Rate this answer">
-            <h2>Did you know it?</h2>
-            <div className="binary-review-actions">
-              <button
-                type="button"
-                className="review-button wrong"
-                disabled={isRating}
-                onClick={() => void submitOutcome("wrong")}
-              >
-                <strong>Wrong</strong>
-                <span>1</span>
-              </button>
-              <button
-                type="button"
-                className="review-button right"
-                disabled={isRating}
-                onClick={() => setRatingStep("confidence")}
-              >
-                <strong>Right</strong>
-                <span>R</span>
-              </button>
-            </div>
-          </section>
-        ) : (
-          <section className="review-rating-panel" aria-label="Choose confidence">
-            <div className="confidence-heading">
-              <button
-                type="button"
-                className="text-button"
-                disabled={isRating}
-                onClick={() => setRatingStep("known")}
-              >
-                ← Back
-              </button>
-              <h2>How confident were you?</h2>
-            </div>
-            <div className="confidence-review-actions">
-              <ConfidenceButton
-                shortcut="2"
-                label="Not confident"
-                disabled={isRating}
-                onClick={() => void submitOutcome("not_confident")}
-              />
-              <ConfidenceButton
-                shortcut="3"
-                label="Somewhat confident"
-                disabled={isRating}
-                onClick={() => void submitOutcome("somewhat_confident")}
-              />
-              <ConfidenceButton
-                shortcut="4"
-                label="Very confident"
-                disabled={isRating}
-                onClick={() => void submitOutcome("very_confident")}
-              />
-            </div>
-          </section>
-        )}
-      </div>
-    );
+  if (session === null || current === null) {
+    return <div className="screen"><div className="inline-progress">Loading practice card…</div></div>;
   }
 
+  const progress = session.cards.length === 0 ? 0 : Math.round((ratedCount / session.cards.length) * 100);
   return (
-    <div className="screen practice-screen">
-      <header className="screen-header compact-screen-header">
+    <div className="screen practice-screen active-practice-screen">
+      <div className="sr-only" aria-live="polite">{announcement}</div>
+      <header className="practice-session-header">
         <div>
-          <h1>Practice</h1>
-          <p>Select one or more decks. Only cards that are currently due are included.</p>
+          <button type="button" className="back-button" disabled={isSubmitting || isUndoing} onClick={() => void endSession()}>← End session</button>
+          <h1>{current.deckName}</h1>
+          <p>{current.isNew ? "New card" : "Scheduled review"} · Card {currentIndex + 1} of {session.cards.length}</p>
+        </div>
+        <div className="practice-header-actions">
+          <button type="button" className="secondary-button" disabled={isUndoing || ratedCount === 0} onClick={() => void undo()}>{isUndoing ? "Undoing…" : "Undo last"} <kbd>U</kbd></button>
+          <span>{ratedCount} rated · {correctCount} not wrong</span>
         </div>
       </header>
 
-      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+      <div className="practice-progress-track" aria-label={`${ratedCount} of ${session.cards.length} cards rated`}>
+        <span style={{ width: `${progress}%` }} />
+      </div>
 
-      {decksWithCards.length === 0 ? (
-        <section className="compact-empty-state large-empty-state">
-          <h2>No flashcards yet</h2>
-          <p>Add a card to a deck before starting a session.</p>
-        </section>
+      {errorMessage ? <div className="inline-alert error-alert" role="alert">{errorMessage}</div> : null}
+
+      <section className="practice-card-shell">
+        <div className="practice-card-label-row">
+          <span className="eyebrow">{answerRevealed ? "ANSWER" : "QUESTION"}</span>
+          <span>{current.card.displayName}</span>
+        </div>
+        <div className="practice-card-surface">
+          <RichTextView
+            document={answerRevealed ? current.card.backDoc : current.card.frontDoc}
+            assets={current.card.assets}
+            onLinkError={setErrorMessage}
+          />
+        </div>
+      </section>
+
+      {!answerRevealed ? (
+        <div className="practice-reveal-area">
+          <button type="button" className="primary-button reveal-answer-button" disabled={isRevealing} onClick={() => void revealAnswer()}>
+            {isRevealing ? "Revealing…" : "Show answer"} <kbd>Space</kbd>
+          </button>
+        </div>
       ) : (
-        <div className="practice-setup-grid">
-          <section className="settings-panel practice-deck-panel">
-            <div className="panel-heading-row">
-              <div>
-                <h2>Choose decks</h2>
-                <span>{selectedDeckIds.size} selected</span>
-              </div>
-              <div className="inline-actions">
+        <section className="direct-rating-panel" aria-labelledby="difficulty-heading">
+          <div className="section-heading centered-heading">
+            <div>
+              <h2 id="difficulty-heading">How difficult was it to answer?</h2>
+              <p>Choose one rating. The interval preview shows the next scheduled review.</p>
+            </div>
+          </div>
+          <div className="direct-rating-grid">
+            {SCORE_OPTIONS.map((option) => {
+              const preview = intervalByScore.get(option.score);
+              return (
                 <button
                   type="button"
-                  className="text-button"
-                  onClick={() => setSelectedDeckIds(new Set(decksWithCards.filter((deck) => deck.dueCount > 0).map((deck) => deck.id)))}
+                  key={option.score}
+                  className={`direct-rating-button rating-${option.className}`}
+                  disabled={isSubmitting}
+                  onClick={() => void rate(option.score)}
+                  aria-label={`${option.score}, ${option.label}. ${option.description}. ${preview ? `Next review ${formatInterval(preview.intervalMs)}.` : ""}`}
                 >
-                  Select all
+                  <span className="rating-key">{option.keyLabel}</span>
+                  <strong>{option.label}</strong>
+                  <small>{option.description}</small>
+                  <em>{preview ? formatInterval(preview.intervalMs) : "Calculating…"}</em>
                 </button>
-                {selectedDeckIds.size > 0 ? (
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => setSelectedDeckIds(new Set())}
-                  >
-                    Clear
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="practice-deck-list">
-              {decksWithCards.map((deck) => {
-                const checked = selectedDeckIds.has(deck.id);
-                return (
-                  <label key={deck.id} className={["practice-deck-choice", checked ? "selected" : "", deck.dueCount === 0 ? "disabled" : ""].filter(Boolean).join(" ")}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={deck.dueCount === 0}
-                      onChange={(event) => {
-                        // Capture the primitive before entering the state updater.
-                        // React does not guarantee that an event's currentTarget is
-                        // still available when an updater is evaluated.
-                        const nextChecked = event.currentTarget.checked;
-                        setSelectedDeckIds((currentIds) => {
-                          const next = new Set(currentIds);
-                          if (nextChecked) next.add(deck.id);
-                          else next.delete(deck.id);
-                          return next;
-                        });
-                      }}
-                    />
-                    <span>
-                      <strong>{deck.name}</strong>
-                      <small>
-                        {deck.dueCount} due · {deck.cardCount} total
-                      </small>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="settings-panel practice-options-panel">
-            <h2>Session options</h2>
-            <label className="toggle-row">
-              <span>
-                <strong>Shuffle cards</strong>
-                <small>Mix cards from all selected decks.</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={shuffle}
-                onChange={(event) => setShuffle(event.currentTarget.checked)}
-              />
-            </label>
-            <div className="practice-availability">
-              <strong>{selectedDueCount(decks, selectedDeckIds)}</strong>
-              <span>cards due</span>
-            </div>
-            <button
-              type="button"
-              className="primary-button full-width-button"
-              disabled={selectedDeckIds.size === 0 || selectedDueCount(decks, selectedDeckIds) === 0 || isStarting}
-              onClick={() => void beginSession([...selectedDeckIds], shuffle)}
-            >
-              {isStarting ? "Starting…" : "Start practice session"}
-            </button>
-          </section>
-        </div>
+              );
+            })}
+          </div>
+        </section>
       )}
+
+      <footer className="practice-session-footer">
+        <span>{session.newCount} new · {session.reviewCount} review in this session</span>
+        <span>{session.newRemainingToday} new and {session.reviewsRemainingToday} reviews remain after this queue</span>
+      </footer>
     </div>
   );
 }
 
-interface ConfidenceButtonProps {
-  shortcut: string;
-  label: string;
-  disabled: boolean;
-  onClick: () => void;
-}
-
-function ConfidenceButton({ shortcut, label, disabled, onClick }: ConfidenceButtonProps) {
+function ConfidenceStrip({ recent }: { recent: RecentDeckPractice }) {
+  const ratings = recent.ratingDistribution;
+  const values = [
+    { label: "Wrong", count: ratings.wrong, className: "wrong" },
+    { label: "Hard", count: ratings.hard, className: "hard" },
+    { label: "OK", count: ratings.ok, className: "ok" },
+    { label: "Easy", count: ratings.easy, className: "easy" },
+  ];
+  const total = Math.max(1, recent.reviewCount);
   return (
-    <button
-      type="button"
-      className="review-button confidence"
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <strong>{label}</strong>
-      <span>{shortcut}</span>
-    </button>
+    <div className="recent-confidence-summary" aria-label={`Answer confidence for ${recent.deckName}`}>
+      <div className="recent-confidence-strip" aria-hidden="true">
+        {values.map((rating) => (
+          <span
+            key={rating.label}
+            className={`confidence-segment ${rating.className}`}
+            style={{ width: `${(rating.count / total) * 100}%` }}
+          />
+        ))}
+      </div>
+      <div className="recent-confidence-counts">
+        {values.map((rating) => (
+          <span key={rating.label} className={`confidence-count ${rating.className}`}>
+            <i aria-hidden="true" />{rating.label} {rating.count}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
-function selectedDueCount(decks: Deck[], selectedDeckIds: Set<string>): number {
-  return decks.reduce(
-    (total, deck) => total + (selectedDeckIds.has(deck.id) ? deck.dueCount : 0),
-    0,
-  );
+function formatRecentPracticeTime(value: number): string {
+  const elapsed = Date.now() - value;
+  if (elapsed >= 0 && elapsed < 60_000) return "just now";
+  if (elapsed >= 0 && elapsed < 3_600_000) {
+    const minutes = Math.max(1, Math.round(elapsed / 60_000));
+    return `${minutes} min ago`;
+  }
+  if (elapsed >= 0 && elapsed < 86_400_000) {
+    const hours = Math.max(1, Math.round(elapsed / 3_600_000));
+    return `${hours} hr ago`;
+  }
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
+}
+
+function localDayBoundaries(): { dayStartMs: number; nextDayStartMs: number } {
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const next = new Date(start);
+  next.setDate(next.getDate() + 1);
+  return { dayStartMs: start.getTime(), nextDayStartMs: next.getTime() };
+}
+
+function nextLocalDayStart(): number {
+  return localDayBoundaries().nextDayStartMs;
+}
+
+function formatInterval(milliseconds: number): string {
+  if (milliseconds <= 0) return "now";
+  const minutes = Math.max(1, Math.round(milliseconds / 60_000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(milliseconds / 3_600_000);
+  if (hours < 36) return `${hours} hr`;
+  const days = Math.round(milliseconds / 86_400_000);
+  if (days < 60) return `${days} day${days === 1 ? "" : "s"}`;
+  const months = Math.round(days / 30.44);
+  if (months < 24) return `${months} mo`;
+  const years = Math.round((days / 365.25) * 10) / 10;
+  return `${years} yr`;
 }

@@ -7,6 +7,8 @@ import { TextStyleKit } from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 
+import { normalizeImageAlignment, normalizeImageSize } from "./imageAttributes";
+
 const Indent = Extension.create({
   name: "studyIndent",
   addGlobalAttributes() {
@@ -50,6 +52,22 @@ export const StudyImage = Image.extend({
             ? { "data-study-asset": assetId }
             : {};
         },
+      },
+      size: {
+        default: "medium",
+        parseHTML: (element: HTMLElement) =>
+          normalizeImageSize(element.getAttribute("data-image-size")),
+        renderHTML: (attributes: Record<string, unknown>) => ({
+          "data-image-size": normalizeImageSize(attributes.size),
+        }),
+      },
+      alignment: {
+        default: "center",
+        parseHTML: (element: HTMLElement) =>
+          normalizeImageAlignment(element.getAttribute("data-image-alignment")),
+        renderHTML: (attributes: Record<string, unknown>) => ({
+          "data-image-alignment": normalizeImageAlignment(attributes.alignment),
+        }),
       },
     };
   },

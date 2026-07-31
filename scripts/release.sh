@@ -31,7 +31,7 @@ prepare_cargo_target "$ROOT_DIR"
 pnpm install --frozen-lockfile
 
 printf '\n==> Building Linux Debian and AppImage bundles\n'
-pnpm tauri build --bundles deb,appimage --ci
+node "$SCRIPT_DIR/with-immutable-cargo-lock.mjs" pnpm tauri build --bundles deb,appimage --ci
 
 case "$(uname -m)" in
   x86_64) ARCH="x86_64" ;;

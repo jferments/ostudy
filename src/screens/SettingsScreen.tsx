@@ -26,6 +26,11 @@ const DEFAULTS: AppSettings = {
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
+  newCardsPerDay: 20,
+  reviewsPerDay: 200,
+  strugglingCardThreshold: 8,
+  autoSuspendStrugglingCards: false,
+  buryRelatedCards: true,
 };
 
 export function SettingsScreen({
@@ -158,6 +163,39 @@ export function SettingsScreen({
             suffix="%"
             onChange={(value) => update({ desiredRetention: value / 100 })}
           />
+          <NumberControl
+            label="New cards per day"
+            description="Maximum unseen cards added to a practice day. Enter 0 to pause new cards."
+            min={0}
+            max={999}
+            value={draft.newCardsPerDay}
+            onChange={(newCardsPerDay) => update({ newCardsPerDay })}
+          />
+          <NumberControl
+            label="Reviews per day"
+            description="Maximum previously reviewed cards in a practice day. Enter 0 to pause reviews."
+            min={0}
+            max={5000}
+            value={draft.reviewsPerDay}
+            onChange={(reviewsPerDay) => update({ reviewsPerDay })}
+          />
+          <NumberControl
+            label="Mark as struggling after"
+            description="Number of wrong answers before a card appears in the Struggling filter."
+            min={2}
+            max={50}
+            value={draft.strugglingCardThreshold}
+            suffix=" wrong answers"
+            onChange={(strugglingCardThreshold) => update({ strugglingCardThreshold })}
+          />
+          <label className="switch-row">
+            <span><strong>Automatically suspend struggling cards</strong><small>Pause a card when it crosses the wrong-answer threshold.</small></span>
+            <input type="checkbox" checked={draft.autoSuspendStrugglingCards} onChange={(event) => update({ autoSuspendStrugglingCards: event.currentTarget.checked })} />
+          </label>
+          <label className="switch-row">
+            <span><strong>Bury related cards</strong><small>Hide other cards generated from the same note until the next local day.</small></span>
+            <input type="checkbox" checked={draft.buryRelatedCards} onChange={(event) => update({ buryRelatedCards: event.currentTarget.checked })} />
+          </label>
           <label className="switch-row">
             <span><strong>Shuffle cards</strong></span>
             <input type="checkbox" checked={draft.practiceShuffle} onChange={(event) => update({ practiceShuffle: event.currentTarget.checked })} />
@@ -270,6 +308,37 @@ function RangeControl({ label, min, max, step, value, suffix, onChange }: RangeC
         <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.currentTarget.value))} />
         <output>{value}{suffix}</output>
       </div>
+    </label>
+  );
+}
+
+interface NumberControlProps {
+  label: string;
+  description: string;
+  min: number;
+  max: number;
+  value: number;
+  suffix?: string;
+  onChange: (value: number) => void;
+}
+
+function NumberControl({ label, description, min, max, value, suffix = "", onChange }: NumberControlProps) {
+  return (
+    <label className="number-control">
+      <span><strong>{label}</strong><small>{description}</small></span>
+      <span className="number-control-input">
+        <input
+          type="number"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(event) => {
+            const parsed = Number(event.currentTarget.value);
+            if (Number.isFinite(parsed)) onChange(Math.min(max, Math.max(min, Math.round(parsed))));
+          }}
+        />
+        {suffix ? <small>{suffix}</small> : null}
+      </span>
     </label>
   );
 }

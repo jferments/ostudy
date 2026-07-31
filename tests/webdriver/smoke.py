@@ -113,6 +113,32 @@ def main() -> int:
         if brand_text.strip() != "ostudy":
             raise AssertionError(f"Expected ostudy branding, found {brand_text!r}")
 
+        practice_button = find_element(
+            session_id,
+            "xpath",
+            "//button[contains(normalize-space(.), 'Practice')]",
+            deadline,
+        )
+        request("POST", f"/session/{session_id}/element/{practice_button}/click", {})
+        heading = find_element(session_id, "css selector", "main h1", time.monotonic() + 15)
+        heading_text = element_text(session_id, heading)
+        if heading_text.strip() != "Practice":
+            raise AssertionError(f"Expected Practice screen, found {heading_text!r}")
+        find_element(
+            session_id,
+            "css selector",
+            ".practice-setup-controls label.practice-shuffle-checkbox input[type='checkbox']",
+            time.monotonic() + 15,
+        )
+        recent_heading = find_element(
+            session_id,
+            "css selector",
+            "#recent-practice-heading",
+            time.monotonic() + 15,
+        )
+        if element_text(session_id, recent_heading).strip() != "Recently practiced":
+            raise AssertionError("The recent-practice summary is missing from Practice setup.")
+
         settings_button = find_element(
             session_id,
             "xpath",
@@ -125,7 +151,10 @@ def main() -> int:
         if heading_text.strip() != "Settings":
             raise AssertionError(f"Expected Settings screen, found {heading_text!r}")
 
-        print("Native smoke test passed: launched ostudy and opened Settings.")
+        print(
+            "Native smoke test passed: launched ostudy, verified compact Practice setup, "
+            "and opened Settings."
+        )
         return 0
     except Exception:
         print("\n--- tauri-driver log ---")

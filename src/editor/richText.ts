@@ -1,6 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 import type { Asset, RichDocument } from "../ipc";
+import { normalizeImageAlignment, normalizeImageSize } from "./imageAttributes";
 
 export const EMPTY_RICH_DOCUMENT: RichDocument = {
   type: "doc",
@@ -21,6 +22,9 @@ export function canonicalizeDocument(document: RichDocument): RichDocument {
     if (typeof assetId === "string" && assetId !== "") {
       node.attrs.src = `study-asset://${assetId}`;
     }
+    node.attrs.size = normalizeImageSize(node.attrs.size);
+    node.attrs.alignment = normalizeImageAlignment(node.attrs.alignment);
+
     for (const key of ["width", "height"] as const) {
       const value = node.attrs[key];
       const numeric =

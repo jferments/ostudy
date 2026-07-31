@@ -6,10 +6,13 @@ mod decks;
 mod error;
 mod logging;
 mod paths;
+mod phase2;
 mod practice;
 mod scheduler;
 mod settings;
+mod study;
 mod transfer;
+mod transfer_v2;
 mod util;
 
 use std::io;
@@ -60,18 +63,39 @@ pub fn run() {
             cards::create_card,
             cards::update_card,
             cards::delete_card,
+            phase2::list_card_templates,
+            phase2::save_card_template,
+            phase2::delete_card_template,
+            phase2::save_advanced_note,
+            phase2::get_note_for_editing,
+            phase2::browse_cards,
+            phase2::find_note_duplicates,
+            phase2::render_generated_card,
+            phase2::set_note_suspended,
+            phase2::bury_note,
+            phase2::reset_note_schedule,
+            phase2::reschedule_note,
+            phase2::move_or_copy_note,
+            phase2::bulk_create_notes,
+            phase2::save_editor_draft,
+            phase2::get_editor_draft,
+            phase2::delete_editor_draft,
             assets::import_image,
             settings::get_settings,
             settings::save_settings,
             settings::get_app_info,
-            practice::start_practice,
+            study::start_study_session,
             practice::mark_practice_card_viewed,
             practice::mark_practice_card_revealed,
-            practice::submit_practice_review,
+            study::preview_review_intervals,
+            study::submit_study_review,
+            study::undo_last_study_review,
             practice::complete_practice_session,
             analytics::get_analytics,
             transfer::export_deck,
-            transfer::import_deck
+            transfer::import_deck,
+            transfer_v2::export_deck_v2,
+            transfer_v2::import_deck_v2
         ])
         .run(tauri::generate_context!())
         .expect("error while running ostudy");

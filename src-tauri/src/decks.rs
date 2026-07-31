@@ -94,6 +94,7 @@ pub(crate) fn list_decks_from_connection(
                      WHERE c.deck_id = d.id\n\
                        AND c.deleted_at IS NULL\n\
                        AND c.suspended_at IS NULL\n\
+                       AND (c.buried_until IS NULL OR c.buried_until <= ?1)\n\
                        AND n.deleted_at IS NULL\n\
                        AND s.due_at <= ?1) AS due_count\n\
              FROM decks d\n\
@@ -131,6 +132,7 @@ pub(crate) fn get_deck_from_connection(
                      WHERE c.deck_id = d.id\n\
                        AND c.deleted_at IS NULL\n\
                        AND c.suspended_at IS NULL\n\
+                       AND (c.buried_until IS NULL OR c.buried_until <= ?1)\n\
                        AND n.deleted_at IS NULL\n\
                        AND s.due_at <= ?1) AS due_count\n\
              FROM decks d\n\

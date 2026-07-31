@@ -31,10 +31,15 @@ one patch version so the editor cannot resolve a mixed internal graph.
 - rs-fsrs `1.2.1`
 
 `rs-fsrs` remains isolated behind `src-tauri/src/scheduler.rs`; durable rows and
-IPC objects use ostudy-owned types.
+IPC objects use ostudy-owned types. Phase 2 adds no direct dependency. FTS5,
+JSON validation, window functions, and the deck package remain features of the
+audited bundled SQLite build rather than new services or libraries.
 
 ## Lockfile policy
 
 `pnpm-lock.yaml` and `src-tauri/Cargo.lock` are committed source-of-truth files.
-Normal setup, checks, and releases use frozen/locked dependency resolution.
-Dependency upgrades should be reviewed separately from feature behavior.
+Normal setup, development, checks, and releases use frozen/locked dependency
+resolution through the immutable-lockfile wrapper. It rejects an unstaged
+pre-existing lock change and restores the lockfile if a build mutates it.
+Dependency upgrades should be reviewed and staged separately from feature
+behavior.

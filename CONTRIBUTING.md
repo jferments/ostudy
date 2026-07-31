@@ -6,6 +6,7 @@ Before changing code, read:
 - `docs/ARCHITECTURE.md`
 - `docs/DEVELOPMENT-AND-QUALITY.md`
 - `docs/GIT-WORKFLOW.md`
+- `docs/PHASE-2-LOCAL-TEST-PLAN.md` for Phase 2 behavior
 - `docs/agents/README.md`
 
 ## Required local gate
@@ -27,8 +28,11 @@ lockfiles, or undocumented command/schema changes.
 - Comment non-obvious invariants and ordering decisions.
 - Update README, architecture, and ADR documentation in the same change.
 - Separate dependency upgrades from feature work whenever practical.
-- Preserve accessibility, theme behavior, import compatibility, and stable application-data identifiers unless the task explicitly
-  changes them with a documented compatibility decision.
+- Preserve accessibility, theme behavior, import compatibility, and stable
+  application-data identifiers unless the task explicitly changes them with a
+  documented compatibility decision.
+- Treat card text, template values, FTS queries, and shared SQLite decks as
+  untrusted data.
 
 A useful commit message describes the behavioral result, for example:
 

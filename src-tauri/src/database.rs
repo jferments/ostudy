@@ -30,9 +30,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "49dd1e24e463c9a08a59e243d90143e2874459dd2a4a8d5f61613d5df7ebcae3",
         sql: include_str!("../migrations/0003_fsrs_reviews.sql"),
     },
+    Migration {
+        version: 4,
+        name: "standalone_flashcard_core",
+        checksum: "12e318a568dd83a017cdad4928d0afddd4b5607dc5334f6e63b053e7c73ba847",
+        sql: include_str!("../migrations/0004_standalone_flashcard_core.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 3;
+const LATEST_SCHEMA_VERSION: i64 = 4;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -86,7 +92,8 @@ fn configure_connection(connection: &Connection) -> Result<(), String> {
 
     connection
         .execute_batch(
-            "PRAGMA foreign_keys = ON;\n\
+            "PRAGMA trusted_schema = OFF;\n\
+             PRAGMA foreign_keys = ON;\n\
              PRAGMA journal_mode = WAL;\n\
              PRAGMA synchronous = FULL;",
         )
@@ -227,12 +234,12 @@ mod tests {
 
                 let table_count: i64 = connection
                     .query_row(
-                        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('decks', 'notes', 'cards', 'assets', 'app_settings', 'practice_sessions', 'card_schedules', 'review_events')",
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('decks', 'notes', 'cards', 'assets', 'note_assets', 'app_settings', 'practice_sessions', 'practice_session_cards', 'card_schedules', 'review_events', 'card_templates', 'tags', 'note_tags', 'editor_drafts', 'review_schedule_snapshots', 'review_card_state_snapshots', 'review_event_reversals', 'review_sibling_buries', 'card_state_events')",
                         [],
                         |row| row.get(0),
                     )
                     .map_err(CommandError::database)?;
-                assert_eq!(table_count, 8);
+                assert_eq!(table_count, 19);
                 Ok(())
             })
             .expect("second migration pass should succeed");

@@ -61,6 +61,14 @@ Before editing code, read:
 - Review submission must remain transactional and idempotent.
 - Imported decks receive fresh local schedules and do not import another
   learner's personal review history.
+- Card templates are literal `{{field name}}` substitution only; they never
+  evaluate scripts, expressions, HTML, SQL, or arbitrary style code.
+- Shared `.studydeck` files are untrusted SQLite input and require read-only,
+  trusted-schema-off, exact-schema validation before transactional import.
+- Undo appends a reversal and restores an exact snapshot; it never deletes the
+  original review event.
+- User-facing review scores are 0 Wrong, 1 Hard, 2 OK, and 3 Easy, mapped through
+  the scheduler adapter to canonical FSRS ratings 1 through 4.
 - Analytics remain deterministic and reproducible from stored data.
 - Released migrations and release-schema fixtures are append-only and must
   never be edited after their release is tagged.

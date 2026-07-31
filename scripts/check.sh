@@ -25,6 +25,7 @@ else
   "$SCRIPT_DIR/doctor.sh" --native-smoke
 fi
 node "$SCRIPT_DIR/verify-project-manifests.mjs"
+node --test "$SCRIPT_DIR/with-immutable-cargo-lock.test.mjs"
 [[ -f pnpm-lock.yaml && -f src-tauri/Cargo.lock ]] || {
   printf 'ERROR: committed pnpm and Cargo lockfiles are required.\n' >&2
   exit 1
@@ -50,7 +51,7 @@ step "Rust unit, integration, and migration-fixture tests"
 cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
 
 step "Standalone Tauri build"
-pnpm tauri build --debug --no-bundle --ci
+node "$SCRIPT_DIR/with-immutable-cargo-lock.mjs" pnpm tauri build --debug --no-bundle --ci
 "$SCRIPT_DIR/verify-rust-dependencies.sh"
 [[ -x "$OSTUDY_BINARY" ]]
 ostudy_write_build_stamp "$(node -p "require('./package.json').version")"

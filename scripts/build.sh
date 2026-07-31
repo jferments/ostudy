@@ -33,7 +33,7 @@ pnpm run verify:versions
   die "Expected esbuild $ESBUILD_VERSION, found $(pnpm exec esbuild --version)."
 
 log "Building the standalone ostudy application with $CARGO_BUILD_JOBS Cargo jobs"
-pnpm tauri build --debug --no-bundle --ci
+node "$SCRIPT_DIR/with-immutable-cargo-lock.mjs" pnpm tauri build --debug --no-bundle --ci
 "$SCRIPT_DIR/verify-rust-dependencies.sh"
 
 [[ -x "$OSTUDY_BINARY" ]] || die "Expected application binary was not created at $OSTUDY_BINARY."

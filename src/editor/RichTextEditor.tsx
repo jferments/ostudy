@@ -7,6 +7,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { getErrorMessage, importImage, type Asset, type RichDocument } from "../ipc";
 import { createEditorExtensions } from "./extensions";
+import { IMAGE_ALIGNMENTS, IMAGE_SIZES, normalizeImageAlignment, normalizeImageSize } from "./imageAttributes";
 import { isAllowedExternalLink, normalizeExternalLink } from "./links";
 import { canonicalizeDocument, hydrateDocument } from "./richText";
 
@@ -99,6 +100,8 @@ export function RichTextEditor({
           alt: asset.originalFilename,
           title: asset.originalFilename,
           assetId: asset.id,
+          size: "medium",
+          alignment: "center",
         } as never)
         .run();
       setEditorError(null);
@@ -237,6 +240,8 @@ function EditorToolbar({
           ? "h4"
           : "paragraph";
   const textStyle = editor.getAttributes("textStyle");
+  const imageAttributes = editor.getAttributes("image");
+  const imageSelected = editor.isActive("image");
 
   function preserveSelection(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
@@ -498,6 +503,42 @@ function EditorToolbar({
           ―
         </ToolbarButton>
       </div>
+
+
+      {imageSelected ? (
+        <div className="toolbar-group image-tools" aria-label="Selected image formatting">
+          <select
+            aria-label="Selected image size"
+            value={normalizeImageSize(imageAttributes.size)}
+            onChange={(event) =>
+              editor
+                .chain()
+                .focus()
+                .updateAttributes("image", { size: event.currentTarget.value })
+                .run()
+            }
+          >
+            {IMAGE_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {size === "full" ? "Full width" : `${size[0].toUpperCase()}${size.slice(1)}`}
+              </option>
+            ))}
+          </select>
+          {IMAGE_ALIGNMENTS.map((alignment) => (
+            <ToolbarButton
+              key={alignment}
+              label={`Align image ${alignment}`}
+              active={normalizeImageAlignment(imageAttributes.alignment) === alignment}
+              onMouseDown={preserveSelection}
+              onClick={() =>
+                editor.chain().focus().updateAttributes("image", { alignment }).run()
+              }
+            >
+              {alignment === "left" ? "Image ←" : alignment === "center" ? "Image ↔" : "Image →"}
+            </ToolbarButton>
+          ))}
+        </div>
+      ) : null}
 
       <div className="toolbar-group toolbar-history">
         <ToolbarButton

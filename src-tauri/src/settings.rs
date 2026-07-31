@@ -22,6 +22,11 @@ pub struct AppSettingsDto {
     pub confirm_deletions: bool,
     pub practice_shuffle: bool,
     pub desired_retention: f64,
+    pub new_cards_per_day: i64,
+    pub reviews_per_day: i64,
+    pub struggling_card_threshold: i64,
+    pub auto_suspend_struggling_cards: bool,
+    pub bury_related_cards: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -80,6 +85,15 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         confirm_deletions: get_setting(connection, "confirmDeletions", true)?,
         practice_shuffle: get_setting(connection, "practiceShuffle", true)?,
         desired_retention: get_setting(connection, "desiredRetention", 0.90_f64)?,
+        new_cards_per_day: get_setting(connection, "newCardsPerDay", 20_i64)?,
+        reviews_per_day: get_setting(connection, "reviewsPerDay", 200_i64)?,
+        struggling_card_threshold: get_setting(connection, "strugglingCardThreshold", 8_i64)?,
+        auto_suspend_struggling_cards: get_setting(
+            connection,
+            "autoSuspendStrugglingCards",
+            false,
+        )?,
+        bury_related_cards: get_setting(connection, "buryRelatedCards", true)?,
     })
 }
 
@@ -134,6 +148,26 @@ fn save_settings_in_connection(
             "desiredRetention",
             serde_json::to_string(&settings.desired_retention),
         ),
+        (
+            "newCardsPerDay",
+            serde_json::to_string(&settings.new_cards_per_day),
+        ),
+        (
+            "reviewsPerDay",
+            serde_json::to_string(&settings.reviews_per_day),
+        ),
+        (
+            "strugglingCardThreshold",
+            serde_json::to_string(&settings.struggling_card_threshold),
+        ),
+        (
+            "autoSuspendStrugglingCards",
+            serde_json::to_string(&settings.auto_suspend_struggling_cards),
+        ),
+        (
+            "buryRelatedCards",
+            serde_json::to_string(&settings.bury_related_cards),
+        ),
     ];
 
     for (key, serialized) in entries {
@@ -175,6 +209,24 @@ fn validate_settings(settings: &AppSettingsDto) -> Result<(), CommandError> {
         ));
     }
     validate_desired_retention(settings.desired_retention)?;
+    if !(0..=999).contains(&settings.new_cards_per_day) {
+        return Err(CommandError::new(
+            "invalid_new_card_limit",
+            "The daily new-card limit must be between 0 and 999.",
+        ));
+    }
+    if !(0..=5_000).contains(&settings.reviews_per_day) {
+        return Err(CommandError::new(
+            "invalid_review_limit",
+            "The daily review limit must be between 0 and 5,000.",
+        ));
+    }
+    if !(2..=50).contains(&settings.struggling_card_threshold) {
+        return Err(CommandError::new(
+            "invalid_struggling_threshold",
+            "The Struggling-card threshold must be between 2 and 50 misses.",
+        ));
+    }
     Ok(())
 }
 
@@ -204,14 +256,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn loads_defaults_and_persists_theme_changes() {
+    fn loads_defaults_and_persists_phase_two_review_settings() {
         let database = Database::open_in_memory().expect("database should open");
         let mut settings = database
             .with_connection(load_settings)
             .expect("settings should load");
         assert_eq!(settings.theme, "dark");
+        assert_eq!(settings.new_cards_per_day, 20);
+        assert_eq!(settings.reviews_per_day, 200);
+        assert_eq!(settings.struggling_card_threshold, 8);
+        assert!(settings.bury_related_cards);
 
         settings.theme = "console".to_string();
+        settings.new_cards_per_day = 35;
+        settings.auto_suspend_struggling_cards = true;
         database
             .with_connection(|connection| save_settings_in_connection(connection, &settings))
             .expect("settings should save");
@@ -219,6 +277,8 @@ mod tests {
             .with_connection(load_settings)
             .expect("settings should reload");
         assert_eq!(loaded.theme, "console");
+        assert_eq!(loaded.new_cards_per_day, 35);
+        assert!(loaded.auto_suspend_struggling_cards);
         assert!((loaded.desired_retention - 0.90).abs() < f64::EPSILON);
     }
 
