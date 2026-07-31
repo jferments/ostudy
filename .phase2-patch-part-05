@@ -1,3 +1,71 @@
+-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+-    session_id.hash(&mut hasher);
+-    card_id.hash(&mut hasher);
+-    hasher.finish()
+-}
+-
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use crate::{scheduler::insert_new_schedule, util::unix_time_millis};
+-
+-    #[test]
+-    fn requires_at_least_one_deck() {
+-        let error = validate_deck_ids(Vec::new()).expect_err("empty selection should fail");
+-        assert_eq!(error.code, "no_decks_selected");
+-    }
+-
+-    #[test]
+-    fn shuffle_key_is_repeatable() {
+-        assert_eq!(
+-            shuffle_key("session", "card"),
+-            shuffle_key("session", "card")
+-        );
+-        assert_ne!(
+-            shuffle_key("session", "card"),
+-            shuffle_key("session", "other")
+-        );
+-    }
++    use crate::{
++        scheduler::insert_new_schedule,
++        util::{generate_id, unix_time_millis},
++    };
+ 
+     #[test]
+     fn completed_sessions_reject_card_events() {
+@@ -699,89 +253,65 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn review_submission_is_idempotent_and_updates_the_schedule() {
++    fn reveal_also_records_view_and_is_idempotent() {
+         let database = Database::open_in_memory().expect("database should open");
+         let now = unix_time_millis().expect("clock should work");
+ 
+-        let (session_id, card_id, submission_id) = database
++        let (session_id, card_id) = database
+             .with_connection(|connection| {
+                 let deck_id = generate_id(connection)?;
+                 let note_id = generate_id(connection)?;
+                 let card_id = generate_id(connection)?;
+                 let session_id = generate_id(connection)?;
+-                let submission_id = generate_id(connection)?;
+                 connection
+                     .execute(
+-                        "INSERT INTO decks (id, name, description, sort_order, created_at, updated_at, revision)\n\
+-                         VALUES (?1, 'Test', '', 0, ?2, ?2, 1)",
++                        "INSERT INTO decks (id, name, description, sort_order, created_at, updated_at, revision) VALUES (?1, 'Test', '', 0, ?2, ?2, 1)",
+                         params![deck_id, now],
+                     )
+                     .map_err(CommandError::database)?;
+                 connection
+                     .execute(
+-                        "INSERT INTO notes (id, deck_id, note_type, content_format, content_schema_version, front_doc, back_doc, front_text, back_text, created_at, updated_at, revision)\n\
+-                         VALUES (?1, ?2, 'basic', 'tiptap-json', 1, '{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}', '{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}', 'Q', 'A', ?3, ?3, 1)",
++                        "INSERT INTO notes (id, deck_id, note_type, content_format, content_schema_version, front_doc, back_doc, front_text, back_text, created_at, updated_at, revision) VALUES (?1, ?2, 'basic', 'tiptap-json', 1, '{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}', '{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}', 'Q', 'A', ?3, ?3, 1)",
+                         params![note_id, deck_id, now],
+                     )
+                     .map_err(CommandError::database)?;
                  connection
                      .execute(
 -                        "INSERT INTO cards (id, note_id, deck_id, direction, template_ordinal, created_at, updated_at)\n\
@@ -20,78 +88,3 @@
 -                        "INSERT INTO practice_session_cards (session_id, card_id, position, viewed_at, revealed_at)\n\
 -                         VALUES (?1, ?2, 0, ?3, ?3)",
 -                        params![session_id, card_id, now],
-+                        "INSERT INTO practice_session_cards (session_id, card_id, position) VALUES (?1, ?2, 0)",
-+                        params![session_id, card_id],
-                     )
-                     .map_err(CommandError::database)?;
--                Ok((session_id, card_id, submission_id))
-+                Ok((session_id, card_id))
-             })
-             .expect("fixtures should be created");
- 
--        let make_input = || SubmitReviewInput {
--            session_id: session_id.clone(),
--            card_id: card_id.clone(),
--            submission_id: submission_id.clone(),
--            outcome: "somewhat_confident".to_string(),
--            response_time_ms: 1_500,
--        };
--        let first = database
--            .with_connection(|connection| submit_review_in_connection(connection, make_input()))
--            .expect("first review should succeed");
--        let retry = database
--            .with_connection(|connection| submit_review_in_connection(connection, make_input()))
--            .expect("retry should be idempotent");
--        assert_eq!(first.card_id, retry.card_id);
--        assert_eq!(first.due_at, retry.due_at);
--
-         database
-             .with_connection(|connection| {
--                let review_count: i64 = connection
--                    .query_row("SELECT COUNT(*) FROM review_events", [], |row| row.get(0))
--                    .map_err(CommandError::database)?;
--                let reps: i64 = connection
-+                record_practice_event(connection, &session_id, &card_id, true)?;
-+                record_practice_event(connection, &session_id, &card_id, true)?;
-+                let counters: (i64, i64) = connection
-                     .query_row(
--                        "SELECT reps FROM card_schedules WHERE card_id = ?1",
--                        [card_id.as_str()],
--                        |row| row.get(0),
-+                        "SELECT viewed_count, revealed_count FROM practice_sessions WHERE id = ?1",
-+                        [&session_id],
-+                        |row| Ok((row.get(0)?, row.get(1)?)),
-                     )
-                     .map_err(CommandError::database)?;
--                assert_eq!(review_count, 1);
--                assert_eq!(reps, 1);
-+                assert_eq!(counters, (1, 1));
-                 Ok(())
-             })
--            .expect("review state should load");
-+            .expect("reveal should be recorded");
-     }
- }
-diff --git a/src-tauri/src/scheduler.rs b/src-tauri/src/scheduler.rs
-index 5faf993..4d3d0ad 100644
---- a/src-tauri/src/scheduler.rs
-+++ b/src-tauri/src/scheduler.rs
-@@ -52,19 +52,6 @@ pub enum ReviewOutcome {
- }
- 
- impl ReviewOutcome {
--    pub fn parse(value: &str) -> Result<Self, CommandError> {
--        match value {
--            "wrong" => Ok(Self::Wrong),
--            "not_confident" => Ok(Self::NotConfident),
--            "somewhat_confident" => Ok(Self::SomewhatConfident),
--            "very_confident" => Ok(Self::VeryConfident),
--            _ => Err(CommandError::new(
--                "invalid_review_outcome",
--                "Choose whether the answer was wrong or how confident you were when correct.",
--            )),
--        }
--    }
--
-     pub const fn as_str(self) -> &'static str {
-         match self {
