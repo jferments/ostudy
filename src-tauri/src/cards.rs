@@ -239,12 +239,8 @@ pub(crate) fn create_card_in_connection(
 
     let note_id = generate_id(&transaction)?;
     let card_id = generate_id(&transaction)?;
-    let duplicate_key = compute_duplicate_key(
-        "basic",
-        &content.front_text,
-        &content.back_text,
-        "{}",
-    );
+    let duplicate_key =
+        compute_duplicate_key("basic", &content.front_text, &content.back_text, "{}");
 
     transaction
         .execute(
@@ -295,12 +291,8 @@ fn update_card_in_connection(
     let transaction = connection.transaction().map_err(CommandError::database)?;
 
     ensure_assets_exist(&transaction, &all_asset_ids(&content))?;
-    let duplicate_key = compute_duplicate_key(
-        "basic",
-        &content.front_text,
-        &content.back_text,
-        "{}",
-    );
+    let duplicate_key =
+        compute_duplicate_key("basic", &content.front_text, &content.back_text, "{}");
     let changed = transaction
         .execute(
             "UPDATE notes\n\

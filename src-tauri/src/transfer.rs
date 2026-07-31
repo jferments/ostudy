@@ -1235,9 +1235,7 @@ fn validate_package_schema(connection: &Connection) -> Result<(), CommandError> 
         }
         tables.insert(name);
     }
-    if tables.len() != expected.len()
-        || expected.iter().any(|name| !tables.contains(*name))
-    {
+    if tables.len() != expected.len() || expected.iter().any(|name| !tables.contains(*name)) {
         return Err(CommandError::invalid_package(
             "The deck package schema is incomplete.",
         ));
@@ -1262,9 +1260,11 @@ fn enforce_package_row_limit(
             ))
         }
     };
-    let count: i64 = connection.query_row(query, [], |row| row.get(0)).map_err(|error| {
-        CommandError::invalid_package(format!("The deck package schema is invalid: {error}"))
-    })?;
+    let count: i64 = connection
+        .query_row(query, [], |row| row.get(0))
+        .map_err(|error| {
+            CommandError::invalid_package(format!("The deck package schema is invalid: {error}"))
+        })?;
     if count < 0 || usize::try_from(count).unwrap_or(usize::MAX) > maximum {
         return Err(CommandError::invalid_package(message));
     }

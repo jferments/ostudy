@@ -367,10 +367,7 @@ pub fn set_note_suspended(
 }
 
 #[tauri::command]
-pub fn bury_note(
-    database: State<'_, Database>,
-    input: BuryNoteInput,
-) -> Result<(), CommandError> {
+pub fn bury_note(database: State<'_, Database>, input: BuryNoteInput) -> Result<(), CommandError> {
     validate_entity_id(&input.note_id, "note")?;
     if let Some(until) = input.buried_until {
         validate_timestamp(until, "bury time")?;
@@ -450,7 +447,10 @@ pub fn delete_editor_draft(
     validate_draft_key(&draft_key)?;
     database.with_connection(|connection| {
         connection
-            .execute("DELETE FROM editor_drafts WHERE draft_key = ?1", [draft_key])
+            .execute(
+                "DELETE FROM editor_drafts WHERE draft_key = ?1",
+                [draft_key],
+            )
             .map_err(CommandError::database)?;
         Ok(())
     })
@@ -496,10 +496,23 @@ pub(crate) fn render_card_from_connection(
             [card_id],
             |row| {
                 Ok((
-                    row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?,
-                    row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?,
-                    row.get(10)?, row.get(11)?, row.get(12)?, row.get(13)?, row.get(14)?,
-                    row.get(15)?, row.get(16)?,
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
+                    row.get(11)?,
+                    row.get(12)?,
+                    row.get(13)?,
+                    row.get(14)?,
+                    row.get(15)?,
+                    row.get(16)?,
                 ))
             },
         )
@@ -683,7 +696,13 @@ fn save_note_in_connection(
                 "This card changed in another window. Reload it and try again.",
             ));
         }
-        synchronize_generated_cards(&transaction, &note_id, &input.deck_id, &prepared.generated, now)?;
+        synchronize_generated_cards(
+            &transaction,
+            &note_id,
+            &input.deck_id,
+            &prepared.generated,
+            now,
+        )?;
         replace_note_assets(&transaction, &note_id, &prepared.content)?;
         replace_note_tags(&transaction, &note_id, &normalized_tags, now)?;
         refresh_note_fts(&transaction, &note_id)?;
@@ -712,7 +731,13 @@ fn save_note_in_connection(
                 ],
             )
             .map_err(CommandError::database)?;
-        synchronize_generated_cards(&transaction, &note_id, &input.deck_id, &prepared.generated, now)?;
+        synchronize_generated_cards(
+            &transaction,
+            &note_id,
+            &input.deck_id,
+            &prepared.generated,
+            now,
+        )?;
         replace_note_assets(&transaction, &note_id, &prepared.content)?;
         replace_note_tags(&transaction, &note_id, &normalized_tags, now)?;
         refresh_note_fts(&transaction, &note_id)?;
@@ -723,7 +748,10 @@ fn save_note_in_connection(
     get_note_editor(connection, paths, &note_id)
 }
 
-fn prepare_note(connection: &Connection, input: &SaveNoteInput) -> Result<PreparedNote, CommandError> {
+fn prepare_note(
+    connection: &Connection,
+    input: &SaveNoteInput,
+) -> Result<PreparedNote, CommandError> {
     match input.mode.as_str() {
         "basic" | "reverse" => {
             let content = validate_content(
@@ -772,14 +800,10 @@ fn prepare_note(connection: &Connection, input: &SaveNoteInput) -> Result<Prepar
             let answers = blanks.join(" · ");
             let front_doc = plain_document(&source);
             let back_doc = plain_document(&answers);
-            let content = validate_content(
-                front_doc,
-                back_doc,
-                source.clone(),
-                answers.clone(),
-            )?;
+            let content = validate_content(front_doc, back_doc, source.clone(), answers.clone())?;
             let fields = BTreeMap::from([("fill in the blank".to_string(), source.clone())]);
-            let fields_json = serde_json::to_string(&fields).map_err(CommandError::serialization)?;
+            let fields_json =
+                serde_json::to_string(&fields).map_err(CommandError::serialization)?;
             let generated = blanks
                 .iter()
                 .enumerate()
@@ -800,9 +824,10 @@ fn prepare_note(connection: &Connection, input: &SaveNoteInput) -> Result<Prepar
             })
         }
         "template" => {
-            let template_id = input.template_id.as_deref().ok_or_else(|| {
-                CommandError::new("template_required", "Choose a card template.")
-            })?;
+            let template_id = input
+                .template_id
+                .as_deref()
+                .ok_or_else(|| CommandError::new("template_required", "Choose a card template."))?;
             validate_entity_id(template_id, "card template")?;
             let template = load_template(connection, template_id)?;
             let fields = normalize_template_values(&template.fields, &input.fields)?;
@@ -836,7 +861,8 @@ fn prepare_note(connection: &Connection, input: &SaveNoteInput) -> Result<Prepar
                 first_front.clone(),
                 first_back.clone(),
             )?;
-            let fields_json = serde_json::to_string(&fields).map_err(CommandError::serialization)?;
+            let fields_json =
+                serde_json::to_string(&fields).map_err(CommandError::serialization)?;
             let key = duplicate_key("template", first_front, first_back, &fields_json);
             Ok(PreparedNote {
                 note_type: "basic",
@@ -970,8 +996,15 @@ fn get_note_editor(
             [note_id],
             |row| {
                 Ok((
-                    row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?,
-                    row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?,
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
                 ))
             },
         )
@@ -1249,7 +1282,15 @@ fn save_template_in_connection(
                 "UPDATE card_templates SET name = ?1, description = ?2, fields_json = ?3,\n\
                      cards_json = ?4, updated_at = ?5, revision = revision + 1\n\
                  WHERE id = ?6 AND revision = ?7 AND deleted_at IS NULL AND is_builtin = 0",
-                params![name, description, fields_json, cards_json, now, id, revision],
+                params![
+                    name,
+                    description,
+                    fields_json,
+                    cards_json,
+                    now,
+                    id,
+                    revision
+                ],
             )
             .map_err(map_unique_template_error)?;
         if changed != 1 {
@@ -1345,10 +1386,7 @@ fn load_template(connection: &Connection, id: &str) -> Result<CardTemplateDto, C
         .optional()
         .map_err(CommandError::database)?
         .ok_or_else(|| {
-            CommandError::new(
-                "template_not_found",
-                "That card template no longer exists.",
-            )
+            CommandError::new("template_not_found", "That card template no longer exists.")
         })
 }
 
@@ -1356,18 +1394,10 @@ fn template_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CardTemplateDt
     let fields_json: String = row.get(3)?;
     let cards_json: String = row.get(4)?;
     let fields = serde_json::from_str(&fields_json).map_err(|error| {
-        rusqlite::Error::FromSqlConversionFailure(
-            3,
-            rusqlite::types::Type::Text,
-            Box::new(error),
-        )
+        rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Text, Box::new(error))
     })?;
     let cards = serde_json::from_str(&cards_json).map_err(|error| {
-        rusqlite::Error::FromSqlConversionFailure(
-            4,
-            rusqlite::types::Type::Text,
-            Box::new(error),
-        )
+        rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(error))
     })?;
     Ok(CardTemplateDto {
         id: row.get(0)?,
@@ -1398,9 +1428,9 @@ fn validate_template_name(value: &str) -> Result<String, CommandError> {
 
 fn validate_template_description(value: &str) -> Result<String, CommandError> {
     let normalized = value.trim().to_string();
-    let has_unsupported_control = normalized.chars().any(|character| {
-        character.is_control() && !matches!(character, '\n' | '\r' | '\t')
-    });
+    let has_unsupported_control = normalized
+        .chars()
+        .any(|character| character.is_control() && !matches!(character, '\n' | '\r' | '\t'));
     if normalized.chars().count() > 2_000 || has_unsupported_control {
         return Err(CommandError::new(
             "invalid_template_description",
@@ -1650,7 +1680,11 @@ fn parse_fill_blanks(source: &str) -> Result<Vec<String>, CommandError> {
             if end + 1 >= chars.len() {
                 return Err(invalid_fill_syntax());
             }
-            let answer = chars[start..end].iter().collect::<String>().trim().to_string();
+            let answer = chars[start..end]
+                .iter()
+                .collect::<String>()
+                .trim()
+                .to_string();
             if answer.is_empty() || answer.chars().count() > 2_000 {
                 return Err(CommandError::new(
                     "invalid_fill_answer",
@@ -1795,7 +1829,11 @@ fn validate_tags(values: Vec<String>) -> Result<Vec<ValidatedTag>, CommandError>
 }
 
 fn normalize_tag_name(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 fn replace_note_tags(
@@ -1924,7 +1962,11 @@ fn duplicate_key(mode: &str, front: &str, back: &str, fields_json: &str) -> Stri
 }
 
 fn normalize_duplicate_text(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 fn fnv1a64(bytes: &[u8], seed: u64) -> u64 {
@@ -2147,7 +2189,11 @@ fn bury_note_in_connection(
     record_state_events(
         &transaction,
         note_id,
-        if buried_until.is_some() { "bury" } else { "unbury" },
+        if buried_until.is_some() {
+            "bury"
+        } else {
+            "unbury"
+        },
         json!({"buriedUntil": buried_until}),
         now,
     )?;
@@ -2237,9 +2283,7 @@ fn move_or_copy_in_connection(
         )
         .optional()
         .map_err(CommandError::database)?
-        .ok_or_else(|| {
-            CommandError::new("card_not_found", "That flashcard no longer exists.")
-        })?;
+        .ok_or_else(|| CommandError::new("card_not_found", "That flashcard no longer exists."))?;
     if source_deck == input.destination_deck_id {
         return Err(CommandError::new(
             "same_deck",
@@ -2449,7 +2493,11 @@ fn bulk_create_in_connection(
                 template_id: None,
                 fields_json: "{}".to_string(),
                 duplicate_key: duplicate_key(
-                    if input.create_reverse { "reverse" } else { "basic" },
+                    if input.create_reverse {
+                        "reverse"
+                    } else {
+                        "basic"
+                    },
                     &content.front_text,
                     &content.back_text,
                     "{}",
@@ -2467,13 +2515,8 @@ fn bulk_create_in_connection(
     let mut created_count = 0;
     let mut skipped_duplicates = Vec::new();
     for (question, note) in prepared {
-        let duplicate = !load_duplicates(
-            &transaction,
-            &input.deck_id,
-            &note.duplicate_key,
-            None,
-        )?
-        .is_empty();
+        let duplicate =
+            !load_duplicates(&transaction, &input.deck_id, &note.duplicate_key, None)?.is_empty();
         if duplicate && input.skip_duplicates {
             skipped_duplicates.push(question);
             continue;
@@ -2515,7 +2558,8 @@ fn save_draft_in_connection(
     input: SaveDraftInput,
 ) -> Result<EditorDraftDto, CommandError> {
     ensure_active_deck(connection, &input.deck_id)?;
-    let payload_json = serde_json::to_string(&input.payload).map_err(CommandError::serialization)?;
+    let payload_json =
+        serde_json::to_string(&input.payload).map_err(CommandError::serialization)?;
     if payload_json.len() > MAX_DRAFT_BYTES {
         return Err(CommandError::new(
             "draft_too_large",
@@ -2557,7 +2601,15 @@ fn get_draft_from_connection(
             "SELECT draft_key, deck_id, note_id, payload_json, updated_at\n\
              FROM editor_drafts WHERE draft_key = ?1",
             [draft_key],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .optional()
         .map_err(CommandError::database)?;
@@ -2869,7 +2921,10 @@ mod tests {
                         fields: BTreeMap::from([
                             ("medication name".to_string(), "warfarin".to_string()),
                             ("drug class".to_string(), "vitamin K antagonist".to_string()),
-                            ("medical conditions".to_string(), "thromboembolism".to_string()),
+                            (
+                                "medical conditions".to_string(),
+                                "thromboembolism".to_string(),
+                            ),
                             ("side effects".to_string(), "bleeding".to_string()),
                         ]),
                         allow_duplicate: false,
@@ -2901,7 +2956,10 @@ mod tests {
                     )
                     .map_err(CommandError::database)?;
                 let rendered = render_card_from_connection(connection, &paths, &template_card_id)?;
-                assert_eq!(rendered.front_text, "What are the major side effects of warfarin?");
+                assert_eq!(
+                    rendered.front_text,
+                    "What are the major side effects of warfarin?"
+                );
                 assert_eq!(rendered.back_text, "bleeding");
 
                 let duplicate = save_note_in_connection(
@@ -3022,10 +3080,7 @@ mod tests {
                     },
                 )?;
                 assert_eq!(second_bulk.created_count, 0);
-                assert_eq!(
-                    second_bulk.skipped_duplicates,
-                    vec!["Bulk one".to_string()]
-                );
+                assert_eq!(second_bulk.skipped_duplicates, vec!["Bulk one".to_string()]);
 
                 let saved = save_draft_in_connection(
                     connection,

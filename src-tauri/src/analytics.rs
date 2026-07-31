@@ -321,7 +321,9 @@ fn active_card_count(connection: &Connection, deck_id: Option<&str>) -> Result<i
                   AND d.deleted_at IS NULL AND d.archived_at IS NULL";
     match deck_id {
         Some(deck_id) => connection
-            .query_row(&format!("{base} AND c.deck_id = ?1"), [deck_id], |row| row.get(0))
+            .query_row(&format!("{base} AND c.deck_id = ?1"), [deck_id], |row| {
+                row.get(0)
+            })
             .map_err(CommandError::database),
         None => connection
             .query_row(base, [], |row| row.get(0))

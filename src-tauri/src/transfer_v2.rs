@@ -28,9 +28,8 @@ use crate::{
     paths::AppPaths,
     phase2::{
         compute_duplicate_key, refresh_note_search, render_imported_template_card,
-        validate_imported_fill_blank,
-        validate_imported_template, validate_imported_template_metadata,
-        validate_imported_template_values, TemplateCardSpec,
+        validate_imported_fill_blank, validate_imported_template,
+        validate_imported_template_metadata, validate_imported_template_values, TemplateCardSpec,
     },
     scheduler::insert_new_schedule,
     util::{generate_id, unix_time_millis, validate_entity_id},
@@ -122,7 +121,6 @@ CREATE TABLE note_assets (
     PRIMARY KEY(source_note_id, source_asset_id, side)
 ) STRICT;
 "#;
-
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ExpectedPackageColumn {
@@ -415,9 +413,9 @@ fn export_from_connection(
     destination: &Path,
 ) -> Result<ExportDeckV2ResultDto, CommandError> {
     let deck = get_deck_from_connection(connection, deck_id)?;
-    let parent = destination.parent().ok_or_else(|| {
-        CommandError::new("invalid_export_path", "Choose a valid export folder.")
-    })?;
+    let parent = destination
+        .parent()
+        .ok_or_else(|| CommandError::new("invalid_export_path", "Choose a valid export folder."))?;
     if !parent.exists() {
         return Err(CommandError::new(
             "invalid_export_path",
@@ -524,11 +522,20 @@ fn export_from_connection(
     let notes = note_statement
         .query_map([deck_id], |row| {
             Ok((
-                row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?, row.get::<_, i64>(4)?, row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, String>(8)?,
-                row.get::<_, Option<String>>(9)?, row.get::<_, String>(10)?,
-                row.get::<_, String>(11)?, row.get::<_, i64>(12)?, row.get::<_, i64>(13)?,
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, Option<String>>(9)?,
+                row.get::<_, String>(10)?,
+                row.get::<_, String>(11)?,
+                row.get::<_, i64>(12)?,
+                row.get::<_, i64>(13)?,
                 row.get::<_, i64>(14)?,
             ))
         })
@@ -564,8 +571,12 @@ fn export_from_connection(
     let cards = card_statement
         .query_map([deck_id], |row| {
             Ok((
-                row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?, row.get::<_, String>(4)?, row.get::<_, i64>(5)?,
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
                 row.get::<_, i64>(6)?,
             ))
         })
@@ -681,8 +692,11 @@ fn export_from_connection(
     let assets = asset_statement
         .query_map([deck_id], |row| {
             Ok((
-                row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?, row.get::<_, String>(4)?,
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, String>(4)?,
             ))
         })
         .map_err(CommandError::database)?
@@ -729,8 +743,10 @@ fn export_from_connection(
 }
 
 fn read_package(source: &Path) -> Result<PackageData, CommandError> {
-    let package = Connection::open_with_flags(source, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|error| CommandError::invalid_package(format!("Could not open the deck: {error}")))?;
+    let package =
+        Connection::open_with_flags(source, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|error| {
+            CommandError::invalid_package(format!("Could not open the deck: {error}"))
+        })?;
     package
         .execute_batch(
             "PRAGMA trusted_schema = OFF;\n\
@@ -742,7 +758,9 @@ fn read_package(source: &Path) -> Result<PackageData, CommandError> {
         })?;
     let integrity: String = package
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
-        .map_err(|error| CommandError::invalid_package(format!("Integrity check failed: {error}")))?;
+        .map_err(|error| {
+            CommandError::invalid_package(format!("Integrity check failed: {error}"))
+        })?;
     if integrity != "ok" {
         return Err(CommandError::invalid_package(
             "The selected SQLite deck is damaged.",
@@ -891,9 +909,15 @@ fn read_templates(package: &Connection) -> Result<Vec<PackageTemplate>, CommandE
     let raw = statement
         .query_map([], |row| {
             Ok((
-                row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, i64>(5)?,
-                row.get::<_, i64>(6)?, row.get::<_, i64>(7)?, row.get::<_, i64>(8)?,
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, i64>(7)?,
+                row.get::<_, i64>(8)?,
             ))
         })
         .map_err(CommandError::database)?
@@ -953,11 +977,20 @@ fn read_notes(
     let raw = statement
         .query_map([], |row| {
             Ok((
-                row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?, row.get::<_, i64>(4)?, row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, String>(8)?,
-                row.get::<_, Option<String>>(9)?, row.get::<_, String>(10)?,
-                row.get::<_, String>(11)?, row.get::<_, i64>(12)?, row.get::<_, i64>(13)?,
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, Option<String>>(9)?,
+                row.get::<_, String>(10)?,
+                row.get::<_, String>(11)?,
+                row.get::<_, i64>(12)?,
+                row.get::<_, i64>(13)?,
                 row.get::<_, i64>(14)?,
             ))
         })
@@ -994,9 +1027,10 @@ fn read_notes(
                 row.8.clone(),
             )
             .map_err(|error| CommandError::invalid_package(error.message))?;
-            let mut fields: BTreeMap<String, String> = serde_json::from_str(&row.10).map_err(|error| {
-                CommandError::invalid_package(format!("Invalid note fields: {error}"))
-            })?;
+            let mut fields: BTreeMap<String, String> =
+                serde_json::from_str(&row.10).map_err(|error| {
+                    CommandError::invalid_package(format!("Invalid note fields: {error}"))
+                })?;
             if let Some(template_id) = row.9.as_deref() {
                 if row.2 != "basic" {
                     return Err(CommandError::invalid_package(
@@ -1201,17 +1235,19 @@ fn read_cards(
                 }
             }
         } else if note.note_type == "image_occlusion" {
-            if generated.iter().any(|card| card.direction != "image_occlusion") {
+            if generated
+                .iter()
+                .any(|card| card.direction != "image_occlusion")
+            {
                 return Err(CommandError::invalid_package(
                     "An image-occlusion note contains an invalid generated card.",
                 ));
             }
             for ordinal in 0..generated.len() {
                 let ordinal = i64::try_from(ordinal).unwrap_or(i64::MAX);
-                if !generated
-                    .iter()
-                    .any(|card| card.direction == "image_occlusion" && card.template_ordinal == ordinal)
-                {
+                if !generated.iter().any(|card| {
+                    card.direction == "image_occlusion" && card.template_ordinal == ordinal
+                }) {
                     return Err(CommandError::invalid_package(
                         "An image-occlusion note has a missing generated-card ordinal.",
                     ));
@@ -1229,13 +1265,11 @@ fn read_cards(
             if forward != 1
                 || reverse > 1
                 || generated.len() != forward + reverse
-                || generated
-                    .iter()
-                    .any(|card| match card.direction.as_str() {
-                        "forward" => card.display_name != "Forward",
-                        "reverse" => card.display_name != "Reverse",
-                        _ => true,
-                    })
+                || generated.iter().any(|card| match card.direction.as_str() {
+                    "forward" => card.display_name != "Forward",
+                    "reverse" => card.display_name != "Reverse",
+                    _ => true,
+                })
             {
                 return Err(CommandError::invalid_package(
                     "A basic note contains invalid forward or reverse cards.",
@@ -1288,19 +1322,28 @@ fn read_note_tags(
     notes: &[PackageNote],
     tags: &[PackageTag],
 ) -> Result<Vec<(String, String)>, CommandError> {
-    let note_ids = notes.iter().map(|note| note.source_id.as_str()).collect::<BTreeSet<_>>();
-    let tag_ids = tags.iter().map(|tag| tag.source_id.as_str()).collect::<BTreeSet<_>>();
+    let note_ids = notes
+        .iter()
+        .map(|note| note.source_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let tag_ids = tags
+        .iter()
+        .map(|tag| tag.source_id.as_str())
+        .collect::<BTreeSet<_>>();
     let mut statement = package
         .prepare("SELECT source_note_id, source_tag_id FROM note_tags ORDER BY source_note_id, source_tag_id")
         .map_err(CommandError::database)?;
     let links = statement
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    if links.iter().any(|link| {
-        !note_ids.contains(link.0.as_str()) || !tag_ids.contains(link.1.as_str())
-    }) {
+    if links
+        .iter()
+        .any(|link| !note_ids.contains(link.0.as_str()) || !tag_ids.contains(link.1.as_str()))
+    {
         return Err(CommandError::invalid_package(
             "The deck contains an invalid note-tag relationship.",
         ));
@@ -1350,8 +1393,14 @@ fn read_note_assets(
     notes: &[PackageNote],
     assets: &[PackageAsset],
 ) -> Result<Vec<(String, String, String)>, CommandError> {
-    let note_ids = notes.iter().map(|note| note.source_id.as_str()).collect::<BTreeSet<_>>();
-    let asset_ids = assets.iter().map(|asset| asset.source_id.as_str()).collect::<BTreeSet<_>>();
+    let note_ids = notes
+        .iter()
+        .map(|note| note.source_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let asset_ids = assets
+        .iter()
+        .map(|asset| asset.source_id.as_str())
+        .collect::<BTreeSet<_>>();
     let mut statement = package
         .prepare(
             "SELECT source_note_id, source_asset_id, side FROM note_assets\n\
@@ -1386,7 +1435,10 @@ fn validate_document_asset_links(
     assets: &[PackageAsset],
     links: &[(String, String, String)],
 ) -> Result<(), CommandError> {
-    let asset_ids = assets.iter().map(|asset| asset.source_id.as_str()).collect::<BTreeSet<_>>();
+    let asset_ids = assets
+        .iter()
+        .map(|asset| asset.source_id.as_str())
+        .collect::<BTreeSet<_>>();
     let actual = links.iter().cloned().collect::<BTreeSet<_>>();
     let mut expected = BTreeSet::new();
     for note in notes {
@@ -1464,11 +1516,12 @@ fn import_package(
                 )
                 .optional()
                 .map_err(CommandError::database)?;
-            let template_id = if let Some((id, _, _)) = existing.as_ref().filter(
-                |(_, stored_fields, stored_cards)| {
-                    stored_fields == &fields_json && stored_cards == &cards_json
-                },
-            ) {
+            let template_id = if let Some((id, _, _)) =
+                existing
+                    .as_ref()
+                    .filter(|(_, stored_fields, stored_cards)| {
+                        stored_fields == &fields_json && stored_cards == &cards_json
+                    }) {
                 id.clone()
             } else {
                 let id = generate_id(&transaction)?;
@@ -1822,7 +1875,9 @@ fn validate_package_metadata(
         .prepare("SELECT key, value FROM package_metadata ORDER BY key")
         .map_err(package_schema_error)?;
     let rows = statement
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
         .map_err(package_schema_error)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(package_schema_error)?;
@@ -1923,7 +1978,12 @@ fn validate_package_table(
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(package_schema_error)?;
-    if object_type != "table" || !create_sql.trim_end().to_ascii_uppercase().ends_with("STRICT") {
+    if object_type != "table"
+        || !create_sql
+            .trim_end()
+            .to_ascii_uppercase()
+            .ends_with("STRICT")
+    {
         return Err(CommandError::invalid_package(format!(
             "The {0} table is not the expected strict SQLite table.",
             expected.name
@@ -1999,9 +2059,11 @@ fn enforce_package_row_limit(
             ))
         }
     };
-    let count: i64 = connection.query_row(query, [], |row| row.get(0)).map_err(|error| {
-        CommandError::invalid_package(format!("The deck package schema is invalid: {error}"))
-    })?;
+    let count: i64 = connection
+        .query_row(query, [], |row| row.get(0))
+        .map_err(|error| {
+            CommandError::invalid_package(format!("The deck package schema is invalid: {error}"))
+        })?;
     if count < 0 || usize::try_from(count).unwrap_or(usize::MAX) > maximum {
         return Err(CommandError::invalid_package(message));
     }
@@ -2019,7 +2081,11 @@ fn validate_timestamps(created_at: i64, updated_at: i64, label: &str) -> Result<
 }
 
 fn normalize_tag(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 fn template_name_exists(connection: &Connection, name: &str) -> Result<bool, CommandError> {
@@ -2365,7 +2431,8 @@ mod tests {
     fn version_two_sqlite_package_round_trips_without_review_history() {
         let source_database = Database::open_in_memory().expect("source database should open");
         let source_root = temporary_test_directory("roundtrip-source");
-        let source_paths = AppPaths::new(source_root.clone()).expect("source paths should initialize");
+        let source_paths =
+            AppPaths::new(source_root.clone()).expect("source paths should initialize");
         let package_path = source_root.join("roundtrip.studydeck");
 
         let source_deck = source_database
@@ -2466,7 +2533,10 @@ mod tests {
         };
         let error = read_notes(&connection, &deck, &HashMap::new())
             .expect_err("unsafe rich content must be revalidated before import");
-        assert!(matches!(error.code.as_str(), "invalid_link" | "invalid_deck_package"));
+        assert!(matches!(
+            error.code.as_str(),
+            "invalid_link" | "invalid_deck_package"
+        ));
     }
 
     #[test]

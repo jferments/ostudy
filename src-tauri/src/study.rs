@@ -176,7 +176,8 @@ pub fn undo_last_study_review(
     input: UndoStudyReviewInput,
 ) -> Result<UndoStudyReviewResultDto, CommandError> {
     validate_entity_id(&input.session_id, "practice session")?;
-    database.with_connection(|connection| undo_last_review_in_connection(connection, &input.session_id))
+    database
+        .with_connection(|connection| undo_last_review_in_connection(connection, &input.session_id))
 }
 
 fn start_study_in_connection(
@@ -392,7 +393,8 @@ fn preview_intervals_in_connection(
     (0..=3)
         .map(|score| {
             let outcome = outcome_for_score(score)?;
-            let transition = apply_review(current.clone(), outcome, reviewed_at, desired_retention)?;
+            let transition =
+                apply_review(current.clone(), outcome, reviewed_at, desired_retention)?;
             Ok(IntervalPreviewDto {
                 score,
                 label: score_label(score).to_string(),
@@ -469,12 +471,7 @@ fn submit_study_in_connection(
     }
 
     let before = load_schedule(&transaction, &input.card_id)?;
-    let transition = apply_review(
-        before,
-        outcome,
-        reviewed_at,
-        settings.desired_retention,
-    )?;
+    let transition = apply_review(before, outcome, reviewed_at, settings.desired_retention)?;
     let event_id = insert_review_event(&transaction, &input, &transition, reviewed_at)?;
     insert_schedule_snapshot(&transaction, &event_id, &transition)?;
     snapshot_note_card_states(&transaction, &event_id, &input.card_id)?;
@@ -747,7 +744,11 @@ fn bury_sibling_cards(
     now: i64,
 ) -> Result<(), CommandError> {
     let note_id: String = connection
-        .query_row("SELECT note_id FROM cards WHERE id = ?1", [card_id], |row| row.get(0))
+        .query_row(
+            "SELECT note_id FROM cards WHERE id = ?1",
+            [card_id],
+            |row| row.get(0),
+        )
         .map_err(CommandError::database)?;
     let mut statement = connection
         .prepare(
@@ -803,7 +804,11 @@ fn update_struggling_state(
         )
         .map_err(CommandError::database)?;
     let note_id: String = connection
-        .query_row("SELECT note_id FROM cards WHERE id = ?1", [card_id], |row| row.get(0))
+        .query_row(
+            "SELECT note_id FROM cards WHERE id = ?1",
+            [card_id],
+            |row| row.get(0),
+        )
         .map_err(CommandError::database)?;
     let struggling = wrong_count >= threshold;
     let unsuspended_before: i64 = if struggling && auto_suspend {
@@ -883,7 +888,13 @@ fn restore_note_card_states(
                  SET suspended_at = ?1, struggling_since = ?2, struggling_reason = ?3,\n\
                      updated_at = ?4\n\
                  WHERE id = ?5",
-                params![suspended_at, struggling_since, struggling_reason, now, card_id],
+                params![
+                    suspended_at,
+                    struggling_since,
+                    struggling_reason,
+                    now,
+                    card_id
+                ],
             )
             .map_err(CommandError::database)?;
     }
@@ -1209,7 +1220,10 @@ mod tests {
     fn public_scores_map_to_fsrs_without_two_stage_questions() {
         assert_eq!(outcome_for_score(0).unwrap(), ReviewOutcome::Wrong);
         assert_eq!(outcome_for_score(1).unwrap(), ReviewOutcome::NotConfident);
-        assert_eq!(outcome_for_score(2).unwrap(), ReviewOutcome::SomewhatConfident);
+        assert_eq!(
+            outcome_for_score(2).unwrap(),
+            ReviewOutcome::SomewhatConfident
+        );
         assert_eq!(outcome_for_score(3).unwrap(), ReviewOutcome::VeryConfident);
         assert!(outcome_for_score(4).is_err());
     }
@@ -1276,13 +1290,8 @@ mod tests {
                     )?,
                 )?;
                 let before = load_schedule(connection, &card.id)?;
-                let session = start_study_in_connection(
-                    connection,
-                    &paths,
-                    vec![deck.id.clone()],
-                    false,
-                    0,
-                )?;
+                let session =
+                    start_study_in_connection(connection, &paths, vec![deck.id.clone()], false, 0)?;
                 assert_eq!(session.cards.len(), 1);
                 assert_eq!(session.new_count, 1);
                 let revealed_at = unix_time_millis()?;
@@ -1456,13 +1465,8 @@ mod tests {
                 "Answer".to_string(),
             )?,
         )?;
-        let session = start_study_in_connection(
-            connection,
-            paths,
-            vec![deck.id.clone()],
-            false,
-            0,
-        )?;
+        let session =
+            start_study_in_connection(connection, paths, vec![deck.id.clone()], false, 0)?;
         let revealed_at = unix_time_millis()?;
         connection
             .execute(
