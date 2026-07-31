@@ -35,7 +35,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           cat .phase2-patch-part-* > "$RUNNER_TEMP/phase2-final.patch"
-          echo "9fa9de2fc18893d9b0d89920d35f63709d60a9a48babcae8e8089a44b701e93c  $RUNNER_TEMP/phase2-final.patch" | sha256sum --check
+          echo "cb6314760e173f6264265a8bd2d88554f7e281fc64e37bd3bf3f8e39db2d6a5a  $RUNNER_TEMP/phase2-final.patch" | sha256sum --check
           git apply --check "$RUNNER_TEMP/phase2-final.patch"
           git apply "$RUNNER_TEMP/phase2-final.patch"
           rm -f \
