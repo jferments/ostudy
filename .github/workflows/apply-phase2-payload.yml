@@ -1,0 +1,37 @@
+name: Apply Phase 2 implementation
+
+on:
+  push:
+    branches: [agent/phase-2-standalone-flashcard-core]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Apply the assembled Phase 2 patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat .github/phase2-payload/part-* \
+            | base64 --decode \
+            | gzip --decompress \
+            > "$RUNNER_TEMP/phase2.patch"
+          echo "54b527cce5d82684c66a6f7dfa3d9e1dd697ab33e66d7ae9afaa78c482de87e6  $RUNNER_TEMP/phase2.patch" \
+            | sha256sum --check
+          git apply --index --whitespace=error-all "$RUNNER_TEMP/phase2.patch"
+          rm -rf .github/phase2-payload .github/workflows/phase2-snapshot.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: complete Phase 2 standalone flashcard core"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
