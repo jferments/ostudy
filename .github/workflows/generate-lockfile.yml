@@ -1,18 +1,26 @@
-name: Generate Phase 1 files
+name: Finalize Phase 1 generated files
 
 on:
   pull_request:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: finalize-phase-1-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   generate:
+    if: github.event.pull_request.head.ref == 'chore/phase-1-repository-stabilization'
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out repository
+      - name: Check out the Phase 1 branch
         uses: actions/checkout@v6
+        with:
+          ref: chore/phase-1-repository-stabilization
+          fetch-depth: 0
 
       - name: Install pinned Node and pnpm
         uses: actions/setup-node@v6
@@ -20,27 +28,27 @@ jobs:
           node-version: 24.18.0
           package-manager-cache: false
 
-      - name: Generate pnpm lockfile
+      - name: Regenerate the pnpm lockfile
         run: |
           npm install --global pnpm@11.14.0
           pnpm install --lockfile-only --no-frozen-lockfile
 
-      - name: Format Rust sources
+      - name: Format Rust sources with the pinned toolchain
         run: |
           rustup toolchain install 1.97.1 --profile minimal --component rustfmt
           rustup default 1.97.1
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
 
-      - name: Package generated files
+      - name: Commit generated files when needed
         run: |
-          tar -czf "$RUNNER_TEMP/phase-1-generated.tar.gz" \
-            pnpm-lock.yaml \
-            src-tauri/Cargo.lock \
-            src-tauri/src
-
-      - name: Upload generated files
-        uses: actions/upload-artifact@v7
-        with:
-          name: phase-1-generated-files
-          path: ${{ runner.temp }}/phase-1-generated.tar.gz
-          if-no-files-found: error
+          set -Eeuo pipefail
+          git add pnpm-lock.yaml src-tauri/src
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "Generated files are already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: refresh generated Phase 1 files"
+          git push origin HEAD:chore/phase-1-repository-stabilization
