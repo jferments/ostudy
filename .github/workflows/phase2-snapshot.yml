@@ -1,8 +1,8 @@
 name: Apply Phase 2 implementation
 
 on:
-  push:
-    branches: [agent/phase-2-standalone-flashcard-core]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -10,13 +10,14 @@ permissions:
 
 jobs:
   apply:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.ref == 'agent/phase-2-standalone-flashcard-core' && github.actor != 'github-actions[bot]')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Check out branch
+      - name: Check out implementation branch
         uses: actions/checkout@v6
         with:
+          ref: agent/phase-2-standalone-flashcard-core
           fetch-depth: 0
       - name: Apply the assembled Phase 2 patch
         shell: bash
@@ -29,9 +30,9 @@ jobs:
           echo "54b527cce5d82684c66a6f7dfa3d9e1dd697ab33e66d7ae9afaa78c482de87e6  $RUNNER_TEMP/phase2.patch" \
             | sha256sum --check
           git apply --index --whitespace=error-all "$RUNNER_TEMP/phase2.patch"
-          rm -rf .github/phase2-payload .github/workflows/phase2-snapshot.yml
+          rm -rf .github/phase2-payload .github/workflows/phase2-snapshot.yml .github/workflows/apply-phase2-payload.yml docs/.phase2-validation-trigger
           git add -A
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "feat: complete Phase 2 standalone flashcard core"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin HEAD:agent/phase-2-standalone-flashcard-core
