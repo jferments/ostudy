@@ -21,10 +21,81 @@ jobs:
         with:
           ref: agent/phase-2-standalone-flashcard-core
           fetch-depth: 0
-      - name: Apply the assembled Phase 2 patch
+      - name: Verify and apply the assembled Phase 2 patch
         shell: bash
         run: |
           set -Eeuo pipefail
+          cat > "$RUNNER_TEMP/expected-chunks" <<'HASHES'
+          ad7bbb6996149efc6560873dad1aa72fc5420d81fc76a8f9d53d0a4c7479a525 part-00
+          01a4cf4b17bd433291aeb9880e4863ea778074be4ee6fed368cc40cccccfeb66 part-r00
+          c83dca64d0587569fec0e4ca897c0b2a2b026855be673150f4acd5cff0c4e84d part-r01
+          72407cf35e93e9576eb0e5b045e1454684e62834f24f1c206b7098c2b57f174f part-r02
+          e5f16d6de28e6745be8a9e7fa371a240f9f4a18d7b7208517798a4921b094c64 part-r03
+          967b45342de85cb40dca10aa788b323ece7275e5d8b7346e53757ca25f1577b8 part-r05
+          7267f6d1420dafd58d1054736fe0b7cd70ec0a0d6143a8b1beb13b9d17cc515b part-r06
+          1fccb29439a8497c80e971de03bdba6c595653a886c2692105b39d6eb11ae3ba part-r07
+          47a3d4450f171140f260b8655f2f24b227201caa0a55c5329015a8ba11d92826 part-r08
+          2813f047a6b98716dd662a384a015391c81791a26a7fb055b124854e99da5cb6 part-r09
+          b44502ca2f9ebac0610c98c2b36f6ef1964ea13c16f2e6e87b5ac3a5071f8ae1 part-r10
+          7bc741eceeded70c5a1932437008aec07df68a9a6aa35015cb641689a97d91a7 part-r11
+          5960ec48b5221f4fb9b782412f591fd26a5ddea109612ee8a1e0752c0d16feae part-r12
+          b8cd2495466ddecf7506dc2c4943d24e152771343fe4c7a65cdb9baf9db9b7b4 part-r13
+          1ee215b0d114ad15df8dca94dafda4f4967d665236e170875b781f4410588fa9 part-r14
+          e29a3023cc1c77bc3b1ce5a35828095e9c4688808cc0c36eaee6d9a1f5449ab8 part-s000
+          d256e7285b136c51bcc0e49c76f3da7df9a1a681f16126f38f5ab91348455680 part-s001
+          b3df644b99b9ab6b0438a5cc074294c1367b586c1ed4228c54417b976602f583 part-s002
+          205b36babef8857e8202660f87bd97c8a3490d2c4809233fa76f4561bc879f05 part-s003
+          4982893ae7b1a16aab5a681d9dff4318ee3fcb1ed5eb8fec7cf494d9dfd32d8b part-s004
+          ef00b64aab2e03b56adec492ccec40e6456680f1c532952c4a96d65e21d4f737 part-s005
+          fa983858527bdd816865a521159b4de3ebaeafb5f0095eb80f4714f1f5a389d2 part-s006
+          1213139f6ae4b637a7348988325a0f2ecc65fc9865d024873a70cc0c5b99074c part-s007
+          f95d7656b884d239a94e0b7e2519fb40a52506fcd7e070bead30e9a0c8a3330a part-s008
+          026ad91fee5d8acf3a152fd97aeda963fa0af96277f92a178b4efcb1710bd2c9 part-s009
+          82148521cf6b7c6bf1227f1c01f2cc8e8411f3c7ee3038312b015924cb369c1d part-s010
+          c93a8be8865a89ba5498f3781b1989dd09a6c625c8510777d43f5eea808750cf part-s011
+          b2ce8e40606897b2fd020b745ff6a53995e083762959dd5eb432e6024d15e0b5 part-s012
+          0dafbae90133002ac5c88dd26e0789e318b77f2572cf87a0a99b1cac7e654368 part-s013
+          01df2da8da2f633425653d80932402f3af97aa4a3a67616e72ee3c5013844611 part-s014
+          73a1131a6f0f8289809e745e44879f0e909fe31b0477dba780689250074c450c part-s015
+          80d4a2ff1dbab7722a1a5aad25779b66957c6479b0bfe13925176f213420fefe part-s016
+          beeb95a5a056c584bbda769d0ddb889270d7247e763451687ceae85b716eeda4 part-s017
+          f912f59fe68bcb2904b433256d05502c643e671ab474532d25544aeeb085d92e part-s018
+          04341d70156b5136b9d85d37cb8210ee3ac92f1bb703c5ffb5921f85d0658375 part-s019
+          992876c6f4b52301731c959f2bf221c91c41fc7af41514a80cec11f500b449ab part-s020
+          82a5602818935dfd0d0141c753e265ecb503b5d7d0a10b5b4f4732942be057a4 part-s021
+          415b3a6abba74556bc3af2d225b27485ac04383ced1f0abdee8e15b3cb05af6c part-s022
+          cf282bd3675c07ace8e6726dfae9a59f210722d0d6066dee0ef321d44f110610 part-s023
+          ed712bdebe9b5e3f7bc3c3a7523adc119e5faa8d58e8ed931b773d5f0f430f8c part-s024
+          d0d7225312dced47170226905a537fc3948604a960de00e444dae507febd0342 part-s025
+          26a97e7b465560ca413f10eba0511333364031a85c08e4137fe55d88d1a8c2b7 part-s026
+          66d354c0a801e95f1b850f2d6699b791daa45898276b05685b286feb8ad5bdf8 part-s027
+          75dd1acd7b85f8daaa6c14d3bb2a8ed07568398245a2bd11ce9a65cba5ac1ad9 part-s028
+          b082aa0c0420dc725e333c9f60d8f399d030999471399fa2718fade2b639f0c8 part-s029
+          6193893cc191197782ff3185c950914ca5b4bad33b938a2e3ce399d6cc248e3c part-s030
+          329d8979aeb361253674c89102acd8acfb1c8556aed1908a61f26a13589b2440 part-s031
+          73a5646b7ce314ab07c846b497221df4362be5a3c3d137187689c508d6446535 part-s032
+          dd6ca4ff13531a1dc193e57d7ec45678e17e50c9684ac38935c329dedf50ddc4 part-s033
+          59180722c23fb40cd4d3d0dc46c4cd855f5e4552bbdf7f174a4ded1bbd17c840 part-s034
+          c012536f88a60cee305079f5b1d66db5ec3cec2412d1b162d23a2b41fb748cc9 part-s035
+          0f5f282d42664be54d2c6d3fceb212b85fc203e5114e8f9a3585162838c15cad part-s036
+          b11060a523ef276c0825dcce66351f7d98b20a96ab75bd258b7898eabd53fb2e part-s037
+          befbee7b28e3ca59e7ea68347df9c94752efc9c34f538893e697033921719491 part-s038
+          36dfaa0d440c660dbf28aad029d0a3951e40d9519e81dddb078a53293b6ee667 part-s039
+          6a07ba1eb20f7fa64148ade1d4d99cb8385f9a594920dc2be12c66c80baf4342 part-s040
+          5c581b0229706f62423f56a63494641a463b32c1b0210e0113fbd651c783bc98 part-s041
+          HASHES
+          failures=0
+          while read -r expected name; do
+            path=".github/phase2-payload/$name"
+            actual="$(tr -d '[:space:]' < "$path" | sha256sum | cut -d' ' -f1)"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "BAD $name expected=$expected actual=$actual"
+              failures=1
+            fi
+          done < "$RUNNER_TEMP/expected-chunks"
+          if [[ "$failures" != 0 ]]; then
+            exit 1
+          fi
           cat \
             .github/phase2-payload/part-00 \
             .github/phase2-payload/part-r00 \
@@ -42,6 +113,7 @@ jobs:
             .github/phase2-payload/part-r13 \
             .github/phase2-payload/part-r14 \
             .github/phase2-payload/part-s* \
+            | tr -d '[:space:]' \
             | base64 --decode \
             | gzip --decompress \
             > "$RUNNER_TEMP/phase2.patch"
