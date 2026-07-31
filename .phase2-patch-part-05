@@ -73,7 +73,7 @@
      }
  }
 diff --git a/src-tauri/src/scheduler.rs b/src-tauri/src/scheduler.rs
-index 5faf993..cd6b489 100644
+index 5faf993..4d3d0ad 100644
 --- a/src-tauri/src/scheduler.rs
 +++ b/src-tauri/src/scheduler.rs
 @@ -52,19 +52,6 @@ pub enum ReviewOutcome {
