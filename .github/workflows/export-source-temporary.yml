@@ -1,0 +1,30 @@
+name: Export source for Phase 1 assembly
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Package source snapshot
+        run: |
+          git rev-parse HEAD^{tree} > BASE_TREE_SHA
+          tar --exclude='./.git' -czf "$RUNNER_TEMP/ostudy-source.tar.gz" .
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v7
+        with:
+          name: ostudy-phase-1-source
+          path: ${{ runner.temp }}/ostudy-source.tar.gz
+          if-no-files-found: error
