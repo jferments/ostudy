@@ -1,0 +1,46 @@
+name: Generate Phase 1 files
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install pinned Node and pnpm
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.0
+          package-manager-cache: false
+
+      - name: Generate pnpm lockfile
+        run: |
+          npm install --global pnpm@11.14.0
+          pnpm install --lockfile-only --no-frozen-lockfile
+
+      - name: Format Rust sources
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+          rustup default 1.97.1
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Package generated files
+        run: |
+          tar -czf "$RUNNER_TEMP/phase-1-generated.tar.gz" \
+            pnpm-lock.yaml \
+            src-tauri/Cargo.lock \
+            src-tauri/src
+
+      - name: Upload generated files
+        uses: actions/upload-artifact@v7
+        with:
+          name: phase-1-generated-files
+          path: ${{ runner.temp }}/phase-1-generated.tar.gz
+          if-no-files-found: error
