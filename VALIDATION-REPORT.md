@@ -12,7 +12,8 @@ before merge.
 ```
 
 Run the gate from the repository root without skipping individual stages; the
-matching GitHub Actions run is the clean-environment acceptance record.
+matching GitHub Actions run is the clean-environment acceptance record. A green
+result is required before this pull request is marked ready for local testing.
 
 The gate covers:
 
