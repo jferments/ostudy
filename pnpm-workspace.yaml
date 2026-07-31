@@ -1,0 +1,68 @@
+packages:
+  - "."
+
+# Fail rather than silently switching to a different pnpm release.
+pmOnFail: error
+updateNotifier: false
+
+# Validate package engine declarations against the pinned Node release.
+nodeVersion: 24.18.0
+engineStrict: true
+strictPeerDependencies: true
+
+# Keep pnpm 11's supply-chain defaults explicit instead of relying on an
+# implicit default that could change in a later major release.
+minimumReleaseAge: 1440
+minimumReleaseAgeStrict: true
+minimumReleaseAgeIgnoreMissingTime: false
+blockExoticSubdeps: true
+
+# pnpm 11 intentionally fails when a dependency has an unreviewed lifecycle
+# script. esbuild's install script selects and verifies its native executable,
+# so it is the single reviewed dependency explicitly permitted here.
+strictDepBuilds: true
+allowBuilds:
+  'esbuild@0.28.1': true
+
+# Keep the global escape hatch explicitly disabled.
+dangerouslyAllowAllBuilds: false
+
+# Never prompt or silently install while a project script is starting.
+verifyDepsBeforeRun: error
+
+# Tiptap publishes its internal packages with compatible ranges. Pin every
+# package used by StarterKit to one audited patch release so pnpm cannot resolve
+# a mixed Tiptap graph when a newer patch is published.
+overrides:
+  '@tiptap/core': '3.28.0'
+  '@tiptap/pm': '3.28.0'
+  '@tiptap/react': '3.28.0'
+  '@tiptap/starter-kit': '3.28.0'
+  '@tiptap/extensions': '3.28.0'
+  '@tiptap/extension-blockquote': '3.28.0'
+  '@tiptap/extension-bold': '3.28.0'
+  '@tiptap/extension-bubble-menu': '3.28.0'
+  '@tiptap/extension-bullet-list': '3.28.0'
+  '@tiptap/extension-code': '3.28.0'
+  '@tiptap/extension-code-block': '3.28.0'
+  '@tiptap/extension-document': '3.28.0'
+  '@tiptap/extension-dropcursor': '3.28.0'
+  '@tiptap/extension-floating-menu': '3.28.0'
+  '@tiptap/extension-gapcursor': '3.28.0'
+  '@tiptap/extension-hard-break': '3.28.0'
+  '@tiptap/extension-heading': '3.28.0'
+  '@tiptap/extension-highlight': '3.28.0'
+  '@tiptap/extension-horizontal-rule': '3.28.0'
+  '@tiptap/extension-image': '3.28.0'
+  '@tiptap/extension-italic': '3.28.0'
+  '@tiptap/extension-link': '3.28.0'
+  '@tiptap/extension-list': '3.28.0'
+  '@tiptap/extension-list-item': '3.28.0'
+  '@tiptap/extension-list-keymap': '3.28.0'
+  '@tiptap/extension-ordered-list': '3.28.0'
+  '@tiptap/extension-paragraph': '3.28.0'
+  '@tiptap/extension-strike': '3.28.0'
+  '@tiptap/extension-text': '3.28.0'
+  '@tiptap/extension-text-align': '3.28.0'
+  '@tiptap/extension-text-style': '3.28.0'
+  '@tiptap/extension-underline': '3.28.0'
