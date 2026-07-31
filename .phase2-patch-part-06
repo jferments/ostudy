@@ -1,3 +1,78 @@
++                        "INSERT INTO practice_session_cards (session_id, card_id, position) VALUES (?1, ?2, 0)",
++                        params![session_id, card_id],
+                     )
+                     .map_err(CommandError::database)?;
+-                Ok((session_id, card_id, submission_id))
++                Ok((session_id, card_id))
+             })
+             .expect("fixtures should be created");
+ 
+-        let make_input = || SubmitReviewInput {
+-            session_id: session_id.clone(),
+-            card_id: card_id.clone(),
+-            submission_id: submission_id.clone(),
+-            outcome: "somewhat_confident".to_string(),
+-            response_time_ms: 1_500,
+-        };
+-        let first = database
+-            .with_connection(|connection| submit_review_in_connection(connection, make_input()))
+-            .expect("first review should succeed");
+-        let retry = database
+-            .with_connection(|connection| submit_review_in_connection(connection, make_input()))
+-            .expect("retry should be idempotent");
+-        assert_eq!(first.card_id, retry.card_id);
+-        assert_eq!(first.due_at, retry.due_at);
+-
+         database
+             .with_connection(|connection| {
+-                let review_count: i64 = connection
+-                    .query_row("SELECT COUNT(*) FROM review_events", [], |row| row.get(0))
+-                    .map_err(CommandError::database)?;
+-                let reps: i64 = connection
++                record_practice_event(connection, &session_id, &card_id, true)?;
++                record_practice_event(connection, &session_id, &card_id, true)?;
++                let counters: (i64, i64) = connection
+                     .query_row(
+-                        "SELECT reps FROM card_schedules WHERE card_id = ?1",
+-                        [card_id.as_str()],
+-                        |row| row.get(0),
++                        "SELECT viewed_count, revealed_count FROM practice_sessions WHERE id = ?1",
++                        [&session_id],
++                        |row| Ok((row.get(0)?, row.get(1)?)),
+                     )
+                     .map_err(CommandError::database)?;
+-                assert_eq!(review_count, 1);
+-                assert_eq!(reps, 1);
++                assert_eq!(counters, (1, 1));
+                 Ok(())
+             })
+-            .expect("review state should load");
++            .expect("reveal should be recorded");
+     }
+ }
+diff --git a/src-tauri/src/scheduler.rs b/src-tauri/src/scheduler.rs
+index 5faf993..4d3d0ad 100644
+--- a/src-tauri/src/scheduler.rs
++++ b/src-tauri/src/scheduler.rs
+@@ -52,19 +52,6 @@ pub enum ReviewOutcome {
+ }
+ 
+ impl ReviewOutcome {
+-    pub fn parse(value: &str) -> Result<Self, CommandError> {
+-        match value {
+-            "wrong" => Ok(Self::Wrong),
+-            "not_confident" => Ok(Self::NotConfident),
+-            "somewhat_confident" => Ok(Self::SomewhatConfident),
+-            "very_confident" => Ok(Self::VeryConfident),
+-            _ => Err(CommandError::new(
+-                "invalid_review_outcome",
+-                "Choose whether the answer was wrong or how confident you were when correct.",
+-            )),
+-        }
+-    }
+-
+     pub const fn as_str(self) -> &'static str {
+         match self {
              Self::Wrong => "wrong",
 @@ -82,19 +69,6 @@ impl ReviewOutcome {
              Self::VeryConfident => Rating::Easy,
@@ -39,81 +114,3 @@
 diff --git a/src-tauri/src/transfer_v2.rs b/src-tauri/src/transfer_v2.rs
 index ec519bd..7b6fb17 100644
 --- a/src-tauri/src/transfer_v2.rs
-+++ b/src-tauri/src/transfer_v2.rs
-@@ -285,7 +285,7 @@ pub struct ImportDeckV2ResultDto {
-     pub tag_count: i64,
- }
- 
--#[derive(Clone)]
-+#[derive(Clone, Debug)]
- struct PackageDeck {
-     source_id: String,
-     name: String,
-@@ -295,7 +295,7 @@ struct PackageDeck {
-     revision: i64,
- }
- 
--#[derive(Clone)]
-+#[derive(Clone, Debug)]
- struct PackageTemplate {
-     source_id: String,
-     name: String,
-@@ -307,7 +307,7 @@ struct PackageTemplate {
-     revision: i64,
- }
- 
--#[derive(Clone)]
-+#[derive(Clone, Debug)]
- struct PackageNote {
-     source_id: String,
-     note_type: String,
-@@ -324,7 +324,7 @@ struct PackageNote {
-     revision: i64,
- }
- 
--#[derive(Clone)]
-+#[derive(Clone, Debug)]
- struct PackageCard {
-     source_id: String,
-     source_note_id: String,
-@@ -335,13 +335,14 @@ struct PackageCard {
-     updated_at: i64,
- }
- 
--#[derive(Clone)]
-+#[derive(Clone, Debug)]
- struct PackageTag {
-     source_id: String,
-     name: String,
-     normalized_name: String,
- }
- 
-+#[derive(Debug)]
- struct PackageAsset {
-     source_id: String,
-     original_filename: String,
-@@ -350,6 +351,7 @@ struct PackageAsset {
-     data: Vec<u8>,
- }
- 
-+#[derive(Debug)]
- struct PackageData {
-     deck: PackageDeck,
-     templates: Vec<PackageTemplate>,
-@@ -1923,7 +1925,7 @@ fn validate_package_metadata(
- fn validate_package_schema(connection: &Connection) -> Result<(), CommandError> {
-     let expected = PACKAGE_TABLES
-         .iter()
--        .map(|table| table.name.to_owned())
-+        .map(|table| table.name.to_string())
-         .collect::<BTreeSet<_>>();
-     let mut statement = connection
-         .prepare(
-@@ -2219,6 +2221,7 @@ mod tests {
-     #[test]
-     fn version_one_package_is_routed_to_the_compatibility_importer_before_v2_schema_checks() {
-         let root = temporary_test_directory("legacy-routing");
-+        fs::create_dir_all(&root).expect("temporary directory should be created");
-         let package_path = root.join("legacy.studydeck");
-         let connection = Connection::open(&package_path).expect("SQLite package should open");
-         connection
