@@ -1,0 +1,130 @@
+ AND deleted_at IS NULL AND archived_at IS NULL",
+-                [deck_id],
+-                |row| row.get(0),
+-            )
+-            .optional()
+-            .map_err(CommandError::database)?
+-            .ok_or_else(|| {
+-                CommandError::new(
+-                    "deck_not_found",
+-                    "One of the selected decks no longer exists.",
+-                )
+-            })?;
+-        deck_names.insert(deck_id.clone(), deck_name);
+-
+-        let mut statement = connection
+-            .prepare(
+-                "SELECT c.id, c.note_id, s.due_at\n\
+-                 FROM cards c\n\
+-                 JOIN notes n ON n.id = c.note_id\n\
+-                 JOIN card_schedules s ON s.card_id = c.id\n\
+-                 WHERE c.deck_id = ?1\n\
+-                   AND c.deleted_at IS NULL\n\
+-                   AND c.suspended_at IS NULL\n\
+-                   AND n.deleted_at IS NULL\n\
+-                   AND s.due_at <= ?2\n\
+-                 ORDER BY s.due_at ASC, c.created_at ASC",
+-            )
+-            .map_err(CommandError::database)?;
+-        let rows = statement
+-            .query_map(params![deck_id, now], |row| {
+-                Ok((
+-                    row.get::<_, String>(0)?,
+-                    row.get::<_, String>(1)?,
+-                    row.get::<_, i64>(2)?,
+-                ))
+-            })
+-            .map_err(CommandError::database)?;
+-
+-        for row in rows {
+-            let (card_id, note_id, due_at) = row.map_err(CommandError::database)?;
+-            pending_cards.push((deck_id.clone(), card_id, note_id, due_at));
+-        }
+-    }
+-
+-    if pending_cards.is_empty() {
+-        return Err(CommandError::new(
+-            "no_cards_due",
+-            "No cards are due in the selected decks right now.",
+-        ));
+-    }
+-
+-    let transaction = connection
+-        .transaction_with_behavior(TransactionBehavior::Immediate)
+-        .map_err(CommandError::database)?;
+-    let session_id = generate_id(&transaction)?;
+-    if shuffle {
+-        pending_cards.sort_by_key(|(_, card_id, _, _)| shuffle_key(&session_id, card_id));
+-    }
+-
+-    let selected_deck_ids_json =
+-        serde_json::to_string(&deck_ids).map_err(CommandError::serialization)?;
+-    transaction
+-        .execute(
+-            "INSERT INTO practice_sessions (\n\
+-                 id, selected_deck_ids_json, shuffle, card_count, started_at\n\
+-             ) VALUES (?1, ?2, ?3, ?4, ?5)",
+-            params![
+-                session_id,
+-                selected_deck_ids_json,
+-                bool_to_integer(shuffle),
+-                i64::try_from(pending_cards.len()).unwrap_or(i64::MAX),
+-                now,
+-            ],
+-        )
+-        .map_err(CommandError::database)?;
+-
+-    for (position, (_, card_id, _, _)) in pending_cards.iter().enumerate() {
+-        transaction
+-            .execute(
+-                "INSERT INTO practice_session_cards (session_id, card_id, position)\n\
+-                 VALUES (?1, ?2, ?3)",
+-                params![
+-                    session_id,
+-                    card_id,
+-                    i64::try_from(position).unwrap_or(i64::MAX),
+-                ],
+-            )
+-            .map_err(CommandError::database)?;
+-    }
+-    transaction.commit().map_err(CommandError::database)?;
+-
+-    let mut cards = Vec::with_capacity(pending_cards.len());
+-    for (deck_id, _, note_id, due_at) in pending_cards {
+-        let card = get_card_from_connection(connection, paths, &note_id)?;
+-        let deck_name = deck_names
+-            .get(&deck_id)
+-            .cloned()
+-            .unwrap_or_else(|| "Deck".to_string());
+-        cards.push(PracticeCardDto {
+-            card,
+-            deck_name,
+-            due_at,
+-        });
+-    }
+-
+-    Ok(PracticeSessionDto {
+-        id: session_id,
+-        cards,
+-        shuffle,
+-        started_at: now,
+-    })
+-}
+-
+ fn record_practice_event(
+     connection: &mut Connection,
+     session_id: &str,
+@@ -352,185 +141,6 @@ fn record_practice_event(
+     transaction.commit().map_err(CommandError::database)
+ }
+ 
+-fn submit_review_in_connection(
+-    connection: &mut Connection,
+-    input: SubmitReviewInput,
+-) -> Result<ReviewResultDto, CommandError> {
+-    let outcome = ReviewOutcome::parse(&input.outcome)?;
+-    let reviewed_at = unix_time_millis()?;
+-    let desired_retention = load_settings(connection)?.desired_retention;
+-
+-    let transaction = connection
+-        .transaction_with_behavior(Tra
