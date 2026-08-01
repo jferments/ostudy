@@ -11,17 +11,6 @@ CREATE INDEX notes_deck_duplicate_idx
     ON notes(deck_id, duplicate_hash)
     WHERE deleted_at IS NULL;
 
--- Legacy write commands from earlier builds do not know about duplicate_hash.
--- If one of those paths changes card text without changing the fingerprint,
--- clear it so duplicate checks fall back to a full normalized-text comparison.
-CREATE TRIGGER notes_duplicate_hash_after_legacy_update
-AFTER UPDATE OF front_text, back_text ON notes
-WHEN NEW.duplicate_hash = OLD.duplicate_hash
- AND (NEW.front_text != OLD.front_text OR NEW.back_text != OLD.back_text)
-BEGIN
-    UPDATE notes SET duplicate_hash = '' WHERE rowid = NEW.rowid;
-END;
-
 CREATE TABLE tags (
     id               TEXT PRIMARY KEY CHECK(length(id) = 32),
     name             TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 64),
