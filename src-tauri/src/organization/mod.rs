@@ -22,10 +22,7 @@ pub use save::{create_organized_card, update_organized_card};
 pub use tags::set_card_tags;
 pub use transfer::transfer_cards;
 
-pub(crate) fn ensure_active_deck(
-    connection: &Connection,
-    deck_id: &str,
-) -> Result<(), CommandError> {
+pub(crate) fn ensure_active_deck(connection: &Connection, deck_id: &str) -> Result<(), CommandError> {
     let exists: i64 = connection
         .query_row(
             "SELECT EXISTS(\n\
@@ -45,10 +42,7 @@ pub(crate) fn ensure_active_deck(
     Ok(())
 }
 
-pub(crate) fn ensure_active_note(
-    connection: &Connection,
-    note_id: &str,
-) -> Result<(), CommandError> {
+pub(crate) fn ensure_active_note(connection: &Connection, note_id: &str) -> Result<(), CommandError> {
     let exists = connection
         .query_row(
             "SELECT 1\n\
