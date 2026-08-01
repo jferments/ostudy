@@ -1,0 +1,418 @@
+/* Phase 2 Stage 2: organization, indexed browsing, and bulk workflows. */
+
+.stage2-browser-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(130px, auto) minmax(170px, auto) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.browser-select-field {
+  display: grid;
+  gap: 6px;
+}
+
+.browser-select-field > span,
+.bulk-entry-field > span,
+.bulk-entry-options label > span,
+.tag-input-field > span {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.tag-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  background: var(--surface-raised);
+}
+
+.tag-filter-row > span {
+  margin-right: 4px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tag-filter,
+.tag-chip,
+.tag-suggestion,
+.clear-tag-filters {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.tag-filter,
+.tag-suggestion,
+.clear-tag-filters {
+  padding: 5px 9px;
+}
+
+.tag-filter span {
+  margin-left: 4px;
+  color: var(--muted);
+}
+
+.tag-filter:hover,
+.tag-suggestion:hover,
+.clear-tag-filters:hover,
+.tag-filter.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.card-selection-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  background: var(--accent-soft);
+}
+
+.card-selection-bar > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.card-selection-bar > div > button:not(.secondary-button) {
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+}
+
+.selectable-card-list .card-row {
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    "select main actions"
+    "select metadata actions";
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.selectable-card-list .card-row.selected {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.card-select-checkbox {
+  grid-area: select;
+  display: grid;
+  place-items: center;
+  border-right: 1px solid var(--border);
+  padding: 0 12px;
+}
+
+.card-select-checkbox input {
+  width: 17px;
+  height: 17px;
+}
+
+.selectable-card-list .card-row-main {
+  grid-area: main;
+}
+
+.card-row-metadata {
+  grid-area: metadata;
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 20px 13px;
+}
+
+.selectable-card-list .card-row-actions {
+  grid-area: actions;
+  align-self: stretch;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 220px;
+  padding: 3px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.schedule-badge.new {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--accent);
+}
+
+.schedule-badge.due {
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--border));
+  color: var(--warning);
+}
+
+.schedule-badge.reviewed {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  color: var(--success);
+}
+
+.card-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  border-top: 1px solid var(--border);
+  padding: 14px 16px;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+}
+
+.bulk-entry-layout {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.bulk-entry-field {
+  display: grid;
+  gap: 7px;
+}
+
+.bulk-entry-field textarea {
+  min-height: 310px;
+  font-family: "Cascadia Code", "Liberation Mono", monospace;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.bulk-entry-options {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  align-items: end;
+  gap: 16px;
+}
+
+.bulk-entry-options label {
+  display: grid;
+  gap: 7px;
+}
+
+.bulk-preview-summary {
+  display: flex;
+  min-width: 150px;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 7px;
+  color: var(--text-soft);
+}
+
+.bulk-preview-summary strong {
+  color: var(--accent);
+  font-size: 1.5rem;
+}
+
+.bulk-errors {
+  display: grid;
+  gap: 4px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.transfer-mode-fieldset {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.transfer-mode-fieldset legend {
+  padding: 0 6px;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 760;
+}
+
+.transfer-mode-fieldset label {
+  display: flex;
+  grid-template-columns: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: var(--surface-raised);
+}
+
+.transfer-mode-fieldset input {
+  width: auto;
+}
+
+.card-tag-editor {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+}
+
+.card-tag-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.card-tag-heading h2 {
+  margin: 2px 0 0;
+  font-size: 1rem;
+}
+
+.card-tag-heading > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.tag-chip-list,
+.tag-suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.removable-tag {
+  cursor: pointer;
+}
+
+.removable-tag:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.tag-input-field {
+  display: grid;
+  gap: 6px;
+}
+
+.tag-input-field small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.tag-suggestion {
+  border-style: dashed;
+  background: transparent;
+}
+
+.duplicate-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  border: 1px solid color-mix(in srgb, var(--warning) 62%, var(--border));
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+}
+
+.duplicate-warning strong {
+  color: var(--warning);
+}
+
+.duplicate-warning p {
+  margin: 4px 0 0;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+}
+
+.duplicate-warning-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+@media (max-width: 1180px) {
+  .stage2-browser-toolbar {
+    grid-template-columns: minmax(240px, 1fr) 1fr 1fr;
+  }
+
+  .stage2-browser-toolbar .card-count-summary {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+
+  .selectable-card-list .card-row {
+    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-areas:
+      "select main"
+      "select metadata"
+      "actions actions";
+  }
+
+  .selectable-card-list .card-row-actions {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .stage2-browser-toolbar,
+  .bulk-entry-options {
+    grid-template-columns: 1fr;
+  }
+
+  .stage2-browser-toolbar .card-count-summary {
+    grid-column: auto;
+    justify-self: start;
+  }
+
+  .card-selection-bar,
+  .duplicate-warning {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .selectable-card-list .card-row-main {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .selectable-card-list .card-row-divider,
+  .selectable-card-list .card-row-side:last-child {
+    display: none;
+  }
+
+  .bulk-preview-summary {
+    justify-content: flex-start;
+  }
+
+  .transfer-mode-fieldset {
+    grid-template-columns: 1fr;
+  }
+}
