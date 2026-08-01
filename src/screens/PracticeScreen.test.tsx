@@ -16,6 +16,7 @@ vi.mock("../ipc", () => ({
     error instanceof Error ? error.message : "Unexpected error",
   markPracticeCardRevealed: vi.fn(),
   markPracticeCardViewed: vi.fn(),
+  startCardPractice: vi.fn(),
   startSelectedPractice: vi.fn(),
   submitPracticeReview: vi.fn(),
 }));
@@ -63,6 +64,13 @@ const card: ipc.Flashcard = {
   createdAt: 1,
   updatedAt: 1,
   revision: 1,
+};
+
+const session: ipc.PracticeSession = {
+  id: "d".repeat(32),
+  cards: [{ card, deckName: deck.name, dueAt: Date.now() }],
+  shuffle: true,
+  startedAt: Date.now(),
 };
 
 const analytics: ipc.Analytics = {
@@ -118,12 +126,8 @@ describe("PracticeScreen", () => {
     vi.mocked(ipc.markPracticeCardViewed).mockResolvedValue(undefined);
     vi.mocked(ipc.markPracticeCardRevealed).mockResolvedValue(undefined);
     vi.mocked(ipc.completePracticeSession).mockResolvedValue(undefined);
-    vi.mocked(ipc.startSelectedPractice).mockResolvedValue({
-      id: "d".repeat(32),
-      cards: [{ card, deckName: deck.name, dueAt: Date.now() }],
-      shuffle: true,
-      startedAt: Date.now(),
-    });
+    vi.mocked(ipc.startSelectedPractice).mockResolvedValue(session);
+    vi.mocked(ipc.startCardPractice).mockResolvedValue(session);
     vi.mocked(ipc.submitPracticeReview).mockResolvedValue({
       cardId: card.id,
       rating: 2,
@@ -190,6 +194,7 @@ describe("PracticeScreen", () => {
         launchRequest={{
           requestId: 7,
           deckIds: [noDueDeck.id],
+          cardIds: [],
           autoStart: true,
         }}
         onLaunchConsumed={onLaunchConsumed}
@@ -201,6 +206,32 @@ describe("PracticeScreen", () => {
       expect(onLaunchConsumed).toHaveBeenCalledTimes(1);
       expect(ipc.startSelectedPractice).toHaveBeenCalledWith({
         deckIds: [noDueDeck.id],
+        shuffle: true,
+      });
+    });
+  });
+
+  it("auto-starts a temporary session from explicit filtered card IDs", async () => {
+    const onLaunchConsumed = vi.fn();
+    render(
+      <PracticeScreen
+        decks={[deck]}
+        settings={settings}
+        launchRequest={{
+          requestId: 8,
+          deckIds: [],
+          cardIds: [card.id],
+          autoStart: true,
+        }}
+        onLaunchConsumed={onLaunchConsumed}
+        showToast={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onLaunchConsumed).toHaveBeenCalledTimes(1);
+      expect(ipc.startCardPractice).toHaveBeenCalledWith({
+        cardIds: [card.id],
         shuffle: true,
       });
     });

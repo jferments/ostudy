@@ -49,21 +49,156 @@ export interface Flashcard {
   revision: number;
 }
 
-export interface CreateCardInput {
+export interface OrganizedCard extends Flashcard {
+  tags: string[];
+  dueAt: number;
+}
+
+export interface CreateOrganizedCardInput {
   deckId: string;
   frontDoc: RichDocument;
   backDoc: RichDocument;
   frontText: string;
   backText: string;
+  tags: string[];
+  allowDuplicate: boolean;
 }
 
-export interface UpdateCardInput {
+export interface UpdateOrganizedCardInput {
   noteId: string;
+  deckId: string;
   revision: number;
   frontDoc: RichDocument;
   backDoc: RichDocument;
   frontText: string;
   backText: string;
+  tags: string[];
+  allowDuplicate: boolean;
+}
+
+export interface TagSummary {
+  id: string;
+  name: string;
+  cardCount: number;
+}
+
+export type DueFilter = "all" | "due" | "not_due";
+export type ReviewedFilter =
+  | "all"
+  | "never"
+  | "last_1_day"
+  | "last_7_days"
+  | "last_30_days"
+  | "older_30_days";
+export type CardSort =
+  | "relevance"
+  | "updated_desc"
+  | "question_asc"
+  | "due_asc"
+  | "last_reviewed_desc";
+
+export interface CardSearchInput {
+  deckIds: string[];
+  query: string;
+  tagIds: string[];
+  dueFilter: DueFilter;
+  reviewedFilter: ReviewedFilter;
+  sort: CardSort;
+  limit: number;
+  offset: number;
+}
+
+export interface CardBrowserRow {
+  cardId: string;
+  noteId: string;
+  deckId: string;
+  deckName: string;
+  frontText: string;
+  backText: string;
+  tags: string[];
+  dueAt: number;
+  lastReviewedAt: number | null;
+  reviewCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CardSearchPage {
+  cards: CardBrowserRow[];
+  totalCount: number;
+}
+
+export interface SelectionCard {
+  cardId: string;
+  noteId: string;
+  deckId: string;
+}
+
+export interface DuplicateCheckInput {
+  deckId: string;
+  frontText: string;
+  backText: string;
+  excludeNoteId?: string;
+}
+
+export interface DuplicateCard {
+  noteId: string;
+  deckId: string;
+  frontText: string;
+  backText: string;
+}
+
+export interface BulkCardRowInput {
+  question: string;
+  answer: string;
+  tags: string[];
+}
+
+export interface AnalyzeBulkCardsInput {
+  deckId: string;
+  rows: BulkCardRowInput[];
+}
+
+export interface BulkAnalyzeResult {
+  uniqueCount: number;
+  duplicateCount: number;
+  duplicateRowIndices: number[];
+}
+
+export interface BulkCreateCardsInput {
+  deckId: string;
+  rows: BulkCardRowInput[];
+}
+
+export interface BulkCreateResult {
+  createdCount: number;
+  skippedDuplicates: number;
+}
+
+export type TransferCardsMode = "move" | "copy";
+
+export interface TransferCardsInput {
+  noteIds: string[];
+  targetDeckId: string;
+  mode: TransferCardsMode;
+  skipDuplicates: boolean;
+}
+
+export interface TransferCardsResult {
+  affectedCount: number;
+  skippedDuplicates: number;
+}
+
+export type TagChangeMode = "add" | "remove";
+
+export interface BulkTagCardsInput {
+  noteIds: string[];
+  tags: string[];
+  mode: TagChangeMode;
+}
+
+export interface BulkActionResult {
+  affectedCount: number;
 }
 
 export interface AppSettings {
@@ -101,6 +236,11 @@ export interface PracticeSession {
 
 export interface StartPracticeInput {
   deckIds: string[];
+  shuffle: boolean;
+}
+
+export interface StartCardPracticeInput {
+  cardIds: string[];
   shuffle: boolean;
 }
 
@@ -212,20 +352,72 @@ export async function listCards(deckId: string): Promise<Flashcard[]> {
   return invoke<Flashcard[]>("list_cards", { deckId });
 }
 
-export async function getCard(noteId: string): Promise<Flashcard> {
-  return invoke<Flashcard>("get_card", { noteId });
-}
-
-export async function createCard(input: CreateCardInput): Promise<Flashcard> {
-  return invoke<Flashcard>("create_card", { input });
-}
-
-export async function updateCard(input: UpdateCardInput): Promise<Flashcard> {
-  return invoke<Flashcard>("update_card", { input });
-}
-
 export async function deleteCard(noteId: string): Promise<void> {
   return invoke<void>("delete_card", { noteId });
+}
+
+export async function listTags(deckIds: string[] = []): Promise<TagSummary[]> {
+  return invoke<TagSummary[]>("list_tags", { input: { deckIds } });
+}
+
+export async function searchCards(input: CardSearchInput): Promise<CardSearchPage> {
+  return invoke<CardSearchPage>("search_cards", { input });
+}
+
+export async function listMatchingCards(
+  input: CardSearchInput,
+): Promise<SelectionCard[]> {
+  return invoke<SelectionCard[]>("list_matching_cards", { input });
+}
+
+export async function getOrganizedCard(noteId: string): Promise<OrganizedCard> {
+  return invoke<OrganizedCard>("get_organized_card", { noteId });
+}
+
+export async function createOrganizedCard(
+  input: CreateOrganizedCardInput,
+): Promise<OrganizedCard> {
+  return invoke<OrganizedCard>("create_organized_card", { input });
+}
+
+export async function updateOrganizedCard(
+  input: UpdateOrganizedCardInput,
+): Promise<OrganizedCard> {
+  return invoke<OrganizedCard>("update_organized_card", { input });
+}
+
+export async function findDuplicateCards(
+  input: DuplicateCheckInput,
+): Promise<DuplicateCard[]> {
+  return invoke<DuplicateCard[]>("find_duplicate_cards", { input });
+}
+
+export async function analyzeBulkCards(
+  input: AnalyzeBulkCardsInput,
+): Promise<BulkAnalyzeResult> {
+  return invoke<BulkAnalyzeResult>("analyze_bulk_cards", { input });
+}
+
+export async function bulkCreateCards(
+  input: BulkCreateCardsInput,
+): Promise<BulkCreateResult> {
+  return invoke<BulkCreateResult>("bulk_create_cards", { input });
+}
+
+export async function transferCards(
+  input: TransferCardsInput,
+): Promise<TransferCardsResult> {
+  return invoke<TransferCardsResult>("transfer_cards", { input });
+}
+
+export async function bulkTagCards(
+  input: BulkTagCardsInput,
+): Promise<BulkActionResult> {
+  return invoke<BulkActionResult>("bulk_tag_cards", { input });
+}
+
+export async function deleteCards(noteIds: string[]): Promise<BulkActionResult> {
+  return invoke<BulkActionResult>("delete_cards", { input: { noteIds } });
 }
 
 export async function importImage(filePath: string): Promise<Asset> {
@@ -244,13 +436,6 @@ export async function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("get_app_info");
 }
 
-/** Starts a strictly scheduled session containing only cards already due. */
-export async function startPractice(
-  input: StartPracticeInput,
-): Promise<PracticeSession> {
-  return invoke<PracticeSession>("start_practice", { input });
-}
-
 /**
  * Starts the user-selected session used by the interface. Each deck contributes
  * due cards first, or all active cards when that deck has nothing due.
@@ -259,6 +444,13 @@ export async function startSelectedPractice(
   input: StartPracticeInput,
 ): Promise<PracticeSession> {
   return invoke<PracticeSession>("start_selected_practice", { input });
+}
+
+/** Starts a temporary session from an explicit Search/Filter result set. */
+export async function startCardPractice(
+  input: StartCardPracticeInput,
+): Promise<PracticeSession> {
+  return invoke<PracticeSession>("start_card_practice", { input });
 }
 
 export async function markPracticeCardViewed(
@@ -310,6 +502,14 @@ export async function importDeck(sourcePath: string): Promise<ImportResult> {
 
 export function createSubmissionId(): string {
   return crypto.randomUUID().replaceAll("-", "");
+}
+
+export function getErrorCode(error: unknown): string | null {
+  if (typeof error === "object" && error !== null) {
+    const payload = error as CommandErrorPayload;
+    return typeof payload.code === "string" ? payload.code : null;
+  }
+  return null;
 }
 
 export function getErrorMessage(error: unknown): string {

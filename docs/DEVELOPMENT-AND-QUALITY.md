@@ -10,12 +10,12 @@ The process is intentionally small:
 ## Local commands
 
 ```bash
-./scripts/setup-ubuntu.sh     # one-time tools, dependencies, and initial build
-./scripts/build.sh            # rebuild after source changes
-./run-app.sh                  # start the existing build without compiling
-./scripts/check.sh            # the complete automated development gate
+./scripts/setup-ubuntu.sh        # one-time tools, dependencies, and initial build
+./scripts/build.sh               # rebuild after source changes
+./run-app.sh                     # start the existing build without compiling
+./scripts/check.sh               # the complete automated development gate
 ./scripts/export-diagnostics.sh  # create a privacy-conscious support archive
-./scripts/release-check.sh    # repeat the complete gate from a clean source copy
+./scripts/release-check.sh       # repeat the complete gate from a clean source copy
 ```
 
 Cargo's incremental cache is preserved across builds. The build scripts set
@@ -28,13 +28,14 @@ checkout clears the old target once.
 `./scripts/check.sh` performs, in order:
 
 1. pinned environment and repository-manifest diagnostics;
-2. frozen pnpm installation and exact dependency verification;
-3. Vitest/Testing Library React tests;
-4. Rust formatting and warning-free Clippy;
-5. Rust unit/integration tests, including every release-schema fixture;
-6. a standalone Tauri build suitable for `run-app.sh`;
-7. resolved Rust dependency verification;
-8. a native Linux Tauri/WebDriver smoke test under an isolated data directory.
+2. Stage 2 migration, FTS5, tag, bulk, duplicate, and move/copy wiring checks;
+3. frozen pnpm installation and exact dependency verification;
+4. Vitest/Testing Library React tests;
+5. Rust formatting and warning-free Clippy;
+6. Rust unit/integration tests, including every release-schema fixture;
+7. a standalone Tauri build suitable for `run-app.sh`;
+8. resolved Rust dependency verification;
+9. a native Linux Tauri/WebDriver smoke test under an isolated data directory.
 
 The native smoke test may be skipped temporarily with
 `OSTUDY_SKIP_NATIVE_SMOKE=1`, but a pull request must state that it was skipped
@@ -44,22 +45,23 @@ and why. CI runs it normally.
 
 - **React component tests:** important interaction and error-rendering behavior
   with mocked typed IPC.
-- **Pure Rust tests:** validation, scheduling, settings, and deterministic rules.
-- **SQLite integration tests:** transactions, CRUD, import/export, idempotency,
-  and review-ledger invariants.
+- **Pure Rust tests:** validation, scheduling, tag normalization, duplicate
+  matching, search-query construction, and transfer rules.
+- **SQLite integration tests:** migrations, FTS triggers, transactions, CRUD,
+  bulk entry, move/copy, import/export, idempotency, and review-ledger
+  invariants.
 - **Release-schema fixtures:** load the immutable schema snapshot shipped by
   each release, preserve representative data, apply current migrations, and run
   SQLite's integrity check.
-- **Native smoke test:** launch the built Linux Tauri binary through WebDriver and
-  navigate from the main shell to Settings.
+- **Native smoke test:** launch the built Linux Tauri binary through WebDriver
+  and navigate from the main shell to Settings.
 - **Manual test:** exercise the changed user workflow and assess visual behavior.
 
 ## GitHub Actions
 
-A GitHub Actions workflow is a YAML recipe executed by GitHub on a clean hosted
-machine when a configured event occurs. The check workflow installs the pinned
-requirements on Ubuntu and runs the same `scripts/check.sh` used locally. It is
-a second environment, not a second development process.
+The check workflow installs the pinned requirements on Ubuntu and runs the same
+`scripts/check.sh` used locally. It is a second environment, not a second
+development process.
 
 ## Diagnostics
 
@@ -67,19 +69,14 @@ Rust emits small JSON records for startup and command failures. `run-app.sh`
 streams output to the terminal and appends it to a rotating JSON Lines log under
 the user's XDG state directory. `export-diagnostics.sh` includes environment,
 toolchain, Git state, and recent log records, but never includes the library
-database, cards, or managed images.
+database, cards, search index, tags, or managed images.
 
 ## Release artifacts
 
 A release is created only from a clean tagged commit whose tag matches the three
 application manifests. `scripts/release.sh` runs the clean-source gate and
 produces consistently named Debian, AppImage, and source artifacts plus build
-metadata and SHA-256 checksums. The tag-triggered release workflow uploads these
-files to its GitHub Actions run.
-
-Phase 1 does not introduce signing, automatic GitHub Release publication,
-updaters, or a multi-platform matrix. Those can be added when actual release
-needs justify them.
+metadata and SHA-256 checksums.
 
 ## Database changes
 
@@ -90,6 +87,6 @@ for the prior released schema; it does not edit old migrations.
 
 ## Honest validation
 
-Reports must distinguish commands actually executed, CI results, manual UI paths
-actually exercised, skipped checks, and remaining limitations. Static inspection
-is not a native desktop test.
+Reports must distinguish commands actually executed, CI results, manual UI
+paths actually exercised, skipped checks, and remaining limitations. Static
+inspection is not a native desktop test.

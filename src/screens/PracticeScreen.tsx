@@ -8,6 +8,7 @@ import {
   getErrorMessage,
   markPracticeCardRevealed,
   markPracticeCardViewed,
+  startCardPractice,
   startSelectedPractice,
   submitPracticeReview,
   type AppSettings,
@@ -33,7 +34,7 @@ interface PracticeScreenProps {
   showToast: (kind: "success" | "error" | "info", text: string) => void;
 }
 
-/** Runs scheduled or voluntary reviews with one 0–3 confidence choice. */
+/** Runs scheduled, voluntary, or temporary filtered reviews. */
 export function PracticeScreen({
   decks,
   settings,
@@ -42,6 +43,7 @@ export function PracticeScreen({
   showToast,
 }: PracticeScreenProps) {
   const [selectedDeckIds, setSelectedDeckIds] = useState<Set<string>>(new Set());
+  const [temporaryCardIds, setTemporaryCardIds] = useState<string[]>([]);
   const [shuffle, setShuffle] = useState(settings.practiceShuffle);
   const [session, setSession] = useState<PracticeSession | null>(null);
   const [position, setPosition] = useState(0);
@@ -79,19 +81,14 @@ export function PracticeScreen({
       if (startingRef.current || deckIds.length === 0) return;
       startingRef.current = true;
       setIsStarting(true);
+      setTemporaryCardIds([]);
       setErrorMessage(null);
       try {
         const started = await startSelectedPractice({
           deckIds,
           shuffle: requestedShuffle,
         });
-        setSession(started);
-        setPosition(0);
-        setRevealed(false);
-        setCompleted(false);
-        setRatedCount(0);
-        setConfidenceCounts([0, 0, 0, 0]);
-        questionShownAtRef.current = Date.now();
+        initializeSession(started);
       } catch (error: unknown) {
         setSession(null);
         setErrorMessage(getErrorMessage(error));
@@ -103,6 +100,40 @@ export function PracticeScreen({
     [],
   );
 
+  const beginCardSession = useCallback(
+    async (cardIds: string[], requestedShuffle: boolean): Promise<void> => {
+      if (startingRef.current || cardIds.length === 0) return;
+      startingRef.current = true;
+      setIsStarting(true);
+      setTemporaryCardIds(cardIds);
+      setErrorMessage(null);
+      try {
+        const started = await startCardPractice({
+          cardIds,
+          shuffle: requestedShuffle,
+        });
+        initializeSession(started);
+      } catch (error: unknown) {
+        setSession(null);
+        setErrorMessage(getErrorMessage(error));
+      } finally {
+        startingRef.current = false;
+        setIsStarting(false);
+      }
+    },
+    [],
+  );
+
+  function initializeSession(started: PracticeSession): void {
+    setSession(started);
+    setPosition(0);
+    setRevealed(false);
+    setCompleted(false);
+    setRatedCount(0);
+    setConfidenceCounts([0, 0, 0, 0]);
+    questionShownAtRef.current = Date.now();
+  }
+
   useEffect(() => {
     void loadRecentPractice();
   }, [loadRecentPractice]);
@@ -110,18 +141,37 @@ export function PracticeScreen({
   useEffect(() => {
     if (!launchRequest || handledLaunchRequestRef.current === launchRequest.requestId) return;
     handledLaunchRequestRef.current = launchRequest.requestId;
-    const eligible = launchRequest.deckIds.filter((deckId) =>
-      decks.some((deck) => deck.id === deckId && deck.cardCount > 0),
-    );
-    setSelectedDeckIds(new Set(eligible));
     setSession(null);
     setCompleted(false);
     setErrorMessage(null);
+
+    if (launchRequest.cardIds.length > 0) {
+      setSelectedDeckIds(new Set());
+      setTemporaryCardIds(launchRequest.cardIds);
+      onLaunchConsumed();
+      if (launchRequest.autoStart) {
+        void beginCardSession(launchRequest.cardIds, settings.practiceShuffle);
+      }
+      return;
+    }
+
+    const eligible = launchRequest.deckIds.filter((deckId) =>
+      decks.some((deck) => deck.id === deckId && deck.cardCount > 0),
+    );
+    setTemporaryCardIds([]);
+    setSelectedDeckIds(new Set(eligible));
     onLaunchConsumed();
     if (launchRequest.autoStart && eligible.length > 0) {
       void beginSession(eligible, settings.practiceShuffle);
     }
-  }, [beginSession, decks, launchRequest, onLaunchConsumed, settings.practiceShuffle]);
+  }, [
+    beginCardSession,
+    beginSession,
+    decks,
+    launchRequest,
+    onLaunchConsumed,
+    settings.practiceShuffle,
+  ]);
 
   useEffect(() => {
     if (!session || !current || completed) return;
@@ -208,6 +258,7 @@ export function PracticeScreen({
     setCompleted(false);
     setRatedCount(0);
     setConfidenceCounts([0, 0, 0, 0]);
+    setTemporaryCardIds([]);
     setErrorMessage(null);
     void loadRecentPractice();
   }
@@ -220,7 +271,13 @@ export function PracticeScreen({
         isStarting={isStarting}
         errorMessage={errorMessage}
         onChooseDecks={resetToSetup}
-        onRestart={() => void beginSession([...selectedDeckIds], shuffle)}
+        onRestart={() => {
+          if (temporaryCardIds.length > 0) {
+            void beginCardSession(temporaryCardIds, shuffle);
+          } else {
+            void beginSession([...selectedDeckIds], shuffle);
+          }
+        }}
       />
     );
   }

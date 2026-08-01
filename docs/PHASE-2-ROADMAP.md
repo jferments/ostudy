@@ -3,35 +3,26 @@
 Phase 2 is split into small vertical stages. Each stage is implemented, tested,
 and reviewed before work starts on the next one.
 
-## Stage 1 — Practice confidence and a compact session screen
+## Stage 1 — Practice confidence and a compact session screen — complete
 
-- Replace the two-step Right/Wrong → confidence flow with one answer:
-  **0 Wrong**, **1 Hard**, **2 Medium**, or **3 Easy**.
-- Preserve the existing FSRS and review-ledger formats through a documented
-  mapping at the application boundary.
-- Update analytics to use the same 0–3 language and show average confidence.
-- Replace the oversized Session options column with a small **Shuffle decks**
-  checkbox beside the session count and Start button.
-- Keep the shuffle choice on the Practice screen rather than duplicating it in
-  application Settings.
-- Keep every non-empty deck selectable. Each selected deck contributes due cards
-  first, or all active cards when it has nothing due.
-- Enable direct deck Practice actions whenever the deck contains at least one
-  card, even when its due count is zero.
-- Show recently practiced decks and their average confidence.
-- Improve keyboard and focus behavior for revealing and rating cards.
-- Make Tauri builds use Cargo's locked mode so builds cannot silently rewrite
-  `src-tauri/Cargo.lock`.
-- Document the card-content security boundary and the remaining Phase 2 order.
+- One answer after reveal: **0 Wrong**, **1 Hard**, **2 Medium**, or **3 Easy**.
+- Existing FSRS and review-ledger compatibility.
+- Confidence analytics and recently practiced decks.
+- Compact session setup and Practice-only shuffle control.
+- Voluntary study when a deck has no cards due.
+- Locked Cargo builds and the card-content security boundary.
 
-## Stage 2 — Organize, find, and enter cards
+## Stage 2 — Organize, find, and enter cards — complete in this branch
 
-- Tags.
-- SQLite FTS5 search.
-- Better card browsing, filtering, and keyboard selection.
-- Bulk card entry.
-- Duplicate detection.
-- Move or copy cards between decks.
+- Reusable tags attached to note source content.
+- SQLite FTS5 search across questions, answers, and tags.
+- A whole-library Cards screen with deck, tag, and schedule filters.
+- Sort controls, result paging, multi-selection, and keyboard navigation.
+- Transactional bulk card entry.
+- Exact normalized duplicate detection with explicit override.
+- Move cards while preserving schedules and review history.
+- Copy cards with fresh schedules.
+- Optional tag metadata in backward-compatible `.studydeck` packages.
 
 ## Stage 3 — Card types and safe templates
 
@@ -70,6 +61,7 @@ and reviewed before work starts on the next one.
 
 ## Deferred or excluded
 
-CSV/TSV import is not part of Phase 2. Deck interchange continues to use
-versioned SQLite `.studydeck` files. Math support is deferred to a separate,
-focused math-flashcard update.
+CSV/TSV file import is not part of Phase 2. Deck interchange continues to use
+versioned SQLite `.studydeck` files. Bulk entry is an in-application form rather
+than a second file format. Math support is deferred to a separate, focused
+math-flashcard update.

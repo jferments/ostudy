@@ -1229,17 +1229,47 @@ mod tests {
 
         database
             .with_connection(|connection| {
-                crate::cards::create_card_in_connection(
-                    connection,
-                    &paths,
-                    &deck.id,
-                    crate::cards::validate_content(
-                        paragraph("What is the action of metoprolol?"),
-                        paragraph("It selectively blocks beta-1 adrenergic receptors."),
-                        "ignored snapshot".to_string(),
-                        "ignored snapshot".to_string(),
-                    )?,
-                )
+                let content = crate::cards::validate_content(
+                    paragraph("What is the action of metoprolol?"),
+                    paragraph("It selectively blocks beta-1 adrenergic receptors."),
+                    "ignored snapshot".to_string(),
+                    "ignored snapshot".to_string(),
+                )?;
+                let now = unix_time_millis()?;
+                let note_id = generate_id(connection)?;
+                let card_id = generate_id(connection)?;
+                connection
+                    .execute(
+                        "INSERT INTO notes (
+                             id, deck_id, note_type, content_format, content_schema_version,
+                             front_doc, back_doc, front_text, back_text, duplicate_hash,
+                             created_at, updated_at, revision
+                         ) VALUES (
+                             ?1, ?2, 'basic', 'tiptap-json', 1,
+                             ?3, ?4, ?5, ?6, '', ?7, ?7, 1
+                         )",
+                        params![
+                            note_id,
+                            deck.id,
+                            content.front_doc_json,
+                            content.back_doc_json,
+                            content.front_text,
+                            content.back_text,
+                            now,
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO cards (
+                             id, note_id, deck_id, direction, template_ordinal,
+                             created_at, updated_at
+                         ) VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)",
+                        params![card_id, note_id, deck.id, now],
+                    )
+                    .map_err(CommandError::database)?;
+                insert_new_schedule(connection, &card_id, now)?;
+                Ok(())
             })
             .expect("card should be created");
 

@@ -81,20 +81,25 @@ would weaken reproducibility, privacy, and the current validation boundary.
 
 ## Compatibility constraints
 
-Treat the following as compatibility surfaces:
+Durable user data and documented external formats are compatibility surfaces:
 
-- Tauri command names and typed frontend wrappers;
-- stable error codes;
 - database schemas and migration ordering;
+- stable error codes for active durable operations;
 - Tiptap schema version and validation taxonomy;
 - `.studydeck` format and import behavior;
-- FSRS rating mapping and review idempotency;
+- FSRS rating mapping, review history, and review idempotency;
 - the Tauri application identifier and application-data location;
 - user-visible keyboard, accessibility, and theme behavior.
 
-A change to any of these requires explicit acceptance criteria, regression
-coverage, migration or compatibility analysis, and documentation. Durable
-cross-module changes require an ADR.
+The bundled React/Rust IPC layer is an internal contract unless an external API
+is explicitly documented. When an unreleased or internal feature is removed,
+delete its wrapper, command, request field, tests, and documentation together.
+Do not silently accept obsolete fields; revised request DTOs should reject them
+when acceptance would hide a caller defect.
+
+Changes to durable compatibility surfaces require explicit acceptance criteria,
+regression coverage, migration or compatibility analysis, and documentation.
+Durable cross-module changes require an ADR.
 
 ## Change-impact questions
 

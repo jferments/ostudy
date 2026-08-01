@@ -20,6 +20,11 @@ invariant.
   traps, compatibility, and retry behavior. Do not narrate obvious syntax.
 - Delete or update stale comments in the same change that invalidates them.
 
+- Do not use `#[allow(dead_code)]` to preserve removed product behavior. A
+  dead-code allowance needs a specific compiler or platform reason.
+- Use `deny_unknown_fields` on revised IPC request DTOs when silently accepting
+  a removed or misspelled field would hide a caller defect.
+
 ## TypeScript and React
 
 - Preserve strict typing. Do not use `any` to bypass a type problem.
@@ -38,6 +43,13 @@ invariant.
   styling changes.
 - Reuse the canonical editor configuration and serialization helpers; do not
   create alternate rich-content formats inside components.
+
+- Remove obsolete feature code end-to-end: UI state, typed wrappers, Rust commands,
+  request fields, tests, verification rules, and documentation. Do not keep an
+  ignored field or alias solely so an old internal caller can appear to succeed.
+- Compatibility shims require a documented durable-data or external-format need
+  and regression coverage. Bundled frontend/Rust IPC is not an external API by
+  default; a removed option should fail visibly.
 
 ## Rust
 
