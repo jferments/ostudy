@@ -5,6 +5,7 @@ import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import "./styles.css";
 import "./practice-confidence.css";
+import "./stage2-organization.css";
 
 const rootElement = document.getElementById("root");
 
