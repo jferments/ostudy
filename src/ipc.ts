@@ -66,6 +66,107 @@ export interface UpdateCardInput {
   backText: string;
 }
 
+export interface CreateOrganizedCardInput extends CreateCardInput {
+  tags: string[];
+}
+
+export interface UpdateOrganizedCardInput extends UpdateCardInput {
+  tags: string[];
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+}
+
+export interface TagSummary extends Tag {
+  cardCount: number;
+}
+
+export type CardBrowseStatus = "all" | "due" | "new" | "reviewed";
+export type CardBrowseSort =
+  | "relevance"
+  | "updated_desc"
+  | "created_desc"
+  | "question_asc"
+  | "due_asc";
+
+export interface BrowseCardsInput {
+  deckId: string;
+  query?: string;
+  tagIds?: string[];
+  status?: CardBrowseStatus;
+  sort?: CardBrowseSort;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CardBrowserItem {
+  card: Flashcard;
+  tags: Tag[];
+  dueAt: number;
+  scheduleState: number;
+  reviewCount: number;
+}
+
+export interface CardBrowserResult {
+  items: CardBrowserItem[];
+  total: number;
+  tags: TagSummary[];
+  limit: number;
+  offset: number;
+}
+
+export interface DuplicateMatch {
+  noteId: string;
+  deckId: string;
+  deckName: string;
+  frontText: string;
+  backText: string;
+}
+
+export interface BulkCardRowInput {
+  frontText: string;
+  backText: string;
+  tags: string[];
+}
+
+export type DuplicatePolicy = "skip" | "allow" | "error";
+
+export interface BulkCreateCardsInput {
+  deckId: string;
+  rows: BulkCardRowInput[];
+  duplicatePolicy: DuplicatePolicy;
+}
+
+export interface BulkSkippedRow {
+  rowNumber: number;
+  reason: string;
+}
+
+export interface BulkCreateResult {
+  createdCount: number;
+  skipped: BulkSkippedRow[];
+}
+
+export type CardTransferMode = "move" | "copy";
+
+export interface TransferCardsInput {
+  noteIds: string[];
+  destinationDeckId: string;
+  mode: CardTransferMode;
+}
+
+export interface SkippedTransfer {
+  noteId: string;
+  reason: string;
+}
+
+export interface TransferCardsResult {
+  transferredCount: number;
+  skipped: SkippedTransfer[];
+}
+
 export interface AppSettings {
   theme: "light" | "dark" | "console" | "synthwave";
   uiFont: string;
@@ -226,6 +327,53 @@ export async function updateCard(input: UpdateCardInput): Promise<Flashcard> {
 
 export async function deleteCard(noteId: string): Promise<void> {
   return invoke<void>("delete_card", { noteId });
+}
+
+export async function createOrganizedCard(
+  input: CreateOrganizedCardInput,
+): Promise<Flashcard> {
+  return invoke<Flashcard>("create_organized_card", { input });
+}
+
+export async function updateOrganizedCard(
+  input: UpdateOrganizedCardInput,
+): Promise<Flashcard> {
+  return invoke<Flashcard>("update_organized_card", { input });
+}
+
+export async function browseCards(
+  input: BrowseCardsInput,
+): Promise<CardBrowserResult> {
+  return invoke<CardBrowserResult>("browse_cards", { input });
+}
+
+export async function setCardTags(
+  noteId: string,
+  tags: string[],
+): Promise<Tag[]> {
+  return invoke<Tag[]>("set_card_tags", { input: { noteId, tags } });
+}
+
+export async function checkCardDuplicates(
+  frontText: string,
+  backText: string,
+  excludeNoteId?: string,
+): Promise<DuplicateMatch[]> {
+  return invoke<DuplicateMatch[]>("check_card_duplicates", {
+    input: { frontText, backText, excludeNoteId },
+  });
+}
+
+export async function bulkCreateCards(
+  input: BulkCreateCardsInput,
+): Promise<BulkCreateResult> {
+  return invoke<BulkCreateResult>("bulk_create_cards", { input });
+}
+
+export async function transferCards(
+  input: TransferCardsInput,
+): Promise<TransferCardsResult> {
+  return invoke<TransferCardsResult>("transfer_cards", { input });
 }
 
 export async function importImage(filePath: string): Promise<Asset> {
