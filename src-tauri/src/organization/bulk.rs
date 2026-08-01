@@ -165,8 +165,7 @@ pub(crate) fn bulk_create_cards_in_connection(
             }
             skipped.push(BulkSkippedRowDto {
                 row_number: row.row_number,
-                reason: "An identical question and answer already exist in this deck."
-                    .to_string(),
+                reason: "An identical question and answer already exist in this deck.".to_string(),
             });
             continue;
         }
