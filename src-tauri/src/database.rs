@@ -33,18 +33,18 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 4,
         name: "card_organization",
-        checksum: "dd5b4e988ba92f2626c98f46c149e057df0c356b616d665c5dfeaef917bcb002",
+        checksum: "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d",
         sql: include_str!("../migrations/0004_card_organization.sql"),
+    },
+    Migration {
+        version: 5,
+        name: "remove_legacy_duplicate_trigger",
+        checksum: "e275254085414039a7cf5f3a5e08ae35a61ea8f7d3d1b8e016a8d1f087c03029",
+        sql: include_str!("../migrations/0005_remove_legacy_duplicate_trigger.sql"),
     },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 4;
-
-// PR #11 was locally tested before the obsolete schema-4 trigger was removed.
-// Recognizing this exact unreleased checksum lets ostudy drop that trigger and
-// repair the migration ledger without deleting or rewriting any user cards.
-const CARD_ORGANIZATION_WITH_OBSOLETE_TRIGGER_CHECKSUM: &str =
-    "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d";
+const LATEST_SCHEMA_VERSION: i64 = 5;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -152,14 +152,6 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
 
         if let Some((name, checksum)) = existing {
             if name != migration.name || checksum != migration.checksum {
-                if repair_obsolete_card_organization_trigger(
-                    connection,
-                    migration,
-                    &name,
-                    &checksum,
-                )? {
-                    continue;
-                }
                 return Err(format!(
                     "Migration {} does not match this application build. The database was not modified.",
                     migration.version
@@ -207,50 +199,6 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
     }
 
     Ok(())
-}
-
-fn repair_obsolete_card_organization_trigger(
-    connection: &mut Connection,
-    migration: &Migration,
-    recorded_name: &str,
-    recorded_checksum: &str,
-) -> Result<bool, String> {
-    if migration.version != 4
-        || recorded_name != migration.name
-        || recorded_checksum != CARD_ORGANIZATION_WITH_OBSOLETE_TRIGGER_CHECKSUM
-    {
-        return Ok(false);
-    }
-
-    let transaction = connection
-        .transaction()
-        .map_err(|error| format!("Could not begin the schema 4 development repair: {error}"))?;
-    transaction
-        .execute_batch("DROP TRIGGER IF EXISTS notes_duplicate_hash_after_legacy_update;")
-        .map_err(|error| format!("Could not remove the obsolete schema 4 trigger: {error}"))?;
-    let changed = transaction
-        .execute(
-            "UPDATE schema_migrations
-             SET checksum = ?1
-             WHERE version = ?2 AND name = ?3 AND checksum = ?4",
-            params![
-                migration.checksum,
-                migration.version,
-                migration.name,
-                recorded_checksum
-            ],
-        )
-        .map_err(|error| format!("Could not record the repaired schema 4 checksum: {error}"))?;
-    if changed != 1 {
-        return Err(
-            "The schema 4 development repair did not update exactly one migration record."
-                .to_string(),
-        );
-    }
-    transaction
-        .commit()
-        .map_err(|error| format!("Could not commit the schema 4 development repair: {error}"))?;
-    Ok(true)
 }
 
 #[cfg(test)]
@@ -313,56 +261,57 @@ mod tests {
                         .map_err(CommandError::database)?;
                     assert_eq!(exists, 1, "missing table {table}");
                 }
+
+                let obsolete_trigger_exists: i64 = connection
+                    .query_row(
+                        "SELECT EXISTS(
+                             SELECT 1 FROM sqlite_master
+                             WHERE type = 'trigger'
+                               AND name = 'notes_duplicate_hash_after_legacy_update'
+                         )",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(obsolete_trigger_exists, 0);
                 Ok(())
             })
             .expect("second migration pass should succeed");
     }
 
     #[test]
-    fn repairs_the_unreleased_schema_four_trigger_without_losing_cards() {
+    fn schema_four_upgrades_forward_without_rewriting_history_or_losing_cards() {
         let fixture = &RELEASED_SCHEMA_FIXTURES[0];
         let mut connection = Connection::open_in_memory().expect("fixture database should open");
         connection
             .execute_batch(fixture.sql)
             .expect("released fixture should load");
         configure_connection(&connection).expect("fixture connection should configure");
-        apply_migrations(&mut connection).expect("fixture should reach current schema");
-        backfill_duplicate_hashes(&mut connection)
-            .expect("fixture duplicate fingerprints should backfill");
 
-        connection
-            .execute_batch(
-                "CREATE TRIGGER notes_duplicate_hash_after_legacy_update
-                 AFTER UPDATE OF front_text, back_text ON notes
-                 WHEN NEW.duplicate_hash = OLD.duplicate_hash
-                  AND (NEW.front_text != OLD.front_text OR NEW.back_text != OLD.back_text)
-                 BEGIN
-                     UPDATE notes SET duplicate_hash = '' WHERE rowid = NEW.rowid;
-                 END;",
-            )
-            .expect("obsolete development trigger should be recreated");
-        connection
+        let migration = &MIGRATIONS[3];
+        let transaction = connection
+            .transaction()
+            .expect("schema 4 transaction should start");
+        transaction
+            .execute_batch(migration.sql)
+            .expect("schema 4 should apply");
+        transaction
             .execute(
-                "UPDATE schema_migrations
-                 SET checksum = ?1
-                 WHERE version = 4",
-                [CARD_ORGANIZATION_WITH_OBSOLETE_TRIGGER_CHECKSUM],
+                "INSERT INTO schema_migrations (version, name, checksum, applied_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![migration.version, migration.name, migration.checksum, 0_i64],
             )
-            .expect("development checksum should be installed");
+            .expect("schema 4 should be recorded");
+        transaction
+            .execute_batch("PRAGMA user_version = 4;")
+            .expect("schema 4 user_version should be recorded");
+        transaction
+            .commit()
+            .expect("schema 4 transaction should commit");
+        backfill_duplicate_hashes(&mut connection)
+            .expect("schema 4 duplicate fingerprints should backfill");
 
-        apply_migrations(&mut connection)
-            .expect("the unreleased schema 4 variant should be repaired");
-
-        let checksum: String = connection
-            .query_row(
-                "SELECT checksum FROM schema_migrations WHERE version = 4",
-                [],
-                |row| row.get(0),
-            )
-            .expect("schema 4 checksum should be readable");
-        assert_eq!(checksum, MIGRATIONS[3].checksum);
-
-        let trigger_exists: i64 = connection
+        let trigger_before_upgrade: i64 = connection
             .query_row(
                 "SELECT EXISTS(
                      SELECT 1 FROM sqlite_master
@@ -372,23 +321,56 @@ mod tests {
                 [],
                 |row| row.get(0),
             )
-            .expect("trigger state should be readable");
-        assert_eq!(trigger_exists, 0);
+            .expect("schema 4 trigger state should be readable");
+        assert_eq!(trigger_before_upgrade, 1);
 
-        let preserved: (String, String, String) = connection
+        apply_migrations(&mut connection).expect("schema 4 should upgrade to schema 5");
+        backfill_duplicate_hashes(&mut connection)
+            .expect("schema 5 duplicate fingerprints should remain valid");
+
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("schema version should be readable");
+        assert_eq!(version, LATEST_SCHEMA_VERSION);
+
+        let recorded_schema_four: (String, String) = connection
             .query_row(
-                "SELECT d.name, n.front_text, c.direction
+                "SELECT name, checksum FROM schema_migrations WHERE version = 4",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("schema 4 ledger entry should be readable");
+        assert_eq!(recorded_schema_four.0, MIGRATIONS[3].name);
+        assert_eq!(recorded_schema_four.1, MIGRATIONS[3].checksum);
+
+        let trigger_after_upgrade: i64 = connection
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM sqlite_master
+                     WHERE type = 'trigger'
+                       AND name = 'notes_duplicate_hash_after_legacy_update'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .expect("schema 5 trigger state should be readable");
+        assert_eq!(trigger_after_upgrade, 0);
+
+        let preserved: (String, String, String, String) = connection
+            .query_row(
+                "SELECT d.name, n.front_text, c.direction, n.duplicate_hash
                  FROM decks d
                  JOIN notes n ON n.deck_id = d.id
                  JOIN cards c ON c.note_id = n.id
                  WHERE d.id = '00000000000000000000000000000001'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .expect("the existing deck and card should remain");
         assert_eq!(preserved.0, "Released schema fixture");
         assert_eq!(preserved.1, "Fixture question");
         assert_eq!(preserved.2, "forward");
+        assert!(!preserved.3.is_empty());
 
         let integrity: String = connection
             .query_row("PRAGMA integrity_check", [], |row| row.get(0))
