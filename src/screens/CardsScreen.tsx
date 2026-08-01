@@ -159,6 +159,15 @@ export function CardsScreen({
     setSelectedCards(new Map());
   }
 
+  async function completeSelectionMutation(): Promise<void> {
+    if (editingCard || creatingDeckId) {
+      onDirtyChange(false);
+      setEditingCard(null);
+      setCreatingDeckId(null);
+    }
+    await refreshAfterMutation();
+  }
+
   async function openCard(noteId: string): Promise<void> {
     if (isOpeningCard) return;
     setIsOpeningCard(true);
@@ -236,7 +245,7 @@ export function CardsScreen({
             setSelectionAction(null);
             setMoveCopyCards([]);
           }}
-          onComplete={refreshAfterMutation}
+          onComplete={completeSelectionMutation}
           showToast={showToast}
         />
       );
@@ -248,7 +257,7 @@ export function CardsScreen({
           mode={selectionAction === "add_tags" ? "add" : "remove"}
           suggestions={tags}
           onClose={() => setSelectionAction(null)}
-          onComplete={refreshAfterMutation}
+          onComplete={completeSelectionMutation}
           showToast={showToast}
         />
       );
@@ -258,7 +267,7 @@ export function CardsScreen({
         <DeleteCardsModal
           cards={selected}
           onClose={() => setSelectionAction(null)}
-          onComplete={refreshAfterMutation}
+          onComplete={completeSelectionMutation}
           showToast={showToast}
         />
       );
