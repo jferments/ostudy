@@ -8,8 +8,15 @@ and analytics on the user's computer.
 
 - Create, rename, and delete decks.
 - Create, edit, search, and delete rich-text flashcards.
+- Organize cards with reusable case-insensitive tags.
+- Search questions, answers, and tags through SQLite FTS5, then filter by tag or
+  study status and sort the result.
+- Select cards from the keyboard and move or copy them between decks.
+- Paste up to 500 question-and-answer rows at once with optional tags and an
+  explicit duplicate policy.
+- Warn before saving identical cards and skip duplicates during deck transfers.
 - Add managed local images to cards.
-- Import and export complete `.studydeck` deck files.
+- Import and export `.studydeck` deck files with card content and managed images.
 - Practice one or more decks with spaced-repetition scheduling.
 - Select any non-empty deck for voluntary study even when no cards are due.
 - Rate each revealed answer once on a four-level confidence scale:
@@ -86,6 +93,7 @@ paths, or remote images for the application to execute or load.
 ## Documentation
 
 - [`docs/PHASE-2-ROADMAP.md`](docs/PHASE-2-ROADMAP.md)
+- [`docs/PHASE-2-STAGE-2.md`](docs/PHASE-2-STAGE-2.md)
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - [`docs/CARD-FORMAT-AND-DATA-MODEL.md`](docs/CARD-FORMAT-AND-DATA-MODEL.md)
 - [`docs/DEVELOPMENT-AND-QUALITY.md`](docs/DEVELOPMENT-AND-QUALITY.md)
