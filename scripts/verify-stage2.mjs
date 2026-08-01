@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,6 +7,21 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (...parts) => readFile(join(root, ...parts), "utf8");
 const readJoined = async (...paths) =>
   (await Promise.all(paths.map((parts) => read(...parts)))).join("\n");
+
+async function readTree(relativeParts, suffix) {
+  const directory = join(root, ...relativeParts);
+  const entries = await readdir(directory, { withFileTypes: true });
+  const contents = [];
+  for (const entry of entries) {
+    const childParts = [...relativeParts, entry.name];
+    if (entry.isDirectory()) {
+      contents.push(await readTree(childParts, suffix));
+    } else if (entry.isFile() && entry.name.endsWith(suffix)) {
+      contents.push(await read(...childParts));
+    }
+  }
+  return contents.join("\n");
+}
 
 const [
   migration,
@@ -23,6 +38,8 @@ const [
   bulkEntry,
   cardStyles,
   taggedTransfer,
+  rustSourceTree,
+  workflowEntries,
 ] = await Promise.all([
   read("src-tauri", "migrations", "0004_card_organization.sql"),
   read("src-tauri", "src", "database.rs"),
@@ -38,8 +55,6 @@ const [
   ),
   read("src-tauri", "src", "cards.rs"),
   read("src-tauri", "src", "practice.rs"),
-  read("src-tauri", "src", "cards.rs"),
-  read("src-tauri", "src", "practice.rs"),
   read("src-tauri", "src", "practice_selection.rs"),
   read("src", "ipc.ts"),
   read("src", "App.tsx"),
@@ -53,6 +68,8 @@ const [
     ["src-tauri", "src", "tagged_transfer", "export.rs"],
     ["src-tauri", "src", "tagged_transfer", "import.rs"],
   ),
+  readTree(["src-tauri", "src"], ".rs"),
+  readdir(join(root, ".github", "workflows")),
 ]);
 
 const failures = [];
@@ -146,9 +163,6 @@ if (
 ) {
   failures.push("authoring still contains the removed single-deck compatibility input");
 }
-if (/\#\[(?:allow|expect)\(dead_code\)\]/u.test(authoring)) {
-  failures.push("authoring suppresses dead-code detection instead of removing stale code");
-}
 if (!authoring.includes("removed_authoring_fields_are_rejected")) {
   failures.push("removed authoring fields are not covered by strict-deserialization tests");
 }
@@ -164,13 +178,15 @@ for (const removedCommand of [
   }
 }
 for (const removedWrapper of [
+  "export interface CreateCardInput",
+  "export interface UpdateCardInput",
   "export async function getCard(",
   "export async function createCard(",
   "export async function updateCard(",
   "export async function startPractice(",
 ]) {
   if (ipc.includes(removedWrapper)) {
-    failures.push(`obsolete frontend IPC wrapper remains: ${removedWrapper}`);
+    failures.push(`obsolete frontend IPC surface remains: ${removedWrapper}`);
   }
 }
 for (const removedFunction of [
@@ -186,6 +202,19 @@ for (const removedFunction of [
 }
 if (practice.includes("pub fn start_practice(") || practice.includes("start_practice_in_connection(")) {
   failures.push("obsolete strict-due practice implementation remains");
+}
+
+const staleSuppressionPattern =
+  /#\[(?:allow|expect)\s*\(\s*(?:dead_code|unused|unused_imports|unused_variables)\s*\)\]/gu;
+const staleSuppressions = rustSourceTree.match(staleSuppressionPattern) ?? [];
+if (staleSuppressions.length > 0) {
+  failures.push(
+    `Rust source suppresses stale-code diagnostics: ${[...new Set(staleSuppressions)].join(", ")}`,
+  );
+}
+const oneOffWorkflows = workflowEntries.filter((name) => name.startsWith("one-off-"));
+if (oneOffWorkflows.length > 0) {
+  failures.push(`one-off mutation workflows must not be committed: ${oneOffWorkflows.join(", ")}`);
 }
 
 if (!practiceSelection.includes("start_card_practice") || !practiceSelection.includes("card_ids")) {
@@ -243,5 +272,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Search/Filter features are wired, strict IPC inputs reject removed fields, and obsolete APIs are absent.",
+  "OK   Search/Filter features are wired, removed IPC fields fail visibly, and stale API shims are absent.",
 );
