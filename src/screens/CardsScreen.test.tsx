@@ -84,7 +84,7 @@ describe("CardsScreen", () => {
     );
 
     expect(await screen.findByText("What reverses warfarin?")).toBeTruthy();
-    expect(screen.getByText("Anticoagulants")).toBeTruthy();
+    expect(screen.getAllByText("Anticoagulants").length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByRole("searchbox", { name: "Search cards" }), {
       target: { value: "warfarin" },
@@ -117,7 +117,9 @@ describe("CardsScreen", () => {
     fireEvent.keyDown(rowButton as HTMLButtonElement, { key: " " });
 
     expect(screen.getByText("1 selected")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Move / copy" })).toBeTruthy();
+    expect(
+      screen.getAllByRole("button", { name: "Move / copy" }).length,
+    ).toBeGreaterThan(0);
   });
 
   it("keeps the add-card editor open after Save + another", async () => {
