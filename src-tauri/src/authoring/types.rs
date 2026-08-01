@@ -199,8 +199,6 @@ pub struct BulkAnalyzeResultDto {
 pub struct BulkCreateCardsInput {
     pub deck_id: String,
     pub rows: Vec<BulkCardRowInput>,
-    #[serde(default = "default_true")]
-    pub skip_duplicates: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
