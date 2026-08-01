@@ -56,7 +56,7 @@ struct TagPayload {
 }
 
 #[tauri::command]
-pub fn export_deck(
+pub fn export_tagged_deck(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     input: ExportDeckInput,
@@ -74,7 +74,7 @@ pub fn export_deck(
 }
 
 #[tauri::command]
-pub fn import_deck(
+pub fn import_tagged_deck(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     source_path: String,
