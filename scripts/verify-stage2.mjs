@@ -13,10 +13,13 @@ const [
   database,
   rustCommands,
   authoring,
+  practiceSelection,
   ipc,
   app,
   cardsScreen,
   editor,
+  bulkEntry,
+  cardStyles,
   taggedTransfer,
 ] = await Promise.all([
   read("src-tauri", "migrations", "0004_card_organization.sql"),
@@ -30,10 +33,13 @@ const [
     ["src-tauri", "src", "authoring", "writes_and_transfer.rs"],
     ["src-tauri", "src", "authoring", "normalization.rs"],
   ),
+  read("src-tauri", "src", "practice_selection.rs"),
   read("src", "ipc.ts"),
   read("src", "App.tsx"),
   read("src", "screens", "CardsScreen.tsx"),
   read("src", "screens", "CardEditorScreen.tsx"),
+  read("src", "screens", "cards", "BulkEntryModal.tsx"),
+  read("src", "card-organization.css"),
   readJoined(
     ["src-tauri", "src", "tagged_transfer.rs"],
     ["src-tauri", "src", "tagged_transfer", "types_and_commands.rs"],
@@ -63,46 +69,78 @@ for (const fragment of [
 for (const command of [
   "list_tags",
   "search_cards",
+  "list_matching_cards",
   "get_organized_card",
   "create_organized_card",
   "update_organized_card",
   "find_duplicate_cards",
+  "analyze_bulk_cards",
   "bulk_create_cards",
   "transfer_cards",
+  "bulk_tag_cards",
+  "delete_cards",
 ]) {
   if (!rustCommands.includes(command)) failures.push(`Rust command not registered: ${command}`);
   if (!ipc.includes(`"${command}"`)) failures.push(`frontend command missing: ${command}`);
 }
+if (!rustCommands.includes("start_card_practice") || !ipc.includes('"start_card_practice"')) {
+  failures.push("temporary filtered practice command is not registered end to end");
+}
 
 for (const fragment of [
   "bm25(card_search_fts)",
+  "reviewed_filter",
+  "deck_ids",
+  "MAX_SEARCH_SELECTION",
   "MAX_BULK_ROWS",
   "TransferMode::Move",
   "TransferMode::Copy",
-  "skip_duplicates",
+  "TagChangeMode::Add",
   "backfill_duplicate_hashes",
 ]) {
   if (!authoring.includes(fragment)) failures.push(`authoring boundary missing: ${fragment}`);
 }
 
-if (!app.includes('label="Cards"') || !app.includes("<CardsScreen")) {
-  failures.push("Cards library is not registered in top-level navigation");
+if (!practiceSelection.includes("start_card_practice") || !practiceSelection.includes("card_ids")) {
+  failures.push("filtered result cards cannot start a temporary practice session");
+}
+if (!app.includes('label="Search/Filter"') || !app.includes("onPracticeCards")) {
+  failures.push("Search/Filter is not registered in top-level navigation and practice routing");
 }
 for (const fragment of [
-  "Bulk add",
-  "Move / copy",
+  "Search/Filter",
+  "deckIds",
+  "reviewedFilter",
   "Select visible",
-  "aria-multiselectable",
-  "tagIds",
+  "Select all",
+  "Deselect all",
+  "Actions for selected cards",
+  "Practice results",
+  "BulkTagModal",
+  "DeleteCardsModal",
 ]) {
-  if (!cardsScreen.includes(fragment)) failures.push(`Cards screen missing: ${fragment}`);
+  if (!cardsScreen.includes(fragment)) failures.push(`Search/Filter screen missing: ${fragment}`);
 }
 for (const fragment of [
   "<TagInput",
   "findDuplicateCards",
   "Save duplicate anyway",
+  "deckId: selectedDeckId",
+  'aria-label="Deck"',
 ]) {
   if (!editor.includes(fragment)) failures.push(`card editor missing: ${fragment}`);
+}
+if (!bulkEntry.includes("analyzeBulkCards") || bulkEntry.includes("skipDuplicates")) {
+  failures.push("bulk entry must analyze duplicates automatically without a policy checkbox");
+}
+for (const fragment of [
+  'input[type="checkbox"]',
+  ".card-row-selector",
+  ".modal-large",
+  ".transfer-mode-option",
+  ".bulk-entry-row",
+]) {
+  if (!cardStyles.includes(fragment)) failures.push(`responsive card styles missing: ${fragment}`);
 }
 if (
   !taggedTransfer.includes("CREATE TABLE IF NOT EXISTS tags") ||
@@ -118,5 +156,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Stage 2 tags, FTS5 search, bulk entry, duplicate checks, and move/copy are wired.",
+  "OK   Search/Filter multi-deck filters, bulk actions, duplicate review, and temporary practice are wired.",
 );
