@@ -18,6 +18,24 @@ mod tests {
             .id
     }
 
+    fn search_input(deck_ids: Vec<String>, query: &str) -> SearchCardsInput {
+        SearchCardsInput {
+            deck_ids,
+            deck_id: None,
+            query: query.to_string(),
+            tag_ids: vec![],
+            due_filter: "all".to_string(),
+            reviewed_filter: "all".to_string(),
+            sort: if query.is_empty() {
+                "updated_desc".to_string()
+            } else {
+                "relevance".to_string()
+            },
+            limit: 100,
+            offset: 0,
+        }
+    }
+
     #[test]
     fn normalizes_tags_and_duplicate_text() {
         let tags = validate_tags(vec![
@@ -71,38 +89,34 @@ mod tests {
             .with_connection(|connection| {
                 search_cards_in_connection(
                     connection,
-                    SearchCardsInput {
-                        deck_id: Some(deck_id.clone()),
-                        query: "warfarin".to_string(),
-                        tag_ids: vec![],
-                        due_filter: "all".to_string(),
-                        sort: "relevance".to_string(),
-                        limit: 100,
-                        offset: 0,
-                    },
+                    search_input(vec![deck_id.clone()], "warfarin"),
                 )
             })
             .expect("search should work");
         assert_eq!(page.total_count, 1);
         assert_eq!(page.cards[0].tags, vec!["Anticoagulants"]);
+        assert_eq!(page.cards[0].last_reviewed_at, None);
 
         let tag_page = database
             .with_connection(|connection| {
                 search_cards_in_connection(
                     connection,
-                    SearchCardsInput {
-                        deck_id: Some(deck_id.clone()),
-                        query: "anticoagulants".to_string(),
-                        tag_ids: vec![],
-                        due_filter: "all".to_string(),
-                        sort: "relevance".to_string(),
-                        limit: 100,
-                        offset: 0,
-                    },
+                    search_input(vec![deck_id.clone()], "anticoagulants"),
                 )
             })
             .expect("tag text should be searchable");
         assert_eq!(tag_page.total_count, 1);
+
+        let selected = database
+            .with_connection(|connection| {
+                list_matching_cards_in_connection(
+                    connection,
+                    search_input(vec![deck_id.clone()], "warfarin"),
+                )
+            })
+            .expect("matching cards should be selectable");
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].note_id, note_id);
 
         let organized = database
             .with_connection(|connection| hydrate_organized_card(connection, &paths, &note_id))
@@ -111,10 +125,7 @@ mod tests {
 
         let duplicates = database
             .with_connection(|connection| {
-                let normalized = normalized_pair(
-                    " what reverses   WARFARIN? ",
-                    "vitamin k",
-                );
+                let normalized = normalized_pair(" what reverses   WARFARIN? ", "vitamin k");
                 exact_duplicates(
                     connection,
                     &deck_id,
@@ -129,6 +140,47 @@ mod tests {
         assert_eq!(duplicates.len(), 1);
 
         let _ = std::fs::remove_dir_all(temporary);
+    }
+
+    #[test]
+    fn multi_deck_filter_limits_results_to_selected_decks() {
+        let database = Database::open_in_memory().expect("database should open");
+        let first_deck = create_test_deck(&database, "First");
+        let second_deck = create_test_deck(&database, "Second");
+        for deck_id in [&first_deck, &second_deck] {
+            database
+                .with_connection(|connection| {
+                    let content = validate_content(
+                        plain_text_document("Shared question"),
+                        plain_text_document("Answer"),
+                        "Shared question".to_string(),
+                        "Answer".to_string(),
+                    )?;
+                    let normalized = normalized_pair(&content.front_text, &content.back_text);
+                    let transaction = connection.transaction().map_err(CommandError::database)?;
+                    insert_organized_card(
+                        &transaction,
+                        deck_id,
+                        content,
+                        &[],
+                        &duplicate_hash(&normalized.0, &normalized.1),
+                        unix_time_millis()?,
+                    )?;
+                    transaction.commit().map_err(CommandError::database)
+                })
+                .expect("card should be created");
+        }
+
+        let one_deck = database
+            .with_connection(|connection| {
+                search_cards_in_connection(
+                    connection,
+                    search_input(vec![second_deck.clone()], "shared"),
+                )
+            })
+            .expect("filtered search should work");
+        assert_eq!(one_deck.total_count, 1);
+        assert_eq!(one_deck.cards[0].deck_id, second_deck);
     }
 
     #[test]
