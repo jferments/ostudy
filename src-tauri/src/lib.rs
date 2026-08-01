@@ -82,8 +82,8 @@ pub fn run() {
             practice::submit_practice_review,
             practice::complete_practice_session,
             analytics::get_analytics,
-            tagged_transfer::export_deck,
-            tagged_transfer::import_deck
+            tagged_transfer::export_tagged_deck,
+            tagged_transfer::import_tagged_deck
         ])
         .run(tauri::generate_context!())
         .expect("error while running ostudy");
