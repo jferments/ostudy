@@ -11,12 +11,14 @@ vi.mock("../ipc", () => ({
   createDeck: vi.fn(),
   deleteCards: vi.fn(),
   deleteDeck: vi.fn(),
-  getErrorMessage: (error: unknown) =>
+  getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
+  ),
   getOrganizedCard: vi.fn(),
   listMatchingCards: vi.fn(),
   listTags: vi.fn(),
   searchCards: vi.fn(),
+  startCardPractice: vi.fn(),
   transferCards: vi.fn(),
 }));
 
