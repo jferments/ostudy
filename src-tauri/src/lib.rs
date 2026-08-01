@@ -5,6 +5,7 @@ mod database;
 mod decks;
 mod error;
 mod logging;
+mod organization;
 mod paths;
 mod practice;
 mod practice_selection;
@@ -61,6 +62,13 @@ pub fn run() {
             cards::create_card,
             cards::update_card,
             cards::delete_card,
+            organization::browse_cards,
+            organization::set_card_tags,
+            organization::check_card_duplicates,
+            organization::create_organized_card,
+            organization::update_organized_card,
+            organization::bulk_create_cards,
+            organization::transfer_cards,
             assets::import_image,
             settings::get_settings,
             settings::save_settings,
