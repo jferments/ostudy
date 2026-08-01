@@ -91,21 +91,17 @@ pub struct SelectionCardDto {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ListTagsInput {
     #[serde(default)]
     pub deck_ids: Vec<String>,
-    #[serde(default)]
-    pub deck_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SearchCardsInput {
     #[serde(default)]
     pub deck_ids: Vec<String>,
-    #[serde(default)]
-    pub deck_id: Option<String>,
     #[serde(default)]
     pub query: String,
     #[serde(default)]
@@ -123,7 +119,7 @@ pub struct SearchCardsInput {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateOrganizedCardInput {
     pub deck_id: String,
     pub front_doc: Value,
@@ -137,7 +133,7 @@ pub struct CreateOrganizedCardInput {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateOrganizedCardInput {
     pub note_id: String,
     pub deck_id: String,
@@ -153,7 +149,7 @@ pub struct UpdateOrganizedCardInput {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DuplicateCheckInput {
     pub deck_id: String,
     pub front_text: String,
@@ -171,7 +167,7 @@ pub struct DuplicateCardDto {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BulkCardRowInput {
     pub question: String,
     pub answer: String,
@@ -180,7 +176,7 @@ pub struct BulkCardRowInput {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AnalyzeBulkCardsInput {
     pub deck_id: String,
     pub rows: Vec<BulkCardRowInput>,
@@ -195,15 +191,10 @@ pub struct BulkAnalyzeResultDto {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BulkCreateCardsInput {
     pub deck_id: String,
     pub rows: Vec<BulkCardRowInput>,
-    // Accepted only for backward-compatible IPC payloads. Bulk creation always
-    // omits exact duplicates after the review step.
-    #[serde(default = "default_true")]
-    #[allow(dead_code)]
-    pub skip_duplicates: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -214,7 +205,7 @@ pub struct BulkCreateResultDto {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TransferCardsInput {
     pub note_ids: Vec<String>,
     pub target_deck_id: String,
@@ -231,7 +222,7 @@ pub struct TransferCardsResultDto {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BulkTagCardsInput {
     pub note_ids: Vec<String>,
     pub tags: Vec<String>,
@@ -239,7 +230,7 @@ pub struct BulkTagCardsInput {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeleteCardsInput {
     pub note_ids: Vec<String>,
 }
