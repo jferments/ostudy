@@ -5,10 +5,16 @@ import * as ipc from "../ipc";
 import { CardsScreen } from "./CardsScreen";
 
 vi.mock("../ipc", () => ({
+  analyzeBulkCards: vi.fn(),
   bulkCreateCards: vi.fn(),
+  bulkTagCards: vi.fn(),
+  createDeck: vi.fn(),
+  deleteCards: vi.fn(),
+  deleteDeck: vi.fn(),
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
   getOrganizedCard: vi.fn(),
+  listMatchingCards: vi.fn(),
   listTags: vi.fn(),
   searchCards: vi.fn(),
   transferCards: vi.fn(),
@@ -45,6 +51,12 @@ const deck: ipc.Deck = {
   revision: 1,
 };
 
+const secondDeck: ipc.Deck = {
+  ...deck,
+  id: "e".repeat(32),
+  name: "Pathophysiology",
+};
+
 const browserCard: ipc.CardBrowserRow = {
   cardId: "b".repeat(32),
   noteId: "c".repeat(32),
@@ -54,9 +66,29 @@ const browserCard: ipc.CardBrowserRow = {
   backText: "Vitamin K",
   tags: ["Anticoagulants"],
   dueAt: Date.now(),
+  lastReviewedAt: null,
+  reviewCount: 0,
   createdAt: 1,
   updatedAt: 1,
 };
+
+const selection: ipc.SelectionCard = {
+  cardId: browserCard.cardId,
+  noteId: browserCard.noteId,
+  deckId: browserCard.deckId,
+};
+
+function renderScreen(decks: ipc.Deck[] = [deck, secondDeck]) {
+  return render(
+    <CardsScreen
+      decks={decks}
+      refreshDecks={async () => decks}
+      onPracticeCards={vi.fn()}
+      onDirtyChange={vi.fn()}
+      showToast={vi.fn()}
+    />,
+  );
+}
 
 describe("CardsScreen", () => {
   beforeEach(() => {
@@ -71,78 +103,79 @@ describe("CardsScreen", () => {
       cards: [browserCard],
       totalCount: 1,
     });
+    vi.mocked(ipc.listMatchingCards).mockResolvedValue([selection]);
   });
 
-  it("uses backend search and renders tags from the card library", async () => {
-    render(
-      <CardsScreen
-        decks={[deck]}
-        refreshDecks={async () => [deck]}
-        onDirtyChange={vi.fn()}
-        showToast={vi.fn()}
-      />,
-    );
+  it("renders Search/Filter and sends search and recency criteria to the backend", async () => {
+    renderScreen();
 
+    expect(await screen.findByRole("heading", { name: "Search/Filter" })).toBeTruthy();
     expect(await screen.findByText("What reverses warfarin?")).toBeTruthy();
     expect(screen.getAllByText("Anticoagulants").length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByRole("searchbox", { name: "Search cards" }), {
       target: { value: "warfarin" },
     });
+    fireEvent.change(screen.getByLabelText("Last studied"), {
+      target: { value: "last_7_days" },
+    });
 
     await waitFor(() => {
       expect(ipc.searchCards).toHaveBeenLastCalledWith(
         expect.objectContaining({
+          deckIds: [],
           query: "warfarin",
+          reviewedFilter: "last_7_days",
           sort: "relevance",
         }),
       );
     });
   });
 
-  it("supports keyboard selection before move or copy", async () => {
-    render(
-      <CardsScreen
-        decks={[deck]}
-        refreshDecks={async () => [deck]}
-        onDirtyChange={vi.fn()}
-        showToast={vi.fn()}
-      />,
-    );
-
-    const question = await screen.findByText("What reverses warfarin?");
-    const rowButton = question.closest("button");
-    expect(rowButton).not.toBeNull();
-
-    fireEvent.keyDown(rowButton as HTMLButtonElement, { key: " " });
-
-    expect(screen.getByText("1 selected")).toBeTruthy();
-    expect(
-      screen.getAllByRole("button", { name: "Move / copy" }).length,
-    ).toBeGreaterThan(0);
-  });
-
-  it("keeps the add-card editor open after Save + another", async () => {
-    render(
-      <CardsScreen
-        decks={[deck]}
-        refreshDecks={async () => [deck]}
-        onDirtyChange={vi.fn()}
-        showToast={vi.fn()}
-      />,
-    );
+  it("uses the per-card checkbox for selection without opening the editor", async () => {
+    renderScreen();
 
     await screen.findByText("What reverses warfarin?");
-    fireEvent.change(screen.getByLabelText("Deck"), {
-      target: { value: deck.id },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Add card" }));
-    expect(await screen.findByText("Card editor")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Select What reverses warfarin?" }),
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: "Mock save + another" }));
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    expect(ipc.getOrganizedCard).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("combobox", { name: "Actions for selected cards" }),
+    ).toBeTruthy();
+  });
+
+  it("selects all filtered results through the backend instead of only visible rows", async () => {
+    vi.mocked(ipc.searchCards).mockResolvedValue({
+      cards: [browserCard],
+      totalCount: 12,
+    });
+    renderScreen();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Select all (12)" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Card editor")).toBeTruthy();
+      expect(ipc.listMatchingCards).toHaveBeenCalled();
+      expect(screen.getByText("1 selected")).toBeTruthy();
     });
+  });
+
+  it("allows multiple deck filters and enables Add card only for one selected deck", async () => {
+    renderScreen();
+    await screen.findByText("What reverses warfarin?");
+
+    fireEvent.click(screen.getByText("All decks"));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Pharmacology/u }));
+
+    await waitFor(() => {
+      expect(ipc.searchCards).toHaveBeenLastCalledWith(
+        expect.objectContaining({ deckIds: [deck.id] }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Add card" }));
+    expect(await screen.findByText("Card editor")).toBeTruthy();
   });
 });
