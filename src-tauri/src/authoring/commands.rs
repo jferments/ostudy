@@ -3,10 +3,8 @@ pub fn list_tags(
     database: State<'_, Database>,
     input: ListTagsInput,
 ) -> Result<Vec<TagDto>, CommandError> {
-    if let Some(deck_id) = &input.deck_id {
-        validate_entity_id(deck_id, "deck")?;
-    }
-    database.with_connection(|connection| list_tags_in_connection(connection, input.deck_id.as_deref()))
+    let deck_ids = effective_deck_ids(&input.deck_ids, input.deck_id.as_deref())?;
+    database.with_connection(|connection| list_tags_in_connection(connection, &deck_ids))
 }
 
 #[tauri::command]
@@ -16,6 +14,15 @@ pub fn search_cards(
 ) -> Result<CardSearchPageDto, CommandError> {
     validate_search_input(&input)?;
     database.with_connection(|connection| search_cards_in_connection(connection, input))
+}
+
+#[tauri::command]
+pub fn list_matching_cards(
+    database: State<'_, Database>,
+    input: SearchCardsInput,
+) -> Result<Vec<SelectionCardDto>, CommandError> {
+    validate_search_input(&input)?;
+    database.with_connection(|connection| list_matching_cards_in_connection(connection, input))
 }
 
 #[tauri::command]
@@ -86,6 +93,7 @@ pub fn update_organized_card(
     input: UpdateOrganizedCardInput,
 ) -> Result<OrganizedCardDto, CommandError> {
     validate_entity_id(&input.note_id, "note")?;
+    validate_entity_id(&input.deck_id, "deck")?;
     if input.revision < 1 {
         return Err(CommandError::new(
             "invalid_revision",
@@ -107,8 +115,9 @@ pub fn update_organized_card(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         ensure_assets_exist(&transaction, &content_asset_ids(&content))?;
+        ensure_active_deck(&transaction, &input.deck_id)?;
 
-        let deck_id: String = transaction
+        let _current_deck_id: String = transaction
             .query_row(
                 "SELECT deck_id FROM notes WHERE id = ?1 AND deleted_at IS NULL",
                 [input.note_id.as_str()],
@@ -124,7 +133,7 @@ pub fn update_organized_card(
             && duplicate_checkable(&content.front_text, &content.back_text)
             && has_exact_duplicate(
                 &transaction,
-                &deck_id,
+                &input.deck_id,
                 &duplicate_hash,
                 &normalized.0,
                 &normalized.1,
@@ -138,10 +147,12 @@ pub fn update_organized_card(
         let changed = transaction
             .execute(
                 "UPDATE notes
-                 SET front_doc = ?1, back_doc = ?2, front_text = ?3, back_text = ?4,
-                     duplicate_hash = ?5, updated_at = ?6, revision = revision + 1
-                 WHERE id = ?7 AND revision = ?8 AND deleted_at IS NULL",
+                 SET deck_id = ?1, front_doc = ?2, back_doc = ?3,
+                     front_text = ?4, back_text = ?5, duplicate_hash = ?6,
+                     updated_at = ?7, revision = revision + 1
+                 WHERE id = ?8 AND revision = ?9 AND deleted_at IS NULL",
                 params![
+                    input.deck_id,
                     content.front_doc_json,
                     content.back_doc_json,
                     content.front_text,
@@ -161,9 +172,10 @@ pub fn update_organized_card(
         }
         transaction
             .execute(
-                "UPDATE cards SET updated_at = ?1
-                 WHERE note_id = ?2 AND deleted_at IS NULL",
-                params![now, input.note_id],
+                "UPDATE cards
+                 SET deck_id = ?1, updated_at = ?2
+                 WHERE note_id = ?3 AND deleted_at IS NULL",
+                params![input.deck_id, now, input.note_id],
             )
             .map_err(CommandError::database)?;
         replace_note_assets(&transaction, &input.note_id, &content)?;
@@ -203,27 +215,84 @@ pub fn find_duplicate_cards(
     })
 }
 
-#[tauri::command]
-pub fn bulk_create_cards(
-    database: State<'_, Database>,
-    input: BulkCreateCardsInput,
-) -> Result<BulkCreateResultDto, CommandError> {
-    validate_entity_id(&input.deck_id, "deck")?;
-    if input.rows.is_empty() {
+fn validate_bulk_rows(deck_id: &str, rows: &[BulkCardRowInput]) -> Result<(), CommandError> {
+    validate_entity_id(deck_id, "deck")?;
+    if rows.is_empty() {
         return Err(CommandError::new(
             "empty_bulk_entry",
             "Add at least one question and answer.",
         ));
     }
-    if input.rows.len() > MAX_BULK_ROWS {
+    if rows.len() > MAX_BULK_ROWS {
         return Err(CommandError::new(
             "too_many_bulk_cards",
             format!("Add at most {MAX_BULK_ROWS} cards at one time."),
         ));
     }
+    Ok(())
+}
 
+#[tauri::command]
+pub fn analyze_bulk_cards(
+    database: State<'_, Database>,
+    input: AnalyzeBulkCardsInput,
+) -> Result<BulkAnalyzeResultDto, CommandError> {
+    validate_bulk_rows(&input.deck_id, &input.rows)?;
     let prepared = input
         .rows
+        .into_iter()
+        .enumerate()
+        .map(|(index, row)| prepare_bulk_row(index, row))
+        .collect::<Result<Vec<_>, CommandError>>()?;
+
+    database.with_connection(|connection| {
+        ensure_active_deck(connection, &input.deck_id)?;
+        let mut seen = HashSet::new();
+        let mut duplicate_row_indices = Vec::new();
+        for (index, (content, _, normalized, hash)) in prepared.into_iter().enumerate() {
+            let duplicate_in_batch = !seen.insert(normalized.clone());
+            let duplicate_in_deck = has_exact_duplicate(
+                connection,
+                &input.deck_id,
+                &hash,
+                &normalized.0,
+                &normalized.1,
+                None,
+            )?;
+            if duplicate_checkable(&content.front_text, &content.back_text)
+                && (duplicate_in_batch || duplicate_in_deck)
+            {
+                duplicate_row_indices.push(i64::try_from(index).unwrap_or(i64::MAX));
+            }
+        }
+        let duplicate_count = i64::try_from(duplicate_row_indices.len()).unwrap_or(i64::MAX);
+        let row_count = i64::try_from(seen.len()).unwrap_or(i64::MAX);
+        Ok(BulkAnalyzeResultDto {
+            unique_count: row_count.saturating_sub(duplicate_count.saturating_sub(
+                i64::try_from(prepared_duplicate_overlap_placeholder()).unwrap_or(0),
+            )),
+            duplicate_count,
+            duplicate_row_indices,
+        })
+    })
+}
+
+const fn prepared_duplicate_overlap_placeholder() -> usize {
+    0
+}
+
+#[tauri::command]
+pub fn bulk_create_cards(
+    database: State<'_, Database>,
+    input: BulkCreateCardsInput,
+) -> Result<BulkCreateResultDto, CommandError> {
+    validate_bulk_rows(&input.deck_id, &input.rows)?;
+    let BulkCreateCardsInput {
+        deck_id,
+        rows,
+        skip_duplicates: _,
+    } = input;
+    let prepared = rows
         .into_iter()
         .enumerate()
         .map(|(index, row)| prepare_bulk_row(index, row))
@@ -233,7 +302,7 @@ pub fn bulk_create_cards(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
-        ensure_active_deck(&transaction, &input.deck_id)?;
+        ensure_active_deck(&transaction, &deck_id)?;
         let now = unix_time_millis()?;
         let mut seen = HashSet::new();
         let mut created_count = 0_i64;
@@ -243,20 +312,20 @@ pub fn bulk_create_cards(
             let duplicate_in_batch = !seen.insert(normalized.clone());
             let duplicate_in_deck = has_exact_duplicate(
                 &transaction,
-                &input.deck_id,
+                &deck_id,
                 &hash,
                 &normalized.0,
                 &normalized.1,
                 None,
             )?;
-            if input.skip_duplicates && (duplicate_in_batch || duplicate_in_deck) {
+            if duplicate_in_batch || duplicate_in_deck {
                 skipped_duplicates += 1;
                 continue;
             }
 
             insert_organized_card(
                 &transaction,
-                &input.deck_id,
+                &deck_id,
                 content,
                 &tags,
                 &hash,
@@ -279,7 +348,11 @@ pub fn transfer_cards(
     input: TransferCardsInput,
 ) -> Result<TransferCardsResultDto, CommandError> {
     validate_entity_id(&input.target_deck_id, "destination deck")?;
-    let note_ids = validate_note_ids(input.note_ids)?;
+    let note_ids = validate_note_ids_for_action(
+        input.note_ids,
+        MAX_TRANSFER_NOTES,
+        "Move or copy",
+    )?;
     let mode = TransferMode::parse(&input.mode)?;
 
     database.with_connection(|connection| {
@@ -356,6 +429,119 @@ pub fn transfer_cards(
         Ok(TransferCardsResultDto {
             affected_count,
             skipped_duplicates,
+        })
+    })
+}
+
+#[tauri::command]
+pub fn bulk_tag_cards(
+    database: State<'_, Database>,
+    input: BulkTagCardsInput,
+) -> Result<BulkActionResultDto, CommandError> {
+    let note_ids = validate_note_ids_for_action(
+        input.note_ids,
+        MAX_BULK_ACTION_NOTES,
+        "Change tags on",
+    )?;
+    let tags = validate_tags(input.tags)?;
+    if tags.is_empty() {
+        return Err(CommandError::new(
+            "no_tags_selected",
+            "Add at least one tag to apply or remove.",
+        ));
+    }
+    let mode = TagChangeMode::parse(&input.mode)?;
+
+    database.with_connection(|connection| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        let now = unix_time_millis()?;
+        let tag_ids = match mode {
+            TagChangeMode::Add => resolve_tag_ids(&transaction, &tags, now)?,
+            TagChangeMode::Remove => find_existing_tag_ids(&transaction, &tags)?,
+        };
+
+        for note_id in &note_ids {
+            ensure_active_note(&transaction, note_id)?;
+            match mode {
+                TagChangeMode::Add => {
+                    for tag_id in &tag_ids {
+                        transaction
+                            .execute(
+                                "INSERT OR IGNORE INTO note_tags (note_id, tag_id)
+                                 VALUES (?1, ?2)",
+                                params![note_id, tag_id],
+                            )
+                            .map_err(CommandError::database)?;
+                    }
+                }
+                TagChangeMode::Remove => {
+                    for tag_id in &tag_ids {
+                        transaction
+                            .execute(
+                                "DELETE FROM note_tags WHERE note_id = ?1 AND tag_id = ?2",
+                                params![note_id, tag_id],
+                            )
+                            .map_err(CommandError::database)?;
+                    }
+                }
+            }
+        }
+        cleanup_unused_tags(&transaction)?;
+        transaction.commit().map_err(CommandError::database)?;
+        Ok(BulkActionResultDto {
+            affected_count: i64::try_from(note_ids.len()).unwrap_or(i64::MAX),
+        })
+    })
+}
+
+#[tauri::command]
+pub fn delete_cards(
+    database: State<'_, Database>,
+    input: DeleteCardsInput,
+) -> Result<BulkActionResultDto, CommandError> {
+    let note_ids = validate_note_ids_for_action(
+        input.note_ids,
+        MAX_BULK_ACTION_NOTES,
+        "Delete",
+    )?;
+    database.with_connection(|connection| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        let now = unix_time_millis()?;
+        for note_id in &note_ids {
+            let changed = transaction
+                .execute(
+                    "UPDATE notes
+                     SET deleted_at = ?1, updated_at = ?1, revision = revision + 1
+                     WHERE id = ?2 AND deleted_at IS NULL",
+                    params![now, note_id],
+                )
+                .map_err(CommandError::database)?;
+            if changed != 1 {
+                return Err(CommandError::new(
+                    "card_not_found",
+                    "A selected flashcard no longer exists.",
+                ));
+            }
+            transaction
+                .execute(
+                    "UPDATE cards
+                     SET deleted_at = ?1, updated_at = ?1
+                     WHERE note_id = ?2 AND deleted_at IS NULL",
+                    params![now, note_id],
+                )
+                .map_err(CommandError::database)?;
+            transaction
+                .execute("DELETE FROM note_tags WHERE note_id = ?1", [note_id])
+                .map_err(CommandError::database)?;
+        }
+        cleanup_unused_tags(&transaction)?;
+        transaction.commit().map_err(CommandError::database)?;
+        Ok(BulkActionResultDto {
+            affected_count: i64::try_from(note_ids.len()).unwrap_or(i64::MAX),
         })
     })
 }
