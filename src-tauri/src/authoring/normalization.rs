@@ -43,6 +43,10 @@ fn default_due_filter() -> String {
     "all".to_string()
 }
 
+fn default_reviewed_filter() -> String {
+    "all".to_string()
+}
+
 fn default_sort() -> String {
     "updated_desc".to_string()
 }
