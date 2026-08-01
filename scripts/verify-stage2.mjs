@@ -24,7 +24,8 @@ async function readTree(relativeParts, suffix) {
 }
 
 const [
-  migration,
+  migration4,
+  migration5,
   database,
   rustCommands,
   authoring,
@@ -42,6 +43,7 @@ const [
   workflowEntries,
 ] = await Promise.all([
   read("src-tauri", "migrations", "0004_card_organization.sql"),
+  read("src-tauri", "migrations", "0005_remove_legacy_duplicate_trigger.sql"),
   read("src-tauri", "src", "database.rs"),
   read("src-tauri", "src", "lib.rs"),
   readJoined(
@@ -73,13 +75,17 @@ const [
 ]);
 
 const failures = [];
-const checksum = createHash("sha256").update(migration).digest("hex");
+const checksum4 = createHash("sha256").update(migration4).digest("hex");
+const checksum5 = createHash("sha256").update(migration5).digest("hex");
 
-if (!database.includes(`checksum: "${checksum}"`)) {
-  failures.push(`database.rs checksum mismatch for migration 0004: ${checksum}`);
+if (!database.includes(`checksum: "${checksum4}"`)) {
+  failures.push(`database.rs checksum mismatch for migration 0004: ${checksum4}`);
 }
-if (!database.includes("LATEST_SCHEMA_VERSION: i64 = 4")) {
-  failures.push("database schema version was not advanced to 4");
+if (!database.includes(`checksum: "${checksum5}"`)) {
+  failures.push(`database.rs checksum mismatch for migration 0005: ${checksum5}`);
+}
+if (!database.includes("LATEST_SCHEMA_VERSION: i64 = 5")) {
+  failures.push("database schema version was not advanced to 5");
 }
 for (const fragment of [
   "CREATE TABLE tags",
@@ -87,19 +93,25 @@ for (const fragment of [
   "CREATE VIRTUAL TABLE card_search_fts USING fts5",
   "duplicate_hash",
 ]) {
-  if (!migration.includes(fragment)) failures.push(`migration 0004 missing: ${fragment}`);
+  if (!migration4.includes(fragment)) failures.push(`migration 0004 missing: ${fragment}`);
 }
-if (migration.includes("notes_duplicate_hash_after_legacy_update")) {
-  failures.push("migration 0004 still installs the obsolete duplicate-hash compatibility trigger");
+if (!migration4.includes("notes_duplicate_hash_after_legacy_update")) {
+  failures.push("migration 0004 was rewritten instead of being preserved for existing databases");
 }
-for (const fragment of [
+if (!migration5.includes("DROP TRIGGER IF EXISTS notes_duplicate_hash_after_legacy_update")) {
+  failures.push("migration 0005 does not remove the obsolete duplicate-hash trigger");
+}
+for (const forbiddenRepair of [
   "repair_obsolete_card_organization_trigger",
   "CARD_ORGANIZATION_WITH_OBSOLETE_TRIGGER_CHECKSUM",
-  "repairs_the_unreleased_schema_four_trigger_without_losing_cards",
+  "UPDATE schema_migrations\n             SET checksum",
 ]) {
-  if (!database.includes(fragment)) {
-    failures.push(`database migration repair missing: ${fragment}`);
+  if (database.includes(forbiddenRepair)) {
+    failures.push(`database contains a migration-history repair shim: ${forbiddenRepair}`);
   }
+}
+if (!database.includes("schema_four_upgrades_forward_without_rewriting_history_or_losing_cards")) {
+  failures.push("schema 4 to schema 5 forward migration is not covered by a data-preservation test");
 }
 
 for (const command of [
@@ -284,5 +296,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Search/Filter features are wired, removed IPC fields fail visibly, and stale API shims are absent.",
+  "OK   Search/Filter features are wired, removed IPC fields fail visibly, stale APIs are absent, and schema cleanup is forward-only.",
 );
