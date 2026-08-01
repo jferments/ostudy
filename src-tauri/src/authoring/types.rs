@@ -23,9 +23,12 @@ const MAX_TAGS_PER_NOTE: usize = 32;
 const MAX_TAG_CHARS: usize = 64;
 const MAX_SEARCH_QUERY_CHARS: usize = 500;
 const MAX_SEARCH_TAGS: usize = 32;
+const MAX_SEARCH_DECKS: usize = 100;
 const MAX_SEARCH_LIMIT: i64 = 200;
+const MAX_SEARCH_SELECTION: usize = 10_000;
 const MAX_BULK_ROWS: usize = 500;
-const MAX_TRANSFER_NOTES: usize = 500;
+const MAX_BULK_ACTION_NOTES: usize = 10_000;
+const MAX_TRANSFER_NOTES: usize = 10_000;
 const TAG_SEPARATOR: char = '\u{001f}';
 
 #[derive(Clone, Debug, Serialize)]
@@ -66,6 +69,8 @@ pub struct CardBrowserRowDto {
     pub back_text: String,
     pub tags: Vec<String>,
     pub due_at: i64,
+    pub last_reviewed_at: Option<i64>,
+    pub review_count: i64,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -77,15 +82,29 @@ pub struct CardSearchPageDto {
     pub total_count: i64,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionCardDto {
+    pub card_id: String,
+    pub note_id: String,
+    pub deck_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListTagsInput {
+    #[serde(default)]
+    pub deck_ids: Vec<String>,
+    #[serde(default)]
     pub deck_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchCardsInput {
+    #[serde(default)]
+    pub deck_ids: Vec<String>,
+    #[serde(default)]
     pub deck_id: Option<String>,
     #[serde(default)]
     pub query: String,
@@ -93,6 +112,8 @@ pub struct SearchCardsInput {
     pub tag_ids: Vec<String>,
     #[serde(default = "default_due_filter")]
     pub due_filter: String,
+    #[serde(default = "default_reviewed_filter")]
+    pub reviewed_filter: String,
     #[serde(default = "default_sort")]
     pub sort: String,
     #[serde(default = "default_limit")]
@@ -119,6 +140,7 @@ pub struct CreateOrganizedCardInput {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateOrganizedCardInput {
     pub note_id: String,
+    pub deck_id: String,
     pub revision: i64,
     pub front_doc: Value,
     pub back_doc: Value,
@@ -148,13 +170,28 @@ pub struct DuplicateCardDto {
     pub back_text: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BulkCardRowInput {
     pub question: String,
     pub answer: String,
     #[serde(default)]
     pub tags: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyzeBulkCardsInput {
+    pub deck_id: String,
+    pub rows: Vec<BulkCardRowInput>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkAnalyzeResultDto {
+    pub unique_count: i64,
+    pub duplicate_count: i64,
+    pub duplicate_row_indices: Vec<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -188,6 +225,26 @@ pub struct TransferCardsInput {
 pub struct TransferCardsResultDto {
     pub affected_count: i64,
     pub skipped_duplicates: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkTagCardsInput {
+    pub note_ids: Vec<String>,
+    pub tags: Vec<String>,
+    pub mode: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteCardsInput {
+    pub note_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkActionResultDto {
+    pub affected_count: i64,
 }
 
 #[derive(Clone)]
