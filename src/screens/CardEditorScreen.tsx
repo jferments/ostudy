@@ -14,6 +14,7 @@ import {
   getErrorCode,
   getErrorMessage,
   getOrganizedCard,
+  listDecks,
   listTags,
   updateOrganizedCard,
   type Asset,
@@ -46,13 +47,14 @@ export function CardEditorScreen({
   onMoveCopy,
 }: CardEditorScreenProps) {
   const existing = card !== null && card.noteId !== "";
+  const [loadedDecks, setLoadedDecks] = useState<Deck[]>(providedDecks ?? []);
   const availableDecks = useMemo(() => {
     const byId = new Map<string, Deck>();
-    for (const candidate of [deck, ...(providedDecks ?? [])]) {
+    for (const candidate of [deck, ...loadedDecks]) {
       byId.set(candidate.id, candidate);
     }
     return [...byId.values()];
-  }, [deck, providedDecks]);
+  }, [deck, loadedDecks]);
   const [selectedDeckId, setSelectedDeckId] = useState(card?.deckId ?? deck.id);
   const selectedDeck =
     availableDecks.find((candidate) => candidate.id === selectedDeckId) ?? deck;
@@ -89,6 +91,28 @@ export function CardEditorScreen({
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (providedDecks) {
+      setLoadedDecks(providedDecks);
+      return;
+    }
+    let current = true;
+    void listDecks()
+      .then((decks) => {
+        if (current) setLoadedDecks(decks);
+      })
+      .catch((error: unknown) => {
+        if (current) {
+          setErrorMessage(
+            `The deck list could not be loaded: ${getErrorMessage(error)}`,
+          );
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [providedDecks]);
 
   useEffect(() => {
     void listTags()
