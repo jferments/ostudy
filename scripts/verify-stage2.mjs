@@ -38,6 +38,8 @@ const [
   ),
   read("src-tauri", "src", "cards.rs"),
   read("src-tauri", "src", "practice.rs"),
+  read("src-tauri", "src", "cards.rs"),
+  read("src-tauri", "src", "practice.rs"),
   read("src-tauri", "src", "practice_selection.rs"),
   read("src", "ipc.ts"),
   read("src", "App.tsx"),
