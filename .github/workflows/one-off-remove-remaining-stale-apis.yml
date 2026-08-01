@@ -1,0 +1,655 @@
+name: One-off remaining stale API cleanup
+
+on:
+  push:
+    branches:
+      - agent/phase-2-stage-2-search-filter-redesign
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the development branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/phase-2-stage-2-search-filter-redesign
+          fetch-depth: 0
+
+      - name: Remove remaining obsolete APIs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding="utf-8")
+
+          def write(path: str, value: str) -> None:
+              Path(path).write_text(value, encoding="utf-8")
+
+          def replace_exact(path: str, old: str, new: str, expected: int = 1) -> None:
+              value = read(path)
+              count = value.count(old)
+              if count != expected:
+                  raise RuntimeError(
+                      f"{path}: expected {expected} occurrence(s), found {count}: {old[:100]!r}"
+                  )
+              write(path, value.replace(old, new))
+
+          def remove_between(path: str, start: str, end: str) -> None:
+              value = read(path)
+              start_index = value.find(start)
+              if start_index < 0:
+                  raise RuntimeError(f"{path}: start marker not found: {start!r}")
+              end_index = value.find(end, start_index)
+              if end_index < 0:
+                  raise RuntimeError(f"{path}: end marker not found: {end!r}")
+              write(path, value[:start_index] + value[end_index:])
+
+          types = "src-tauri/src/authoring/types.rs"
+          types_text = read(types)
+          for stale in [
+              "pub deck_id: Option<String>",
+              "pub skip_duplicates: bool",
+              "#[allow(dead_code)]",
+          ]:
+              if stale in types_text:
+                  raise RuntimeError(f"{types}: stale input shim remains: {stale}")
+          for struct_name in ["ListTagsInput", "SearchCardsInput", "BulkCreateCardsInput"]:
+              struct_at = types_text.index(f"pub struct {struct_name}")
+              declaration = types_text[max(0, struct_at - 120):struct_at]
+              if "deny_unknown_fields" not in declaration:
+                  raise RuntimeError(f"{types}: {struct_name} is not strict")
+          if not types_text.endswith("\n"):
+              write(types, types_text + "\n")
+
+          commands = "src-tauri/src/authoring/commands.rs"
+          replace_exact(
+              commands,
+              "    let deck_ids = effective_deck_ids(&input.deck_ids, input.deck_id.as_deref())?;\n",
+              "    let deck_ids = effective_deck_ids(&input.deck_ids)?;\n",
+          )
+          replace_exact(
+              commands,
+              "    let BulkCreateCardsInput {\n"
+              "        deck_id,\n"
+              "        rows,\n"
+              "        skip_duplicates: _,\n"
+              "    } = input;\n",
+              "    let BulkCreateCardsInput { deck_id, rows } = input;\n",
+          )
+
+          search = "src-tauri/src/authoring/search_and_tags.rs"
+          replace_exact(
+              search,
+              "fn effective_deck_ids(\n"
+              "    deck_ids: &[String],\n"
+              "    legacy_deck_id: Option<&str>,\n"
+              ") -> Result<Vec<String>, CommandError> {\n"
+              "    let mut unique = BTreeSet::new();\n"
+              "    for deck_id in deck_ids {\n"
+              "        validate_entity_id(deck_id, \"deck\")?;\n"
+              "        unique.insert(deck_id.clone());\n"
+              "    }\n"
+              "    if let Some(deck_id) = legacy_deck_id {\n"
+              "        validate_entity_id(deck_id, \"deck\")?;\n"
+              "        unique.insert(deck_id.to_string());\n"
+              "    }\n"
+              "    if unique.len() > MAX_SEARCH_DECKS {\n"
+              "        return Err(CommandError::new(\n"
+              "            \"too_many_deck_filters\",\n"
+              "            format!(\"Filter by at most {MAX_SEARCH_DECKS} decks.\"),\n"
+              "        ));\n"
+              "    }\n"
+              "    Ok(unique.into_iter().collect())\n"
+              "}\n",
+              "fn effective_deck_ids(deck_ids: &[String]) -> Result<Vec<String>, CommandError> {\n"
+              "    let mut unique = BTreeSet::new();\n"
+              "    for deck_id in deck_ids {\n"
+              "        validate_entity_id(deck_id, \"deck\")?;\n"
+              "        unique.insert(deck_id.clone());\n"
+              "    }\n"
+              "    if unique.len() > MAX_SEARCH_DECKS {\n"
+              "        return Err(CommandError::new(\n"
+              "            \"too_many_deck_filters\",\n"
+              "            format!(\"Filter by at most {MAX_SEARCH_DECKS} decks.\"),\n"
+              "        ));\n"
+              "    }\n"
+              "    Ok(unique.into_iter().collect())\n"
+              "}\n",
+          )
+          replace_exact(
+              search,
+              "effective_deck_ids(&input.deck_ids, input.deck_id.as_deref())?",
+              "effective_deck_ids(&input.deck_ids)?",
+              expected=2,
+          )
+
+          tests = "src-tauri/src/authoring/tests.rs"
+          replace_exact(tests, "            deck_id: None,\n", "")
+          replace_exact(tests, "            skip_duplicates: true,\n", "")
+          replace_exact(
+              tests,
+              "    #[test]\n"
+              "    fn creates_searches_and_detects_tagged_cards() {\n",
+              "    #[test]\n"
+              "    fn removed_bulk_duplicate_flag_is_rejected() {\n"
+              "        let error = serde_json::from_value::<BulkCreateCardsInput>(serde_json::json!({\n"
+              "            \"deckId\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n"
+              "            \"rows\": [],\n"
+              "            \"skipDuplicates\": true\n"
+              "        }))\n"
+              "        .expect_err(\"the removed option must not be silently accepted\");\n"
+              "        let message = error.to_string();\n"
+              "        assert!(message.contains(\"unknown field\") && message.contains(\"skipDuplicates\"));\n"
+              "    }\n\n"
+              "    #[test]\n"
+              "    fn removed_single_deck_filter_alias_is_rejected() {\n"
+              "        let list_error = serde_json::from_value::<ListTagsInput>(serde_json::json!({\n"
+              "            \"deckId\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n"
+              "        }))\n"
+              "        .expect_err(\"the removed tag-filter alias must be rejected\");\n"
+              "        assert!(list_error.to_string().contains(\"deckId\"));\n\n"
+              "        let search_error = serde_json::from_value::<SearchCardsInput>(serde_json::json!({\n"
+              "            \"deckId\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n"
+              "        }))\n"
+              "        .expect_err(\"the removed search-filter alias must be rejected\");\n"
+              "        assert!(search_error.to_string().contains(\"deckId\"));\n"
+              "    }\n\n"
+              "    #[test]\n"
+              "    fn creates_searches_and_detects_tagged_cards() {\n",
+          )
+
+          ipc = "src/ipc.ts"
+          replace_exact(
+              ipc,
+              "export interface CreateCardInput {\n"
+              "  deckId: string;\n"
+              "  frontDoc: RichDocument;\n"
+              "  backDoc: RichDocument;\n"
+              "  frontText: string;\n"
+              "  backText: string;\n"
+              "}\n\n"
+              "export interface UpdateCardInput {\n"
+              "  noteId: string;\n"
+              "  revision: number;\n"
+              "  frontDoc: RichDocument;\n"
+              "  backDoc: RichDocument;\n"
+              "  frontText: string;\n"
+              "  backText: string;\n"
+              "}\n\n"
+              "export interface CreateOrganizedCardInput extends CreateCardInput {\n"
+              "  tags: string[];\n"
+              "  allowDuplicate: boolean;\n"
+              "}\n\n"
+              "export interface UpdateOrganizedCardInput extends UpdateCardInput {\n"
+              "  deckId: string;\n"
+              "  tags: string[];\n"
+              "  allowDuplicate: boolean;\n"
+              "}\n",
+              "export interface CreateOrganizedCardInput {\n"
+              "  deckId: string;\n"
+              "  frontDoc: RichDocument;\n"
+              "  backDoc: RichDocument;\n"
+              "  frontText: string;\n"
+              "  backText: string;\n"
+              "  tags: string[];\n"
+              "  allowDuplicate: boolean;\n"
+              "}\n\n"
+              "export interface UpdateOrganizedCardInput {\n"
+              "  noteId: string;\n"
+              "  deckId: string;\n"
+              "  revision: number;\n"
+              "  frontDoc: RichDocument;\n"
+              "  backDoc: RichDocument;\n"
+              "  frontText: string;\n"
+              "  backText: string;\n"
+              "  tags: string[];\n"
+              "  allowDuplicate: boolean;\n"
+              "}\n",
+          )
+          replace_exact(
+              ipc,
+              "export async function getCard(noteId: string): Promise<Flashcard> {\n"
+              "  return invoke<Flashcard>(\"get_card\", { noteId });\n"
+              "}\n\n"
+              "export async function createCard(input: CreateCardInput): Promise<Flashcard> {\n"
+              "  return invoke<Flashcard>(\"create_card\", { input });\n"
+              "}\n\n"
+              "export async function updateCard(input: UpdateCardInput): Promise<Flashcard> {\n"
+              "  return invoke<Flashcard>(\"update_card\", { input });\n"
+              "}\n\n",
+              "",
+          )
+          replace_exact(
+              ipc,
+              "/** Starts a strictly scheduled session containing only cards already due. */\n"
+              "export async function startPractice(\n"
+              "  input: StartPracticeInput,\n"
+              "): Promise<PracticeSession> {\n"
+              "  return invoke<PracticeSession>(\"start_practice\", { input });\n"
+              "}\n\n",
+              "",
+          )
+
+          lib = "src-tauri/src/lib.rs"
+          for registration in [
+              "            cards::get_card,\n",
+              "            cards::create_card,\n",
+              "            cards::update_card,\n",
+              "            practice::start_practice,\n",
+          ]:
+              replace_exact(lib, registration, "")
+
+          cards = "src-tauri/src/cards.rs"
+          replace_exact(
+              cards,
+              "//! Flashcard commands, persistence, and rich-text validation.\n"
+              "//!\n"
+              "//! The React/Tiptap editor sends JSON documents across the Tauri IPC boundary.\n"
+              "//! This module treats those documents as untrusted input: it validates the\n"
+              "//! supported schema, derives searchable plain text in Rust, and writes notes,\n"
+              "//! generated cards, and asset relationships in SQLite transactions. Keeping\n"
+              "//! the authoritative validation here prevents a modified frontend or imported\n"
+              "//! deck from bypassing the card-content rules.\n",
+              "//! Shared card hydration, per-deck browsing, deletion, and rich-text validation.\n"
+              "//!\n"
+              "//! The React/Tiptap editor sends JSON documents across the Tauri IPC boundary.\n"
+              "//! This module treats those documents as untrusted input, validates the supported\n"
+              "//! schema, and derives authoritative plain text in Rust. The authoring module owns\n"
+              "//! card creation and updates so there is one write path for tags, duplicate\n"
+              "//! fingerprints, assets, deck changes, and scheduling invariants.\n",
+          )
+          replace_exact(
+              cards,
+              "use rusqlite::{params, Connection, OptionalExtension, Transaction};\n"
+              "use serde::{Deserialize, Serialize};\n",
+              "use rusqlite::{params, Connection, OptionalExtension};\n"
+              "use serde::Serialize;\n",
+          )
+          replace_exact(
+              cards,
+              "    assets::{ensure_assets_exist, get_assets_for_note, AssetDto},\n",
+              "    assets::{get_assets_for_note, AssetDto},\n",
+          )
+          replace_exact(cards, "    scheduler::insert_new_schedule,\n", "")
+          replace_exact(
+              cards,
+              "    util::{generate_id, unix_time_millis, validate_entity_id},\n",
+              "    util::{unix_time_millis, validate_entity_id},\n",
+          )
+          replace_exact(
+              cards,
+              "const CONTENT_FORMAT: &str = \"tiptap-json\";\n"
+              "const CONTENT_SCHEMA_VERSION: i64 = 1;\n",
+              "",
+          )
+          remove_between(
+              cards,
+              "#[derive(Debug, Deserialize)]\n#[serde(rename_all = \"camelCase\")]\npub struct CreateCardInput",
+              "#[derive(Clone, Debug, Serialize)]",
+          )
+          remove_between(
+              cards,
+              "#[tauri::command]\npub fn get_card(",
+              "#[tauri::command]\npub fn delete_card(",
+          )
+          remove_between(
+              cards,
+              "pub(crate) fn create_card_in_connection(",
+              "fn delete_card_in_connection(",
+          )
+          remove_between(cards, "fn ensure_active_deck(", "fn hydrate_card(")
+          remove_between(cards, "fn all_asset_ids(", "#[cfg(test)]")
+          remove_between(
+              cards,
+              "    #[test]\n    fn creates_updates_lists_and_deletes_a_card() {",
+              "    #[test]\n    fn rejects_javascript_links() {",
+          )
+          replace_exact(
+              cards,
+              "    #[test]\n    fn rejects_javascript_links() {\n",
+              "    #[test]\n"
+              "    fn lists_hydrates_and_deletes_a_card() {\n"
+              "        let database = Database::open_in_memory().expect(\"database should open\");\n"
+              "        let temporary = tempfile_path();\n"
+              "        let paths = AppPaths::new(temporary.clone()).expect(\"paths should initialize\");\n\n"
+              "        let deck = database\n"
+              "            .with_connection(|connection| {\n"
+              "                crate::decks::create_deck_in_connection(\n"
+              "                    connection,\n"
+              "                    crate::decks::CreateDeckInput {\n"
+              "                        name: \"Biology\".to_string(),\n"
+              "                        description: None,\n"
+              "                    },\n"
+              "                )\n"
+              "            })\n"
+              "            .expect(\"deck should be created\");\n\n"
+              "        let (note_id, card_id) = database\n"
+              "            .with_connection(|connection| {\n"
+              "                let content = validate_content(\n"
+              "                    paragraph(\"What is ATP?\"),\n"
+              "                    paragraph(\"The cell's immediately usable energy currency.\"),\n"
+              "                    \"What is ATP?\".to_string(),\n"
+              "                    \"The cell's immediately usable energy currency.\".to_string(),\n"
+              "                )?;\n"
+              "                let now = unix_time_millis()?;\n"
+              "                let note_id = crate::util::generate_id(connection)?;\n"
+              "                let card_id = crate::util::generate_id(connection)?;\n"
+              "                connection\n"
+              "                    .execute(\n"
+              "                        \"INSERT INTO notes (\n"
+              "                             id, deck_id, note_type, content_format, content_schema_version,\n"
+              "                             front_doc, back_doc, front_text, back_text,\n"
+              "                             created_at, updated_at, revision\n"
+              "                         ) VALUES (\n"
+              "                             ?1, ?2, 'basic', 'tiptap-json', 1,\n"
+              "                             ?3, ?4, ?5, ?6, ?7, ?7, 1\n"
+              "                         )\",\n"
+              "                        params![\n"
+              "                            note_id,\n"
+              "                            deck.id,\n"
+              "                            content.front_doc_json,\n"
+              "                            content.back_doc_json,\n"
+              "                            content.front_text,\n"
+              "                            content.back_text,\n"
+              "                            now\n"
+              "                        ],\n"
+              "                    )\n"
+              "                    .map_err(CommandError::database)?;\n"
+              "                connection\n"
+              "                    .execute(\n"
+              "                        \"INSERT INTO cards (\n"
+              "                             id, note_id, deck_id, direction, template_ordinal,\n"
+              "                             created_at, updated_at\n"
+              "                         ) VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)\",\n"
+              "                        params![card_id, note_id, deck.id, now],\n"
+              "                    )\n"
+              "                    .map_err(CommandError::database)?;\n"
+              "                crate::scheduler::insert_new_schedule(connection, &card_id, now)?;\n"
+              "                Ok((note_id, card_id))\n"
+              "            })\n"
+              "            .expect(\"card fixture should be created\");\n\n"
+              "        let loaded = database\n"
+              "            .with_connection(|connection| {\n"
+              "                get_card_from_connection(connection, &paths, &note_id)\n"
+              "            })\n"
+              "            .expect(\"card should hydrate\");\n"
+              "        assert_eq!(loaded.id, card_id);\n"
+              "        assert_eq!(loaded.front_text, \"What is ATP?\");\n\n"
+              "        let cards = database\n"
+              "            .with_connection(|connection| {\n"
+              "                list_cards_from_connection(connection, &paths, &deck.id)\n"
+              "            })\n"
+              "            .expect(\"cards should list\");\n"
+              "        assert_eq!(cards.len(), 1);\n\n"
+              "        database\n"
+              "            .with_connection(|connection| delete_card_in_connection(connection, &note_id))\n"
+              "            .expect(\"card should delete\");\n"
+              "        let cards = database\n"
+              "            .with_connection(|connection| {\n"
+              "                list_cards_from_connection(connection, &paths, &deck.id)\n"
+              "            })\n"
+              "            .expect(\"cards should list\");\n"
+              "        assert!(cards.is_empty());\n\n"
+              "        let _ = std::fs::remove_dir_all(temporary);\n"
+              "    }\n\n"
+              "    #[test]\n"
+              "    fn rejects_javascript_links() {\n",
+          )
+
+          practice = "src-tauri/src/practice.rs"
+          replace_exact(
+              practice,
+              "//! Scheduled practice sessions and atomic FSRS review recording.\n"
+              "//!\n"
+              "//! A session is a snapshot of cards that were due when it started. The answer\n"
+              "//! must be revealed before a rating can be submitted. Each accepted rating is\n"
+              "//! committed in one SQLite transaction with both the immutable review event\n"
+              "//! and the card's mutable schedule. A unique `submission_id` makes retries and\n"
+              "//! accidental double-clicks idempotent.\n",
+              "//! Practice-session records and atomic FSRS review submission.\n"
+              "//!\n"
+              "//! Session selection is owned by `practice_selection`; this module owns the\n"
+              "//! durable session events and review transaction. An answer must be revealed\n"
+              "//! before rating. Each accepted rating appends the immutable review event and\n"
+              "//! updates the mutable schedule atomically. A unique `submission_id` makes\n"
+              "//! retries and accidental double-clicks idempotent.\n",
+          )
+          replace_exact(
+              practice,
+              "use std::{\n"
+              "    collections::{BTreeSet, HashMap},\n"
+              "    hash::{Hash, Hasher},\n"
+              "};\n\n",
+              "",
+          )
+          replace_exact(
+              practice,
+              "    cards::{get_card_from_connection, CardDto},\n",
+              "    cards::CardDto,\n",
+          )
+          replace_exact(practice, "    paths::AppPaths,\n", "")
+          replace_exact(practice, "const MAX_SESSION_DECKS: usize = 100;\n", "")
+          remove_between(
+              practice,
+              "#[derive(Debug, Deserialize)]\n#[serde(rename_all = \"camelCase\")]\npub struct StartPracticeInput",
+              "#[derive(Clone, Debug, Serialize)]",
+          )
+          remove_between(
+              practice,
+              "#[tauri::command]\npub fn start_practice(",
+              "#[tauri::command]\npub fn mark_practice_card_viewed(",
+          )
+          remove_between(practice, "fn start_practice_in_connection(", "fn record_practice_event(")
+          remove_between(practice, "fn validate_deck_ids(", "#[cfg(test)]")
+          remove_between(
+              practice,
+              "    #[test]\n    fn requires_at_least_one_deck() {",
+              "    #[test]\n    fn completed_sessions_reject_card_events() {",
+          )
+
+          practice_selection = "src-tauri/src/practice_selection.rs"
+          replace_exact(
+              practice_selection,
+              "    practice::{PracticeCardDto, PracticeSessionDto, StartPracticeInput},\n",
+              "    practice::{PracticeCardDto, PracticeSessionDto},\n",
+          )
+          replace_exact(
+              practice_selection,
+              "#[derive(Debug, Deserialize)]\n"
+              "#[serde(rename_all = \"camelCase\")]\n"
+              "pub struct StartCardPracticeInput {\n",
+              "#[derive(Debug, Deserialize)]\n"
+              "#[serde(deny_unknown_fields, rename_all = \"camelCase\")]\n"
+              "pub struct StartPracticeInput {\n"
+              "    pub deck_ids: Vec<String>,\n"
+              "    pub shuffle: bool,\n"
+              "}\n\n"
+              "#[derive(Debug, Deserialize)]\n"
+              "#[serde(deny_unknown_fields, rename_all = \"camelCase\")]\n"
+              "pub struct StartCardPracticeInput {\n",
+          )
+
+          verifier = "scripts/verify-stage2.mjs"
+          replace_exact(
+              verifier,
+              "  authoring,\n  practiceSelection,\n",
+              "  authoring,\n  cardsCore,\n  practice,\n  practiceSelection,\n",
+          )
+          replace_exact(
+              verifier,
+              "  read(\"src-tauri\", \"src\", \"practice_selection.rs\"),\n",
+              "  read(\"src-tauri\", \"src\", \"cards.rs\"),\n"
+              "  read(\"src-tauri\", \"src\", \"practice.rs\"),\n"
+              "  read(\"src-tauri\", \"src\", \"practice_selection.rs\"),\n",
+          )
+          replace_exact(
+              verifier,
+              "if (\n  !rustCommands.includes(\"practice_selection::start_card_practice\") ||\n",
+              "for (const removedCommand of [\n"
+              "  \"cards::get_card,\",\n"
+              "  \"cards::create_card,\",\n"
+              "  \"cards::update_card,\",\n"
+              "  \"practice::start_practice,\",\n"
+              "]) {\n"
+              "  if (rustCommands.includes(removedCommand)) {\n"
+              "    failures.push(`obsolete Rust command is still registered: ${removedCommand}`);\n"
+              "  }\n"
+              "}\n"
+              "for (const removedWrapper of [\n"
+              "  \"export async function getCard(\",\n"
+              "  \"export async function createCard(\",\n"
+              "  \"export async function updateCard(\",\n"
+              "  \"export async function startPractice(\",\n"
+              "]) {\n"
+              "  if (ipc.includes(removedWrapper)) {\n"
+              "    failures.push(`obsolete frontend IPC wrapper remains: ${removedWrapper}`);\n"
+              "  }\n"
+              "}\n"
+              "for (const removedFunction of [\n"
+              "  \"pub fn get_card(\",\n"
+              "  \"pub fn create_card(\",\n"
+              "  \"pub fn update_card(\",\n"
+              "]) {\n"
+              "  if (cardsCore.includes(removedFunction)) {\n"
+              "    failures.push(`obsolete card API remains: ${removedFunction}`);\n"
+              "  }\n"
+              "}\n"
+              "if (practice.includes(\"pub fn start_practice(\")) {\n"
+              "  failures.push(\"obsolete strict-due practice command remains\");\n"
+              "}\n\n"
+              "function rustStruct(source, name) {\n"
+              "  const start = source.indexOf(`pub struct ${name} {`);\n"
+              "  if (start < 0) return \"\";\n"
+              "  const end = source.indexOf(\"\\n}\", start);\n"
+              "  return end < 0 ? \"\" : source.slice(start, end + 2);\n"
+              "}\n"
+              "for (const name of [\"ListTagsInput\", \"SearchCardsInput\", \"BulkCreateCardsInput\"]) {\n"
+              "  const body = rustStruct(authoring, name);\n"
+              "  const declaration = authoring.slice(Math.max(0, authoring.indexOf(`pub struct ${name}`) - 120), authoring.indexOf(`pub struct ${name}`));\n"
+              "  if (body === \"\" || !declaration.includes(\"deny_unknown_fields\")) {\n"
+              "    failures.push(`${name} must reject removed or misspelled request fields`);\n"
+              "  }\n"
+              "}\n"
+              "if (rustStruct(authoring, \"BulkCreateCardsInput\").includes(\"skip_duplicates\")) {\n"
+              "  failures.push(\"removed bulk duplicate option remains in Rust input\");\n"
+              "}\n"
+              "for (const name of [\"ListTagsInput\", \"SearchCardsInput\"]) {\n"
+              "  if (rustStruct(authoring, name).includes(\"pub deck_id\")) {\n"
+              "    failures.push(`removed single-deck alias remains in ${name}`);\n"
+              "  }\n"
+              "}\n"
+              "if (authoring.includes(\"#[allow(dead_code)]\")) {\n"
+              "  failures.push(\"authoring boundary contains a dead-code compatibility allowance\");\n"
+              "}\n\n"
+              "if (\n  !rustCommands.includes(\"practice_selection::start_card_practice\") ||\n",
+          )
+          replace_exact(
+              verifier,
+              "  \"OK   Search/Filter multi-deck filters, bulk actions, duplicate review, and temporary practice are wired.\",\n",
+              "  \"OK   Search/Filter features are wired and obsolete Stage 2 API shims are absent.\",\n",
+          )
+
+          standards = "docs/agents/CODE-STANDARDS.md"
+          replace_exact(
+              standards,
+              "- Delete or update stale comments in the same change that invalidates them.\n",
+              "- Delete or update stale comments in the same change that invalidates them.\n"
+              "- Remove obsolete feature code end-to-end: UI state, typed wrappers, Rust commands,\n"
+              "  request fields, tests, verification rules, and documentation. Do not keep an\n"
+              "  ignored field or alias solely so an old internal caller can appear to succeed.\n"
+              "- Compatibility shims require a documented durable-data or external-format need\n"
+              "  and regression coverage. Bundled frontend/Rust IPC is not an external API by\n"
+              "  default; a removed option should fail visibly.\n",
+          )
+          replace_exact(
+              standards,
+              "- Format with `rustfmt` and pass Clippy with warnings denied.\n",
+              "- Format with `rustfmt` and pass Clippy with warnings denied.\n"
+              "- Do not use `#[allow(dead_code)]` to preserve removed product behavior. A\n"
+              "  dead-code allowance needs a specific compiler or platform reason.\n"
+              "- Use `deny_unknown_fields` on revised IPC request DTOs when silently accepting\n"
+              "  a removed or misspelled field would hide a caller defect.\n",
+          )
+
+          guardrails = "docs/agents/ARCHITECTURE-GUARDRAILS.md"
+          replace_exact(
+              guardrails,
+              "Treat the following as compatibility surfaces:\n\n"
+              "- Tauri command names and typed frontend wrappers;\n"
+              "- stable error codes;\n"
+              "- database schemas and migration ordering;\n"
+              "- Tiptap schema version and validation taxonomy;\n"
+              "- `.studydeck` format and import behavior;\n"
+              "- FSRS rating mapping and review idempotency;\n"
+              "- the Tauri application identifier and application-data location;\n"
+              "- user-visible keyboard, accessibility, and theme behavior.\n\n"
+              "A change to any of these requires explicit acceptance criteria, regression\n"
+              "coverage, migration or compatibility analysis, and documentation. Durable\n"
+              "cross-module changes require an ADR.\n",
+              "Durable user data and documented external formats are compatibility surfaces:\n\n"
+              "- database schemas and migration ordering;\n"
+              "- stable error codes for active durable operations;\n"
+              "- Tiptap schema version and validation taxonomy;\n"
+              "- `.studydeck` format and import behavior;\n"
+              "- FSRS rating mapping, review history, and review idempotency;\n"
+              "- the Tauri application identifier and application-data location;\n"
+              "- user-visible keyboard, accessibility, and theme behavior.\n\n"
+              "The bundled React/Rust IPC layer is an internal contract unless an external API\n"
+              "is explicitly documented. When an unreleased or internal feature is removed,\n"
+              "delete its wrapper, command, request field, tests, and documentation together.\n"
+              "Do not silently accept obsolete fields; revised request DTOs should reject them\n"
+              "when acceptance would hide a caller defect.\n\n"
+              "Changes to durable compatibility surfaces require explicit acceptance criteria,\n"
+              "regression coverage, migration or compatibility analysis, and documentation.\n"
+              "Durable cross-module changes require an ADR.\n",
+          )
+
+          architecture = "docs/ARCHITECTURE.md"
+          replace_exact(
+              architecture,
+              "- `cards.rs` validates Tiptap JSON and supports the original basic-card API.\n"
+              "- `authoring.rs` owns tags, FTS5 queries, organized card writes, exact duplicate\n"
+              "  checks, bulk entry, and transactional move/copy.\n",
+              "- `cards.rs` owns shared card hydration, per-deck list/delete behavior, and\n"
+              "  canonical Tiptap validation.\n"
+              "- `authoring.rs` is the only card create/update boundary; it owns tags, FTS5\n"
+              "  queries, duplicate checks, assets, deck changes, bulk entry, and move/copy.\n",
+          )
+          PY
+
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          git diff --check
+
+          if grep -R --line-number --fixed-string '#[allow(dead_code)]' src src-tauri scripts; then
+            echo "Unexpected dead-code allowance remains in application source." >&2
+            exit 1
+          fi
+
+      - name: Commit the cleanup
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if git diff --quiet; then
+            echo "The cleanup script made no changes." >&2
+            exit 1
+          fi
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            src \
+            src-tauri/src \
+            scripts/verify-stage2.mjs \
+            docs/ARCHITECTURE.md \
+            docs/agents/CODE-STANDARDS.md \
+            docs/agents/ARCHITECTURE-GUARDRAILS.md
+          git commit -m "refactor: remove obsolete Stage 2 APIs"
+          git push origin HEAD:agent/phase-2-stage-2-search-filter-redesign
