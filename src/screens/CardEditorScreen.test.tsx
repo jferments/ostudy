@@ -17,11 +17,13 @@ vi.mock("../ipc", () => ({
     typeof error === "object" && error !== null && "code" in error
       ? String((error as { code: unknown }).code)
       : null,
-  getErrorMessage: (error: unknown) =>
+  getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
+  ),
   getOrganizedCard: vi.fn(),
   listDecks: vi.fn(),
   listTags: vi.fn(),
+  startCardPractice: vi.fn(),
   transferCards: vi.fn(),
   updateOrganizedCard: vi.fn(),
 }));
@@ -93,6 +95,7 @@ describe("CardEditorScreen", () => {
     render(
       <CardEditorScreen
         deck={deck}
+        decks={[deck, secondDeck]}
         card={card}
         onCancel={vi.fn()}
         onSaved={onSaved}
@@ -111,11 +114,6 @@ describe("CardEditorScreen", () => {
       answer.compareDocumentPosition(tagInput) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("option", { name: secondDeck.name }),
-      ).toBeTruthy();
-    });
     fireEvent.change(screen.getByRole("combobox", { name: "Deck" }), {
       target: { value: secondDeck.id },
     });
