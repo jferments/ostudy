@@ -3,7 +3,7 @@ pub fn list_tags(
     database: State<'_, Database>,
     input: ListTagsInput,
 ) -> Result<Vec<TagDto>, CommandError> {
-    let deck_ids = effective_deck_ids(&input.deck_ids, input.deck_id.as_deref())?;
+    let deck_ids = effective_deck_ids(&input.deck_ids)?;
     database.with_connection(|connection| list_tags_in_connection(connection, &deck_ids))
 }
 
@@ -117,17 +117,21 @@ pub fn update_organized_card(
         ensure_assets_exist(&transaction, &content_asset_ids(&content))?;
         ensure_active_deck(&transaction, &input.deck_id)?;
 
-        let _current_deck_id: String = transaction
+        let note_exists: i64 = transaction
             .query_row(
-                "SELECT deck_id FROM notes WHERE id = ?1 AND deleted_at IS NULL",
+                "SELECT EXISTS(
+                     SELECT 1 FROM notes WHERE id = ?1 AND deleted_at IS NULL
+                 )",
                 [input.note_id.as_str()],
                 |row| row.get(0),
             )
-            .optional()
-            .map_err(CommandError::database)?
-            .ok_or_else(|| {
-                CommandError::new("card_not_found", "That flashcard no longer exists.")
-            })?;
+            .map_err(CommandError::database)?;
+        if note_exists == 0 {
+            return Err(CommandError::new(
+                "card_not_found",
+                "That flashcard no longer exists.",
+            ));
+        }
 
         if !input.allow_duplicate
             && duplicate_checkable(&content.front_text, &content.back_text)
@@ -281,11 +285,7 @@ pub fn bulk_create_cards(
     input: BulkCreateCardsInput,
 ) -> Result<BulkCreateResultDto, CommandError> {
     validate_bulk_rows(&input.deck_id, &input.rows)?;
-    let BulkCreateCardsInput {
-        deck_id,
-        rows,
-        skip_duplicates: _,
-    } = input;
+    let BulkCreateCardsInput { deck_id, rows } = input;
     let prepared = rows
         .into_iter()
         .enumerate()
