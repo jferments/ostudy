@@ -83,7 +83,11 @@ for (const command of [
   if (!rustCommands.includes(command)) failures.push(`Rust command not registered: ${command}`);
   if (!ipc.includes(`"${command}"`)) failures.push(`frontend command missing: ${command}`);
 }
-if (!rustCommands.includes("start_card_practice") || !ipc.includes('"start_card_practice"')) {
+if (
+  !rustCommands.includes("practice_selection::start_card_practice") ||
+  !ipc.includes("startCardPractice") ||
+  !ipc.includes("start_card_practice")
+) {
   failures.push("temporary filtered practice command is not registered end to end");
 }
 
