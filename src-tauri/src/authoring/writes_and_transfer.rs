@@ -1,3 +1,6 @@
+const CONTENT_FORMAT: &str = "tiptap-json";
+const CONTENT_SCHEMA_VERSION: i64 = 1;
+
 fn insert_organized_card(
     transaction: &Transaction<'_>,
     deck_id: &str,
@@ -17,12 +20,14 @@ fn insert_organized_card(
                  front_doc, back_doc, front_text, back_text, duplicate_hash,
                  created_at, updated_at, revision
              ) VALUES (
-                 ?1, ?2, 'basic', 'tiptap-json', 1,
-                 ?3, ?4, ?5, ?6, ?7, ?8, ?8, 1
+                 ?1, ?2, 'basic', ?3, ?4,
+                 ?5, ?6, ?7, ?8, ?9, ?10, ?10, 1
              )",
             params![
                 note_id,
                 deck_id,
+                CONTENT_FORMAT,
+                CONTENT_SCHEMA_VERSION,
                 content.front_doc_json,
                 content.back_doc_json,
                 content.front_text,
@@ -373,12 +378,14 @@ fn copy_note_to_deck(
                  front_doc, back_doc, front_text, back_text, duplicate_hash,
                  created_at, updated_at, revision
              ) VALUES (
-                 ?1, ?2, 'basic', 'tiptap-json', 1,
-                 ?3, ?4, ?5, ?6, ?7, ?8, ?8, 1
+                 ?1, ?2, 'basic', ?3, ?4,
+                 ?5, ?6, ?7, ?8, ?9, ?10, ?10, 1
              )",
             params![
                 new_note_id,
                 target_deck_id,
+                CONTENT_FORMAT,
+                CONTENT_SCHEMA_VERSION,
                 source.front_doc,
                 source.back_doc,
                 source.front_text,
