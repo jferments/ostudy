@@ -55,8 +55,8 @@ struct TagPayload {
     notes: Vec<SourceNoteSignature>,
 }
 
-#[tauri::command]
-pub fn export_tagged_deck(
+#[tauri::command(rename = "export_deck")]
+pub fn export_deck_with_tags(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     input: ExportDeckInput,
@@ -73,8 +73,8 @@ pub fn export_tagged_deck(
     Ok(result)
 }
 
-#[tauri::command]
-pub fn import_tagged_deck(
+#[tauri::command(rename = "import_deck")]
+pub fn import_deck_with_tags(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     source_path: String,
