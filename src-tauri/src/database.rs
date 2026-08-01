@@ -2,11 +2,7 @@ use std::{path::Path, sync::Mutex, time::Duration};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::{
-    authoring::backfill_duplicate_hashes,
-    error::CommandError,
-    util::unix_time_millis,
-};
+use crate::{authoring::backfill_duplicate_hashes, error::CommandError, util::unix_time_millis};
 
 struct Migration {
     version: i64,
