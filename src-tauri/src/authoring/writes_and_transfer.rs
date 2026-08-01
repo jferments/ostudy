@@ -109,6 +109,31 @@ fn ensure_active_deck(
     Ok(())
 }
 
+fn ensure_active_note(connection: &Connection, note_id: &str) -> Result<(), CommandError> {
+    let exists: i64 = connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1
+                 FROM notes n
+                 JOIN decks d ON d.id = n.deck_id
+                 WHERE n.id = ?1
+                   AND n.deleted_at IS NULL
+                   AND d.deleted_at IS NULL
+                   AND d.archived_at IS NULL
+             )",
+            [note_id],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    if exists == 0 {
+        return Err(CommandError::new(
+            "card_not_found",
+            "A selected flashcard no longer exists.",
+        ));
+    }
+    Ok(())
+}
+
 fn exact_duplicates(
     connection: &Connection,
     deck_id: &str,
@@ -130,17 +155,14 @@ fn exact_duplicates(
         )
         .map_err(CommandError::database)?;
     let rows = statement
-        .query_map(
-            params![deck_id, hash, exclude_note_id],
-            |row| {
-                Ok(DuplicateCardDto {
-                    note_id: row.get(0)?,
-                    deck_id: row.get(1)?,
-                    front_text: row.get(2)?,
-                    back_text: row.get(3)?,
-                })
-            },
-        )
+        .query_map(params![deck_id, hash, exclude_note_id], |row| {
+            Ok(DuplicateCardDto {
+                note_id: row.get(0)?,
+                deck_id: row.get(1)?,
+                front_text: row.get(2)?,
+                back_text: row.get(3)?,
+            })
+        })
         .map_err(CommandError::database)?;
 
     let mut matches = Vec::new();
@@ -196,12 +218,7 @@ fn prepare_bulk_row(
     }
     let front_doc = plain_text_document(&row.question);
     let back_doc = plain_text_document(&row.answer);
-    let content = validate_content(
-        front_doc,
-        back_doc,
-        row.question,
-        row.answer,
-    )?;
+    let content = validate_content(front_doc, back_doc, row.question, row.answer)?;
     let tags = validate_tags(row.tags)?;
     let normalized = normalized_pair(&content.front_text, &content.back_text);
     let hash = duplicate_hash(&normalized.0, &normalized.1);
@@ -232,7 +249,11 @@ fn plain_text_document(text: &str) -> Value {
     })
 }
 
-fn validate_note_ids(values: Vec<String>) -> Result<Vec<String>, CommandError> {
+fn validate_note_ids_for_action(
+    values: Vec<String>,
+    limit: usize,
+    action: &str,
+) -> Result<Vec<String>, CommandError> {
     let mut unique = BTreeSet::new();
     for value in values {
         validate_entity_id(&value, "note")?;
@@ -241,16 +262,72 @@ fn validate_note_ids(values: Vec<String>) -> Result<Vec<String>, CommandError> {
     if unique.is_empty() {
         return Err(CommandError::new(
             "no_cards_selected",
-            "Select at least one card to move or copy.",
+            "Select at least one card first.",
         ));
     }
-    if unique.len() > MAX_TRANSFER_NOTES {
+    if unique.len() > limit {
         return Err(CommandError::new(
             "too_many_cards_selected",
-            format!("Move or copy at most {MAX_TRANSFER_NOTES} cards at one time."),
+            format!("{action} at most {limit} cards at one time."),
         ));
     }
     Ok(unique.into_iter().collect())
+}
+
+fn resolve_tag_ids(
+    transaction: &Transaction<'_>,
+    tags: &[ValidatedTag],
+    now: i64,
+) -> Result<Vec<String>, CommandError> {
+    let mut tag_ids = Vec::with_capacity(tags.len());
+    for tag in tags {
+        let existing: Option<String> = transaction
+            .query_row(
+                "SELECT id FROM tags WHERE normalized_name = ?1",
+                [tag.normalized.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(CommandError::database)?;
+        let tag_id = match existing {
+            Some(id) => id,
+            None => {
+                let id = generate_id(transaction)?;
+                transaction
+                    .execute(
+                        "INSERT INTO tags (
+                             id, name, normalized_name, created_at, updated_at
+                         ) VALUES (?1, ?2, ?3, ?4, ?4)",
+                        params![id, tag.name, tag.normalized, now],
+                    )
+                    .map_err(CommandError::database)?;
+                id
+            }
+        };
+        tag_ids.push(tag_id);
+    }
+    Ok(tag_ids)
+}
+
+fn find_existing_tag_ids(
+    connection: &Connection,
+    tags: &[ValidatedTag],
+) -> Result<Vec<String>, CommandError> {
+    let mut tag_ids = Vec::new();
+    for tag in tags {
+        if let Some(tag_id) = connection
+            .query_row(
+                "SELECT id FROM tags WHERE normalized_name = ?1",
+                [tag.normalized.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(CommandError::database)?
+        {
+            tag_ids.push(tag_id);
+        }
+    }
+    Ok(tag_ids)
 }
 
 fn load_source_note(
@@ -321,14 +398,13 @@ fn copy_note_to_deck(
                  ORDER BY template_ordinal, direction",
             )
             .map_err(CommandError::database)?;
-        let source_cards = statement
+        statement
             .query_map([source.id.as_str()], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        source_cards
+            .map_err(CommandError::database)?
     };
     if source_cards.is_empty() {
         return Err(CommandError::new(
@@ -391,6 +467,25 @@ impl TransferMode {
             _ => Err(CommandError::new(
                 "invalid_transfer_mode",
                 "Choose whether to move or copy the selected cards.",
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum TagChangeMode {
+    Add,
+    Remove,
+}
+
+impl TagChangeMode {
+    fn parse(value: &str) -> Result<Self, CommandError> {
+        match value {
+            "add" => Ok(Self::Add),
+            "remove" => Ok(Self::Remove),
+            _ => Err(CommandError::new(
+                "invalid_tag_change_mode",
+                "Choose whether to add or remove the selected tags.",
             )),
         }
     }
