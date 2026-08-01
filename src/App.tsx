@@ -25,6 +25,7 @@ export type AppSection =
 export interface PracticeLaunchRequest {
   requestId: number;
   deckIds: string[];
+  cardIds: string[];
   autoStart: boolean;
 }
 
@@ -134,7 +135,12 @@ function App() {
     if (next === "practice") {
       const requestId = practiceRequestSequence.current;
       practiceRequestSequence.current += 1;
-      setPracticeLaunch({ requestId, deckIds: [], autoStart: false });
+      setPracticeLaunch({
+        requestId,
+        deckIds: [],
+        cardIds: [],
+        autoStart: false,
+      });
     }
     if (next === "decks" || next === "cards") {
       void refreshDecks().catch((error: unknown) => {
@@ -148,7 +154,26 @@ function App() {
     if (!confirmDiscardCard() || !confirmDiscardSettings()) return;
     const requestId = practiceRequestSequence.current;
     practiceRequestSequence.current += 1;
-    setPracticeLaunch({ requestId, deckIds: [deckId], autoStart: true });
+    setPracticeLaunch({
+      requestId,
+      deckIds: [deckId],
+      cardIds: [],
+      autoStart: true,
+    });
+    setSection("practice");
+  }
+
+  function practiceCards(cardIds: string[]): void {
+    if (cardIds.length === 0) return;
+    if (!confirmDiscardCard() || !confirmDiscardSettings()) return;
+    const requestId = practiceRequestSequence.current;
+    practiceRequestSequence.current += 1;
+    setPracticeLaunch({
+      requestId,
+      deckIds: [],
+      cardIds,
+      autoStart: true,
+    });
     setSection("practice");
   }
 
@@ -194,8 +219,8 @@ function App() {
           />
           <NavButton
             active={section === "cards"}
-            icon="▦"
-            label="Cards"
+            icon="⌕"
+            label="Search/Filter"
             onClick={() => navigate("cards")}
           />
           <NavButton
@@ -235,6 +260,7 @@ function App() {
             <CardsScreen
               decks={decks}
               refreshDecks={refreshDecks}
+              onPracticeCards={practiceCards}
               onDirtyChange={setHasUnsavedCard}
               showToast={showToast}
             />
