@@ -20,7 +20,6 @@ vi.mock("../ipc", () => ({
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
   getOrganizedCard: vi.fn(),
-  listDecks: vi.fn(),
   listTags: vi.fn(),
   transferCards: vi.fn(),
   updateOrganizedCard: vi.fn(),
@@ -35,6 +34,12 @@ const deck: ipc.Deck = {
   createdAt: 1,
   updatedAt: 1,
   revision: 1,
+};
+
+const secondDeck: ipc.Deck = {
+  ...deck,
+  id: "e".repeat(32),
+  name: "Pathophysiology",
 };
 
 const card: ipc.OrganizedCard = {
@@ -66,24 +71,27 @@ const card: ipc.OrganizedCard = {
 
 describe("CardEditorScreen", () => {
   beforeEach(() => {
-    vi.mocked(ipc.listDecks).mockResolvedValue([deck]);
     vi.mocked(ipc.listTags).mockResolvedValue([]);
     vi.mocked(ipc.findDuplicateCards).mockResolvedValue([
       {
         noteId: "d".repeat(32),
-        deckId: deck.id,
+        deckId: secondDeck.id,
         frontText: "Question",
         backText: "Answer",
       },
     ]);
-    vi.mocked(ipc.updateOrganizedCard).mockResolvedValue(card);
+    vi.mocked(ipc.updateOrganizedCard).mockResolvedValue({
+      ...card,
+      deckId: secondDeck.id,
+    });
   });
 
-  it("warns before saving an exact duplicate and permits an explicit override", async () => {
+  it("places tags after question and answer and saves the selected deck", async () => {
     const onSaved = vi.fn();
     render(
       <CardEditorScreen
         deck={deck}
+        decks={[deck, secondDeck]}
         card={card}
         onCancel={vi.fn()}
         onSaved={onSaved}
@@ -92,6 +100,15 @@ describe("CardEditorScreen", () => {
     );
 
     expect(await screen.findByText("Medication")).toBeTruthy();
+    const question = screen.getByText("Question editor");
+    const answer = screen.getByText("Answer editor");
+    const tagInput = screen.getByText("Tags");
+    expect(question.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(answer.compareDocumentPosition(tagInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Deck" }), {
+      target: { value: secondDeck.id },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save card" }));
 
     expect(
@@ -105,9 +122,13 @@ describe("CardEditorScreen", () => {
     );
 
     await waitFor(() => {
+      expect(ipc.findDuplicateCards).toHaveBeenCalledWith(
+        expect.objectContaining({ deckId: secondDeck.id }),
+      );
       expect(ipc.updateOrganizedCard).toHaveBeenCalledWith(
         expect.objectContaining({
           noteId: card.noteId,
+          deckId: secondDeck.id,
           tags: ["Medication"],
           allowDuplicate: true,
         }),
