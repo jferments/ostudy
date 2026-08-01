@@ -13,7 +13,7 @@ fn load_export_payload(
                  ORDER BY t.id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let tags = statement
             .query_map([deck_id], |row| {
                 Ok(ExportTag {
                     source_id: row.get(0)?,
@@ -23,7 +23,8 @@ fn load_export_payload(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        tags
     };
 
     let links = {
@@ -36,11 +37,12 @@ fn load_export_payload(
                  ORDER BY nt.note_id, nt.tag_id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let links = statement
             .query_map([deck_id], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        links
     };
 
     let notes = {
@@ -52,7 +54,7 @@ fn load_export_payload(
                  ORDER BY rowid",
             )
             .map_err(CommandError::database)?;
-        statement
+        let notes = statement
             .query_map([deck_id], |row| {
                 Ok(SourceNoteSignature {
                     source_id: row.get(0)?,
@@ -65,7 +67,8 @@ fn load_export_payload(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        notes
     };
 
     Ok(TagPayload { tags, links, notes })
