@@ -166,7 +166,7 @@ describe("CardsScreen", () => {
     renderScreen();
     await screen.findByText("What reverses warfarin?");
 
-    fireEvent.click(screen.getByText("All decks"));
+    fireEvent.click(screen.getByText("All decks", { selector: "summary" }));
     fireEvent.click(screen.getByRole("checkbox", { name: /Pharmacology/u }));
 
     await waitFor(() => {
