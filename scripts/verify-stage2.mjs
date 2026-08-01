@@ -89,6 +89,18 @@ for (const fragment of [
 ]) {
   if (!migration.includes(fragment)) failures.push(`migration 0004 missing: ${fragment}`);
 }
+if (migration.includes("notes_duplicate_hash_after_legacy_update")) {
+  failures.push("migration 0004 still installs the obsolete duplicate-hash compatibility trigger");
+}
+for (const fragment of [
+  "repair_obsolete_card_organization_trigger",
+  "CARD_ORGANIZATION_WITH_OBSOLETE_TRIGGER_CHECKSUM",
+  "repairs_the_unreleased_schema_four_trigger_without_losing_cards",
+]) {
+  if (!database.includes(fragment)) {
+    failures.push(`database migration repair missing: ${fragment}`);
+  }
+}
 
 for (const command of [
   "list_tags",
