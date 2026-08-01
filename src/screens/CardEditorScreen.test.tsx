@@ -20,6 +20,7 @@ vi.mock("../ipc", () => ({
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
   getOrganizedCard: vi.fn(),
+  listDecks: vi.fn(),
   listTags: vi.fn(),
   transferCards: vi.fn(),
   updateOrganizedCard: vi.fn(),
@@ -71,6 +72,7 @@ const card: ipc.OrganizedCard = {
 
 describe("CardEditorScreen", () => {
   beforeEach(() => {
+    vi.mocked(ipc.listDecks).mockResolvedValue([deck, secondDeck]);
     vi.mocked(ipc.listTags).mockResolvedValue([]);
     vi.mocked(ipc.findDuplicateCards).mockResolvedValue([
       {
@@ -91,7 +93,6 @@ describe("CardEditorScreen", () => {
     render(
       <CardEditorScreen
         deck={deck}
-        decks={[deck, secondDeck]}
         card={card}
         onCancel={vi.fn()}
         onSaved={onSaved}
@@ -103,9 +104,18 @@ describe("CardEditorScreen", () => {
     const question = screen.getByText("Question editor");
     const answer = screen.getByText("Answer editor");
     const tagInput = screen.getByText("Tags");
-    expect(question.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(answer.compareDocumentPosition(tagInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      question.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      answer.compareDocumentPosition(tagInput) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
+    await waitFor(() => {
+      expect(
+        screen.getByRole("option", { name: secondDeck.name }),
+      ).toBeTruthy();
+    });
     fireEvent.change(screen.getByRole("combobox", { name: "Deck" }), {
       target: { value: secondDeck.id },
     });
