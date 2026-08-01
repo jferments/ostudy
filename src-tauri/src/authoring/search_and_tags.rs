@@ -5,18 +5,11 @@ struct SearchSql {
     order_sql: &'static str,
 }
 
-fn effective_deck_ids(
-    deck_ids: &[String],
-    legacy_deck_id: Option<&str>,
-) -> Result<Vec<String>, CommandError> {
+fn effective_deck_ids(deck_ids: &[String]) -> Result<Vec<String>, CommandError> {
     let mut unique = BTreeSet::new();
     for deck_id in deck_ids {
         validate_entity_id(deck_id, "deck")?;
         unique.insert(deck_id.clone());
-    }
-    if let Some(deck_id) = legacy_deck_id {
-        validate_entity_id(deck_id, "deck")?;
-        unique.insert(deck_id.to_string());
     }
     if unique.len() > MAX_SEARCH_DECKS {
         return Err(CommandError::new(
@@ -73,7 +66,7 @@ fn tag_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TagDto> {
 }
 
 fn validate_search_input(input: &SearchCardsInput) -> Result<(), CommandError> {
-    effective_deck_ids(&input.deck_ids, input.deck_id.as_deref())?;
+    effective_deck_ids(&input.deck_ids)?;
     if input.query.chars().count() > MAX_SEARCH_QUERY_CHARS {
         return Err(CommandError::new(
             "search_too_long",
@@ -148,7 +141,7 @@ fn build_search_sql(input: &SearchCardsInput, now: i64) -> Result<SearchSql, Com
     ];
     let mut values: Vec<SqlValue> = Vec::new();
 
-    let deck_ids = effective_deck_ids(&input.deck_ids, input.deck_id.as_deref())?;
+    let deck_ids = effective_deck_ids(&input.deck_ids)?;
     if !deck_ids.is_empty() {
         let placeholders = deck_ids
             .into_iter()
