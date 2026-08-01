@@ -32,9 +32,12 @@ all data crossing the IPC boundary and owns multi-step transactions.
 - `src/screens/DecksScreen.tsx` manages decks and opens the card editor.
 - `src/screens/PracticeScreen.tsx` starts single- or multi-deck sessions,
   presents the one-step 0–3 confidence scale, and shows recent deck results.
+- `src/screens/practice/PracticeSetup.tsx` owns per-session deck selection and
+  the single visible shuffle control.
 - `src/screens/AnalyticsScreen.tsx` presents deterministic confidence,
   response-time, and workload aggregates.
-- `src/screens/SettingsScreen.tsx` edits appearance and review preferences.
+- `src/screens/SettingsScreen.tsx` edits appearance, retention, and confirmation
+  preferences without duplicating session-only controls.
 - `src/editor/` contains the Tiptap configuration, canonicalization, display,
   and link handling.
 - `src/ipc.ts` is the only frontend module that invokes Rust commands.
@@ -48,7 +51,10 @@ all data crossing the IPC boundary and owns multi-step transactions.
   transactionally.
 - `assets.rs` imports supported local image files into the managed library.
 - `scheduler.rs` is the sole adapter to `rs-fsrs`.
-- `practice.rs` creates due-card snapshots and records graded reviews atomically.
+- `practice.rs` records card events and graded reviews atomically and retains the
+  strict due-only session command for compatibility.
+- `practice_selection.rs` builds the interface's due-first sessions and falls
+  back to all active cards for each selected deck that has nothing due.
 - `analytics.rs` calculates due counts, correctness, timing, canonical rating
   distribution, per-deck results, and recent reviews using ordinary SQL.
 - `transfer.rs` validates and imports/exports `.studydeck` packages.
@@ -80,11 +86,18 @@ historical outcome string. The frontend maps the 0–3 score to that stable form
 so changing the interaction does not rewrite prior reviews or invalidate deck
 libraries.
 
+The normal selection rule is due-first on a per-deck basis. A selected deck with
+one or more due cards contributes only those due cards. A selected deck with no
+due cards contributes all of its active cards, allowing voluntary study without
+disabling the deck. Mixed sessions can therefore combine scheduled reviews from
+one deck with voluntary early reviews from another.
+
 `card_schedules` is the fast mutable view of current FSRS state.
 `review_events` is the immutable historical ledger. Review submission is one
-idempotent SQLite transaction. The frontend converts each canonical 1–4 rating
-to the displayed 0–3 confidence score by subtracting one; the underlying facts
-remain deterministic.
+idempotent SQLite transaction. Voluntary early reviews are real reviews and
+update the FSRS schedule. The frontend converts each canonical 1–4 rating to the
+displayed 0–3 confidence score by subtracting one; the underlying facts remain
+deterministic.
 
 ## Untrusted card content
 

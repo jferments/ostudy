@@ -73,9 +73,16 @@ state, and session counters commit in one immediate SQLite transaction.
 
 ## Practice sessions and analytics
 
-A direct deck Practice action starts a scheduled session for that deck. The
-Practice screen can also select multiple decks. Sessions contain only cards due
-at or before the session start time.
+A direct deck Practice action can start a session whenever the deck contains an
+active card. The Practice screen can also select multiple decks. For each
+selected deck, the session includes its due cards when any are due; if that deck
+has nothing due, the session includes all of its active cards instead. This is a
+per-deck fallback, so a mixed session may contain scheduled cards from one deck
+and voluntary early reviews from another.
+
+A voluntary review is still a real FSRS review. Its immutable review event is
+recorded and its next interval is recalculated in the same way as a scheduled
+review. Suspended and deleted cards are never included.
 
 `practice_sessions` records selected decks and summary counts.
 `practice_session_cards` records fixed order plus viewed, revealed, and rated

@@ -8,7 +8,7 @@ import {
   getErrorMessage,
   markPracticeCardRevealed,
   markPracticeCardViewed,
-  startPractice,
+  startSelectedPractice,
   submitPracticeReview,
   type AppSettings,
   type Deck,
@@ -33,7 +33,7 @@ interface PracticeScreenProps {
   showToast: (kind: "success" | "error" | "info", text: string) => void;
 }
 
-/** Runs scheduled reviews with one learner-facing 0–3 confidence choice. */
+/** Runs scheduled or voluntary reviews with one 0–3 confidence choice. */
 export function PracticeScreen({
   decks,
   settings,
@@ -81,7 +81,10 @@ export function PracticeScreen({
       setIsStarting(true);
       setErrorMessage(null);
       try {
-        const started = await startPractice({ deckIds, shuffle: requestedShuffle });
+        const started = await startSelectedPractice({
+          deckIds,
+          shuffle: requestedShuffle,
+        });
         setSession(started);
         setPosition(0);
         setRevealed(false);
@@ -108,7 +111,7 @@ export function PracticeScreen({
     if (!launchRequest || handledLaunchRequestRef.current === launchRequest.requestId) return;
     handledLaunchRequestRef.current = launchRequest.requestId;
     const eligible = launchRequest.deckIds.filter((deckId) =>
-      decks.some((deck) => deck.id === deckId && deck.dueCount > 0),
+      decks.some((deck) => deck.id === deckId && deck.cardCount > 0),
     );
     setSelectedDeckIds(new Set(eligible));
     setSession(null);
@@ -246,7 +249,10 @@ export function PracticeScreen({
       <header className="screen-header compact-screen-header">
         <div>
           <h1>Practice</h1>
-          <p>Select one or more decks. Only cards that are currently due are included.</p>
+          <p>
+            Due cards are selected first. A deck with nothing due can still be
+            practiced using all of its active cards.
+          </p>
         </div>
       </header>
       {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}

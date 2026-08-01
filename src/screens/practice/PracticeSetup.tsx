@@ -27,7 +27,7 @@ export function PracticeSetup({
   onStart,
 }: PracticeSetupProps) {
   const decksWithCards = decks.filter((deck) => deck.cardCount > 0);
-  const dueCount = selectedDueCount(decks, selectedDeckIds);
+  const sessionCardCount = selectedSessionCardCount(decks, selectedDeckIds);
 
   if (decksWithCards.length === 0) {
     return (
@@ -52,11 +52,7 @@ export function PracticeSetup({
               className="text-button"
               onClick={() =>
                 onSelectedDeckIdsChange(
-                  new Set(
-                    decksWithCards
-                      .filter((deck) => deck.dueCount > 0)
-                      .map((deck) => deck.id),
-                  ),
+                  new Set(decksWithCards.map((deck) => deck.id)),
                 )
               }
             >
@@ -83,7 +79,6 @@ export function PracticeSetup({
                 className={[
                   "practice-deck-choice",
                   checked ? "selected" : "",
-                  deck.dueCount === 0 ? "disabled" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
@@ -91,7 +86,6 @@ export function PracticeSetup({
                 <input
                   type="checkbox"
                   checked={checked}
-                  disabled={deck.dueCount === 0}
                   onChange={(event) => {
                     const next = new Set(selectedDeckIds);
                     if (event.currentTarget.checked) next.add(deck.id);
@@ -102,7 +96,9 @@ export function PracticeSetup({
                 <span>
                   <strong>{deck.name}</strong>
                   <small>
-                    {deck.dueCount} due · {deck.cardCount} total
+                    {deck.dueCount > 0
+                      ? `${deck.dueCount} due · ${deck.cardCount} total`
+                      : `0 due · ${deck.cardCount} total · all included`}
                   </small>
                 </span>
               </label>
@@ -120,13 +116,13 @@ export function PracticeSetup({
             <span>Shuffle decks</span>
           </label>
           <div className="practice-due-inline" aria-live="polite">
-            <strong>{dueCount}</strong>
-            <span>cards due</span>
+            <strong>{sessionCardCount}</strong>
+            <span>{sessionCardCount === 1 ? "card" : "cards"} in session</span>
           </div>
           <button
             type="button"
             className="primary-button practice-start-button"
-            disabled={selectedDeckIds.size === 0 || dueCount === 0 || isStarting}
+            disabled={selectedDeckIds.size === 0 || sessionCardCount === 0 || isStarting}
             onClick={() => onStart([...selectedDeckIds], shuffle)}
           >
             {isStarting ? "Starting…" : "Start practice"}
@@ -169,9 +165,12 @@ export function PracticeSetup({
   );
 }
 
-function selectedDueCount(decks: Deck[], selectedDeckIds: Set<string>): number {
-  return decks.reduce(
-    (total, deck) => total + (selectedDeckIds.has(deck.id) ? deck.dueCount : 0),
-    0,
-  );
+function selectedSessionCardCount(
+  decks: Deck[],
+  selectedDeckIds: Set<string>,
+): number {
+  return decks.reduce((total, deck) => {
+    if (!selectedDeckIds.has(deck.id)) return total;
+    return total + (deck.dueCount > 0 ? deck.dueCount : deck.cardCount);
+  }, 0);
 }

@@ -158,10 +158,9 @@ export function SettingsScreen({
             suffix="%"
             onChange={(value) => update({ desiredRetention: value / 100 })}
           />
-          <label className="switch-row">
-            <span><strong>Shuffle cards</strong></span>
-            <input type="checkbox" checked={draft.practiceShuffle} onChange={(event) => update({ practiceShuffle: event.currentTarget.checked })} />
-          </label>
+          <p className="settings-note">
+            Session-specific options, including shuffling, are chosen on the Practice screen.
+          </p>
         </section>
 
         <section className="settings-card">

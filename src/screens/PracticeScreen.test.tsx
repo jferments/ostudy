@@ -16,7 +16,7 @@ vi.mock("../ipc", () => ({
     error instanceof Error ? error.message : "Unexpected error",
   markPracticeCardRevealed: vi.fn(),
   markPracticeCardViewed: vi.fn(),
-  startPractice: vi.fn(),
+  startSelectedPractice: vi.fn(),
   submitPracticeReview: vi.fn(),
 }));
 
@@ -29,6 +29,13 @@ const deck: ipc.Deck = {
   createdAt: 1,
   updatedAt: 1,
   revision: 1,
+};
+
+const noDueDeck: ipc.Deck = {
+  ...deck,
+  id: "9".repeat(32),
+  name: "Reviewed dog facts",
+  dueCount: 0,
 };
 
 const settings: ipc.AppSettings = {
@@ -111,7 +118,7 @@ describe("PracticeScreen", () => {
     vi.mocked(ipc.markPracticeCardViewed).mockResolvedValue(undefined);
     vi.mocked(ipc.markPracticeCardRevealed).mockResolvedValue(undefined);
     vi.mocked(ipc.completePracticeSession).mockResolvedValue(undefined);
-    vi.mocked(ipc.startPractice).mockResolvedValue({
+    vi.mocked(ipc.startSelectedPractice).mockResolvedValue({
       id: "d".repeat(32),
       cards: [{ card, deckName: deck.name, dueAt: Date.now() }],
       shuffle: true,
@@ -143,6 +150,60 @@ describe("PracticeScreen", () => {
     expect(screen.queryByText("Session options")).toBeNull();
     expect(screen.getByRole("checkbox", { name: "Shuffle decks" })).toBeTruthy();
     expect(await screen.findByText("2.5 / 3")).toBeTruthy();
+  });
+
+  it("allows a deck with no due cards to be selected and practiced", async () => {
+    render(
+      <PracticeScreen
+        decks={[noDueDeck]}
+        settings={settings}
+        launchRequest={null}
+        onLaunchConsumed={vi.fn()}
+        showToast={vi.fn()}
+      />,
+    );
+
+    const deckChoice = await screen.findByRole("checkbox", {
+      name: /Reviewed dog facts/u,
+    });
+    expect(deckChoice.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(deckChoice);
+
+    const sessionCountLabel = screen.getByText("cards in session");
+    expect(sessionCountLabel.previousElementSibling?.textContent).toBe("2");
+    fireEvent.click(screen.getByRole("button", { name: "Start practice" }));
+
+    await waitFor(() => {
+      expect(ipc.startSelectedPractice).toHaveBeenCalledWith({
+        deckIds: [noDueDeck.id],
+        shuffle: true,
+      });
+    });
+  });
+
+  it("auto-starts a deck-level request even when that deck has nothing due", async () => {
+    const onLaunchConsumed = vi.fn();
+    render(
+      <PracticeScreen
+        decks={[noDueDeck]}
+        settings={settings}
+        launchRequest={{
+          requestId: 7,
+          deckIds: [noDueDeck.id],
+          autoStart: true,
+        }}
+        onLaunchConsumed={onLaunchConsumed}
+        showToast={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onLaunchConsumed).toHaveBeenCalledTimes(1);
+      expect(ipc.startSelectedPractice).toHaveBeenCalledWith({
+        deckIds: [noDueDeck.id],
+        shuffle: true,
+      });
+    });
   });
 
   it("asks one 0–3 question and maps 1 Hard to the durable Hard outcome", async () => {

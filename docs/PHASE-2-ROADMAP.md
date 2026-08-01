@@ -11,7 +11,13 @@ and reviewed before work starts on the next one.
   mapping at the application boundary.
 - Update analytics to use the same 0–3 language and show average confidence.
 - Replace the oversized Session options column with a small **Shuffle decks**
-  checkbox beside the due count and Start button.
+  checkbox beside the session count and Start button.
+- Keep the shuffle choice on the Practice screen rather than duplicating it in
+  application Settings.
+- Keep every non-empty deck selectable. Each selected deck contributes due cards
+  first, or all active cards when it has nothing due.
+- Enable direct deck Practice actions whenever the deck contains at least one
+  card, even when its due count is zero.
 - Show recently practiced decks and their average confidence.
 - Improve keyboard and focus behavior for revealing and rating cards.
 - Make Tauri builds use Cargo's locked mode so builds cannot silently rewrite

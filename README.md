@@ -11,10 +11,16 @@ and analytics on the user's computer.
 - Add managed local images to cards.
 - Import and export complete `.studydeck` deck files.
 - Practice one or more decks with spaced-repetition scheduling.
+- Select any non-empty deck for voluntary study even when no cards are due.
 - Rate each revealed answer once on a four-level confidence scale:
   **0 Wrong**, **1 Hard**, **2 Medium**, or **3 Easy**.
 - Review confidence, response-time, due-card, and per-deck analytics.
-- Configure themes, typography, scale, motion, and review preferences.
+- Configure themes, typography, scale, motion, retention, and confirmations.
+
+Practice sessions are due-first for each selected deck. When a deck has cards
+due, the session uses those cards. When that deck has nothing due, all of its
+active cards are included instead. The shuffle choice is made directly on the
+Practice screen.
 
 ## Ubuntu setup
 
