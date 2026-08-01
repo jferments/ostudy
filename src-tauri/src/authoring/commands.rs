@@ -369,7 +369,7 @@ pub(crate) fn backfill_duplicate_hashes(connection: &mut Connection) -> Result<(
                  WHERE duplicate_hash = '' AND deleted_at IS NULL",
             )
             .map_err(|error| format!("Could not prepare duplicate backfill: {error}"))?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -379,7 +379,8 @@ pub(crate) fn backfill_duplicate_hashes(connection: &mut Connection) -> Result<(
             })
             .map_err(|error| format!("Could not read duplicate backfill rows: {error}"))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Could not collect duplicate backfill rows: {error}"))?
+            .map_err(|error| format!("Could not collect duplicate backfill rows: {error}"))?;
+        rows
     };
 
     if rows.is_empty() {
