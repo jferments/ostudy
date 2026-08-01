@@ -244,6 +244,7 @@ pub fn analyze_bulk_cards(
         .enumerate()
         .map(|(index, row)| prepare_bulk_row(index, row))
         .collect::<Result<Vec<_>, CommandError>>()?;
+    let row_count = i64::try_from(prepared.len()).unwrap_or(i64::MAX);
 
     database.with_connection(|connection| {
         ensure_active_deck(connection, &input.deck_id)?;
@@ -266,19 +267,12 @@ pub fn analyze_bulk_cards(
             }
         }
         let duplicate_count = i64::try_from(duplicate_row_indices.len()).unwrap_or(i64::MAX);
-        let row_count = i64::try_from(seen.len()).unwrap_or(i64::MAX);
         Ok(BulkAnalyzeResultDto {
-            unique_count: row_count.saturating_sub(duplicate_count.saturating_sub(
-                i64::try_from(prepared_duplicate_overlap_placeholder()).unwrap_or(0),
-            )),
+            unique_count: row_count.saturating_sub(duplicate_count),
             duplicate_count,
             duplicate_row_indices,
         })
     })
-}
-
-const fn prepared_duplicate_overlap_placeholder() -> usize {
-    0
 }
 
 #[tauri::command]
