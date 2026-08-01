@@ -199,6 +199,11 @@ pub struct BulkAnalyzeResultDto {
 pub struct BulkCreateCardsInput {
     pub deck_id: String,
     pub rows: Vec<BulkCardRowInput>,
+    // Accepted only for backward-compatible IPC payloads. Bulk creation always
+    // omits exact duplicates after the review step.
+    #[serde(default = "default_true")]
+    #[allow(dead_code)]
+    pub skip_duplicates: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
