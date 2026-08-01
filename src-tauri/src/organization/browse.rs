@@ -257,7 +257,9 @@ pub(crate) fn browse_cards_in_connection(
                     JOIN card_schedules s ON s.card_id = c.id";
     let count_sql = format!("SELECT COUNT(*){from_sql}{where_sql}");
     let total: i64 = connection
-        .query_row(&count_sql, params_from_iter(values.iter()), |row| row.get(0))
+        .query_row(&count_sql, params_from_iter(values.iter()), |row| {
+            row.get(0)
+        })
         .map_err(CommandError::database)?;
 
     let select_sql = format!(
