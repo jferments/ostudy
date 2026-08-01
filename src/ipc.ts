@@ -77,6 +77,7 @@ export interface CreateOrganizedCardInput extends CreateCardInput {
 }
 
 export interface UpdateOrganizedCardInput extends UpdateCardInput {
+  deckId: string;
   tags: string[];
   allowDuplicate: boolean;
 }
@@ -88,13 +89,26 @@ export interface TagSummary {
 }
 
 export type DueFilter = "all" | "due" | "not_due";
-export type CardSort = "relevance" | "updated_desc" | "question_asc" | "due_asc";
+export type ReviewedFilter =
+  | "all"
+  | "never"
+  | "last_1_day"
+  | "last_7_days"
+  | "last_30_days"
+  | "older_30_days";
+export type CardSort =
+  | "relevance"
+  | "updated_desc"
+  | "question_asc"
+  | "due_asc"
+  | "last_reviewed_desc";
 
 export interface CardSearchInput {
-  deckId?: string;
+  deckIds: string[];
   query: string;
   tagIds: string[];
   dueFilter: DueFilter;
+  reviewedFilter: ReviewedFilter;
   sort: CardSort;
   limit: number;
   offset: number;
@@ -109,6 +123,8 @@ export interface CardBrowserRow {
   backText: string;
   tags: string[];
   dueAt: number;
+  lastReviewedAt: number | null;
+  reviewCount: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -116,6 +132,12 @@ export interface CardBrowserRow {
 export interface CardSearchPage {
   cards: CardBrowserRow[];
   totalCount: number;
+}
+
+export interface SelectionCard {
+  cardId: string;
+  noteId: string;
+  deckId: string;
 }
 
 export interface DuplicateCheckInput {
@@ -138,10 +160,20 @@ export interface BulkCardRowInput {
   tags: string[];
 }
 
+export interface AnalyzeBulkCardsInput {
+  deckId: string;
+  rows: BulkCardRowInput[];
+}
+
+export interface BulkAnalyzeResult {
+  uniqueCount: number;
+  duplicateCount: number;
+  duplicateRowIndices: number[];
+}
+
 export interface BulkCreateCardsInput {
   deckId: string;
   rows: BulkCardRowInput[];
-  skipDuplicates: boolean;
 }
 
 export interface BulkCreateResult {
@@ -161,6 +193,18 @@ export interface TransferCardsInput {
 export interface TransferCardsResult {
   affectedCount: number;
   skippedDuplicates: number;
+}
+
+export type TagChangeMode = "add" | "remove";
+
+export interface BulkTagCardsInput {
+  noteIds: string[];
+  tags: string[];
+  mode: TagChangeMode;
+}
+
+export interface BulkActionResult {
+  affectedCount: number;
 }
 
 export interface AppSettings {
@@ -198,6 +242,11 @@ export interface PracticeSession {
 
 export interface StartPracticeInput {
   deckIds: string[];
+  shuffle: boolean;
+}
+
+export interface StartCardPracticeInput {
+  cardIds: string[];
   shuffle: boolean;
 }
 
@@ -325,12 +374,18 @@ export async function deleteCard(noteId: string): Promise<void> {
   return invoke<void>("delete_card", { noteId });
 }
 
-export async function listTags(deckId?: string): Promise<TagSummary[]> {
-  return invoke<TagSummary[]>("list_tags", { input: { deckId } });
+export async function listTags(deckIds: string[] = []): Promise<TagSummary[]> {
+  return invoke<TagSummary[]>("list_tags", { input: { deckIds } });
 }
 
 export async function searchCards(input: CardSearchInput): Promise<CardSearchPage> {
   return invoke<CardSearchPage>("search_cards", { input });
+}
+
+export async function listMatchingCards(
+  input: CardSearchInput,
+): Promise<SelectionCard[]> {
+  return invoke<SelectionCard[]>("list_matching_cards", { input });
 }
 
 export async function getOrganizedCard(noteId: string): Promise<OrganizedCard> {
@@ -355,6 +410,12 @@ export async function findDuplicateCards(
   return invoke<DuplicateCard[]>("find_duplicate_cards", { input });
 }
 
+export async function analyzeBulkCards(
+  input: AnalyzeBulkCardsInput,
+): Promise<BulkAnalyzeResult> {
+  return invoke<BulkAnalyzeResult>("analyze_bulk_cards", { input });
+}
+
 export async function bulkCreateCards(
   input: BulkCreateCardsInput,
 ): Promise<BulkCreateResult> {
@@ -365,6 +426,16 @@ export async function transferCards(
   input: TransferCardsInput,
 ): Promise<TransferCardsResult> {
   return invoke<TransferCardsResult>("transfer_cards", { input });
+}
+
+export async function bulkTagCards(
+  input: BulkTagCardsInput,
+): Promise<BulkActionResult> {
+  return invoke<BulkActionResult>("bulk_tag_cards", { input });
+}
+
+export async function deleteCards(noteIds: string[]): Promise<BulkActionResult> {
+  return invoke<BulkActionResult>("delete_cards", { input: { noteIds } });
 }
 
 export async function importImage(filePath: string): Promise<Asset> {
@@ -398,6 +469,13 @@ export async function startSelectedPractice(
   input: StartPracticeInput,
 ): Promise<PracticeSession> {
   return invoke<PracticeSession>("start_selected_practice", { input });
+}
+
+/** Starts a temporary session from an explicit Search/Filter result set. */
+export async function startCardPractice(
+  input: StartCardPracticeInput,
+): Promise<PracticeSession> {
+  return invoke<PracticeSession>("start_card_practice", { input });
 }
 
 export async function markPracticeCardViewed(
