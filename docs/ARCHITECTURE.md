@@ -50,9 +50,10 @@ all data crossing the IPC boundary and owns multi-step transactions.
 - `database.rs` opens SQLite, applies checksummed migrations, backfills stable
   duplicate fingerprints, and exposes one mutex-protected connection.
 - `decks.rs` owns deck validation and persistence.
-- `cards.rs` validates Tiptap JSON and supports the original basic-card API.
-- `authoring.rs` owns tags, FTS5 queries, organized card writes, exact duplicate
-  checks, bulk entry, and transactional move/copy.
+- `cards.rs` owns shared card hydration, per-deck list/delete behavior, and
+  canonical Tiptap validation.
+- `authoring.rs` is the only card create/update boundary; it owns tags, FTS5
+  queries, duplicate checks, assets, deck changes, bulk entry, and move/copy.
 - `assets.rs` imports supported local image files into the managed library.
 - `scheduler.rs` is the sole adapter to `rs-fsrs`.
 - `practice.rs` records graded reviews atomically.

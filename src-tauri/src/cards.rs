@@ -1,53 +1,28 @@
-//! Flashcard commands, persistence, and rich-text validation.
+//! Shared card hydration, per-deck browsing, deletion, and rich-text validation.
 //!
 //! The React/Tiptap editor sends JSON documents across the Tauri IPC boundary.
-//! This module treats those documents as untrusted input: it validates the
-//! supported schema, derives searchable plain text in Rust, and writes notes,
-//! generated cards, and asset relationships in SQLite transactions. Keeping
-//! the authoritative validation here prevents a modified frontend or imported
-//! deck from bypassing the card-content rules.
+//! This module treats those documents as untrusted input, validates the supported
+//! schema, and derives authoritative plain text in Rust. The authoring module owns
+//! card creation and updates so there is one write path for tags, duplicate
+//! fingerprints, assets, deck changes, and scheduling invariants.
 
 use std::collections::BTreeSet;
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use serde::{Deserialize, Serialize};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::Serialize;
 use serde_json::Value;
 use tauri::State;
 
 use crate::{
-    assets::{ensure_assets_exist, get_assets_for_note, AssetDto},
+    assets::{get_assets_for_note, AssetDto},
     database::Database,
     error::CommandError,
     paths::AppPaths,
-    scheduler::insert_new_schedule,
-    util::{generate_id, unix_time_millis, validate_entity_id},
+    util::{unix_time_millis, validate_entity_id},
 };
 
-const CONTENT_FORMAT: &str = "tiptap-json";
-const CONTENT_SCHEMA_VERSION: i64 = 1;
 const MAX_DOCUMENT_BYTES: usize = 1_000_000;
 const MAX_PLAIN_TEXT_CHARS: usize = 200_000;
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateCardInput {
-    pub deck_id: String,
-    pub front_doc: Value,
-    pub back_doc: Value,
-    pub front_text: String,
-    pub back_text: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateCardInput {
-    pub note_id: String,
-    pub revision: i64,
-    pub front_doc: Value,
-    pub back_doc: Value,
-    pub front_text: String,
-    pub back_text: String,
-}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -97,60 +72,6 @@ pub fn list_cards(
 ) -> Result<Vec<CardDto>, CommandError> {
     validate_entity_id(&deck_id, "deck")?;
     database.with_connection(|connection| list_cards_from_connection(connection, &paths, &deck_id))
-}
-
-#[tauri::command]
-pub fn get_card(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    note_id: String,
-) -> Result<CardDto, CommandError> {
-    validate_entity_id(&note_id, "note")?;
-    database.with_connection(|connection| get_card_from_connection(connection, &paths, &note_id))
-}
-
-#[tauri::command]
-pub fn create_card(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    input: CreateCardInput,
-) -> Result<CardDto, CommandError> {
-    validate_entity_id(&input.deck_id, "deck")?;
-    let content = validate_content(
-        input.front_doc,
-        input.back_doc,
-        input.front_text,
-        input.back_text,
-    )?;
-
-    database.with_connection(|connection| {
-        create_card_in_connection(connection, &paths, &input.deck_id, content)
-    })
-}
-
-#[tauri::command]
-pub fn update_card(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    input: UpdateCardInput,
-) -> Result<CardDto, CommandError> {
-    validate_entity_id(&input.note_id, "note")?;
-    if input.revision < 1 {
-        return Err(CommandError::new(
-            "invalid_revision",
-            "The card revision is invalid.",
-        ));
-    }
-    let content = validate_content(
-        input.front_doc,
-        input.back_doc,
-        input.front_text,
-        input.back_text,
-    )?;
-
-    database.with_connection(|connection| {
-        update_card_in_connection(connection, &paths, &input.note_id, input.revision, content)
-    })
 }
 
 #[tauri::command]
@@ -222,104 +143,6 @@ pub(crate) fn get_card_from_connection(
     hydrate_card(connection, paths, raw)
 }
 
-pub(crate) fn create_card_in_connection(
-    connection: &mut Connection,
-    paths: &AppPaths,
-    deck_id: &str,
-    content: ValidatedContent,
-) -> Result<CardDto, CommandError> {
-    let now = unix_time_millis()?;
-    let transaction = connection.transaction().map_err(CommandError::database)?;
-
-    ensure_active_deck(&transaction, deck_id)?;
-    ensure_assets_exist(&transaction, &all_asset_ids(&content))?;
-
-    let note_id = generate_id(&transaction)?;
-    let card_id = generate_id(&transaction)?;
-
-    transaction
-        .execute(
-            "INSERT INTO notes (\n\
-                 id, deck_id, note_type, content_format, content_schema_version,\n\
-                 front_doc, back_doc, front_text, back_text, created_at, updated_at, revision\n\
-             ) VALUES (?1, ?2, 'basic', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, 1)",
-            params![
-                note_id,
-                deck_id,
-                CONTENT_FORMAT,
-                CONTENT_SCHEMA_VERSION,
-                content.front_doc_json,
-                content.back_doc_json,
-                content.front_text,
-                content.back_text,
-                now
-            ],
-        )
-        .map_err(CommandError::database)?;
-    transaction
-        .execute(
-            "INSERT INTO cards (\n\
-                 id, note_id, deck_id, direction, template_ordinal, created_at, updated_at\n\
-             ) VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)",
-            params![card_id, note_id, deck_id, now],
-        )
-        .map_err(CommandError::database)?;
-    insert_new_schedule(&transaction, &card_id, now)?;
-
-    replace_note_assets(&transaction, &note_id, &content)?;
-    transaction.commit().map_err(CommandError::database)?;
-
-    get_card_from_connection(connection, paths, &note_id)
-}
-
-fn update_card_in_connection(
-    connection: &mut Connection,
-    paths: &AppPaths,
-    note_id: &str,
-    revision: i64,
-    content: ValidatedContent,
-) -> Result<CardDto, CommandError> {
-    let now = unix_time_millis()?;
-    let transaction = connection.transaction().map_err(CommandError::database)?;
-
-    ensure_assets_exist(&transaction, &all_asset_ids(&content))?;
-    let changed = transaction
-        .execute(
-            "UPDATE notes\n\
-             SET front_doc = ?1, back_doc = ?2, front_text = ?3, back_text = ?4,\n\
-                 updated_at = ?5, revision = revision + 1\n\
-             WHERE id = ?6 AND revision = ?7 AND deleted_at IS NULL",
-            params![
-                content.front_doc_json,
-                content.back_doc_json,
-                content.front_text,
-                content.back_text,
-                now,
-                note_id,
-                revision
-            ],
-        )
-        .map_err(CommandError::database)?;
-
-    if changed == 0 {
-        return Err(CommandError::new(
-            "card_changed",
-            "This card changed in another window. Reload it and try again.",
-        ));
-    }
-
-    transaction
-        .execute(
-            "UPDATE cards SET updated_at = ?1 WHERE note_id = ?2 AND deleted_at IS NULL",
-            params![now, note_id],
-        )
-        .map_err(CommandError::database)?;
-    replace_note_assets(&transaction, note_id, &content)?;
-    transaction.commit().map_err(CommandError::database)?;
-
-    get_card_from_connection(connection, paths, note_id)
-}
-
 fn delete_card_in_connection(
     connection: &mut Connection,
     note_id: &str,
@@ -351,55 +174,6 @@ fn delete_card_in_connection(
         )
         .map_err(CommandError::database)?;
     transaction.commit().map_err(CommandError::database)
-}
-
-fn ensure_active_deck(connection: &Connection, deck_id: &str) -> Result<(), CommandError> {
-    let exists: i64 = connection
-        .query_row(
-            "SELECT EXISTS(\n\
-                 SELECT 1 FROM decks\n\
-                 WHERE id = ?1 AND deleted_at IS NULL AND archived_at IS NULL\n\
-             )",
-            [deck_id],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
-    if exists == 0 {
-        return Err(CommandError::new(
-            "deck_not_found",
-            "The destination deck no longer exists.",
-        ));
-    }
-    Ok(())
-}
-
-fn replace_note_assets(
-    transaction: &Transaction<'_>,
-    note_id: &str,
-    content: &ValidatedContent,
-) -> Result<(), CommandError> {
-    transaction
-        .execute("DELETE FROM note_assets WHERE note_id = ?1", [note_id])
-        .map_err(CommandError::database)?;
-
-    for asset_id in &content.front_asset_ids {
-        transaction
-            .execute(
-                "INSERT INTO note_assets (note_id, asset_id, side) VALUES (?1, ?2, 'front')",
-                params![note_id, asset_id],
-            )
-            .map_err(CommandError::database)?;
-    }
-    for asset_id in &content.back_asset_ids {
-        transaction
-            .execute(
-                "INSERT INTO note_assets (note_id, asset_id, side) VALUES (?1, ?2, 'back')",
-                params![note_id, asset_id],
-            )
-            .map_err(CommandError::database)?;
-    }
-
-    Ok(())
 }
 
 fn hydrate_card(
@@ -1262,17 +1036,6 @@ fn collect_asset_ids_from_value(
     Ok(())
 }
 
-fn all_asset_ids(content: &ValidatedContent) -> Vec<String> {
-    content
-        .front_asset_ids
-        .iter()
-        .chain(&content.back_asset_ids)
-        .cloned()
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1318,7 +1081,7 @@ mod tests {
     }
 
     #[test]
-    fn creates_updates_lists_and_deletes_a_card() {
+    fn lists_hydrates_and_deletes_a_card() {
         let database = Database::open_in_memory().expect("database should open");
         let temporary = tempfile_path();
         let paths = AppPaths::new(temporary.clone()).expect("paths should initialize");
@@ -1335,41 +1098,57 @@ mod tests {
             })
             .expect("deck should be created");
 
-        let created = database
+        let (note_id, card_id) = database
             .with_connection(|connection| {
-                create_card_in_connection(
-                    connection,
-                    &paths,
-                    &deck.id,
-                    validate_content(
-                        paragraph("What is ATP?"),
-                        paragraph("The cell's immediately usable energy currency."),
-                        "What is ATP?".to_string(),
-                        "The cell's immediately usable energy currency.".to_string(),
-                    )?,
-                )
+                let content = validate_content(
+                    paragraph("What is ATP?"),
+                    paragraph("The cell's immediately usable energy currency."),
+                    "What is ATP?".to_string(),
+                    "The cell's immediately usable energy currency.".to_string(),
+                )?;
+                let now = unix_time_millis()?;
+                let note_id = crate::util::generate_id(connection)?;
+                let card_id = crate::util::generate_id(connection)?;
+                connection
+                    .execute(
+                        "INSERT INTO notes (
+                             id, deck_id, note_type, content_format, content_schema_version,
+                             front_doc, back_doc, front_text, back_text,
+                             created_at, updated_at, revision
+                         ) VALUES (
+                             ?1, ?2, 'basic', 'tiptap-json', 1,
+                             ?3, ?4, ?5, ?6, ?7, ?7, 1
+                         )",
+                        params![
+                            note_id,
+                            deck.id,
+                            content.front_doc_json,
+                            content.back_doc_json,
+                            content.front_text,
+                            content.back_text,
+                            now
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO cards (
+                             id, note_id, deck_id, direction, template_ordinal,
+                             created_at, updated_at
+                         ) VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)",
+                        params![card_id, note_id, deck.id, now],
+                    )
+                    .map_err(CommandError::database)?;
+                crate::scheduler::insert_new_schedule(connection, &card_id, now)?;
+                Ok((note_id, card_id))
             })
-            .expect("card should be created");
-        assert_eq!(created.front_text, "What is ATP?");
-        assert_eq!(created.revision, 1);
+            .expect("card fixture should be created");
 
-        let updated = database
-            .with_connection(|connection| {
-                update_card_in_connection(
-                    connection,
-                    &paths,
-                    &created.note_id,
-                    created.revision,
-                    validate_content(
-                        paragraph("ATP stands for?"),
-                        paragraph("Adenosine triphosphate"),
-                        "ATP stands for?".to_string(),
-                        "Adenosine triphosphate".to_string(),
-                    )?,
-                )
-            })
-            .expect("card should update");
-        assert_eq!(updated.revision, 2);
+        let loaded = database
+            .with_connection(|connection| get_card_from_connection(connection, &paths, &note_id))
+            .expect("card should hydrate");
+        assert_eq!(loaded.id, card_id);
+        assert_eq!(loaded.front_text, "What is ATP?");
 
         let cards = database
             .with_connection(|connection| list_cards_from_connection(connection, &paths, &deck.id))
@@ -1377,7 +1156,7 @@ mod tests {
         assert_eq!(cards.len(), 1);
 
         database
-            .with_connection(|connection| delete_card_in_connection(connection, &created.note_id))
+            .with_connection(|connection| delete_card_in_connection(connection, &note_id))
             .expect("card should delete");
         let cards = database
             .with_connection(|connection| list_cards_from_connection(connection, &paths, &deck.id))

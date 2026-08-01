@@ -1,25 +1,19 @@
-//! Scheduled practice sessions and atomic FSRS review recording.
+//! Practice-session records and atomic FSRS review submission.
 //!
-//! A session is a snapshot of cards that were due when it started. The answer
-//! must be revealed before a rating can be submitted. Each accepted rating is
-//! committed in one SQLite transaction with both the immutable review event
-//! and the card's mutable schedule. A unique `submission_id` makes retries and
-//! accidental double-clicks idempotent.
-
-use std::{
-    collections::{BTreeSet, HashMap},
-    hash::{Hash, Hasher},
-};
+//! Session selection is owned by `practice_selection`; this module owns the
+//! durable session events and review transaction. An answer must be revealed
+//! before rating. Each accepted rating appends the immutable review event and
+//! updates the mutable schedule atomically. A unique `submission_id` makes
+//! retries and accidental double-clicks idempotent.
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    cards::{get_card_from_connection, CardDto},
+    cards::CardDto,
     database::Database,
     error::CommandError,
-    paths::AppPaths,
     scheduler::{
         apply_review, load_schedule, update_schedule, ReviewOutcome, ScheduleTransition,
         SCHEDULER_NAME, SCHEDULER_VERSION,
@@ -28,15 +22,7 @@ use crate::{
     util::{bool_to_integer, generate_id, unix_time_millis, validate_entity_id},
 };
 
-const MAX_SESSION_DECKS: usize = 100;
 const MAX_RESPONSE_TIME_MS: i64 = 86_400_000;
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartPracticeInput {
-    pub deck_ids: Vec<String>,
-    pub shuffle: bool,
-}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,18 +68,6 @@ pub struct ReviewResultDto {
     pub completed: bool,
     pub rated_count: i64,
     pub correct_count: i64,
-}
-
-#[tauri::command]
-pub fn start_practice(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    input: StartPracticeInput,
-) -> Result<PracticeSessionDto, CommandError> {
-    let deck_ids = validate_deck_ids(input.deck_ids)?;
-    database.with_connection(|connection| {
-        start_practice_in_connection(connection, &paths, deck_ids, input.shuffle)
-    })
 }
 
 #[tauri::command]
@@ -152,133 +126,6 @@ pub fn complete_practice_session(
             ));
         }
         Ok(())
-    })
-}
-
-fn start_practice_in_connection(
-    connection: &mut Connection,
-    paths: &AppPaths,
-    deck_ids: Vec<String>,
-    shuffle: bool,
-) -> Result<PracticeSessionDto, CommandError> {
-    let now = unix_time_millis()?;
-    let mut deck_names = HashMap::new();
-    let mut pending_cards = Vec::new();
-
-    for deck_id in &deck_ids {
-        let deck_name: String = connection
-            .query_row(
-                "SELECT name FROM decks\n\
-                 WHERE id = ?1 AND deleted_at IS NULL AND archived_at IS NULL",
-                [deck_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(CommandError::database)?
-            .ok_or_else(|| {
-                CommandError::new(
-                    "deck_not_found",
-                    "One of the selected decks no longer exists.",
-                )
-            })?;
-        deck_names.insert(deck_id.clone(), deck_name);
-
-        let mut statement = connection
-            .prepare(
-                "SELECT c.id, c.note_id, s.due_at\n\
-                 FROM cards c\n\
-                 JOIN notes n ON n.id = c.note_id\n\
-                 JOIN card_schedules s ON s.card_id = c.id\n\
-                 WHERE c.deck_id = ?1\n\
-                   AND c.deleted_at IS NULL\n\
-                   AND c.suspended_at IS NULL\n\
-                   AND n.deleted_at IS NULL\n\
-                   AND s.due_at <= ?2\n\
-                 ORDER BY s.due_at ASC, c.created_at ASC",
-            )
-            .map_err(CommandError::database)?;
-        let rows = statement
-            .query_map(params![deck_id, now], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                ))
-            })
-            .map_err(CommandError::database)?;
-
-        for row in rows {
-            let (card_id, note_id, due_at) = row.map_err(CommandError::database)?;
-            pending_cards.push((deck_id.clone(), card_id, note_id, due_at));
-        }
-    }
-
-    if pending_cards.is_empty() {
-        return Err(CommandError::new(
-            "no_cards_due",
-            "No cards are due in the selected decks right now.",
-        ));
-    }
-
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(CommandError::database)?;
-    let session_id = generate_id(&transaction)?;
-    if shuffle {
-        pending_cards.sort_by_key(|(_, card_id, _, _)| shuffle_key(&session_id, card_id));
-    }
-
-    let selected_deck_ids_json =
-        serde_json::to_string(&deck_ids).map_err(CommandError::serialization)?;
-    transaction
-        .execute(
-            "INSERT INTO practice_sessions (\n\
-                 id, selected_deck_ids_json, shuffle, card_count, started_at\n\
-             ) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![
-                session_id,
-                selected_deck_ids_json,
-                bool_to_integer(shuffle),
-                i64::try_from(pending_cards.len()).unwrap_or(i64::MAX),
-                now,
-            ],
-        )
-        .map_err(CommandError::database)?;
-
-    for (position, (_, card_id, _, _)) in pending_cards.iter().enumerate() {
-        transaction
-            .execute(
-                "INSERT INTO practice_session_cards (session_id, card_id, position)\n\
-                 VALUES (?1, ?2, ?3)",
-                params![
-                    session_id,
-                    card_id,
-                    i64::try_from(position).unwrap_or(i64::MAX),
-                ],
-            )
-            .map_err(CommandError::database)?;
-    }
-    transaction.commit().map_err(CommandError::database)?;
-
-    let mut cards = Vec::with_capacity(pending_cards.len());
-    for (deck_id, _, note_id, due_at) in pending_cards {
-        let card = get_card_from_connection(connection, paths, &note_id)?;
-        let deck_name = deck_names
-            .get(&deck_id)
-            .cloned()
-            .unwrap_or_else(|| "Deck".to_string());
-        cards.push(PracticeCardDto {
-            card,
-            deck_name,
-            due_at,
-        });
-    }
-
-    Ok(PracticeSessionDto {
-        id: session_id,
-        cards,
-        shuffle,
-        started_at: now,
     })
 }
 
@@ -588,56 +435,10 @@ fn validate_review_input(input: &SubmitReviewInput) -> Result<(), CommandError> 
     Ok(())
 }
 
-fn validate_deck_ids(values: Vec<String>) -> Result<Vec<String>, CommandError> {
-    let mut unique = BTreeSet::new();
-    for value in values {
-        validate_entity_id(&value, "deck")?;
-        unique.insert(value);
-    }
-    if unique.is_empty() {
-        return Err(CommandError::new(
-            "no_decks_selected",
-            "Select at least one deck for the practice session.",
-        ));
-    }
-    if unique.len() > MAX_SESSION_DECKS {
-        return Err(CommandError::new(
-            "too_many_decks",
-            "A practice session can include at most 100 decks.",
-        ));
-    }
-    Ok(unique.into_iter().collect())
-}
-
-fn shuffle_key(session_id: &str, card_id: &str) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    session_id.hash(&mut hasher);
-    card_id.hash(&mut hasher);
-    hasher.finish()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{scheduler::insert_new_schedule, util::unix_time_millis};
-
-    #[test]
-    fn requires_at_least_one_deck() {
-        let error = validate_deck_ids(Vec::new()).expect_err("empty selection should fail");
-        assert_eq!(error.code, "no_decks_selected");
-    }
-
-    #[test]
-    fn shuffle_key_is_repeatable() {
-        assert_eq!(
-            shuffle_key("session", "card"),
-            shuffle_key("session", "card")
-        );
-        assert_ne!(
-            shuffle_key("session", "card"),
-            shuffle_key("session", "other")
-        );
-    }
 
     #[test]
     fn completed_sessions_reject_card_events() {

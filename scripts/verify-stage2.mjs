@@ -13,6 +13,8 @@ const [
   database,
   rustCommands,
   authoring,
+  cardsCore,
+  practice,
   practiceSelection,
   ipc,
   app,
@@ -34,6 +36,8 @@ const [
     ["src-tauri", "src", "authoring", "normalization.rs"],
     ["src-tauri", "src", "authoring", "tests.rs"],
   ),
+  read("src-tauri", "src", "cards.rs"),
+  read("src-tauri", "src", "practice.rs"),
   read("src-tauri", "src", "practice_selection.rs"),
   read("src", "ipc.ts"),
   read("src", "App.tsx"),
@@ -147,6 +151,41 @@ if (!authoring.includes("removed_authoring_fields_are_rejected")) {
   failures.push("removed authoring fields are not covered by strict-deserialization tests");
 }
 
+for (const removedCommand of [
+  "cards::get_card,",
+  "cards::create_card,",
+  "cards::update_card,",
+  "practice::start_practice,",
+]) {
+  if (rustCommands.includes(removedCommand)) {
+    failures.push(`obsolete Rust command is still registered: ${removedCommand}`);
+  }
+}
+for (const removedWrapper of [
+  "export async function getCard(",
+  "export async function createCard(",
+  "export async function updateCard(",
+  "export async function startPractice(",
+]) {
+  if (ipc.includes(removedWrapper)) {
+    failures.push(`obsolete frontend IPC wrapper remains: ${removedWrapper}`);
+  }
+}
+for (const removedFunction of [
+  "pub fn get_card(",
+  "pub fn create_card(",
+  "pub fn update_card(",
+  "create_card_in_connection(",
+  "update_card_in_connection(",
+]) {
+  if (cardsCore.includes(removedFunction)) {
+    failures.push(`obsolete card API remains: ${removedFunction}`);
+  }
+}
+if (practice.includes("pub fn start_practice(") || practice.includes("start_practice_in_connection(")) {
+  failures.push("obsolete strict-due practice implementation remains");
+}
+
 if (!practiceSelection.includes("start_card_practice") || !practiceSelection.includes("card_ids")) {
   failures.push("filtered result cards cannot start a temporary practice session");
 }
@@ -202,5 +241,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Search/Filter multi-deck filters, strict IPC inputs, bulk actions, duplicate review, and temporary practice are wired.",
+  "OK   Search/Filter features are wired, strict IPC inputs reject removed fields, and obsolete APIs are absent.",
 );

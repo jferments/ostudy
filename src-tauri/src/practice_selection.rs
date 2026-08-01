@@ -19,7 +19,7 @@ use crate::{
     database::Database,
     error::CommandError,
     paths::AppPaths,
-    practice::{PracticeCardDto, PracticeSessionDto, StartPracticeInput},
+    practice::{PracticeCardDto, PracticeSessionDto},
     util::{bool_to_integer, generate_id, unix_time_millis, validate_entity_id},
 };
 
@@ -30,7 +30,14 @@ type PendingCard = (String, String, String, i64);
 type DeckCard = (String, String, i64);
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct StartPracticeInput {
+    pub deck_ids: Vec<String>,
+    pub shuffle: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct StartCardPracticeInput {
     pub card_ids: Vec<String>,
     pub shuffle: bool,

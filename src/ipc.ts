@@ -54,30 +54,24 @@ export interface OrganizedCard extends Flashcard {
   dueAt: number;
 }
 
-export interface CreateCardInput {
+export interface CreateOrganizedCardInput {
   deckId: string;
   frontDoc: RichDocument;
   backDoc: RichDocument;
   frontText: string;
   backText: string;
+  tags: string[];
+  allowDuplicate: boolean;
 }
 
-export interface UpdateCardInput {
+export interface UpdateOrganizedCardInput {
   noteId: string;
+  deckId: string;
   revision: number;
   frontDoc: RichDocument;
   backDoc: RichDocument;
   frontText: string;
   backText: string;
-}
-
-export interface CreateOrganizedCardInput extends CreateCardInput {
-  tags: string[];
-  allowDuplicate: boolean;
-}
-
-export interface UpdateOrganizedCardInput extends UpdateCardInput {
-  deckId: string;
   tags: string[];
   allowDuplicate: boolean;
 }
@@ -358,19 +352,7 @@ export async function listCards(deckId: string): Promise<Flashcard[]> {
   return invoke<Flashcard[]>("list_cards", { deckId });
 }
 
-export async function getCard(noteId: string): Promise<Flashcard> {
-  return invoke<Flashcard>("get_card", { noteId });
-}
-
-export async function createCard(input: CreateCardInput): Promise<Flashcard> {
-  return invoke<Flashcard>("create_card", { input });
-}
-
-export async function updateCard(input: UpdateCardInput): Promise<Flashcard> {
-  return invoke<Flashcard>("update_card", { input });
-}
-
-export async function deleteCard(noteId: string): Promise<void> {
+export async function getOrganizedCardexport async function deleteCard(noteId: string): Promise<void> {
   return invoke<void>("delete_card", { noteId });
 }
 
@@ -452,13 +434,6 @@ export async function saveSettings(input: AppSettings): Promise<AppSettings> {
 
 export async function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("get_app_info");
-}
-
-/** Starts a strictly scheduled session containing only cards already due. */
-export async function startPractice(
-  input: StartPracticeInput,
-): Promise<PracticeSession> {
-  return invoke<PracticeSession>("start_practice", { input });
 }
 
 /**
