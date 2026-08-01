@@ -137,8 +137,9 @@ pub(crate) fn transfer_cards_in_connection(
         if duplicate_keys.contains(&key) {
             skipped.push(SkippedTransferDto {
                 note_id: source.id,
-                reason: "An identical question and answer already exist in the destination deck."
-                    .to_string(),
+                reason:
+                    "An identical question and answer already exist in the destination deck."
+                        .to_string(),
             });
             continue;
         }
