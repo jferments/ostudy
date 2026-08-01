@@ -352,7 +352,7 @@ export async function listCards(deckId: string): Promise<Flashcard[]> {
   return invoke<Flashcard[]>("list_cards", { deckId });
 }
 
-export async function getOrganizedCardexport async function deleteCard(noteId: string): Promise<void> {
+export async function deleteCard(noteId: string): Promise<void> {
   return invoke<void>("delete_card", { noteId });
 }
 
