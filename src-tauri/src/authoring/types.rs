@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use tauri::State;
 
 use crate::{
-    assets::{ensure_assets_exist, get_assets_for_note, AssetDto},
+    assets::{ensure_assets_exist, AssetDto},
     cards::{get_card_from_connection, validate_content, CardDto, ValidatedContent},
     database::Database,
     error::CommandError,
