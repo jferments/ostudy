@@ -82,7 +82,10 @@ pub(crate) fn load_duplicate_keys_for_deck(
         .map_err(CommandError::database)?;
     let rows = statement
         .query_map([deck_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+            ))
         })
         .map_err(CommandError::database)?;
     let mut keys = HashSet::new();
