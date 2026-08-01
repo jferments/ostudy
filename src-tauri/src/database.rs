@@ -30,9 +30,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "49dd1e24e463c9a08a59e243d90143e2874459dd2a4a8d5f61613d5df7ebcae3",
         sql: include_str!("../migrations/0003_fsrs_reviews.sql"),
     },
+    Migration {
+        version: 4,
+        name: "card_organization",
+        checksum: "df79f8bbb79490596ae8c8b0106b776c1f7d43dc4599ddcf0db135a03ffb71cd",
+        sql: include_str!("../migrations/0004_card_organization.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 3;
+const LATEST_SCHEMA_VERSION: i64 = 4;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -227,12 +233,12 @@ mod tests {
 
                 let table_count: i64 = connection
                     .query_row(
-                        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('decks', 'notes', 'cards', 'assets', 'app_settings', 'practice_sessions', 'card_schedules', 'review_events')",
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('decks', 'notes', 'cards', 'assets', 'app_settings', 'practice_sessions', 'card_schedules', 'review_events', 'tags', 'note_tags', 'card_search')",
                         [],
                         |row| row.get(0),
                     )
                     .map_err(CommandError::database)?;
-                assert_eq!(table_count, 8);
+                assert_eq!(table_count, 11);
                 Ok(())
             })
             .expect("second migration pass should succeed");
@@ -298,6 +304,15 @@ mod tests {
                 )
                 .expect("fixture schedule should remain readable");
             assert_eq!(schedule_count, 1);
+
+            let search_count: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM card_search WHERE card_search MATCH 'Fixture*'",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("fixture card should be indexed by FTS5");
+            assert_eq!(search_count, 1);
 
             let integrity: String = connection
                 .query_row("PRAGMA integrity_check", [], |row| row.get(0))
