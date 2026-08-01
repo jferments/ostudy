@@ -1,0 +1,113 @@
+name: One-off transfer test cleanup
+
+on:
+  push:
+    branches:
+      - agent/phase-2-stage-2-search-filter-redesign
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the development branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/phase-2-stage-2-search-filter-redesign
+          fetch-depth: 0
+
+      - name: Replace the obsolete test helper with explicit fixture setup
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("src-tauri/src/transfer.rs")
+          source = path.read_text(encoding="utf-8")
+          old = '''        database
+            .with_connection(|connection| {
+                crate::cards::create_card_in_connection(
+                    connection,
+                    &paths,
+                    &deck.id,
+                    crate::cards::validate_content(
+                        paragraph("What is the action of metoprolol?"),
+                        paragraph("It selectively blocks beta-1 adrenergic receptors."),
+                        "ignored snapshot".to_string(),
+                        "ignored snapshot".to_string(),
+                    )?,
+                )
+            })
+            .expect("card should be created");
+'''
+          new = '''        database
+            .with_connection(|connection| {
+                let content = crate::cards::validate_content(
+                    paragraph("What is the action of metoprolol?"),
+                    paragraph("It selectively blocks beta-1 adrenergic receptors."),
+                    "ignored snapshot".to_string(),
+                    "ignored snapshot".to_string(),
+                )?;
+                let now = unix_time_millis()?;
+                let note_id = generate_id(connection)?;
+                let card_id = generate_id(connection)?;
+                connection
+                    .execute(
+                        "INSERT INTO notes (
+                             id, deck_id, note_type, content_format, content_schema_version,
+                             front_doc, back_doc, front_text, back_text, duplicate_hash,
+                             created_at, updated_at, revision
+                         ) VALUES (
+                             ?1, ?2, 'basic', 'tiptap-json', 1,
+                             ?3, ?4, ?5, ?6, '', ?7, ?7, 1
+                         )",
+                        params![
+                            note_id,
+                            deck.id,
+                            content.front_doc_json,
+                            content.back_doc_json,
+                            content.front_text,
+                            content.back_text,
+                            now,
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO cards (
+                             id, note_id, deck_id, direction, template_ordinal,
+                             created_at, updated_at
+                         ) VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)",
+                        params![card_id, note_id, deck.id, now],
+                    )
+                    .map_err(CommandError::database)?;
+                insert_new_schedule(connection, &card_id, now)?;
+                Ok(())
+            })
+            .expect("card should be created");
+'''
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f"expected one obsolete transfer test block, found {count}")
+          path.write_text(source.replace(old, new), encoding="utf-8")
+          PY
+
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          rm .github/workflows/one-off-fix-transfer-test.yml
+          git diff --check
+
+      - name: Commit the completed cleanup and remove this workflow
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add src-tauri/src/transfer.rs .github/workflows/one-off-fix-transfer-test.yml
+          git commit -m "test: remove obsolete card helper from transfer fixture"
+          git push origin HEAD:agent/phase-2-stage-2-search-filter-redesign
