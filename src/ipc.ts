@@ -438,13 +438,13 @@ export async function exportDeck(
   deckId: string,
   destinationPath: string,
 ): Promise<ExportResult> {
-  return invoke<ExportResult>("export_tagged_deck", {
+  return invoke<ExportResult>("export_deck", {
     input: { deckId, destinationPath },
   });
 }
 
 export async function importDeck(sourcePath: string): Promise<ImportResult> {
-  return invoke<ImportResult>("import_tagged_deck", { sourcePath });
+  return invoke<ImportResult>("import_deck", { sourcePath });
 }
 
 export function createSubmissionId(): string {
