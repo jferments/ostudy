@@ -61,6 +61,7 @@ const [
   app,
   ipc,
   cards,
+  authoringWrites,
   scheduler,
   transfer,
   launcher,
@@ -86,6 +87,7 @@ const [
   read("src", "App.tsx"),
   read("src", "ipc.ts"),
   read("src-tauri", "src", "cards.rs"),
+  read("src-tauri", "src", "authoring", "writes_and_transfer.rs"),
   read("src-tauri", "src", "scheduler.rs"),
   read("src-tauri", "src", "transfer.rs"),
   read("run-app.sh"),
@@ -198,9 +200,14 @@ if (!releaseFixture.includes("Immutable database fixture captured for the ostudy
 
 for (const command of [
   "list_decks", "get_deck", "create_deck", "update_deck", "delete_deck",
-  "list_cards", "get_card", "create_card", "update_card", "delete_card",
+  "list_cards", "delete_card",
+  "list_tags", "search_cards", "list_matching_cards",
+  "get_organized_card", "create_organized_card", "update_organized_card",
+  "find_duplicate_cards", "analyze_bulk_cards", "bulk_create_cards",
+  "transfer_cards", "bulk_tag_cards", "delete_cards",
   "import_image", "get_settings", "save_settings", "get_app_info",
-  "start_practice", "mark_practice_card_viewed", "mark_practice_card_revealed",
+  "start_selected_practice", "start_card_practice",
+  "mark_practice_card_viewed", "mark_practice_card_revealed",
   "submit_practice_review", "complete_practice_session", "get_analytics",
   "export_deck", "import_deck",
 ]) {
@@ -208,7 +215,10 @@ for (const command of [
   if (!ipc.includes(`"${command}"`)) failures.push(`frontend command missing: ${command}`);
 }
 
-if (!cards.includes('const CONTENT_FORMAT: &str = "tiptap-json"')) failures.push("canonical card format is not pinned");
+if (!authoringWrites.includes('const CONTENT_FORMAT: &str = "tiptap-json"') ||
+    !authoringWrites.includes("const CONTENT_SCHEMA_VERSION: i64 = 1")) {
+  failures.push("canonical card format and schema version are not pinned in the active authoring path");
+}
 if (!scheduler.includes("FSRS::new(parameters).next")) failures.push("FSRS adapter is not wired to the scheduling crate");
 if (transfer.includes(" (Imported)") || transfer.includes("imported_deck_name")) failures.push("deck import rewrites display names");
 if (!app.includes("<strong>ostudy</strong>") || !app.includes("Opening ostudy")) failures.push("frontend branding is incomplete");
