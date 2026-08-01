@@ -1,75 +1,99 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import type { ChangeEvent, KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 
 import {
   getErrorMessage,
   getOrganizedCard,
+  listMatchingCards,
   listTags,
   searchCards,
   type CardBrowserRow,
+  type CardSearchInput,
   type CardSearchPage,
   type CardSort,
   type Deck,
   type DueFilter,
   type OrganizedCard,
+  type ReviewedFilter,
+  type SelectionCard,
   type TagSummary,
 } from "../ipc";
 import { CardEditorScreen } from "./CardEditorScreen";
 import { BulkEntryModal } from "./cards/BulkEntryModal";
+import { BulkTagModal } from "./cards/BulkTagModal";
+import { DeleteCardsModal } from "./cards/DeleteCardsModal";
 import { MoveCopyModal } from "./cards/MoveCopyModal";
+import { PracticeResultsModal } from "./cards/PracticeResultsModal";
 
 interface CardsScreenProps {
   decks: Deck[];
   refreshDecks: () => Promise<Deck[]>;
+  onPracticeCards: (cardIds: string[]) => void;
   onDirtyChange: (dirty: boolean) => void;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
 }
+
+type SelectionAction = "move_copy" | "add_tags" | "remove_tags" | "delete";
 
 const PAGE_SIZE = 100;
 
 export function CardsScreen({
   decks,
   refreshDecks,
+  onPracticeCards,
   onDirtyChange,
   showToast,
 }: CardsScreenProps) {
-  const [deckId, setDeckId] = useState("");
+  const [deckIds, setDeckIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [dueFilter, setDueFilter] = useState<DueFilter>("all");
+  const [reviewedFilter, setReviewedFilter] = useState<ReviewedFilter>("all");
   const [sort, setSort] = useState<CardSort>("updated_desc");
   const [tagIds, setTagIds] = useState<Set<string>>(new Set());
   const [tags, setTags] = useState<TagSummary[]>([]);
-  const [page, setPage] = useState<CardSearchPage>({
-    cards: [],
-    totalCount: 0,
-  });
+  const [page, setPage] = useState<CardSearchPage>({ cards: [], totalCount: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isSelectingAll, setIsSelectingAll] = useState(false);
+  const [isResolvingPractice, setIsResolvingPractice] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+  const [selectedCards, setSelectedCards] = useState<Map<string, SelectionCard>>(
+    new Map(),
+  );
   const [editingCard, setEditingCard] = useState<OrganizedCard | null>(null);
   const [creatingDeckId, setCreatingDeckId] = useState<string | null>(null);
   const [isOpeningCard, setIsOpeningCard] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [moveCopyOpen, setMoveCopyOpen] = useState(false);
-  const [moveCopyCards, setMoveCopyCards] = useState<CardBrowserRow[]>([]);
-  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
+  const [moveCopyCards, setMoveCopyCards] = useState<SelectionCard[]>([]);
+  const [practiceCards, setPracticeCards] = useState<SelectionCard[] | null>(null);
+  const [practiceSourceLabel, setPracticeSourceLabel] = useState("the current results");
   const requestSequence = useRef(0);
 
-  const selectedCards = useMemo(
-    () => page.cards.filter((card) => selectedNoteIds.has(card.noteId)),
-    [page.cards, selectedNoteIds],
+  const normalizedSort: CardSort =
+    query.trim() === "" && sort === "relevance" ? "updated_desc" : sort;
+  const searchInput = useMemo<CardSearchInput>(
+    () => ({
+      deckIds: [...deckIds],
+      query,
+      tagIds: [...tagIds],
+      dueFilter,
+      reviewedFilter,
+      sort: normalizedSort,
+      limit: PAGE_SIZE,
+      offset: 0,
+    }),
+    [deckIds, dueFilter, normalizedSort, query, reviewedFilter, tagIds],
   );
+  const selected = useMemo(() => [...selectedCards.values()], [selectedCards]);
+  const selectedDeck =
+    deckIds.size === 1
+      ? decks.find((deck) => deck.id === [...deckIds][0]) ?? null
+      : null;
 
   const loadTags = useCallback(async (): Promise<void> => {
     try {
-      const loaded = await listTags(deckId || undefined);
+      const loaded = await listTags([...deckIds]);
       setTags(loaded);
       setTagIds((current) => {
         const valid = new Set(loaded.map((tag) => tag.id));
@@ -78,7 +102,7 @@ export function CardsScreen({
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     }
-  }, [deckId]);
+  }, [deckIds]);
 
   const loadCards = useCallback(
     async (offset = 0, append = false): Promise<void> => {
@@ -92,29 +116,12 @@ export function CardsScreen({
       }
       setErrorMessage(null);
       try {
-        const result = await searchCards({
-          deckId: deckId || undefined,
-          query,
-          tagIds: [...tagIds],
-          dueFilter,
-          sort:
-            query.trim() === "" && sort === "relevance"
-              ? "updated_desc"
-              : sort,
-          limit: PAGE_SIZE,
-          offset,
-        });
+        const result = await searchCards({ ...searchInput, offset });
         if (requestSequence.current !== requestId) return;
         setPage((current) => ({
           totalCount: result.totalCount,
           cards: append ? [...current.cards, ...result.cards] : result.cards,
         }));
-        if (!append) {
-          setSelectedNoteIds((current) => {
-            const visible = new Set(result.cards.map((card) => card.noteId));
-            return new Set([...current].filter((id) => visible.has(id)));
-          });
-        }
       } catch (error: unknown) {
         if (requestSequence.current === requestId) {
           setErrorMessage(getErrorMessage(error));
@@ -126,7 +133,7 @@ export function CardsScreen({
         }
       }
     },
-    [deckId, dueFilter, query, sort, tagIds],
+    [searchInput],
   );
 
   useEffect(() => {
@@ -140,6 +147,7 @@ export function CardsScreen({
   }, [query, sort]);
 
   useEffect(() => {
+    setSelectedCards(new Map());
     const timeout = window.setTimeout(() => {
       void loadCards();
     }, 180);
@@ -148,7 +156,7 @@ export function CardsScreen({
 
   async function refreshAfterMutation(): Promise<void> {
     await Promise.all([loadCards(), loadTags(), refreshDecks()]);
-    setSelectedNoteIds(new Set());
+    setSelectedCards(new Map());
   }
 
   async function openCard(noteId: string): Promise<void> {
@@ -164,58 +172,98 @@ export function CardsScreen({
     }
   }
 
-  function toggleSelected(noteId: string): void {
-    setSelectedNoteIds((current) => {
-      const next = new Set(current);
-      if (next.has(noteId)) next.delete(noteId);
-      else next.add(noteId);
+  function toggleSelected(card: SelectionCard): void {
+    setSelectedCards((current) => {
+      const next = new Map(current);
+      if (next.has(card.noteId)) next.delete(card.noteId);
+      else next.set(card.noteId, card);
       return next;
     });
   }
 
-  function focusRelative(noteId: string, delta: number): void {
-    const index = page.cards.findIndex((card) => card.noteId === noteId);
-    if (index < 0) return;
-    const nextIndex = Math.min(
-      page.cards.length - 1,
-      Math.max(0, index + delta),
-    );
-    const nextId = page.cards[nextIndex]?.noteId;
-    if (nextId) rowRefs.current.get(nextId)?.focus();
+  function selectVisible(): void {
+    setSelectedCards((current) => {
+      const next = new Map(current);
+      for (const card of page.cards) {
+        next.set(card.noteId, selectionFromRow(card));
+      }
+      return next;
+    });
   }
 
-  function onRowKeyDown(
-    event: KeyboardEvent<HTMLButtonElement>,
-    card: CardBrowserRow,
-  ): void {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      focusRelative(card.noteId, 1);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      focusRelative(card.noteId, -1);
-    } else if (event.key === " ") {
-      event.preventDefault();
-      toggleSelected(card.noteId);
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      void openCard(card.noteId);
-    } else if (
-      (event.ctrlKey || event.metaKey) &&
-      event.key.toLowerCase() === "a"
-    ) {
-      event.preventDefault();
-      setSelectedNoteIds(new Set(page.cards.map((item) => item.noteId)));
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      setSelectedNoteIds(new Set());
+  async function selectAllMatching(): Promise<void> {
+    if (page.totalCount === 0 || isSelectingAll) return;
+    setIsSelectingAll(true);
+    setErrorMessage(null);
+    try {
+      const matches = await listMatchingCards(searchInput);
+      setSelectedCards(new Map(matches.map((card) => [card.noteId, card])));
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsSelectingAll(false);
     }
   }
 
-  function beginMoveCopy(cards: CardBrowserRow[]): void {
+  function beginMoveCopy(cards: SelectionCard[]): void {
     if (cards.length === 0) return;
     setMoveCopyCards(cards);
-    setMoveCopyOpen(true);
+    setSelectionAction("move_copy");
+  }
+
+  async function practiceAllResults(): Promise<void> {
+    if (page.totalCount === 0 || isResolvingPractice) return;
+    setIsResolvingPractice(true);
+    setErrorMessage(null);
+    try {
+      const matches = await listMatchingCards(searchInput);
+      setPracticeSourceLabel("the current filtered results");
+      setPracticeCards(matches);
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsResolvingPractice(false);
+    }
+  }
+
+  function renderSelectionModal() {
+    if (selectionAction === "move_copy") {
+      return (
+        <MoveCopyModal
+          cards={moveCopyCards}
+          decks={decks}
+          onClose={() => {
+            setSelectionAction(null);
+            setMoveCopyCards([]);
+          }}
+          onComplete={refreshAfterMutation}
+          showToast={showToast}
+        />
+      );
+    }
+    if (selectionAction === "add_tags" || selectionAction === "remove_tags") {
+      return (
+        <BulkTagModal
+          cards={selected}
+          mode={selectionAction === "add_tags" ? "add" : "remove"}
+          suggestions={tags}
+          onClose={() => setSelectionAction(null)}
+          onComplete={refreshAfterMutation}
+          showToast={showToast}
+        />
+      );
+    }
+    if (selectionAction === "delete") {
+      return (
+        <DeleteCardsModal
+          cards={selected}
+          onClose={() => setSelectionAction(null)}
+          onComplete={refreshAfterMutation}
+          showToast={showToast}
+        />
+      );
+    }
+    return null;
   }
 
   if (editingCard || creatingDeckId) {
@@ -225,8 +273,7 @@ export function CardsScreen({
       return (
         <div className="screen cards-screen">
           <div className="inline-alert error-alert">
-            The card’s deck could not be found. Return to the card library and
-            refresh.
+            The card’s deck could not be found. Return to Search/Filter and refresh.
           </div>
           <button
             type="button"
@@ -236,18 +283,16 @@ export function CardsScreen({
               setCreatingDeckId(null);
             }}
           >
-            Back to cards
+            Back to Search/Filter
           </button>
         </div>
       );
     }
-    const browserRow = editingCard
-      ? page.cards.find((card) => card.noteId === editingCard.noteId)
-      : undefined;
     return (
       <>
         <CardEditorScreen
           deck={deck}
+          decks={decks}
           card={editingCard}
           onDirtyChange={onDirtyChange}
           onCancel={() => {
@@ -256,10 +301,15 @@ export function CardsScreen({
             setCreatingDeckId(null);
           }}
           onMoveCopy={
-            editingCard && browserRow
-              ? () => {
-                  beginMoveCopy([browserRow]);
-                }
+            editingCard
+              ? () =>
+                  beginMoveCopy([
+                    {
+                      cardId: editingCard.id,
+                      noteId: editingCard.noteId,
+                      deckId: editingCard.deckId,
+                    },
+                  ])
               : undefined
           }
           onSaved={async (saved, continueAdding) => {
@@ -279,42 +329,22 @@ export function CardsScreen({
             }
           }}
         />
-        {moveCopyOpen ? (
-          <MoveCopyModal
-            cards={moveCopyCards}
-            decks={decks}
-            onClose={() => {
-              setMoveCopyOpen(false);
-              setMoveCopyCards([]);
-            }}
-            onComplete={async () => {
-              onDirtyChange(false);
-              setEditingCard(null);
-              setCreatingDeckId(null);
-              await refreshAfterMutation();
-            }}
-            showToast={showToast}
-          />
-        ) : null}
+        {renderSelectionModal()}
       </>
     );
   }
-
-  const selectedDeck = decks.find((deck) => deck.id === deckId) ?? null;
-  const visibleSelected =
-    page.cards.length > 0 &&
-    page.cards.every((card) => selectedNoteIds.has(card.noteId));
 
   return (
     <div className="screen cards-screen">
       <header className="screen-header compact-screen-header">
         <div>
-          <h1>Cards</h1>
+          <h1>Search/Filter</h1>
           <p>
-            Search, filter, tag, move, copy, and add cards across your library.
+            Find cards across decks, combine filters, and perform bulk management or
+            practice operations on the results.
           </p>
         </div>
-        <div className="header-actions">
+        <div className="header-actions wrap-actions">
           <button
             type="button"
             className="secondary-button"
@@ -328,7 +358,9 @@ export function CardsScreen({
             className="primary-button"
             disabled={!selectedDeck}
             title={
-              selectedDeck ? undefined : "Choose one deck before adding a card"
+              selectedDeck
+                ? undefined
+                : "Select exactly one deck before adding an individual card"
             }
             onClick={() => {
               if (!selectedDeck) return;
@@ -342,23 +374,38 @@ export function CardsScreen({
       </header>
 
       <section className="card-library-toolbar" aria-label="Card filters">
-        <label>
-          <span>Deck</span>
-          <select
-            value={deckId}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-              setDeckId(event.currentTarget.value);
-              setSelectedNoteIds(new Set());
-            }}
-          >
-            <option value="">All decks</option>
+        <details className="filter-menu deck-filter-menu">
+          <summary>{deckFilterSummary(deckIds, decks)}</summary>
+          <div className="filter-checklist">
+            <label>
+              <input
+                type="checkbox"
+                checked={deckIds.size === 0}
+                onChange={() => setDeckIds(new Set())}
+              />
+              <span>All decks</span>
+              <small>{decks.reduce((sum, deck) => sum + deck.cardCount, 0)}</small>
+            </label>
             {decks.map((deck) => (
-              <option key={deck.id} value={deck.id}>
-                {deck.name}
-              </option>
+              <label key={deck.id}>
+                <input
+                  type="checkbox"
+                  checked={deckIds.has(deck.id)}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                    setDeckIds((current) => {
+                      const next = new Set(current);
+                      if (event.currentTarget.checked) next.add(deck.id);
+                      else next.delete(deck.id);
+                      return next;
+                    });
+                  }}
+                />
+                <span>{deck.name}</span>
+                <small>{deck.cardCount}</small>
+              </label>
             ))}
-          </select>
-        </label>
+          </div>
+        </details>
 
         <label className="card-library-search">
           <span>Search cards</span>
@@ -368,10 +415,7 @@ export function CardsScreen({
             placeholder="Question, answer, or tag"
             onChange={(event: ChangeEvent<HTMLInputElement>) => {
               setQuery(event.currentTarget.value);
-              if (
-                event.currentTarget.value.trim() !== "" &&
-                sort === "updated_desc"
-              ) {
+              if (event.currentTarget.value.trim() !== "" && sort === "updated_desc") {
                 setSort("relevance");
               }
             }}
@@ -386,9 +430,26 @@ export function CardsScreen({
               setDueFilter(event.currentTarget.value as DueFilter)
             }
           >
-            <option value="all">All cards</option>
+            <option value="all">Any due date</option>
             <option value="due">Due now</option>
             <option value="not_due">Not due</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Last studied</span>
+          <select
+            value={reviewedFilter}
+            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+              setReviewedFilter(event.currentTarget.value as ReviewedFilter)
+            }
+          >
+            <option value="all">Any time</option>
+            <option value="never">Never studied</option>
+            <option value="last_1_day">Within 24 hours</option>
+            <option value="last_7_days">Within 7 days</option>
+            <option value="last_30_days">Within 30 days</option>
+            <option value="older_30_days">More than 30 days ago</option>
           </select>
         </label>
 
@@ -404,16 +465,17 @@ export function CardsScreen({
               Relevance
             </option>
             <option value="updated_desc">Recently updated</option>
+            <option value="last_reviewed_desc">Recently studied</option>
             <option value="question_asc">Question A–Z</option>
             <option value="due_asc">Next due</option>
           </select>
         </label>
 
-        <details className="tag-filter-menu">
+        <details className="filter-menu tag-filter-menu">
           <summary>Tags{tagIds.size > 0 ? ` (${tagIds.size})` : ""}</summary>
-          <div className="tag-filter-list">
+          <div className="filter-checklist">
             {tags.length === 0 ? (
-              <p>No tags in this selection.</p>
+              <p>No tags in the selected decks.</p>
             ) : (
               tags.map((tag) => (
                 <label key={tag.id}>
@@ -447,29 +509,45 @@ export function CardsScreen({
         </details>
       </section>
 
-      {selectedNoteIds.size > 0 ? (
+      {selectedCards.size > 0 ? (
         <section className="card-selection-bar" aria-live="polite">
-          <strong>{selectedNoteIds.size} selected</strong>
+          <strong>{selectedCards.size} selected</strong>
+          <select
+            aria-label="Actions for selected cards"
+            value=""
+            onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+              const action = event.currentTarget.value as SelectionAction | "";
+              if (action === "move_copy") beginMoveCopy(selected);
+              else if (action !== "") setSelectionAction(action);
+            }}
+          >
+            <option value="">Actions…</option>
+            <option value="move_copy">Move / copy</option>
+            <option value="add_tags">Add tags</option>
+            <option value="remove_tags">Remove tags</option>
+            <option value="delete">Delete</option>
+          </select>
           <button
             type="button"
             className="secondary-button"
-            onClick={() => beginMoveCopy(selectedCards)}
+            onClick={() => {
+              setPracticeSourceLabel("the selected cards");
+              setPracticeCards(selected);
+            }}
           >
-            Move / copy
+            Practice selected
           </button>
           <button
             type="button"
             className="text-button"
-            onClick={() => setSelectedNoteIds(new Set())}
+            onClick={() => setSelectedCards(new Map())}
           >
-            Clear
+            Deselect all
           </button>
         </section>
       ) : null}
 
-      {errorMessage ? (
-        <div className="inline-alert error-alert">{errorMessage}</div>
-      ) : null}
+      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
       {isLoading ? <div className="inline-progress">Searching cards…</div> : null}
 
       {!isLoading && page.totalCount === 0 ? (
@@ -482,68 +560,74 @@ export function CardsScreen({
       {page.totalCount > 0 ? (
         <section className="card-library-panel">
           <div className="card-library-summary">
-            <div>
+            <div className="result-count">
               <strong>
                 {page.cards.length} of {page.totalCount}
               </strong>
               <span> cards shown</span>
             </div>
-            <label className="compact-checkbox">
-              <input
-                type="checkbox"
-                checked={visibleSelected}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setSelectedNoteIds(
-                    event.currentTarget.checked
-                      ? new Set(page.cards.map((card) => card.noteId))
-                      : new Set(),
-                  )
-                }
-              />
-              <span>Select visible</span>
-            </label>
-            <span className="keyboard-hint">
-              ↑/↓ navigate · Space selects · Enter edits · Ctrl/⌘+A selects
-              visible
-            </span>
+            <div className="selection-buttons" aria-label="Selection controls">
+              <button type="button" className="secondary-button" onClick={selectVisible}>
+                Select visible
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={isSelectingAll}
+                onClick={() => void selectAllMatching()}
+              >
+                {isSelectingAll ? "Selecting…" : `Select all (${page.totalCount})`}
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={selectedCards.size === 0}
+                onClick={() => setSelectedCards(new Map())}
+              >
+                Deselect all
+              </button>
+            </div>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={isResolvingPractice}
+              onClick={() => void practiceAllResults()}
+            >
+              {isResolvingPractice ? "Preparing…" : "Practice results"}
+            </button>
           </div>
 
           <div
             className="organized-card-list"
-            role="listbox"
-            aria-multiselectable="true"
-            aria-label="Cards"
+            role="table"
+            aria-label="Matching cards"
           >
             {page.cards.map((card) => {
-              const selected = selectedNoteIds.has(card.noteId);
+              const selectedRow = selectedCards.has(card.noteId);
               return (
                 <article
                   key={card.noteId}
                   className={
-                    selected
+                    selectedRow
                       ? "organized-card-row selected"
                       : "organized-card-row"
                   }
-                  role="option"
-                  aria-selected={selected}
+                  role="row"
                 >
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    aria-label={`Select ${summarize(card.frontText)}`}
-                    onChange={() => toggleSelected(card.noteId)}
-                  />
+                  <label
+                    className="card-row-selector"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedRow}
+                      aria-label={`Select ${summarize(card.frontText)}`}
+                      onChange={() => toggleSelected(selectionFromRow(card))}
+                    />
+                  </label>
                   <button
                     type="button"
-                    ref={(element: HTMLButtonElement | null) => {
-                      if (element) rowRefs.current.set(card.noteId, element);
-                      else rowRefs.current.delete(card.noteId);
-                    }}
                     className="organized-card-main"
-                    aria-keyshortcuts="ArrowUp ArrowDown Space Enter Control+A Meta+A Escape"
-                    onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) =>
-                      onRowKeyDown(event, card)
-                    }
                     onClick={() => void openCard(card.noteId)}
                   >
                     <span className="organized-card-deck">{card.deckName}</span>
@@ -572,13 +656,7 @@ export function CardsScreen({
                   </button>
                   <div className="organized-card-meta">
                     <span>{formatDue(card.dueAt)}</span>
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() => beginMoveCopy([card])}
-                    >
-                      Move / copy
-                    </button>
+                    <small>{formatLastStudied(card.lastReviewedAt)}</small>
                   </div>
                 </article>
               );
@@ -601,31 +679,44 @@ export function CardsScreen({
       {bulkOpen ? (
         <BulkEntryModal
           decks={decks}
-          defaultDeckId={deckId || undefined}
+          defaultDeckId={selectedDeck?.id}
           onClose={() => setBulkOpen(false)}
           onSaved={refreshAfterMutation}
           showToast={showToast}
         />
       ) : null}
 
-      {moveCopyOpen ? (
-        <MoveCopyModal
-          cards={moveCopyCards}
-          decks={decks}
-          onClose={() => {
-            setMoveCopyOpen(false);
-            setMoveCopyCards([]);
-          }}
-          onComplete={async () => {
-            setEditingCard(null);
-            setCreatingDeckId(null);
-            await refreshAfterMutation();
-          }}
+      {renderSelectionModal()}
+
+      {practiceCards ? (
+        <PracticeResultsModal
+          cards={practiceCards}
+          sourceLabel={practiceSourceLabel}
+          refreshDecks={refreshDecks}
+          onPracticeCards={onPracticeCards}
+          onClose={() => setPracticeCards(null)}
           showToast={showToast}
         />
       ) : null}
     </div>
   );
+}
+
+function selectionFromRow(card: CardBrowserRow): SelectionCard {
+  return {
+    cardId: card.cardId,
+    noteId: card.noteId,
+    deckId: card.deckId,
+  };
+}
+
+function deckFilterSummary(deckIds: Set<string>, decks: Deck[]): string {
+  if (deckIds.size === 0) return "All decks";
+  const selectedNames = decks
+    .filter((deck) => deckIds.has(deck.id))
+    .map((deck) => deck.name);
+  if (selectedNames.length === 1) return selectedNames[0] ?? "1 deck";
+  return `${selectedNames.length} decks`;
 }
 
 function summarize(value: string): string {
@@ -643,4 +734,16 @@ function formatDue(value: number): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
     new Date(value),
   );
+}
+
+function formatLastStudied(value: number | null): string {
+  if (value === null) return "Never studied";
+  const elapsed = Math.max(0, Date.now() - value);
+  const days = Math.floor(elapsed / 86_400_000);
+  if (days === 0) return "Studied within 24 hours";
+  if (days === 1) return "Studied 1 day ago";
+  if (days < 30) return `Studied ${days} days ago`;
+  return `Studied ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+    new Date(value),
+  )}`;
 }
