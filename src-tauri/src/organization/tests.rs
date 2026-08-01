@@ -10,9 +10,7 @@ use crate::{database::Database, paths::AppPaths};
 
 use super::{
     browse::{browse_cards_in_connection, build_fts_query, BrowseSort, BrowseStatus},
-    bulk::{
-        bulk_create_cards_in_connection, prepare_rows, BulkCardRowInput, DuplicatePolicy,
-    },
+    bulk::{bulk_create_cards_in_connection, prepare_rows, BulkCardRowInput, DuplicatePolicy},
     duplicates::find_duplicate_matches,
     tags::normalize_tag_names,
     transfer::{transfer_cards_in_connection, TransferMode},
