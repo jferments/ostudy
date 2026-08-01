@@ -28,7 +28,7 @@ import { MoveCopyModal } from "./cards/MoveCopyModal";
 
 interface CardEditorScreenProps {
   deck: Deck;
-  decks: Deck[];
+  decks?: Deck[];
   card: Flashcard | OrganizedCard | null;
   onCancel: () => void;
   onSaved: (card: OrganizedCard, continueAdding: boolean) => void | Promise<void>;
@@ -38,7 +38,7 @@ interface CardEditorScreenProps {
 
 export function CardEditorScreen({
   deck,
-  decks,
+  decks: providedDecks,
   card,
   onCancel,
   onSaved,
@@ -48,9 +48,11 @@ export function CardEditorScreen({
   const existing = card !== null && card.noteId !== "";
   const availableDecks = useMemo(() => {
     const byId = new Map<string, Deck>();
-    for (const candidate of [deck, ...decks]) byId.set(candidate.id, candidate);
+    for (const candidate of [deck, ...(providedDecks ?? [])]) {
+      byId.set(candidate.id, candidate);
+    }
     return [...byId.values()];
-  }, [deck, decks]);
+  }, [deck, providedDecks]);
   const [selectedDeckId, setSelectedDeckId] = useState(card?.deckId ?? deck.id);
   const selectedDeck =
     availableDecks.find((candidate) => candidate.id === selectedDeckId) ?? deck;
