@@ -55,11 +55,12 @@ fn read_payload(path: &Path) -> Result<TagPayload, CommandError> {
                  FROM note_tags ORDER BY source_note_id, source_tag_id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let links = statement
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        links
     };
 
     let notes = {
@@ -69,7 +70,7 @@ fn read_payload(path: &Path) -> Result<TagPayload, CommandError> {
                  FROM notes ORDER BY created_at, source_id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let notes = statement
             .query_map([], |row| {
                 Ok(SourceNoteSignature {
                     source_id: row.get(0)?,
@@ -82,7 +83,8 @@ fn read_payload(path: &Path) -> Result<TagPayload, CommandError> {
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        notes
     };
 
     validate_payload(&tags, &links, &notes)?;
@@ -229,7 +231,7 @@ fn match_imported_notes(
                  ORDER BY rowid",
             )
             .map_err(CommandError::database)?;
-        statement
+        let local_notes = statement
             .query_map([deck_id], |row| {
                 Ok(SourceNoteSignature {
                     source_id: row.get(0)?,
@@ -242,7 +244,8 @@ fn match_imported_notes(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        local_notes
     };
 
     let local_ids = local_notes
