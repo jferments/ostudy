@@ -2,25 +2,27 @@
 
 **ostudy** is a free, local-first desktop flashcard application. It runs without
 an account or server and keeps decks, cards, images, review history, settings,
-and analytics on the user's computer.
+search indexes, and analytics on the user's computer.
 
 ## What it can do
 
 - Create, rename, and delete decks.
-- Create, edit, search, and delete rich-text flashcards.
-- Add managed local images to cards.
-- Import and export complete `.studydeck` deck files.
+- Create and edit rich-text flashcards with managed local images.
+- Add reusable tags and filter cards by one or more tags.
+- Search questions, answers, and tags with the local SQLite FTS5 index.
+- Browse cards across the whole library with schedule filters, sorting,
+  multi-selection, and keyboard navigation.
+- Add many plain-text cards in one transaction with bulk entry.
+- Detect exact normalized duplicates and skip or explicitly allow them.
+- Move cards between decks while preserving review history, or copy them with
+  fresh schedules.
+- Import and export complete `.studydeck` deck files, including optional tag
+  metadata.
 - Practice one or more decks with spaced-repetition scheduling.
-- Select any non-empty deck for voluntary study even when no cards are due.
 - Rate each revealed answer once on a four-level confidence scale:
   **0 Wrong**, **1 Hard**, **2 Medium**, or **3 Easy**.
 - Review confidence, response-time, due-card, and per-deck analytics.
-- Configure themes, typography, scale, motion, retention, and confirmations.
-
-Practice sessions are due-first for each selected deck. When a deck has cards
-due, the session uses those cards. When that deck has nothing due, all of its
-active cards are included instead. The shuffle choice is made directly on the
-Practice screen.
+- Configure themes, typography, scale, motion, and review preferences.
 
 ## Ubuntu setup
 
@@ -47,8 +49,8 @@ Launch the already-built application:
 ./run-app.sh
 ```
 
-This is intentionally fast: it does not start a development server or rebuild
-the project. After changing source code, rebuild first:
+This does not start a development server or rebuild the project. After changing
+source code, rebuild first:
 
 ```bash
 ./scripts/build.sh
@@ -56,8 +58,8 @@ the project. After changing source code, rebuild first:
 ```
 
 Build and development commands treat `src-tauri/Cargo.lock` as immutable. If the
-lockfile no longer matches the Rust manifests, the command fails and explains
-the problem instead of silently rewriting the file.
+lockfile no longer matches the Rust manifests, the command fails instead of
+silently rewriting it.
 
 ## Test a change
 
@@ -67,21 +69,23 @@ Run the complete automated gate from the repository root:
 ./scripts/check.sh
 ```
 
-The gate installs from the committed lockfiles, runs React tests, checks Rust
-formatting and Clippy, runs Rust and database tests, creates a standalone Tauri
-build, and performs a native desktop smoke test. After it passes, start the app
-with `./run-app.sh` and manually exercise the changed workflow.
+The gate installs from the committed lockfiles, verifies the Stage 2 data and
+command wiring, runs React tests, checks Rust formatting and Clippy, runs Rust
+and database tests, creates a standalone Tauri build, and performs a native
+desktop smoke test. After it passes, start the app with `./run-app.sh` and
+manually exercise the changed workflow.
 
 ## Local data and deck sharing
 
 The Settings screen displays the active database and managed-image locations.
 Deck sharing uses `.studydeck` files, which are versioned SQLite packages that
-contain deck content and managed images. They intentionally exclude personal
-review history and application settings.
+contain deck content, tags, and managed images. They intentionally exclude
+personal review history and application settings.
 
 Cards are stored as validated structured documents rather than executable HTML.
 Shared decks cannot supply JavaScript, SQL, shell commands, arbitrary local file
-paths, or remote images for the application to execute or load.
+paths, or remote images for the application to execute or load. Search input is
+converted into quoted FTS5 tokens and all SQLite values are bound parameters.
 
 ## Documentation
 

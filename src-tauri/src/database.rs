@@ -2,7 +2,11 @@ use std::{path::Path, sync::Mutex, time::Duration};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::{error::CommandError, util::unix_time_millis};
+use crate::{
+    authoring::backfill_duplicate_hashes,
+    error::CommandError,
+    util::unix_time_millis,
+};
 
 struct Migration {
     version: i64,
@@ -30,9 +34,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "49dd1e24e463c9a08a59e243d90143e2874459dd2a4a8d5f61613d5df7ebcae3",
         sql: include_str!("../migrations/0003_fsrs_reviews.sql"),
     },
+    Migration {
+        version: 4,
+        name: "card_organization",
+        checksum: "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d",
+        sql: include_str!("../migrations/0004_card_organization.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 3;
+const LATEST_SCHEMA_VERSION: i64 = 4;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -45,6 +55,7 @@ impl Database {
 
         configure_connection(&connection)?;
         apply_migrations(&mut connection)?;
+        backfill_duplicate_hashes(&mut connection)?;
 
         Ok(Self {
             connection: Mutex::new(connection),
@@ -72,6 +83,7 @@ impl Database {
 
         configure_connection(&connection)?;
         apply_migrations(&mut connection)?;
+        backfill_duplicate_hashes(&mut connection)?;
 
         Ok(Self {
             connection: Mutex::new(connection),
@@ -225,14 +237,28 @@ mod tests {
                     .map_err(CommandError::database)?;
                 assert_eq!(version, LATEST_SCHEMA_VERSION);
 
-                let table_count: i64 = connection
-                    .query_row(
-                        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('decks', 'notes', 'cards', 'assets', 'app_settings', 'practice_sessions', 'card_schedules', 'review_events')",
-                        [],
-                        |row| row.get(0),
-                    )
-                    .map_err(CommandError::database)?;
-                assert_eq!(table_count, 8);
+                for table in [
+                    "decks",
+                    "notes",
+                    "cards",
+                    "assets",
+                    "app_settings",
+                    "practice_sessions",
+                    "card_schedules",
+                    "review_events",
+                    "tags",
+                    "note_tags",
+                    "card_search_fts",
+                ] {
+                    let exists: i64 = connection
+                        .query_row(
+                            "SELECT EXISTS(\n                                 SELECT 1 FROM sqlite_master\n                                 WHERE name = ?1\n                             )",
+                            [table],
+                            |row| row.get(0),
+                        )
+                        .map_err(CommandError::database)?;
+                    assert_eq!(exists, 1, "missing table {table}");
+                }
                 Ok(())
             })
             .expect("second migration pass should succeed");
@@ -244,9 +270,6 @@ mod tests {
             let mut connection =
                 Connection::open_in_memory().expect("fixture database should open");
 
-            // A release fixture is a complete historical SQL dump. Loading it
-            // before configuring foreign keys avoids making the test depend on
-            // the table ordering chosen by SQLite's dump implementation.
             connection
                 .execute_batch(fixture.sql)
                 .unwrap_or_else(|error| panic!("{} fixture should load: {error}", fixture.release));
@@ -264,6 +287,8 @@ mod tests {
             apply_migrations(&mut connection).unwrap_or_else(|error| {
                 panic!("{} fixture should upgrade: {error}", fixture.release)
             });
+            backfill_duplicate_hashes(&mut connection)
+                .expect("fixture duplicate fingerprints should backfill");
 
             let version: i64 = connection
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
@@ -274,25 +299,30 @@ mod tests {
                 fixture.release
             );
 
-            let preserved: (String, String, String) = connection
+            let preserved: (String, String, String, String) = connection
                 .query_row(
-                    "SELECT d.name, n.front_text, c.direction
-                     FROM decks d
-                     JOIN notes n ON n.deck_id = d.id
-                     JOIN cards c ON c.note_id = n.id
-                     WHERE d.id = '00000000000000000000000000000001'",
+                    "SELECT d.name, n.front_text, c.direction, n.duplicate_hash\n                     FROM decks d\n                     JOIN notes n ON n.deck_id = d.id\n                     JOIN cards c ON c.note_id = n.id\n                     WHERE d.id = '00000000000000000000000000000001'",
                     [],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
                 )
                 .expect("fixture deck and card should survive migration");
             assert_eq!(preserved.0, "Released schema fixture");
             assert_eq!(preserved.1, "Fixture question");
             assert_eq!(preserved.2, "forward");
+            assert!(!preserved.3.is_empty());
+
+            let search_count: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*)\n                     FROM card_search_fts\n                     WHERE card_search_fts MATCH 'fixture'",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("fixture should be indexed");
+            assert_eq!(search_count, 1);
 
             let schedule_count: i64 = connection
                 .query_row(
-                    "SELECT COUNT(*) FROM card_schedules
-                     WHERE card_id = '00000000000000000000000000000003'",
+                    "SELECT COUNT(*) FROM card_schedules\n                     WHERE card_id = '00000000000000000000000000000003'",
                     [],
                     |row| row.get(0),
                 )

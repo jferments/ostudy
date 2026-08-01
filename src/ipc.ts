@@ -49,6 +49,11 @@ export interface Flashcard {
   revision: number;
 }
 
+export interface OrganizedCard extends Flashcard {
+  tags: string[];
+  dueAt: number;
+}
+
 export interface CreateCardInput {
   deckId: string;
   frontDoc: RichDocument;
@@ -64,6 +69,98 @@ export interface UpdateCardInput {
   backDoc: RichDocument;
   frontText: string;
   backText: string;
+}
+
+export interface CreateOrganizedCardInput extends CreateCardInput {
+  tags: string[];
+  allowDuplicate: boolean;
+}
+
+export interface UpdateOrganizedCardInput extends UpdateCardInput {
+  tags: string[];
+  allowDuplicate: boolean;
+}
+
+export interface TagSummary {
+  id: string;
+  name: string;
+  cardCount: number;
+}
+
+export type DueFilter = "all" | "due" | "not_due";
+export type CardSort = "relevance" | "updated_desc" | "question_asc" | "due_asc";
+
+export interface CardSearchInput {
+  deckId?: string;
+  query: string;
+  tagIds: string[];
+  dueFilter: DueFilter;
+  sort: CardSort;
+  limit: number;
+  offset: number;
+}
+
+export interface CardBrowserRow {
+  cardId: string;
+  noteId: string;
+  deckId: string;
+  deckName: string;
+  frontText: string;
+  backText: string;
+  tags: string[];
+  dueAt: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CardSearchPage {
+  cards: CardBrowserRow[];
+  totalCount: number;
+}
+
+export interface DuplicateCheckInput {
+  deckId: string;
+  frontText: string;
+  backText: string;
+  excludeNoteId?: string;
+}
+
+export interface DuplicateCard {
+  noteId: string;
+  deckId: string;
+  frontText: string;
+  backText: string;
+}
+
+export interface BulkCardRowInput {
+  question: string;
+  answer: string;
+  tags: string[];
+}
+
+export interface BulkCreateCardsInput {
+  deckId: string;
+  rows: BulkCardRowInput[];
+  skipDuplicates: boolean;
+}
+
+export interface BulkCreateResult {
+  createdCount: number;
+  skippedDuplicates: number;
+}
+
+export type TransferCardsMode = "move" | "copy";
+
+export interface TransferCardsInput {
+  noteIds: string[];
+  targetDeckId: string;
+  mode: TransferCardsMode;
+  skipDuplicates: boolean;
+}
+
+export interface TransferCardsResult {
+  affectedCount: number;
+  skippedDuplicates: number;
 }
 
 export interface AppSettings {
@@ -228,6 +325,48 @@ export async function deleteCard(noteId: string): Promise<void> {
   return invoke<void>("delete_card", { noteId });
 }
 
+export async function listTags(deckId?: string): Promise<TagSummary[]> {
+  return invoke<TagSummary[]>("list_tags", { input: { deckId } });
+}
+
+export async function searchCards(input: CardSearchInput): Promise<CardSearchPage> {
+  return invoke<CardSearchPage>("search_cards", { input });
+}
+
+export async function getOrganizedCard(noteId: string): Promise<OrganizedCard> {
+  return invoke<OrganizedCard>("get_organized_card", { noteId });
+}
+
+export async function createOrganizedCard(
+  input: CreateOrganizedCardInput,
+): Promise<OrganizedCard> {
+  return invoke<OrganizedCard>("create_organized_card", { input });
+}
+
+export async function updateOrganizedCard(
+  input: UpdateOrganizedCardInput,
+): Promise<OrganizedCard> {
+  return invoke<OrganizedCard>("update_organized_card", { input });
+}
+
+export async function findDuplicateCards(
+  input: DuplicateCheckInput,
+): Promise<DuplicateCard[]> {
+  return invoke<DuplicateCard[]>("find_duplicate_cards", { input });
+}
+
+export async function bulkCreateCards(
+  input: BulkCreateCardsInput,
+): Promise<BulkCreateResult> {
+  return invoke<BulkCreateResult>("bulk_create_cards", { input });
+}
+
+export async function transferCards(
+  input: TransferCardsInput,
+): Promise<TransferCardsResult> {
+  return invoke<TransferCardsResult>("transfer_cards", { input });
+}
+
 export async function importImage(filePath: string): Promise<Asset> {
   return invoke<Asset>("import_image", { filePath });
 }
@@ -310,6 +449,14 @@ export async function importDeck(sourcePath: string): Promise<ImportResult> {
 
 export function createSubmissionId(): string {
   return crypto.randomUUID().replaceAll("-", "");
+}
+
+export function getErrorCode(error: unknown): string | null {
+  if (typeof error === "object" && error !== null) {
+    const payload = error as CommandErrorPayload;
+    return typeof payload.code === "string" ? payload.code : null;
+  }
+  return null;
 }
 
 export function getErrorMessage(error: unknown): string {

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { TagInput } from "../components/TagInput";
+import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { RichTextEditor } from "../editor/RichTextEditor";
 import { RichTextView } from "../editor/RichTextView";
 import {
@@ -8,21 +10,30 @@ import {
   isDocumentEmpty,
 } from "../editor/richText";
 import {
-  createCard,
+  createOrganizedCard,
+  findDuplicateCards,
+  getErrorCode,
   getErrorMessage,
-  updateCard,
+  getOrganizedCard,
+  listDecks,
+  listTags,
+  updateOrganizedCard,
   type Asset,
   type Deck,
+  type DuplicateCard,
   type Flashcard,
+  type OrganizedCard,
   type RichDocument,
+  type TagSummary,
 } from "../ipc";
 
 interface CardEditorScreenProps {
   deck: Deck;
-  card: Flashcard | null;
+  card: Flashcard | OrganizedCard | null;
   onCancel: () => void;
-  onSaved: (card: Flashcard, continueAdding: boolean) => void | Promise<void>;
+  onSaved: (card: OrganizedCard, continueAdding: boolean) => void | Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
+  onMoveCopy?: () => void;
 }
 
 export function CardEditorScreen({
@@ -31,7 +42,9 @@ export function CardEditorScreen({
   onCancel,
   onSaved,
   onDirtyChange,
+  onMoveCopy,
 }: CardEditorScreenProps) {
+  const existing = card !== null && card.noteId !== "";
   const [frontDoc, setFrontDoc] = useState<RichDocument>(() =>
     card ? cloneDocument(card.frontDoc) : cloneDocument(EMPTY_RICH_DOCUMENT),
   );
@@ -41,18 +54,27 @@ export function CardEditorScreen({
   const [frontText, setFrontText] = useState(card?.frontText ?? "");
   const [backText, setBackText] = useState(card?.backText ?? "");
   const [assets, setAssets] = useState<Asset[]>(card?.assets ?? []);
+  const [tags, setTags] = useState<string[]>(
+    card && "tags" in card ? card.tags : [],
+  );
+  const [tagSuggestions, setTagSuggestions] = useState<TagSummary[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const savingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [duplicateMatches, setDuplicateMatches] = useState<DuplicateCard[]>([]);
+  const [moveCopyDecks, setMoveCopyDecks] = useState<Deck[]>([]);
+  const [moveCopyOpen, setMoveCopyOpen] = useState(false);
+  const [isLoadingMoveCopy, setIsLoadingMoveCopy] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewAnswer, setPreviewAnswer] = useState(false);
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [dirty, setDirty] = useState(false);
 
-  const title = card ? "Edit flashcard" : "Add flashcard";
+  const title = existing ? "Edit flashcard" : "Add flashcard";
   const hasFront = !isDocumentEmpty(frontText, frontDoc);
   const hasBack = !isDocumentEmpty(backText, backDoc);
   const canSave = hasFront && hasBack && !isSaving;
+  const assetIds = useMemo(() => new Set(assets.map((asset) => asset.id)), [assets]);
 
   useEffect(() => {
     onDirtyChange(dirty);
@@ -60,17 +82,38 @@ export function CardEditorScreen({
   }, [dirty, onDirtyChange]);
 
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
+    void listTags()
+      .then(setTagSuggestions)
+      .catch((error: unknown) => {
+        console.error("Unable to load tag suggestions:", getErrorMessage(error));
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!existing || !card || "tags" in card) return;
+    let current = true;
+    void getOrganizedCard(card.noteId)
+      .then((organized) => {
+        if (current) setTags(organized.tags);
+      })
+      .catch((error: unknown) => {
+        if (current) setErrorMessage(getErrorMessage(error));
+      });
+    return () => {
+      current = false;
+    };
+  }, [card, existing]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        if (canSave) void save(false);
+        if (canSave) void save(false, false);
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   });
-
-  const assetIds = useMemo(() => new Set(assets.map((asset) => asset.id)), [assets]);
 
   function addAsset(asset: Asset): void {
     if (!assetIds.has(asset.id)) {
@@ -83,9 +126,13 @@ export function CardEditorScreen({
     if (savingRef.current) return;
     setDirty(true);
     setErrorMessage(null);
+    setDuplicateMatches([]);
   }
 
-  async function save(continueAdding: boolean): Promise<void> {
+  async function save(
+    continueAdding: boolean,
+    allowDuplicate: boolean,
+  ): Promise<void> {
     if (!hasFront || !hasBack) {
       setErrorMessage("Add content to both the question and answer sides.");
       return;
@@ -96,53 +143,95 @@ export function CardEditorScreen({
     setIsSaving(true);
     setErrorMessage(null);
 
-    let saved: Flashcard;
     try {
-      saved = card
-        ? await updateCard({
+      if (!allowDuplicate && frontText.trim() !== "" && backText.trim() !== "") {
+        const duplicates = await findDuplicateCards({
+          deckId: deck.id,
+          frontText,
+          backText,
+          excludeNoteId: existing && card ? card.noteId : undefined,
+        });
+        if (duplicates.length > 0) {
+          setDuplicateMatches(duplicates);
+          return;
+        }
+      }
+
+      const saved = existing && card
+        ? await updateOrganizedCard({
             noteId: card.noteId,
             revision: card.revision,
             frontDoc,
             backDoc,
             frontText,
             backText,
+            tags,
+            allowDuplicate,
           })
-        : await createCard({
+        : await createOrganizedCard({
             deckId: deck.id,
             frontDoc,
             backDoc,
             frontText,
             backText,
+            tags,
+            allowDuplicate,
           });
-    } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
-      savingRef.current = false;
-      setIsSaving(false);
-      return;
-    }
 
-    // The database write has succeeded. Never describe a later refresh problem
-    // as a failed save, because retrying would create a duplicate card.
-    setDirty(false);
-    try {
-      await onSaved(saved, continueAdding && !card);
-      if (continueAdding && !card) {
-        setFrontDoc(cloneDocument(EMPTY_RICH_DOCUMENT));
-        setBackDoc(cloneDocument(EMPTY_RICH_DOCUMENT));
-        setFrontText("");
-        setBackText("");
-        setAssets([]);
-        setPreviewOpen(false);
-        setPreviewAnswer(false);
-        setEditorGeneration((value) => value + 1);
+      setDirty(false);
+      setDuplicateMatches([]);
+      try {
+        await onSaved(saved, continueAdding && !existing);
+        if (continueAdding && !existing) {
+          setFrontDoc(cloneDocument(EMPTY_RICH_DOCUMENT));
+          setBackDoc(cloneDocument(EMPTY_RICH_DOCUMENT));
+          setFrontText("");
+          setBackText("");
+          setAssets([]);
+          setTags([]);
+          setPreviewOpen(false);
+          setPreviewAnswer(false);
+          setEditorGeneration((value) => value + 1);
+        }
+      } catch (error: unknown) {
+        setErrorMessage(
+          `The flashcard was saved, but the screen could not finish updating: ${getErrorMessage(error)}`,
+        );
       }
     } catch (error: unknown) {
-      setErrorMessage(
-        `The flashcard was saved, but the screen could not finish updating: ${getErrorMessage(error)}`,
-      );
+      if (getErrorCode(error) === "duplicate_card") {
+        setDuplicateMatches([
+          {
+            noteId: "",
+            deckId: deck.id,
+            frontText,
+            backText,
+          },
+        ]);
+      } else {
+        setErrorMessage(getErrorMessage(error));
+      }
     } finally {
       savingRef.current = false;
       setIsSaving(false);
+    }
+  }
+
+  async function openMoveCopy(): Promise<void> {
+    if (!existing || !card || dirty || isLoadingMoveCopy) return;
+    if (onMoveCopy) {
+      onMoveCopy();
+      return;
+    }
+    setIsLoadingMoveCopy(true);
+    setErrorMessage(null);
+    try {
+      setMoveCopyDecks(await listDecks());
+      setMoveCopyOpen(true);
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsLoadingMoveCopy(false);
     }
   }
 
@@ -162,6 +251,17 @@ export function CardEditorScreen({
           <h1>{title}</h1>
         </div>
         <div className="header-actions">
+          {existing ? (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={isSaving || dirty || isLoadingMoveCopy}
+              title={dirty ? "Save or discard edits before moving this card" : undefined}
+              onClick={() => void openMoveCopy()}
+            >
+              {isLoadingMoveCopy ? "Opening…" : "Move / copy"}
+            </button>
+          ) : null}
           <button
             type="button"
             className="secondary-button"
@@ -176,12 +276,12 @@ export function CardEditorScreen({
           <button type="button" className="secondary-button" disabled={isSaving} onClick={cancel}>
             Cancel
           </button>
-          {!card ? (
+          {!existing ? (
             <button
               type="button"
               className="secondary-button"
               disabled={!canSave}
-              onClick={() => void save(true)}
+              onClick={() => void save(true, false)}
             >
               Save + another
             </button>
@@ -190,7 +290,7 @@ export function CardEditorScreen({
             type="button"
             className="primary-button"
             disabled={!canSave}
-            onClick={() => void save(false)}
+            onClick={() => void save(false, false)}
           >
             {isSaving ? "Saving…" : "Save card"}
           </button>
@@ -199,8 +299,56 @@ export function CardEditorScreen({
 
       {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
 
+      {duplicateMatches.length > 0 ? (
+        <section className="duplicate-warning" aria-labelledby="duplicate-warning-title">
+          <div>
+            <h2 id="duplicate-warning-title">This looks like an exact duplicate</h2>
+            <p>
+              A card in {deck.name} already has the same normalized question and answer.
+              Review it before creating another copy.
+            </p>
+            {duplicateMatches
+              .filter((match) => match.noteId !== "")
+              .slice(0, 3)
+              .map((match) => (
+                <article key={match.noteId}>
+                  <strong>{summarize(match.frontText)}</strong>
+                  <span>{summarize(match.backText)}</span>
+                </article>
+              ))}
+          </div>
+          <div className="duplicate-warning-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={isSaving}
+              onClick={() => setDuplicateMatches([])}
+            >
+              Keep editing
+            </button>
+            <button
+              type="button"
+              className="danger-button"
+              disabled={isSaving}
+              onClick={() => void save(false, true)}
+            >
+              Save duplicate anyway
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <div className={previewOpen ? "card-editor-layout with-preview" : "card-editor-layout"}>
         <div className="card-editor-fields">
+          <TagInput
+            tags={tags}
+            suggestions={tagSuggestions}
+            disabled={isSaving}
+            onChange={(nextTags) => {
+              setTags(nextTags);
+              markDirty();
+            }}
+          />
           <RichTextEditor
             key={`front-${editorGeneration}`}
             label="Question"
@@ -208,7 +356,7 @@ export function CardEditorScreen({
             assets={assets}
             disabled={isSaving}
             onAssetImported={addAsset}
-            onChange={(document, plainText) => {
+            onChange={(document: RichDocument, plainText: string) => {
               setFrontDoc(document);
               setFrontText(plainText);
               markDirty();
@@ -221,7 +369,7 @@ export function CardEditorScreen({
             assets={assets}
             disabled={isSaving}
             onAssetImported={addAsset}
-            onChange={(document, plainText) => {
+            onChange={(document: RichDocument, plainText: string) => {
               setBackDoc(document);
               setBackText(plainText);
               markDirty();
@@ -246,6 +394,15 @@ export function CardEditorScreen({
                 {previewAnswer ? "Show question" : "Reveal answer"}
               </button>
             </div>
+            {tags.length > 0 ? (
+              <div className="preview-tag-list">
+                {tags.map((tag) => (
+                  <span className="tag-chip static" key={tag}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <div className="flashcard-preview-surface">
               <RichTextView
                 document={previewAnswer ? backDoc : frontDoc}
@@ -253,10 +410,28 @@ export function CardEditorScreen({
                 onLinkError={setErrorMessage}
               />
             </div>
-
           </aside>
         ) : null}
       </div>
+
+      {moveCopyOpen && card ? (
+        <MoveCopyModal
+          cards={[{ noteId: card.noteId, deckId: card.deckId }]}
+          decks={moveCopyDecks}
+          onClose={() => setMoveCopyOpen(false)}
+          onComplete={async () => {
+            setMoveCopyOpen(false);
+            const refreshed = await getOrganizedCard(card.noteId);
+            await onSaved(refreshed, false);
+          }}
+        />
+      ) : null}
     </div>
   );
+}
+
+function summarize(value: string): string {
+  const normalized = value.replace(/\s+/gu, " ").trim();
+  if (normalized === "") return "Image card";
+  return normalized.length > 120 ? `${normalized.slice(0, 117)}…` : normalized;
 }

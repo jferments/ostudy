@@ -1,5 +1,6 @@
 mod analytics;
 mod assets;
+mod authoring;
 mod cards;
 mod database;
 mod decks;
@@ -10,6 +11,7 @@ mod practice;
 mod practice_selection;
 mod scheduler;
 mod settings;
+mod tagged_transfer;
 mod transfer;
 mod util;
 
@@ -61,6 +63,14 @@ pub fn run() {
             cards::create_card,
             cards::update_card,
             cards::delete_card,
+            authoring::list_tags,
+            authoring::search_cards,
+            authoring::get_organized_card,
+            authoring::create_organized_card,
+            authoring::update_organized_card,
+            authoring::find_duplicate_cards,
+            authoring::bulk_create_cards,
+            authoring::transfer_cards,
             assets::import_image,
             settings::get_settings,
             settings::save_settings,
@@ -72,8 +82,8 @@ pub fn run() {
             practice::submit_practice_review,
             practice::complete_practice_session,
             analytics::get_analytics,
-            transfer::export_deck,
-            transfer::import_deck
+            tagged_transfer::export_deck,
+            tagged_transfer::import_deck
         ])
         .run(tauri::generate_context!())
         .expect("error while running ostudy");

@@ -2,7 +2,8 @@
 
 ostudy is a local-first Tauri desktop application. React and TypeScript render
 the interface; Rust owns durable behavior and validation; SQLite stores
-structured state; the native filesystem stores managed image files.
+structured state and full-text indexes; the native filesystem stores managed
+image files.
 
 ## Architectural boundary
 
@@ -29,46 +30,81 @@ all data crossing the IPC boundary and owns multi-step transactions.
 
 - `src/App.tsx` owns top-level navigation, themes, and cross-screen launch
   requests.
-- `src/screens/DecksScreen.tsx` manages decks and opens the card editor.
-- `src/screens/PracticeScreen.tsx` starts single- or multi-deck sessions,
-  presents the one-step 0–3 confidence scale, and shows recent deck results.
-- `src/screens/practice/PracticeSetup.tsx` owns per-session deck selection and
-  the single visible shuffle control.
+- `src/screens/DecksScreen.tsx` manages decks and the original per-deck card
+  list.
+- `src/screens/CardsScreen.tsx` is the whole-library card browser. It sends
+  search/filter/page requests to Rust, manages keyboard and multi-selection,
+  and launches bulk entry or move/copy.
+- `src/screens/CardEditorScreen.tsx` edits validated rich content, tags, and
+  explicit duplicate overrides.
+- `src/screens/PracticeScreen.tsx` runs one-step 0–3 review sessions.
 - `src/screens/AnalyticsScreen.tsx` presents deterministic confidence,
   response-time, and workload aggregates.
-- `src/screens/SettingsScreen.tsx` edits appearance, retention, and confirmation
-  preferences without duplicating session-only controls.
+- `src/screens/SettingsScreen.tsx` edits appearance and review preferences.
 - `src/editor/` contains the Tiptap configuration, canonicalization, display,
   and link handling.
 - `src/ipc.ts` is the only frontend module that invokes Rust commands.
 
 ### Rust
 
-- `database.rs` opens SQLite, applies checksummed migrations, and exposes the
-  connection through one mutex-protected application state.
+- `database.rs` opens SQLite, applies checksummed migrations, backfills stable
+  duplicate fingerprints, and exposes one mutex-protected connection.
 - `decks.rs` owns deck validation and persistence.
-- `cards.rs` validates Tiptap JSON, derives search text, and writes notes/cards
-  transactionally.
+- `cards.rs` validates Tiptap JSON and supports the original basic-card API.
+- `authoring.rs` owns tags, FTS5 queries, organized card writes, exact duplicate
+  checks, bulk entry, and transactional move/copy.
 - `assets.rs` imports supported local image files into the managed library.
 - `scheduler.rs` is the sole adapter to `rs-fsrs`.
-- `practice.rs` records card events and graded reviews atomically and retains the
-  strict due-only session command for compatibility.
-- `practice_selection.rs` builds the interface's due-first sessions and falls
-  back to all active cards for each selected deck that has nothing due.
-- `analytics.rs` calculates due counts, correctness, timing, canonical rating
-  distribution, per-deck results, and recent reviews using ordinary SQL.
-- `transfer.rs` validates and imports/exports `.studydeck` packages.
+- `practice.rs` records graded reviews atomically.
+- `practice_selection.rs` creates scheduled or voluntary session snapshots.
+- `analytics.rs` calculates deterministic review facts using ordinary SQL.
+- `transfer.rs` validates the core `.studydeck` content and images.
+- `tagged_transfer.rs` adds and restores optional package tag metadata while
+  keeping old packages readable.
 - `settings.rs` validates and persists graphical configuration.
 
-## Note and card separation
+## Notes, cards, and tags
 
-A **note** stores editable content. A **card** is one studyable presentation
-generated from a note. The current basic note creates one forward card. The
-separation is retained so reverse cards, Fill in the blank cards, and field-based
-templates can generate several cards without duplicating source content.
+A **note** stores editable source content. A **card** is one studyable
+presentation generated from a note. Tags attach to the note, not the generated
+card, so reverse and Fill in the blank cards can later share one source
+classification.
 
-Rich content is stored as versioned Tiptap/ProseMirror JSON rather than HTML.
-Markdown-style shortcuts are editing conveniences, not the durable format.
+`tags.normalized_name` provides case-insensitive identity while preserving the
+first human-readable spelling. `note_tags` is the many-to-many relationship.
+Tag writes are bounded, deduplicated, and transactional with card content.
+
+## FTS5 search
+
+`card_search_fts` indexes active note questions, answers, deck IDs, and tag text.
+Its rowid mirrors `notes.rowid`. SQLite triggers keep it synchronized when note
+content, deck membership, deletion state, tags, or tag names change.
+
+The interface never forwards raw FTS5 syntax. Rust extracts bounded
+alphanumeric tokens, quotes them, binds the resulting expression as a
+parameter, and applies deck, tag, due-state, sort, limit, and offset constraints
+as separate bound values.
+
+## Duplicate detection
+
+Each note stores a stable FNV-1a fingerprint of normalized question and answer
+text. The hash is only a candidate index: Rust always compares the complete
+normalized strings before declaring a duplicate, so a hash collision cannot
+produce a false duplicate. Historical notes are backfilled after migration.
+
+Image-only cards are not treated as duplicates from empty text alone. The
+editor warns before an exact duplicate is saved, and the write command repeats
+the check inside an immediate transaction to close the race between warning and
+save. Bulk entry can skip duplicates within the batch and destination deck.
+
+## Move and copy semantics
+
+- **Move** changes the note and generated card deck IDs in one transaction.
+  Card IDs, schedules, and review history remain intact.
+- **Copy** creates new note/card IDs, reuses managed asset records, copies tags,
+  and creates fresh schedules without personal review history.
+- The optional duplicate guard can leave matching cards in their source deck
+  rather than creating destination duplicates.
 
 ## Practice confidence and scheduling
 
@@ -81,62 +117,23 @@ The learner gives one score after revealing an answer:
 | 2 | Medium | Good |
 | 3 | Easy | Easy |
 
-The existing durable review ledger stores the canonical FSRS rating and its
-historical outcome string. The frontend maps the 0–3 score to that stable format,
-so changing the interaction does not rewrite prior reviews or invalidate deck
-libraries.
-
-The normal selection rule is due-first on a per-deck basis. A selected deck with
-one or more due cards contributes only those due cards. A selected deck with no
-due cards contributes all of its active cards, allowing voluntary study without
-disabling the deck. Mixed sessions can therefore combine scheduled reviews from
-one deck with voluntary early reviews from another.
-
 `card_schedules` is the fast mutable view of current FSRS state.
 `review_events` is the immutable historical ledger. Review submission is one
-idempotent SQLite transaction. Voluntary early reviews are real reviews and
-update the FSRS schedule. The frontend converts each canonical 1–4 rating to the
-displayed 0–3 confidence score by subtracting one; the underlying facts remain
-deterministic.
+idempotent SQLite transaction.
 
 ## Untrusted card content
 
 All card and imported-deck content is untrusted until Rust validates it.
 
 - Cards are structured JSON, never executable HTML or script source.
-- Node types, mark types, attributes, nesting, sizes, colors, and image
-  references use explicit allowlists and bounds.
-- Links are limited to complete `http`, `https`, `mailto`, and `tel` addresses;
-  JavaScript, data, file, and malformed schemes are rejected.
-- Images must reference an asset already copied into the managed image library.
-  Cards cannot request arbitrary local paths or remote tracking images.
-- Search text is derived from the validated document in Rust rather than trusted
-  from a frontend snapshot.
+- Node types, marks, attributes, nesting, sizes, colors, and image references
+  use explicit allowlists and bounds.
+- Links are limited to complete `http`, `https`, `mailto`, and `tel` addresses.
+- Images must reference managed local assets.
+- Search text is derived from validated documents in Rust.
 - SQLite statements use bound parameters for user-controlled values.
-- Unknown document nodes and formatting fail validation instead of being passed
-  through to the WebView.
+- Search input cannot inject FTS5 operators because Rust constructs the query.
+- Unknown document nodes and formatting fail validation.
 
 The future template language follows the same boundary: field names and values
-are data. Templates may select and substitute fields, but they may not evaluate
-JavaScript, SQL, shell commands, raw HTML, filesystem operations, network
-requests, or general-purpose expressions.
-
-## Local files and deck packages
-
-Images are copied into the application data directory and referenced by stable
-asset identifiers. `.studydeck` packages contain content and managed images but
-omit personal review history and settings. Imported cards receive fresh local
-schedules.
-
-## Error containment
-
-Rust commands return stable, user-safe error codes and messages. React error
-boundaries prevent a single rendering exception from producing an unexplained
-blank Tauri window. Pending-operation guards prevent duplicate writes from fast
-repeated clicks.
-
-## Comments and documentation
-
-Comments explain invariants, security boundaries, transaction ordering, race
-prevention, and non-obvious product decisions. Architecture Decision Records
-document durable cross-module choices.
+are data, not executable expressions.

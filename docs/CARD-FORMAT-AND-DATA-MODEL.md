@@ -2,46 +2,85 @@
 
 ## Canonical card content
 
-ostudy uses the open-source Tiptap editor core, but stores validated
-ProseMirror/Tiptap JSON rather than HTML. Markdown-style shortcuts may be used
-while editing; they are not the durable representation.
+ostudy stores validated ProseMirror/Tiptap JSON rather than HTML. Markdown-style
+shortcuts may be used while editing; they are not the durable representation.
 
-Each note currently stores:
+Each note stores:
 
 - `content_format = "tiptap-json"`
 - `content_schema_version = 1`
 - `front_doc` and `back_doc`: validated structured documents
-- `front_text` and `back_text`: plain text derived by Rust from those documents
+- `front_text` and `back_text`: plain text derived by Rust
+- `duplicate_hash`: a stable candidate fingerprint of normalized text
+- timestamps, soft-deletion state, and an optimistic revision
 
-Supported content is deliberately allowlisted. It includes paragraphs, headings
-1–4, text, hard breaks, dividers, quotes, code blocks, lists, list items, and
-managed local images. Supported formatting includes bold, italic, underline,
-strike, inline code, safe links, highlight, bounded font styling, colors,
-alignment, indentation, and line height.
+Supported content is deliberately allowlisted. Links are limited to complete
+`http`, `https`, `mailto`, and `tel` addresses. Images must use
+`study-asset://<id>` and refer to an asset already copied into the managed image
+directory. Arbitrary HTML, JavaScript URLs, remote images, local file paths,
+unknown nodes, unknown marks, and unknown attributes are rejected.
 
-Links are limited to complete `http`, `https`, `mailto`, and `tel` addresses.
-Images must use `study-asset://<id>` and refer to an asset already copied into
-the managed image directory. Arbitrary HTML, JavaScript URLs, remote images,
-local file paths, unknown nodes, unknown marks, and unknown attributes are
-rejected by Rust.
-
-## Notes and cards
+## Notes, cards, and tags
 
 A **note** is editable source content. A **card** is a studyable presentation
-generated from that note. The current basic note creates one forward card. This
-separation lets later stages add reverse cards, Fill in the blank cards, and
-field-based templates without duplicating source content.
+generated from that note. The current basic note creates one forward card.
 
 Core content tables:
 
 - `decks`: deck identity and metadata
-- `notes`: versioned source documents and derived text
+- `notes`: versioned source documents, derived text, and duplicate fingerprints
 - `cards`: studyable prompt identities
+- `tags`: global display names and case-insensitive normalized identity
+- `note_tags`: note-to-tag relationships
 - `assets`: managed image metadata and relative paths
 - `note_assets`: note-to-image relationships by side
 
-Card creation, editing, deletion, and asset relationships are transactional.
-Optimistic revisions prevent silent overwrites.
+Tags attach to notes so future reverse and Fill in the blank cards can share the
+same source tags. Each note is limited to 32 unique tags of 64 visible
+characters each.
+
+## Full-text search
+
+`card_search_fts` is an SQLite FTS5 virtual table containing note ID, deck ID,
+question text, answer text, and joined tag text. Existing notes are indexed by
+migration and triggers keep the index synchronized after supported writes.
+
+Search commands support:
+
+- all decks or one deck;
+- one or more required tags;
+- all, due, or not-due cards;
+- relevance, recently updated, question, or due-date ordering;
+- bounded pagination.
+
+The user query is tokenized and quoted by Rust. It is never accepted as raw
+FTS5 grammar.
+
+## Duplicate detection
+
+Question and answer text are trimmed, internal whitespace is collapsed, and
+case is folded before the stable fingerprint is calculated. The fingerprint
+narrows the candidate set; complete normalized text is compared before a match
+is returned.
+
+The rich editor requires an explicit override to save an exact duplicate. Bulk
+entry can skip duplicates both within the submitted rows and against the
+destination deck. Image-only cards are not considered duplicates merely
+because their searchable text is empty.
+
+## Bulk entry
+
+Bulk entry accepts up to 500 in-application rows. Each row has a question,
+answer, and optional comma-separated tags. Rust converts the plain text into
+canonical paragraph documents, validates every row, and inserts all accepted
+cards in one immediate transaction. There is no CSV/TSV file-import path.
+
+## Move and copy
+
+Moving updates `notes.deck_id` and all generated `cards.deck_id` values while
+preserving card IDs, schedules, and review events. Copying creates new note and
+card identities, copies tag and asset relationships, and creates fresh local
+schedules. Both operations are bounded and transactional.
 
 ## Practice confidence and FSRS
 
@@ -54,64 +93,23 @@ After revealing an answer, the learner records one confidence score:
 | 2 | Medium | `somewhat_confident` | Good (3) |
 | 3 | Easy | `very_confident` | Easy (4) |
 
-The stored outcome strings and canonical FSRS ratings remain compatible with
-existing schema-3 libraries. Analytics displays `rating - 1`, which gives the
-same 0–3 score shown during practice.
-
-Scheduling data is split deliberately:
-
-- `card_schedules` stores the current mutable FSRS state used by due-card
-  queries.
-- `review_events` is append-only and records every accepted review, including
-  learner outcome, canonical rating, response time, and complete before/after
-  schedule state.
-
-Each review request carries a unique `submission_id`. A uniqueness constraint
-and idempotent command handling prevent double clicks or IPC retries from
-recording the same review twice. The review event, updated schedule, session-card
-state, and session counters commit in one immediate SQLite transaction.
-
-## Practice sessions and analytics
-
-A direct deck Practice action can start a session whenever the deck contains an
-active card. The Practice screen can also select multiple decks. For each
-selected deck, the session includes its due cards when any are due; if that deck
-has nothing due, the session includes all of its active cards instead. This is a
-per-deck fallback, so a mixed session may contain scheduled cards from one deck
-and voluntary early reviews from another.
-
-A voluntary review is still a real FSRS review. Its immutable review event is
-recorded and its next interval is recalculated in the same way as a scheduled
-review. Suspended and deleted cards are never included.
-
-`practice_sessions` records selected decks and summary counts.
-`practice_session_cards` records fixed order plus viewed, revealed, and rated
-timestamps. A card must be revealed before it can be rated.
-
-Analytics are deterministic facts over schedules and reviews: due count, review
-count, correctness, response time, canonical rating distribution, per-deck
-results, and recent reviews. The interface derives the displayed 0–3 average
-confidence and recent-deck summaries from those stored ratings.
+Scheduling data remains split between mutable `card_schedules` and append-only
+`review_events`.
 
 ## `.studydeck` packages
 
-A `.studydeck` file is a standalone, versioned SQLite interchange package
-containing one deck, notes, cards, relationships, and managed image bytes.
-Import validates metadata, row counts, IDs, timestamps, document structure,
-image signatures, and relationships before one transactional insertion.
+A `.studydeck` file is a standalone SQLite interchange package containing one
+deck, notes, cards, relationships, and managed image bytes. Stage 2 exports add
+optional `tags` and `note_tags` tables. Older packages without those tables
+remain importable, and older readers can ignore the additional tables.
 
-The human-readable deck title is preserved; internal ID collisions are remapped.
-Imported cards receive fresh local schedules and do not inherit another
-learner's review history. Packages exclude application settings and personal
-reviews.
+Imported cards receive fresh schedules and do not inherit another learner's
+review history. Packages exclude application settings and personal reviews.
 
 ## Future field templates
 
-The Phase 2 template language is intentionally data-only. A template may define
-named fields such as `{{medication name}}` or `{{side effects}}`, and may use
-those fields to generate validated card documents. It will not expose an
+The Phase 2 template language is data-only. A template may define named fields
+such as `{{medication name}}` or `{{side effects}}`, but it will not expose an
 expression evaluator or allow JavaScript, SQL, shell commands, raw HTML,
-filesystem access, or network access.
-
-Template output passes through the same Rust document validator as manually
-created and imported cards before it can be stored or rendered.
+filesystem access, or network access. Generated output must pass the same Rust
+document validator.
