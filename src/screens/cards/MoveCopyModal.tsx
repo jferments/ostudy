@@ -76,16 +76,14 @@ export function MoveCopyModal({
   return (
     <Modal
       title="Move or copy cards"
-      description={`${cards.length} ${
-        cards.length === 1 ? "card is" : "cards are"
-      } selected.`}
+      description={`${cards.length} ${cards.length === 1 ? "card is" : "cards are"} selected.`}
       width="medium"
       onClose={() => {
         if (!isSaving) onClose();
       }}
     >
       {destinations.length === 0 ? (
-        <div className="compact-empty-state">
+        <div className="compact-empty-state modal-empty-state">
           <h3>Create another deck first</h3>
           <p>A destination deck must be different from every selected card’s deck.</p>
           <div className="modal-actions">
@@ -96,9 +94,9 @@ export function MoveCopyModal({
         </div>
       ) : (
         <div className="move-copy-form" aria-busy={isSaving}>
-          <fieldset>
+          <fieldset className="transfer-mode-group">
             <legend>Action</legend>
-            <label>
+            <label className="transfer-mode-option">
               <input
                 type="radio"
                 name="transfer-mode"
@@ -109,10 +107,12 @@ export function MoveCopyModal({
               />
               <span>
                 <strong>Move</strong>
-                <small>Keep review history and remove the cards from their current decks.</small>
+                <small>
+                  Keep review history and remove the cards from their current decks.
+                </small>
               </span>
             </label>
-            <label>
+            <label className="transfer-mode-option">
               <input
                 type="radio"
                 name="transfer-mode"
@@ -123,12 +123,12 @@ export function MoveCopyModal({
               />
               <span>
                 <strong>Copy</strong>
-                <small>Create fresh cards with new schedules in the destination deck.</small>
+                <small>Create new cards with fresh schedules in the destination.</small>
               </span>
             </label>
           </fieldset>
 
-          <label>
+          <label className="move-copy-destination">
             <span>Destination deck</span>
             <select
               value={targetDeckId}
@@ -145,7 +145,7 @@ export function MoveCopyModal({
             </select>
           </label>
 
-          <label className="compact-checkbox">
+          <label className="compact-checkbox move-copy-duplicate-option">
             <input
               type="checkbox"
               checked={skipDuplicates}
@@ -180,9 +180,9 @@ export function MoveCopyModal({
                 ? mode === "move"
                   ? "Moving…"
                   : "Copying…"
-                : `${mode === "move" ? "Move" : "Copy"} ${
-                    cards.length
-                  } ${cards.length === 1 ? "card" : "cards"}`}
+                : `${mode === "move" ? "Move" : "Copy"} ${cards.length} ${
+                    cards.length === 1 ? "card" : "cards"
+                  }`}
             </button>
           </div>
         </div>
