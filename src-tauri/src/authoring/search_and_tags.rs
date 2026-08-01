@@ -321,11 +321,12 @@ fn load_tag_names(
              ORDER BY t.name COLLATE NOCASE ASC",
         )
         .map_err(CommandError::database)?;
-    statement
+    let names = statement
         .query_map([note_id], |row| row.get(0))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(names)
 }
 
 fn validate_tags(values: Vec<String>) -> Result<Vec<ValidatedTag>, CommandError> {
