@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { TagInput } from "../components/TagInput";
-import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { RichTextEditor } from "../editor/RichTextEditor";
 import { RichTextView } from "../editor/RichTextView";
 import {
@@ -15,7 +14,6 @@ import {
   getErrorCode,
   getErrorMessage,
   getOrganizedCard,
-  listDecks,
   listTags,
   updateOrganizedCard,
   type Asset,
@@ -26,9 +24,11 @@ import {
   type RichDocument,
   type TagSummary,
 } from "../ipc";
+import { MoveCopyModal } from "./cards/MoveCopyModal";
 
 interface CardEditorScreenProps {
   deck: Deck;
+  decks: Deck[];
   card: Flashcard | OrganizedCard | null;
   onCancel: () => void;
   onSaved: (card: OrganizedCard, continueAdding: boolean) => void | Promise<void>;
@@ -38,6 +38,7 @@ interface CardEditorScreenProps {
 
 export function CardEditorScreen({
   deck,
+  decks,
   card,
   onCancel,
   onSaved,
@@ -45,6 +46,14 @@ export function CardEditorScreen({
   onMoveCopy,
 }: CardEditorScreenProps) {
   const existing = card !== null && card.noteId !== "";
+  const availableDecks = useMemo(() => {
+    const byId = new Map<string, Deck>();
+    for (const candidate of [deck, ...decks]) byId.set(candidate.id, candidate);
+    return [...byId.values()];
+  }, [deck, decks]);
+  const [selectedDeckId, setSelectedDeckId] = useState(card?.deckId ?? deck.id);
+  const selectedDeck =
+    availableDecks.find((candidate) => candidate.id === selectedDeckId) ?? deck;
   const [frontDoc, setFrontDoc] = useState<RichDocument>(() =>
     card ? cloneDocument(card.frontDoc) : cloneDocument(EMPTY_RICH_DOCUMENT),
   );
@@ -62,9 +71,7 @@ export function CardEditorScreen({
   const savingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [duplicateMatches, setDuplicateMatches] = useState<DuplicateCard[]>([]);
-  const [moveCopyDecks, setMoveCopyDecks] = useState<Deck[]>([]);
   const [moveCopyOpen, setMoveCopyOpen] = useState(false);
-  const [isLoadingMoveCopy, setIsLoadingMoveCopy] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewAnswer, setPreviewAnswer] = useState(false);
   const [editorGeneration, setEditorGeneration] = useState(0);
@@ -73,7 +80,7 @@ export function CardEditorScreen({
   const title = existing ? "Edit flashcard" : "Add flashcard";
   const hasFront = !isDocumentEmpty(frontText, frontDoc);
   const hasBack = !isDocumentEmpty(backText, backDoc);
-  const canSave = hasFront && hasBack && !isSaving;
+  const canSave = hasFront && hasBack && selectedDeckId !== "" && !isSaving;
   const assetIds = useMemo(() => new Set(assets.map((asset) => asset.id)), [assets]);
 
   useEffect(() => {
@@ -146,7 +153,7 @@ export function CardEditorScreen({
     try {
       if (!allowDuplicate && frontText.trim() !== "" && backText.trim() !== "") {
         const duplicates = await findDuplicateCards({
-          deckId: deck.id,
+          deckId: selectedDeckId,
           frontText,
           backText,
           excludeNoteId: existing && card ? card.noteId : undefined,
@@ -157,26 +164,28 @@ export function CardEditorScreen({
         }
       }
 
-      const saved = existing && card
-        ? await updateOrganizedCard({
-            noteId: card.noteId,
-            revision: card.revision,
-            frontDoc,
-            backDoc,
-            frontText,
-            backText,
-            tags,
-            allowDuplicate,
-          })
-        : await createOrganizedCard({
-            deckId: deck.id,
-            frontDoc,
-            backDoc,
-            frontText,
-            backText,
-            tags,
-            allowDuplicate,
-          });
+      const saved =
+        existing && card
+          ? await updateOrganizedCard({
+              noteId: card.noteId,
+              deckId: selectedDeckId,
+              revision: card.revision,
+              frontDoc,
+              backDoc,
+              frontText,
+              backText,
+              tags,
+              allowDuplicate,
+            })
+          : await createOrganizedCard({
+              deckId: selectedDeckId,
+              frontDoc,
+              backDoc,
+              frontText,
+              backText,
+              tags,
+              allowDuplicate,
+            });
 
       setDirty(false);
       setDuplicateMatches([]);
@@ -203,7 +212,7 @@ export function CardEditorScreen({
         setDuplicateMatches([
           {
             noteId: "",
-            deckId: deck.id,
+            deckId: selectedDeckId,
             frontText,
             backText,
           },
@@ -217,22 +226,13 @@ export function CardEditorScreen({
     }
   }
 
-  async function openMoveCopy(): Promise<void> {
-    if (!existing || !card || dirty || isLoadingMoveCopy) return;
+  function openMoveCopy(): void {
+    if (!existing || !card || dirty) return;
     if (onMoveCopy) {
       onMoveCopy();
       return;
     }
-    setIsLoadingMoveCopy(true);
-    setErrorMessage(null);
-    try {
-      setMoveCopyDecks(await listDecks());
-      setMoveCopyOpen(true);
-    } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
-    } finally {
-      setIsLoadingMoveCopy(false);
-    }
+    setMoveCopyOpen(true);
   }
 
   function cancel(): void {
@@ -255,11 +255,11 @@ export function CardEditorScreen({
             <button
               type="button"
               className="secondary-button"
-              disabled={isSaving || dirty || isLoadingMoveCopy}
+              disabled={isSaving || dirty}
               title={dirty ? "Save or discard edits before moving this card" : undefined}
-              onClick={() => void openMoveCopy()}
+              onClick={openMoveCopy}
             >
-              {isLoadingMoveCopy ? "Opening…" : "Move / copy"}
+              Move / copy
             </button>
           ) : null}
           <button
@@ -304,8 +304,8 @@ export function CardEditorScreen({
           <div>
             <h2 id="duplicate-warning-title">This looks like an exact duplicate</h2>
             <p>
-              A card in {deck.name} already has the same normalized question and answer.
-              Review it before creating another copy.
+              A card in {selectedDeck.name} already has the same normalized question and
+              answer. Review it before creating another copy.
             </p>
             {duplicateMatches
               .filter((match) => match.noteId !== "")
@@ -340,15 +340,25 @@ export function CardEditorScreen({
 
       <div className={previewOpen ? "card-editor-layout with-preview" : "card-editor-layout"}>
         <div className="card-editor-fields">
-          <TagInput
-            tags={tags}
-            suggestions={tagSuggestions}
-            disabled={isSaving}
-            onChange={(nextTags) => {
-              setTags(nextTags);
-              markDirty();
-            }}
-          />
+          <label className="card-deck-control">
+            <span>Deck</span>
+            <select
+              aria-label="Deck"
+              value={selectedDeckId}
+              disabled={isSaving}
+              onChange={(event) => {
+                setSelectedDeckId(event.currentTarget.value);
+                markDirty();
+              }}
+            >
+              {availableDecks.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                </option>
+              ))}
+            </select>
+            <small>A card belongs to one deck and can have any number of tags.</small>
+          </label>
           <RichTextEditor
             key={`front-${editorGeneration}`}
             label="Question"
@@ -375,6 +385,15 @@ export function CardEditorScreen({
               markDirty();
             }}
             minHeight={220}
+          />
+          <TagInput
+            tags={tags}
+            suggestions={tagSuggestions}
+            disabled={isSaving}
+            onChange={(nextTags) => {
+              setTags(nextTags);
+              markDirty();
+            }}
           />
         </div>
 
@@ -417,7 +436,7 @@ export function CardEditorScreen({
       {moveCopyOpen && card ? (
         <MoveCopyModal
           cards={[{ noteId: card.noteId, deckId: card.deckId }]}
-          decks={moveCopyDecks}
+          decks={availableDecks}
           onClose={() => setMoveCopyOpen(false)}
           onComplete={async () => {
             setMoveCopyOpen(false);
