@@ -21,7 +21,6 @@ mod tests {
     fn search_input(deck_ids: Vec<String>, query: &str) -> SearchCardsInput {
         SearchCardsInput {
             deck_ids,
-            deck_id: None,
             query: query.to_string(),
             tag_ids: vec![],
             due_filter: "all".to_string(),
@@ -34,6 +33,24 @@ mod tests {
             limit: 100,
             offset: 0,
         }
+    }
+
+    #[test]
+    fn removed_authoring_fields_are_rejected() {
+        let bulk_error = serde_json::from_value::<BulkCreateCardsInput>(serde_json::json!({
+            "deckId": "deck",
+            "rows": [],
+            "skipDuplicates": true
+        }))
+        .expect_err("the removed bulk duplicate flag must not be silently accepted");
+        assert!(bulk_error.to_string().contains("skipDuplicates"));
+
+        let search_error = serde_json::from_value::<SearchCardsInput>(serde_json::json!({
+            "deckIds": [],
+            "deckId": "legacy-single-deck"
+        }))
+        .expect_err("the removed single-deck filter must not be silently accepted");
+        assert!(search_error.to_string().contains("deckId"));
     }
 
     #[test]
@@ -201,7 +218,6 @@ mod tests {
                     tags: vec!["Cell".to_string()],
                 },
             ],
-            skip_duplicates: true,
         };
         let prepared = input
             .rows
