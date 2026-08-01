@@ -3,7 +3,7 @@
 Phase 2 is split into small vertical stages. Each stage is implemented, tested,
 and reviewed before work starts on the next one.
 
-## Stage 1 — Practice confidence and a compact session screen
+## Stage 1 — Practice confidence and a compact session screen — complete
 
 - Replace the two-step Right/Wrong → confidence flow with one answer:
   **0 Wrong**, **1 Hard**, **2 Medium**, or **3 Easy**.
@@ -24,14 +24,20 @@ and reviewed before work starts on the next one.
   `src-tauri/Cargo.lock`.
 - Document the card-content security boundary and the remaining Phase 2 order.
 
-## Stage 2 — Organize, find, and enter cards
+## Stage 2 — Organize, find, and enter cards — implemented in this branch
 
-- Tags.
-- SQLite FTS5 search.
-- Better card browsing, filtering, and keyboard selection.
-- Bulk card entry.
-- Duplicate detection.
-- Move or copy cards between decks.
+- Reusable, case-insensitive tags with per-deck tag counts.
+- SQLite FTS5 search across validated question text, answer text, and tags.
+- Server-side status/tag filtering, sorting, paging, and result counts.
+- Keyboard card navigation and selection, including Arrow keys, Space,
+  Ctrl/Command+A, Enter, and `/` to focus search.
+- Bulk entry for up to 500 tab-separated or `::`-separated rows with optional
+  comma-separated tags.
+- Exact duplicate detection in the editor, bulk entry, and destination decks.
+- Transactional move/copy between decks. Moves preserve schedules and review
+  history; copies receive fresh schedules and no review history.
+
+See [`PHASE-2-STAGE-2.md`](PHASE-2-STAGE-2.md) for behavior and test coverage.
 
 ## Stage 3 — Card types and safe templates
 
@@ -70,6 +76,7 @@ and reviewed before work starts on the next one.
 
 ## Deferred or excluded
 
-CSV/TSV import is not part of Phase 2. Deck interchange continues to use
+CSV/TSV file import is not part of Phase 2. Stage 2 bulk entry accepts pasted
+TSV-style rows directly in the application. Deck interchange continues to use
 versioned SQLite `.studydeck` files. Math support is deferred to a separate,
 focused math-flashcard update.
