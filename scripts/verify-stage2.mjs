@@ -32,6 +32,7 @@ const [
     ["src-tauri", "src", "authoring", "search_and_tags.rs"],
     ["src-tauri", "src", "authoring", "writes_and_transfer.rs"],
     ["src-tauri", "src", "authoring", "normalization.rs"],
+    ["src-tauri", "src", "authoring", "tests.rs"],
   ),
   read("src-tauri", "src", "practice_selection.rs"),
   read("src", "ipc.ts"),
@@ -105,6 +106,47 @@ for (const fragment of [
   if (!authoring.includes(fragment)) failures.push(`authoring boundary missing: ${fragment}`);
 }
 
+const strictInputs = [
+  "ListTagsInput",
+  "SearchCardsInput",
+  "CreateOrganizedCardInput",
+  "UpdateOrganizedCardInput",
+  "DuplicateCheckInput",
+  "BulkCardRowInput",
+  "AnalyzeBulkCardsInput",
+  "BulkCreateCardsInput",
+  "TransferCardsInput",
+  "BulkTagCardsInput",
+  "DeleteCardsInput",
+];
+for (const inputName of strictInputs) {
+  const strictDeclaration = new RegExp(
+    `#\\[serde\\(rename_all = "camelCase", deny_unknown_fields\\)\\]\\s*pub struct ${inputName}\\b`,
+    "u",
+  );
+  if (!strictDeclaration.test(authoring)) {
+    failures.push(`${inputName} must reject unknown IPC fields`);
+  }
+}
+
+const bulkCreateBlock =
+  authoring.match(/pub struct BulkCreateCardsInput\s*\{(?<body>[\s\S]*?)\n\}/u)?.groups?.body ?? "";
+if (bulkCreateBlock.includes("skip_duplicates")) {
+  failures.push("BulkCreateCardsInput still contains the removed skipDuplicates option");
+}
+if (
+  authoring.includes("legacy_deck_id") ||
+  /pub deck_id:\s*Option<String>/u.test(authoring)
+) {
+  failures.push("authoring still contains the removed single-deck compatibility input");
+}
+if (/\#\[(?:allow|expect)\(dead_code\)\]/u.test(authoring)) {
+  failures.push("authoring suppresses dead-code detection instead of removing stale code");
+}
+if (!authoring.includes("removed_authoring_fields_are_rejected")) {
+  failures.push("removed authoring fields are not covered by strict-deserialization tests");
+}
+
 if (!practiceSelection.includes("start_card_practice") || !practiceSelection.includes("card_ids")) {
   failures.push("filtered result cards cannot start a temporary practice session");
 }
@@ -160,5 +202,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Search/Filter multi-deck filters, bulk actions, duplicate review, and temporary practice are wired.",
+  "OK   Search/Filter multi-deck filters, strict IPC inputs, bulk actions, duplicate review, and temporary practice are wired.",
 );
