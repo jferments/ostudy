@@ -45,9 +45,14 @@ export function AnalyticsScreen({ showToast }: AnalyticsScreenProps) {
       <header className="screen-header compact-screen-header">
         <div>
           <h1>Analytics</h1>
-          <p>Review performance and current workload.</p>
+          <p>Review confidence, response time, and current workload.</p>
         </div>
-        <button type="button" className="secondary-button" disabled={isLoading} onClick={() => void load()}>
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={isLoading}
+          onClick={() => void load()}
+        >
           Refresh
         </button>
       </header>
@@ -58,22 +63,61 @@ export function AnalyticsScreen({ showToast }: AnalyticsScreenProps) {
       {analytics ? (
         <>
           <section className="metrics-grid" aria-label="Review summary">
-            <MetricCard label="Due now" value={analytics.dueNow} detail={`${analytics.cardCount} total cards`} />
-            <MetricCard label="Reviews" value={analytics.reviewCount} detail={`${analytics.deckCount} decks`} />
-            <MetricCard label="Correct" value={formatPercent(analytics.correctRate)} detail={`${analytics.correctCount} remembered`} />
-            <MetricCard label="Average time" value={formatDuration(analytics.averageResponseTimeMs)} detail="per review" />
+            <MetricCard
+              label="Due now"
+              value={analytics.dueNow}
+              detail={`${analytics.cardCount} total cards`}
+            />
+            <MetricCard
+              label="Reviews"
+              value={analytics.reviewCount}
+              detail={`${analytics.deckCount} decks`}
+            />
+            <MetricCard
+              label="Average confidence"
+              value={formatConfidence(averageConfidence(analytics))}
+              detail="0 Wrong · 3 Easy"
+            />
+            <MetricCard
+              label="Average time"
+              value={formatDuration(analytics.averageResponseTimeMs)}
+              detail="per review"
+            />
           </section>
 
           <div className="analytics-grid">
             <section className="analytics-panel">
               <div className="panel-heading-row">
-                <h2>Rating distribution</h2>
+                <div>
+                  <h2>Confidence distribution</h2>
+                  <p className="analytics-panel-note">One 0–3 score is recorded for every review.</p>
+                </div>
               </div>
               <div className="rating-distribution">
-                <RatingBar label="Again" count={analytics.ratingDistribution.again} total={analytics.reviewCount} className="again" />
-                <RatingBar label="Hard" count={analytics.ratingDistribution.hard} total={analytics.reviewCount} className="hard" />
-                <RatingBar label="Good" count={analytics.ratingDistribution.good} total={analytics.reviewCount} className="good" />
-                <RatingBar label="Easy" count={analytics.ratingDistribution.easy} total={analytics.reviewCount} className="easy" />
+                <RatingBar
+                  label="0 · Wrong"
+                  count={analytics.ratingDistribution.again}
+                  total={analytics.reviewCount}
+                  className="wrong"
+                />
+                <RatingBar
+                  label="1 · Hard"
+                  count={analytics.ratingDistribution.hard}
+                  total={analytics.reviewCount}
+                  className="hard"
+                />
+                <RatingBar
+                  label="2 · Medium"
+                  count={analytics.ratingDistribution.good}
+                  total={analytics.reviewCount}
+                  className="medium"
+                />
+                <RatingBar
+                  label="3 · Easy"
+                  count={analytics.ratingDistribution.easy}
+                  total={analytics.reviewCount}
+                  className="easy"
+                />
               </div>
             </section>
 
@@ -91,7 +135,7 @@ export function AnalyticsScreen({ showToast }: AnalyticsScreenProps) {
                         <th>Deck</th>
                         <th>Due</th>
                         <th>Reviews</th>
-                        <th>Correct</th>
+                        <th>Remembered</th>
                         <th>Time</th>
                       </tr>
                     </thead>
@@ -127,7 +171,10 @@ export function AnalyticsScreen({ showToast }: AnalyticsScreenProps) {
               <div className="recent-review-list">
                 {analytics.recentReviews.map((review) => (
                   <article key={review.id} className="recent-review-row">
-                    <span className={`review-result-dot rating-${review.rating}`} aria-hidden="true" />
+                    <span
+                      className={`review-result-dot confidence-${review.rating - 1}`}
+                      aria-hidden="true"
+                    />
                     <div className="recent-review-copy">
                       <strong>{summarize(review.frontText)}</strong>
                       <span>{review.deckName} · {outcomeLabel(review.outcome)}</span>
@@ -186,8 +233,22 @@ function RatingBar({ label, count, total, className }: RatingBarProps) {
   );
 }
 
+function averageConfidence(analytics: Analytics): number | null {
+  if (analytics.reviewCount === 0) return null;
+  const distribution = analytics.ratingDistribution;
+  return (
+    distribution.hard +
+    distribution.good * 2 +
+    distribution.easy * 3
+  ) / analytics.reviewCount;
+}
+
 function formatPercent(value: number | null): string {
   return value === null ? "—" : `${Math.round(value * 100)}%`;
+}
+
+function formatConfidence(value: number | null): string {
+  return value === null ? "—" : `${value.toFixed(1)} / 3`;
 }
 
 function formatDuration(value: number | null): string {
@@ -208,13 +269,13 @@ function formatDueDate(value: number): string {
 function outcomeLabel(value: ReviewOutcome): string {
   switch (value) {
     case "wrong":
-      return "Wrong";
+      return "0 · Wrong";
     case "not_confident":
-      return "Right · not confident";
+      return "1 · Hard";
     case "somewhat_confident":
-      return "Right · somewhat confident";
+      return "2 · Medium";
     case "very_confident":
-      return "Right · very confident";
+      return "3 · Easy";
   }
 }
 

@@ -1,124 +1,110 @@
 # Card format, scheduling, and data model
 
-## Editor choice
-
-ostudy uses the open-source Tiptap editor core rather than implementing a
-home-grown `contenteditable` editor. Correct selection handling, nested lists,
-paste normalization, undo/redo, links, image nodes, and stable serialization
-would otherwise become a separate editor-engine project. Tiptap is headless:
-ostudy still owns the complete toolbar, layout, themes, validation rules, and
-storage model.
-
 ## Canonical card content
 
-Markdown-style shortcuts are accepted while typing, but Markdown is not the
-canonical representation because it cannot round-trip colors, exact font sizes,
-font families, alignment, indentation, or managed image identifiers.
+ostudy uses the open-source Tiptap editor core, but stores validated
+ProseMirror/Tiptap JSON rather than HTML. Markdown-style shortcuts may be used
+while editing; they are not the durable representation.
 
-Each note stores:
+Each note currently stores:
 
 - `content_format = "tiptap-json"`
 - `content_schema_version = 1`
-- `front_doc`: validated question JSON
-- `back_doc`: validated answer JSON
-- `front_text` and `back_text`: Rust-derived plain text for search and analytics
+- `front_doc` and `back_doc`: validated structured documents
+- `front_text` and `back_text`: plain text derived by Rust from those documents
 
-Supported nodes include paragraphs, headings 1–4, text, hard breaks, dividers,
-quotes, code blocks, bullet/numbered lists, list items, and managed local images.
-Supported marks include bold, italic, underline, strike, inline code, links,
-highlight, font family, 8–96 px font size, colors, and line height. Paragraphs
-and headings can be aligned and indented.
+Supported content is deliberately allowlisted. It includes paragraphs, headings
+1–4, text, hard breaks, dividers, quotes, code blocks, lists, list items, and
+managed local images. Supported formatting includes bold, italic, underline,
+strike, inline code, safe links, highlight, bounded font styling, colors,
+alignment, indentation, and line height.
 
-Links are limited to `http`, `https`, `mailto`, and `tel`. Images must reference
-an asset already imported into the managed image directory. Persisted image
-nodes use `study-asset://<id>` rather than arbitrary local or remote URLs.
-Tiptap's optional `width` and `height` attributes are normalized to either
-`null` or a bounded numeric pixel value before Rust validates and stores them.
+Links are limited to complete `http`, `https`, `mailto`, and `tel` addresses.
+Images must use `study-asset://<id>` and refer to an asset already copied into
+the managed image directory. Arbitrary HTML, JavaScript URLs, remote images,
+local file paths, unknown nodes, unknown marks, and unknown attributes are
+rejected by Rust.
 
 ## Notes and cards
 
-A **note** is the editable question/answer content. A **card** is one studyable
-presentation generated from the note. The initial 0.1 release creates one forward card per
-note. The separation is retained so reverse, cloze, and image-occlusion cards
-can be added without duplicating the underlying content.
+A **note** is editable source content. A **card** is a studyable presentation
+generated from that note. The current basic note creates one forward card. This
+separation lets later stages add reverse cards, Fill in the blank cards, and
+field-based templates without duplicating source content.
 
 Core content tables:
 
 - `decks`: deck identity and metadata
-- `notes`: versioned front/back editor documents and derived plain text
-- `cards`: studyable prompt identity
-- `assets`: managed image metadata and relative file location
-- `note_assets`: note-to-image relationships by card side
+- `notes`: versioned source documents and derived text
+- `cards`: studyable prompt identities
+- `assets`: managed image metadata and relative paths
+- `note_assets`: note-to-image relationships by side
 
 Card creation, editing, deletion, and asset relationships are transactional.
-Optimistic note/deck revisions prevent silent overwrites.
+Optimistic revisions prevent silent overwrites.
 
-## FSRS schedule and immutable reviews
+## Practice confidence and FSRS
 
-Scheduling data is deliberately split:
+After revealing an answer, the learner records one confidence score:
+
+| Score | Display label | Stored outcome | FSRS rating |
+| --- | --- | --- | --- |
+| 0 | Wrong | `wrong` | Again (1) |
+| 1 | Hard | `not_confident` | Hard (2) |
+| 2 | Medium | `somewhat_confident` | Good (3) |
+| 3 | Easy | `very_confident` | Easy (4) |
+
+The stored outcome strings and canonical FSRS ratings remain compatible with
+existing schema-3 libraries. Analytics displays `rating - 1`, which gives the
+same 0–3 score shown during practice.
+
+Scheduling data is split deliberately:
 
 - `card_schedules` stores the current mutable FSRS state used by due-card
   queries.
 - `review_events` is append-only and records every accepted review, including
-  the user-facing outcome, canonical FSRS rating, response time, and complete
-  before/after schedule state.
+  learner outcome, canonical rating, response time, and complete before/after
+  schedule state.
 
-The learner-facing mapping is:
+Each review request carries a unique `submission_id`. A uniqueness constraint
+and idempotent command handling prevent double clicks or IPC retries from
+recording the same review twice. The review event, updated schedule, session-card
+state, and session counters commit in one immediate SQLite transaction.
 
-| Learner choice | FSRS rating |
-| --- | --- |
-| Wrong | Again (1) |
-| Right → Not confident | Hard (2) |
-| Right → Somewhat confident | Good (3) |
-| Right → Very confident | Easy (4) |
+## Practice sessions and analytics
 
-Each review request carries a unique `submission_id`. The database uniqueness
-constraint and idempotent command handling prevent double clicks or IPC retries
-from recording the same answer twice. In one `BEGIN IMMEDIATE` transaction the
-backend validates the active session, calculates the FSRS transition, appends
-the review, updates the current schedule, marks the session card rated, updates
-session totals, and commits.
+A direct deck Practice action starts a scheduled session for that deck. The
+Practice screen can also select multiple decks. Sessions contain only cards due
+at or before the session start time.
 
-## Practice sessions
+`practice_sessions` records selected decks and summary counts.
+`practice_session_cards` records fixed order plus viewed, revealed, and rated
+timestamps. A card must be revealed before it can be rated.
 
-The sidebar Practice screen lets the learner select multiple decks. The
-Practice action on an individual deck bypasses that setup and immediately
-starts a scheduled session for that deck. Sessions contain only cards whose
-current `due_at` is at or before the session start time.
-
-`practice_sessions` records the selected decks and summary counts.
-`practice_session_cards` records the fixed card order plus viewed, revealed,
-and rated timestamps. A card must be revealed before it can be graded.
-
-## Analytics
-
-Analytics are deterministic SQL aggregates over `card_schedules` and
-`review_events`: due count, completed reviews, correctness, response time,
-rating distribution, per-deck results, and recent reviews. A future local AI
-feature may interpret these facts, but it will not calculate or replace the
-underlying ledger.
+Analytics are deterministic facts over schedules and reviews: due count, review
+count, correctness, response time, canonical rating distribution, per-deck
+results, and recent reviews. The interface derives the displayed 0–3 average
+confidence and recent-deck summaries from those stored ratings.
 
 ## `.studydeck` packages
 
-A `.studydeck` is a standalone, versioned SQLite interchange package containing
-one deck, notes, cards, rich documents, relationships, and image bytes. Import
-validates metadata, row counts, IDs, timestamps, rich-text structure, image
-signatures, and relationships before one transactional insertion.
+A `.studydeck` file is a standalone, versioned SQLite interchange package
+containing one deck, notes, cards, relationships, and managed image bytes.
+Import validates metadata, row counts, IDs, timestamps, document structure,
+image signatures, and relationships before one transactional insertion.
 
-The human-readable deck title is preserved exactly; internal ID collisions are
-remapped separately. Imported cards receive new local schedules and do not
-inherit the exporting learner's review history. Packages exclude application
-settings and personal reviews, making them suitable for content sharing and as
-the content layer of a later sync protocol.
+The human-readable deck title is preserved; internal ID collisions are remapped.
+Imported cards receive fresh local schedules and do not inherit another
+learner's review history. Packages exclude application settings and personal
+reviews.
 
-## Validation error taxonomy
+## Future field templates
 
-Rust validates child content before checking whether a known child is legal in
-its parent. This preserves stable compatibility errors:
+The Phase 2 template language is intentionally data-only. A template may define
+named fields such as `{{medication name}}` or `{{side effects}}`, and may use
+those fields to generate validated card documents. It will not expose an
+expression evaluator or allow JavaScript, SQL, shell commands, raw HTML,
+filesystem access, or network access.
 
-- unknown nodes/marks → `unsupported_card_content`
-- known nodes in an illegal structure → `invalid_card_document`
-- noncanonical or remote image references → `invalid_image_reference`
-
-These codes are part of the import/content contract and are protected by
-regression tests. See ADR 0002 and ADR 0003.
+Template output passes through the same Rust document validator as manually
+created and imported cards before it can be stored or rendered.
