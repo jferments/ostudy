@@ -52,6 +52,13 @@ describe("SettingsScreen", () => {
     );
 
     await screen.findByText("/tmp/ostudy/data");
+    expect(screen.queryByText("Shuffle cards")).toBeNull();
+    expect(
+      screen.getByText(
+        "Session-specific options, including shuffling, are chosen on the Practice screen.",
+      ),
+    ).toBeTruthy();
+
     fireEvent.click(screen.getByRole("radio", { name: "Synthwave" }));
 
     await waitFor(() => {

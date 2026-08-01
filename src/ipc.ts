@@ -244,10 +244,21 @@ export async function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("get_app_info");
 }
 
+/** Starts a strictly scheduled session containing only cards already due. */
 export async function startPractice(
   input: StartPracticeInput,
 ): Promise<PracticeSession> {
   return invoke<PracticeSession>("start_practice", { input });
+}
+
+/**
+ * Starts the user-selected session used by the interface. Each deck contributes
+ * due cards first, or all active cards when that deck has nothing due.
+ */
+export async function startSelectedPractice(
+  input: StartPracticeInput,
+): Promise<PracticeSession> {
+  return invoke<PracticeSession>("start_selected_practice", { input });
 }
 
 export async function markPracticeCardViewed(

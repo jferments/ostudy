@@ -363,7 +363,18 @@ export function DecksScreen({
                     </span>
                   </button>
                   <div className="deck-card-actions">
-                    <button type="button" onClick={() => onPracticeDeck(deck.id)} disabled={deck.dueCount === 0} title={deck.dueCount === 0 ? "No cards are due" : undefined}>
+                    <button
+                      type="button"
+                      onClick={() => onPracticeDeck(deck.id)}
+                      disabled={deck.cardCount === 0}
+                      title={
+                        deck.cardCount === 0
+                          ? "Add a flashcard before practicing this deck"
+                          : deck.dueCount === 0
+                            ? "Practice all cards; none are currently due"
+                            : `${deck.dueCount} ${deck.dueCount === 1 ? "card is" : "cards are"} due`
+                      }
+                    >
                       Practice
                     </button>
                     <button type="button" disabled={isTransferring} onClick={() => void handleExport(deck)}>
@@ -404,7 +415,19 @@ export function DecksScreen({
               </div>
             </div>
             <div className="header-actions wrap-actions">
-              <button type="button" className="secondary-button" onClick={() => onPracticeDeck(selectedDeck.id)} disabled={selectedDeck.dueCount === 0} title={selectedDeck.dueCount === 0 ? "No cards are due" : undefined}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => onPracticeDeck(selectedDeck.id)}
+                disabled={selectedDeck.cardCount === 0}
+                title={
+                  selectedDeck.cardCount === 0
+                    ? "Add a flashcard before practicing this deck"
+                    : selectedDeck.dueCount === 0
+                      ? "Practice all cards; none are currently due"
+                      : `${selectedDeck.dueCount} ${selectedDeck.dueCount === 1 ? "card is" : "cards are"} due`
+                }
+              >
                 Practice
               </button>
               <button type="button" className="secondary-button" disabled={isTransferring} onClick={() => void handleExport(selectedDeck)}>
@@ -616,4 +639,3 @@ function summarize(text: string, hasImage: boolean): string {
   if (normalized === "") return hasImage ? "Image content" : "Empty";
   return normalized.length > 150 ? `${normalized.slice(0, 147)}…` : normalized;
 }
-

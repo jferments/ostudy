@@ -7,6 +7,7 @@ mod error;
 mod logging;
 mod paths;
 mod practice;
+mod practice_selection;
 mod scheduler;
 mod settings;
 mod transfer;
@@ -65,6 +66,7 @@ pub fn run() {
             settings::save_settings,
             settings::get_app_info,
             practice::start_practice,
+            practice_selection::start_selected_practice,
             practice::mark_practice_card_viewed,
             practice::mark_practice_card_revealed,
             practice::submit_practice_review,

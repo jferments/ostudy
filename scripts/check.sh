@@ -50,7 +50,7 @@ step "Rust unit, integration, and migration-fixture tests"
 cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
 
 step "Standalone Tauri build"
-pnpm tauri build --debug --no-bundle --ci
+pnpm tauri build --debug --no-bundle --ci -- --locked
 "$SCRIPT_DIR/verify-rust-dependencies.sh"
 [[ -x "$OSTUDY_BINARY" ]]
 ostudy_write_build_stamp "$(node -p "require('./package.json').version")"

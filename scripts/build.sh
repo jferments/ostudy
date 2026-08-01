@@ -33,7 +33,9 @@ pnpm run verify:versions
   die "Expected esbuild $ESBUILD_VERSION, found $(pnpm exec esbuild --version)."
 
 log "Building the standalone ostudy application with $CARGO_BUILD_JOBS Cargo jobs"
-pnpm tauri build --debug --no-bundle --ci
+# Tauri forwards arguments after `--` to Cargo. `--locked` makes a stale or
+# inconsistent Cargo.lock fail explicitly instead of silently rewriting it.
+pnpm tauri build --debug --no-bundle --ci -- --locked
 "$SCRIPT_DIR/verify-rust-dependencies.sh"
 
 [[ -x "$OSTUDY_BINARY" ]] || die "Expected application binary was not created at $OSTUDY_BINARY."
