@@ -401,9 +401,10 @@ export function CardsScreen({
                   type="checkbox"
                   checked={deckIds.has(deck.id)}
                   onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                    const checked = event.currentTarget.checked;
                     setDeckIds((current) => {
                       const next = new Set(current);
-                      if (event.currentTarget.checked) next.add(deck.id);
+                      if (checked) next.add(deck.id);
                       else next.delete(deck.id);
                       return next;
                     });
@@ -423,8 +424,9 @@ export function CardsScreen({
             value={query}
             placeholder="Question, answer, or tag"
             onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              setQuery(event.currentTarget.value);
-              if (event.currentTarget.value.trim() !== "" && sort === "updated_desc") {
+              const value = event.currentTarget.value;
+              setQuery(value);
+              if (value.trim() !== "" && sort === "updated_desc") {
                 setSort("relevance");
               }
             }}
@@ -492,9 +494,10 @@ export function CardsScreen({
                     type="checkbox"
                     checked={tagIds.has(tag.id)}
                     onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                      const checked = event.currentTarget.checked;
                       setTagIds((current) => {
                         const next = new Set(current);
-                        if (event.currentTarget.checked) next.add(tag.id);
+                        if (checked) next.add(tag.id);
                         else next.delete(tag.id);
                         return next;
                       });
