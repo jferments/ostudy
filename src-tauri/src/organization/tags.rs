@@ -86,9 +86,7 @@ pub(crate) fn set_card_tags_in_connection(
     load_tags_for_note(connection, note_id)
 }
 
-pub(crate) fn normalize_tag_names(
-    values: Vec<String>,
-) -> Result<Vec<NormalizedTag>, CommandError> {
+pub(crate) fn normalize_tag_names(values: Vec<String>) -> Result<Vec<NormalizedTag>, CommandError> {
     if values.len() > MAX_TAGS_PER_CARD {
         return Err(CommandError::new(
             "too_many_tags",
