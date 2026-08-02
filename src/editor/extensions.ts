@@ -123,7 +123,9 @@ interface EditorExtensionOptions {
   templatePlaceholders?: boolean;
 }
 
-export function createEditorExtensions(options: EditorExtensionOptions = {}) {
+export function createEditorExtensions(
+  options: EditorExtensionOptions = { templatePlaceholders: true },
+) {
   const extensions = [
     StarterKit.configure({
       heading: { levels: [1, 2, 3, 4] },
@@ -148,7 +150,7 @@ export function createEditorExtensions(options: EditorExtensionOptions = {}) {
     }),
     Indent,
   ];
-  if (options.templatePlaceholders) {
+  if (options.templatePlaceholders !== false) {
     extensions.push(TemplateFieldInline, TemplateFieldBlock);
   }
   return extensions;
