@@ -1,4 +1,4 @@
-import { Extension } from "@tiptap/core";
+import { Extension, Node } from "@tiptap/core";
 import Highlight from "@tiptap/extension-highlight";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
@@ -6,6 +6,9 @@ import TextAlign from "@tiptap/extension-text-align";
 import { TextStyleKit } from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
+
+export const TEMPLATE_FIELD_INLINE = "templateFieldInline";
+export const TEMPLATE_FIELD_BLOCK = "templateFieldBlock";
 
 const Indent = Extension.create({
   name: "studyIndent",
@@ -55,8 +58,73 @@ export const StudyImage = Image.extend({
   },
 });
 
-export function createEditorExtensions() {
-  return [
+const TemplateFieldInline = Node.create({
+  name: TEMPLATE_FIELD_INLINE,
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      fieldId: { default: null },
+      label: { default: "Field" },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "span[data-template-field-inline]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    const label =
+      typeof HTMLAttributes.label === "string" ? HTMLAttributes.label : "Field";
+    return [
+      "span",
+      {
+        class: "template-field-placeholder inline",
+        "data-template-field-inline": "true",
+        "data-field-id": HTMLAttributes.fieldId,
+        contenteditable: "false",
+      },
+      `{{${label}}}`,
+    ];
+  },
+});
+
+const TemplateFieldBlock = Node.create({
+  name: TEMPLATE_FIELD_BLOCK,
+  group: "block",
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      fieldId: { default: null },
+      label: { default: "Field" },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "div[data-template-field-block]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    const label =
+      typeof HTMLAttributes.label === "string" ? HTMLAttributes.label : "Field";
+    return [
+      "div",
+      {
+        class: "template-field-placeholder block",
+        "data-template-field-block": "true",
+        "data-field-id": HTMLAttributes.fieldId,
+        contenteditable: "false",
+      },
+      `{{${label}}}`,
+    ];
+  },
+});
+
+interface EditorExtensionOptions {
+  templatePlaceholders?: boolean;
+}
+
+export function createEditorExtensions(options: EditorExtensionOptions = {}) {
+  const extensions = [
     StarterKit.configure({
       heading: { levels: [1, 2, 3, 4] },
       link: false,
@@ -80,4 +148,8 @@ export function createEditorExtensions() {
     }),
     Indent,
   ];
+  if (options.templatePlaceholders) {
+    extensions.push(TemplateFieldInline, TemplateFieldBlock);
+  }
+  return extensions;
 }
