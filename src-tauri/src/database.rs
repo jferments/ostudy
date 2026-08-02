@@ -103,7 +103,7 @@ impl Database {
 fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
     configure_connection(connection)?;
     apply_migrations(connection)?;
-    backfill_duplicate_hashes(connection).map_err(|error| error.message)?;
+    backfill_duplicate_hashes(connection)?;
     normalize_stage3_schema(connection).map_err(|error| error.message)?;
     Ok(())
 }
