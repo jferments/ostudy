@@ -122,7 +122,7 @@ export function CardEditorScreen({
   const templateValuesComplete =
     selectedCustomTemplate !== undefined &&
     templateValues.length === selectedCustomTemplate.fields.length &&
-    templateValues.every((entry) => entry.value.trim() !== "");
+    templateValues.every((entry) => !isDocumentEmpty(entry.text, entry.doc));
   const contentReady = selectedCustomTemplate
     ? templateValuesComplete
     : builtInCardType === "cloze"
@@ -233,11 +233,20 @@ export function CardEditorScreen({
       return;
     }
     setTemplateValues((current) =>
-      selectedCustomTemplate.fields.map((field) => ({
-        fieldId: field.id,
-        value: current.find((entry) => entry.fieldId === field.id)?.value ?? "",
-      })),
+      selectedCustomTemplate.fields.map((field) => {
+        const existingValue = current.find((entry) => entry.fieldId === field.id);
+        return {
+          fieldId: field.id,
+          doc: existingValue?.doc ?? cloneDocument(EMPTY_RICH_DOCUMENT),
+          text: existingValue?.text ?? "",
+        };
+      }),
     );
+    setAssets((current) => {
+      const byId = new Map(current.map((asset) => [asset.id, asset]));
+      for (const asset of selectedCustomTemplate.assets) byId.set(asset.id, asset);
+      return [...byId.values()];
+    });
     setTemplatePreviews([]);
   }, [selectedCustomTemplate]);
 
@@ -273,6 +282,7 @@ export function CardEditorScreen({
       setTemplatePreviews(
         await previewTemplateCards({
           templateId: selectedCustomTemplate.id,
+          templateRevision: selectedCustomTemplate.revision,
           values: templateValues,
         }),
       );
@@ -308,6 +318,7 @@ export function CardEditorScreen({
         const result = await generateCardsFromTemplate({
           deckId: selectedDeckId,
           templateId: selectedCustomTemplate.id,
+          templateRevision: selectedCustomTemplate.revision,
           values: templateValues,
           tags,
         });
@@ -318,10 +329,13 @@ export function CardEditorScreen({
           setTemplateValues(
             selectedCustomTemplate.fields.map((field) => ({
               fieldId: field.id,
-              value: "",
+              doc: cloneDocument(EMPTY_RICH_DOCUMENT),
+              text: "",
             })),
           );
+          setAssets(selectedCustomTemplate.assets);
           setTags([]);
+          setEditorGeneration((value) => value + 1);
         }
         return;
       }
@@ -559,7 +573,7 @@ export function CardEditorScreen({
             </select>
             <small>
               {existing
-                ? "The built-in card type is locked after saving so schedules remain attached to the correct presentations."
+                ? "The built-in card type is locked after saving so schedules remain attached to the correct card."
                 : "Choose a built-in card type or a reusable bulk-entry template."}
             </small>
           </label>
@@ -586,11 +600,14 @@ export function CardEditorScreen({
 
           {selectedCustomTemplate ? (
             <TemplateEntryForm
+              key={`${selectedCustomTemplate.id}-${editorGeneration}`}
               template={selectedCustomTemplate}
               values={templateValues}
               previews={templatePreviews}
+              assets={assets}
               disabled={isSaving}
               isPreviewing={isPreviewingTemplate}
+              onAssetImported={addAsset}
               onValuesChange={(values) => {
                 setTemplateValues(values);
                 markDirty();
