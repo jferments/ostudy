@@ -1,20 +1,44 @@
+struct GeneratedNoteDraft {
+    card_type: String,
+    reverse_enabled: bool,
+    cloze_source: String,
+    cloze_mode: String,
+    front_doc: Value,
+    back_doc: Value,
+    front_text: String,
+    back_text: String,
+}
+
 fn create_generated_card_in_database(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     input: CreateGeneratedCardInput,
 ) -> Result<OrganizedCardDto, CommandError> {
-    validate_entity_id(&input.deck_id, "deck")?;
-    let prepared = prepare_generated_note(
-        &input.card_type,
-        input.reverse_enabled,
-        input.cloze_source,
-        input.cloze_mode,
-        input.front_doc,
-        input.back_doc,
-        input.front_text,
-        input.back_text,
-    )?;
-    let tags = validate_tags(input.tags)?;
+    let CreateGeneratedCardInput {
+        deck_id,
+        card_type,
+        reverse_enabled,
+        cloze_source,
+        cloze_mode,
+        front_doc,
+        back_doc,
+        front_text,
+        back_text,
+        tags,
+        allow_duplicate,
+    } = input;
+    validate_entity_id(&deck_id, "deck")?;
+    let prepared = prepare_generated_note(GeneratedNoteDraft {
+        card_type,
+        reverse_enabled,
+        cloze_source,
+        cloze_mode,
+        front_doc,
+        back_doc,
+        front_text,
+        back_text,
+    })?;
+    let tags = validate_tags(tags)?;
     let normalized = normalized_pair(&prepared.content.front_text, &prepared.content.back_text);
     let hash = duplicate_hash(&normalized.0, &normalized.1);
 
@@ -22,13 +46,13 @@ fn create_generated_card_in_database(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
-        ensure_active_deck(&transaction, &input.deck_id)?;
+        ensure_active_deck(&transaction, &deck_id)?;
         ensure_assets_exist(&transaction, &content_asset_ids(&prepared.content))?;
-        if !input.allow_duplicate
+        if !allow_duplicate
             && duplicate_checkable(&prepared.content.front_text, &prepared.content.back_text)
             && has_exact_duplicate(
                 &transaction,
-                &input.deck_id,
+                &deck_id,
                 &hash,
                 &normalized.0,
                 &normalized.1,
@@ -53,7 +77,7 @@ fn create_generated_card_in_database(
                  )",
                 params![
                     note_id,
-                    input.deck_id,
+                    deck_id,
                     prepared.note_type,
                     prepared.content.front_doc_json,
                     prepared.content.back_doc_json,
@@ -70,7 +94,7 @@ fn create_generated_card_in_database(
         sync_generated_cards(
             &transaction,
             &note_id,
-            &input.deck_id,
+            &deck_id,
             &prepared.cards,
             now,
         )?;
@@ -88,25 +112,40 @@ fn update_generated_card_in_database(
     paths: State<'_, AppPaths>,
     input: UpdateGeneratedCardInput,
 ) -> Result<OrganizedCardDto, CommandError> {
-    validate_entity_id(&input.note_id, "note")?;
-    validate_entity_id(&input.deck_id, "deck")?;
-    if input.revision < 1 {
+    let UpdateGeneratedCardInput {
+        note_id,
+        deck_id,
+        revision,
+        card_type,
+        reverse_enabled,
+        cloze_source,
+        cloze_mode,
+        front_doc,
+        back_doc,
+        front_text,
+        back_text,
+        tags,
+        allow_duplicate,
+    } = input;
+    validate_entity_id(&note_id, "note")?;
+    validate_entity_id(&deck_id, "deck")?;
+    if revision < 1 {
         return Err(CommandError::new(
             "invalid_revision",
             "The card revision is invalid.",
         ));
     }
-    let prepared = prepare_generated_note(
-        &input.card_type,
-        input.reverse_enabled,
-        input.cloze_source,
-        input.cloze_mode,
-        input.front_doc,
-        input.back_doc,
-        input.front_text,
-        input.back_text,
-    )?;
-    let tags = validate_tags(input.tags)?;
+    let prepared = prepare_generated_note(GeneratedNoteDraft {
+        card_type,
+        reverse_enabled,
+        cloze_source,
+        cloze_mode,
+        front_doc,
+        back_doc,
+        front_text,
+        back_text,
+    })?;
+    let tags = validate_tags(tags)?;
     let normalized = normalized_pair(&prepared.content.front_text, &prepared.content.back_text);
     let hash = duplicate_hash(&normalized.0, &normalized.1);
 
@@ -114,12 +153,12 @@ fn update_generated_card_in_database(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
-        ensure_active_deck(&transaction, &input.deck_id)?;
+        ensure_active_deck(&transaction, &deck_id)?;
         ensure_assets_exist(&transaction, &content_asset_ids(&prepared.content))?;
         let existing_type: Option<String> = transaction
             .query_row(
                 "SELECT note_type FROM notes WHERE id = ?1 AND deleted_at IS NULL",
-                [input.note_id.as_str()],
+                [note_id.as_str()],
                 |row| row.get(0),
             )
             .optional()
@@ -136,15 +175,15 @@ fn update_generated_card_in_database(
                 "A saved card cannot be converted between Basic and Fill in the blank. Create a new card instead.",
             ));
         }
-        if !input.allow_duplicate
+        if !allow_duplicate
             && duplicate_checkable(&prepared.content.front_text, &prepared.content.back_text)
             && has_exact_duplicate(
                 &transaction,
-                &input.deck_id,
+                &deck_id,
                 &hash,
                 &normalized.0,
                 &normalized.1,
-                Some(&input.note_id),
+                Some(&note_id),
             )?
         {
             return Err(duplicate_error());
@@ -161,7 +200,7 @@ fn update_generated_card_in_database(
                      updated_at = ?11, revision = revision + 1
                  WHERE id = ?12 AND revision = ?13 AND deleted_at IS NULL",
                 params![
-                    input.deck_id,
+                    deck_id,
                     prepared.note_type,
                     prepared.content.front_doc_json,
                     prepared.content.back_doc_json,
@@ -172,8 +211,8 @@ fn update_generated_card_in_database(
                     prepared.cloze_source,
                     prepared.cloze_mode,
                     now,
-                    input.note_id,
-                    input.revision,
+                    note_id,
+                    revision,
                 ],
             )
             .map_err(CommandError::database)?;
@@ -185,32 +224,35 @@ fn update_generated_card_in_database(
         }
         sync_generated_cards(
             &transaction,
-            &input.note_id,
-            &input.deck_id,
+            &note_id,
+            &deck_id,
             &prepared.cards,
             now,
         )?;
-        replace_note_assets(&transaction, &input.note_id, &prepared.content)?;
-        replace_note_tags(&transaction, &input.note_id, &tags, now)?;
+        replace_note_assets(&transaction, &note_id, &prepared.content)?;
+        replace_note_tags(&transaction, &note_id, &tags, now)?;
         transaction.commit().map_err(CommandError::database)
     })?;
 
     database.with_connection(|connection| {
-        hydrate_organized_card(connection, &paths, &input.note_id)
+        hydrate_organized_card(connection, &paths, &note_id)
     })
 }
 
 fn prepare_generated_note(
-    card_type: &str,
-    reverse_enabled: bool,
-    cloze_source: String,
-    cloze_mode: String,
-    front_doc: Value,
-    back_doc: Value,
-    front_text: String,
-    back_text: String,
+    input: GeneratedNoteDraft,
 ) -> Result<PreparedGeneratedNote, CommandError> {
-    match card_type {
+    let GeneratedNoteDraft {
+        card_type,
+        reverse_enabled,
+        cloze_source,
+        cloze_mode,
+        front_doc,
+        back_doc,
+        front_text,
+        back_text,
+    } = input;
+    match card_type.as_str() {
         "basic" => {
             let content = validate_content(front_doc, back_doc, front_text, back_text)?;
             let mut cards = vec![GeneratedCardSpec {
