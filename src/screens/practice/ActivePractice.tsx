@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { RichTextView } from "../../editor/RichTextView";
-import type { PracticeSession } from "../../ipc";
+import type { PracticeSession, ReviewPreviewSet, ScheduleAction } from "../../ipc";
 import type { ConfidenceScore } from "./confidence";
 
 interface ActivePracticeProps {
@@ -9,34 +9,42 @@ interface ActivePracticeProps {
   position: number;
   revealed: boolean;
   ratedCount: number;
+  previewSet: ReviewPreviewSet | null;
   isRevealing: boolean;
   isRating: boolean;
   isEnding: boolean;
+  isManaging: boolean;
   errorMessage: string | null;
   onReveal: () => void;
   onScore: (score: ConfidenceScore) => void;
+  onScheduleAction: (action: ScheduleAction, dueAt?: number) => void;
   onEnd: () => void;
   onLinkError: (message: string) => void;
 }
+
+const outcomes = ["wrong", "not_confident", "somewhat_confident", "very_confident"] as const;
 
 export function ActivePractice({
   session,
   position,
   revealed,
   ratedCount,
+  previewSet,
   isRevealing,
   isRating,
   isEnding,
+  isManaging,
   errorMessage,
   onReveal,
   onScore,
+  onScheduleAction,
   onEnd,
   onLinkError,
 }: ActivePracticeProps) {
   const current = session.cards[position];
   const ratingPanelRef = useRef<HTMLElement | null>(null);
-  const busy = isRevealing || isRating || isEnding;
-  const progress = session.cards.length === 0 ? 0 : ratedCount / session.cards.length;
+  const busy = isRevealing || isRating || isEnding || isManaging;
+  const progress = session.cards.length === 0 ? 0 : position / session.cards.length;
 
   useEffect(() => {
     if (revealed) ratingPanelRef.current?.focus();
@@ -46,55 +54,47 @@ export function ActivePractice({
     function handleKeyDown(event: KeyboardEvent): void {
       if (busy || event.repeat) return;
       const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(target.tagName))
-      ) {
-        return;
-      }
-
+      if (target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "SUMMARY"].includes(target.tagName))) return;
       if (!revealed && (event.key === " " || event.key === "Enter")) {
         event.preventDefault();
         onReveal();
         return;
       }
-      if (!revealed) return;
-
-      if (["0", "1", "2", "3"].includes(event.key)) {
+      if (revealed && ["0", "1", "2", "3"].includes(event.key)) {
         event.preventDefault();
         onScore(Number(event.key) as ConfidenceScore);
       }
     }
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [busy, onReveal, onScore, revealed]);
+
+  const previewFor = (score: ConfidenceScore) => previewSet?.previews.find((preview) => preview.outcome === outcomes[score]);
 
   return (
     <div className="screen practice-screen active-practice-screen">
       <header className="practice-session-header">
         <div>
-          <span className="eyebrow">PRACTICE</span>
+          <span className="eyebrow">{session.mode === "extra" ? "EXTRA PRACTICE" : session.mode === "custom" ? "CUSTOM PRACTICE" : "PRACTICE"}</span>
           <h1>{current.deckName}</h1>
+          {current.needsMorePractice ? <span className="schedule-status-badge needs-practice">Needs more practice</span> : null}
         </div>
-        <div className="practice-progress-copy">
-          <strong>{position + 1} / {session.cards.length}</strong>
-          <span>{ratedCount} reviewed</span>
+        <div className="practice-progress-copy"><strong>{position + 1} / {session.cards.length}</strong><span>{ratedCount} reviewed</span></div>
+        <div className="practice-header-actions">
+          <details className="practice-more-menu">
+            <summary>More</summary>
+            <div>
+              <button type="button" disabled={busy} onClick={() => onScheduleAction("bury")}>Bury until tomorrow</button>
+              <button type="button" disabled={busy} onClick={() => onScheduleAction("suspend")}>Suspend card</button>
+              <button type="button" disabled={busy} onClick={() => onScheduleAction("reschedule", tomorrowAtNoon())}>Reschedule for tomorrow</button>
+              <button type="button" className="danger-text" disabled={busy} onClick={() => onScheduleAction("reset")}>Reset schedule</button>
+            </div>
+          </details>
+          <button type="button" className="secondary-button" disabled={busy} onClick={onEnd}>{isEnding ? "Ending…" : "End session"}</button>
         </div>
-        <button type="button" className="secondary-button" disabled={busy} onClick={onEnd}>
-          {isEnding ? "Ending…" : "End session"}
-        </button>
       </header>
 
-      <div
-        className="practice-progress-track"
-        role="progressbar"
-        aria-label="Practice session progress"
-        aria-valuemin={0}
-        aria-valuemax={session.cards.length}
-        aria-valuenow={ratedCount}
-      >
+      <div className="practice-progress-track" role="progressbar" aria-label="Practice session progress" aria-valuemin={0} aria-valuemax={session.cards.length} aria-valuenow={position}>
         <span style={{ width: `${progress * 100}%` }} />
       </div>
 
@@ -102,52 +102,22 @@ export function ActivePractice({
 
       <section className="practice-card-surface">
         <span className="practice-side-label">Question</span>
-        <RichTextView
-          document={current.card.frontDoc}
-          assets={current.card.assets}
-          onLinkError={onLinkError}
-        />
-
+        <RichTextView document={current.card.frontDoc} assets={current.card.assets} onLinkError={onLinkError} />
         {revealed ? (
-          <>
-            <div className="practice-answer-divider" />
-            <span className="practice-side-label">Answer</span>
-            <RichTextView
-              document={current.card.backDoc}
-              assets={current.card.assets}
-              onLinkError={onLinkError}
-            />
-          </>
+          <><div className="practice-answer-divider" /><span className="practice-side-label">Answer</span><RichTextView document={current.card.backDoc} assets={current.card.assets} onLinkError={onLinkError} /></>
         ) : null}
       </section>
 
       {!revealed ? (
-        <div className="practice-primary-action">
-          <button
-            type="button"
-            className="primary-button large-action-button"
-            disabled={isRevealing}
-            onClick={onReveal}
-          >
-            {isRevealing ? "Revealing…" : "Show answer"}
-          </button>
-        </div>
+        <div className="practice-primary-action"><button type="button" className="primary-button large-action-button" disabled={isRevealing} onClick={onReveal}>{isRevealing ? "Calculating intervals…" : "Show answer"}</button></div>
       ) : (
-        <section
-          ref={ratingPanelRef}
-          tabIndex={-1}
-          className="review-rating-panel confidence-rating-panel"
-          aria-labelledby="confidence-rating-heading"
-        >
-          <div className="confidence-rating-heading">
-            <h2 id="confidence-rating-heading">How difficult was that answer?</h2>
-            <p>Choose one score. Keyboard shortcuts: 0, 1, 2, or 3.</p>
-          </div>
+        <section ref={ratingPanelRef} tabIndex={-1} className="review-rating-panel confidence-rating-panel" aria-labelledby="confidence-rating-heading">
+          <div className="confidence-rating-heading"><h2 id="confidence-rating-heading">How difficult was that answer?</h2><p>Approximate next intervals are calculated by FSRS. Keyboard shortcuts: 0–3.</p></div>
           <div className="confidence-score-actions">
-            <ConfidenceButton score={0} label="Wrong" detail="I could not recall it." disabled={isRating} onClick={() => onScore(0)} />
-            <ConfidenceButton score={1} label="Hard" detail="I recalled it with major difficulty." disabled={isRating} onClick={() => onScore(1)} />
-            <ConfidenceButton score={2} label="Medium" detail="I recalled it with some effort." disabled={isRating} onClick={() => onScore(2)} />
-            <ConfidenceButton score={3} label="Easy" detail="The answer came immediately." disabled={isRating} onClick={() => onScore(3)} />
+            <ConfidenceButton score={0} label="Wrong" detail="I could not recall it." interval={formatInterval(previewFor(0)?.intervalMs)} disabled={isRating || !previewSet} onClick={() => onScore(0)} />
+            <ConfidenceButton score={1} label="Hard" detail="I recalled it with major difficulty." interval={formatInterval(previewFor(1)?.intervalMs)} disabled={isRating || !previewSet} onClick={() => onScore(1)} />
+            <ConfidenceButton score={2} label="Medium" detail="I recalled it with some effort." interval={formatInterval(previewFor(2)?.intervalMs)} disabled={isRating || !previewSet} onClick={() => onScore(2)} />
+            <ConfidenceButton score={3} label="Easy" detail="The answer came immediately." interval={formatInterval(previewFor(3)?.intervalMs)} disabled={isRating || !previewSet} onClick={() => onScore(3)} />
           </div>
         </section>
       )}
@@ -155,30 +125,30 @@ export function ActivePractice({
   );
 }
 
-interface ConfidenceButtonProps {
-  score: ConfidenceScore;
-  label: string;
-  detail: string;
-  disabled: boolean;
-  onClick: () => void;
-}
-
-function ConfidenceButton({ score, label, detail, disabled, onClick }: ConfidenceButtonProps) {
+function ConfidenceButton({ score, label, detail, interval, disabled, onClick }: { score: ConfidenceScore; label: string; detail: string; interval: string; disabled: boolean; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      className={`confidence-score-button confidence-score-${score}`}
-      disabled={disabled}
-      aria-label={`${score} ${label}`}
-      aria-keyshortcuts={String(score)}
-      onClick={onClick}
-    >
+    <button type="button" className={`confidence-score-button confidence-score-${score}`} disabled={disabled} aria-label={`${score} ${label}, ${interval}`} aria-keyshortcuts={String(score)} onClick={onClick}>
       <span className="confidence-score-number" aria-hidden="true">{score}</span>
-      <span className="confidence-score-copy">
-        <strong>{label}</strong>
-        <small>{detail}</small>
-      </span>
+      <span className="confidence-score-copy"><strong>{label}</strong><small>{detail}</small><em>{interval}</em></span>
       <kbd aria-hidden="true">{score}</kbd>
     </button>
   );
+}
+
+function formatInterval(value: number | undefined): string {
+  if (value === undefined) return "Calculating…";
+  if (value < 60_000) return "Less than 1 minute";
+  if (value < 3_600_000) return `About ${Math.max(1, Math.round(value / 60_000))} min`;
+  if (value < 86_400_000) return `About ${Math.max(1, Math.round(value / 3_600_000))} hr`;
+  const days = Math.max(1, Math.round(value / 86_400_000));
+  if (days < 30) return `About ${days} ${days === 1 ? "day" : "days"}`;
+  const months = Math.max(1, Math.round(days / 30));
+  return `About ${months} ${months === 1 ? "month" : "months"}`;
+}
+
+function tomorrowAtNoon(): number {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(12, 0, 0, 0);
+  return date.getTime();
 }
