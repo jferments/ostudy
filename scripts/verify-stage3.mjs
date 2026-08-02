@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (...parts) => readFile(join(root, ...parts), "utf8");
+const normalizeWhitespace = (value) => value.replace(/\s+/gu, " ").trim();
 
 async function readTree(relativeParts, suffix) {
   const directory = join(root, ...relativeParts);
@@ -191,12 +192,15 @@ for (const fragment of [
 ]) {
   if (!clozeEditor.includes(fragment)) failures.push(`cloze editor missing: ${fragment}`);
 }
+const normalizedTemplateEntry = normalizeWhitespace(templateEntry);
 for (const fragment of [
   "literal field substitution only",
   "normal Basic cards",
   "remain after this template is deleted",
 ]) {
-  if (!templateEntry.includes(fragment)) failures.push(`template entry safety copy missing: ${fragment}`);
+  if (!normalizedTemplateEntry.includes(fragment)) {
+    failures.push(`template entry safety copy missing: ${fragment}`);
+  }
 }
 for (const fragment of [
   "New template",
