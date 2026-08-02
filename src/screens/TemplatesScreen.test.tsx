@@ -10,37 +10,59 @@ vi.mock("../ipc", () => ({
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
   ),
+  importImage: vi.fn(),
   listCardTemplates: vi.fn(),
   updateCardTemplate: vi.fn(),
 }));
 
+const FIELD_ID = "b".repeat(32);
+const inlineDoc: ipc.RichDocument = {
+  type: "doc",
+  content: [
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Question about " },
+        {
+          type: "templateFieldInline",
+          attrs: { fieldId: FIELD_ID, label: "Concept" },
+        },
+      ],
+    },
+  ],
+};
+const blockDoc: ipc.RichDocument = {
+  type: "doc",
+  content: [
+    {
+      type: "templateFieldBlock",
+      attrs: { fieldId: FIELD_ID, label: "Concept" },
+    },
+  ],
+};
+
 const template: ipc.CardTemplate = {
   id: "a".repeat(32),
-  name: "Pharmacology",
-  description: "Medication facts",
+  name: "Concept review",
+  description: "Reusable concept cards",
   fields: [
     {
-      id: "b".repeat(32),
-      name: "Name",
-      description: "Medication name",
+      id: FIELD_ID,
+      name: "Concept",
+      description: "Enter a description of this field.",
       position: 0,
-    },
-    {
-      id: "c".repeat(32),
-      name: "Drug class",
-      description: "Therapeutic class",
-      position: 1,
     },
   ],
   rules: [
     {
       id: "d".repeat(32),
-      name: "Class",
-      frontPattern: "What is the drug class of {{Name}}?",
-      backPattern: "{{Drug class}}",
+      name: "Concept card",
+      frontDoc: inlineDoc,
+      backDoc: blockDoc,
       position: 0,
     },
   ],
+  assets: [],
   createdAt: 1,
   updatedAt: 1,
   revision: 1,
@@ -54,29 +76,31 @@ describe("TemplatesScreen", () => {
     vi.mocked(ipc.deleteCardTemplate).mockResolvedValue();
   });
 
-  it("creates a data-only template with fields and card rules", async () => {
+  it("creates a template with structured question and answer layouts", async () => {
     const showToast = vi.fn();
-    render(
-      <TemplatesScreen onDirtyChange={vi.fn()} showToast={showToast} />,
-    );
+    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={showToast} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "New template" }));
     fireEvent.change(screen.getByLabelText("Name"), {
-      target: { value: "Pharmacology" },
+      target: { value: "Concept review" },
     });
+
+    expect(screen.getByText("Field description")).toBeTruthy();
+    expect(screen.getAllByText("Question layout").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Answer layout").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Templates are safe authoring tools, not card containers.")).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: "Save template" }));
 
     await waitFor(() => {
       expect(ipc.createCardTemplate).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: "Pharmacology",
-          fields: [
-            expect.objectContaining({ name: "Name" }),
-          ],
+          name: "Concept review",
+          fields: [expect.objectContaining({ name: "Field" })],
           rules: [
             expect.objectContaining({
-              frontPattern: "What is {{Name}}?",
-              backPattern: "{{Name}}",
+              frontDoc: expect.objectContaining({ type: "doc" }),
+              backDoc: expect.objectContaining({ type: "doc" }),
             }),
           ],
         }),
@@ -85,21 +109,19 @@ describe("TemplatesScreen", () => {
     });
   });
 
-  it("deletes only the authoring template and explains that generated cards remain", async () => {
+  it("deletes only the authoring template and leaves generated cards intact", async () => {
     const showToast = vi.fn();
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    render(
-      <TemplatesScreen onDirtyChange={vi.fn()} showToast={showToast} />,
-    );
+    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={showToast} />);
 
-    expect(await screen.findByText("Medication facts")).toBeTruthy();
+    expect(await screen.findByText("Reusable concept cards")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
       expect(ipc.deleteCardTemplate).toHaveBeenCalledWith(template.id);
       expect(showToast).toHaveBeenCalledWith(
         "success",
-        "Deleted “Pharmacology”. Existing cards were not changed.",
+        "Deleted “Concept review”. Existing cards were not changed.",
       );
     });
   });
