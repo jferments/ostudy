@@ -69,7 +69,7 @@ pub fn run() {
             authoring::find_duplicate_cards,
             authoring::analyze_bulk_cards,
             authoring::bulk_create_cards,
-            authoring::transfer_cards,
+            authoring::transfer_generated_cards,
             authoring::bulk_tag_cards,
             authoring::delete_cards,
             authoring::get_card_type_info,
