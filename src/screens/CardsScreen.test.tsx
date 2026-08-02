@@ -173,8 +173,10 @@ describe("CardsScreen", () => {
 
     expect(screen.getByText("1 selected")).toBeTruthy();
     expect(
-      screen.getByRole("checkbox", { name: "Select What reverses warfarin?" }),
-    ).not.toBeChecked();
+      (screen.getByRole("checkbox", {
+        name: "Select What reverses warfarin?",
+      }) as HTMLInputElement).checked,
+    ).toBe(false);
   });
 
   it("selects all filtered results through the backend instead of only visible rows", async () => {
