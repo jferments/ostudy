@@ -1,16 +1,10 @@
 -- Normalize Fill in the blank notes to one scheduled card and add rich template layouts.
 --
 -- Schema 6 remains immutable because users may already have opened the Stage 3
--- branch. Schema 7 appends the durable fields needed for rotating cloze
+-- branch. Schema 7 appends the durable fields needed for session-stable cloze
 -- presentations and validated structured template documents.
 
-ALTER TABLE cards ADD COLUMN cloze_next_group INTEGER NOT NULL DEFAULT 1
-    CHECK(cloze_next_group BETWEEN 1 AND 10000);
-
 ALTER TABLE practice_session_cards ADD COLUMN presentation_variant TEXT NOT NULL DEFAULT ''
-    CHECK(length(presentation_variant) <= 64);
-
-ALTER TABLE review_events ADD COLUMN presentation_variant TEXT NOT NULL DEFAULT ''
     CHECK(length(presentation_variant) <= 64);
 
 ALTER TABLE card_template_rules ADD COLUMN front_doc TEXT;
