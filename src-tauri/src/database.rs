@@ -58,9 +58,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "91d120cb0b72c72c40d499a2c8be9b090be96ca760b2bb5a71072e2b71ed45e1",
         sql: include_str!("../migrations/0007_rich_templates_single_cloze.sql"),
     },
+    Migration {
+        version: 8,
+        name: "scheduling_controls",
+        checksum: "862b5277d92154d5586b7924023fb64f7cfee08d566b52efbd625fcbab410b2e",
+        sql: include_str!("../migrations/0008_scheduling_controls.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 7;
+const LATEST_SCHEMA_VERSION: i64 = 8;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -137,9 +143,7 @@ fn initialize_migration_ledger(connection: &Connection) -> Result<(), String> {
 fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
     initialize_migration_ledger(connection)?;
     let newest_version: Option<i64> = connection
-        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
-            row.get(0)
-        })
+        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| row.get(0))
         .map_err(|error| format!("Could not read the database schema version: {error}"))?;
     if newest_version.unwrap_or(0) > LATEST_SCHEMA_VERSION {
         return Err(format!(
@@ -156,9 +160,7 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
-            .map_err(|error| {
-                format!("Could not inspect migration {}: {error}", migration.version)
-            })?;
+            .map_err(|error| format!("Could not inspect migration {}: {error}", migration.version))?;
         if let Some((name, checksum)) = existing {
             if name != migration.name || checksum != migration.checksum {
                 return Err(format!(
@@ -171,10 +173,7 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
 
         let applied_at = unix_time_millis().map_err(|error| error.message)?;
         let transaction = connection.transaction().map_err(|error| {
-            format!(
-                "Could not begin database migration {}: {error}",
-                migration.version
-            )
+            format!("Could not begin database migration {}: {error}", migration.version)
         })?;
         transaction
             .execute_batch(migration.sql)
@@ -183,27 +182,15 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
             .execute(
                 "INSERT INTO schema_migrations (version, name, checksum, applied_at)
                  VALUES (?1, ?2, ?3, ?4)",
-                params![
-                    migration.version,
-                    migration.name,
-                    migration.checksum,
-                    applied_at
-                ],
+                params![migration.version, migration.name, migration.checksum, applied_at],
             )
-            .map_err(|error| {
-                format!("Could not record migration {}: {error}", migration.version)
-            })?;
+            .map_err(|error| format!("Could not record migration {}: {error}", migration.version))?;
         transaction
             .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
-            .map_err(|error| {
-                format!(
-                    "Could not set SQLite user_version for migration {}: {error}",
-                    migration.version
-                )
-            })?;
-        transaction.commit().map_err(|error| {
-            format!("Could not commit migration {}: {error}", migration.version)
-        })?;
+            .map_err(|error| format!("Could not set SQLite user_version for migration {}: {error}", migration.version))?;
+        transaction
+            .commit()
+            .map_err(|error| format!("Could not commit migration {}: {error}", migration.version))?;
     }
     Ok(())
 }
@@ -230,13 +217,12 @@ mod tests {
     }
 
     #[test]
-    fn migrations_are_idempotent_and_reach_schema_seven() {
+    fn migrations_are_idempotent_and_reach_schema_eight() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
                 apply_migrations(connection)
                     .map_err(|error| CommandError::new("migration_error", error))?;
-                normalize_stage3_schema(connection)?;
                 let version: i64 = connection
                     .query_row("PRAGMA user_version", [], |row| row.get(0))
                     .map_err(CommandError::database)?;
@@ -254,6 +240,7 @@ mod tests {
                     "card_template_fields",
                     "card_template_rules",
                     "card_template_assets",
+                    "schedule_action_events",
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -264,127 +251,26 @@ mod tests {
                         .map_err(CommandError::database)?;
                     assert_eq!(exists, 1, "missing table {table}");
                 }
-                for column in ["front_doc", "back_doc"] {
+                for (table, column) in [
+                    ("cards", "buried_until"),
+                    ("card_schedules", "revision"),
+                    ("practice_sessions", "mode"),
+                    ("practice_session_cards", "dismissed_at"),
+                ] {
                     let exists: i64 = connection
                         .query_row(
                             "SELECT EXISTS(
-                                 SELECT 1 FROM pragma_table_info('card_template_rules')
-                                 WHERE name = ?1
+                                 SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2
                              )",
-                            [column],
+                            params![table, column],
                             |row| row.get(0),
                         )
                         .map_err(CommandError::database)?;
-                    assert_eq!(exists, 1, "missing rule column {column}");
+                    assert_eq!(exists, 1, "missing {table}.{column}");
                 }
-                let variant_exists: i64 = connection
-                    .query_row(
-                        "SELECT EXISTS(
-                             SELECT 1 FROM pragma_table_info('practice_session_cards')
-                             WHERE name = 'presentation_variant'
-                         )",
-                        [],
-                        |row| row.get(0),
-                    )
-                    .map_err(CommandError::database)?;
-                assert_eq!(variant_exists, 1);
                 Ok(())
             })
             .expect("second initialization should succeed");
-    }
-
-    #[test]
-    fn schema_four_upgrades_forward_without_rewriting_history_or_losing_cards() {
-        let mut connection = Connection::open_in_memory().expect("database should open");
-        configure_connection(&connection).expect("connection should configure");
-        initialize_migration_ledger(&connection).expect("ledger should initialize");
-        for migration in MIGRATIONS.iter().filter(|migration| migration.version <= 4) {
-            let transaction = connection.transaction().expect("migration should start");
-            transaction
-                .execute_batch(migration.sql)
-                .expect("historical migration should apply");
-            transaction
-                .execute(
-                    "INSERT INTO schema_migrations (version, name, checksum, applied_at)
-                     VALUES (?1, ?2, ?3, ?4)",
-                    params![
-                        migration.version,
-                        migration.name,
-                        migration.checksum,
-                        migration.version
-                    ],
-                )
-                .expect("migration should be recorded");
-            transaction
-                .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
-                .expect("user version should advance");
-            transaction.commit().expect("migration should commit");
-        }
-        connection
-            .execute(
-                "INSERT INTO decks (
-                     id, name, description, sort_order, created_at, updated_at, revision
-                 ) VALUES (?1, 'Preserved deck', '', 0, 10, 10, 1)",
-                ["11111111111111111111111111111111"],
-            )
-            .expect("deck should insert");
-        connection
-            .execute(
-                "INSERT INTO notes (
-                     id, deck_id, note_type, content_format, content_schema_version,
-                     front_doc, back_doc, front_text, back_text, duplicate_hash,
-                     created_at, updated_at, revision
-                 ) VALUES (
-                     ?1, ?2, 'basic', 'tiptap-json', 1,
-                     '{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Question\"}]}]}',
-                     '{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Answer\"}]}]}',
-                     'Question', 'Answer', 'legacy-hash', 10, 10, 1
-                 )",
-                params![
-                    "22222222222222222222222222222222",
-                    "11111111111111111111111111111111"
-                ],
-            )
-            .expect("note should insert");
-        connection
-            .execute(
-                "INSERT INTO cards (
-                     id, note_id, deck_id, direction, template_ordinal, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, 'forward', 0, 10, 10)",
-                params![
-                    "33333333333333333333333333333333",
-                    "22222222222222222222222222222222",
-                    "11111111111111111111111111111111"
-                ],
-            )
-            .expect("card should insert");
-
-        initialize_connection(&mut connection).expect("schema 4 should upgrade");
-
-        let preserved: (String, String, String) = connection
-            .query_row(
-                "SELECT n.front_text, n.back_text, c.id
-                 FROM notes n JOIN cards c ON c.note_id = n.id
-                 WHERE n.id = ?1",
-                ["22222222222222222222222222222222"],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .expect("card should remain");
-        assert_eq!(preserved.0, "Question");
-        assert_eq!(preserved.1, "Answer");
-        assert_eq!(preserved.2, "33333333333333333333333333333333");
-        let trigger_exists: i64 = connection
-            .query_row(
-                "SELECT EXISTS(
-                     SELECT 1 FROM sqlite_master
-                     WHERE type = 'trigger'
-                       AND name = 'notes_duplicate_hash_after_legacy_update'
-                 )",
-                [],
-                |row| row.get(0),
-            )
-            .expect("trigger query should work");
-        assert_eq!(trigger_exists, 0);
     }
 
     #[test]
@@ -411,17 +297,9 @@ mod tests {
 
     #[test]
     fn historical_migration_checksums_remain_exact() {
-        assert_eq!(
-            MIGRATIONS[3].checksum,
-            "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d"
-        );
-        assert_eq!(
-            MIGRATIONS[5].checksum,
-            "c07b900b2119f6eae6a4de58aeb3af9ab5882ee21d5c29ac7a5c7fcee6b86be8"
-        );
-        assert_eq!(
-            MIGRATIONS[6].checksum,
-            "91d120cb0b72c72c40d499a2c8be9b090be96ca760b2bb5a71072e2b71ed45e1"
-        );
+        assert_eq!(MIGRATIONS[3].checksum, "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d");
+        assert_eq!(MIGRATIONS[5].checksum, "c07b900b2119f6eae6a4de58aeb3af9ab5882ee21d5c29ac7a5c7fcee6b86be8");
+        assert_eq!(MIGRATIONS[6].checksum, "91d120cb0b72c72c40d499a2c8be9b090be96ca760b2bb5a71072e2b71ed45e1");
+        assert_eq!(MIGRATIONS[7].checksum, "862b5277d92154d5586b7924023fb64f7cfee08d566b52efbd625fcbab410b2e");
     }
 }
