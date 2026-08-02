@@ -95,7 +95,8 @@ Cloze source is data, not HTML or an expression language.
 
 ## Reusable card-template tables
 
-Reusable authoring templates are stored separately from notes and cards:
+The reusable template language is **data-only**. Authoring templates are stored
+separately from notes and cards:
 
 - `card_templates`: display name, description, timestamps, deletion state, and
   optimistic revision
@@ -209,4 +210,4 @@ can ignore the additional tables in new exports.
 Imports validate the complete note/card graph and create fresh local schedules.
 They do not inherit another learner's review history. Packages exclude
 application settings, personal reviews, and the user's reusable authoring
--template library.
+template library.
