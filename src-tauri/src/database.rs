@@ -45,7 +45,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 6,
         name: "card_types_and_templates",
-        checksum: "f5003f8967aabc5f7295d87051898d7ea0fb02d5d5c40982b7a4745b34e20e06",
+        checksum: "c07b900b2119f6eae6a4de58aeb3af9ab5882ee21d5c29ac7a5c7fcee6b86be8",
         sql: include_str!("../migrations/0006_card_types_and_templates.sql"),
     },
 ];
