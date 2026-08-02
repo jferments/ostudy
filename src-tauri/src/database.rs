@@ -307,7 +307,12 @@ mod tests {
                 .execute(
                     "INSERT INTO schema_migrations (version, name, checksum, applied_at)
                      VALUES (?1, ?2, ?3, ?4)",
-                    params![migration.version, migration.name, migration.checksum, migration.version],
+                    params![
+                        migration.version,
+                        migration.name,
+                        migration.checksum,
+                        migration.version
+                    ],
                 )
                 .expect("migration should be recorded");
             transaction
@@ -389,8 +394,9 @@ mod tests {
             connection
                 .execute_batch(fixture.sql)
                 .unwrap_or_else(|error| panic!("{} fixture should load: {error}", fixture.release));
-            initialize_connection(&mut connection)
-                .unwrap_or_else(|error| panic!("{} fixture should upgrade: {error}", fixture.release));
+            initialize_connection(&mut connection).unwrap_or_else(|error| {
+                panic!("{} fixture should upgrade: {error}", fixture.release)
+            });
             let version: i64 = connection
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .expect("version should be readable");
