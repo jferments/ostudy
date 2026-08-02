@@ -14,9 +14,6 @@ fn collapse_whitespace(value: &str) -> String {
 }
 
 fn duplicate_hash(front: &str, back: &str) -> String {
-    // Stable FNV-1a. Hash collisions are harmless because every candidate is
-    // compared against the normalized full text before it is treated as a
-    // duplicate.
     let mut hash = 0xcbf29ce484222325_u64;
     for byte in front
         .as_bytes()
@@ -41,6 +38,10 @@ fn split_tags(value: &str) -> Vec<String> {
 
 fn default_due_filter() -> String {
     "all".to_string()
+}
+
+fn default_status_filter() -> String {
+    "active".to_string()
 }
 
 fn default_reviewed_filter() -> String {
