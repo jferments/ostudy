@@ -18,4 +18,5 @@ include!("authoring/stage3/template_validation.rs");
 include!("authoring/stage3/template_generation.rs");
 include!("authoring/stage3/transfer.rs");
 include!("authoring/normalization.rs");
+include!("authoring/stage3/tests.rs");
 include!("authoring/tests.rs");
