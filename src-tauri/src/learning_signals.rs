@@ -1,6 +1,6 @@
 //! Deterministic learning signals shared by workload selection and card search.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 
 use crate::error::CommandError;
 
@@ -30,9 +30,7 @@ pub fn needs_more_practice(
         )
         .map_err(CommandError::database)?;
     let outcomes = statement
-        .query_map(params![card_id, reset_at.unwrap_or(-1)], |row| {
-            row.get::<_, i64>(0)
-        })
+        .query_map(params![card_id, reset_at.unwrap_or(-1)], |row| row.get::<_, i64>(0))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
@@ -69,9 +67,7 @@ pub fn count_needing_more_practice(
     }
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
     let cards = statement
-        .query_map(rusqlite::params_from_iter(values.iter()), |row| {
-            row.get::<_, String>(0)
-        })
+        .query_map(rusqlite::params_from_iter(values.iter()), |row| row.get::<_, String>(0))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
@@ -82,22 +78,6 @@ pub fn count_needing_more_practice(
         }
     }
     Ok(count)
-}
-
-pub fn latest_reset_at(
-    connection: &Connection,
-    card_id: &str,
-) -> Result<Option<i64>, CommandError> {
-    connection
-        .query_row(
-            "SELECT occurred_at FROM schedule_action_events
-             WHERE card_id = ?1 AND action = 'reset'
-             ORDER BY occurred_at DESC LIMIT 1",
-            [card_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(CommandError::database)
 }
 
 fn needs_more_practice_from_recent(recent_descending: &[i64]) -> bool {
