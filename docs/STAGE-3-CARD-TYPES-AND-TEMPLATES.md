@@ -5,10 +5,10 @@ editor:
 
 1. **Basic** — one normal question-and-answer card, with an optional reverse
    presentation;
-2. **Fill in the blank** — one source statement that generates one or more cloze
-   cards;
-3. a reusable custom template — one field form that generates several permanent
-   Basic cards.
+2. **Fill in the blank** — one source statement with one scheduled card that can
+   rotate through several marked blanks;
+3. a reusable custom template — one rich field form that generates several
+   permanent Basic cards.
 
 The selector defaults to **Basic** for every new card.
 
@@ -20,16 +20,16 @@ reverse card** only when both directions are meaningful.
 For example:
 
 ```text
-Question: What class of medication is lisinopril?
-Answer: ACE inhibitor
+Question: What is the capital of Japan?
+Answer: Tokyo
 ```
 
 With the reverse option disabled, the note creates one card. With the option
 enabled, it creates two independently scheduled cards:
 
 ```text
-What class of medication is lisinopril? → ACE inhibitor
-ACE inhibitor → What class of medication is lisinopril?
+What is the capital of Japan? → Tokyo
+Tokyo → What is the capital of Japan?
 ```
 
 The reverse card has its own due date and review history. Disabling the reverse
@@ -44,51 +44,48 @@ simple associations often work well in both directions.
 
 Choose **Fill in the blank**, then write the complete statement in the source
 field. Select a word or phrase and choose **Mark selection as blank**. The editor
-adds a stable numbered marker internally and displays a generated-card preview.
+adds a stable numbered marker internally and displays a preview.
 
 Starting with:
 
 ```text
-ACE inhibitors block the enzyme that creates angiotensin II, lowering blood pressure.
+The sinoatrial node normally initiates the cardiac electrical impulse.
 ```
 
 Marking two phrases produces source data equivalent to:
 
 ```text
-{{c1::ACE inhibitors}} block the enzyme that creates {{c2::angiotensin II}}, lowering blood pressure.
+The {{c1::sinoatrial node}} normally initiates the {{c2::cardiac electrical impulse}}.
 ```
 
 The braces are data markers, not HTML or code. The normal workflow is to select
 text and use the marking button rather than typing marker syntax manually.
 
-### Hide one blank at a time
+### Hide one blank per review
 
-This mode generates one independently scheduled card for each numbered blank.
-The example creates:
+This mode still creates exactly one scheduled card. On each accepted review,
+the next practice session rotates to another marked blank:
 
 ```text
-[…] block the enzyme that creates angiotensin II, lowering blood pressure.
+The […] normally initiates the cardiac electrical impulse.
 
-ACE inhibitors block the enzyme that creates […], lowering blood pressure.
+The sinoatrial node normally initiates the […].
 ```
 
-Only the target blank is hidden on each card. Other marked phrases remain
-visible as context.
+Only the target blank is hidden. Other marked phrases remain visible as context.
+The selected blank is stored in the active practice session, so revealing,
+leaving, or resuming that session cannot switch the question halfway through.
 
 ### Hide all blanks together
 
-This mode generates one card:
+This mode uses the same card ID and schedule but hides every marked phrase:
 
 ```text
-[…] block the enzyme that creates […], lowering blood pressure.
+The […] normally initiates the […].
 ```
 
-Use this when recalling the complete set together is the intended learning task.
-
-The combined presentation has a different schedule identity from every
-individual blank. Switching modes cannot transfer one blank's history to the
-combined question. Switching back restores the previous individual blank cards
-and their schedules.
+Switching between cloze modes does not create another schedule or reset review
+history.
 
 ### Editing blank text
 
@@ -96,8 +93,8 @@ and their schedules.
 - Use **Remove all blank markers** to return to ordinary unmarked source text.
 - A saved card cannot be converted between Basic and Fill in the blank. Create a
   new card when the underlying authoring model changes.
-- Changing or removing a numbered blank retires presentations that no longer
-  exist. Retaining the same marker number retains that presentation's identity.
+- Adding, removing, or renumbering blanks changes the rotating presentations but
+  does not create sibling card schedules.
 
 ## Creating a reusable template
 
@@ -106,45 +103,85 @@ Open **Templates** from the sidebar and select **New template**.
 A template has:
 
 - a name and optional description;
-- one or more input fields;
+- one or more rich input fields;
 - one or more card-generation rules.
 
-A pharmacology template might define these fields:
+A general concept template might define:
 
 ```text
-Name
-Drug class
-Side effects
-Conditions
+Subject
+Definition
+Important details
+Diagram
 ```
 
-Optional field guidance can tell the user what belongs in each input, such as
-“Include common and high-risk adverse effects.”
+The optional **Field description** can explain what belongs in each field.
 
-Then define rules such as:
+Design each Question and Answer layout with the normal rich editor. Insert a
+field by typing its name in complete double braces:
 
 ```text
-Rule: Drug class
-Question: What is the drug class of {{Name}}?
-Answer: {{Drug class}}
+Question: What is {{Subject}}?
+Answer: {{Definition}}
 
-Rule: Side effects
-Question: What are the important side effects of {{Name}}?
-Answer: {{Side effects}}
-
-Rule: Conditions
-Question: What conditions is {{Name}} used to treat?
-Answer: {{Conditions}}
+Question: What are the important details about {{Subject}}?
+Answer: {{Important details}}
 ```
 
-Placeholder names are case-insensitive for matching but must refer to a field in
-the same template. Use complete double-brace placeholders such as `{{Name}}`.
+Field-name matching ignores capitalization and repeated surrounding whitespace,
+but the name must refer to one unique field in the same template. Incomplete or
+unknown placeholders fail visibly when the template is saved.
+
+There is no separate inline or block insertion control. Placement is determined
+from the rich value entered when the template is used.
+
+## Automatic inline and block placement
+
+When previewing or generating cards, ostudy examines the validated structure of
+each submitted field value.
+
+A value remains **inline** when it contains exactly one paragraph made only of
+text and hard breaks, with no image. This includes ordinary words, numbers,
+short phrases, and formatted text.
+
+A value becomes a **block** when it contains supported structured content such
+as:
+
+- ordered or bullet lists;
+- images;
+- headings;
+- block quotes or code blocks;
+- horizontal rules;
+- multiple paragraphs.
+
+For example, this layout:
+
+```text
+Important findings: {{Important details}} Continue with the interpretation.
+```
+
+renders as one sentence when `Important details` is a short phrase. When the
+field contains a numbered list, the renderer safely produces:
+
+```text
+Important findings:
+
+1. First finding
+2. Second finding
+
+Continue with the interpretation.
+```
+
+The list remains a real list. The renderer splits the surrounding paragraph into
+valid before/value/after blocks and removes empty wrapper paragraphs. Images and
+other supported block nodes are likewise preserved rather than flattened into
+plain text.
 
 ## Generating cards from a reusable template
 
 Open a deck or select exactly one deck in Search/Filter, then choose the custom
 template from the **Card template** selector. The editor replaces the normal
-Question and Answer fields with one input for every template field.
+Question and Answer fields with one full rich editor for every template field.
 
 After completing the form:
 
@@ -153,9 +190,9 @@ After completing the form:
 3. choose **Generate cards**.
 
 Every accepted rule becomes an ordinary permanent Basic card in the selected
-deck. Exact duplicates are skipped. The generated cards receive normal fresh
-schedules and participate in Search/Filter, Practice, analytics, tags,
-move/copy, and deck export like manually created Basic cards.
+deck. Exact duplicates are skipped. The generated cards receive fresh schedules
+and participate in Search/Filter, Practice, analytics, tags, move/copy, and deck
+export like manually created Basic cards.
 
 ## Template deletion and generated cards
 
@@ -174,7 +211,7 @@ screen.
 
 ## Template safety
 
-Templates perform literal data substitution only. They cannot execute:
+Templates perform bounded, literal data substitution only. They cannot execute:
 
 - JavaScript or another scripting language;
 - SQL;
@@ -184,22 +221,23 @@ Templates perform literal data substitution only. They cannot execute:
 - network requests;
 - a general-purpose expression language.
 
-Rust validates the template definition, field values, placeholder grammar, and
-output sizes. Generated questions and answers then pass through the same content
-validation and transactional write path as ordinary Basic cards.
+Rust resolves typed placeholders to stable field identifiers, validates every
+layout and value, chooses placement from the document structure, and validates
+the complete generated output. The final card is then written through the same
+transactional path as an ordinary Basic card.
 
 ## Search/Filter and note-level actions
 
-Search/Filter lists every active generated presentation separately. A forward
-card, reverse card, and each cloze blank can therefore have different due dates
-and can be selected independently for temporary practice.
+Search/Filter lists each active scheduled card separately. Basic forward and
+reverse cards therefore appear as distinct rows, while a multi-blank cloze note
+appears once because its alternate blanks share one card and schedule.
 
 Tags, move/copy, and deletion apply to the shared source note. When several
 presentations from the same note are selected, ostudy intentionally performs the
 note-level action once:
 
-- moving moves every presentation and preserves every schedule;
-- copying creates a new note and fresh schedules for all active presentations;
+- moving moves every active presentation and preserves every schedule;
+- copying creates a new note and fresh schedules for its active presentations;
 - tags apply to all presentations through the note;
 - deleting the note removes every generated presentation.
 
@@ -210,5 +248,6 @@ all-blanks cloze definitions. Imported cards receive fresh local schedules and
 do not include the exporting learner's review history.
 
 Reusable templates are not exported with a deck because they are local
--authoring tools rather than content owners. Older Basic packages without Stage
-3 metadata remain importable.
+authoring tools rather than content owners. Older Basic and Stage 3 packages
+remain importable. Older multi-row cloze packages are normalized to one active
+card during import.

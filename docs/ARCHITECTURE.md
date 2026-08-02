@@ -21,9 +21,9 @@ Rust domain modules and SQLite transactions
 ```
 
 The frontend displays state and communicates user intent. It never issues SQL,
-opens arbitrary files, evaluates template expressions, or calculates the
-authoritative schedule. Rust validates all data crossing the IPC boundary and
-owns multi-step transactions.
+opens arbitrary files, evaluates template expressions, selects authoritative
+template placement, or calculates the authoritative schedule. Rust validates all
+data crossing the IPC boundary and owns multi-step transactions.
 
 ## Main modules
 
@@ -43,7 +43,8 @@ owns multi-step transactions.
 - `src/screens/card-editor/TemplateEntryForm.tsx` renders reusable template
   fields and generated-card previews.
 - `src/screens/TemplatesScreen.tsx` manages reusable data-only field and rule
-  definitions.
+  definitions. Rule authors type placeholders such as `{{Subject}}`; the UI does
+  not expose inline/block placement controls.
 - `src/screens/PracticeScreen.tsx` runs one-step 0–3 review sessions.
 - `src/screens/AnalyticsScreen.tsx` presents deterministic confidence,
   response-time, and workload aggregates.
@@ -55,20 +56,21 @@ owns multi-step transactions.
 ### Rust
 
 - `database.rs` opens SQLite, applies checksummed migrations, backfills stable
-  duplicate fingerprints, and exposes one mutex-protected connection.
+  duplicate fingerprints, runs idempotent forward normalization, and exposes one
+  mutex-protected connection.
 - `decks.rs` owns deck validation and persistence.
 - `cards.rs` owns source-note hydration, per-deck list/delete behavior, and the
   canonical Tiptap validator.
 - `authoring.rs` remains the card-authoring boundary. Its Stage 2 modules own
   tags, FTS5, duplicates, bulk entry, assets, and note-level actions. Its
-  `authoring/stage3/` modules own card-type validation, cloze parsing,
-  generated-card lifecycle, template CRUD, literal substitution, and generated
-  card rendering.
+  `authoring/stage3_v2/` modules own card-type validation, cloze parsing,
+  generated-card lifecycle, template CRUD, typed-placeholder resolution,
+  automatic rich-value placement, and generated-card rendering.
 - `assets.rs` imports supported local image files into the managed library.
 - `scheduler.rs` is the sole adapter to `rs-fsrs`.
 - `practice.rs` records graded reviews atomically.
 - `practice_selection.rs` selects exact generated-card IDs and hydrates the
-  corresponding forward, reverse, or cloze presentation.
+  corresponding forward, reverse, or session-stable cloze presentation.
 - `analytics.rs` calculates deterministic review facts using ordinary SQL.
 - `transfer.rs` validates the core `.studydeck` content and images.
 - `tagged_transfer.rs` preserves optional package tag metadata.
@@ -80,7 +82,7 @@ owns multi-step transactions.
 
 A **note** stores editable source content. A **card** is one independently
 scheduled study presentation generated from that note. Tags attach to the note
-so every direction or blank shares the same classification.
+so every generated presentation shares the same classification.
 
 Generated card identity is the durable tuple:
 
@@ -88,15 +90,18 @@ Generated card identity is the durable tuple:
 (note_id, direction, template_ordinal)
 ```
 
-Basic forward and reverse cards use `forward/0` and `reverse/0`.
-One-at-a-time cloze cards use their stable blank number as
-`template_ordinal`; the first blank uses `forward` and additional blanks use
-`cloze`. The all-blanks-together presentation uses `forward/0`, deliberately
-separating its learning state from every individual blank.
+Basic forward and reverse cards use `forward/0` and `reverse/0`. Every active
+Fill in the blank note uses one canonical `forward/0` card, regardless of how
+many marked blanks its source contains or which cloze mode is selected.
 
-Disabling a presentation soft-deletes its `cards` row. Its schedule and
+Disabling a reverse presentation soft-deletes its `cards` row. Its schedule and
 append-only review events remain attached to the same card ID. Re-enabling the
 same tuple reactivates that row rather than creating a replacement.
+
+For one-at-a-time cloze, Rust chooses the next blank group from the canonical
+card's accepted review count and stores that choice in the practice-session
+snapshot. Viewing, revealing, leaving, or resuming the session cannot advance or
+change the selected blank.
 
 `tags.normalized_name` provides case-insensitive identity while preserving the
 first human-readable spelling. `note_tags` is the many-to-many relationship.
@@ -106,14 +111,30 @@ content.
 ## Reusable data-only templates
 
 Reusable templates are authoring shortcuts, not note types and not ownership
-parents. A template contains ordered fields and ordered question/answer rules.
-Patterns use complete placeholders such as `{{name}}` or `{{side effects}}`.
-Rust performs bounded literal substitution only, then inserts each result through
-the ordinary Basic-card validation and transaction path.
+parents. A template contains ordered fields and ordered rich question/answer
+rules. Authors type complete placeholders such as `{{Subject}}` or
+`{{Important findings}}` directly in a layout.
 
-Generated notes do not store a template ID. Editing or deleting a reusable
-template cannot modify or delete cards already generated from it. Templates are
-local authoring preferences and are not included in deck exports.
+When a template is saved, Rust assigns stable child IDs, resolves each typed
+field name to its stable ID, and stores a neutral inert placeholder. At preview
+or generation time, Rust chooses placement from the validated field document:
+
+- one text-only paragraph is inserted inline;
+- lists, images, headings, block quotes, code blocks, horizontal rules, and
+  multi-paragraph values are inserted as blocks.
+
+If a block value occurs inside a paragraph or heading, Rust splits the layout
+into valid before/value/after blocks and removes empty wrappers. It never
+flattens rich content or infers placement from whitespace or field names.
+
+The old explicit block placeholder remains readable only for compatibility with
+initial schema-7 templates. Startup normalization converts it to the neutral
+representation without a new database migration.
+
+Every final document passes through the ordinary Basic-card validator and write
+transaction. Generated notes do not store a template ID. Editing or deleting a
+reusable template cannot modify or delete cards already generated from it.
+Templates are local authoring preferences and are not included in deck exports.
 
 ## FTS5 search and exact presentation rendering
 
@@ -123,8 +144,8 @@ writes.
 
 Search filtering happens over notes and schedules, but each matching active
 `cards` row is returned separately. Rust renders the exact presentation by card
-ID before sending it to the frontend, so a reverse card displays the swapped
-sides and each cloze card displays only its assigned blank pattern.
+ID before sending it to the frontend. Basic reverse cards display swapped sides;
+a multi-blank cloze note appears once and displays the session-selected blank.
 
 The interface never forwards raw FTS5 syntax. Rust extracts bounded
 alphanumeric tokens, quotes them, binds the resulting expression as a
@@ -166,8 +187,8 @@ The learner gives one score after revealing an answer:
 
 `card_schedules` is the fast mutable view of current FSRS state.
 `review_events` is the immutable historical ledger. Review submission is one
-idempotent SQLite transaction. Every generated presentation owns its own card ID
-and therefore its own schedule and review history.
+idempotent SQLite transaction. Basic forward/reverse presentations own separate
+card IDs; every cloze blank shares the note's one canonical cloze card ID.
 
 ## Deck interchange
 
@@ -177,8 +198,9 @@ complete card graph and creates fresh local schedules. Personal review events,
 application settings, and reusable authoring templates are excluded.
 
 Older Basic packages without optional Stage 2 or Stage 3 tables remain
-importable. Older readers can ignore the additional optional tables in new
-exports.
+importable. Older Stage 3 packages with several cloze rows are normalized to one
+active card immediately after import. Older readers can ignore additional
+optional tables in new exports.
 
 ## Untrusted content and template safety
 
@@ -191,10 +213,11 @@ it.
 - Links are limited to complete `http`, `https`, `mailto`, and `tel` addresses.
 - Images must reference managed local assets.
 - Cloze marker grammar, group numbers, nesting, and source size are validated.
-- Template field names, values, rules, placeholders, and output sizes are
-  bounded and validated.
-- Template rendering performs literal substitution; it has no evaluator,
-  JavaScript, SQL, shell, raw HTML, filesystem, network, or general expression
-  capability.
+- Template field names, values, rules, placeholders, stable IDs, and output sizes
+  are bounded and validated.
+- Template rendering performs structural literal substitution; it has no
+  evaluator, JavaScript, SQL, shell, raw HTML, filesystem, network, or general
+  expression capability.
 - Search text is derived by Rust and SQLite statements use bound parameters.
-- Unknown structured content or malformed placeholders fail visibly.
+- Unknown structured content, unknown fields, or malformed placeholders fail
+  visibly.

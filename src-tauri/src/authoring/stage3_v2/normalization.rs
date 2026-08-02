@@ -5,6 +5,7 @@ pub(crate) fn normalize_stage3_schema(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     normalize_legacy_template_documents(&transaction)?;
+    normalize_explicit_template_placeholders(&transaction)?;
     normalize_cloze_card_rows(&transaction)?;
     transaction.commit().map_err(CommandError::database)
 }
@@ -63,6 +64,90 @@ fn normalize_legacy_template_documents(connection: &Connection) -> Result<(), Co
                 ],
             )
             .map_err(CommandError::database)?;
+    }
+    Ok(())
+}
+
+fn normalize_explicit_template_placeholders(
+    connection: &Connection,
+) -> Result<(), CommandError> {
+    let rules = {
+        let mut statement = connection
+            .prepare(
+                "SELECT id, template_id, front_doc, back_doc
+                 FROM card_template_rules
+                 WHERE front_doc IS NOT NULL AND back_doc IS NOT NULL",
+            )
+            .map_err(CommandError::database)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(CommandError::database)?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    };
+
+    let mut lookups = HashMap::<String, AutomaticTemplateFieldLookup>::new();
+    for (rule_id, template_id, front_json, back_json) in rules {
+        if !lookups.contains_key(&template_id) {
+            let fields = {
+                let mut statement = connection
+                    .prepare(
+                        "SELECT id, name, description, position
+                         FROM card_template_fields
+                         WHERE template_id = ?1 ORDER BY position",
+                    )
+                    .map_err(CommandError::database)?;
+                let rows = statement
+                    .query_map([template_id.as_str()], |row| {
+                        Ok(CardTemplateFieldDto {
+                            id: row.get(0)?,
+                            name: row.get(1)?,
+                            description: row.get(2)?,
+                            position: row.get(3)?,
+                        })
+                    })
+                    .map_err(CommandError::database)?;
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(CommandError::database)?
+            };
+            lookups.insert(
+                template_id.clone(),
+                automatic_template_field_lookup_from_dtos(&fields)?,
+            );
+        }
+        let lookup = lookups.get(&template_id).ok_or_else(|| {
+            CommandError::new(
+                "invalid_stored_template",
+                "A saved template is missing its field lookup.",
+            )
+        })?;
+        let front_doc: Value =
+            serde_json::from_str(&front_json).map_err(CommandError::serialization)?;
+        let back_doc: Value =
+            serde_json::from_str(&back_json).map_err(CommandError::serialization)?;
+        let normalized_front = normalize_typed_template_layout(&front_doc, lookup, "question")?;
+        let normalized_back = normalize_typed_template_layout(&back_doc, lookup, "answer")?;
+        let normalized_front_json =
+            serde_json::to_string(&normalized_front).map_err(CommandError::serialization)?;
+        let normalized_back_json =
+            serde_json::to_string(&normalized_back).map_err(CommandError::serialization)?;
+        if normalized_front_json != front_json || normalized_back_json != back_json {
+            connection
+                .execute(
+                    "UPDATE card_template_rules
+                     SET front_doc = ?1, back_doc = ?2
+                     WHERE id = ?3",
+                    params![normalized_front_json, normalized_back_json, rule_id],
+                )
+                .map_err(CommandError::database)?;
+        }
     }
     Ok(())
 }

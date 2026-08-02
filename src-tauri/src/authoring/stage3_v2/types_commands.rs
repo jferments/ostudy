@@ -273,7 +273,10 @@ pub fn list_card_templates(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
 ) -> Result<Vec<CardTemplateDto>, CommandError> {
-    database.with_connection(|connection| list_card_templates_in_connection(connection, &paths))
+    database.with_connection(|connection| {
+        let templates = list_card_templates_in_connection(connection, &paths)?;
+        normalize_card_template_list_for_editing(templates)
+    })
 }
 
 #[tauri::command]
@@ -284,7 +287,8 @@ pub fn get_card_template(
 ) -> Result<CardTemplateDto, CommandError> {
     validate_entity_id(&template_id, "card template")?;
     database.with_connection(|connection| {
-        Ok(load_stored_template(connection, &paths, &template_id, true)?.dto)
+        let template = load_stored_template(connection, &paths, &template_id, true)?.dto;
+        normalize_card_template_dto_for_editing(template)
     })
 }
 
@@ -295,7 +299,9 @@ pub fn create_card_template(
     input: CreateCardTemplateInput,
 ) -> Result<CardTemplateDto, CommandError> {
     database.with_connection(|connection| {
-        create_card_template_in_connection(connection, &paths, input)
+        let input = prepare_automatic_create_template_input(connection, input)?;
+        let template = create_card_template_in_connection(connection, &paths, input)?;
+        normalize_card_template_dto_for_editing(template)
     })
 }
 
@@ -306,7 +312,14 @@ pub fn update_card_template(
     input: UpdateCardTemplateInput,
 ) -> Result<CardTemplateDto, CommandError> {
     database.with_connection(|connection| {
-        update_card_template_in_connection(connection, &paths, input)
+        let input = prepare_automatic_update_template_input(connection, input)?;
+        let has_new_children = template_update_contains_new_children(connection, &input)?;
+        let template = if has_new_children {
+            update_card_template_with_stable_children_in_connection(connection, &paths, input)?
+        } else {
+            update_card_template_in_connection(connection, &paths, input)?
+        };
+        normalize_card_template_dto_for_editing(template)
     })
 }
 
@@ -331,7 +344,7 @@ pub fn preview_template_cards(
     database.with_connection(|connection| {
         let template = load_stored_template(connection, &paths, &input.template_id, true)?;
         ensure_template_revision(&template, input.template_revision)?;
-        render_template_previews(connection, &paths, &template, input.values)
+        render_automatic_template_previews(connection, &paths, &template, input.values)
     })
 }
 
@@ -344,7 +357,7 @@ pub fn generate_cards_from_template(
     validate_entity_id(&input.deck_id, "deck")?;
     validate_entity_id(&input.template_id, "card template")?;
     database.with_connection(|connection| {
-        generate_template_cards_in_connection(connection, &paths, input)
+        generate_automatic_template_cards_in_connection(connection, &paths, input)
     })
 }
 

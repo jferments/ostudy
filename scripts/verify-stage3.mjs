@@ -15,6 +15,7 @@ const [
   authoringTypes,
   authoringGenerated,
   authoringTemplates,
+  authoringAutomaticLayout,
   authoringNormalization,
   practiceSelection,
   ipc,
@@ -40,6 +41,7 @@ const [
   read("src-tauri", "src", "authoring", "stage3_v2", "types_commands.rs"),
   read("src-tauri", "src", "authoring", "stage3_v2", "generated_cards.rs"),
   read("src-tauri", "src", "authoring", "stage3_v2", "templates.rs"),
+  read("src-tauri", "src", "authoring", "stage3_v2", "auto_template_layout.rs"),
   read("src-tauri", "src", "authoring", "stage3_v2", "normalization.rs"),
   read("src-tauri", "src", "practice_selection.rs"),
   read("src", "ipc.ts"),
@@ -62,6 +64,7 @@ const authoring = [
   authoringTypes,
   authoringGenerated,
   authoringTemplates,
+  authoringAutomaticLayout,
   authoringNormalization,
 ].join("\n");
 
@@ -119,13 +122,22 @@ for (const fragment of [
   "render_stored_card_presentation_for_variant",
   "templateFieldInline",
   "templateFieldBlock",
-  "render_template_children",
-  "template_block_content_inline",
   "card_template_assets",
   "template_revision",
   "insert_organized_card",
 ]) {
   if (!authoring.includes(fragment)) failures.push(`revised Stage 3 domain behavior missing: ${fragment}`);
+}
+for (const fragment of [
+  "normalize_typed_template_layout",
+  "TemplateValuePlacement",
+  "materialize_automatic_template_document",
+  "materialize_template_text_block",
+  "split_by_block_value",
+  "template_document_is_inline",
+  "normalize_explicit_template_placeholders",
+]) {
+  if (!authoring.includes(fragment)) failures.push(`automatic template layout missing: ${fragment}`);
 }
 for (const forbidden of ["eval(", "new Function", "Command::new", "std::process", "reqwest"]) {
   if (authoring.includes(forbidden)) failures.push(`template implementation contains executable behavior: ${forbidden}`);
@@ -156,10 +168,13 @@ for (const fragment of [
   if (!ipc.includes(fragment)) failures.push(`rich template IPC missing: ${fragment}`);
 }
 for (const fragment of ["templateFieldInline", "templateFieldBlock"]) {
-  if (!extensions.includes(fragment)) failures.push(`template extension missing: ${fragment}`);
+  if (!extensions.includes(fragment)) failures.push(`template compatibility extension missing: ${fragment}`);
 }
-for (const fragment of ["Insert inline", "Insert as block", "<RichTextEditor"]) {
-  if (!templateLayoutEditor.includes(fragment)) failures.push(`template layout editor missing: ${fragment}`);
+for (const fragment of ["{{Subject}}", "Simple one-paragraph values stay inline", "<RichTextEditor"]) {
+  if (!templateLayoutEditor.includes(fragment)) failures.push(`automatic template layout editor missing: ${fragment}`);
+}
+for (const forbidden of ["Insert inline", "Insert as block", "Insert field"]) {
+  if (templateLayoutEditor.includes(forbidden)) failures.push(`manual template placement UI remains: ${forbidden}`);
 }
 if (!templateEntry.includes("<RichTextEditor") || !templateEntry.includes("<RichTextView")) {
   failures.push("template entry does not use rich editors and rich previews");
@@ -169,6 +184,7 @@ for (const fragment of [
   "Question layout",
   "Answer layout",
   "TemplateLayoutEditor",
+  "renderer keeps simple values inline",
 ]) {
   if (!templatesScreen.includes(fragment)) failures.push(`Templates screen missing: ${fragment}`);
 }
@@ -176,6 +192,7 @@ for (const forbidden of [
   "Input guidance",
   "Include the therapeutic class",
   "Templates are safe authoring tools, not card containers",
+  "Insert short fields inline",
 ]) {
   if (templatesScreen.includes(forbidden)) failures.push(`Templates screen retains obsolete copy: ${forbidden}`);
 }
@@ -202,8 +219,11 @@ for (const fragment of [
 for (const fragment of [".cloze-editor", ".template-rule-card", ".card-type-badge"]) {
   if (!cardStyles.includes(fragment)) failures.push(`Stage 3 base styles missing: ${fragment}`);
 }
-for (const fragment of [".template-field-placeholder", ".template-field-inserter"]) {
-  if (!richStyles.includes(fragment)) failures.push(`rich template styles missing: ${fragment}`);
+if (!richStyles.includes(".template-field-placeholder")) {
+  failures.push("rich template placeholder styles are missing");
+}
+if (richStyles.includes(".template-field-inserter")) {
+  failures.push("manual template field inserter styles remain");
 }
 
 for (const fragment of [
@@ -238,5 +258,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Stage 3 schema 7, rich templates, single-schedule cloze rotation, UI, practice, search, and transfer wiring are present.",
+  "OK   Stage 3 rich templates automatically place typed fields, cloze uses one schedule, and UI, practice, search, and transfer wiring are present.",
 );

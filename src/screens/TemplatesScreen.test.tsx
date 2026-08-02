@@ -31,15 +31,6 @@ const inlineDoc: ipc.RichDocument = {
     },
   ],
 };
-const blockDoc: ipc.RichDocument = {
-  type: "doc",
-  content: [
-    {
-      type: "templateFieldBlock",
-      attrs: { fieldId: FIELD_ID, label: "Concept" },
-    },
-  ],
-};
 
 const template: ipc.CardTemplate = {
   id: "a".repeat(32),
@@ -58,7 +49,20 @@ const template: ipc.CardTemplate = {
       id: "d".repeat(32),
       name: "Concept card",
       frontDoc: inlineDoc,
-      backDoc: blockDoc,
+      backDoc: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "templateFieldInline",
+                attrs: { fieldId: FIELD_ID, label: "Concept" },
+              },
+            ],
+          },
+        ],
+      },
       position: 0,
     },
   ],
@@ -76,7 +80,7 @@ describe("TemplatesScreen", () => {
     vi.mocked(ipc.deleteCardTemplate).mockResolvedValue();
   });
 
-  it("creates a template with structured question and answer layouts", async () => {
+  it("creates a template with typed placeholders and automatic placement", async () => {
     const showToast = vi.fn();
     render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={showToast} />);
 
@@ -88,7 +92,15 @@ describe("TemplatesScreen", () => {
     expect(screen.getByText("Field description")).toBeTruthy();
     expect(screen.getAllByText("Question layout").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Answer layout").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Templates are safe authoring tools, not card containers.")).toBeNull();
+    expect(
+      screen.getAllByText(/Type a field name in double braces/u).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Insert inline" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Insert as block" })).toBeNull();
+    expect(screen.queryByText("Insert field")).toBeNull();
+    expect(
+      screen.queryByText("Templates are safe authoring tools, not card containers."),
+    ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Save template" }));
 

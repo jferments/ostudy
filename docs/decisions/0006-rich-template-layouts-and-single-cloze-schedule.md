@@ -1,6 +1,6 @@
 # ADR 0006: Rich template layouts and one schedule per cloze note
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by the automatic-placement UI refinement
 - **Applies from:** database schema 7
 
 ## Context
@@ -18,28 +18,56 @@ created one `cards` row and FSRS schedule for every one-at-a-time cloze blank,
 which made alternate blanks appear as separate search results and allowed them
 into the same practice session.
 
+The initial rich-template UI then exposed two implementation choices—**Insert
+inline** and **Insert as block**—to the user. This kept document structure safe,
+but cluttered every rule editor and forced the person authoring a template to
+predict the shape of values that would be entered later. Placement is a property
+of the submitted rich value, not a useful authoring decision.
+
 ## Decision
 
 ### Rich reusable templates
 
-Template rule sides are validated Tiptap documents. They may contain all normal
-card formatting plus two inert placeholder nodes:
+Template rule sides are validated Tiptap documents. Users refer to fields by
+typing complete double-brace placeholders such as `{{Subject}}` or
+`{{Important findings}}` directly into a paragraph or heading.
 
-- `templateFieldInline` inserts a short, single-paragraph field inside a
-  paragraph or heading.
-- `templateFieldBlock` occupies its own block position and structurally inserts
-  the field's top-level nodes.
+Before a template is saved, Rust:
 
-Block insertion preserves ordered lists, bullet lists, headings, paragraphs,
-and managed images. A field containing block content cannot be inserted inline;
-Rust returns a visible validation error rather than flattening or creating
-invalid document structure.
+1. assigns stable identifiers to new fields and rules;
+2. resolves each typed field name case-insensitively to the field's stable ID;
+3. stores one neutral inert placeholder node rather than a user-selected
+   placement mode; and
+4. rejects incomplete braces, unknown field names, duplicate field names, or
+   placeholders outside supported text blocks.
 
-Template field values are also validated Tiptap documents. Rust validates every
-layout, field value, placeholder field ID, managed asset reference, and final
-rendered output. Final generated documents pass through the ordinary card
-validator and are stored as ordinary Basic notes and cards. Generated content
-contains no placeholder nodes and no template foreign key.
+At preview and generation time, Rust validates every submitted field document
+and classifies its structure:
+
+- **Inline-compatible:** exactly one paragraph, no managed images, and only text
+  or hard breaks inside that paragraph. Formatting marks on the text are
+  preserved.
+- **Block:** ordered or bullet lists, images, headings, block quotes, code
+  blocks, horizontal rules, multiple paragraphs, or any other supported
+  non-inline document structure.
+
+Inline-compatible values are spliced into the surrounding paragraph. A block
+value causes the surrounding paragraph or heading to be split into valid
+before/value/after blocks. Whitespace-only wrapper paragraphs are omitted. The
+value's original top-level nodes are inserted unchanged, so lists remain lists
+and images remain managed images rather than being flattened into text.
+
+The renderer never infers placement from whitespace, field names, or user-entered
+plain-text snapshots. It bases the decision only on the validated Tiptap
+structure. Final generated documents pass through the ordinary card validator
+and are stored as ordinary Basic notes and cards. Generated content contains no
+placeholder nodes and no template foreign key.
+
+The old `templateFieldBlock` node remains readable only for compatibility with
+templates saved by the first schema-7 build. The existing idempotent startup
+normalization rewrites those explicit block nodes to neutral placeholders. No
+new database migration is required because the stored columns and document
+schema version do not change.
 
 Templates may own managed image references through `card_template_assets`.
 Generated notes receive their own `note_assets` references for the images that
@@ -81,6 +109,10 @@ one canonical card and soft-deleting additional cloze presentation rows.
 Existing schedules and immutable review events for the retired rows remain in
 the database; history is not rewritten or mathematically merged.
 
+The same normalization boundary now canonicalizes schema-7 template documents
+that used explicit block placeholders. Typed placeholders and automatic
+placement do not require schema 8.
+
 Older Stage 3 deck packages containing multiple cloze card rows are accepted and
 normalized immediately after import. New exports contain one active card for
 each cloze note. Reusable authoring templates are not included in `.studydeck`
@@ -88,9 +120,14 @@ packages.
 
 ## Consequences
 
-- Rich fields can safely preserve lists and images without HTML or expression
-  evaluation.
-- Inline and block placement are explicit rather than inferred from whitespace.
+- Template authors use one familiar `{{Field}}` syntax instead of placement
+  controls.
+- Rich fields preserve lists, images, formatting, and multi-block structure
+  without HTML or expression evaluation.
+- Placement follows the actual validated value and can differ between two uses
+  of the same template without changing the template definition.
+- Existing schema-7 templates remain usable and are normalized forward without
+  rewriting migration history.
 - A cloze note cannot appear several times in one practice session merely
   because it has several blanks.
 - The single cloze FSRS state represents performance on the complete concept,
