@@ -64,6 +64,8 @@ const browserCard: ipc.CardBrowserRow = {
   noteId: "c".repeat(32),
   deckId: deck.id,
   deckName: deck.name,
+  cardType: "basic",
+  cardLabel: "Basic",
   frontText: "What reverses warfarin?",
   backText: "Vitamin K",
   tags: ["Anticoagulants"],
@@ -72,6 +74,14 @@ const browserCard: ipc.CardBrowserRow = {
   reviewCount: 0,
   createdAt: 1,
   updatedAt: 1,
+};
+
+const reverseCard: ipc.CardBrowserRow = {
+  ...browserCard,
+  cardId: "f".repeat(32),
+  cardLabel: "Reverse",
+  frontText: "Vitamin K",
+  backText: "What reverses warfarin?",
 };
 
 const selection: ipc.SelectionCard = {
@@ -94,6 +104,7 @@ function renderScreen(decks: ipc.Deck[] = [deck, secondDeck]) {
 
 describe("CardsScreen", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(ipc.listTags).mockResolvedValue([
       {
         id: "d".repeat(32),
@@ -114,6 +125,7 @@ describe("CardsScreen", () => {
     expect(await screen.findByRole("heading", { name: "Search/Filter" })).toBeTruthy();
     expect(await screen.findByText("What reverses warfarin?")).toBeTruthy();
     expect(screen.getAllByText("Anticoagulants").length).toBeGreaterThan(0);
+    expect(screen.getByText("Basic")).toBeTruthy();
 
     fireEvent.change(screen.getByRole("searchbox", { name: "Search cards" }), {
       target: { value: "warfarin" },
@@ -147,6 +159,22 @@ describe("CardsScreen", () => {
     expect(
       screen.getByRole("combobox", { name: "Actions for selected cards" }),
     ).toBeTruthy();
+  });
+
+  it("selects reverse and forward presentations independently", async () => {
+    vi.mocked(ipc.searchCards).mockResolvedValue({
+      cards: [browserCard, reverseCard],
+      totalCount: 2,
+    });
+    renderScreen();
+
+    expect(await screen.findByText("Reverse")).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Vitamin K" }));
+
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    expect(
+      screen.getByRole("checkbox", { name: "Select What reverses warfarin?" }),
+    ).not.toBeChecked();
   });
 
   it("selects all filtered results through the backend instead of only visible rows", async () => {
