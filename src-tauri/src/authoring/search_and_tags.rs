@@ -48,12 +48,11 @@ fn list_tags_in_connection(
           HAVING COUNT(DISTINCT n.id) > 0
           ORDER BY t.name COLLATE NOCASE ASC",
     );
-
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    let rows = statement
+    statement
         .query_map(params_from_iter(values.iter()), tag_from_row)
-        .map_err(CommandError::database)?;
-    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)
 }
 
@@ -89,13 +88,17 @@ fn validate_search_input(input: &SearchCardsInput) -> Result<(), CommandError> {
         ));
     }
     if !matches!(
+        input.status_filter.as_str(),
+        "all" | "active" | "suspended" | "buried" | "needs_more_practice"
+    ) {
+        return Err(CommandError::new(
+            "invalid_status_filter",
+            "Choose active, suspended, buried, or Needs more practice cards.",
+        ));
+    }
+    if !matches!(
         input.reviewed_filter.as_str(),
-        "all"
-            | "never"
-            | "last_1_day"
-            | "last_7_days"
-            | "last_30_days"
-            | "older_30_days"
+        "all" | "never" | "last_1_day" | "last_7_days" | "last_30_days" | "older_30_days"
     ) {
         return Err(CommandError::new(
             "invalid_reviewed_filter",
@@ -104,11 +107,7 @@ fn validate_search_input(input: &SearchCardsInput) -> Result<(), CommandError> {
     }
     if !matches!(
         input.sort.as_str(),
-        "relevance"
-            | "updated_desc"
-            | "question_asc"
-            | "due_asc"
-            | "last_reviewed_desc"
+        "relevance" | "updated_desc" | "question_asc" | "due_asc" | "last_reviewed_desc"
     ) {
         return Err(CommandError::new(
             "invalid_card_sort",
@@ -124,16 +123,65 @@ fn validate_search_input(input: &SearchCardsInput) -> Result<(), CommandError> {
     Ok(())
 }
 
+fn needs_more_practice_sql() -> &'static str {
+    "(
+       (
+         SELECT COUNT(*) FROM (
+           SELECT recent.answer_correct
+           FROM review_events recent
+           WHERE recent.card_id = c.id
+             AND recent.reviewed_at > COALESCE((
+               SELECT MAX(reset_event.occurred_at)
+               FROM schedule_action_events reset_event
+               WHERE reset_event.card_id = c.id AND reset_event.action = 'reset'
+             ), -1)
+           ORDER BY recent.reviewed_at DESC, recent.created_at DESC
+           LIMIT 2
+         ) last_two_wrong
+         WHERE last_two_wrong.answer_correct = 0
+       ) = 2
+       OR
+       (
+         SELECT COUNT(*) FROM (
+           SELECT recent.answer_correct
+           FROM review_events recent
+           WHERE recent.card_id = c.id
+             AND recent.reviewed_at > COALESCE((
+               SELECT MAX(reset_event.occurred_at)
+               FROM schedule_action_events reset_event
+               WHERE reset_event.card_id = c.id AND reset_event.action = 'reset'
+             ), -1)
+           ORDER BY recent.reviewed_at DESC, recent.created_at DESC
+           LIMIT 5
+         ) last_five_wrong
+         WHERE last_five_wrong.answer_correct = 0
+       ) >= 3
+       AND NOT (
+         SELECT COUNT(*) FROM (
+           SELECT recent.answer_correct
+           FROM review_events recent
+           WHERE recent.card_id = c.id
+             AND recent.reviewed_at > COALESCE((
+               SELECT MAX(reset_event.occurred_at)
+               FROM schedule_action_events reset_event
+               WHERE reset_event.card_id = c.id AND reset_event.action = 'reset'
+             ), -1)
+           ORDER BY recent.reviewed_at DESC, recent.created_at DESC
+           LIMIT 2
+         ) last_two_right
+         WHERE last_two_right.answer_correct = 1
+       ) = 2
+     )"
+}
+
 fn build_search_sql(input: &SearchCardsInput, now: i64) -> Result<SearchSql, CommandError> {
     let fts_query = build_fts_query(&input.query);
     let mut joins = String::new();
     if fts_query.is_some() {
         joins.push_str(" JOIN card_search_fts ON card_search_fts.rowid = n.rowid");
     }
-
     let mut conditions = vec![
         "c.deleted_at IS NULL".to_string(),
-        "c.suspended_at IS NULL".to_string(),
         "n.deleted_at IS NULL".to_string(),
         "d.deleted_at IS NULL".to_string(),
         "d.archived_at IS NULL".to_string(),
@@ -150,10 +198,7 @@ fn build_search_sql(input: &SearchCardsInput, now: i64) -> Result<SearchSql, Com
         conditions.push(format!("c.deck_id IN ({placeholders})"));
     }
     if let Some(query) = fts_query {
-        conditions.push(format!(
-            "card_search_fts MATCH ?{}",
-            push_value(&mut values, query)
-        ));
+        conditions.push(format!("card_search_fts MATCH ?{}", push_value(&mut values, query)));
     }
     for tag_id in &input.tag_ids {
         let index = push_value(&mut values, tag_id.clone());
@@ -164,15 +209,35 @@ fn build_search_sql(input: &SearchCardsInput, now: i64) -> Result<SearchSql, Com
              )"
         ));
     }
+    match input.status_filter.as_str() {
+        "active" => {
+            conditions.push("c.suspended_at IS NULL".to_string());
+            conditions.push(format!(
+                "(c.buried_until IS NULL OR c.buried_until <= ?{})",
+                push_value(&mut values, now)
+            ));
+        }
+        "suspended" => conditions.push("c.suspended_at IS NOT NULL".to_string()),
+        "buried" => {
+            conditions.push("c.suspended_at IS NULL".to_string());
+            conditions.push(format!(
+                "c.buried_until > ?{}",
+                push_value(&mut values, now)
+            ));
+        }
+        "needs_more_practice" => {
+            conditions.push("c.suspended_at IS NULL".to_string());
+            conditions.push(format!(
+                "(c.buried_until IS NULL OR c.buried_until <= ?{})",
+                push_value(&mut values, now)
+            ));
+            conditions.push(needs_more_practice_sql().to_string());
+        }
+        _ => {}
+    }
     match input.due_filter.as_str() {
-        "due" => conditions.push(format!(
-            "s.due_at <= ?{}",
-            push_value(&mut values, now)
-        )),
-        "not_due" => conditions.push(format!(
-            "s.due_at > ?{}",
-            push_value(&mut values, now)
-        )),
+        "due" => conditions.push(format!("s.due_at <= ?{}", push_value(&mut values, now))),
+        "not_due" => conditions.push(format!("s.due_at > ?{}", push_value(&mut values, now))),
         _ => {}
     }
 
@@ -181,31 +246,19 @@ fn build_search_sql(input: &SearchCardsInput, now: i64) -> Result<SearchSql, Com
         "never" => conditions.push("s.reps = 0".to_string()),
         "last_1_day" => {
             conditions.push("s.reps > 0".to_string());
-            conditions.push(format!(
-                "s.last_review_at >= ?{}",
-                push_value(&mut values, now.saturating_sub(DAY_MS))
-            ));
+            conditions.push(format!("s.last_review_at >= ?{}", push_value(&mut values, now.saturating_sub(DAY_MS))));
         }
         "last_7_days" => {
             conditions.push("s.reps > 0".to_string());
-            conditions.push(format!(
-                "s.last_review_at >= ?{}",
-                push_value(&mut values, now.saturating_sub(7 * DAY_MS))
-            ));
+            conditions.push(format!("s.last_review_at >= ?{}", push_value(&mut values, now.saturating_sub(7 * DAY_MS))));
         }
         "last_30_days" => {
             conditions.push("s.reps > 0".to_string());
-            conditions.push(format!(
-                "s.last_review_at >= ?{}",
-                push_value(&mut values, now.saturating_sub(30 * DAY_MS))
-            ));
+            conditions.push(format!("s.last_review_at >= ?{}", push_value(&mut values, now.saturating_sub(30 * DAY_MS))));
         }
         "older_30_days" => {
             conditions.push("s.reps > 0".to_string());
-            conditions.push(format!(
-                "s.last_review_at < ?{}",
-                push_value(&mut values, now.saturating_sub(30 * DAY_MS))
-            ));
+            conditions.push(format!("s.last_review_at < ?{}", push_value(&mut values, now.saturating_sub(30 * DAY_MS))));
         }
         _ => {}
     }
@@ -214,16 +267,13 @@ fn build_search_sql(input: &SearchCardsInput, now: i64) -> Result<SearchSql, Com
         "relevance" if fts_query_is_present(&input.query) => {
             "bm25(card_search_fts) ASC, n.updated_at DESC, c.template_ordinal ASC"
         }
-        "question_asc" => {
-            "n.front_text COLLATE NOCASE ASC, n.updated_at DESC, c.template_ordinal ASC"
-        }
+        "question_asc" => "n.front_text COLLATE NOCASE ASC, n.updated_at DESC, c.template_ordinal ASC",
         "due_asc" => "s.due_at ASC, n.updated_at DESC, c.template_ordinal ASC",
         "last_reviewed_desc" => {
             "CASE WHEN s.reps > 0 THEN 0 ELSE 1 END ASC, s.last_review_at DESC, n.updated_at DESC, c.template_ordinal ASC"
         }
         _ => "n.updated_at DESC, n.created_at DESC, c.template_ordinal ASC, c.direction ASC",
     };
-
     Ok(SearchSql {
         joins,
         where_sql: conditions.join(" AND "),
@@ -250,21 +300,13 @@ fn search_cards_in_connection(
         where_sql = search.where_sql,
     );
     let total_count: i64 = connection
-        .query_row(
-            &count_sql,
-            params_from_iter(search.values.iter()),
-            |row| row.get(0),
-        )
+        .query_row(&count_sql, params_from_iter(search.values.iter()), |row| row.get(0))
         .map_err(CommandError::database)?;
-
     let limit_index = push_value(&mut search.values, input.limit);
     let offset_index = push_value(&mut search.values, input.offset);
     let query_sql = format!(
         "SELECT
-             c.id,
-             n.id,
-             c.deck_id,
-             d.name,
+             c.id, n.id, c.deck_id, d.name,
              COALESCE((
                  SELECT group_concat(t.name, char(31))
                  FROM note_tags nt
@@ -274,9 +316,7 @@ fn search_cards_in_connection(
              ), ''),
              s.due_at,
              CASE WHEN s.reps > 0 THEN s.last_review_at ELSE NULL END,
-             s.reps,
-             n.created_at,
-             n.updated_at
+             s.reps, c.suspended_at, c.buried_until, n.created_at, n.updated_at
          FROM notes n
          JOIN cards c ON c.note_id = n.id
          JOIN decks d ON d.id = c.deck_id
@@ -289,22 +329,15 @@ fn search_cards_in_connection(
         where_sql = search.where_sql,
         order_sql = search.order_sql,
     );
-    let mut statement = connection
-        .prepare(&query_sql)
-        .map_err(CommandError::database)?;
+    let mut statement = connection.prepare(&query_sql).map_err(CommandError::database)?;
     let raw_cards = statement
         .query_map(params_from_iter(search.values.iter()), |row| {
             Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, i64>(5)?,
-                row.get::<_, Option<i64>>(6)?,
-                row.get::<_, i64>(7)?,
-                row.get::<_, i64>(8)?,
-                row.get::<_, i64>(9)?,
+                row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, i64>(5)?,
+                row.get::<_, Option<i64>>(6)?, row.get::<_, i64>(7)?,
+                row.get::<_, Option<i64>>(8)?, row.get::<_, Option<i64>>(9)?,
+                row.get::<_, i64>(10)?, row.get::<_, i64>(11)?,
             ))
         })
         .map_err(CommandError::database)?
@@ -313,40 +346,29 @@ fn search_cards_in_connection(
 
     let cards = raw_cards
         .into_iter()
-        .map(
-            |(
+        .map(|(card_id, note_id, deck_id, deck_name, tags, due_at, last_reviewed_at, review_count, suspended_at, buried_until, created_at, updated_at)| {
+            let rendered = render_stored_card_presentation(connection, &card_id)?;
+            Ok(CardBrowserRowDto {
+                needs_more_practice: crate::learning_signals::needs_more_practice(connection, &card_id)?,
                 card_id,
                 note_id,
                 deck_id,
                 deck_name,
-                tags,
+                card_type: rendered.card_type,
+                card_label: rendered.card_label,
+                front_text: rendered.front_text,
+                back_text: rendered.back_text,
+                tags: split_tags(&tags),
                 due_at,
                 last_reviewed_at,
                 review_count,
+                suspended_at,
+                buried_until,
                 created_at,
                 updated_at,
-            )| {
-                let rendered = render_stored_card_presentation(connection, &card_id)?;
-                Ok(CardBrowserRowDto {
-                    card_id,
-                    note_id,
-                    deck_id,
-                    deck_name,
-                    card_type: rendered.card_type,
-                    card_label: rendered.card_label,
-                    front_text: rendered.front_text,
-                    back_text: rendered.back_text,
-                    tags: split_tags(&tags),
-                    due_at,
-                    last_reviewed_at,
-                    review_count,
-                    created_at,
-                    updated_at,
-                })
-            },
-        )
+            })
+        })
         .collect::<Result<Vec<_>, CommandError>>()?;
-
     Ok(CardSearchPageDto { cards, total_count })
 }
 
@@ -387,9 +409,7 @@ fn list_matching_cards_in_connection(
     if cards.len() > MAX_SEARCH_SELECTION {
         return Err(CommandError::new(
             "too_many_matching_cards",
-            format!(
-                "More than {MAX_SEARCH_SELECTION} cards match. Narrow the filters before selecting or practicing all results."
-            ),
+            format!("More than {MAX_SEARCH_SELECTION} cards match. Narrow the filters before selecting or practicing all results."),
         ));
     }
     Ok(cards)
@@ -472,10 +492,7 @@ fn organized_from_card(card: CardDto, tags: Vec<String>, due_at: i64) -> Organiz
     }
 }
 
-fn load_tag_names(
-    connection: &Connection,
-    note_id: &str,
-) -> Result<Vec<String>, CommandError> {
+fn load_tag_names(connection: &Connection, note_id: &str) -> Result<Vec<String>, CommandError> {
     let mut statement = connection
         .prepare(
             "SELECT t.name
@@ -485,12 +502,11 @@ fn load_tag_names(
              ORDER BY t.name COLLATE NOCASE ASC",
         )
         .map_err(CommandError::database)?;
-    let names = statement
+    statement
         .query_map([note_id], |row| row.get(0))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-    Ok(names)
+        .map_err(CommandError::database)
 }
 
 fn validate_tags(values: Vec<String>) -> Result<Vec<ValidatedTag>, CommandError> {
@@ -504,10 +520,7 @@ fn validate_tags(values: Vec<String>) -> Result<Vec<ValidatedTag>, CommandError>
     let mut tags = Vec::new();
     for value in values {
         let name = collapse_whitespace(&value);
-        if name.is_empty()
-            || name.chars().count() > MAX_TAG_CHARS
-            || name.chars().any(char::is_control)
-        {
+        if name.is_empty() || name.chars().count() > MAX_TAG_CHARS || name.chars().any(char::is_control) {
             return Err(CommandError::new(
                 "invalid_tag",
                 format!("Each tag must contain 1 to {MAX_TAG_CHARS} visible characters."),
@@ -530,7 +543,6 @@ fn replace_note_tags(
     transaction
         .execute("DELETE FROM note_tags WHERE note_id = ?1", [note_id])
         .map_err(CommandError::database)?;
-
     for tag in tags {
         let existing: Option<String> = transaction
             .query_row(
@@ -546,9 +558,8 @@ fn replace_note_tags(
                 let id = generate_id(transaction)?;
                 transaction
                     .execute(
-                        "INSERT INTO tags (
-                             id, name, normalized_name, created_at, updated_at
-                         ) VALUES (?1, ?2, ?3, ?4, ?4)",
+                        "INSERT INTO tags (id, name, normalized_name, created_at, updated_at)
+                         VALUES (?1, ?2, ?3, ?4, ?4)",
                         params![id, tag.name, tag.normalized, now],
                     )
                     .map_err(CommandError::database)?;
@@ -562,9 +573,7 @@ fn replace_note_tags(
             )
             .map_err(CommandError::database)?;
     }
-
-    cleanup_unused_tags(transaction)?;
-    Ok(())
+    cleanup_unused_tags(transaction)
 }
 
 fn cleanup_unused_tags(connection: &Connection) -> Result<(), CommandError> {
