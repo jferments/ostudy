@@ -11,6 +11,7 @@ mod practice;
 mod practice_selection;
 mod scheduler;
 mod settings;
+mod stage3_transfer;
 mod tagged_transfer;
 mod transfer;
 mod util;
@@ -93,8 +94,8 @@ pub fn run() {
             practice::submit_practice_review,
             practice::complete_practice_session,
             analytics::get_analytics,
-            tagged_transfer::export_deck_with_tags,
-            tagged_transfer::import_deck_with_tags
+            stage3_transfer::export_deck_with_card_types,
+            stage3_transfer::import_deck_with_card_types
         ])
         .run(tauri::generate_context!())
         .expect("error while running ostudy");
