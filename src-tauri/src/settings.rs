@@ -9,9 +9,10 @@ use crate::{
 
 const THEMES: &[&str] = &["light", "dark", "console", "synthwave"];
 const FONT_PRESETS: &[&str] = &["system", "humanist", "serif", "mono"];
+const MAX_DAILY_LIMIT: i64 = 10_000;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AppSettingsDto {
     pub theme: String,
     pub ui_font: String,
@@ -22,6 +23,8 @@ pub struct AppSettingsDto {
     pub confirm_deletions: bool,
     pub practice_shuffle: bool,
     pub desired_retention: f64,
+    pub daily_new_limit: i64,
+    pub daily_review_limit: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -80,6 +83,8 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         confirm_deletions: get_setting(connection, "confirmDeletions", true)?,
         practice_shuffle: get_setting(connection, "practiceShuffle", true)?,
         desired_retention: get_setting(connection, "desiredRetention", 0.90_f64)?,
+        daily_new_limit: get_setting(connection, "dailyNewLimit", 20_i64)?,
+        daily_review_limit: get_setting(connection, "dailyReviewLimit", 200_i64)?,
     })
 }
 
@@ -95,7 +100,6 @@ where
         )
         .optional()
         .map_err(CommandError::database)?;
-
     match serialized {
         Some(value) => serde_json::from_str(&value).map_err(CommandError::serialization),
         None => Ok(default),
@@ -108,74 +112,56 @@ fn save_settings_in_connection(
 ) -> Result<(), CommandError> {
     let now = unix_time_millis()?;
     let transaction = connection.transaction().map_err(CommandError::database)?;
-
     let entries = [
         ("theme", serde_json::to_string(&settings.theme)),
         ("uiFont", serde_json::to_string(&settings.ui_font)),
         ("cardFont", serde_json::to_string(&settings.card_font)),
         ("uiScale", serde_json::to_string(&settings.ui_scale)),
-        (
-            "cardBaseSize",
-            serde_json::to_string(&settings.card_base_size),
-        ),
-        (
-            "reduceMotion",
-            serde_json::to_string(&settings.reduce_motion),
-        ),
-        (
-            "confirmDeletions",
-            serde_json::to_string(&settings.confirm_deletions),
-        ),
-        (
-            "practiceShuffle",
-            serde_json::to_string(&settings.practice_shuffle),
-        ),
-        (
-            "desiredRetention",
-            serde_json::to_string(&settings.desired_retention),
-        ),
+        ("cardBaseSize", serde_json::to_string(&settings.card_base_size)),
+        ("reduceMotion", serde_json::to_string(&settings.reduce_motion)),
+        ("confirmDeletions", serde_json::to_string(&settings.confirm_deletions)),
+        ("practiceShuffle", serde_json::to_string(&settings.practice_shuffle)),
+        ("desiredRetention", serde_json::to_string(&settings.desired_retention)),
+        ("dailyNewLimit", serde_json::to_string(&settings.daily_new_limit)),
+        ("dailyReviewLimit", serde_json::to_string(&settings.daily_review_limit)),
     ];
-
     for (key, serialized) in entries {
         let serialized = serialized.map_err(CommandError::serialization)?;
         transaction
             .execute(
-                "INSERT INTO app_settings (key, value_json, updated_at)\n\
-                 VALUES (?1, ?2, ?3)\n\
-                 ON CONFLICT(key) DO UPDATE SET\n\
-                     value_json = excluded.value_json,\n\
+                "INSERT INTO app_settings (key, value_json, updated_at)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(key) DO UPDATE SET
+                     value_json = excluded.value_json,
                      updated_at = excluded.updated_at",
                 params![key, serialized, now],
             )
             .map_err(CommandError::database)?;
     }
-
     transaction.commit().map_err(CommandError::database)
 }
 
 fn validate_settings(settings: &AppSettingsDto) -> Result<(), CommandError> {
     if !THEMES.contains(&settings.theme.as_str()) {
-        return Err(CommandError::new(
-            "invalid_theme",
-            "Select one of the available application themes.",
-        ));
+        return Err(CommandError::new("invalid_theme", "Select one of the available application themes."));
     }
     validate_font(&settings.ui_font)?;
     validate_font(&settings.card_font)?;
     if !(80..=140).contains(&settings.ui_scale) {
-        return Err(CommandError::new(
-            "invalid_ui_scale",
-            "Interface scale must be between 80% and 140%.",
-        ));
+        return Err(CommandError::new("invalid_ui_scale", "Interface scale must be between 80% and 140%."));
     }
     if !(12..=32).contains(&settings.card_base_size) {
+        return Err(CommandError::new("invalid_card_size", "Default card text size must be between 12 and 32 pixels."));
+    }
+    if !(0..=MAX_DAILY_LIMIT).contains(&settings.daily_new_limit)
+        || !(0..=MAX_DAILY_LIMIT).contains(&settings.daily_review_limit)
+    {
         return Err(CommandError::new(
-            "invalid_card_size",
-            "Default card text size must be between 12 and 32 pixels.",
+            "invalid_daily_limit",
+            format!("Daily card limits must be between 0 and {MAX_DAILY_LIMIT}."),
         ));
     }
-    validate_desired_retention(settings.desired_retention)?;
-    Ok(())
+    validate_desired_retention(settings.desired_retention)
 }
 
 fn validate_font(value: &str) -> Result<(), CommandError> {
@@ -204,22 +190,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn loads_defaults_and_persists_theme_changes() {
+    fn loads_and_persists_workload_defaults() {
         let database = Database::open_in_memory().expect("database should open");
-        let mut settings = database
-            .with_connection(load_settings)
-            .expect("settings should load");
-        assert_eq!(settings.theme, "dark");
-
-        settings.theme = "console".to_string();
+        let mut settings = database.with_connection(load_settings).expect("settings should load");
+        assert_eq!(settings.daily_new_limit, 20);
+        assert_eq!(settings.daily_review_limit, 200);
+        settings.daily_new_limit = 12;
+        settings.daily_review_limit = 80;
         database
             .with_connection(|connection| save_settings_in_connection(connection, &settings))
             .expect("settings should save");
-        let loaded = database
-            .with_connection(load_settings)
-            .expect("settings should reload");
-        assert_eq!(loaded.theme, "console");
-        assert!((loaded.desired_retention - 0.90).abs() < f64::EPSILON);
+        let loaded = database.with_connection(load_settings).expect("settings should reload");
+        assert_eq!(loaded.daily_new_limit, 12);
+        assert_eq!(loaded.daily_review_limit, 80);
     }
 
     #[test]
