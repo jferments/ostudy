@@ -316,7 +316,7 @@ mod tests {
                     .map_err(CommandError::database)?;
                 let normalized = normalized_pair(&source.front_text, &source.back_text);
                 let hash = duplicate_hash(&normalized.0, &normalized.1);
-                copy_note_to_deck(
+                copy_generated_note_to_deck(
                     &transaction,
                     &source,
                     &source_deck,
