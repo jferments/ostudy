@@ -8,6 +8,7 @@ import "./practice-confidence.css";
 import "./card-organization.css";
 import "./card-types.css";
 import "./rich-templates.css";
+import "./scheduling-controls.css";
 
 const rootElement = document.getElementById("root");
 
@@ -17,8 +18,6 @@ if (rootElement === null) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <AppErrorBoundary>
-      <App />
-    </AppErrorBoundary>
+    <AppErrorBoundary><App /></AppErrorBoundary>
   </StrictMode>,
 );
