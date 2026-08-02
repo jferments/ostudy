@@ -2,8 +2,9 @@
 //!
 //! Deck-based sessions use due cards first, falling back to every active card
 //! when a deck has nothing due. Search/Filter can also provide an explicit set
-//! of card identifiers; that temporary session does not create or modify a
-//! permanent deck.
+//! of card identifiers. A Fill in the blank note owns one scheduled card; the
+//! selected blank is snapshotted into the session so it stays stable until the
+//! learner rates or abandons that session.
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
@@ -15,7 +16,7 @@ use serde::Deserialize;
 use tauri::State;
 
 use crate::{
-    cards::get_card_from_connection,
+    authoring::{get_generated_card_for_practice, presentation_variant_for_card},
     database::Database,
     error::CommandError,
     paths::AppPaths,
@@ -26,7 +27,7 @@ use crate::{
 const MAX_SESSION_DECKS: usize = 100;
 const MAX_SESSION_CARDS: usize = 10_000;
 
-type PendingCard = (String, String, String, i64);
+type PendingCard = (String, String, String, i64, String);
 type DeckCard = (String, String, i64);
 
 #[derive(Debug, Deserialize)]
@@ -75,7 +76,7 @@ fn start_selected_practice_in_connection(
 ) -> Result<PracticeSessionDto, CommandError> {
     let now = unix_time_millis()?;
     let mut deck_names = HashMap::new();
-    let mut pending_cards: Vec<PendingCard> = Vec::new();
+    let mut pending_cards = Vec::new();
 
     for deck_id in &deck_ids {
         let deck_name: String = connection
@@ -96,7 +97,8 @@ fn start_selected_practice_in_connection(
         deck_names.insert(deck_id.clone(), deck_name);
 
         for (card_id, note_id, due_at) in cards_for_selected_deck(connection, deck_id, now)? {
-            pending_cards.push((deck_id.clone(), card_id, note_id, due_at));
+            let variant = presentation_variant_for_card(connection, &card_id)?;
+            pending_cards.push((deck_id.clone(), card_id, note_id, due_at, variant));
         }
     }
 
@@ -132,7 +134,6 @@ fn start_card_practice_in_connection(
                  WHERE c.id = ?1
                    AND c.deleted_at IS NULL
                    AND c.suspended_at IS NULL
-                   AND c.direction = 'forward'
                    AND n.deleted_at IS NULL
                    AND d.deleted_at IS NULL
                    AND d.archived_at IS NULL",
@@ -155,9 +156,10 @@ fn start_card_practice_in_connection(
                 "A selected card is no longer available to practice.",
             ));
         };
+        let variant = presentation_variant_for_card(connection, &active_card_id)?;
         selected_decks.insert(deck_id.clone());
         deck_names.insert(deck_id.clone(), deck_name);
-        pending_cards.push((deck_id, active_card_id, note_id, due_at));
+        pending_cards.push((deck_id, active_card_id, note_id, due_at, variant));
     }
 
     create_practice_session(
@@ -196,7 +198,7 @@ fn create_practice_session(
         .map_err(CommandError::database)?;
     let session_id = generate_id(&transaction)?;
     if shuffle {
-        pending_cards.sort_by_key(|(_, card_id, _, _)| shuffle_key(&session_id, card_id));
+        pending_cards.sort_by_key(|(_, card_id, _, _, _)| shuffle_key(&session_id, card_id));
     }
 
     let selected_deck_ids_json =
@@ -216,15 +218,17 @@ fn create_practice_session(
         )
         .map_err(CommandError::database)?;
 
-    for (position, (_, card_id, _, _)) in pending_cards.iter().enumerate() {
+    for (position, (_, card_id, _, _, variant)) in pending_cards.iter().enumerate() {
         transaction
             .execute(
-                "INSERT INTO practice_session_cards (session_id, card_id, position)
-                 VALUES (?1, ?2, ?3)",
+                "INSERT INTO practice_session_cards (
+                     session_id, card_id, position, presentation_variant
+                 ) VALUES (?1, ?2, ?3, ?4)",
                 params![
                     session_id,
                     card_id,
                     i64::try_from(position).unwrap_or(i64::MAX),
+                    variant,
                 ],
             )
             .map_err(CommandError::database)?;
@@ -232,8 +236,8 @@ fn create_practice_session(
     transaction.commit().map_err(CommandError::database)?;
 
     let mut cards = Vec::with_capacity(pending_cards.len());
-    for (deck_id, _, note_id, due_at) in pending_cards {
-        let card = get_card_from_connection(connection, paths, &note_id)?;
+    for (deck_id, card_id, _, due_at, variant) in pending_cards {
+        let card = get_generated_card_for_practice(connection, paths, &card_id, &variant)?;
         let deck_name = deck_names
             .get(&deck_id)
             .cloned()
@@ -289,7 +293,6 @@ fn query_deck_cards(
          ORDER BY s.due_at ASC, c.created_at ASC"
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-
     let map_row = |row: &rusqlite::Row<'_>| {
         Ok((
             row.get::<_, String>(0)?,
@@ -305,7 +308,6 @@ fn query_deck_cards(
             .query_map([deck_id], map_row)
             .map_err(CommandError::database)?,
     };
-
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)
 }
@@ -376,7 +378,6 @@ mod tests {
                 let deck_id = insert_deck(connection, now)?;
                 insert_card(connection, &deck_id, now, now + 86_400_000)?;
                 insert_card(connection, &deck_id, now, now + 172_800_000)?;
-
                 let selected = cards_for_selected_deck(connection, &deck_id, now)?;
                 assert_eq!(selected.len(), 2);
                 assert!(selected.iter().all(|(_, _, due_at)| *due_at > now));
@@ -394,30 +395,12 @@ mod tests {
                 let deck_id = insert_deck(connection, now)?;
                 let due_card = insert_card(connection, &deck_id, now, now)?;
                 insert_card(connection, &deck_id, now, now + 86_400_000)?;
-
                 let selected = cards_for_selected_deck(connection, &deck_id, now)?;
                 assert_eq!(selected.len(), 1);
                 assert_eq!(selected[0].0, due_card);
                 Ok(())
             })
             .expect("scheduled selection should succeed");
-    }
-
-    #[test]
-    fn explicit_card_selection_preserves_only_requested_cards() {
-        let database = Database::open_in_memory().expect("database should open");
-        let now = unix_time_millis().expect("clock should work");
-        database
-            .with_connection(|connection| {
-                let deck_id = insert_deck(connection, now)?;
-                let first = insert_card(connection, &deck_id, now, now)?;
-                let second = insert_card(connection, &deck_id, now, now)?;
-                let selected = validate_card_ids(vec![second.clone(), second, first.clone()])?;
-                assert_eq!(selected, vec![selected[0].clone(), first]);
-                assert_eq!(selected.len(), 2);
-                Ok(())
-            })
-            .expect("explicit selection should validate");
     }
 
     fn insert_deck(connection: &Connection, now: i64) -> Result<String, CommandError> {

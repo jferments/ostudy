@@ -26,6 +26,7 @@ else
 fi
 node "$SCRIPT_DIR/verify-project-manifests.mjs"
 node "$SCRIPT_DIR/verify-stage2.mjs"
+node "$SCRIPT_DIR/verify-stage3.mjs"
 [[ -f pnpm-lock.yaml && -f src-tauri/Cargo.lock ]] || {
   printf 'ERROR: committed pnpm and Cargo lockfiles are required.\n' >&2
   exit 1

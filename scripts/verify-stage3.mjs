@@ -1,0 +1,242 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const read = (...parts) => readFile(join(root, ...parts), "utf8");
+
+const [
+  migration6,
+  migration7,
+  database,
+  rustCommands,
+  authoringEntry,
+  authoringTypes,
+  authoringGenerated,
+  authoringTemplates,
+  authoringNormalization,
+  practiceSelection,
+  ipc,
+  app,
+  editor,
+  extensions,
+  clozeEditor,
+  templateEntry,
+  templateLayoutEditor,
+  templatesScreen,
+  cardsScreen,
+  cardStyles,
+  richStyles,
+  stage3Transfer,
+  architecture,
+  dataModel,
+] = await Promise.all([
+  read("src-tauri", "migrations", "0006_card_types_and_templates.sql"),
+  read("src-tauri", "migrations", "0007_rich_templates_single_cloze.sql"),
+  read("src-tauri", "src", "database.rs"),
+  read("src-tauri", "src", "lib.rs"),
+  read("src-tauri", "src", "authoring", "stage3_v2.rs"),
+  read("src-tauri", "src", "authoring", "stage3_v2", "types_commands.rs"),
+  read("src-tauri", "src", "authoring", "stage3_v2", "generated_cards.rs"),
+  read("src-tauri", "src", "authoring", "stage3_v2", "templates.rs"),
+  read("src-tauri", "src", "authoring", "stage3_v2", "normalization.rs"),
+  read("src-tauri", "src", "practice_selection.rs"),
+  read("src", "ipc.ts"),
+  read("src", "App.tsx"),
+  read("src", "screens", "CardEditorScreen.tsx"),
+  read("src", "editor", "extensions.ts"),
+  read("src", "screens", "card-editor", "ClozeEditor.tsx"),
+  read("src", "screens", "card-editor", "TemplateEntryForm.tsx"),
+  read("src", "screens", "templates", "TemplateLayoutEditor.tsx"),
+  read("src", "screens", "TemplatesScreen.tsx"),
+  read("src", "screens", "CardsScreen.tsx"),
+  read("src", "card-types.css"),
+  read("src", "rich-templates.css"),
+  read("src-tauri", "src", "stage3_transfer.rs"),
+  read("docs", "ARCHITECTURE.md"),
+  read("docs", "CARD-FORMAT-AND-DATA-MODEL.md"),
+]);
+const authoring = [
+  authoringEntry,
+  authoringTypes,
+  authoringGenerated,
+  authoringTemplates,
+  authoringNormalization,
+].join("\n");
+
+const failures = [];
+for (const [version, migration] of [[6, migration6], [7, migration7]]) {
+  const checksum = createHash("sha256").update(migration).digest("hex");
+  if (!database.includes(`checksum: "${checksum}"`)) {
+    failures.push(`database.rs checksum mismatch for migration 000${version}: ${checksum}`);
+  }
+}
+if (!database.includes("LATEST_SCHEMA_VERSION: i64 = 7")) {
+  failures.push("database schema version was not advanced to 7");
+}
+for (const fragment of [
+  "ALTER TABLE notes ADD COLUMN reverse_enabled",
+  "ALTER TABLE notes ADD COLUMN cloze_source",
+  "CREATE TABLE card_templates",
+]) {
+  if (!migration6.includes(fragment)) failures.push(`migration 0006 missing: ${fragment}`);
+}
+for (const fragment of [
+  "presentation_variant",
+  "front_doc TEXT",
+  "back_doc TEXT",
+  "CREATE TABLE card_template_assets",
+]) {
+  if (!migration7.includes(fragment)) failures.push(`migration 0007 missing: ${fragment}`);
+}
+if (/template_id\s+TEXT[^\n]*REFERENCES[^\n]*notes/iu.test(migration6 + migration7)) {
+  failures.push("generated notes incorrectly depend on reusable templates");
+}
+
+for (const command of [
+  "get_card_type_info",
+  "create_generated_card",
+  "update_generated_card",
+  "list_card_templates",
+  "get_card_template",
+  "create_card_template",
+  "update_card_template",
+  "delete_card_template",
+  "preview_template_cards",
+  "generate_cards_from_template",
+]) {
+  if (!rustCommands.includes(command)) failures.push(`Rust command not registered: ${command}`);
+  if (!ipc.includes(`"${command}"`)) failures.push(`frontend command missing: ${command}`);
+}
+
+for (const fragment of [
+  "normalize_stage3_schema",
+  "normalize_cloze_card_rows",
+  "cards: vec![GeneratedCardSpec",
+  'direction: "forward"',
+  "presentation_variant_for_card",
+  "render_stored_card_presentation_for_variant",
+  "templateFieldInline",
+  "templateFieldBlock",
+  "render_template_children",
+  "template_block_content_inline",
+  "card_template_assets",
+  "template_revision",
+  "insert_organized_card",
+]) {
+  if (!authoring.includes(fragment)) failures.push(`revised Stage 3 domain behavior missing: ${fragment}`);
+}
+for (const forbidden of ["eval(", "new Function", "Command::new", "std::process", "reqwest"]) {
+  if (authoring.includes(forbidden)) failures.push(`template implementation contains executable behavior: ${forbidden}`);
+}
+if (authoringGenerated.includes('direction: "cloze"')) {
+  failures.push("active cloze creation still generates sibling card identities");
+}
+
+for (const fragment of [
+  "presentation_variant_for_card",
+  "presentation_variant",
+  "get_generated_card_for_practice",
+]) {
+  if (!practiceSelection.includes(fragment)) failures.push(`practice snapshot behavior missing: ${fragment}`);
+}
+if (/c\.direction\s*=\s*'forward'/u.test(practiceSelection)) {
+  failures.push("practice still filters out reverse cards");
+}
+
+for (const fragment of [
+  "frontDoc: RichDocument",
+  "backDoc: RichDocument",
+  "doc: RichDocument",
+  "templateRevision",
+  "questionDoc",
+  "answerDoc",
+]) {
+  if (!ipc.includes(fragment)) failures.push(`rich template IPC missing: ${fragment}`);
+}
+for (const fragment of ["templateFieldInline", "templateFieldBlock"]) {
+  if (!extensions.includes(fragment)) failures.push(`template extension missing: ${fragment}`);
+}
+for (const fragment of ["Insert inline", "Insert as block", "<RichTextEditor"]) {
+  if (!templateLayoutEditor.includes(fragment)) failures.push(`template layout editor missing: ${fragment}`);
+}
+if (!templateEntry.includes("<RichTextEditor") || !templateEntry.includes("<RichTextView")) {
+  failures.push("template entry does not use rich editors and rich previews");
+}
+for (const fragment of [
+  "Field description",
+  "Question layout",
+  "Answer layout",
+  "TemplateLayoutEditor",
+]) {
+  if (!templatesScreen.includes(fragment)) failures.push(`Templates screen missing: ${fragment}`);
+}
+for (const forbidden of [
+  "Input guidance",
+  "Include the therapeutic class",
+  "Templates are safe authoring tools, not card containers",
+]) {
+  if (templatesScreen.includes(forbidden)) failures.push(`Templates screen retains obsolete copy: ${forbidden}`);
+}
+for (const fragment of ["templateRevision", "TemplateEntryForm", "generateCardsFromTemplate"]) {
+  if (!editor.includes(fragment)) failures.push(`card editor missing rich template behavior: ${fragment}`);
+}
+for (const fragment of [
+  "1 card ·",
+  "Hide one blank per review",
+  "rotates through the marked blanks",
+]) {
+  if (!clozeEditor.includes(fragment)) failures.push(`single-card cloze copy missing: ${fragment}`);
+}
+if (clozeEditor.includes("ACE inhibitors")) {
+  failures.push("cloze editor retains pharmacology-specific example copy");
+}
+for (const fragment of [
+  "selectedCards.has(card.cardId)",
+  "setPracticeCards(selected)",
+  "card.cardLabel",
+]) {
+  if (!cardsScreen.includes(fragment)) failures.push(`Search/Filter card identity behavior missing: ${fragment}`);
+}
+for (const fragment of [".cloze-editor", ".template-rule-card", ".card-type-badge"]) {
+  if (!cardStyles.includes(fragment)) failures.push(`Stage 3 base styles missing: ${fragment}`);
+}
+for (const fragment of [".template-field-placeholder", ".template-field-inserter"]) {
+  if (!richStyles.includes(fragment)) failures.push(`rich template styles missing: ${fragment}`);
+}
+
+for (const fragment of [
+  "CREATE TABLE IF NOT EXISTS card_type_metadata",
+  "restore_imported_card_types",
+  "insert_new_schedule",
+]) {
+  if (!stage3Transfer.includes(fragment)) failures.push(`studydeck support missing: ${fragment}`);
+}
+if (stage3Transfer.includes("card_templates")) {
+  failures.push("reusable authoring templates must not be exported with decks");
+}
+
+for (const fragment of ['label="Templates"', "<TemplatesScreen", "hasUnsavedTemplate"]) {
+  if (!app.includes(fragment)) failures.push(`Templates navigation missing: ${fragment}`);
+}
+for (const [name, document, fragments] of [
+  ["architecture", architecture, ["template", "cloze"]],
+  ["data model", dataModel, ["template", "cloze"]],
+]) {
+  for (const fragment of fragments) {
+    if (!document.toLowerCase().includes(fragment.toLowerCase())) {
+      failures.push(`${name} documentation missing: ${fragment}`);
+    }
+  }
+}
+
+if (failures.length > 0) {
+  console.error("Stage 3 verification failed:");
+  for (const failure of failures) console.error(`  - ${failure}`);
+  process.exit(1);
+}
+
+console.log(
+  "OK   Stage 3 schema 7, rich templates, single-schedule cloze rotation, UI, practice, search, and transfer wiring are present.",
+);

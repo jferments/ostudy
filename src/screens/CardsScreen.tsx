@@ -11,8 +11,10 @@ import {
   type CardSearchInput,
   type CardSearchPage,
   type CardSort,
+  type CardTemplate,
   type Deck,
   type DueFilter,
+  type GenerateTemplateCardsResult,
   type OrganizedCard,
   type ReviewedFilter,
   type SelectionCard,
@@ -86,6 +88,7 @@ export function CardsScreen({
     [deckIds, dueFilter, normalizedSort, query, reviewedFilter, tagIds],
   );
   const selected = useMemo(() => [...selectedCards.values()], [selectedCards]);
+  const selectedNotes = useMemo(() => uniqueNotes(selected), [selected]);
   const selectedDeck =
     deckIds.size === 1
       ? decks.find((deck) => deck.id === [...deckIds][0]) ?? null
@@ -108,9 +111,8 @@ export function CardsScreen({
     async (offset = 0, append = false): Promise<void> => {
       const requestId = requestSequence.current + 1;
       requestSequence.current = requestId;
-      if (append) {
-        setIsLoadingMore(true);
-      } else {
+      if (append) setIsLoadingMore(true);
+      else {
         setIsLoading(true);
         setPage({ cards: [], totalCount: 0 });
       }
@@ -141,16 +143,12 @@ export function CardsScreen({
   }, [loadTags]);
 
   useEffect(() => {
-    if (query.trim() === "" && sort === "relevance") {
-      setSort("updated_desc");
-    }
+    if (query.trim() === "" && sort === "relevance") setSort("updated_desc");
   }, [query, sort]);
 
   useEffect(() => {
     setSelectedCards(new Map());
-    const timeout = window.setTimeout(() => {
-      void loadCards();
-    }, 180);
+    const timeout = window.setTimeout(() => void loadCards(), 180);
     return () => window.clearTimeout(timeout);
   }, [loadCards]);
 
@@ -184,8 +182,8 @@ export function CardsScreen({
   function toggleSelected(card: SelectionCard): void {
     setSelectedCards((current) => {
       const next = new Map(current);
-      if (next.has(card.noteId)) next.delete(card.noteId);
-      else next.set(card.noteId, card);
+      if (next.has(card.cardId)) next.delete(card.cardId);
+      else next.set(card.cardId, card);
       return next;
     });
   }
@@ -193,9 +191,7 @@ export function CardsScreen({
   function selectVisible(): void {
     setSelectedCards((current) => {
       const next = new Map(current);
-      for (const card of page.cards) {
-        next.set(card.noteId, selectionFromRow(card));
-      }
+      for (const card of page.cards) next.set(card.cardId, selectionFromRow(card));
       return next;
     });
   }
@@ -206,7 +202,7 @@ export function CardsScreen({
     setErrorMessage(null);
     try {
       const matches = await listMatchingCards(searchInput);
-      setSelectedCards(new Map(matches.map((card) => [card.noteId, card])));
+      setSelectedCards(new Map(matches.map((card) => [card.cardId, card])));
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -215,8 +211,9 @@ export function CardsScreen({
   }
 
   function beginMoveCopy(cards: SelectionCard[]): void {
-    if (cards.length === 0) return;
-    setMoveCopyCards(cards);
+    const notes = uniqueNotes(cards);
+    if (notes.length === 0) return;
+    setMoveCopyCards(notes);
     setSelectionAction("move_copy");
   }
 
@@ -253,7 +250,7 @@ export function CardsScreen({
     if (selectionAction === "add_tags" || selectionAction === "remove_tags") {
       return (
         <BulkTagModal
-          cards={selected}
+          cards={selectedNotes}
           mode={selectionAction === "add_tags" ? "add" : "remove"}
           suggestions={tags}
           onClose={() => setSelectionAction(null)}
@@ -265,7 +262,7 @@ export function CardsScreen({
     if (selectionAction === "delete") {
       return (
         <DeleteCardsModal
-          cards={selected}
+          cards={selectedNotes}
           onClose={() => setSelectionAction(null)}
           onComplete={completeSelectionMutation}
           showToast={showToast}
@@ -329,13 +326,34 @@ export function CardsScreen({
               setCreatingDeckId(null);
             }
             await refreshAfterMutation();
-            showToast(
-              "success",
-              wasEditing ? "Flashcard updated." : "Flashcard saved.",
-            );
+            showToast("success", wasEditing ? "Flashcard updated." : "Flashcard saved.");
             if (saved.deckId !== deck.id) {
               showToast("info", "The card is now in a different deck.");
             }
+          }}
+          onTemplateGenerated={async (
+            result: GenerateTemplateCardsResult,
+            continueAdding: boolean,
+            template: CardTemplate,
+          ) => {
+            onDirtyChange(false);
+            if (!continueAdding) {
+              setEditingCard(null);
+              setCreatingDeckId(null);
+            }
+            await refreshAfterMutation();
+            const duplicateMessage =
+              result.skippedDuplicates > 0
+                ? ` ${result.skippedDuplicates} exact ${
+                    result.skippedDuplicates === 1 ? "duplicate was" : "duplicates were"
+                  } skipped.`
+                : "";
+            showToast(
+              result.createdCount > 0 ? "success" : "info",
+              `Generated ${result.createdCount} ${
+                result.createdCount === 1 ? "card" : "cards"
+              } from “${template.name}”.${duplicateMessage}`,
+            );
           }}
         />
         {renderSelectionModal()}
@@ -349,8 +367,8 @@ export function CardsScreen({
         <div>
           <h1>Search/Filter</h1>
           <p>
-            Find cards across decks, combine filters, and perform bulk management or
-            practice operations on the results.
+            Find independently scheduled cards across decks, combine filters, and
+            perform bulk management or practice operations on the results.
           </p>
         </div>
         <div className="header-actions wrap-actions">
@@ -426,9 +444,7 @@ export function CardsScreen({
             onChange={(event: ChangeEvent<HTMLInputElement>) => {
               const value = event.currentTarget.value;
               setQuery(value);
-              if (value.trim() !== "" && sort === "updated_desc") {
-                setSort("relevance");
-              }
+              if (value.trim() !== "" && sort === "updated_desc") setSort("relevance");
             }}
           />
         </label>
@@ -534,10 +550,10 @@ export function CardsScreen({
             }}
           >
             <option value="">Actions…</option>
-            <option value="move_copy">Move / copy</option>
+            <option value="move_copy">Move / copy source notes</option>
             <option value="add_tags">Add tags</option>
             <option value="remove_tags">Remove tags</option>
-            <option value="delete">Delete</option>
+            <option value="delete">Delete source notes</option>
           </select>
           <button
             type="button"
@@ -609,21 +625,13 @@ export function CardsScreen({
             </button>
           </div>
 
-          <div
-            className="organized-card-list"
-            role="table"
-            aria-label="Matching cards"
-          >
+          <div className="organized-card-list" role="table" aria-label="Matching cards">
             {page.cards.map((card) => {
-              const selectedRow = selectedCards.has(card.noteId);
+              const selectedRow = selectedCards.has(card.cardId);
               return (
                 <article
-                  key={card.noteId}
-                  className={
-                    selectedRow
-                      ? "organized-card-row selected"
-                      : "organized-card-row"
-                  }
+                  key={card.cardId}
+                  className={selectedRow ? "organized-card-row selected" : "organized-card-row"}
                   role="row"
                 >
                   <label
@@ -642,7 +650,10 @@ export function CardsScreen({
                     className="organized-card-main"
                     onClick={() => void openCard(card.noteId)}
                   >
-                    <span className="organized-card-deck">{card.deckName}</span>
+                    <span className="organized-card-deck">
+                      {card.deckName}
+                      <span className="card-type-badge">{card.cardLabel}</span>
+                    </span>
                     <span className="organized-card-sides">
                       <span>
                         <small>Question</small>
@@ -712,6 +723,14 @@ export function CardsScreen({
       ) : null}
     </div>
   );
+}
+
+function uniqueNotes(cards: SelectionCard[]): SelectionCard[] {
+  const byNoteId = new Map<string, SelectionCard>();
+  for (const card of cards) {
+    if (!byNoteId.has(card.noteId)) byNoteId.set(card.noteId, card);
+  }
+  return [...byNoteId.values()];
 }
 
 function selectionFromRow(card: CardBrowserRow): SelectionCard {

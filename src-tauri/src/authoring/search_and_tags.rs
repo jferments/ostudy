@@ -137,7 +137,6 @@ fn build_search_sql(input: &SearchCardsInput, now: i64) -> Result<SearchSql, Com
         "n.deleted_at IS NULL".to_string(),
         "d.deleted_at IS NULL".to_string(),
         "d.archived_at IS NULL".to_string(),
-        "c.direction = 'forward'".to_string(),
     ];
     let mut values: Vec<SqlValue> = Vec::new();
 
@@ -213,14 +212,16 @@ fn build_search_sql(input: &SearchCardsInput, now: i64) -> Result<SearchSql, Com
 
     let order_sql = match input.sort.as_str() {
         "relevance" if fts_query_is_present(&input.query) => {
-            "bm25(card_search_fts) ASC, n.updated_at DESC"
+            "bm25(card_search_fts) ASC, n.updated_at DESC, c.template_ordinal ASC"
         }
-        "question_asc" => "n.front_text COLLATE NOCASE ASC, n.updated_at DESC",
-        "due_asc" => "s.due_at ASC, n.updated_at DESC",
+        "question_asc" => {
+            "n.front_text COLLATE NOCASE ASC, n.updated_at DESC, c.template_ordinal ASC"
+        }
+        "due_asc" => "s.due_at ASC, n.updated_at DESC, c.template_ordinal ASC",
         "last_reviewed_desc" => {
-            "CASE WHEN s.reps > 0 THEN 0 ELSE 1 END ASC, s.last_review_at DESC, n.updated_at DESC"
+            "CASE WHEN s.reps > 0 THEN 0 ELSE 1 END ASC, s.last_review_at DESC, n.updated_at DESC, c.template_ordinal ASC"
         }
-        _ => "n.updated_at DESC, n.created_at DESC",
+        _ => "n.updated_at DESC, n.created_at DESC, c.template_ordinal ASC, c.direction ASC",
     };
 
     Ok(SearchSql {
@@ -264,8 +265,6 @@ fn search_cards_in_connection(
              n.id,
              c.deck_id,
              d.name,
-             n.front_text,
-             n.back_text,
              COALESCE((
                  SELECT group_concat(t.name, char(31))
                  FROM note_tags nt
@@ -293,27 +292,60 @@ fn search_cards_in_connection(
     let mut statement = connection
         .prepare(&query_sql)
         .map_err(CommandError::database)?;
-    let cards = statement
+    let raw_cards = statement
         .query_map(params_from_iter(search.values.iter()), |row| {
-            let tags: String = row.get(6)?;
-            Ok(CardBrowserRowDto {
-                card_id: row.get(0)?,
-                note_id: row.get(1)?,
-                deck_id: row.get(2)?,
-                deck_name: row.get(3)?,
-                front_text: row.get(4)?,
-                back_text: row.get(5)?,
-                tags: split_tags(&tags),
-                due_at: row.get(7)?,
-                last_reviewed_at: row.get(8)?,
-                review_count: row.get(9)?,
-                created_at: row.get(10)?,
-                updated_at: row.get(11)?,
-            })
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, Option<i64>>(6)?,
+                row.get::<_, i64>(7)?,
+                row.get::<_, i64>(8)?,
+                row.get::<_, i64>(9)?,
+            ))
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
+
+    let cards = raw_cards
+        .into_iter()
+        .map(
+            |(
+                card_id,
+                note_id,
+                deck_id,
+                deck_name,
+                tags,
+                due_at,
+                last_reviewed_at,
+                review_count,
+                created_at,
+                updated_at,
+            )| {
+                let rendered = render_stored_card_presentation(connection, &card_id)?;
+                Ok(CardBrowserRowDto {
+                    card_id,
+                    note_id,
+                    deck_id,
+                    deck_name,
+                    card_type: rendered.card_type,
+                    card_label: rendered.card_label,
+                    front_text: rendered.front_text,
+                    back_text: rendered.back_text,
+                    tags: split_tags(&tags),
+                    due_at,
+                    last_reviewed_at,
+                    review_count,
+                    created_at,
+                    updated_at,
+                })
+            },
+        )
+        .collect::<Result<Vec<_>, CommandError>>()?;
 
     Ok(CardSearchPageDto { cards, total_count })
 }

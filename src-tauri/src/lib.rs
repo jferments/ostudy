@@ -11,6 +11,7 @@ mod practice;
 mod practice_selection;
 mod scheduler;
 mod settings;
+mod stage3_transfer;
 mod tagged_transfer;
 mod transfer;
 mod util;
@@ -69,9 +70,20 @@ pub fn run() {
             authoring::find_duplicate_cards,
             authoring::analyze_bulk_cards,
             authoring::bulk_create_cards,
-            authoring::transfer_cards,
+            // Registered externally as the stable `transfer_cards` IPC command.
+            authoring::transfer_generated_cards,
             authoring::bulk_tag_cards,
             authoring::delete_cards,
+            authoring::get_card_type_info,
+            authoring::create_generated_card,
+            authoring::update_generated_card,
+            authoring::list_card_templates,
+            authoring::get_card_template,
+            authoring::create_card_template,
+            authoring::update_card_template,
+            authoring::delete_card_template,
+            authoring::preview_template_cards,
+            authoring::generate_cards_from_template,
             assets::import_image,
             settings::get_settings,
             settings::save_settings,
@@ -83,8 +95,8 @@ pub fn run() {
             practice::submit_practice_review,
             practice::complete_practice_session,
             analytics::get_analytics,
-            tagged_transfer::export_deck_with_tags,
-            tagged_transfer::import_deck_with_tags
+            stage3_transfer::export_deck_with_card_types,
+            authoring::import_deck_with_single_cloze_normalization
         ])
         .run(tauri::generate_context!())
         .expect("error while running ostudy");

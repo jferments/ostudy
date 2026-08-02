@@ -12,11 +12,11 @@ and reviewed before work starts on the next one.
 - Voluntary study when a deck has no cards due.
 - Locked Cargo builds and the card-content security boundary.
 
-## Stage 2 — Organize, find, and enter cards — complete in this branch
+## Stage 2 — Organize, find, and enter cards — complete
 
 - Reusable tags attached to note source content.
 - SQLite FTS5 search across questions, answers, and tags.
-- A whole-library Cards screen with deck, tag, and schedule filters.
+- A whole-library Search/Filter screen with deck, tag, and schedule filters.
 - Sort controls, result paging, multi-selection, and keyboard navigation.
 - Transactional bulk card entry.
 - Exact normalized duplicate detection with explicit override.
@@ -24,15 +24,24 @@ and reviewed before work starts on the next one.
 - Copy cards with fresh schedules.
 - Optional tag metadata in backward-compatible `.studydeck` packages.
 
-## Stage 3 — Card types and safe templates
+## Stage 3 — Card types and safe templates — complete in this branch
 
-- Reverse cards.
-- **Fill in the blank** cards.
-- A small data-only template language with named fields such as
-  `{{medication name}}` and `{{side effects}}`.
-- Reusable card templates that generate multiple cards from one set of fields.
-- Validation that prevents template content from executing JavaScript, SQL,
-  shell commands, raw HTML, filesystem operations, or network requests.
+- A **Card template** selector that defaults to Basic.
+- **Reverse cards** generated from Basic notes, with separate forward and reverse
+  schedules.
+- **Fill in the blank** authoring by selecting text and marking stable numbered
+  blank regions.
+- One independently scheduled card per blank or one card hiding all blanks.
+- Stable generated-card identities that preserve schedules and review history
+  when a direction or cloze mode is disabled and later re-enabled.
+- A **Templates** sidebar workspace for reusable field definitions and
+  question/answer rules.
+- A bounded data-only `{{field name}}` substitution language with no evaluator,
+  script, SQL, shell, raw HTML, filesystem, or network capabilities.
+- Permanent ordinary Basic cards generated from one completed template form.
+- Template deletion that never deletes or changes previously generated cards.
+- Generated-card support across Search/Filter, Practice, analytics, tags,
+  move/copy, duplicate handling, and `.studydeck` transfer.
 
 ## Stage 4 — Reliable editing and media layout
 

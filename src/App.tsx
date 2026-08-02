@@ -7,6 +7,7 @@ import { CardsScreen } from "./screens/CardsScreen";
 import { DecksScreen } from "./screens/DecksScreen";
 import { PracticeScreen } from "./screens/PracticeScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
+import { TemplatesScreen } from "./screens/TemplatesScreen";
 import {
   getErrorMessage,
   getSettings,
@@ -18,6 +19,7 @@ import {
 export type AppSection =
   | "decks"
   | "cards"
+  | "templates"
   | "practice"
   | "analytics"
   | "settings";
@@ -56,6 +58,7 @@ function App() {
     useState<PracticeLaunchRequest | null>(null);
   const practiceRequestSequence = useRef(1);
   const [hasUnsavedCard, setHasUnsavedCard] = useState(false);
+  const [hasUnsavedTemplate, setHasUnsavedTemplate] = useState(false);
   const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
 
   const showToast = useCallback(
@@ -103,14 +106,14 @@ function App() {
   }, [activeSettings]);
 
   useEffect(() => {
-    if (!hasUnsavedCard && !hasUnsavedSettings) return;
+    if (!hasUnsavedCard && !hasUnsavedTemplate && !hasUnsavedSettings) return;
     function warnBeforeClose(event: BeforeUnloadEvent): void {
       event.preventDefault();
       event.returnValue = "";
     }
     window.addEventListener("beforeunload", warnBeforeClose);
     return () => window.removeEventListener("beforeunload", warnBeforeClose);
-  }, [hasUnsavedCard, hasUnsavedSettings]);
+  }, [hasUnsavedCard, hasUnsavedSettings, hasUnsavedTemplate]);
 
   function confirmDiscardCard(): boolean {
     if (!hasUnsavedCard) return true;
@@ -118,6 +121,15 @@ function App() {
       return false;
     }
     setHasUnsavedCard(false);
+    return true;
+  }
+
+  function confirmDiscardTemplate(): boolean {
+    if (section !== "templates" || !hasUnsavedTemplate) return true;
+    if (!window.confirm("Discard the unsaved changes to this card template?")) {
+      return false;
+    }
+    setHasUnsavedTemplate(false);
     return true;
   }
 
@@ -131,7 +143,13 @@ function App() {
 
   function navigate(next: AppSection): void {
     if (next === section && next !== "practice") return;
-    if (!confirmDiscardCard() || !confirmDiscardSettings()) return;
+    if (
+      !confirmDiscardCard() ||
+      !confirmDiscardTemplate() ||
+      !confirmDiscardSettings()
+    ) {
+      return;
+    }
     if (next === "practice") {
       const requestId = practiceRequestSequence.current;
       practiceRequestSequence.current += 1;
@@ -151,7 +169,13 @@ function App() {
   }
 
   function practiceDeck(deckId: string): void {
-    if (!confirmDiscardCard() || !confirmDiscardSettings()) return;
+    if (
+      !confirmDiscardCard() ||
+      !confirmDiscardTemplate() ||
+      !confirmDiscardSettings()
+    ) {
+      return;
+    }
     const requestId = practiceRequestSequence.current;
     practiceRequestSequence.current += 1;
     setPracticeLaunch({
@@ -165,7 +189,13 @@ function App() {
 
   function practiceCards(cardIds: string[]): void {
     if (cardIds.length === 0) return;
-    if (!confirmDiscardCard() || !confirmDiscardSettings()) return;
+    if (
+      !confirmDiscardCard() ||
+      !confirmDiscardTemplate() ||
+      !confirmDiscardSettings()
+    ) {
+      return;
+    }
     const requestId = practiceRequestSequence.current;
     practiceRequestSequence.current += 1;
     setPracticeLaunch({
@@ -224,6 +254,12 @@ function App() {
             onClick={() => navigate("cards")}
           />
           <NavButton
+            active={section === "templates"}
+            icon="▧"
+            label="Templates"
+            onClick={() => navigate("templates")}
+          />
+          <NavButton
             active={section === "practice"}
             icon="▶"
             label="Practice"
@@ -262,6 +298,12 @@ function App() {
               refreshDecks={refreshDecks}
               onPracticeCards={practiceCards}
               onDirtyChange={setHasUnsavedCard}
+              showToast={showToast}
+            />
+          ) : null}
+          {section === "templates" ? (
+            <TemplatesScreen
+              onDirtyChange={setHasUnsavedTemplate}
               showToast={showToast}
             />
           ) : null}

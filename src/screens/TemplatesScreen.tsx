@@ -1,0 +1,644 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  createCardTemplate,
+  deleteCardTemplate,
+  getErrorMessage,
+  listCardTemplates,
+  updateCardTemplate,
+  type Asset,
+  type CardTemplate,
+  type CardTemplateField,
+  type CardTemplateFieldInput,
+  type CardTemplateRuleInput,
+  type RichDocument,
+} from "../ipc";
+import { EMPTY_RICH_DOCUMENT, cloneDocument } from "../editor/richText";
+import { TemplateLayoutEditor } from "./templates/TemplateLayoutEditor";
+
+interface TemplatesScreenProps {
+  onDirtyChange: (dirty: boolean) => void;
+  showToast: (kind: "success" | "error" | "info", text: string) => void;
+}
+
+interface FieldDraft extends CardTemplateFieldInput {
+  id: string;
+  key: string;
+  position: number;
+}
+
+interface RuleDraft extends CardTemplateRuleInput {
+  id: string;
+  key: string;
+  position: number;
+}
+
+interface TemplateDraft {
+  id?: string;
+  revision?: number;
+  name: string;
+  description: string;
+  fields: FieldDraft[];
+  rules: RuleDraft[];
+  assets: Asset[];
+}
+
+export function TemplatesScreen({
+  onDirtyChange,
+  showToast,
+}: TemplatesScreenProps) {
+  const [templates, setTemplates] = useState<CardTemplate[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [draft, setDraft] = useState<TemplateDraft | null>(null);
+  const [baseline, setBaseline] = useState<TemplateDraft | null>(null);
+  const savingRef = useRef(false);
+  const dirty = useMemo(
+    () => draft !== null && JSON.stringify(draft) !== JSON.stringify(baseline),
+    [baseline, draft],
+  );
+
+  useEffect(() => {
+    void loadTemplates();
+  }, []);
+
+  useEffect(() => {
+    onDirtyChange(dirty);
+    return () => onDirtyChange(false);
+  }, [dirty, onDirtyChange]);
+
+  async function loadTemplates(): Promise<void> {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      setTemplates(await listCardTemplates());
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function beginCreate(): void {
+    const next = newTemplateDraft();
+    setDraft(next);
+    setBaseline(next);
+    setErrorMessage(null);
+  }
+
+  function beginEdit(template: CardTemplate): void {
+    const next = draftFromTemplate(template);
+    setDraft(next);
+    setBaseline(next);
+    setErrorMessage(null);
+  }
+
+  function cancelEdit(): void {
+    if (isSaving) return;
+    if (dirty && !window.confirm("Discard the changes to this card template?")) return;
+    setDraft(null);
+    setBaseline(null);
+    setErrorMessage(null);
+  }
+
+  async function saveTemplate(): Promise<void> {
+    if (!draft || savingRef.current) return;
+    const validation = validateDraft(draft);
+    if (validation) {
+      setErrorMessage(validation);
+      return;
+    }
+    savingRef.current = true;
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      const input = {
+        name: draft.name,
+        description: draft.description,
+        fields: draft.fields.map(({ id, name, description }) => ({
+          id,
+          name,
+          description,
+        })),
+        rules: draft.rules.map(({ id, name, frontDoc, backDoc }) => ({
+          id,
+          name,
+          frontDoc,
+          backDoc,
+        })),
+      };
+      const saved = draft.id
+        ? await updateCardTemplate({
+            ...input,
+            templateId: draft.id,
+            revision: draft.revision ?? 1,
+          })
+        : await createCardTemplate(input);
+      setTemplates((current) => {
+        const withoutSaved = current.filter((template) => template.id !== saved.id);
+        return [...withoutSaved, saved].sort((left, right) =>
+          left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+        );
+      });
+      setDraft(null);
+      setBaseline(null);
+      onDirtyChange(false);
+      showToast("success", draft.id ? "Card template updated." : "Card template created.");
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
+    }
+  }
+
+  async function removeTemplate(template: CardTemplate): Promise<void> {
+    if (
+      !window.confirm(
+        `Delete “${template.name}”?\n\nCards already generated from this template will remain in their decks.`,
+      )
+    ) {
+      return;
+    }
+    setErrorMessage(null);
+    try {
+      await deleteCardTemplate(template.id);
+      setTemplates((current) => current.filter((item) => item.id !== template.id));
+      if (draft?.id === template.id) {
+        setDraft(null);
+        setBaseline(null);
+      }
+      showToast("success", `Deleted “${template.name}”. Existing cards were not changed.`);
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    }
+  }
+
+  function addAsset(asset: Asset): void {
+    setDraft((current) =>
+      current && !current.assets.some((item) => item.id === asset.id)
+        ? { ...current, assets: [...current.assets, asset] }
+        : current,
+    );
+  }
+
+  if (draft) {
+    const layoutFields: CardTemplateField[] = draft.fields.map((field, index) => ({
+      id: field.id,
+      name: field.name,
+      description: field.description,
+      position: index,
+    }));
+    return (
+      <div className="screen templates-screen" aria-busy={isSaving}>
+        <header className="screen-header compact-screen-header">
+          <div>
+            <button type="button" className="back-button" onClick={cancelEdit}>
+              ← Templates
+            </button>
+            <h1>{draft.id ? "Edit card template" : "New card template"}</h1>
+            <p>
+              Define reusable rich fields and design the question and answer sides of
+              every card this form generates.
+            </p>
+          </div>
+          <div className="header-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={isSaving}
+              onClick={cancelEdit}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={isSaving || !dirty}
+              onClick={() => void saveTemplate()}
+            >
+              {isSaving ? "Saving…" : "Save template"}
+            </button>
+          </div>
+        </header>
+
+        {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+
+        <div className="template-editor-layout">
+          <section className="template-editor-section">
+            <div className="section-heading compact-section-heading">
+              <div>
+                <h2>Template details</h2>
+                <p>Name this reusable entry form and optionally describe its purpose.</p>
+              </div>
+            </div>
+            <div className="template-details-grid">
+              <label>
+                <span>Name</span>
+                <input
+                  value={draft.name}
+                  maxLength={80}
+                  disabled={isSaving}
+                  placeholder="Template name"
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setDraft((current) => current ? { ...current, name: value } : current);
+                  }}
+                />
+              </label>
+              <label>
+                <span>Description <small>optional</small></span>
+                <textarea
+                  value={draft.description}
+                  maxLength={2000}
+                  rows={3}
+                  disabled={isSaving}
+                  placeholder="Describe what this template helps you enter."
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setDraft((current) => current ? { ...current, description: value } : current);
+                  }}
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="template-editor-section">
+            <div className="section-heading compact-section-heading">
+              <div>
+                <h2>Fields</h2>
+                <p>Each field becomes a full rich-text editor when this template is used.</p>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={isSaving || draft.fields.length >= 32}
+                onClick={() =>
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          fields: [
+                            ...current.fields,
+                            createFieldDraft(current.fields.length),
+                          ],
+                        }
+                      : current,
+                  )
+                }
+              >
+                Add field
+              </button>
+            </div>
+            <div className="template-definition-list">
+              {draft.fields.map((field, index) => (
+                <article key={field.key} className="template-definition-row">
+                  <span className="definition-number">{index + 1}</span>
+                  <label>
+                    <span>Field name</span>
+                    <input
+                      value={field.name}
+                      maxLength={64}
+                      disabled={isSaving}
+                      placeholder="Field name"
+                      onChange={(event) =>
+                        updateField(setDraft, field.key, { name: event.currentTarget.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Field description <small>optional</small></span>
+                    <input
+                      value={field.description}
+                      maxLength={500}
+                      disabled={isSaving}
+                      placeholder="Enter a description of this field."
+                      onChange={(event) =>
+                        updateField(setDraft, field.key, {
+                          description: event.currentTarget.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="danger-text"
+                    disabled={isSaving || draft.fields.length === 1}
+                    onClick={() =>
+                      setDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              fields: current.fields.filter((item) => item.key !== field.key),
+                            }
+                          : current,
+                      )
+                    }
+                  >
+                    Remove
+                  </button>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="template-editor-section">
+            <div className="section-heading compact-section-heading">
+              <div>
+                <h2>Cards generated</h2>
+                <p>
+                  Design each question and answer with the full editor. Insert short
+                  fields inline or place lists, images, and multi-paragraph fields as blocks.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={isSaving || draft.rules.length >= 32}
+                onClick={() =>
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          rules: [...current.rules, createRuleDraft(current.rules.length)],
+                        }
+                      : current,
+                  )
+                }
+              >
+                Add card rule
+              </button>
+            </div>
+
+            <div className="template-rule-list rich-template-rule-list">
+              {draft.rules.map((rule, index) => (
+                <article key={rule.key} className="template-rule-card rich-template-rule-card">
+                  <header>
+                    <span className="definition-number">{index + 1}</span>
+                    <label>
+                      <span>Card name</span>
+                      <input
+                        value={rule.name}
+                        maxLength={80}
+                        disabled={isSaving}
+                        placeholder="Card name"
+                        onChange={(event) =>
+                          updateRule(setDraft, rule.key, { name: event.currentTarget.value })
+                        }
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="danger-text"
+                      disabled={isSaving || draft.rules.length === 1}
+                      onClick={() =>
+                        setDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                rules: current.rules.filter((item) => item.key !== rule.key),
+                              }
+                            : current,
+                        )
+                      }
+                    >
+                      Remove
+                    </button>
+                  </header>
+                  <TemplateLayoutEditor
+                    label="Question layout"
+                    document={rule.frontDoc}
+                    fields={layoutFields}
+                    assets={draft.assets}
+                    disabled={isSaving}
+                    onAssetImported={addAsset}
+                    onChange={(frontDoc) => updateRule(setDraft, rule.key, { frontDoc })}
+                  />
+                  <TemplateLayoutEditor
+                    label="Answer layout"
+                    document={rule.backDoc}
+                    fields={layoutFields}
+                    assets={draft.assets}
+                    disabled={isSaving}
+                    onAssetImported={addAsset}
+                    onChange={(backDoc) => updateRule(setDraft, rule.key, { backDoc })}
+                  />
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="screen templates-screen">
+      <header className="screen-header compact-screen-header">
+        <div>
+          <h1>Templates</h1>
+          <p>Build reusable rich entry forms that generate permanent Basic cards.</p>
+        </div>
+        <button type="button" className="primary-button" onClick={beginCreate}>
+          New template
+        </button>
+      </header>
+
+      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+      {isLoading ? <div className="inline-progress">Loading templates…</div> : null}
+
+      {!isLoading && templates.length === 0 ? (
+        <section className="compact-empty-state large-empty-state">
+          <div className="empty-icon" aria-hidden="true">▧</div>
+          <h2>Create a reusable card template</h2>
+          <p>
+            Define the facts you enter once, then design one or more cards that use
+            those fields as rich text, lists, or images.
+          </p>
+          <button type="button" className="primary-button" onClick={beginCreate}>
+            Create template
+          </button>
+        </section>
+      ) : null}
+
+      {templates.length > 0 ? (
+        <section className="template-library-grid" aria-label="Card templates">
+          {templates.map((template) => (
+            <article className="template-library-card" key={template.id}>
+              <button
+                type="button"
+                className="template-library-main"
+                onClick={() => beginEdit(template)}
+              >
+                <span className="template-library-mark" aria-hidden="true">▧</span>
+                <span>
+                  <strong>{template.name}</strong>
+                  {template.description ? <small>{template.description}</small> : null}
+                </span>
+                <span className="template-library-counts">
+                  <b>{template.fields.length}</b> fields
+                  <b>{template.rules.length}</b> cards
+                </span>
+              </button>
+              <div className="template-library-actions">
+                <button type="button" onClick={() => beginEdit(template)}>Edit</button>
+                <button
+                  type="button"
+                  className="danger-text"
+                  onClick={() => void removeTemplate(template)}
+                >
+                  Delete
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function newTemplateDraft(): TemplateDraft {
+  const field = createFieldDraft(0);
+  return {
+    name: "",
+    description: "",
+    fields: [field],
+    rules: [createRuleDraft(0, field)],
+    assets: [],
+  };
+}
+
+function createFieldDraft(position: number): FieldDraft {
+  const id = createEntityId();
+  return {
+    id,
+    key: id,
+    name: position === 0 ? "Field" : "",
+    description: "",
+    position,
+  };
+}
+
+function createRuleDraft(position: number, field?: FieldDraft): RuleDraft {
+  const id = createEntityId();
+  const fieldId = field?.id;
+  const label = field?.name || "Field";
+  return {
+    id,
+    key: id,
+    name: position === 0 ? "Card" : "",
+    frontDoc: fieldId
+      ? documentWithInlineField(fieldId, label)
+      : cloneDocument(EMPTY_RICH_DOCUMENT),
+    backDoc: fieldId
+      ? documentWithBlockField(fieldId, label)
+      : cloneDocument(EMPTY_RICH_DOCUMENT),
+    position,
+  };
+}
+
+function documentWithInlineField(fieldId: string, label: string): RichDocument {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Question about " },
+          { type: "templateFieldInline", attrs: { fieldId, label } },
+        ],
+      },
+    ],
+  };
+}
+
+function documentWithBlockField(fieldId: string, label: string): RichDocument {
+  return {
+    type: "doc",
+    content: [
+      { type: "templateFieldBlock", attrs: { fieldId, label } },
+    ],
+  };
+}
+
+function draftFromTemplate(template: CardTemplate): TemplateDraft {
+  return {
+    id: template.id,
+    revision: template.revision,
+    name: template.name,
+    description: template.description,
+    fields: template.fields.map((field) => ({
+      id: field.id,
+      key: field.id,
+      name: field.name,
+      description: field.description,
+      position: field.position,
+    })),
+    rules: template.rules.map((rule) => ({
+      id: rule.id,
+      key: rule.id,
+      name: rule.name,
+      frontDoc: cloneDocument(rule.frontDoc),
+      backDoc: cloneDocument(rule.backDoc),
+      position: rule.position,
+    })),
+    assets: template.assets,
+  };
+}
+
+function validateDraft(draft: TemplateDraft): string | null {
+  if (draft.name.trim() === "") return "Enter a template name.";
+  if (draft.fields.some((field) => field.name.trim() === "")) {
+    return "Give every field a name.";
+  }
+  const normalizedFields = draft.fields.map((field) =>
+    field.name.trim().replace(/\s+/gu, " ").toLocaleLowerCase(),
+  );
+  if (new Set(normalizedFields).size !== normalizedFields.length) {
+    return "Field names must be unique.";
+  }
+  if (draft.rules.some((rule) => rule.name.trim() === "")) {
+    return "Give every generated card a name.";
+  }
+  return null;
+}
+
+function updateField(
+  setDraft: React.Dispatch<React.SetStateAction<TemplateDraft | null>>,
+  key: string,
+  patch: Partial<FieldDraft>,
+): void {
+  setDraft((current) =>
+    current
+      ? {
+          ...current,
+          fields: current.fields.map((field) =>
+            field.key === key ? { ...field, ...patch } : field,
+          ),
+        }
+      : current,
+  );
+}
+
+function updateRule(
+  setDraft: React.Dispatch<React.SetStateAction<TemplateDraft | null>>,
+  key: string,
+  patch: Partial<RuleDraft>,
+): void {
+  setDraft((current) =>
+    current
+      ? {
+          ...current,
+          rules: current.rules.map((rule) =>
+            rule.key === key ? { ...rule, ...patch } : rule,
+          ),
+        }
+      : current,
+  );
+}
+
+function createEntityId(): string {
+  return crypto.randomUUID().replaceAll("-", "");
+}
