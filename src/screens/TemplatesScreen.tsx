@@ -6,10 +6,15 @@ import {
   getErrorMessage,
   listCardTemplates,
   updateCardTemplate,
+  type Asset,
   type CardTemplate,
+  type CardTemplateField,
   type CardTemplateFieldInput,
   type CardTemplateRuleInput,
+  type RichDocument,
 } from "../ipc";
+import { EMPTY_RICH_DOCUMENT, cloneDocument } from "../editor/richText";
+import { TemplateLayoutEditor } from "./templates/TemplateLayoutEditor";
 
 interface TemplatesScreenProps {
   onDirtyChange: (dirty: boolean) => void;
@@ -17,11 +22,15 @@ interface TemplatesScreenProps {
 }
 
 interface FieldDraft extends CardTemplateFieldInput {
+  id: string;
   key: string;
+  position: number;
 }
 
 interface RuleDraft extends CardTemplateRuleInput {
+  id: string;
   key: string;
+  position: number;
 }
 
 interface TemplateDraft {
@@ -31,6 +40,7 @@ interface TemplateDraft {
   description: string;
   fields: FieldDraft[];
   rules: RuleDraft[];
+  assets: Asset[];
 }
 
 export function TemplatesScreen({
@@ -111,11 +121,11 @@ export function TemplatesScreen({
           name,
           description,
         })),
-        rules: draft.rules.map(({ id, name, frontPattern, backPattern }) => ({
+        rules: draft.rules.map(({ id, name, frontDoc, backDoc }) => ({
           id,
           name,
-          frontPattern,
-          backPattern,
+          frontDoc,
+          backDoc,
         })),
       };
       const saved = draft.id
@@ -165,7 +175,21 @@ export function TemplatesScreen({
     }
   }
 
+  function addAsset(asset: Asset): void {
+    setDraft((current) =>
+      current && !current.assets.some((item) => item.id === asset.id)
+        ? { ...current, assets: [...current.assets, asset] }
+        : current,
+    );
+  }
+
   if (draft) {
+    const layoutFields: CardTemplateField[] = draft.fields.map((field, index) => ({
+      id: field.id,
+      name: field.name,
+      description: field.description,
+      position: index,
+    }));
     return (
       <div className="screen templates-screen" aria-busy={isSaving}>
         <header className="screen-header compact-screen-header">
@@ -175,8 +199,8 @@ export function TemplatesScreen({
             </button>
             <h1>{draft.id ? "Edit card template" : "New card template"}</h1>
             <p>
-              Define data fields once, then use literal placeholders to generate several
-              permanent Basic cards from one entry form.
+              Define reusable rich fields and design the question and answer sides of
+              every card this form generates.
             </p>
           </div>
           <div className="header-actions">
@@ -206,7 +230,7 @@ export function TemplatesScreen({
             <div className="section-heading compact-section-heading">
               <div>
                 <h2>Template details</h2>
-                <p>The template itself is an authoring shortcut, not a card type.</p>
+                <p>Name this reusable entry form and optionally describe its purpose.</p>
               </div>
             </div>
             <div className="template-details-grid">
@@ -216,12 +240,10 @@ export function TemplatesScreen({
                   value={draft.name}
                   maxLength={80}
                   disabled={isSaving}
-                  placeholder="Pharmacology"
+                  placeholder="Template name"
                   onChange={(event) => {
                     const value = event.currentTarget.value;
-                    setDraft((current) =>
-                      current ? { ...current, name: value } : current,
-                    );
+                    setDraft((current) => current ? { ...current, name: value } : current);
                   }}
                 />
               </label>
@@ -232,12 +254,10 @@ export function TemplatesScreen({
                   maxLength={2000}
                   rows={3}
                   disabled={isSaving}
-                  placeholder="Medication facts entered once and generated as focused study cards."
+                  placeholder="Describe what this template helps you enter."
                   onChange={(event) => {
                     const value = event.currentTarget.value;
-                    setDraft((current) =>
-                      current ? { ...current, description: value } : current,
-                    );
+                    setDraft((current) => current ? { ...current, description: value } : current);
                   }}
                 />
               </label>
@@ -247,8 +267,8 @@ export function TemplatesScreen({
           <section className="template-editor-section">
             <div className="section-heading compact-section-heading">
               <div>
-                <h2>Input fields</h2>
-                <p>Each field becomes one labeled input in the card editor.</p>
+                <h2>Fields</h2>
+                <p>Each field becomes a full rich-text editor when this template is used.</p>
               </div>
               <button
                 type="button"
@@ -261,11 +281,7 @@ export function TemplatesScreen({
                           ...current,
                           fields: [
                             ...current.fields,
-                            {
-                              key: createDraftKey(),
-                              name: "",
-                              description: "",
-                            },
+                            createFieldDraft(current.fields.length),
                           ],
                         }
                       : current,
@@ -285,24 +301,24 @@ export function TemplatesScreen({
                       value={field.name}
                       maxLength={64}
                       disabled={isSaving}
-                      placeholder="Drug class"
-                      onChange={(event) => {
-                        const value = event.currentTarget.value;
-                        updateField(setDraft, field.key, { name: value });
-                      }}
+                      placeholder="Field name"
+                      onChange={(event) =>
+                        updateField(setDraft, field.key, { name: event.currentTarget.value })
+                      }
                     />
                   </label>
                   <label>
-                    <span>Input guidance <small>optional</small></span>
+                    <span>Field description <small>optional</small></span>
                     <input
                       value={field.description}
                       maxLength={500}
                       disabled={isSaving}
-                      placeholder="Include the therapeutic class and major subclass."
-                      onChange={(event) => {
-                        const value = event.currentTarget.value;
-                        updateField(setDraft, field.key, { description: value });
-                      }}
+                      placeholder="Enter a description of this field."
+                      onChange={(event) =>
+                        updateField(setDraft, field.key, {
+                          description: event.currentTarget.value,
+                        })
+                      }
                     />
                   </label>
                   <button
@@ -332,8 +348,8 @@ export function TemplatesScreen({
               <div>
                 <h2>Cards generated</h2>
                 <p>
-                  Use a complete placeholder such as <code>{"{{Name}}"}</code>. No
-                  expressions, HTML, code, or commands are evaluated.
+                  Design each question and answer with the full editor. Insert short
+                  fields inline or place lists, images, and multi-paragraph fields as blocks.
                 </p>
               </div>
               <button
@@ -345,15 +361,7 @@ export function TemplatesScreen({
                     current
                       ? {
                           ...current,
-                          rules: [
-                            ...current.rules,
-                            {
-                              key: createDraftKey(),
-                              name: "",
-                              frontPattern: "",
-                              backPattern: "",
-                            },
-                          ],
+                          rules: [...current.rules, createRuleDraft(current.rules.length)],
                         }
                       : current,
                   )
@@ -363,31 +371,21 @@ export function TemplatesScreen({
               </button>
             </div>
 
-            <div className="template-placeholder-strip" aria-label="Available placeholders">
-              <span>Available:</span>
-              {draft.fields
-                .filter((field) => field.name.trim() !== "")
-                .map((field) => (
-                  <code key={field.key}>{`{{${field.name.trim()}}}`}</code>
-                ))}
-            </div>
-
-            <div className="template-rule-list">
+            <div className="template-rule-list rich-template-rule-list">
               {draft.rules.map((rule, index) => (
-                <article key={rule.key} className="template-rule-card">
+                <article key={rule.key} className="template-rule-card rich-template-rule-card">
                   <header>
                     <span className="definition-number">{index + 1}</span>
                     <label>
-                      <span>Rule name</span>
+                      <span>Card name</span>
                       <input
                         value={rule.name}
                         maxLength={80}
                         disabled={isSaving}
-                        placeholder="Drug class"
-                        onChange={(event) => {
-                          const value = event.currentTarget.value;
-                          updateRule(setDraft, rule.key, { name: value });
-                        }}
+                        placeholder="Card name"
+                        onChange={(event) =>
+                          updateRule(setDraft, rule.key, { name: event.currentTarget.value })
+                        }
                       />
                     </label>
                     <button
@@ -408,36 +406,24 @@ export function TemplatesScreen({
                       Remove
                     </button>
                   </header>
-                  <div className="template-rule-sides">
-                    <label>
-                      <span>Question pattern</span>
-                      <textarea
-                        value={rule.frontPattern}
-                        rows={3}
-                        maxLength={4000}
-                        disabled={isSaving}
-                        placeholder="What is the drug class of {{Name}}?"
-                        onChange={(event) => {
-                          const value = event.currentTarget.value;
-                          updateRule(setDraft, rule.key, { frontPattern: value });
-                        }}
-                      />
-                    </label>
-                    <label>
-                      <span>Answer pattern</span>
-                      <textarea
-                        value={rule.backPattern}
-                        rows={3}
-                        maxLength={4000}
-                        disabled={isSaving}
-                        placeholder="{{Drug class}}"
-                        onChange={(event) => {
-                          const value = event.currentTarget.value;
-                          updateRule(setDraft, rule.key, { backPattern: value });
-                        }}
-                      />
-                    </label>
-                  </div>
+                  <TemplateLayoutEditor
+                    label="Question layout"
+                    document={rule.frontDoc}
+                    fields={layoutFields}
+                    assets={draft.assets}
+                    disabled={isSaving}
+                    onAssetImported={addAsset}
+                    onChange={(frontDoc) => updateRule(setDraft, rule.key, { frontDoc })}
+                  />
+                  <TemplateLayoutEditor
+                    label="Answer layout"
+                    document={rule.backDoc}
+                    fields={layoutFields}
+                    assets={draft.assets}
+                    disabled={isSaving}
+                    onAssetImported={addAsset}
+                    onChange={(backDoc) => updateRule(setDraft, rule.key, { backDoc })}
+                  />
                 </article>
               ))}
             </div>
@@ -452,10 +438,7 @@ export function TemplatesScreen({
       <header className="screen-header compact-screen-header">
         <div>
           <h1>Templates</h1>
-          <p>
-            Build reusable forms that turn one set of facts into multiple permanent
-            Basic flashcards.
-          </p>
+          <p>Build reusable rich entry forms that generate permanent Basic cards.</p>
         </div>
         <button type="button" className="primary-button" onClick={beginCreate}>
           New template
@@ -470,8 +453,8 @@ export function TemplatesScreen({
           <div className="empty-icon" aria-hidden="true">▧</div>
           <h2>Create a reusable card template</h2>
           <p>
-            A template can collect fields such as medication name, drug class, side
-            effects, and conditions, then generate several focused cards at once.
+            Define the facts you enter once, then design one or more cards that use
+            those fields as rich text, lists, or images.
           </p>
           <button type="button" className="primary-button" onClick={beginCreate}>
             Create template
@@ -499,9 +482,7 @@ export function TemplatesScreen({
                 </span>
               </button>
               <div className="template-library-actions">
-                <button type="button" onClick={() => beginEdit(template)}>
-                  Edit
-                </button>
+                <button type="button" onClick={() => beginEdit(template)}>Edit</button>
                 <button
                   type="button"
                   className="danger-text"
@@ -514,37 +495,70 @@ export function TemplatesScreen({
           ))}
         </section>
       ) : null}
-
-      <section className="template-safety-note">
-        <strong>Templates are safe authoring tools, not card containers.</strong>
-        <p>
-          Placeholders substitute plain field values only. Generated cards are stored in
-          their destination deck and remain there even when the template is edited or
-          deleted.
-        </p>
-      </section>
     </div>
   );
 }
 
 function newTemplateDraft(): TemplateDraft {
+  const field = createFieldDraft(0);
   return {
     name: "",
     description: "",
-    fields: [
+    fields: [field],
+    rules: [createRuleDraft(0, field)],
+    assets: [],
+  };
+}
+
+function createFieldDraft(position: number): FieldDraft {
+  const id = createEntityId();
+  return {
+    id,
+    key: id,
+    name: position === 0 ? "Field" : "",
+    description: "",
+    position,
+  };
+}
+
+function createRuleDraft(position: number, field?: FieldDraft): RuleDraft {
+  const id = createEntityId();
+  const fieldId = field?.id;
+  const label = field?.name || "Field";
+  return {
+    id,
+    key: id,
+    name: position === 0 ? "Card" : "",
+    frontDoc: fieldId
+      ? documentWithInlineField(fieldId, label)
+      : cloneDocument(EMPTY_RICH_DOCUMENT),
+    backDoc: fieldId
+      ? documentWithBlockField(fieldId, label)
+      : cloneDocument(EMPTY_RICH_DOCUMENT),
+    position,
+  };
+}
+
+function documentWithInlineField(fieldId: string, label: string): RichDocument {
+  return {
+    type: "doc",
+    content: [
       {
-        key: createDraftKey(),
-        name: "Name",
-        description: "The main subject used by the generated questions.",
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Question about " },
+          { type: "templateFieldInline", attrs: { fieldId, label } },
+        ],
       },
     ],
-    rules: [
-      {
-        key: createDraftKey(),
-        name: "Definition",
-        frontPattern: "What is {{Name}}?",
-        backPattern: "{{Name}}",
-      },
+  };
+}
+
+function documentWithBlockField(fieldId: string, label: string): RichDocument {
+  return {
+    type: "doc",
+    content: [
+      { type: "templateFieldBlock", attrs: { fieldId, label } },
     ],
   };
 }
@@ -560,37 +574,33 @@ function draftFromTemplate(template: CardTemplate): TemplateDraft {
       key: field.id,
       name: field.name,
       description: field.description,
+      position: field.position,
     })),
     rules: template.rules.map((rule) => ({
       id: rule.id,
       key: rule.id,
       name: rule.name,
-      frontPattern: rule.frontPattern,
-      backPattern: rule.backPattern,
+      frontDoc: cloneDocument(rule.frontDoc),
+      backDoc: cloneDocument(rule.backDoc),
+      position: rule.position,
     })),
+    assets: template.assets,
   };
 }
 
 function validateDraft(draft: TemplateDraft): string | null {
   if (draft.name.trim() === "") return "Enter a template name.";
   if (draft.fields.some((field) => field.name.trim() === "")) {
-    return "Give every input field a name.";
+    return "Give every field a name.";
   }
   const normalizedFields = draft.fields.map((field) =>
     field.name.trim().replace(/\s+/gu, " ").toLocaleLowerCase(),
   );
   if (new Set(normalizedFields).size !== normalizedFields.length) {
-    return "Input field names must be unique.";
+    return "Field names must be unique.";
   }
-  if (
-    draft.rules.some(
-      (rule) =>
-        rule.name.trim() === "" ||
-        rule.frontPattern.trim() === "" ||
-        rule.backPattern.trim() === "",
-    )
-  ) {
-    return "Give every card rule a name, question pattern, and answer pattern.";
+  if (draft.rules.some((rule) => rule.name.trim() === "")) {
+    return "Give every generated card a name.";
   }
   return null;
 }
@@ -629,6 +639,6 @@ function updateRule(
   );
 }
 
-function createDraftKey(): string {
-  return crypto.randomUUID();
+function createEntityId(): string {
+  return crypto.randomUUID().replaceAll("-", "");
 }
