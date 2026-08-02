@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, Connection, OpenFlags, TransactionBehavior};
 use tauri::State;
 
 use crate::{
@@ -147,7 +147,7 @@ fn load_library_payload(
                  ORDER BY created_at, id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let notes = statement
             .query_map([deck_id], |row| {
                 Ok(Stage3Note {
                     source_id: row.get(0)?,
@@ -164,7 +164,8 @@ fn load_library_payload(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        notes
     };
     let cards = {
         let mut statement = connection
@@ -179,7 +180,7 @@ fn load_library_payload(
                  ORDER BY c.created_at, c.id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let cards = statement
             .query_map([deck_id], |row| {
                 Ok(Stage3Card {
                     source_id: row.get(0)?,
@@ -192,7 +193,8 @@ fn load_library_payload(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        cards
     };
     let payload = Stage3Payload { notes, cards };
     validate_payload(&payload)?;
@@ -271,7 +273,7 @@ fn read_card_type_payload(path: &Path) -> Result<Stage3Payload, CommandError> {
                  ORDER BY n.created_at, n.source_id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let notes = statement
             .query_map([], |row| {
                 Ok(Stage3Note {
                     source_id: row.get(0)?,
@@ -288,7 +290,8 @@ fn read_card_type_payload(path: &Path) -> Result<Stage3Payload, CommandError> {
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        notes
     };
     let cards = {
         let mut statement = package
@@ -298,7 +301,7 @@ fn read_card_type_payload(path: &Path) -> Result<Stage3Payload, CommandError> {
                  FROM cards ORDER BY created_at, source_id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let cards = statement
             .query_map([], |row| {
                 Ok(Stage3Card {
                     source_id: row.get(0)?,
@@ -311,7 +314,8 @@ fn read_card_type_payload(path: &Path) -> Result<Stage3Payload, CommandError> {
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        cards
     };
     let payload = Stage3Payload { notes, cards };
     validate_payload(&payload)?;
@@ -589,7 +593,7 @@ fn match_imported_notes(
                  ORDER BY rowid",
             )
             .map_err(CommandError::database)?;
-        statement
+        let local_notes = statement
             .query_map([deck_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -604,7 +608,8 @@ fn match_imported_notes(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        local_notes
     };
     let local_ids = local_notes
         .iter()
