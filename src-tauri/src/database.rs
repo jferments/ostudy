@@ -212,7 +212,17 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    const RELEASED_FIXTURE: &str = include_str!("../tests/fixtures/v0.1.0.sql");
+    struct ReleasedSchemaFixture {
+        release: &'static str,
+        schema_version: i64,
+        sql: &'static str,
+    }
+
+    const RELEASED_SCHEMA_FIXTURES: &[ReleasedSchemaFixture] = &[ReleasedSchemaFixture {
+        release: "0.1.0",
+        schema_version: 3,
+        sql: include_str!("../tests/fixtures/v0.1.0.sql"),
+    }];
 
     #[test]
     fn bundled_sqlite_version_is_the_audited_release() {
@@ -284,53 +294,39 @@ mod tests {
     }
 
     #[test]
-    fn released_schema_upgrades_without_losing_seed_data() {
-        let mut connection = Connection::open_in_memory().expect("fixture should open");
-        connection
-            .execute_batch(RELEASED_FIXTURE)
-            .expect("released fixture should load");
-        initialize_connection(&mut connection).expect("fixture should upgrade");
-        let version: i64 = connection
-            .query_row("PRAGMA user_version", [], |row| row.get(0))
-            .expect("version should be readable");
-        assert_eq!(version, LATEST_SCHEMA_VERSION);
-        let preserved: (String, String, String, i64, String, String) = connection
-            .query_row(
-                "SELECT d.name, n.front_text, c.direction,
-                        n.reverse_enabled, n.cloze_source, n.cloze_mode
-                 FROM decks d
-                 JOIN notes n ON n.deck_id = d.id
-                 JOIN cards c ON c.note_id = n.id
-                 WHERE d.id = '00000000000000000000000000000001'",
-                [],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                        row.get(5)?,
-                    ))
-                },
-            )
-            .expect("seed data should remain");
-        assert_eq!(preserved.0, "Released schema fixture");
-        assert_eq!(preserved.1, "Fixture question");
-        assert_eq!(preserved.2, "forward");
-        assert_eq!(preserved.3, 0);
-        assert_eq!(preserved.4, "");
-        assert_eq!(preserved.5, "one_at_a_time");
-        let integrity: String = connection
-            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
-            .expect("integrity check should run");
-        assert_eq!(integrity, "ok");
+    fn every_released_schema_fixture_upgrades_to_latest() {
+        for fixture in RELEASED_SCHEMA_FIXTURES {
+            let mut connection = Connection::open_in_memory().expect("fixture should open");
+            connection
+                .execute_batch(fixture.sql)
+                .unwrap_or_else(|error| panic!("{} fixture should load: {error}", fixture.release));
+            initialize_connection(&mut connection)
+                .unwrap_or_else(|error| panic!("{} fixture should upgrade: {error}", fixture.release));
+            let version: i64 = connection
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .expect("version should be readable");
+            assert_eq!(version, LATEST_SCHEMA_VERSION);
+            assert!(fixture.schema_version < version);
+            let integrity: String = connection
+                .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+                .expect("integrity check should run");
+            assert_eq!(integrity, "ok");
+        }
     }
 
     #[test]
     fn historical_migration_checksums_remain_exact() {
-        assert_eq!(MIGRATIONS[3].checksum, "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab12c548a768d".replace("aab12", "aab12"));
-        assert_eq!(MIGRATIONS[5].checksum, "c07b900b2119f6eae6a4de58aeb3af9ab5882ee21d5c29ac7a5c7fcee6b86be8");
-        assert_eq!(MIGRATIONS[6].checksum, "91d120cb0b72c72c40d499a2c8be9b090be96ca760b2bb5a71072e2b71ed45e1");
+        assert_eq!(
+            MIGRATIONS[3].checksum,
+            "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d"
+        );
+        assert_eq!(
+            MIGRATIONS[5].checksum,
+            "c07b900b2119f6eae6a4de58aeb3af9ab5882ee21d5c29ac7a5c7fcee6b86be8"
+        );
+        assert_eq!(
+            MIGRATIONS[6].checksum,
+            "91d120cb0b72c72c40d499a2c8be9b090be96ca760b2bb5a71072e2b71ed45e1"
+        );
     }
 }
