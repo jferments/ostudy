@@ -15,7 +15,7 @@ use serde::Deserialize;
 use tauri::State;
 
 use crate::{
-    cards::get_card_from_connection,
+    cards::get_card_by_id_from_connection,
     database::Database,
     error::CommandError,
     paths::AppPaths,
@@ -132,7 +132,6 @@ fn start_card_practice_in_connection(
                  WHERE c.id = ?1
                    AND c.deleted_at IS NULL
                    AND c.suspended_at IS NULL
-                   AND c.direction = 'forward'
                    AND n.deleted_at IS NULL
                    AND d.deleted_at IS NULL
                    AND d.archived_at IS NULL",
@@ -232,8 +231,8 @@ fn create_practice_session(
     transaction.commit().map_err(CommandError::database)?;
 
     let mut cards = Vec::with_capacity(pending_cards.len());
-    for (deck_id, _, note_id, due_at) in pending_cards {
-        let card = get_card_from_connection(connection, paths, &note_id)?;
+    for (deck_id, card_id, _, due_at) in pending_cards {
+        let card = get_card_by_id_from_connection(connection, paths, &card_id)?;
         let deck_name = deck_names
             .get(&deck_id)
             .cloned()

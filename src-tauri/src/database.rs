@@ -42,9 +42,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "e275254085414039a7cf5f3a5e08ae35a61ea8f7d3d1b8e016a8d1f087c03029",
         sql: include_str!("../migrations/0005_remove_legacy_duplicate_trigger.sql"),
     },
+    Migration {
+        version: 6,
+        name: "card_types_templates",
+        checksum: "49535f939f8bac08999498a24fa3ea559647f78d7bc9a1e55c92ac830edff1fd",
+        sql: include_str!("../migrations/0006_card_types_templates.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 5;
+const LATEST_SCHEMA_VERSION: i64 = 6;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -244,6 +250,7 @@ mod tests {
                     "notes",
                     "cards",
                     "assets",
+                    "card_templates",
                     "app_settings",
                     "practice_sessions",
                     "card_schedules",

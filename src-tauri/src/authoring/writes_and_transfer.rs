@@ -341,8 +341,8 @@ fn load_source_note(
 ) -> Result<SourceNote, CommandError> {
     connection
         .query_row(
-            "SELECT id, deck_id, front_doc, back_doc, front_text, back_text,
-                    duplicate_hash
+            "SELECT id, deck_id, note_type, reverse_enabled, cloze_text, cloze_mode,
+                    front_doc, back_doc, front_text, back_text, duplicate_hash
              FROM notes
              WHERE id = ?1 AND deleted_at IS NULL",
             [note_id],
@@ -350,11 +350,15 @@ fn load_source_note(
                 Ok(SourceNote {
                     id: row.get(0)?,
                     deck_id: row.get(1)?,
-                    front_doc: row.get(2)?,
-                    back_doc: row.get(3)?,
-                    front_text: row.get(4)?,
-                    back_text: row.get(5)?,
-                    duplicate_hash: row.get(6)?,
+                    note_type: row.get(2)?,
+                    reverse_enabled: row.get::<_, i64>(3)? == 1,
+                    cloze_text: row.get(4)?,
+                    cloze_mode: row.get(5)?,
+                    front_doc: row.get(6)?,
+                    back_doc: row.get(7)?,
+                    front_text: row.get(8)?,
+                    back_text: row.get(9)?,
+                    duplicate_hash: row.get(10)?,
                 })
             },
         )
@@ -376,14 +380,17 @@ fn copy_note_to_deck(
             "INSERT INTO notes (
                  id, deck_id, note_type, content_format, content_schema_version,
                  front_doc, back_doc, front_text, back_text, duplicate_hash,
+                 reverse_enabled, cloze_text, cloze_mode,
                  created_at, updated_at, revision
              ) VALUES (
-                 ?1, ?2, 'basic', ?3, ?4,
-                 ?5, ?6, ?7, ?8, ?9, ?10, ?10, 1
+                 ?1, ?2, ?3, ?4, ?5,
+                 ?6, ?7, ?8, ?9, ?10,
+                 ?11, ?12, ?13, ?14, ?14, 1
              )",
             params![
                 new_note_id,
                 target_deck_id,
+                source.note_type,
                 CONTENT_FORMAT,
                 CONTENT_SCHEMA_VERSION,
                 source.front_doc,
@@ -391,6 +398,9 @@ fn copy_note_to_deck(
                 source.front_text,
                 source.back_text,
                 duplicate_hash,
+                bool_to_integer(source.reverse_enabled),
+                source.cloze_text,
+                source.cloze_mode,
                 now,
             ],
         )
@@ -405,14 +415,16 @@ fn copy_note_to_deck(
                  ORDER BY template_ordinal, direction",
             )
             .map_err(CommandError::database)?;
-        let source_cards = statement
+        statement
             .query_map([source.id.as_str()], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                Ok(SourceCard {
+                    direction: row.get(0)?,
+                    template_ordinal: row.get(1)?,
+                })
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        source_cards
+            .map_err(CommandError::database)?
     };
     if source_cards.is_empty() {
         return Err(CommandError::new(
@@ -420,19 +432,20 @@ fn copy_note_to_deck(
             "A selected card has no active study presentation.",
         ));
     }
-    for (direction, template_ordinal) in source_cards {
+    for source_card in source_cards {
         let new_card_id = generate_id(transaction)?;
         transaction
             .execute(
                 "INSERT INTO cards (
-                     id, note_id, deck_id, direction, template_ordinal, created_at, updated_at
+                     id, note_id, deck_id, direction, template_ordinal,
+                     created_at, updated_at
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
                 params![
                     new_card_id,
                     new_note_id,
                     target_deck_id,
-                    direction,
-                    template_ordinal,
+                    source_card.direction,
+                    source_card.template_ordinal,
                     now,
                 ],
             )
@@ -443,18 +456,14 @@ fn copy_note_to_deck(
     transaction
         .execute(
             "INSERT INTO note_assets (note_id, asset_id, side)
-             SELECT ?1, asset_id, side
-             FROM note_assets
-             WHERE note_id = ?2",
+             SELECT ?1, asset_id, side FROM note_assets WHERE note_id = ?2",
             params![new_note_id, source.id],
         )
         .map_err(CommandError::database)?;
     transaction
         .execute(
             "INSERT INTO note_tags (note_id, tag_id)
-             SELECT ?1, tag_id
-             FROM note_tags
-             WHERE note_id = ?2",
+             SELECT ?1, tag_id FROM note_tags WHERE note_id = ?2",
             params![new_note_id, source.id],
         )
         .map_err(CommandError::database)?;

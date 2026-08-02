@@ -31,6 +31,9 @@ pub struct CardDto {
     pub note_id: String,
     pub deck_id: String,
     pub direction: String,
+    pub card_type: String,
+    pub card_label: String,
+    pub generated_card_count: i64,
     pub front_doc: Value,
     pub back_doc: Value,
     pub front_text: String,
@@ -48,20 +51,6 @@ pub(crate) struct ValidatedContent {
     pub(crate) back_text: String,
     pub(crate) front_asset_ids: Vec<String>,
     pub(crate) back_asset_ids: Vec<String>,
-}
-
-struct RawCard {
-    id: String,
-    note_id: String,
-    deck_id: String,
-    direction: String,
-    pub(crate) front_doc_json: String,
-    pub(crate) back_doc_json: String,
-    pub(crate) front_text: String,
-    pub(crate) back_text: String,
-    created_at: i64,
-    updated_at: i64,
-    revision: i64,
 }
 
 #[tauri::command]
@@ -87,60 +76,103 @@ pub(crate) fn list_cards_from_connection(
 ) -> Result<Vec<CardDto>, CommandError> {
     let mut statement = connection
         .prepare(
-            "SELECT c.id, n.id, c.deck_id, c.direction, n.front_doc, n.back_doc,\n\
-                    n.front_text, n.back_text, n.created_at, n.updated_at, n.revision\n\
-             FROM cards c\n\
-             JOIN notes n ON n.id = c.note_id\n\
-             JOIN decks d ON d.id = c.deck_id\n\
-             WHERE c.deck_id = ?1\n\
-               AND c.deleted_at IS NULL\n\
-               AND n.deleted_at IS NULL\n\
-               AND d.deleted_at IS NULL\n\
-               AND d.archived_at IS NULL\n\
-               AND c.direction = 'forward'\n\
-             ORDER BY n.updated_at DESC, n.created_at DESC",
+            "SELECT c.id
+             FROM cards c
+             JOIN notes n ON n.id = c.note_id
+             JOIN decks d ON d.id = c.deck_id
+             WHERE c.deck_id = ?1
+               AND c.deleted_at IS NULL
+               AND n.deleted_at IS NULL
+               AND d.deleted_at IS NULL
+               AND d.archived_at IS NULL
+             ORDER BY n.updated_at DESC, n.created_at DESC,
+                      CASE c.direction WHEN 'forward' THEN 0 WHEN 'reverse' THEN 1 ELSE 2 END,
+                      c.template_ordinal ASC",
         )
         .map_err(CommandError::database)?;
-
-    let rows = statement
-        .query_map([deck_id], raw_card_from_row)
-        .map_err(CommandError::database)?;
-    let raw_cards = rows
+    let card_ids = statement
+        .query_map([deck_id], |row| row.get::<_, String>(0))
+        .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-
-    raw_cards
+    card_ids
         .into_iter()
-        .map(|raw| hydrate_card(connection, paths, raw))
+        .map(|card_id| get_card_by_id_from_connection(connection, paths, &card_id))
         .collect()
 }
 
-pub(crate) fn get_card_from_connection(
+pub(crate) fn get_card_by_id_from_connection(
     connection: &Connection,
     paths: &AppPaths,
-    note_id: &str,
+    card_id: &str,
 ) -> Result<CardDto, CommandError> {
-    let raw = connection
+    let raw: Option<(String, String, String, String, i64, i64, i64)> = connection
         .query_row(
-            "SELECT c.id, n.id, c.deck_id, c.direction, n.front_doc, n.back_doc,\n\
-                    n.front_text, n.back_text, n.created_at, n.updated_at, n.revision\n\
-             FROM cards c\n\
-             JOIN notes n ON n.id = c.note_id\n\
-             JOIN decks d ON d.id = c.deck_id\n\
-             WHERE n.id = ?1\n\
-               AND c.deleted_at IS NULL\n\
-               AND n.deleted_at IS NULL\n\
-               AND d.deleted_at IS NULL\n\
-               AND d.archived_at IS NULL\n\
-               AND c.direction = 'forward'",
-            [note_id],
-            raw_card_from_row,
+            "SELECT c.id, c.note_id, c.deck_id, c.direction,
+                    n.created_at, n.updated_at, n.revision
+             FROM cards c
+             JOIN notes n ON n.id = c.note_id
+             JOIN decks d ON d.id = c.deck_id
+             WHERE c.id = ?1
+               AND c.deleted_at IS NULL
+               AND n.deleted_at IS NULL
+               AND d.deleted_at IS NULL
+               AND d.archived_at IS NULL",
+            [card_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            },
         )
         .optional()
-        .map_err(CommandError::database)?
-        .ok_or_else(|| CommandError::new("card_not_found", "That flashcard no longer exists."))?;
+        .map_err(CommandError::database)?;
+    let Some((id, note_id, deck_id, direction, created_at, updated_at, revision)) = raw else {
+        return Err(CommandError::new(
+            "card_not_found",
+            "That flashcard no longer exists.",
+        ));
+    };
+    let rendered = get_card_text_from_connection(connection, &id)?;
+    let assets = get_assets_for_note(connection, paths, &note_id)?;
+    let generated_card_count = connection
+        .query_row(
+            "SELECT COUNT(*) FROM cards WHERE note_id = ?1 AND deleted_at IS NULL",
+            [note_id.as_str()],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
 
-    hydrate_card(connection, paths, raw)
+    Ok(CardDto {
+        id,
+        note_id,
+        deck_id,
+        direction,
+        card_type: rendered.card_type,
+        card_label: rendered.card_label,
+        generated_card_count,
+        front_doc: rendered.front_doc,
+        back_doc: rendered.back_doc,
+        front_text: rendered.front_text,
+        back_text: rendered.back_text,
+        assets,
+        created_at,
+        updated_at,
+        revision,
+    })
+}
+
+pub(crate) fn get_card_text_from_connection(
+    connection: &Connection,
+    card_id: &str,
+) -> Result<crate::authoring::RenderedCardPresentation, CommandError> {
+    crate::authoring::render_stored_card_presentation(connection, card_id)
 }
 
 fn delete_card_in_connection(
@@ -149,11 +181,10 @@ fn delete_card_in_connection(
 ) -> Result<(), CommandError> {
     let now = unix_time_millis()?;
     let transaction = connection.transaction().map_err(CommandError::database)?;
-
     let changed = transaction
         .execute(
-            "UPDATE notes\n\
-             SET deleted_at = ?1, updated_at = ?1, revision = revision + 1\n\
+            "UPDATE notes
+             SET deleted_at = ?1, updated_at = ?1, revision = revision + 1
              WHERE id = ?2 AND deleted_at IS NULL",
             params![now, note_id],
         )
@@ -164,58 +195,15 @@ fn delete_card_in_connection(
             "That flashcard no longer exists.",
         ));
     }
-
     transaction
         .execute(
-            "UPDATE cards\n\
-             SET deleted_at = ?1, updated_at = ?1\n\
+            "UPDATE cards
+             SET deleted_at = ?1, updated_at = ?1
              WHERE note_id = ?2 AND deleted_at IS NULL",
             params![now, note_id],
         )
         .map_err(CommandError::database)?;
     transaction.commit().map_err(CommandError::database)
-}
-
-fn hydrate_card(
-    connection: &Connection,
-    paths: &AppPaths,
-    raw: RawCard,
-) -> Result<CardDto, CommandError> {
-    let front_doc =
-        serde_json::from_str(&raw.front_doc_json).map_err(CommandError::serialization)?;
-    let back_doc = serde_json::from_str(&raw.back_doc_json).map_err(CommandError::serialization)?;
-    let assets = get_assets_for_note(connection, paths, &raw.note_id)?;
-
-    Ok(CardDto {
-        id: raw.id,
-        note_id: raw.note_id,
-        deck_id: raw.deck_id,
-        direction: raw.direction,
-        front_doc,
-        back_doc,
-        front_text: raw.front_text,
-        back_text: raw.back_text,
-        assets,
-        created_at: raw.created_at,
-        updated_at: raw.updated_at,
-        revision: raw.revision,
-    })
-}
-
-fn raw_card_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawCard> {
-    Ok(RawCard {
-        id: row.get(0)?,
-        note_id: row.get(1)?,
-        deck_id: row.get(2)?,
-        direction: row.get(3)?,
-        front_doc_json: row.get(4)?,
-        back_doc_json: row.get(5)?,
-        front_text: row.get(6)?,
-        back_text: row.get(7)?,
-        created_at: row.get(8)?,
-        updated_at: row.get(9)?,
-        revision: row.get(10)?,
-    })
 }
 
 pub(crate) fn validate_content(

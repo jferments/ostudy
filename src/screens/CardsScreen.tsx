@@ -86,6 +86,10 @@ export function CardsScreen({
     [deckIds, dueFilter, normalizedSort, query, reviewedFilter, tagIds],
   );
   const selected = useMemo(() => [...selectedCards.values()], [selectedCards]);
+  const selectedNotes = useMemo(
+    () => [...new Map(selected.map((card) => [card.noteId, card])).values()],
+    [selected],
+  );
   const selectedDeck =
     deckIds.size === 1
       ? decks.find((deck) => deck.id === [...deckIds][0]) ?? null
@@ -184,8 +188,8 @@ export function CardsScreen({
   function toggleSelected(card: SelectionCard): void {
     setSelectedCards((current) => {
       const next = new Map(current);
-      if (next.has(card.noteId)) next.delete(card.noteId);
-      else next.set(card.noteId, card);
+      if (next.has(card.cardId)) next.delete(card.cardId);
+      else next.set(card.cardId, card);
       return next;
     });
   }
@@ -194,7 +198,7 @@ export function CardsScreen({
     setSelectedCards((current) => {
       const next = new Map(current);
       for (const card of page.cards) {
-        next.set(card.noteId, selectionFromRow(card));
+        next.set(card.cardId, selectionFromRow(card));
       }
       return next;
     });
@@ -206,7 +210,7 @@ export function CardsScreen({
     setErrorMessage(null);
     try {
       const matches = await listMatchingCards(searchInput);
-      setSelectedCards(new Map(matches.map((card) => [card.noteId, card])));
+      setSelectedCards(new Map(matches.map((card) => [card.cardId, card])));
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -253,7 +257,7 @@ export function CardsScreen({
     if (selectionAction === "add_tags" || selectionAction === "remove_tags") {
       return (
         <BulkTagModal
-          cards={selected}
+          cards={selectedNotes}
           mode={selectionAction === "add_tags" ? "add" : "remove"}
           suggestions={tags}
           onClose={() => setSelectionAction(null)}
@@ -265,7 +269,7 @@ export function CardsScreen({
     if (selectionAction === "delete") {
       return (
         <DeleteCardsModal
-          cards={selected}
+          cards={selectedNotes}
           onClose={() => setSelectionAction(null)}
           onComplete={completeSelectionMutation}
           showToast={showToast}
@@ -321,7 +325,7 @@ export function CardsScreen({
                   ])
               : undefined
           }
-          onSaved={async (saved, continueAdding) => {
+          onSaved={async (saved, continueAdding, summary) => {
             onDirtyChange(false);
             const wasEditing = editingCard !== null;
             if (!continueAdding) {
@@ -329,11 +333,19 @@ export function CardsScreen({
               setCreatingDeckId(null);
             }
             await refreshAfterMutation();
-            showToast(
-              "success",
-              wasEditing ? "Flashcard updated." : "Flashcard saved.",
-            );
-            if (saved.deckId !== deck.id) {
+            if (summary.source === "template") {
+              showToast(
+                "success",
+                `Created ${summary.createdCount} ${summary.createdCount === 1 ? "card" : "cards"}${
+                  summary.skippedDuplicates > 0
+                    ? `; skipped ${summary.skippedDuplicates} duplicate${summary.skippedDuplicates === 1 ? "" : "s"}`
+                    : ""
+                }.`,
+              );
+            } else {
+              showToast("success", wasEditing ? "Flashcard updated." : "Flashcard saved.");
+            }
+            if (saved && saved.deckId !== deck.id) {
               showToast("info", "The card is now in a different deck.");
             }
           }}
@@ -529,7 +541,7 @@ export function CardsScreen({
             value=""
             onChange={(event: ChangeEvent<HTMLSelectElement>) => {
               const action = event.currentTarget.value as SelectionAction | "";
-              if (action === "move_copy") beginMoveCopy(selected);
+              if (action === "move_copy") beginMoveCopy(selectedNotes);
               else if (action !== "") setSelectionAction(action);
             }}
           >
@@ -615,10 +627,10 @@ export function CardsScreen({
             aria-label="Matching cards"
           >
             {page.cards.map((card) => {
-              const selectedRow = selectedCards.has(card.noteId);
+              const selectedRow = selectedCards.has(card.cardId);
               return (
                 <article
-                  key={card.noteId}
+                  key={card.cardId}
                   className={
                     selectedRow
                       ? "organized-card-row selected"
@@ -642,7 +654,10 @@ export function CardsScreen({
                     className="organized-card-main"
                     onClick={() => void openCard(card.noteId)}
                   >
-                    <span className="organized-card-deck">{card.deckName}</span>
+                    <span className="organized-card-deck">
+                      {card.deckName}
+                      <span className="card-type-badge">{card.cardLabel}</span>
+                    </span>
                     <span className="organized-card-sides">
                       <span>
                         <small>Question</small>

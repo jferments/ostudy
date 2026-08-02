@@ -78,7 +78,9 @@ export function DecksScreen({
     const normalized = search.trim().toLocaleLowerCase();
     if (normalized === "") return cards;
     return cards.filter((card) =>
-      `${card.frontText} ${card.backText}`.toLocaleLowerCase().includes(normalized),
+      `${card.frontText} ${card.backText} ${card.cardLabel}`
+        .toLocaleLowerCase()
+        .includes(normalized),
     );
   }, [cards, search]);
 
@@ -180,7 +182,11 @@ export function DecksScreen({
   async function handleDeleteCard(card: Flashcard): Promise<void> {
     if (
       settings.confirmDeletions &&
-      !window.confirm(`Delete this flashcard?\n\n${card.frontText || "Image card"}`)
+      !window.confirm(
+        `Delete this source note and its ${card.generatedCardCount} ${
+          card.generatedCardCount === 1 ? "card" : "cards"
+        }?\n\n${card.frontText || "Image card"}`,
+      )
     ) {
       return;
     }
@@ -189,7 +195,7 @@ export function DecksScreen({
       setCards((current) => current.filter((item) => item.noteId !== card.noteId));
       setSelectedDeck((current) =>
         current
-          ? { ...current, cardCount: Math.max(0, current.cardCount - 1) }
+          ? { ...current, cardCount: Math.max(0, current.cardCount - card.generatedCardCount) }
           : current,
       );
       showToast("success", "Flashcard deleted.");
@@ -276,33 +282,26 @@ export function DecksScreen({
           setEditingCard(null);
           setView("detail");
         }}
-        onSaved={(saved, continueAdding) => {
+        onSaved={async (_saved, continueAdding, summary) => {
           const wasEditing = editingCard !== null;
-          setCards((current) => {
-            const existing = current.findIndex((item) => item.noteId === saved.noteId);
-            if (existing < 0) return [...current, saved];
-            const next = [...current];
-            next[existing] = saved;
-            return next;
-          });
-          if (!wasEditing) {
-            setSelectedDeck((current) =>
-              current
-                ? {
-                    ...current,
-                    cardCount: current.cardCount + 1,
-                    dueCount: current.dueCount + 1,
-                  }
-                : current,
+          if (summary.source === "template") {
+            showToast(
+              "success",
+              `Created ${summary.createdCount} ${summary.createdCount === 1 ? "card" : "cards"}${
+                summary.skippedDuplicates > 0
+                  ? `; skipped ${summary.skippedDuplicates} duplicate${summary.skippedDuplicates === 1 ? "" : "s"}`
+                  : ""
+              }.`,
             );
+          } else {
+            showToast("success", wasEditing ? "Flashcard updated." : "Flashcard saved.");
           }
-          showToast("success", wasEditing ? "Flashcard updated." : "Flashcard saved.");
+          await refreshSelectedDeckAfterMutation(selectedDeck.id);
           if (!continueAdding) {
             onDirtyChange(false);
             setEditingCard(null);
             setView("detail");
           }
-          void refreshSelectedDeckAfterMutation(selectedDeck.id);
         }}
       />
     );
@@ -489,7 +488,7 @@ export function DecksScreen({
               ) : (
                 <div className="card-list">
                   {visibleCards.map((card, index) => (
-                    <article key={card.noteId} className="card-row">
+                    <article key={card.id} className="card-row">
                       <button
                         type="button"
                         className="card-row-main"
@@ -499,6 +498,7 @@ export function DecksScreen({
                         }}
                       >
                         <span className="card-number">{index + 1}</span>
+                        <span className="card-type-badge">{card.cardLabel}</span>
                         <span className="card-row-side">
                           <small>Question</small>
                           <strong>{summarize(card.frontText, card.assets.length > 0)}</strong>

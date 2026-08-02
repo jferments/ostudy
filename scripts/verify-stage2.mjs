@@ -61,7 +61,10 @@ const [
   read("src", "ipc.ts"),
   read("src", "App.tsx"),
   read("src", "screens", "CardsScreen.tsx"),
-  read("src", "screens", "CardEditorScreen.tsx"),
+  readJoined(
+    ["src", "screens", "CardEditorScreen.tsx"],
+    ["src", "screens", "card-editor", "CardEditorScreen.tsx"],
+  ),
   read("src", "screens", "cards", "BulkEntryModal.tsx"),
   read("src", "card-organization.css"),
   readJoined(
@@ -84,8 +87,8 @@ if (!database.includes(`checksum: "${checksum4}"`)) {
 if (!database.includes(`checksum: "${checksum5}"`)) {
   failures.push(`database.rs checksum mismatch for migration 0005: ${checksum5}`);
 }
-if (!database.includes("LATEST_SCHEMA_VERSION: i64 = 5")) {
-  failures.push("database schema version was not advanced to 5");
+if (!database.includes("LATEST_SCHEMA_VERSION: i64 = 6")) {
+  failures.push("database schema version was not advanced to 6");
 }
 for (const fragment of [
   "CREATE TABLE tags",
@@ -265,7 +268,7 @@ for (const fragment of [
   "<TagInput",
   "findDuplicateCards",
   "Save duplicate anyway",
-  "deckId: selectedDeckId",
+  "deckId,",
   'aria-label="Deck"',
 ]) {
   if (!editor.includes(fragment)) failures.push(`card editor missing: ${fragment}`);

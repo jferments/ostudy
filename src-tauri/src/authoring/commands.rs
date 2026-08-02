@@ -41,49 +41,7 @@ pub fn create_organized_card(
     paths: State<'_, AppPaths>,
     input: CreateOrganizedCardInput,
 ) -> Result<OrganizedCardDto, CommandError> {
-    validate_entity_id(&input.deck_id, "deck")?;
-    let content = validate_content(
-        input.front_doc,
-        input.back_doc,
-        input.front_text,
-        input.back_text,
-    )?;
-    let tags = validate_tags(input.tags)?;
-    let normalized = normalized_pair(&content.front_text, &content.back_text);
-    let duplicate_hash = duplicate_hash(&normalized.0, &normalized.1);
-
-    let note_id = database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        ensure_active_deck(&transaction, &input.deck_id)?;
-        if !input.allow_duplicate
-            && duplicate_checkable(&content.front_text, &content.back_text)
-            && has_exact_duplicate(
-                &transaction,
-                &input.deck_id,
-                &duplicate_hash,
-                &normalized.0,
-                &normalized.1,
-                None,
-            )?
-        {
-            return Err(duplicate_error());
-        }
-        let now = unix_time_millis()?;
-        let note_id = insert_organized_card(
-            &transaction,
-            &input.deck_id,
-            content,
-            &tags,
-            &duplicate_hash,
-            now,
-        )?;
-        transaction.commit().map_err(CommandError::database)?;
-        Ok(note_id)
-    })?;
-
-    database.with_connection(|connection| hydrate_organized_card(connection, &paths, &note_id))
+    create_typed_card(database, paths, input)
 }
 
 #[tauri::command]
@@ -92,104 +50,7 @@ pub fn update_organized_card(
     paths: State<'_, AppPaths>,
     input: UpdateOrganizedCardInput,
 ) -> Result<OrganizedCardDto, CommandError> {
-    validate_entity_id(&input.note_id, "note")?;
-    validate_entity_id(&input.deck_id, "deck")?;
-    if input.revision < 1 {
-        return Err(CommandError::new(
-            "invalid_revision",
-            "The card revision is invalid.",
-        ));
-    }
-    let content = validate_content(
-        input.front_doc,
-        input.back_doc,
-        input.front_text,
-        input.back_text,
-    )?;
-    let tags = validate_tags(input.tags)?;
-    let normalized = normalized_pair(&content.front_text, &content.back_text);
-    let duplicate_hash = duplicate_hash(&normalized.0, &normalized.1);
-
-    database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        ensure_assets_exist(&transaction, &content_asset_ids(&content))?;
-        ensure_active_deck(&transaction, &input.deck_id)?;
-
-        let note_exists: i64 = transaction
-            .query_row(
-                "SELECT EXISTS(
-                     SELECT 1 FROM notes WHERE id = ?1 AND deleted_at IS NULL
-                 )",
-                [input.note_id.as_str()],
-                |row| row.get(0),
-            )
-            .map_err(CommandError::database)?;
-        if note_exists == 0 {
-            return Err(CommandError::new(
-                "card_not_found",
-                "That flashcard no longer exists.",
-            ));
-        }
-
-        if !input.allow_duplicate
-            && duplicate_checkable(&content.front_text, &content.back_text)
-            && has_exact_duplicate(
-                &transaction,
-                &input.deck_id,
-                &duplicate_hash,
-                &normalized.0,
-                &normalized.1,
-                Some(&input.note_id),
-            )?
-        {
-            return Err(duplicate_error());
-        }
-
-        let now = unix_time_millis()?;
-        let changed = transaction
-            .execute(
-                "UPDATE notes
-                 SET deck_id = ?1, front_doc = ?2, back_doc = ?3,
-                     front_text = ?4, back_text = ?5, duplicate_hash = ?6,
-                     updated_at = ?7, revision = revision + 1
-                 WHERE id = ?8 AND revision = ?9 AND deleted_at IS NULL",
-                params![
-                    input.deck_id,
-                    content.front_doc_json,
-                    content.back_doc_json,
-                    content.front_text,
-                    content.back_text,
-                    duplicate_hash,
-                    now,
-                    input.note_id,
-                    input.revision,
-                ],
-            )
-            .map_err(CommandError::database)?;
-        if changed != 1 {
-            return Err(CommandError::new(
-                "card_changed",
-                "This card changed in another window. Reload it and try again.",
-            ));
-        }
-        transaction
-            .execute(
-                "UPDATE cards
-                 SET deck_id = ?1, updated_at = ?2
-                 WHERE note_id = ?3 AND deleted_at IS NULL",
-                params![input.deck_id, now, input.note_id],
-            )
-            .map_err(CommandError::database)?;
-        replace_note_assets(&transaction, &input.note_id, &content)?;
-        replace_note_tags(&transaction, &input.note_id, &tags, now)?;
-        transaction.commit().map_err(CommandError::database)
-    })?;
-
-    database.with_connection(|connection| {
-        hydrate_organized_card(connection, &paths, &input.note_id)
-    })
+    update_typed_card(database, paths, input)
 }
 
 #[tauri::command]

@@ -8,7 +8,10 @@ use rusqlite::Connection;
 use serde::Serialize;
 use tauri::State;
 
-use crate::{database::Database, error::CommandError, util::unix_time_millis};
+use crate::{
+    cards::get_card_text_from_connection, database::Database, error::CommandError,
+    util::unix_time_millis,
+};
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,35 +171,52 @@ fn load_analytics(connection: &mut Connection) -> Result<AnalyticsDto, CommandEr
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
 
-    let mut recent_statement = connection
-        .prepare(
-            "SELECT r.id, d.name, r.card_id, n.front_text, r.confidence, r.rating,\n\
-                    r.response_time_ms, r.reviewed_at, r.due_after\n\
-             FROM review_events r\n\
-             JOIN cards c ON c.id = r.card_id\n\
-             JOIN notes n ON n.id = c.note_id\n\
-             JOIN decks d ON d.id = c.deck_id\n\
-             ORDER BY r.reviewed_at DESC\n\
-             LIMIT 20",
-        )
-        .map_err(CommandError::database)?;
-    let recent_reviews = recent_statement
-        .query_map([], |row| {
-            Ok(RecentReviewDto {
-                id: row.get(0)?,
-                deck_name: row.get(1)?,
-                card_id: row.get(2)?,
-                front_text: row.get(3)?,
-                outcome: row.get(4)?,
-                rating: row.get(5)?,
-                response_time_ms: row.get(6)?,
-                reviewed_at: row.get(7)?,
-                due_after: row.get(8)?,
+    let recent_raw = {
+        let mut recent_statement = connection
+            .prepare(
+                "SELECT r.id, d.name, r.card_id, r.confidence, r.rating,
+                        r.response_time_ms, r.reviewed_at, r.due_after
+                 FROM review_events r
+                 JOIN cards c ON c.id = r.card_id
+                 JOIN decks d ON d.id = c.deck_id
+                 ORDER BY r.reviewed_at DESC
+                 LIMIT 20",
+            )
+            .map_err(CommandError::database)?;
+        recent_statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, i64>(6)?,
+                    row.get::<_, i64>(7)?,
+                ))
             })
-        })
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    };
+    let mut recent_reviews = Vec::with_capacity(recent_raw.len());
+    for (id, deck_name, card_id, outcome, rating, response_time_ms, reviewed_at, due_after) in
+        recent_raw
+    {
+        let front_text = get_card_text_from_connection(connection, &card_id)?.front_text;
+        recent_reviews.push(RecentReviewDto {
+            id,
+            deck_name,
+            card_id,
+            front_text,
+            outcome,
+            rating,
+            response_time_ms,
+            reviewed_at,
+            due_after,
+        });
+    }
 
     Ok(AnalyticsDto {
         deck_count,

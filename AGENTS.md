@@ -132,3 +132,6 @@ Every completed change must report:
 - known limitations, migration effects, and residual risks.
 
 An agent's work is a proposal until a human reviews and merges it.
+
+
+- `docs/agents/STAGE-IMPLEMENTATION-PLAYBOOK.md`: repeatable stage branch, coding, validation, and PR workflow;

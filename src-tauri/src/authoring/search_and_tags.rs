@@ -26,10 +26,11 @@ fn list_tags_in_connection(
 ) -> Result<Vec<TagDto>, CommandError> {
     let mut values: Vec<SqlValue> = Vec::new();
     let mut sql = String::from(
-        "SELECT t.id, t.name, COUNT(DISTINCT n.id)
+        "SELECT t.id, t.name, COUNT(DISTINCT c.id)
          FROM tags t
          JOIN note_tags nt ON nt.tag_id = t.id
          JOIN notes n ON n.id = nt.note_id
+         JOIN cards c ON c.note_id = n.id AND c.deleted_at IS NULL
          JOIN decks d ON d.id = n.deck_id
          WHERE n.deleted_at IS NULL
            AND d.deleted_at IS NULL
@@ -45,7 +46,7 @@ fn list_tags_in_connection(
     }
     sql.push_str(
         " GROUP BY t.id, t.name
-          HAVING COUNT(DISTINCT n.id) > 0
+          HAVING COUNT(DISTINCT c.id) > 0
           ORDER BY t.name COLLATE NOCASE ASC",
     );
 
@@ -137,7 +138,6 @@ fn build_search_sql(input: &SearchCardsInput, now: i64) -> Result<SearchSql, Com
         "n.deleted_at IS NULL".to_string(),
         "d.deleted_at IS NULL".to_string(),
         "d.archived_at IS NULL".to_string(),
-        "c.direction = 'forward'".to_string(),
     ];
     let mut values: Vec<SqlValue> = Vec::new();
 
@@ -264,8 +264,6 @@ fn search_cards_in_connection(
              n.id,
              c.deck_id,
              d.name,
-             n.front_text,
-             n.back_text,
              COALESCE((
                  SELECT group_concat(t.name, char(31))
                  FROM note_tags nt
@@ -290,30 +288,62 @@ fn search_cards_in_connection(
         where_sql = search.where_sql,
         order_sql = search.order_sql,
     );
-    let mut statement = connection
-        .prepare(&query_sql)
-        .map_err(CommandError::database)?;
-    let cards = statement
-        .query_map(params_from_iter(search.values.iter()), |row| {
-            let tags: String = row.get(6)?;
-            Ok(CardBrowserRowDto {
-                card_id: row.get(0)?,
-                note_id: row.get(1)?,
-                deck_id: row.get(2)?,
-                deck_name: row.get(3)?,
-                front_text: row.get(4)?,
-                back_text: row.get(5)?,
-                tags: split_tags(&tags),
-                due_at: row.get(7)?,
-                last_reviewed_at: row.get(8)?,
-                review_count: row.get(9)?,
-                created_at: row.get(10)?,
-                updated_at: row.get(11)?,
+    let raw_rows = {
+        let mut statement = connection
+            .prepare(&query_sql)
+            .map_err(CommandError::database)?;
+        statement
+            .query_map(params_from_iter(search.values.iter()), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, Option<i64>>(6)?,
+                    row.get::<_, i64>(7)?,
+                    row.get::<_, i64>(8)?,
+                    row.get::<_, i64>(9)?,
+                ))
             })
-        })
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    };
+
+    let mut cards = Vec::with_capacity(raw_rows.len());
+    for (
+        card_id,
+        note_id,
+        deck_id,
+        deck_name,
+        tags,
+        due_at,
+        last_reviewed_at,
+        review_count,
+        created_at,
+        updated_at,
+    ) in raw_rows
+    {
+        let rendered = get_card_text_from_connection(connection, &card_id)?;
+        cards.push(CardBrowserRowDto {
+            card_id,
+            note_id,
+            deck_id,
+            deck_name,
+            card_type: rendered.card_type,
+            card_label: rendered.card_label,
+            front_text: rendered.front_text,
+            back_text: rendered.back_text,
+            tags: split_tags(&tags),
+            due_at,
+            last_reviewed_at,
+            review_count,
+            created_at,
+            updated_at,
+        });
+    }
 
     Ok(CardSearchPageDto { cards, total_count })
 }
@@ -404,40 +434,7 @@ fn hydrate_organized_card(
     paths: &AppPaths,
     note_id: &str,
 ) -> Result<OrganizedCardDto, CommandError> {
-    let card = get_card_from_connection(connection, paths, note_id)?;
-    let tags = load_tag_names(connection, note_id)?;
-    let due_at = connection
-        .query_row(
-            "SELECT s.due_at
-             FROM card_schedules s
-             JOIN cards c ON c.id = s.card_id
-             WHERE c.note_id = ?1
-               AND c.deleted_at IS NULL
-               AND c.direction = 'forward'",
-            [note_id],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
-    Ok(organized_from_card(card, tags, due_at))
-}
-
-fn organized_from_card(card: CardDto, tags: Vec<String>, due_at: i64) -> OrganizedCardDto {
-    OrganizedCardDto {
-        id: card.id,
-        note_id: card.note_id,
-        deck_id: card.deck_id,
-        direction: card.direction,
-        front_doc: card.front_doc,
-        back_doc: card.back_doc,
-        front_text: card.front_text,
-        back_text: card.back_text,
-        assets: card.assets,
-        tags,
-        due_at,
-        created_at: card.created_at,
-        updated_at: card.updated_at,
-        revision: card.revision,
-    }
+    hydrate_typed_note(connection, paths, note_id)
 }
 
 fn load_tag_names(

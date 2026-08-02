@@ -12,17 +12,18 @@ use tauri::State;
 
 use crate::{
     assets::{detect_image_bytes, validate_original_filename},
-    cards::{collect_asset_ids, validate_content},
+    authoring::prepare_typed_note,
+    cards::collect_asset_ids,
     database::Database,
     decks::{get_deck_from_connection, validate_description, validate_name, DeckDto},
     error::CommandError,
     paths::AppPaths,
     scheduler::insert_new_schedule,
-    util::{generate_id, unix_time_millis, validate_entity_id},
+    util::{bool_to_integer, generate_id, unix_time_millis, validate_entity_id},
 };
 
 const PACKAGE_FORMAT: &str = "studydeck-sqlite";
-const PACKAGE_FORMAT_VERSION: i64 = 1;
+const PACKAGE_FORMAT_VERSION: i64 = 2;
 const MAX_PACKAGE_FILE_BYTES: u64 = 640 * 1024 * 1024;
 const MAX_PACKAGE_ASSET_BYTES: usize = 512 * 1024 * 1024;
 const MAX_PACKAGE_SINGLE_ASSET_BYTES: usize = 25 * 1024 * 1024;
@@ -68,6 +69,9 @@ CREATE TABLE notes (
     back_doc TEXT NOT NULL,
     front_text TEXT NOT NULL,
     back_text TEXT NOT NULL,
+    reverse_enabled INTEGER NOT NULL DEFAULT 0,
+    cloze_text TEXT NOT NULL DEFAULT '',
+    cloze_mode TEXT NOT NULL DEFAULT 'one_at_a_time',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     revision INTEGER NOT NULL
@@ -139,6 +143,9 @@ struct ImportedNote {
     back_doc: Value,
     front_text: String,
     back_text: String,
+    reverse_enabled: bool,
+    cloze_text: String,
+    cloze_mode: String,
     created_at: i64,
     updated_at: i64,
     revision: i64,
@@ -269,46 +276,55 @@ fn export_deck_from_connection(
         )
         .map_err(CommandError::database)?;
 
-    let mut note_statement = connection
-        .prepare(
-            "SELECT id, deck_id, note_type, content_format, content_schema_version,\n\
-                    front_doc, back_doc, front_text, back_text, created_at, updated_at, revision\n\
-             FROM notes\n\
-             WHERE deck_id = ?1 AND deleted_at IS NULL\n\
-             ORDER BY created_at ASC, id ASC",
-        )
-        .map_err(CommandError::database)?;
-    let notes = note_statement
-        .query_map([deck_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, String>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, i64>(9)?,
-                row.get::<_, i64>(10)?,
-                row.get::<_, i64>(11)?,
-            ))
-        })
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
+    let notes = {
+        let mut note_statement = connection
+            .prepare(
+                "SELECT id, deck_id, note_type, content_format, content_schema_version,
+                        front_doc, back_doc, front_text, back_text,
+                        reverse_enabled, cloze_text, cloze_mode,
+                        created_at, updated_at, revision
+                 FROM notes
+                 WHERE deck_id = ?1 AND deleted_at IS NULL
+                 ORDER BY created_at ASC, id ASC",
+            )
+            .map_err(CommandError::database)?;
+        note_statement
+            .query_map([deck_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                    row.get::<_, i64>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, String>(11)?,
+                    row.get::<_, i64>(12)?,
+                    row.get::<_, i64>(13)?,
+                    row.get::<_, i64>(14)?,
+                ))
+            })
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    };
 
     for note in &notes {
         transaction
             .execute(
-                "INSERT INTO notes (\n\
-                     source_id, source_deck_id, note_type, content_format, content_schema_version,\n\
-                     front_doc, back_doc, front_text, back_text, created_at, updated_at, revision\n\
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                "INSERT INTO notes (
+                     source_id, source_deck_id, note_type, content_format,
+                     content_schema_version, front_doc, back_doc, front_text, back_text,
+                     reverse_enabled, cloze_text, cloze_mode,
+                     created_at, updated_at, revision
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 params![
-                    note.0, note.1, note.2, note.3, note.4, note.5, note.6, note.7, note.8,
-                    note.9, note.10, note.11
+                    note.0, note.1, note.2, note.3, note.4, note.5, note.6, note.7, note.8, note.9,
+                    note.10, note.11, note.12, note.13, note.14
                 ],
             )
             .map_err(CommandError::database)?;
@@ -519,8 +535,10 @@ fn read_package(source: &Path) -> Result<ImportedPackage, CommandError> {
     }
 
     let format = metadata_value(&package, "format")?;
-    let version = metadata_value(&package, "formatVersion")?;
-    if format != PACKAGE_FORMAT || version != PACKAGE_FORMAT_VERSION.to_string() {
+    let format_version: i64 = metadata_value(&package, "formatVersion")?
+        .parse()
+        .map_err(|_| CommandError::invalid_package("The deck format version is invalid."))?;
+    if format != PACKAGE_FORMAT || !matches!(format_version, 1 | PACKAGE_FORMAT_VERSION) {
         return Err(CommandError::invalid_package(
             "This file is not a supported ostudy deck package.",
         ));
@@ -562,46 +580,88 @@ fn read_package(source: &Path) -> Result<ImportedPackage, CommandError> {
         ));
     }
 
-    let mut note_statement = package
-        .prepare(
-            "SELECT source_id, source_deck_id, note_type, content_format,\n\
-                    content_schema_version, front_doc, back_doc, front_text, back_text,\n\
-                    created_at, updated_at, revision\n\
-             FROM notes ORDER BY created_at, source_id",
-        )
-        .map_err(CommandError::database)?;
-    let notes = note_statement
-        .query_map([], |row| {
-            let front_json: String = row.get(5)?;
-            let back_json: String = row.get(6)?;
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?,
-                front_json,
-                back_json,
-                row.get::<_, String>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, i64>(9)?,
-                row.get::<_, i64>(10)?,
-                row.get::<_, i64>(11)?,
-            ))
-        })
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-    if notes.len() > MAX_PACKAGE_NOTES {
+    let note_rows = if format_version >= 2 {
+        let mut note_statement = package
+            .prepare(
+                "SELECT source_id, source_deck_id, note_type, content_format,
+                        content_schema_version, front_doc, back_doc, front_text, back_text,
+                        reverse_enabled, cloze_text, cloze_mode,
+                        created_at, updated_at, revision
+                 FROM notes ORDER BY created_at, source_id",
+            )
+            .map_err(CommandError::database)?;
+        note_statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                    row.get::<_, i64>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, String>(11)?,
+                    row.get::<_, i64>(12)?,
+                    row.get::<_, i64>(13)?,
+                    row.get::<_, i64>(14)?,
+                ))
+            })
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    } else {
+        let mut note_statement = package
+            .prepare(
+                "SELECT source_id, source_deck_id, note_type, content_format,
+                        content_schema_version, front_doc, back_doc, front_text, back_text,
+                        created_at, updated_at, revision
+                 FROM notes ORDER BY created_at, source_id",
+            )
+            .map_err(CommandError::database)?;
+        note_statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                    0_i64,
+                    String::new(),
+                    "one_at_a_time".to_string(),
+                    row.get::<_, i64>(9)?,
+                    row.get::<_, i64>(10)?,
+                    row.get::<_, i64>(11)?,
+                ))
+            })
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    };
+    if note_rows.len() > MAX_PACKAGE_NOTES {
         return Err(CommandError::invalid_package(
-            "This deck contains more than 100,000 cards and cannot be imported at once.",
+            "This deck contains more than 100,000 notes and cannot be imported at once.",
         ));
     }
-    let notes = notes
+    let notes = note_rows
         .into_iter()
         .map(|row| {
-            validate_entity_id(&row.0, "exported note")?;
-            if row.1 != deck.source_id || row.2 != "basic" || row.3 != "tiptap-json" || row.4 != 1 {
+            validate_entity_id(&row.0, "exported note")
+                .map_err(|error| CommandError::invalid_package(error.message))?;
+            if row.1 != deck.source_id
+                || !matches!(row.2.as_str(), "basic" | "cloze")
+                || row.3 != "tiptap-json"
+                || row.4 != 1
+                || !matches!(row.9, 0 | 1)
+            {
                 return Err(CommandError::invalid_package(
                     "The deck contains an unsupported card format.",
                 ));
@@ -612,8 +672,8 @@ fn read_package(source: &Path) -> Result<ImportedPackage, CommandError> {
             let back_doc = serde_json::from_str(&row.6).map_err(|error| {
                 CommandError::invalid_package(format!("Invalid answer document: {error}"))
             })?;
-            validate_timestamps(row.9, row.10, "card")?;
-            if row.11 < 1 {
+            validate_timestamps(row.12, row.13, "card")?;
+            if row.14 < 1 {
                 return Err(CommandError::invalid_package(
                     "The deck contains a card with an invalid revision number.",
                 ));
@@ -628,9 +688,12 @@ fn read_package(source: &Path) -> Result<ImportedPackage, CommandError> {
                 back_doc,
                 front_text: row.7,
                 back_text: row.8,
-                created_at: row.9,
-                updated_at: row.10,
-                revision: row.11.max(1),
+                reverse_enabled: row.9 == 1,
+                cloze_text: row.10,
+                cloze_mode: row.11,
+                created_at: row.12,
+                updated_at: row.13,
+                revision: row.14.max(1),
             })
         })
         .collect::<Result<Vec<_>, CommandError>>()?;
@@ -658,7 +721,11 @@ fn read_package(source: &Path) -> Result<ImportedPackage, CommandError> {
     for card in &cards {
         validate_entity_id(&card.source_id, "exported card")?;
         validate_entity_id(&card.source_note_id, "exported note")?;
-        if card.direction != "forward" || card.template_ordinal != 0 {
+        if (format_version == 1 && (card.direction != "forward" || card.template_ordinal != 0))
+            || (format_version >= 2
+                && (!matches!(card.direction.as_str(), "forward" | "reverse" | "cloze")
+                    || card.template_ordinal < 0))
+        {
             return Err(CommandError::invalid_package(
                 "This deck contains an unsupported generated-card format.",
             ));
@@ -822,7 +889,7 @@ fn import_package(
         let mut note_map = HashMap::new();
         for note in &package.notes {
             if note.source_deck_id != package.deck.source_id
-                || note.note_type != "basic"
+                || !matches!(note.note_type.as_str(), "basic" | "cloze")
                 || note.content_format != "tiptap-json"
                 || note.content_schema_version != 1
             {
@@ -835,26 +902,38 @@ fn import_package(
             let mut back_doc = note.back_doc.clone();
             rewrite_asset_ids(&mut front_doc, &asset_map)?;
             rewrite_asset_ids(&mut back_doc, &asset_map)?;
-            let validated = validate_content(
+            let prepared = prepare_typed_note(
+                &note.note_type,
+                note.reverse_enabled,
+                note.cloze_text.clone(),
+                note.cloze_mode.clone(),
                 front_doc,
                 back_doc,
                 note.front_text.clone(),
                 note.back_text.clone(),
-            )?;
+            )
+            .map_err(|error| CommandError::invalid_package(error.message))?;
+            let validated = prepared.content;
 
             transaction
                 .execute(
-                    "INSERT INTO notes (\n\
-                         id, deck_id, note_type, content_format, content_schema_version,\n\
-                         front_doc, back_doc, front_text, back_text, created_at, updated_at, revision\n\
-                     ) VALUES (?1, ?2, 'basic', 'tiptap-json', 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    "INSERT INTO notes (
+                         id, deck_id, note_type, content_format, content_schema_version,
+                         front_doc, back_doc, front_text, back_text,
+                         reverse_enabled, cloze_text, cloze_mode,
+                         created_at, updated_at, revision
+                     ) VALUES (?1, ?2, ?3, 'tiptap-json', 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                     params![
                         note_id,
                         deck_id,
+                        prepared.note_type,
                         validated.front_doc_json,
                         validated.back_doc_json,
                         validated.front_text,
                         validated.back_text,
+                        bool_to_integer(prepared.reverse_enabled),
+                        prepared.cloze_text,
+                        prepared.cloze_mode,
                         note.created_at,
                         note.updated_at,
                         note.revision.max(1)
@@ -1003,22 +1082,56 @@ fn validate_card_relationships(
     notes: &[ImportedNote],
     cards: &[ImportedCard],
 ) -> Result<(), CommandError> {
-    if cards.len() != notes.len() {
+    if notes.is_empty() {
+        return if cards.is_empty() {
+            Ok(())
+        } else {
+            Err(CommandError::invalid_package(
+                "A deck without notes cannot contain generated cards.",
+            ))
+        };
+    }
+    if cards.len() > notes.len().saturating_mul(65) {
         return Err(CommandError::invalid_package(
-            "The deck does not contain exactly one basic card for every note.",
+            "The deck contains too many generated cards for its notes.",
         ));
     }
-    let note_ids = notes
-        .iter()
-        .map(|note| note.source_id.as_str())
-        .collect::<BTreeSet<_>>();
-    let card_note_ids = cards
-        .iter()
-        .map(|card| card.source_note_id.as_str())
-        .collect::<BTreeSet<_>>();
-    if card_note_ids.len() != cards.len() || card_note_ids != note_ids {
+    let mut actual = BTreeSet::new();
+    for card in cards {
+        if !actual.insert((
+            card.source_note_id.clone(),
+            card.direction.clone(),
+            card.template_ordinal,
+        )) {
+            return Err(CommandError::invalid_package(
+                "Generated-card relationships in the deck are inconsistent.",
+            ));
+        }
+    }
+    let mut expected = BTreeSet::new();
+    for note in notes {
+        let prepared = prepare_typed_note(
+            &note.note_type,
+            note.reverse_enabled,
+            note.cloze_text.clone(),
+            note.cloze_mode.clone(),
+            note.front_doc.clone(),
+            note.back_doc.clone(),
+            note.front_text.clone(),
+            note.back_text.clone(),
+        )
+        .map_err(|error| CommandError::invalid_package(error.message))?;
+        for card in prepared.cards {
+            expected.insert((
+                note.source_id.clone(),
+                card.direction.to_string(),
+                card.template_ordinal,
+            ));
+        }
+    }
+    if actual != expected {
         return Err(CommandError::invalid_package(
-            "Generated-card relationships in the deck are inconsistent.",
+            "Generated-card relationships do not match the notes in this deck.",
         ));
     }
     Ok(())
@@ -1327,5 +1440,108 @@ mod tests {
             crate::cards::collect_asset_ids(&doc).expect("ids should collect"),
             vec!["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string()]
         );
+    }
+
+    #[test]
+    fn imports_a_released_version_one_basic_package() {
+        let root = temporary_test_directory();
+        std::fs::create_dir_all(&root).expect("test directory should exist");
+        let paths = AppPaths::new(root.join("app-data")).expect("paths should initialize");
+        let database = Database::open_in_memory().expect("database should open");
+        let package_path = root.join("version-one.studydeck");
+        let deck_id = "1".repeat(32);
+        let note_id = "2".repeat(32);
+        let card_id = "3".repeat(32);
+        let question = paragraph("Version one question");
+        let answer = paragraph("Version one answer");
+        {
+            let package = Connection::open(&package_path).expect("package should open");
+            package
+                .execute_batch(
+                    "CREATE TABLE package_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
+                     CREATE TABLE deck (
+                         source_id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL,
+                         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+                         revision INTEGER NOT NULL
+                     ) STRICT;
+                     CREATE TABLE notes (
+                         source_id TEXT PRIMARY KEY, source_deck_id TEXT NOT NULL,
+                         note_type TEXT NOT NULL, content_format TEXT NOT NULL,
+                         content_schema_version INTEGER NOT NULL, front_doc TEXT NOT NULL,
+                         back_doc TEXT NOT NULL, front_text TEXT NOT NULL, back_text TEXT NOT NULL,
+                         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+                         revision INTEGER NOT NULL
+                     ) STRICT;
+                     CREATE TABLE cards (
+                         source_id TEXT PRIMARY KEY, source_note_id TEXT NOT NULL,
+                         direction TEXT NOT NULL, template_ordinal INTEGER NOT NULL,
+                         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+                     ) STRICT;
+                     CREATE TABLE assets (
+                         source_id TEXT PRIMARY KEY, original_filename TEXT NOT NULL,
+                         mime_type TEXT NOT NULL, byte_size INTEGER NOT NULL,
+                         data BLOB NOT NULL
+                     ) STRICT;
+                     CREATE TABLE note_assets (
+                         source_note_id TEXT NOT NULL, source_asset_id TEXT NOT NULL,
+                         side TEXT NOT NULL,
+                         PRIMARY KEY(source_note_id, source_asset_id, side)
+                     ) STRICT;",
+                )
+                .expect("version one schema should load");
+            package
+                .execute(
+                    "INSERT INTO package_metadata VALUES ('format', ?1)",
+                    [PACKAGE_FORMAT],
+                )
+                .expect("format should insert");
+            package
+                .execute(
+                    "INSERT INTO package_metadata VALUES ('formatVersion', '1')",
+                    [],
+                )
+                .expect("version should insert");
+            package
+                .execute(
+                    "INSERT INTO deck VALUES (?1, 'Version one', '', 1, 1, 1)",
+                    [deck_id.as_str()],
+                )
+                .expect("deck should insert");
+            package
+                .execute(
+                    "INSERT INTO notes VALUES (
+                         ?1, ?2, 'basic', 'tiptap-json', 1, ?3, ?4,
+                         'Version one question', 'Version one answer', 1, 1, 1
+                     )",
+                    params![
+                        note_id,
+                        deck_id,
+                        serde_json::to_string(&question).expect("question should serialize"),
+                        serde_json::to_string(&answer).expect("answer should serialize"),
+                    ],
+                )
+                .expect("note should insert");
+            package
+                .execute(
+                    "INSERT INTO cards VALUES (?1, ?2, 'forward', 0, 1, 1)",
+                    params![card_id, note_id],
+                )
+                .expect("card should insert");
+        }
+
+        let package = read_package(&package_path).expect("version one package should validate");
+        let imported = database
+            .with_connection(|connection| import_package(connection, &paths, package))
+            .expect("version one package should import");
+        assert_eq!(imported.card_count, 1);
+        let cards = database
+            .with_connection(|connection| {
+                crate::cards::list_cards_from_connection(connection, &paths, &imported.deck.id)
+            })
+            .expect("imported cards should list");
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].card_type, "basic");
+        assert_eq!(cards[0].front_text, "Version one question");
+        let _ = std::fs::remove_dir_all(root);
     }
 }

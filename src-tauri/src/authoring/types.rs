@@ -11,12 +11,15 @@ use tauri::State;
 
 use crate::{
     assets::{ensure_assets_exist, AssetDto},
-    cards::{get_card_from_connection, validate_content, CardDto, ValidatedContent},
+    cards::{
+        get_card_by_id_from_connection, get_card_text_from_connection, validate_content,
+        ValidatedContent,
+    },
     database::Database,
     error::CommandError,
     paths::AppPaths,
     scheduler::insert_new_schedule,
-    util::{generate_id, unix_time_millis, validate_entity_id},
+    util::{bool_to_integer, generate_id, unix_time_millis, validate_entity_id},
 };
 
 const MAX_TAGS_PER_NOTE: usize = 32;
@@ -39,6 +42,8 @@ pub struct TagDto {
     pub card_count: i64,
 }
 
+/// Editable source-note data. A Basic note may own a forward and reverse card;
+/// a cloze note may own several independently scheduled cloze cards.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OrganizedCardDto {
@@ -46,6 +51,11 @@ pub struct OrganizedCardDto {
     pub note_id: String,
     pub deck_id: String,
     pub direction: String,
+    pub card_type: String,
+    pub card_label: String,
+    pub reverse_enabled: bool,
+    pub cloze_text: String,
+    pub cloze_mode: String,
     pub front_doc: Value,
     pub back_doc: Value,
     pub front_text: String,
@@ -53,11 +63,13 @@ pub struct OrganizedCardDto {
     pub assets: Vec<AssetDto>,
     pub tags: Vec<String>,
     pub due_at: i64,
+    pub generated_card_count: i64,
     pub created_at: i64,
     pub updated_at: i64,
     pub revision: i64,
 }
 
+/// One independently scheduled card presentation shown in Search/Filter.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CardBrowserRowDto {
@@ -65,6 +77,8 @@ pub struct CardBrowserRowDto {
     pub note_id: String,
     pub deck_id: String,
     pub deck_name: String,
+    pub card_type: String,
+    pub card_label: String,
     pub front_text: String,
     pub back_text: String,
     pub tags: Vec<String>,
@@ -122,6 +136,13 @@ pub struct SearchCardsInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateOrganizedCardInput {
     pub deck_id: String,
+    pub card_type: String,
+    #[serde(default)]
+    pub reverse_enabled: bool,
+    #[serde(default)]
+    pub cloze_text: String,
+    #[serde(default = "default_cloze_mode")]
+    pub cloze_mode: String,
     pub front_doc: Value,
     pub back_doc: Value,
     pub front_text: String,
@@ -138,6 +159,13 @@ pub struct UpdateOrganizedCardInput {
     pub note_id: String,
     pub deck_id: String,
     pub revision: i64,
+    pub card_type: String,
+    #[serde(default)]
+    pub reverse_enabled: bool,
+    #[serde(default)]
+    pub cloze_text: String,
+    #[serde(default = "default_cloze_mode")]
+    pub cloze_mode: String,
     pub front_doc: Value,
     pub back_doc: Value,
     pub front_text: String,
@@ -250,11 +278,21 @@ struct ValidatedTag {
 struct SourceNote {
     id: String,
     deck_id: String,
+    note_type: String,
+    reverse_enabled: bool,
+    cloze_text: String,
+    cloze_mode: String,
     front_doc: String,
     back_doc: String,
     front_text: String,
     back_text: String,
     duplicate_hash: String,
+}
+
+#[derive(Clone)]
+struct SourceCard {
+    direction: String,
+    template_ordinal: i64,
 }
 
 type PreparedBulkRow = (
@@ -263,3 +301,7 @@ type PreparedBulkRow = (
     (String, String),
     String,
 );
+
+fn default_cloze_mode() -> String {
+    "one_at_a_time".to_string()
+}
