@@ -58,7 +58,9 @@ jobs:
         run: cargo install tauri-driver --version 2.0.6 --locked
 
       - name: Run the repository gate
-        run: ./scripts/check.sh
+        run: |
+          set -o pipefail
+          ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-check.log"
 
       - name: Export diagnostics after a failure
         if: failure()
@@ -69,5 +71,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ostudy-check-diagnostics
-          path: ${{ runner.temp }}/ostudy-diagnostics.tar.gz
+          path: |
+            ${{ runner.temp }}/ostudy-diagnostics.tar.gz
+            ${{ runner.temp }}/ostudy-check.log
           if-no-files-found: ignore
