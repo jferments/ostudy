@@ -343,8 +343,8 @@ export function TemplatesScreen({
                 <p>
                   Type field names in double braces, such as {"{{Subject}}"}. The
                   renderer keeps simple values inline and automatically promotes
-                  structured values such as lists, images, headings, tables, and
-                  multiple paragraphs to blocks.
+                  structured values such as lists, images, headings, block quotes,
+                  code blocks, and multiple paragraphs to blocks.
                 </p>
               </div>
               <button
