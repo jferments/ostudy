@@ -16,5 +16,6 @@ include!("authoring/stage3/cloze.rs");
 include!("authoring/stage3/template_crud.rs");
 include!("authoring/stage3/template_validation.rs");
 include!("authoring/stage3/template_generation.rs");
+include!("authoring/stage3/transfer.rs");
 include!("authoring/normalization.rs");
 include!("authoring/tests.rs");
