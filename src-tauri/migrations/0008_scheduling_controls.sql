@@ -17,7 +17,6 @@ ALTER TABLE practice_session_cards ADD COLUMN disposition TEXT
 
 CREATE TABLE schedule_action_events (
     id                    TEXT PRIMARY KEY CHECK(length(id) = 32),
-    request_id            TEXT NOT NULL CHECK(length(request_id) = 32),
     mutation_id           TEXT NOT NULL UNIQUE CHECK(length(mutation_id) = 32),
     session_id            TEXT REFERENCES practice_sessions(id) ON DELETE SET NULL,
     card_id               TEXT NOT NULL REFERENCES cards(id) ON DELETE RESTRICT,
@@ -41,8 +40,6 @@ CREATE TABLE schedule_action_events (
 
 CREATE INDEX schedule_action_events_card_time_idx
     ON schedule_action_events(card_id, occurred_at DESC);
-CREATE INDEX schedule_action_events_request_idx
-    ON schedule_action_events(request_id);
 
 CREATE INDEX cards_buried_until_idx
     ON cards(buried_until)
