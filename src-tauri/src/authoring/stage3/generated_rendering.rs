@@ -19,7 +19,7 @@ fn sync_generated_cards(
                  ORDER BY direction, template_ordinal, created_at",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([note_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -30,7 +30,8 @@ fn sync_generated_cards(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     let mut by_key = BTreeMap::new();
     for (card_id, direction, ordinal, deleted_at) in &existing {
