@@ -217,11 +217,12 @@ export function TemplatesScreen({
                   maxLength={80}
                   disabled={isSaving}
                   placeholder="Pharmacology"
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
                     setDraft((current) =>
-                      current ? { ...current, name: event.currentTarget.value } : current,
-                    )
-                  }
+                      current ? { ...current, name: value } : current,
+                    );
+                  }}
                 />
               </label>
               <label>
@@ -232,13 +233,12 @@ export function TemplatesScreen({
                   rows={3}
                   disabled={isSaving}
                   placeholder="Medication facts entered once and generated as focused study cards."
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
                     setDraft((current) =>
-                      current
-                        ? { ...current, description: event.currentTarget.value }
-                        : current,
-                    )
-                  }
+                      current ? { ...current, description: value } : current,
+                    );
+                  }}
                 />
               </label>
             </div>
@@ -286,9 +286,10 @@ export function TemplatesScreen({
                       maxLength={64}
                       disabled={isSaving}
                       placeholder="Drug class"
-                      onChange={(event) =>
-                        updateField(setDraft, field.key, { name: event.currentTarget.value })
-                      }
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        updateField(setDraft, field.key, { name: value });
+                      }}
                     />
                   </label>
                   <label>
@@ -298,11 +299,10 @@ export function TemplatesScreen({
                       maxLength={500}
                       disabled={isSaving}
                       placeholder="Include the therapeutic class and major subclass."
-                      onChange={(event) =>
-                        updateField(setDraft, field.key, {
-                          description: event.currentTarget.value,
-                        })
-                      }
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        updateField(setDraft, field.key, { description: value });
+                      }}
                     />
                   </label>
                   <button
@@ -384,9 +384,10 @@ export function TemplatesScreen({
                         maxLength={80}
                         disabled={isSaving}
                         placeholder="Drug class"
-                        onChange={(event) =>
-                          updateRule(setDraft, rule.key, { name: event.currentTarget.value })
-                        }
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          updateRule(setDraft, rule.key, { name: value });
+                        }}
                       />
                     </label>
                     <button
@@ -416,11 +417,10 @@ export function TemplatesScreen({
                         maxLength={4000}
                         disabled={isSaving}
                         placeholder="What is the drug class of {{Name}}?"
-                        onChange={(event) =>
-                          updateRule(setDraft, rule.key, {
-                            frontPattern: event.currentTarget.value,
-                          })
-                        }
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          updateRule(setDraft, rule.key, { frontPattern: value });
+                        }}
                       />
                     </label>
                     <label>
@@ -431,11 +431,10 @@ export function TemplatesScreen({
                         maxLength={4000}
                         disabled={isSaving}
                         placeholder="{{Drug class}}"
-                        onChange={(event) =>
-                          updateRule(setDraft, rule.key, {
-                            backPattern: event.currentTarget.value,
-                          })
-                        }
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          updateRule(setDraft, rule.key, { backPattern: value });
+                        }}
                       />
                     </label>
                   </div>
