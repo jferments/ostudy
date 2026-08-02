@@ -70,6 +70,7 @@ pub fn run() {
             authoring::find_duplicate_cards,
             authoring::analyze_bulk_cards,
             authoring::bulk_create_cards,
+            // Registered externally as the stable `transfer_cards` IPC command.
             authoring::transfer_generated_cards,
             authoring::bulk_tag_cards,
             authoring::delete_cards,
