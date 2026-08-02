@@ -73,7 +73,6 @@ export function renderClozePreview(
   source: string,
   targetGroup: number | null,
 ): ClozePreview {
-  const blanks = findClozeBlanks(source);
   const answers: string[] = [];
   const question = source.replace(
     CLOZE_PATTERN,
