@@ -28,16 +28,16 @@ mod stage3_tests {
             "[…] reduce formation of […]."
         );
 
-        let one_at_a_time = prepare_generated_note(
-            "cloze",
-            false,
-            source.to_string(),
-            "one_at_a_time".to_string(),
-            json!({"type": "doc", "content": []}),
-            json!({"type": "doc", "content": []}),
-            String::new(),
-            String::new(),
-        )
+        let one_at_a_time = prepare_generated_note(GeneratedNoteDraft {
+            card_type: "cloze".to_string(),
+            reverse_enabled: false,
+            cloze_source: source.to_string(),
+            cloze_mode: "one_at_a_time".to_string(),
+            front_doc: json!({"type": "doc", "content": []}),
+            back_doc: json!({"type": "doc", "content": []}),
+            front_text: String::new(),
+            back_text: String::new(),
+        })
         .expect("one-at-a-time note should prepare");
         assert_eq!(
             one_at_a_time.cards,
@@ -53,16 +53,16 @@ mod stage3_tests {
             ]
         );
 
-        let all_together = prepare_generated_note(
-            "cloze",
-            false,
-            source.to_string(),
-            "all_together".to_string(),
-            json!({"type": "doc", "content": []}),
-            json!({"type": "doc", "content": []}),
-            String::new(),
-            String::new(),
-        )
+        let all_together = prepare_generated_note(GeneratedNoteDraft {
+            card_type: "cloze".to_string(),
+            reverse_enabled: false,
+            cloze_source: source.to_string(),
+            cloze_mode: "all_together".to_string(),
+            front_doc: json!({"type": "doc", "content": []}),
+            back_doc: json!({"type": "doc", "content": []}),
+            front_text: String::new(),
+            back_text: String::new(),
+        })
         .expect("all-together note should prepare");
         assert_eq!(
             all_together.cards,
