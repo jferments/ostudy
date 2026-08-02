@@ -26,6 +26,8 @@ const DEFAULTS: AppSettings = {
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
+  dailyNewLimit: 20,
+  dailyReviewLimit: 200,
 };
 
 export function SettingsScreen({
@@ -90,9 +92,7 @@ export function SettingsScreen({
   return (
     <div className="screen settings-screen" aria-busy={isSaving}>
       <header className="screen-header compact-screen-header">
-        <div>
-          <h1>Settings</h1>
-        </div>
+        <div><h1>Settings</h1></div>
         <div className="header-actions">
           <button type="button" className="secondary-button" disabled={isSaving} onClick={() => setDraft(DEFAULTS)}>
             Restore defaults
@@ -107,9 +107,7 @@ export function SettingsScreen({
       {dirty ? <div className="inline-alert info-alert">Previewing unsaved settings.</div> : null}
 
       <section className="settings-section">
-        <div className="section-heading">
-          <h2>Theme</h2>
-        </div>
+        <div className="section-heading"><h2>Theme</h2></div>
         <div className="theme-grid" role="radiogroup" aria-label="Application theme">
           <ThemeOption name="Light" value="light" selected={draft.theme === "light"} onSelect={() => update({ theme: "light" })} />
           <ThemeOption name="Dark" value="dark" selected={draft.theme === "dark"} onSelect={() => update({ theme: "dark" })} />
@@ -123,24 +121,8 @@ export function SettingsScreen({
           <h2>Appearance</h2>
           <FontControl label="Interface font" value={draft.uiFont} onChange={(uiFont) => update({ uiFont })} />
           <FontControl label="Default card font" value={draft.cardFont} onChange={(cardFont) => update({ cardFont })} />
-          <RangeControl
-            label="Interface scale"
-            min={80}
-            max={140}
-            step={5}
-            value={draft.uiScale}
-            suffix="%"
-            onChange={(uiScale) => update({ uiScale })}
-          />
-          <RangeControl
-            label="Default card text"
-            min={12}
-            max={32}
-            step={1}
-            value={draft.cardBaseSize}
-            suffix=" px"
-            onChange={(cardBaseSize) => update({ cardBaseSize })}
-          />
+          <RangeControl label="Interface scale" min={80} max={140} step={5} value={draft.uiScale} suffix="%" onChange={(uiScale) => update({ uiScale })} />
+          <RangeControl label="Default card text" min={12} max={32} step={1} value={draft.cardBaseSize} suffix=" px" onChange={(cardBaseSize) => update({ cardBaseSize })} />
           <label className="switch-row">
             <span><strong>Reduce motion</strong></span>
             <input type="checkbox" checked={draft.reduceMotion} onChange={(event) => update({ reduceMotion: event.currentTarget.checked })} />
@@ -158,6 +140,21 @@ export function SettingsScreen({
             suffix="%"
             onChange={(value) => update({ desiredRetention: value / 100 })}
           />
+          <div className="daily-limit-grid">
+            <NumberControl
+              label="New cards per day"
+              value={draft.dailyNewLimit}
+              onChange={(dailyNewLimit) => update({ dailyNewLimit })}
+            />
+            <NumberControl
+              label="Reviews per day"
+              value={draft.dailyReviewLimit}
+              onChange={(dailyReviewLimit) => update({ dailyReviewLimit })}
+            />
+          </div>
+          <p className="settings-note">
+            Limits bound normal scheduled sessions. A value of 0 pauses that category; explicit extra and filtered sessions remain available.
+          </p>
           <p className="settings-note">
             Session-specific options, including shuffling, are chosen on the Practice screen.
           </p>
@@ -212,28 +209,15 @@ function ThemeOption({ name, value, selected, onSelect }: ThemeOptionProps) {
   );
 }
 
-interface FontControlProps {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}
-
-function FontControl({ label, value, onChange }: FontControlProps) {
+function FontControl({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   const isCustom = value.startsWith("custom:");
   const mode = isCustom ? "custom" : value;
   const custom = isCustom ? value.slice("custom:".length) : "";
-
   return (
     <div className="setting-control font-control">
       <label>
         <span>{label}</span>
-        <select
-          value={mode}
-          onChange={(event) => {
-            const next = event.currentTarget.value;
-            onChange(next === "custom" ? "custom:Arial" : next);
-          }}
-        >
+        <select value={mode} onChange={(event) => onChange(event.currentTarget.value === "custom" ? "custom:Arial" : event.currentTarget.value)}>
           <option value="system">System sans-serif</option>
           <option value="humanist">Humanist sans-serif</option>
           <option value="serif">Serif</option>
@@ -251,17 +235,9 @@ function FontControl({ label, value, onChange }: FontControlProps) {
   );
 }
 
-interface RangeControlProps {
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  value: number;
-  suffix: string;
-  onChange: (value: number) => void;
-}
-
-function RangeControl({ label, min, max, step, value, suffix, onChange }: RangeControlProps) {
+function RangeControl({ label, min, max, step, value, suffix, onChange }: {
+  label: string; min: number; max: number; step: number; value: number; suffix: string; onChange: (value: number) => void;
+}) {
   return (
     <label className="range-control">
       <span><strong>{label}</strong></span>
@@ -269,6 +245,25 @@ function RangeControl({ label, min, max, step, value, suffix, onChange }: RangeC
         <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.currentTarget.value))} />
         <output>{value}{suffix}</output>
       </div>
+    </label>
+  );
+}
+
+function NumberControl({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+  return (
+    <label className="number-control">
+      <span><strong>{label}</strong></span>
+      <input
+        type="number"
+        min={0}
+        max={10_000}
+        step={1}
+        value={value}
+        onChange={(event) => {
+          const parsed = Number(event.currentTarget.value);
+          onChange(Number.isFinite(parsed) ? Math.max(0, Math.min(10_000, Math.trunc(parsed))) : 0);
+        }}
+      />
     </label>
   );
 }
