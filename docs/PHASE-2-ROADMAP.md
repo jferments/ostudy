@@ -24,41 +24,56 @@ and reviewed before work starts on the next one.
 - Copy cards with fresh schedules.
 - Optional tag metadata in backward-compatible `.studydeck` packages.
 
-## Stage 3 — Card types and safe templates — complete in this branch
+## Stage 3 — Card types and safe templates — complete
 
 - A **Card template** selector that defaults to Basic.
 - **Reverse cards** generated from Basic notes, with separate forward and reverse
   schedules.
-- **Fill in the blank** authoring by selecting text and marking stable numbered
-  blank regions.
-- One independently scheduled card per blank or one card hiding all blanks.
+- **Fill in the blank** authoring with one canonical scheduled card whose selected
+  blank is stable for the complete practice session.
 - Stable generated-card identities that preserve schedules and review history
-  when a direction or cloze mode is disabled and later re-enabled.
-- A **Templates** sidebar workspace for reusable field definitions and
+  when a direction or card type is disabled and later re-enabled.
+- A **Templates** sidebar workspace for reusable field definitions and rich
   question/answer rules.
 - A bounded data-only `{{field name}}` substitution language with no evaluator,
   script, SQL, shell, raw HTML, filesystem, or network capabilities.
+- Automatic inline or block placement from the submitted rich field value.
 - Permanent ordinary Basic cards generated from one completed template form.
 - Template deletion that never deletes or changes previously generated cards.
 - Generated-card support across Search/Filter, Practice, analytics, tags,
   move/copy, duplicate handling, and `.studydeck` transfer.
 
-## Stage 4 — Reliable editing and media layout
+## Stage 4 — Reliable editing and media layout — deferred
 
 - Autosaved editor drafts and interrupted-edit recovery.
 - Image sizing and alignment controls.
 - Safe image cleanup that does not delete assets still referenced by drafts,
   copied cards, or imported decks.
 
-## Stage 5 — Scheduling controls and workload management
+## Stage 5A — Scheduling controls and workload management — implemented in PR #16
 
-- Suspend and bury.
-- Reset and reschedule.
-- Undo the last review.
-- Daily new-card and review limits.
-- Interval previews before a rating is submitted.
+- Exact-card suspend/resume and bury/unbury controls.
+- Reset to a fresh New schedule without deleting review history.
+- Manual rescheduling that changes the next due time without recording a review.
+- Global daily new-card and review limits.
+- Scheduled, extra, and custom session modes.
+- Due-review backlog protection that pauses normal new-card introduction.
+- Four FSRS interval previews before a rating is submitted.
 - Repeatedly missed-card detection under the user-facing name
   **Needs more practice**.
+- Compact controls in Practice, Search/Filter, and Settings.
+
+## Stage 5B — Learning analytics and progress visualization — next
+
+- Time-series progress visualization across all decks or selected decks/tags.
+- Tag performance and study-priority statistics.
+- Session-completion navigation to scoped analytics.
+- Workload and recall trend interpretation.
+
+## Deferred Stage 5 item
+
+- Undo the last review is intentionally deferred. Exact reversal requires its own
+  complete schedule-snapshot and append-only reversal design.
 
 ## Stage 6 — Whole-application quality pass
 
