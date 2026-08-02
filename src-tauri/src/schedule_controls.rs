@@ -7,12 +7,11 @@ use tauri::State;
 use crate::{
     database::Database,
     error::CommandError,
+    practice::refresh_session_counters,
     scheduler::{load_schedule, new_schedule, update_schedule},
     util::{generate_id, unix_time_millis, validate_entity_id},
     workload::next_local_day_start_millis,
 };
-
-const MAX_ACTION_CARDS: usize = 10_000;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -47,122 +46,120 @@ fn apply_in_connection(
     if let Some(existing) = existing_result(connection, &input.mutation_id)? {
         return Ok(existing);
     }
+    let card_id = input.card_ids.first().ok_or_else(|| {
+        CommandError::new("invalid_schedule_selection", "Select exactly one card.")
+    })?;
     let now = unix_time_millis()?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
-    let mut affected = 0_i64;
-    for card_id in &input.card_ids {
-        let control_state: Option<(Option<i64>, Option<i64>)> = transaction
-            .query_row(
-                "SELECT suspended_at, buried_until FROM cards
-                 WHERE id = ?1 AND deleted_at IS NULL",
-                [card_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()
-            .map_err(CommandError::database)?;
-        let Some((suspended_before, buried_before)) = control_state else {
-            return Err(CommandError::new(
-                "schedule_card_not_found",
-                "A selected card no longer exists.",
-            ));
-        };
-        let before = load_schedule(&transaction, card_id)?;
-        let mut after = before.clone();
-        let (suspended_after, buried_after) = match input.action.as_str() {
-            "suspend" => (Some(now), buried_before),
-            "resume" => (None, buried_before),
-            "bury" => (suspended_before, Some(next_local_day_start_millis()?)),
-            "unbury" => (suspended_before, None),
-            "reset" => {
-                after = new_schedule(card_id.clone(), now);
-                after.revision = before.revision + 1;
-                (suspended_before, buried_before)
-            }
-            "reschedule" => {
-                after.due_at = input.due_at.ok_or_else(|| {
-                    CommandError::new("missing_reschedule_date", "Choose a new due date.")
-                })?;
-                after.updated_at = now;
-                after.revision = before.revision + 1;
-                (suspended_before, buried_before)
-            }
-            _ => unreachable!("validated action"),
-        };
-
-        if matches!(input.action.as_str(), "suspend" | "resume" | "bury" | "unbury") {
-            transaction
-                .execute(
-                    "UPDATE cards SET suspended_at = ?1, buried_until = ?2, updated_at = ?3
-                     WHERE id = ?4 AND deleted_at IS NULL",
-                    params![suspended_after, buried_after, now, card_id],
-                )
-                .map_err(CommandError::database)?;
+    let control_state: Option<(Option<i64>, Option<i64>)> = transaction
+        .query_row(
+            "SELECT suspended_at, buried_until FROM cards
+             WHERE id = ?1 AND deleted_at IS NULL",
+            [card_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    let Some((suspended_before, buried_before)) = control_state else {
+        return Err(CommandError::new(
+            "schedule_card_not_found",
+            "The selected card no longer exists.",
+        ));
+    };
+    let before = load_schedule(&transaction, card_id)?;
+    let mut after = before.clone();
+    let (suspended_after, buried_after) = match input.action.as_str() {
+        "suspend" => (Some(now), buried_before),
+        "resume" => (None, buried_before),
+        "bury" => (suspended_before, Some(next_local_day_start_millis()?)),
+        "unbury" => (suspended_before, None),
+        "reset" => {
+            after = new_schedule(card_id.clone(), now);
+            after.revision = before.revision + 1;
+            (suspended_before, buried_before)
+        }
+        "reschedule" => {
+            after.due_at = input.due_at.ok_or_else(|| {
+                CommandError::new("missing_reschedule_date", "Choose a new due date.")
+            })?;
             after.updated_at = now;
             after.revision = before.revision + 1;
-            update_schedule(&transaction, &after)?;
-        } else {
-            update_schedule(&transaction, &after)?;
+            (suspended_before, buried_before)
         }
+        _ => unreachable!("validated action"),
+    };
 
-        let event_id = generate_id(&transaction)?;
-        let per_card_mutation_id = if input.card_ids.len() == 1 {
-            input.mutation_id.clone()
-        } else {
-            derive_mutation_id(&input.mutation_id, affected)
-        };
+    if matches!(input.action.as_str(), "suspend" | "resume" | "bury" | "unbury") {
         transaction
             .execute(
-                "INSERT INTO schedule_action_events (
-                     id, mutation_id, session_id, card_id, action,
-                     due_before, due_after, state_before, state_after,
-                     suspended_before, suspended_after,
-                     buried_until_before, buried_until_after,
-                     schedule_revision_before, schedule_revision_after,
-                     occurred_at, created_at
-                 ) VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
-                     ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?16
-                 )",
-                params![
-                    event_id,
-                    per_card_mutation_id,
-                    input.session_id,
-                    card_id,
-                    input.action,
-                    before.due_at,
-                    after.due_at,
-                    before.state,
-                    after.state,
-                    suspended_before,
-                    suspended_after,
-                    buried_before,
-                    buried_after,
-                    before.revision,
-                    after.revision,
-                    now,
-                ],
+                "UPDATE cards SET suspended_at = ?1, buried_until = ?2, updated_at = ?3
+                 WHERE id = ?4 AND deleted_at IS NULL",
+                params![suspended_after, buried_after, now, card_id],
             )
             .map_err(CommandError::database)?;
+        after.updated_at = now;
+        after.revision = before.revision + 1;
+    }
+    update_schedule(&transaction, &after)?;
 
-        if let Some(session_id) = &input.session_id {
-            if matches!(input.action.as_str(), "suspend" | "bury") {
-                transaction
-                    .execute(
-                        "UPDATE practice_session_cards
-                         SET dismissed_at = COALESCE(dismissed_at, ?1), disposition = ?2
-                         WHERE session_id = ?3 AND card_id = ?4 AND rated_at IS NULL",
-                        params![now, if input.action == "suspend" { "suspended" } else { "buried" }, session_id, card_id],
-                    )
-                    .map_err(CommandError::database)?;
-            }
+    let event_id = generate_id(&transaction)?;
+    transaction
+        .execute(
+            "INSERT INTO schedule_action_events (
+                 id, mutation_id, session_id, card_id, action,
+                 due_before, due_after, state_before, state_after,
+                 suspended_before, suspended_after,
+                 buried_until_before, buried_until_after,
+                 schedule_revision_before, schedule_revision_after,
+                 occurred_at, created_at
+             ) VALUES (
+                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                 ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?16
+             )",
+            params![
+                event_id,
+                input.mutation_id,
+                input.session_id,
+                card_id,
+                input.action,
+                before.due_at,
+                after.due_at,
+                before.state,
+                after.state,
+                suspended_before,
+                suspended_after,
+                buried_before,
+                buried_after,
+                before.revision,
+                after.revision,
+                now,
+            ],
+        )
+        .map_err(CommandError::database)?;
+
+    if let Some(session_id) = &input.session_id {
+        if matches!(input.action.as_str(), "suspend" | "bury") {
+            transaction
+                .execute(
+                    "UPDATE practice_session_cards
+                     SET dismissed_at = COALESCE(dismissed_at, ?1), disposition = ?2
+                     WHERE session_id = ?3 AND card_id = ?4 AND rated_at IS NULL",
+                    params![
+                        now,
+                        if input.action == "suspend" { "suspended" } else { "buried" },
+                        session_id,
+                        card_id,
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            refresh_session_counters(&transaction, session_id, now)?;
         }
-        affected += 1;
     }
     transaction.commit().map_err(CommandError::database)?;
     Ok(ScheduleActionResultDto {
-        affected_count: affected,
+        affected_count: 1,
         action: input.action,
     })
 }
@@ -173,14 +170,12 @@ fn existing_result(
 ) -> Result<Option<ScheduleActionResultDto>, CommandError> {
     connection
         .query_row(
-            "SELECT action, COUNT(*) FROM schedule_action_events
-             WHERE mutation_id = ?1 OR mutation_id LIKE ?2
-             GROUP BY action",
-            params![mutation_id, format!("{mutation_id}-%")],
+            "SELECT action FROM schedule_action_events WHERE mutation_id = ?1",
+            [mutation_id],
             |row| {
                 Ok(ScheduleActionResultDto {
                     action: row.get(0)?,
-                    affected_count: row.get(1)?,
+                    affected_count: 1,
                 })
             },
         )
@@ -193,15 +188,13 @@ fn validate_input(input: &ScheduleActionInput) -> Result<(), CommandError> {
     if let Some(session_id) = &input.session_id {
         validate_entity_id(session_id, "practice session")?;
     }
-    if input.card_ids.is_empty() || input.card_ids.len() > MAX_ACTION_CARDS {
+    if input.card_ids.len() != 1 {
         return Err(CommandError::new(
             "invalid_schedule_selection",
-            format!("Select between 1 and {MAX_ACTION_CARDS} cards."),
+            "Schedule mutations operate on exactly one card so every retry remains independently idempotent.",
         ));
     }
-    for card_id in &input.card_ids {
-        validate_entity_id(card_id, "card")?;
-    }
+    validate_entity_id(&input.card_ids[0], "card")?;
     if !matches!(
         input.action.as_str(),
         "suspend" | "resume" | "bury" | "unbury" | "reset" | "reschedule"
@@ -230,8 +223,22 @@ fn validate_input(input: &ScheduleActionInput) -> Result<(), CommandError> {
     Ok(())
 }
 
-fn derive_mutation_id(base: &str, index: i64) -> String {
-    let suffix = format!("-{index:x}");
-    let keep = 32_usize.saturating_sub(suffix.len());
-    format!("{}{}", &base[..keep.min(base.len())], suffix)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_multi_card_mutations() {
+        let input = ScheduleActionInput {
+            mutation_id: "a".repeat(32),
+            card_ids: vec!["b".repeat(32), "c".repeat(32)],
+            action: "suspend".to_string(),
+            due_at: None,
+            session_id: None,
+        };
+        assert_eq!(
+            validate_input(&input).expect_err("selection should fail").code,
+            "invalid_schedule_selection"
+        );
+    }
 }
