@@ -14,28 +14,6 @@
   padding: 1rem;
 }
 
-.template-field-inserter {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 0.65rem;
-  padding: 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: 0.75rem;
-  background: var(--surface-subtle);
-}
-
-.template-field-inserter label {
-  display: grid;
-  gap: 0.3rem;
-  min-width: min(18rem, 100%);
-}
-
-.template-field-inserter small {
-  flex-basis: 100%;
-  line-height: 1.45;
-}
-
 .template-field-placeholder {
   display: inline-flex;
   align-items: center;
@@ -74,15 +52,4 @@
 .template-card-previews .rich-text-view,
 .template-card-previews .rich-card-content {
   min-width: 0;
-}
-
-@media (max-width: 760px) {
-  .template-field-inserter {
-    align-items: stretch;
-  }
-
-  .template-field-inserter label,
-  .template-field-inserter button {
-    width: 100%;
-  }
 }
