@@ -1,14 +1,3 @@
-#[tauri::command(rename = "update_card_template")]
-pub fn update_card_template_with_stable_children(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    input: UpdateCardTemplateInput,
-) -> Result<CardTemplateDto, CommandError> {
-    database.with_connection(|connection| {
-        update_card_template_with_stable_children_in_connection(connection, &paths, input)
-    })
-}
-
 fn update_card_template_with_stable_children_in_connection(
     connection: &mut Connection,
     paths: &AppPaths,
