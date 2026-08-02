@@ -1,5 +1,9 @@
+import { RichTextEditor } from "../../editor/RichTextEditor";
+import { RichTextView } from "../../editor/RichTextView";
 import type {
+  Asset,
   CardTemplate,
+  RichDocument,
   TemplateCardPreview,
   TemplateValueInput,
 } from "../../ipc";
@@ -8,9 +12,11 @@ interface TemplateEntryFormProps {
   template: CardTemplate;
   values: TemplateValueInput[];
   previews: TemplateCardPreview[];
+  assets: Asset[];
   disabled: boolean;
   isPreviewing: boolean;
   onValuesChange: (values: TemplateValueInput[]) => void;
+  onAssetImported: (asset: Asset) => void;
   onPreview: () => void;
 }
 
@@ -18,14 +24,22 @@ export function TemplateEntryForm({
   template,
   values,
   previews,
+  assets,
   disabled,
   isPreviewing,
   onValuesChange,
+  onAssetImported,
   onPreview,
 }: TemplateEntryFormProps) {
-  function updateValue(fieldId: string, value: string): void {
+  function updateValue(
+    fieldId: string,
+    doc: RichDocument,
+    text: string,
+  ): void {
     onValuesChange(
-      values.map((entry) => (entry.fieldId === fieldId ? { ...entry, value } : entry)),
+      values.map((entry) =>
+        entry.fieldId === fieldId ? { ...entry, doc, text } : entry,
+      ),
     );
   }
 
@@ -41,22 +55,22 @@ export function TemplateEntryForm({
         </span>
       </div>
 
-      <div className="template-value-grid">
+      <div className="template-rich-value-list">
         {template.fields.map((field) => {
-          const value = values.find((entry) => entry.fieldId === field.id)?.value ?? "";
+          const value = values.find((entry) => entry.fieldId === field.id);
+          if (!value) return null;
           return (
-            <label key={field.id}>
-              <span>{field.name}</span>
-              <textarea
-                value={value}
-                disabled={disabled}
-                rows={field.description ? 4 : 3}
-                maxLength={50000}
-                placeholder={field.description || `Enter ${field.name}`}
-                onChange={(event) => updateValue(field.id, event.currentTarget.value)}
-              />
-              {field.description ? <small>{field.description}</small> : null}
-            </label>
+            <RichTextEditor
+              key={field.id}
+              label={field.name}
+              description={field.description || "Enter the content for this field."}
+              document={value.doc}
+              assets={assets}
+              disabled={disabled}
+              onAssetImported={onAssetImported}
+              onChange={(doc, text) => updateValue(field.id, doc, text)}
+              minHeight={180}
+            />
           );
         })}
       </div>
@@ -65,15 +79,11 @@ export function TemplateEntryForm({
         <button
           type="button"
           className="secondary-button"
-          disabled={disabled || values.some((entry) => entry.value.trim() === "")}
+          disabled={disabled}
           onClick={onPreview}
         >
           {isPreviewing ? "Building preview…" : "Preview generated cards"}
         </button>
-        <small>
-          Generation uses literal field substitution only. The saved results are normal
-          Basic cards and remain after this template is deleted.
-        </small>
       </div>
 
       {previews.length > 0 ? (
@@ -83,11 +93,17 @@ export function TemplateEntryForm({
               <span className="eyebrow">{preview.ruleName}</span>
               <div>
                 <small>Question</small>
-                <p>{preview.question}</p>
+                <RichTextView
+                  document={preview.questionDoc}
+                  assets={preview.assets}
+                />
               </div>
               <div>
                 <small>Answer</small>
-                <p>{preview.answer}</p>
+                <RichTextView
+                  document={preview.answerDoc}
+                  assets={preview.assets}
+                />
               </div>
             </article>
           ))}
