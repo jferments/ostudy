@@ -11,7 +11,11 @@ const [
   migration7,
   database,
   rustCommands,
-  authoring,
+  authoringEntry,
+  authoringTypes,
+  authoringGenerated,
+  authoringTemplates,
+  authoringNormalization,
   practiceSelection,
   ipc,
   app,
@@ -33,6 +37,10 @@ const [
   read("src-tauri", "src", "database.rs"),
   read("src-tauri", "src", "lib.rs"),
   read("src-tauri", "src", "authoring", "stage3_v2.rs"),
+  read("src-tauri", "src", "authoring", "stage3_v2", "types_commands.rs"),
+  read("src-tauri", "src", "authoring", "stage3_v2", "generated_cards.rs"),
+  read("src-tauri", "src", "authoring", "stage3_v2", "templates.rs"),
+  read("src-tauri", "src", "authoring", "stage3_v2", "normalization.rs"),
   read("src-tauri", "src", "practice_selection.rs"),
   read("src", "ipc.ts"),
   read("src", "App.tsx"),
@@ -49,6 +57,13 @@ const [
   read("docs", "ARCHITECTURE.md"),
   read("docs", "CARD-FORMAT-AND-DATA-MODEL.md"),
 ]);
+const authoring = [
+  authoringEntry,
+  authoringTypes,
+  authoringGenerated,
+  authoringTemplates,
+  authoringNormalization,
+].join("\n");
 
 const failures = [];
 for (const [version, migration] of [[6, migration6], [7, migration7]]) {
@@ -115,7 +130,7 @@ for (const fragment of [
 for (const forbidden of ["eval(", "new Function", "Command::new", "std::process", "reqwest"]) {
   if (authoring.includes(forbidden)) failures.push(`template implementation contains executable behavior: ${forbidden}`);
 }
-if (authoring.includes('direction: "cloze"')) {
+if (authoringGenerated.includes('direction: "cloze"')) {
   failures.push("active cloze creation still generates sibling card identities");
 }
 
