@@ -8,7 +8,6 @@ import {
   updateCardTemplate,
   type Asset,
   type CardTemplate,
-  type CardTemplateField,
   type CardTemplateFieldInput,
   type CardTemplateRuleInput,
   type RichDocument,
@@ -184,12 +183,6 @@ export function TemplatesScreen({
   }
 
   if (draft) {
-    const layoutFields: CardTemplateField[] = draft.fields.map((field, index) => ({
-      id: field.id,
-      name: field.name,
-      description: field.description,
-      position: index,
-    }));
     return (
       <div className="screen templates-screen" aria-busy={isSaving}>
         <header className="screen-header compact-screen-header">
@@ -348,8 +341,10 @@ export function TemplatesScreen({
               <div>
                 <h2>Cards generated</h2>
                 <p>
-                  Design each question and answer with the full editor. Insert short
-                  fields inline or place lists, images, and multi-paragraph fields as blocks.
+                  Type field names in double braces, such as {"{{Subject}}"}. The
+                  renderer keeps simple values inline and automatically promotes
+                  structured values such as lists, images, headings, tables, and
+                  multiple paragraphs to blocks.
                 </p>
               </div>
               <button
@@ -409,7 +404,6 @@ export function TemplatesScreen({
                   <TemplateLayoutEditor
                     label="Question layout"
                     document={rule.frontDoc}
-                    fields={layoutFields}
                     assets={draft.assets}
                     disabled={isSaving}
                     onAssetImported={addAsset}
@@ -418,7 +412,6 @@ export function TemplatesScreen({
                   <TemplateLayoutEditor
                     label="Answer layout"
                     document={rule.backDoc}
-                    fields={layoutFields}
                     assets={draft.assets}
                     disabled={isSaving}
                     onAssetImported={addAsset}
@@ -530,36 +523,29 @@ function createRuleDraft(position: number, field?: FieldDraft): RuleDraft {
     key: id,
     name: position === 0 ? "Card" : "",
     frontDoc: fieldId
-      ? documentWithInlineField(fieldId, label)
+      ? documentWithInlineField(fieldId, label, "Question about ")
       : cloneDocument(EMPTY_RICH_DOCUMENT),
     backDoc: fieldId
-      ? documentWithBlockField(fieldId, label)
+      ? documentWithInlineField(fieldId, label)
       : cloneDocument(EMPTY_RICH_DOCUMENT),
     position,
   };
 }
 
-function documentWithInlineField(fieldId: string, label: string): RichDocument {
+function documentWithInlineField(
+  fieldId: string,
+  label: string,
+  prefix = "",
+): RichDocument {
+  const content: Array<Record<string, unknown>> = [];
+  if (prefix !== "") content.push({ type: "text", text: prefix });
+  content.push({
+    type: "templateFieldInline",
+    attrs: { fieldId, label },
+  });
   return {
     type: "doc",
-    content: [
-      {
-        type: "paragraph",
-        content: [
-          { type: "text", text: "Question about " },
-          { type: "templateFieldInline", attrs: { fieldId, label } },
-        ],
-      },
-    ],
-  };
-}
-
-function documentWithBlockField(fieldId: string, label: string): RichDocument {
-  return {
-    type: "doc",
-    content: [
-      { type: "templateFieldBlock", attrs: { fieldId, label } },
-    ],
+    content: [{ type: "paragraph", content }],
   };
 }
 
