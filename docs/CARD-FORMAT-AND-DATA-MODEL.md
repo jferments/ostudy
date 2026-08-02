@@ -27,8 +27,9 @@ unknown nodes, unknown marks, and unknown attributes are rejected.
 ## Notes, generated cards, and tags
 
 A **note** is editable source content. A **card** is one independently scheduled
-presentation generated from that note. One note may therefore have more than one
-active row in `cards`.
+presentation generated from that note. A Basic note may expose forward and
+reverse cards. A Fill in the blank note exposes exactly one active card even
+when its source contains several marked blanks.
 
 Core content tables:
 
@@ -43,9 +44,9 @@ Core content tables:
 - `assets`: managed image metadata and relative paths
 - `note_assets`: note-to-image relationships by side
 
-Tags attach to notes, so all directions and blanks generated from one note share
-the same classification. Each note is limited to 32 unique tags of 64 visible
-characters each.
+Tags attach to notes, so forward/reverse directions and every rotating cloze
+presentation share the same classification. Each note is limited to 32 unique
+tags of 64 visible characters each.
 
 ## Generated card identity
 
@@ -55,41 +56,39 @@ The `cards` table enforces:
 UNIQUE(note_id, direction, template_ordinal)
 ```
 
-Stage 3 uses the tuple as follows:
+Active Stage 3 identities are:
 
 | Presentation | `direction` | `template_ordinal` |
 | --- | --- | --- |
 | Basic forward | `forward` | `0` |
 | Basic reverse | `reverse` | `0` |
-| First one-at-a-time blank | `forward` | numbered blank ID |
-| Additional one-at-a-time blank | `cloze` | numbered blank ID |
-| All blanks together | `forward` | `0` |
+| Fill in the blank | `forward` | `0` |
 
-A disabled presentation is soft-deleted. The card row, schedule, and review
-history remain in the database. Re-enabling the same tuple clears `deleted_at`
-and reuses the existing card ID. A genuinely new tuple receives a new card ID
-and a fresh schedule.
+A disabled reverse presentation is soft-deleted. Its card row, schedule, and
+review history remain in the database. Re-enabling the same tuple clears
+`deleted_at` and reuses the existing card ID.
 
-The all-blanks presentation uses a separate identity from every individual
-blank. Switching modes therefore cannot accidentally assign an individual
-blank's schedule to the combined question. Switching back reactivates the prior
-individual blank identities.
+Every Fill in the blank mode and marked-blank rotation uses the same canonical
+card identity. Adding, removing, or renumbering blanks therefore does not create
+sibling schedules or search rows.
 
 ## Fill-in-the-blank source format
 
 The editor marks selected text with a bounded data marker:
 
 ```text
-{{c1::ACE inhibitors}} reduce formation of {{c2::angiotensin II}}.
+{{c1::sinoatrial node}} initiates the {{c2::cardiac impulse}}.
 ```
 
-The number after `c` is the stable blank identity. Rust validates the complete
-marker grammar, group range, nesting, blank text, and total source size.
+The number after `c` identifies one presentation group within the source. Rust
+validates the complete marker grammar, group range, nesting, blank text, and
+total source size.
 
-For `one_at_a_time`, one card is generated per distinct group. A question hides
-only the target group and leaves other groups visible. For `all_together`, one
-card hides every marked group. The answer includes the hidden text and the
-complete unhidden statement.
+For `one_at_a_time`, the canonical card's accepted review count selects which
+group will be hidden in the next practice session. The selected group is stored
+in `practice_session_cards.presentation_variant`, so an active or resumed
+session cannot change questions after viewing or revealing the card. For
+`all_together`, the same card hides every marked group.
 
 Cloze source is data, not HTML or an expression language.
 
@@ -100,18 +99,42 @@ separately from notes and cards:
 
 - `card_templates`: display name, description, timestamps, deletion state, and
   optimistic revision
-- `card_template_fields`: ordered field names and optional input guidance
-- `card_template_rules`: ordered names plus question and answer patterns
+- `card_template_fields`: ordered stable field IDs, display names, and optional
+  descriptions
+- `card_template_rules`: ordered names plus rich question and answer documents
+- `card_template_assets`: managed images referenced by saved rule layouts
 
-Patterns use complete placeholders such as `{{name}}`, `{{drug class}}`, or
-`{{side effects}}`. Field names are normalized for case-insensitive identity but
-retain the user's display spelling.
+Users refer to fields by typing complete placeholders such as `{{Subject}}` or
+`{{Important details}}` in a rule layout. Field names are normalized for
+case-insensitive lookup but retain their display spelling. Rust resolves the
+name to the field's stable ID before storage. Incomplete braces and unknown
+field names are rejected.
 
-A generated card does **not** store a template ID. Template generation renders
-literal field substitution, validates the resulting question and answer through
-the ordinary content boundary, and inserts each accepted result as an ordinary
-Basic note/card with a fresh schedule. Consequently, template edits or deletion
-cannot modify or remove previously generated cards.
+Saved rule documents use one neutral inert placeholder node. The older
+`templateFieldBlock` node remains readable only for compatibility with templates
+created by the first schema-7 build. Startup normalization rewrites those nodes
+to the neutral representation without requiring a new migration.
+
+## Automatic field placement
+
+Template field values are complete validated Tiptap documents. Placement is
+chosen from the submitted value's structure at preview/generation time:
+
+- **Inline:** one paragraph, no managed images, and only text or hard breaks
+  within that paragraph.
+- **Block:** supported lists, images, headings, block quotes, code blocks,
+  horizontal rules, multiple paragraphs, or another supported non-inline
+  structure.
+
+Inline values are spliced into the surrounding paragraph. For block values,
+Rust splits a surrounding paragraph or heading into valid before/value/after
+blocks, inserts the value's top-level nodes unchanged, and drops whitespace-only
+wrapper paragraphs. Placement is never inferred from whitespace, a field name,
+or the untrusted plain-text snapshot.
+
+Final rendered questions and answers pass through the ordinary card-content
+validator. A generated card does **not** store a template ID. Template edits or
+deletion cannot modify previously generated cards.
 
 ## Template safety and limits
 
@@ -119,11 +142,14 @@ The template language exposes no evaluator or general expression syntax.
 Validation includes:
 
 - 1–32 fields and 1–32 card rules per template
-- bounded names, descriptions, patterns, field values, and generated output
+- bounded names, descriptions, rich documents, field values, and generated
+  output
 - unique normalized field and rule names
 - complete, non-nested `{{field name}}` placeholders
-- rejection of unknown fields and unknown IPC properties
-- literal substitution followed by canonical card-content validation
+- stable field/rule IDs and rejection of unknown fields
+- managed asset existence and ownership checks
+- rejection of unknown IPC properties
+- structural rendering followed by canonical card-content validation
 
 Templates cannot execute JavaScript, SQL, shell commands, raw HTML, filesystem
 operations, network requests, or arbitrary local paths.
@@ -145,7 +171,9 @@ Search commands support:
 - bounded pagination and bounded all-results selection
 
 Each active generated `cards` row is returned separately. Rust renders its exact
-forward, reverse, individual-blank, or all-blanks question before serialization.
+forward, reverse, or current cloze presentation before serialization. A
+multi-blank cloze note appears once because it owns one active card.
+
 The user query is tokenized and quoted by Rust; raw FTS5 grammar is never
 accepted.
 
@@ -168,9 +196,10 @@ answer, and optional tags. Rust converts text into canonical paragraph
 documents, validates every row, and inserts accepted cards transactionally.
 
 Reusable-template generation is a second in-application bulk-entry path. One
-completed field form renders all rules, previews them in the UI, and inserts the
-accepted results as permanent Basic cards. Neither path introduces a CSV/TSV
-file format.
+completed rich field form renders all rules, previews them in the UI, and
+inserts accepted results as permanent Basic cards. Preview and generation use
+the same automatic-placement and validation functions. Neither path introduces
+a CSV/TSV file format.
 
 ## Move and copy
 
@@ -208,6 +237,7 @@ Older Basic packages without these tables remain importable, and older readers
 can ignore the additional tables in new exports.
 
 Imports validate the complete note/card graph and create fresh local schedules.
-They do not inherit another learner's review history. Packages exclude
-application settings, personal reviews, and the user's reusable authoring
-template library.
+Older Stage 3 packages with several cloze card rows are normalized immediately
+to one active card per cloze note. Imports do not inherit another learner's
+review history. Packages exclude application settings, personal reviews, and
+the user's reusable authoring-template library.
