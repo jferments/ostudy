@@ -115,8 +115,8 @@ export interface CardTemplateField {
 export interface CardTemplateRule {
   id: string;
   name: string;
-  frontPattern: string;
-  backPattern: string;
+  frontDoc: RichDocument;
+  backDoc: RichDocument;
   position: number;
 }
 
@@ -126,6 +126,7 @@ export interface CardTemplate {
   description: string;
   fields: CardTemplateField[];
   rules: CardTemplateRule[];
+  assets: Asset[];
   createdAt: number;
   updatedAt: number;
   revision: number;
@@ -140,8 +141,8 @@ export interface CardTemplateFieldInput {
 export interface CardTemplateRuleInput {
   id?: string;
   name: string;
-  frontPattern: string;
-  backPattern: string;
+  frontDoc: RichDocument;
+  backDoc: RichDocument;
 }
 
 export interface CreateCardTemplateInput {
@@ -158,18 +159,23 @@ export interface UpdateCardTemplateInput extends CreateCardTemplateInput {
 
 export interface TemplateValueInput {
   fieldId: string;
-  value: string;
+  doc: RichDocument;
+  text: string;
 }
 
 export interface TemplateCardPreview {
   ruleId: string;
   ruleName: string;
-  question: string;
-  answer: string;
+  questionDoc: RichDocument;
+  answerDoc: RichDocument;
+  questionText: string;
+  answerText: string;
+  assets: Asset[];
 }
 
 export interface PreviewTemplateCardsInput {
   templateId: string;
+  templateRevision: number;
   values: TemplateValueInput[];
 }
 
