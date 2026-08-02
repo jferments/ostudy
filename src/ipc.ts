@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export type RichDocument = Record<string, unknown>;
+export type BuiltInCardType = "basic" | "cloze";
+export type ClozeMode = "one_at_a_time" | "all_together";
 
 export interface Deck {
   id: string;
@@ -76,6 +78,112 @@ export interface UpdateOrganizedCardInput {
   allowDuplicate: boolean;
 }
 
+export interface CardTypeInfo {
+  cardType: BuiltInCardType;
+  reverseEnabled: boolean;
+  clozeSource: string;
+  clozeMode: ClozeMode;
+  generatedCardCount: number;
+}
+
+export interface CreateGeneratedCardInput {
+  deckId: string;
+  cardType: BuiltInCardType;
+  reverseEnabled: boolean;
+  clozeSource: string;
+  clozeMode: ClozeMode;
+  frontDoc: RichDocument;
+  backDoc: RichDocument;
+  frontText: string;
+  backText: string;
+  tags: string[];
+  allowDuplicate: boolean;
+}
+
+export interface UpdateGeneratedCardInput extends CreateGeneratedCardInput {
+  noteId: string;
+  revision: number;
+}
+
+export interface CardTemplateField {
+  id: string;
+  name: string;
+  description: string;
+  position: number;
+}
+
+export interface CardTemplateRule {
+  id: string;
+  name: string;
+  frontPattern: string;
+  backPattern: string;
+  position: number;
+}
+
+export interface CardTemplate {
+  id: string;
+  name: string;
+  description: string;
+  fields: CardTemplateField[];
+  rules: CardTemplateRule[];
+  createdAt: number;
+  updatedAt: number;
+  revision: number;
+}
+
+export interface CardTemplateFieldInput {
+  id?: string;
+  name: string;
+  description: string;
+}
+
+export interface CardTemplateRuleInput {
+  id?: string;
+  name: string;
+  frontPattern: string;
+  backPattern: string;
+}
+
+export interface CreateCardTemplateInput {
+  name: string;
+  description: string;
+  fields: CardTemplateFieldInput[];
+  rules: CardTemplateRuleInput[];
+}
+
+export interface UpdateCardTemplateInput extends CreateCardTemplateInput {
+  templateId: string;
+  revision: number;
+}
+
+export interface TemplateValueInput {
+  fieldId: string;
+  value: string;
+}
+
+export interface TemplateCardPreview {
+  ruleId: string;
+  ruleName: string;
+  question: string;
+  answer: string;
+}
+
+export interface PreviewTemplateCardsInput {
+  templateId: string;
+  values: TemplateValueInput[];
+}
+
+export interface GenerateTemplateCardsInput extends PreviewTemplateCardsInput {
+  deckId: string;
+  tags: string[];
+}
+
+export interface GenerateTemplateCardsResult {
+  createdCount: number;
+  skippedDuplicates: number;
+  createdNoteIds: string[];
+}
+
 export interface TagSummary {
   id: string;
   name: string;
@@ -113,6 +221,8 @@ export interface CardBrowserRow {
   noteId: string;
   deckId: string;
   deckName: string;
+  cardType: BuiltInCardType;
+  cardLabel: string;
   frontText: string;
   backText: string;
   tags: string[];
@@ -384,6 +494,60 @@ export async function updateOrganizedCard(
   input: UpdateOrganizedCardInput,
 ): Promise<OrganizedCard> {
   return invoke<OrganizedCard>("update_organized_card", { input });
+}
+
+export async function getCardTypeInfo(noteId: string): Promise<CardTypeInfo> {
+  return invoke<CardTypeInfo>("get_card_type_info", { noteId });
+}
+
+export async function createGeneratedCard(
+  input: CreateGeneratedCardInput,
+): Promise<OrganizedCard> {
+  return invoke<OrganizedCard>("create_generated_card", { input });
+}
+
+export async function updateGeneratedCard(
+  input: UpdateGeneratedCardInput,
+): Promise<OrganizedCard> {
+  return invoke<OrganizedCard>("update_generated_card", { input });
+}
+
+export async function listCardTemplates(): Promise<CardTemplate[]> {
+  return invoke<CardTemplate[]>("list_card_templates");
+}
+
+export async function getCardTemplate(templateId: string): Promise<CardTemplate> {
+  return invoke<CardTemplate>("get_card_template", { templateId });
+}
+
+export async function createCardTemplate(
+  input: CreateCardTemplateInput,
+): Promise<CardTemplate> {
+  return invoke<CardTemplate>("create_card_template", { input });
+}
+
+export async function updateCardTemplate(
+  input: UpdateCardTemplateInput,
+): Promise<CardTemplate> {
+  return invoke<CardTemplate>("update_card_template", { input });
+}
+
+export async function deleteCardTemplate(templateId: string): Promise<void> {
+  return invoke<void>("delete_card_template", { templateId });
+}
+
+export async function previewTemplateCards(
+  input: PreviewTemplateCardsInput,
+): Promise<TemplateCardPreview[]> {
+  return invoke<TemplateCardPreview[]>("preview_template_cards", { input });
+}
+
+export async function generateCardsFromTemplate(
+  input: GenerateTemplateCardsInput,
+): Promise<GenerateTemplateCardsResult> {
+  return invoke<GenerateTemplateCardsResult>("generate_cards_from_template", {
+    input,
+  });
 }
 
 export async function findDuplicateCards(
