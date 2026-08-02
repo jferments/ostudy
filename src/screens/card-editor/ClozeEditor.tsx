@@ -37,6 +37,10 @@ export function ClozeEditor({
     () => renderClozePreview(source, effectivePreviewGroup),
     [effectivePreviewGroup, source],
   );
+  const countLabel =
+    mode === "all_together"
+      ? "1 card · all blanks"
+      : `1 card · ${groups.length} alternating ${groups.length === 1 ? "blank" : "blanks"}`;
 
   function markSelection(): void {
     const textarea = textareaRef.current;
@@ -66,13 +70,12 @@ export function ClozeEditor({
         <div>
           <h2 id="cloze-editor-heading">Fill in the blank</h2>
           <p>
-            Write the complete statement, select a word or phrase, then mark it as a
-            blank. Each marked selection receives a stable blank number.
+            Enter the complete statement, select a word or phrase, then mark it as a
+            blank. Multiple marked blanks remain alternate presentations of one
+            scheduled card.
           </p>
         </div>
-        <span className="count-badge">
-          {groups.length} {groups.length === 1 ? "blank" : "blanks"}
-        </span>
+        <span className="count-badge">{countLabel}</span>
       </div>
 
       <label className="cloze-source-field">
@@ -83,7 +86,7 @@ export function ClozeEditor({
           rows={9}
           maxLength={200000}
           disabled={disabled}
-          placeholder="ACE inhibitors block the enzyme that creates angiotensin II."
+          placeholder="Enter the complete statement, then select text to mark as a blank."
           onChange={(event) => {
             setSelectionError(null);
             onSourceChange(event.currentTarget.value);
@@ -115,7 +118,7 @@ export function ClozeEditor({
       {selectionError ? <p className="field-error">{selectionError}</p> : null}
 
       <fieldset className="cloze-mode-options" disabled={disabled}>
-        <legend>Cards generated from multiple blanks</legend>
+        <legend>Blank behavior</legend>
         <label>
           <input
             type="radio"
@@ -124,9 +127,10 @@ export function ClozeEditor({
             onChange={() => onModeChange("one_at_a_time")}
           />
           <span>
-            <strong>Hide one blank at a time</strong>
+            <strong>Hide one blank per review</strong>
             <small>
-              Generate one independently scheduled card for each numbered blank.
+              This remains one scheduled card and rotates through the marked blanks
+              over successive reviews.
             </small>
           </span>
         </label>
@@ -139,7 +143,7 @@ export function ClozeEditor({
           />
           <span>
             <strong>Hide all blanks together</strong>
-            <small>Generate one card with every marked word or phrase hidden.</small>
+            <small>Use one scheduled card with every marked word or phrase hidden.</small>
           </span>
         </label>
       </fieldset>
@@ -148,11 +152,11 @@ export function ClozeEditor({
         <div className="preview-panel-heading">
           <div>
             <span className="eyebrow">PREVIEW</span>
-            <h3>Generated card</h3>
+            <h3>Card presentation</h3>
           </div>
           {mode === "one_at_a_time" && groups.length > 1 ? (
             <label>
-              <span>Blank</span>
+              <span>Preview blank</span>
               <select
                 value={effectivePreviewGroup ?? ""}
                 onChange={(event) => setPreviewGroup(Number(event.currentTarget.value))}
