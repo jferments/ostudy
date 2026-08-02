@@ -11,8 +11,10 @@ vi.mock("../editor/RichTextView", () => ({
   RichTextView: () => <div>Preview</div>,
 }));
 vi.mock("../ipc", () => ({
-  createOrganizedCard: vi.fn(),
+  createGeneratedCard: vi.fn(),
   findDuplicateCards: vi.fn(),
+  generateCardsFromTemplate: vi.fn(),
+  getCardTypeInfo: vi.fn(),
   getErrorCode: (error: unknown) =>
     typeof error === "object" && error !== null && "code" in error
       ? String((error as { code: unknown }).code)
@@ -21,11 +23,12 @@ vi.mock("../ipc", () => ({
     error instanceof Error ? error.message : "Unexpected error",
   ),
   getOrganizedCard: vi.fn(),
+  listCardTemplates: vi.fn(),
   listDecks: vi.fn(),
   listTags: vi.fn(),
-  startCardPractice: vi.fn(),
+  previewTemplateCards: vi.fn(),
   transferCards: vi.fn(),
-  updateOrganizedCard: vi.fn(),
+  updateGeneratedCard: vi.fn(),
 }));
 
 const deck: ipc.Deck = {
@@ -74,8 +77,17 @@ const card: ipc.OrganizedCard = {
 
 describe("CardEditorScreen", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(ipc.listDecks).mockResolvedValue([deck, secondDeck]);
     vi.mocked(ipc.listTags).mockResolvedValue([]);
+    vi.mocked(ipc.listCardTemplates).mockResolvedValue([]);
+    vi.mocked(ipc.getCardTypeInfo).mockResolvedValue({
+      cardType: "basic",
+      reverseEnabled: false,
+      clozeSource: "",
+      clozeMode: "one_at_a_time",
+      generatedCardCount: 1,
+    });
     vi.mocked(ipc.findDuplicateCards).mockResolvedValue([
       {
         noteId: "d".repeat(32),
@@ -84,13 +96,13 @@ describe("CardEditorScreen", () => {
         backText: "Answer",
       },
     ]);
-    vi.mocked(ipc.updateOrganizedCard).mockResolvedValue({
+    vi.mocked(ipc.updateGeneratedCard).mockResolvedValue({
       ...card,
       deckId: secondDeck.id,
     });
   });
 
-  it("places tags after question and answer and saves the selected deck", async () => {
+  it("loads the saved Basic type, places tags after both sides, and saves the selected deck", async () => {
     const onSaved = vi.fn();
     render(
       <CardEditorScreen
@@ -99,11 +111,20 @@ describe("CardEditorScreen", () => {
         card={card}
         onCancel={vi.fn()}
         onSaved={onSaved}
+        onTemplateGenerated={vi.fn()}
         onDirtyChange={vi.fn()}
       />,
     );
 
     expect(await screen.findByText("Medication")).toBeTruthy();
+    await waitFor(() => {
+      expect(ipc.getCardTypeInfo).toHaveBeenCalledWith(card.noteId);
+      expect(
+        (screen.getByRole("combobox", { name: "Card template" }) as HTMLSelectElement)
+          .value,
+      ).toBe("basic");
+    });
+
     const question = screen.getByText("Question editor");
     const answer = screen.getByText("Answer editor");
     const tagInput = screen.getByText("Tags");
@@ -133,10 +154,12 @@ describe("CardEditorScreen", () => {
       expect(ipc.findDuplicateCards).toHaveBeenCalledWith(
         expect.objectContaining({ deckId: secondDeck.id }),
       );
-      expect(ipc.updateOrganizedCard).toHaveBeenCalledWith(
+      expect(ipc.updateGeneratedCard).toHaveBeenCalledWith(
         expect.objectContaining({
           noteId: card.noteId,
           deckId: secondDeck.id,
+          cardType: "basic",
+          reverseEnabled: false,
           tags: ["Medication"],
           allowDuplicate: true,
         }),
