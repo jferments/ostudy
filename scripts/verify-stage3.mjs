@@ -43,7 +43,7 @@ const [
   read("src-tauri", "migrations", "0006_card_types_and_templates.sql"),
   read("src-tauri", "src", "database.rs"),
   read("src-tauri", "src", "lib.rs"),
-  readTree(["src-tauri", "src", "authoring", "stage3"], ".rs"),
+  readTree(["src-tauri", "src", "authoring"], ".rs"),
   read("src-tauri", "src", "stage3_transfer.rs"),
   read("src-tauri", "src", "practice_selection.rs"),
   read("src", "ipc.ts"),
