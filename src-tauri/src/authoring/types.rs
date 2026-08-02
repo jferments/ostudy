@@ -65,6 +65,8 @@ pub struct CardBrowserRowDto {
     pub note_id: String,
     pub deck_id: String,
     pub deck_name: String,
+    pub card_type: String,
+    pub card_label: String,
     pub front_text: String,
     pub back_text: String,
     pub tags: Vec<String>,
