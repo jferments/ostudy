@@ -87,9 +87,8 @@ pub fn export_deck_with_card_types(
     input: ExportDeckInput,
 ) -> Result<ExportResultDto, CommandError> {
     validate_entity_id(&input.deck_id, "deck")?;
-    let payload = database.with_connection(|connection| {
-        load_library_payload(connection, &input.deck_id)
-    })?;
+    let payload =
+        database.with_connection(|connection| load_library_payload(connection, &input.deck_id))?;
     let result = tagged_transfer::export_deck_with_tags(database, paths, input)?;
     if let Err(error) = append_card_type_payload(Path::new(&result.destination_path), &payload) {
         let _ = fs::remove_file(&result.destination_path);
@@ -200,10 +199,7 @@ fn load_library_payload(
     Ok(payload)
 }
 
-fn append_card_type_payload(
-    path: &Path,
-    payload: &Stage3Payload,
-) -> Result<(), CommandError> {
+fn append_card_type_payload(path: &Path, payload: &Stage3Payload) -> Result<(), CommandError> {
     let mut package = Connection::open(path).map_err(CommandError::database)?;
     package
         .execute_batch(
@@ -251,8 +247,10 @@ fn append_card_type_payload(
 }
 
 fn read_card_type_payload(path: &Path) -> Result<Stage3Payload, CommandError> {
-    let package = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|error| CommandError::invalid_package(format!("Could not open the deck: {error}")))?;
+    let package =
+        Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|error| {
+            CommandError::invalid_package(format!("Could not open the deck: {error}"))
+        })?;
     package
         .execute_batch("PRAGMA trusted_schema = OFF; PRAGMA query_only = ON;")
         .map_err(|error| {
@@ -402,9 +400,12 @@ fn validate_payload(payload: &Stage3Payload) -> Result<(), CommandError> {
                         !matches!(card.direction.as_str(), "forward" | "reverse")
                             || card.template_ordinal != 0
                     })
-                    || cards.iter().filter(|card| card.direction == "reverse").count() > 1
-                    || note.reverse_enabled
-                        != cards.iter().any(|card| card.direction == "reverse")
+                    || cards
+                        .iter()
+                        .filter(|card| card.direction == "reverse")
+                        .count()
+                        > 1
+                    || note.reverse_enabled != cards.iter().any(|card| card.direction == "reverse")
                 {
                     return Err(CommandError::invalid_package(
                         "A Basic note contains inconsistent reverse-card metadata.",
@@ -633,11 +634,16 @@ fn match_imported_notes(
         if used_local.contains(&local_id) {
             continue;
         }
-        local_groups.entry(signature).or_default().push_back(local_id);
+        local_groups
+            .entry(signature)
+            .or_default()
+            .push_back(local_id);
     }
     for (signature, mut source_ids) in source_groups {
         let mut local_ids = local_groups.remove(&signature).ok_or_else(|| {
-            CommandError::invalid_package("Imported card types could not be matched to the imported notes.")
+            CommandError::invalid_package(
+                "Imported card types could not be matched to the imported notes.",
+            )
         })?;
         if source_ids.len() != local_ids.len() {
             return Err(CommandError::invalid_package(
