@@ -9,11 +9,12 @@ fn list_card_templates_in_connection(
                  ORDER BY name COLLATE NOCASE ASC, created_at ASC",
             )
             .map_err(CommandError::database)?;
-        statement
+        let ids = statement
             .query_map([], |row| row.get::<_, String>(0))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        ids
     };
     ids.into_iter()
         .map(|id| Ok(load_stored_template(connection, &id, true)?.dto))
@@ -225,7 +226,7 @@ fn load_stored_template(
                  WHERE template_id = ?1 ORDER BY position ASC",
             )
             .map_err(CommandError::database)?;
-        statement
+        let fields = statement
             .query_map([template_id], |row| {
                 Ok(CardTemplateFieldDto {
                     id: row.get(0)?,
@@ -236,7 +237,8 @@ fn load_stored_template(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        fields
     };
     let rules = {
         let mut statement = connection
@@ -246,7 +248,7 @@ fn load_stored_template(
                  WHERE template_id = ?1 ORDER BY position ASC",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rules = statement
             .query_map([template_id], |row| {
                 Ok(CardTemplateRuleDto {
                     id: row.get(0)?,
@@ -258,7 +260,8 @@ fn load_stored_template(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rules
     };
     validate_stored_template(&fields, &rules)?;
     let normalized_fields = fields
