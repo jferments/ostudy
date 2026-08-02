@@ -42,9 +42,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "e275254085414039a7cf5f3a5e08ae35a61ea8f7d3d1b8e016a8d1f087c03029",
         sql: include_str!("../migrations/0005_remove_legacy_duplicate_trigger.sql"),
     },
+    Migration {
+        version: 6,
+        name: "card_types_and_templates",
+        checksum: "f5003f8967aabc5f7295d87051898d7ea0fb02d5d5c40982b7a4745b34e20e06",
+        sql: include_str!("../migrations/0006_card_types_and_templates.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 5;
+const LATEST_SCHEMA_VERSION: i64 = 6;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -251,6 +257,9 @@ mod tests {
                     "tags",
                     "note_tags",
                     "card_search_fts",
+                    "card_templates",
+                    "card_template_fields",
+                    "card_template_rules",
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -260,6 +269,19 @@ mod tests {
                         )
                         .map_err(CommandError::database)?;
                     assert_eq!(exists, 1, "missing table {table}");
+                }
+
+                for column in ["reverse_enabled", "cloze_source", "cloze_mode"] {
+                    let exists: i64 = connection
+                        .query_row(
+                            "SELECT EXISTS(
+                                 SELECT 1 FROM pragma_table_info('notes') WHERE name = ?1
+                             )",
+                            [column],
+                            |row| row.get(0),
+                        )
+                        .map_err(CommandError::database)?;
+                    assert_eq!(exists, 1, "missing notes column {column}");
                 }
 
                 let obsolete_trigger_exists: i64 = connection
@@ -324,9 +346,9 @@ mod tests {
             .expect("schema 4 trigger state should be readable");
         assert_eq!(trigger_before_upgrade, 1);
 
-        apply_migrations(&mut connection).expect("schema 4 should upgrade to schema 5");
+        apply_migrations(&mut connection).expect("schema 4 should upgrade to the latest schema");
         backfill_duplicate_hashes(&mut connection)
-            .expect("schema 5 duplicate fingerprints should remain valid");
+            .expect("duplicate fingerprints should remain valid after the upgrade");
 
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
@@ -353,24 +375,38 @@ mod tests {
                 [],
                 |row| row.get(0),
             )
-            .expect("schema 5 trigger state should be readable");
+            .expect("latest trigger state should be readable");
         assert_eq!(trigger_after_upgrade, 0);
 
-        let preserved: (String, String, String, String) = connection
+        let preserved: (String, String, String, String, i64, String, String) = connection
             .query_row(
-                "SELECT d.name, n.front_text, c.direction, n.duplicate_hash
+                "SELECT d.name, n.front_text, c.direction, n.duplicate_hash,
+                        n.reverse_enabled, n.cloze_source, n.cloze_mode
                  FROM decks d
                  JOIN notes n ON n.deck_id = d.id
                  JOIN cards c ON c.note_id = n.id
                  WHERE d.id = '00000000000000000000000000000001'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
             )
             .expect("the existing deck and card should remain");
         assert_eq!(preserved.0, "Released schema fixture");
         assert_eq!(preserved.1, "Fixture question");
         assert_eq!(preserved.2, "forward");
         assert!(!preserved.3.is_empty());
+        assert_eq!(preserved.4, 0);
+        assert_eq!(preserved.5, "");
+        assert_eq!(preserved.6, "one_at_a_time");
 
         let integrity: String = connection
             .query_row("PRAGMA integrity_check", [], |row| row.get(0))
