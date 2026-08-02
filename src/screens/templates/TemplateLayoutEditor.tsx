@@ -23,7 +23,7 @@ export function TemplateLayoutEditor({
       <RichTextEditor
         label={label}
         description={
-          "Type a field name in double braces, such as {{Subject}}. Simple one-paragraph values stay inline; lists, images, headings, tables, and multi-paragraph values become blocks automatically."
+          "Type a field name in double braces, such as {{Subject}}. Simple one-paragraph values stay inline; lists, images, headings, block quotes, and multi-paragraph values become blocks automatically."
         }
         document={document}
         assets={assets}
