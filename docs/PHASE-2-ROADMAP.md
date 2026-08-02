@@ -27,7 +27,8 @@ and reviewed before work starts on the next one.
 ## Stage 3 — Card types and safe templates — complete in this branch
 
 - A **Card template** selector that defaults to Basic.
-- Reversible Basic cards with separate forward and reverse schedules.
+- **Reverse cards** generated from Basic notes, with separate forward and reverse
+  schedules.
 - **Fill in the blank** authoring by selecting text and marking stable numbered
   blank regions.
 - One independently scheduled card per blank or one card hiding all blanks.
