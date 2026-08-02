@@ -52,6 +52,7 @@ const [
     ["src-tauri", "src", "authoring", "commands.rs"],
     ["src-tauri", "src", "authoring", "search_and_tags.rs"],
     ["src-tauri", "src", "authoring", "writes_and_transfer.rs"],
+    ["src-tauri", "src", "authoring", "stage3", "transfer.rs"],
     ["src-tauri", "src", "authoring", "normalization.rs"],
     ["src-tauri", "src", "authoring", "tests.rs"],
   ),
