@@ -1,53 +1,107 @@
 # Git workflow for ostudy
 
-Use short-lived branches and merge through GitHub. The repository history and
-release tags replace old archive revision labels.
+Use the publication-first process defined in
+[`OSTUDY-GIT-AND-CODING-WORKFLOW.md`](OSTUDY-GIT-AND-CODING-WORKFLOW.md). The
+branch and draft pull request are created before feature implementation so work
+is continuously inspectable, recoverable, and validated by GitHub Actions.
 
-## Start a change
+## Establish the exact base
+
+From the repository root:
 
 ```bash
 cd ~/code/ostudy
 git switch main
+git status --short
+git fetch origin --prune
 git pull --ff-only
-git switch -c feat/short-description
+git rev-parse HEAD
 ```
+
+Stop if the working tree contains unrelated local changes. Record the exact base
+commit in the pull request.
+
+## Publish the branch before implementation
+
+```bash
+git switch -c feat/short-description
+git push -u origin HEAD
+```
+
+Immediately open a **draft pull request** against `main`. Its initial description
+should state:
+
+- the exact base commit;
+- concrete acceptance criteria;
+- non-goals and compatibility surfaces;
+- the expected automated and manual validation.
 
 Use `fix/`, `chore/`, `docs/`, or `test/` instead of `feat/` when appropriate.
 
-## Validate
+## Implement in reviewable vertical commits
 
-```bash
-./scripts/check.sh
-./run-app.sh
-```
+Write and push one coherent behavior at a time. Do not leave the only copy of a
+large implementation in an unpublished scratch directory. Keep unrelated
+refactors, dependency upgrades, generated output, and formatting churn out of
+the branch.
 
-The first command is the full automated gate. The second starts the current
-standalone build for manual testing. You do not need to run each underlying
-formatter, linter, test runner, Cargo command, and WebDriver command separately.
-
-Inspect the intended change:
+Inspect scope continuously:
 
 ```bash
 git status --short
 git diff --check
 git diff --stat
 git diff
+git push
 ```
 
-## Commit and push the branch
+GitHub Actions should validate each published head. Correct failures on the same
+branch and pull request rather than starting an opaque replacement branch.
 
-Stage only the files that belong to the change:
+## Validate the completed head
+
+Run the full local gate:
 
 ```bash
-git add <file-or-directory> ...
-git status --short
-git commit -m "chore: stabilize repository build and CI"
-git push -u origin "$(git branch --show-current)"
+./scripts/check.sh
 ```
 
-Open a pull request into `main`. The short template records acceptance criteria,
-the `scripts/check.sh` result, manual validation, and any skipped checks. It is a
-memory aid for a solo developer, not a bureaucratic approval system.
+Then launch the exact standalone build produced by that gate:
+
+```bash
+./run-app.sh
+```
+
+Manually exercise every changed workflow, including persistence after restart,
+keyboard and pending/error behavior, responsive layouts, and all relevant
+themes.
+
+Inspect the exact proposed change:
+
+```bash
+git diff --name-only origin/main...HEAD
+git diff --stat origin/main...HEAD
+git log --oneline origin/main..HEAD
+```
+
+The successful workflow run must belong to the **current branch head**. An older
+successful run does not validate later commits.
+
+## Prepare the pull request for review
+
+Update the pull-request description with:
+
+- exact base and head commits;
+- acceptance criteria addressed;
+- changed files and why;
+- tests added or updated;
+- exact commands and CI runs that passed;
+- checks not run and why;
+- manual workflows actually exercised;
+- migration, compatibility, rollback, and residual-risk notes.
+
+Mark the pull request ready for review only after the automated gate passes. A
+human still performs the local application acceptance test before merging.
 
 ## Merge and synchronize local main
 
@@ -98,4 +152,4 @@ git revert <commit-sha>
 git push origin main
 ```
 
-Do not force-push `main`.
+Do not force-push `main` or a shared review branch.
