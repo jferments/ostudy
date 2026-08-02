@@ -96,7 +96,7 @@ pub fn run() {
             practice::complete_practice_session,
             analytics::get_analytics,
             stage3_transfer::export_deck_with_card_types,
-            stage3_transfer::import_deck_with_card_types
+            authoring::import_deck_with_single_cloze_normalization
         ])
         .run(tauri::generate_context!())
         .expect("error while running ostudy");
