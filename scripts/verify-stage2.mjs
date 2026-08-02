@@ -84,8 +84,10 @@ if (!database.includes(`checksum: "${checksum4}"`)) {
 if (!database.includes(`checksum: "${checksum5}"`)) {
   failures.push(`database.rs checksum mismatch for migration 0005: ${checksum5}`);
 }
-if (!database.includes("LATEST_SCHEMA_VERSION: i64 = 5")) {
-  failures.push("database schema version was not advanced to 5");
+const schemaVersionMatch = database.match(/LATEST_SCHEMA_VERSION: i64 = (\d+)/u);
+const schemaVersion = schemaVersionMatch ? Number(schemaVersionMatch[1]) : Number.NaN;
+if (!Number.isInteger(schemaVersion) || schemaVersion < 5) {
+  failures.push("database schema version is older than the completed Stage 2 schema");
 }
 for (const fragment of [
   "CREATE TABLE tags",
@@ -111,7 +113,7 @@ for (const forbiddenRepair of [
   }
 }
 if (!database.includes("schema_four_upgrades_forward_without_rewriting_history_or_losing_cards")) {
-  failures.push("schema 4 to schema 5 forward migration is not covered by a data-preservation test");
+  failures.push("schema 4 forward migration is not covered by a data-preservation test");
 }
 
 for (const command of [
@@ -296,5 +298,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Search/Filter features are wired, removed IPC fields fail visibly, stale APIs are absent, and schema cleanup is forward-only.",
+  "OK   Search/Filter features are wired, removed IPC fields fail visibly, stale APIs are absent, and schema cleanup remains forward-only.",
 );
