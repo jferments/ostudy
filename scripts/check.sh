@@ -34,10 +34,10 @@ node "$SCRIPT_DIR/verify-stage3.mjs"
 prepare_cargo_target "$ROOT_DIR"
 printf 'Cargo parallel jobs: %s\n' "$CARGO_BUILD_JOBS"
 
-step "Generate the Stage 5 analytics JavaScript lockfile once"
-pnpm install --no-frozen-lockfile
-printf 'The regenerated pnpm lockfile is ready for the failure diagnostic artifact.\n'
-exit 91
+step "Frozen JavaScript installation and dependency verification"
+pnpm install --frozen-lockfile
+pnpm run verify:versions
+[[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]]
 
 step "React tests (Vitest + Testing Library)"
 pnpm test
