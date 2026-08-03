@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as ipc from "../../ipc";
 import { ScheduleActionModal } from "./ScheduleActionModal";
@@ -27,10 +27,6 @@ describe("ScheduleActionModal", () => {
       affectedCount: 1,
       action: "reset",
     });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   it("applies reset to every exact selected card and preserves history messaging", async () => {
@@ -66,9 +62,8 @@ describe("ScheduleActionModal", () => {
     });
   });
 
-  it("resolves a preset due date at local noon", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 7, 3, 8, 30, 0, 0));
+  it("resolves a preset due date at local noon on the next calendar day", async () => {
+    const startedOn = new Date();
     const onComplete = vi.fn().mockResolvedValue(undefined);
     render(
       <ScheduleActionModal
@@ -82,16 +77,28 @@ describe("ScheduleActionModal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Reschedule" }));
 
-    const expected = new Date(2026, 7, 4, 12, 0, 0, 0).getTime();
     await waitFor(() => {
-      expect(ipc.applyScheduleAction).toHaveBeenCalledWith(
-        expect.objectContaining({
-          cardIds: [cards[0]?.cardId],
-          action: "reschedule",
-          dueAt: expected,
-        }),
-      );
+      expect(ipc.applyScheduleAction).toHaveBeenCalledOnce();
     });
+    const submitted = vi.mocked(ipc.applyScheduleAction).mock.calls[0]?.[0];
+    expect(submitted).toEqual(
+      expect.objectContaining({
+        cardIds: [cards[0]?.cardId],
+        action: "reschedule",
+      }),
+    );
+    expect(typeof submitted?.dueAt).toBe("number");
+
+    const due = new Date(submitted?.dueAt ?? Number.NaN);
+    const expectedDay = new Date(startedOn);
+    expectedDay.setDate(expectedDay.getDate() + 1);
+    expect(due.getFullYear()).toBe(expectedDay.getFullYear());
+    expect(due.getMonth()).toBe(expectedDay.getMonth());
+    expect(due.getDate()).toBe(expectedDay.getDate());
+    expect(due.getHours()).toBe(12);
+    expect(due.getMinutes()).toBe(0);
+    expect(due.getSeconds()).toBe(0);
+    expect(due.getMilliseconds()).toBe(0);
   });
 
   it("rejects an empty custom date without issuing a mutation", () => {
