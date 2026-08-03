@@ -16,7 +16,6 @@ import {
   exportDeck,
   findDuplicateCards,
   generateCardsFromTemplate,
-  getAnalytics as _unused,
   getAppInfo,
   getCardTemplate,
   getCardTypeInfo,
