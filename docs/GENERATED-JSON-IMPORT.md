@@ -11,6 +11,15 @@ This boundary is intentionally separate from:
 
 Generated JSON imports never carry internal IDs, schedules, review history, analytics, application settings, reusable template IDs, local paths, HTML, or image bytes.
 
+## User workflow
+
+The Decks screen has one **Import deck** button. Its file picker accepts either:
+
+- `.studydeck` deck packages; or
+- generated `.ostudy.json` files.
+
+There is no generated-import preview window and no separate generated-import button. Selecting a valid file immediately runs the appropriate transactional importer. Success opens the imported destination deck. A validation or destination error is shown through the ordinary application error toast and leaves the library unchanged.
+
 ## File identity
 
 The recommended filename suffix is `.ostudy.json`. The file itself is ordinary UTF-8 JSON with this envelope:
@@ -20,8 +29,9 @@ The recommended filename suffix is `.ostudy.json`. The file itself is ordinary U
   "format": "ostudy-flashcards",
   "formatVersion": 1,
   "deck": {
+    "mode": "create",
     "name": "Required deck name",
-    "description": "Optional description"
+    "description": "Optional description for a newly created deck"
   },
   "defaultTags": ["optional shared tag"],
   "cards": []
@@ -29,6 +39,33 @@ The recommended filename suffix is `.ostudy.json`. The file itself is ordinary U
 ```
 
 The importer rejects unsupported versions and unknown properties rather than silently discarding data.
+
+## Destination behavior
+
+The JSON file owns the destination decision.
+
+### Create
+
+```json
+"deck": {
+  "mode": "create",
+  "name": "NCLEX Pharmacology",
+  "description": "Medication safety and nursing priorities"
+}
+```
+
+`create` always creates a new deck. Another deck may already have the same displayed name; no existing deck is replaced.
+
+### Append
+
+```json
+"deck": {
+  "mode": "append",
+  "name": "NCLEX Pharmacology"
+}
+```
+
+`append` requires exactly one active deck whose name matches exactly. `description` must be omitted or empty. Import fails when there is no exact match or when multiple active decks have that name.
 
 ## Card types
 
@@ -73,21 +110,24 @@ Basic sides accept:
 
 Raw HTML, embedded or remote images, local file paths, tables, executable content, and unknown syntax are rejected. Rust converts accepted Markdown into canonical Tiptap JSON, derives authoritative plain text, and runs the normal card-content validator.
 
-## Preview and commit
+## Validation and commit
 
-Import is a two-step operation:
+The importer reads and validates the whole file before starting its write transaction. Semantic card errors are collected and reported with their `cards[index]` paths. If any card is invalid, nothing is written.
 
-1. `inspect_flashcard_import` reads and validates the selected file, converts content, analyzes duplicates, and returns a preview plus a SHA-256 file fingerprint.
-2. `commit_flashcard_import` re-reads the file, requires the expected fingerprint, revalidates it, and inserts the accepted cards transactionally.
+After validation:
 
-The user chooses whether to create the proposed deck or import into an existing deck. Exact duplicates are skipped by default and may be explicitly allowed. The file itself cannot request replacement, deletion, overwrite, or duplicate bypass.
+1. Rust resolves the deck destination from `deck.mode` and `deck.name`.
+2. Exact duplicates within the file or destination deck are skipped automatically.
+3. Accepted notes, tags, generated directions, and fresh local schedules are written in one transaction.
+4. Any database failure rolls back the entire import.
+
+The file cannot request replacement, deletion, overwrite, schedule preservation, or duplicate bypass.
 
 ## Durable invariants
 
-- One input file proposes one deck.
+- One input file targets one deck.
 - Imports create fresh local schedules.
 - All accepted writes use the same Rust authoring, tag, duplicate, cloze, generated-card, and scheduling logic as the ordinary editor.
-- Validation failure leaves the library unchanged.
-- File mutation between preview and commit is rejected.
+- Validation or persistence failure leaves the library unchanged.
 - Existing `.studydeck` behavior is unchanged.
 - Format version 1 remains readable after release; incompatible additions require a later version.
