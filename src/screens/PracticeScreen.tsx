@@ -16,7 +16,6 @@ import {
   submitPracticeReview,
   type AppSettings,
   type Deck,
-  type PracticeMode,
   type PracticeSession,
   type PracticeWorkloadOverview,
   type ReviewPreviewSet,
