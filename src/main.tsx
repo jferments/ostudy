@@ -9,6 +9,7 @@ import "./card-organization.css";
 import "./card-types.css";
 import "./rich-templates.css";
 import "./scheduling-controls.css";
+import "./analytics.css";
 
 const rootElement = document.getElementById("root");
 

@@ -50,7 +50,7 @@ and reviewed before work starts on the next one.
 - Safe image cleanup that does not delete assets still referenced by drafts,
   copied cards, or imported decks.
 
-## Stage 5A — Scheduling controls and workload management — implemented in PR #16
+## Stage 5A — Scheduling controls and workload management — complete in PR #16
 
 - Exact-card suspend/resume and bury/unbury controls.
 - Reset to a fresh New schedule without deleting review history.
@@ -63,12 +63,21 @@ and reviewed before work starts on the next one.
   **Needs more practice**.
 - Compact controls in Practice, Search/Filter, and Settings.
 
-## Stage 5B — Learning analytics and progress visualization — next
+## Stage 5B — Learning analytics and progress visualization — implemented in PR #17
 
-- Time-series progress visualization across all decks or selected decks/tags.
-- Tag performance and study-priority statistics.
-- Session-completion navigation to scoped analytics.
-- Workload and recall trend interpretation.
+- Mixed progress visualization with unique cards or focused study time as bars
+  and remembered-answer rate as a line.
+- Thirty-day, ninety-day, one-year, and all-time calendar ranges.
+- Whole-library or selected deck/tag scope, with deck union and tag intersection
+  semantics matching Search/Filter.
+- Summary metrics for practice volume, recall, confidence, study time, due cards,
+  and Needs more practice cards.
+- Topic-level performance, trends, current workload, and due-only practice entry.
+- Deck performance, recent sessions, and recent-review details.
+- Accessible chart descriptions and a keyboard-accessible semantic data table.
+- Session-completion navigation into deck-scoped analytics with the completed
+  session highlighted.
+- Theme-aware Chart.js rendering with animations disabled by Reduce motion.
 
 ## Deferred Stage 5 item
 

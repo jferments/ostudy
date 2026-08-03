@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { PracticeLaunchRequest } from "../App";
+import { getRecentPracticeReviews } from "../analytics-ipc";
 import {
   applyScheduleAction,
   completePracticeSession,
   createMutationId,
   createSubmissionId,
-  getAnalytics,
   getErrorMessage,
   getPracticeWorkload,
   markPracticeCardRevealed,
@@ -37,6 +37,7 @@ interface PracticeScreenProps {
   settings: AppSettings;
   launchRequest: PracticeLaunchRequest | null;
   onLaunchConsumed: () => void;
+  onViewAnalytics: (sessionId: string, deckIds: string[]) => void;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
 }
 
@@ -45,6 +46,7 @@ export function PracticeScreen({
   settings,
   launchRequest,
   onLaunchConsumed,
+  onViewAnalytics,
   showToast,
 }: PracticeScreenProps) {
   const [selectedDeckIds, setSelectedDeckIds] = useState<Set<string>>(new Set());
@@ -78,8 +80,7 @@ export function PracticeScreen({
 
   const loadRecentPractice = useCallback(async (): Promise<void> => {
     try {
-      const analytics = await getAnalytics();
-      setRecentDecks(summarizeRecentDecks(analytics.recentReviews));
+      setRecentDecks(summarizeRecentDecks(await getRecentPracticeReviews()));
     } catch (error: unknown) {
       console.error("Unable to load recent practice results:", getErrorMessage(error));
       setRecentDecks([]);
@@ -311,12 +312,14 @@ export function PracticeScreen({
   }
 
   if (session && completed) {
+    const sessionDeckIds = [...new Set(session.cards.map((card) => card.card.deckId))];
     return (
       <PracticeComplete
         ratedCount={ratedCount}
         confidenceCounts={confidenceCounts}
         isStarting={isStarting}
         errorMessage={errorMessage}
+        onViewAnalytics={() => onViewAnalytics(session.id, sessionDeckIds)}
         onChooseDecks={resetToSetup}
         onRestart={() => {
           if (temporaryCardIds.length > 0) void beginCardSession(temporaryCardIds, shuffle);

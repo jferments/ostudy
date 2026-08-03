@@ -454,49 +454,6 @@ export interface ScheduleActionResult {
   action: ScheduleAction;
 }
 
-export interface DeckAnalytics {
-  deckId: string;
-  deckName: string;
-  cardCount: number;
-  dueCount: number;
-  reviewCount: number;
-  correctCount: number;
-  correctRate: number | null;
-  averageResponseTimeMs: number | null;
-}
-
-export interface RatingDistribution {
-  again: number;
-  hard: number;
-  good: number;
-  easy: number;
-}
-
-export interface RecentReview {
-  id: string;
-  deckName: string;
-  cardId: string;
-  frontText: string;
-  outcome: ReviewOutcome;
-  rating: 1 | 2 | 3 | 4;
-  responseTimeMs: number;
-  reviewedAt: number;
-  dueAfter: number;
-}
-
-export interface Analytics {
-  deckCount: number;
-  cardCount: number;
-  dueNow: number;
-  reviewCount: number;
-  correctCount: number;
-  correctRate: number | null;
-  averageResponseTimeMs: number | null;
-  ratingDistribution: RatingDistribution;
-  deckStats: DeckAnalytics[];
-  recentReviews: RecentReview[];
-}
-
 export interface ExportResult {
   destinationPath: string;
   cardCount: number;
@@ -681,10 +638,6 @@ export async function completePracticeSession(sessionId: string): Promise<void> 
 
 export async function applyScheduleAction(input: ScheduleActionInput): Promise<ScheduleActionResult> {
   return invoke<ScheduleActionResult>("apply_schedule_action", { input });
-}
-
-export async function getAnalytics(): Promise<Analytics> {
-  return invoke<Analytics>("get_analytics");
 }
 
 export async function exportDeck(deckId: string, destinationPath: string): Promise<ExportResult> {

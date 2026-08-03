@@ -1,16 +1,17 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as analyticsIpc from "../analytics-ipc";
 import * as ipc from "../ipc";
 import { PracticeScreen } from "./PracticeScreen";
 
 vi.mock("../editor/RichTextView", () => ({ RichTextView: () => <div>Card content</div> }));
+vi.mock("../analytics-ipc", () => ({ getRecentPracticeReviews: vi.fn() }));
 vi.mock("../ipc", () => ({
   applyScheduleAction: vi.fn(),
   completePracticeSession: vi.fn(),
   createMutationId: () => "e".repeat(32),
   createSubmissionId: () => "f".repeat(32),
-  getAnalytics: vi.fn(),
   getErrorMessage: (error: unknown) => error instanceof Error ? error.message : "Unexpected error",
   getPracticeWorkload: vi.fn(),
   markPracticeCardRevealed: vi.fn(),
@@ -44,11 +45,6 @@ const workload: ipc.PracticeWorkloadOverview = {
   needsMorePractice: 1, extraAvailable: 2,
 };
 const noDueWorkload: ipc.PracticeWorkloadOverview = { ...workload, dueReviews: 0, scheduledReviews: 0, needsMorePractice: 0 };
-const analytics: ipc.Analytics = {
-  deckCount: 1, cardCount: 2, dueNow: 1, reviewCount: 0, correctCount: 0,
-  correctRate: null, averageResponseTimeMs: null,
-  ratingDistribution: { again: 0, hard: 0, good: 0, easy: 0 }, deckStats: [], recentReviews: [],
-};
 const previews: ipc.ReviewPreviewSet = {
   scheduleRevision: 4, previewedAt: Date.now(),
   previews: [
@@ -59,10 +55,24 @@ const previews: ipc.ReviewPreviewSet = {
   ],
 };
 
+function renderPractice(overrides?: Partial<React.ComponentProps<typeof PracticeScreen>>) {
+  const props: React.ComponentProps<typeof PracticeScreen> = {
+    decks: [deck],
+    settings,
+    launchRequest: null,
+    onLaunchConsumed: vi.fn(),
+    onViewAnalytics: vi.fn(),
+    showToast: vi.fn(),
+    ...overrides,
+  };
+  render(<PracticeScreen {...props} />);
+  return props;
+}
+
 describe("PracticeScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.getAnalytics).mockResolvedValue(analytics);
+    vi.mocked(analyticsIpc.getRecentPracticeReviews).mockResolvedValue([]);
     vi.mocked(ipc.getPracticeWorkload).mockResolvedValue(workload);
     vi.mocked(ipc.markPracticeCardViewed).mockResolvedValue(undefined);
     vi.mocked(ipc.markPracticeCardRevealed).mockResolvedValue(previews);
@@ -77,7 +87,7 @@ describe("PracticeScreen", () => {
   });
 
   it("shows authoritative daily workload and starts scheduled mode", async () => {
-    render(<PracticeScreen decks={[deck]} settings={settings} launchRequest={null} onLaunchConsumed={vi.fn()} showToast={vi.fn()} />);
+    renderPractice();
     fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
     expect(await screen.findByText("1 cards in the scheduled session")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
@@ -86,14 +96,14 @@ describe("PracticeScreen", () => {
 
   it("offers explicit extra practice when nothing fits the scheduled workload", async () => {
     vi.mocked(ipc.getPracticeWorkload).mockResolvedValue(noDueWorkload);
-    render(<PracticeScreen decks={[noDueDeck]} settings={settings} launchRequest={null} onLaunchConsumed={vi.fn()} showToast={vi.fn()} />);
+    renderPractice({ decks: [noDueDeck] });
     fireEvent.click(await screen.findByRole("checkbox", { name: /Reviewed dog facts/u }));
     fireEvent.click(await screen.findByRole("button", { name: "Study this selection anyway" }));
     await waitFor(() => expect(ipc.startSelectedPractice).toHaveBeenCalledWith({ deckIds: [noDueDeck.id], shuffle: true, mode: "extra" }));
   });
 
   it("shows FSRS interval previews and submits the preview revision", async () => {
-    render(<PracticeScreen decks={[deck]} settings={settings} launchRequest={null} onLaunchConsumed={vi.fn()} showToast={vi.fn()} />);
+    renderPractice();
     fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
     await screen.findByText("1 cards in the scheduled session");
     fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
@@ -103,9 +113,21 @@ describe("PracticeScreen", () => {
     await waitFor(() => expect(ipc.submitPracticeReview).toHaveBeenCalledWith(expect.objectContaining({ outcome: "not_confident", scheduleRevision: 4 })));
   });
 
+  it("opens analytics for the completed session and its deck scope", async () => {
+    const onViewAnalytics = vi.fn();
+    renderPractice({ onViewAnalytics });
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+    await screen.findByText("1 cards in the scheduled session");
+    fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show answer" }));
+    fireEvent.click(await screen.findByRole("button", { name: /1 Hard/u }));
+    fireEvent.click(await screen.findByRole("button", { name: "View analytics" }));
+    expect(onViewAnalytics).toHaveBeenCalledWith(session.id, [deck.id]);
+  });
+
   it("starts filtered cards as a custom session", async () => {
     const onLaunchConsumed = vi.fn();
-    render(<PracticeScreen decks={[deck]} settings={settings} launchRequest={{ requestId: 8, deckIds: [], cardIds: [card.id], autoStart: true }} onLaunchConsumed={onLaunchConsumed} showToast={vi.fn()} />);
+    renderPractice({ launchRequest: { requestId: 8, deckIds: [], cardIds: [card.id], autoStart: true }, onLaunchConsumed });
     await waitFor(() => {
       expect(onLaunchConsumed).toHaveBeenCalledTimes(1);
       expect(ipc.startCardPractice).toHaveBeenCalledWith({ cardIds: [card.id], shuffle: true });

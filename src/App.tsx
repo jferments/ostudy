@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { AnalyticsRange } from "./analytics-ipc";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { Toast, type ToastMessage } from "./components/Toast";
 import { AnalyticsScreen } from "./screens/AnalyticsScreen";
@@ -31,6 +32,14 @@ export interface PracticeLaunchRequest {
   autoStart: boolean;
 }
 
+export interface AnalyticsLaunchRequest {
+  requestId: number;
+  range: AnalyticsRange;
+  deckIds: string[];
+  tagIds: string[];
+  highlightedSessionId?: string;
+}
+
 const DEFAULT_SETTINGS: AppSettings = {
   theme: "dark",
   uiFont: "system",
@@ -56,6 +65,8 @@ function App() {
   const toastSequence = useRef(1);
   const [practiceLaunch, setPracticeLaunch] = useState<PracticeLaunchRequest | null>(null);
   const practiceRequestSequence = useRef(1);
+  const [analyticsLaunch, setAnalyticsLaunch] = useState<AnalyticsLaunchRequest | null>(null);
+  const analyticsRequestSequence = useRef(1);
   const [hasUnsavedCard, setHasUnsavedCard] = useState(false);
   const [hasUnsavedTemplate, setHasUnsavedTemplate] = useState(false);
   const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
@@ -77,6 +88,9 @@ function App() {
 
   const consumePracticeLaunch = useCallback(() => {
     setPracticeLaunch(null);
+  }, []);
+  const consumeAnalyticsLaunch = useCallback(() => {
+    setAnalyticsLaunch(null);
   }, []);
 
   useEffect(() => {
@@ -136,13 +150,22 @@ function App() {
     return true;
   }
 
+  function canLeaveCurrentSection(): boolean {
+    return confirmDiscardCard() && confirmDiscardTemplate() && confirmDiscardSettings();
+  }
+
   function navigate(next: AppSection): void {
     if (next === section && next !== "practice") return;
-    if (!confirmDiscardCard() || !confirmDiscardTemplate() || !confirmDiscardSettings()) return;
+    if (!canLeaveCurrentSection()) return;
     if (next === "practice") {
       const requestId = practiceRequestSequence.current;
       practiceRequestSequence.current += 1;
       setPracticeLaunch({ requestId, deckIds: [], cardIds: [], autoStart: false });
+    }
+    if (next === "analytics") {
+      const requestId = analyticsRequestSequence.current;
+      analyticsRequestSequence.current += 1;
+      setAnalyticsLaunch({ requestId, range: "30d", deckIds: [], tagIds: [] });
     }
     if (next === "decks" || next === "cards") {
       void refreshDecks().catch((error: unknown) => {
@@ -153,7 +176,7 @@ function App() {
   }
 
   function practiceDeck(deckId: string): void {
-    if (!confirmDiscardCard() || !confirmDiscardTemplate() || !confirmDiscardSettings()) return;
+    if (!canLeaveCurrentSection()) return;
     const requestId = practiceRequestSequence.current;
     practiceRequestSequence.current += 1;
     setPracticeLaunch({ requestId, deckIds: [deckId], cardIds: [], autoStart: true });
@@ -161,12 +184,24 @@ function App() {
   }
 
   function practiceCards(cardIds: string[]): void {
-    if (cardIds.length === 0) return;
-    if (!confirmDiscardCard() || !confirmDiscardTemplate() || !confirmDiscardSettings()) return;
+    if (cardIds.length === 0 || !canLeaveCurrentSection()) return;
     const requestId = practiceRequestSequence.current;
     practiceRequestSequence.current += 1;
     setPracticeLaunch({ requestId, deckIds: [], cardIds, autoStart: true });
     setSection("practice");
+  }
+
+  function viewSessionAnalytics(sessionId: string, deckIds: string[]): void {
+    const requestId = analyticsRequestSequence.current;
+    analyticsRequestSequence.current += 1;
+    setAnalyticsLaunch({
+      requestId,
+      range: "30d",
+      deckIds,
+      tagIds: [],
+      highlightedSessionId: sessionId,
+    });
+    setSection("analytics");
   }
 
   if (isLoading) {
@@ -235,10 +270,20 @@ function App() {
               settings={activeSettings}
               launchRequest={practiceLaunch}
               onLaunchConsumed={consumePracticeLaunch}
+              onViewAnalytics={viewSessionAnalytics}
               showToast={showToast}
             />
           ) : null}
-          {section === "analytics" ? <AnalyticsScreen showToast={showToast} /> : null}
+          {section === "analytics" ? (
+            <AnalyticsScreen
+              decks={decks}
+              settings={activeSettings}
+              launchRequest={analyticsLaunch}
+              onLaunchConsumed={consumeAnalyticsLaunch}
+              onPracticeCards={practiceCards}
+              showToast={showToast}
+            />
+          ) : null}
           {section === "settings" ? (
             <SettingsScreen
               settings={savedSettings}

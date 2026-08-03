@@ -23,6 +23,8 @@ const expected = new Map([
   ["@tauri-apps/plugin-opener", env.get("TAURI_OPENER_VERSION")],
   ["react", env.get("REACT_VERSION")],
   ["react-dom", env.get("REACT_VERSION")],
+  ["chart.js", env.get("CHART_JS_VERSION")],
+  ["react-chartjs-2", env.get("REACT_CHARTJS_2_VERSION")],
   ["@types/react", env.get("REACT_TYPES_VERSION")],
   ["@types/react-dom", env.get("REACT_DOM_TYPES_VERSION")],
   ["@vitejs/plugin-react", env.get("VITE_REACT_PLUGIN_VERSION")],
