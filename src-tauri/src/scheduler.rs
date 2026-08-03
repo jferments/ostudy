@@ -256,7 +256,8 @@ pub fn preview_intervals(
     let previews = outcomes
         .into_iter()
         .map(|outcome| {
-            let transition = apply_review(current.clone(), outcome, previewed_at, desired_retention)?;
+            let transition =
+                apply_review(current.clone(), outcome, previewed_at, desired_retention)?;
             Ok(IntervalPreviewDto {
                 outcome: outcome.as_str().to_string(),
                 due_at: transition.after.due_at,

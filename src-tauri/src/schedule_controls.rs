@@ -91,7 +91,10 @@ fn apply_in_connection(
         _ => unreachable!("validated action"),
     };
 
-    if matches!(input.action.as_str(), "suspend" | "resume" | "bury" | "unbury") {
+    if matches!(
+        input.action.as_str(),
+        "suspend" | "resume" | "bury" | "unbury"
+    ) {
         transaction
             .execute(
                 "UPDATE cards SET suspended_at = ?1, buried_until = ?2, updated_at = ?3
@@ -148,7 +151,11 @@ fn apply_in_connection(
                      WHERE session_id = ?3 AND card_id = ?4 AND rated_at IS NULL",
                     params![
                         now,
-                        if input.action == "suspend" { "suspended" } else { "buried" },
+                        if input.action == "suspend" {
+                            "suspended"
+                        } else {
+                            "buried"
+                        },
                         session_id,
                         card_id,
                     ],
@@ -237,7 +244,9 @@ mod tests {
             session_id: None,
         };
         assert_eq!(
-            validate_input(&input).expect_err("selection should fail").code,
+            validate_input(&input)
+                .expect_err("selection should fail")
+                .code,
             "invalid_schedule_selection"
         );
     }

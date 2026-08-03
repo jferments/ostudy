@@ -475,7 +475,9 @@ mod tests {
             schedule_revision: 0,
         };
         assert_eq!(
-            validate_review_input(&input).expect_err("revision should fail").code,
+            validate_review_input(&input)
+                .expect_err("revision should fail")
+                .code,
             "invalid_schedule_revision"
         );
     }

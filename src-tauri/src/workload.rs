@@ -68,7 +68,12 @@ pub fn next_local_day_start_millis() -> Result<i64, CommandError> {
         .date_naive()
         .succ_opt()
         .and_then(|date| date.and_hms_opt(0, 0, 0))
-        .ok_or_else(|| CommandError::new("invalid_local_day", "Tomorrow is outside the supported date range."))?;
+        .ok_or_else(|| {
+            CommandError::new(
+                "invalid_local_day",
+                "Tomorrow is outside the supported date range.",
+            )
+        })?;
     Local
         .from_local_datetime(&tomorrow)
         .earliest()

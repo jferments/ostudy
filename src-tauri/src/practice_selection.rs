@@ -123,13 +123,7 @@ fn start_selected_practice_in_connection(
     }
     let pending = hydrate_pending_variants(connection, planned)?;
     create_practice_session(
-        connection,
-        paths,
-        deck_ids,
-        deck_names,
-        pending,
-        shuffle,
-        mode,
+        connection, paths, deck_ids, deck_names, pending, shuffle, mode,
     )
 }
 
@@ -182,7 +176,15 @@ fn start_card_practice_in_connection(
         let weak = needs_more_practice(connection, &active_card_id)?;
         selected_decks.insert(deck_id.clone());
         deck_names.insert(deck_id.clone(), deck_name);
-        pending.push((deck_id, active_card_id, note_id, due_at, state, weak, variant));
+        pending.push((
+            deck_id,
+            active_card_id,
+            note_id,
+            due_at,
+            state,
+            weak,
+            variant,
+        ));
     }
     create_practice_session(
         connection,

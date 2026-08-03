@@ -117,13 +117,34 @@ fn save_settings_in_connection(
         ("uiFont", serde_json::to_string(&settings.ui_font)),
         ("cardFont", serde_json::to_string(&settings.card_font)),
         ("uiScale", serde_json::to_string(&settings.ui_scale)),
-        ("cardBaseSize", serde_json::to_string(&settings.card_base_size)),
-        ("reduceMotion", serde_json::to_string(&settings.reduce_motion)),
-        ("confirmDeletions", serde_json::to_string(&settings.confirm_deletions)),
-        ("practiceShuffle", serde_json::to_string(&settings.practice_shuffle)),
-        ("desiredRetention", serde_json::to_string(&settings.desired_retention)),
-        ("dailyNewLimit", serde_json::to_string(&settings.daily_new_limit)),
-        ("dailyReviewLimit", serde_json::to_string(&settings.daily_review_limit)),
+        (
+            "cardBaseSize",
+            serde_json::to_string(&settings.card_base_size),
+        ),
+        (
+            "reduceMotion",
+            serde_json::to_string(&settings.reduce_motion),
+        ),
+        (
+            "confirmDeletions",
+            serde_json::to_string(&settings.confirm_deletions),
+        ),
+        (
+            "practiceShuffle",
+            serde_json::to_string(&settings.practice_shuffle),
+        ),
+        (
+            "desiredRetention",
+            serde_json::to_string(&settings.desired_retention),
+        ),
+        (
+            "dailyNewLimit",
+            serde_json::to_string(&settings.daily_new_limit),
+        ),
+        (
+            "dailyReviewLimit",
+            serde_json::to_string(&settings.daily_review_limit),
+        ),
     ];
     for (key, serialized) in entries {
         let serialized = serialized.map_err(CommandError::serialization)?;
@@ -143,15 +164,24 @@ fn save_settings_in_connection(
 
 fn validate_settings(settings: &AppSettingsDto) -> Result<(), CommandError> {
     if !THEMES.contains(&settings.theme.as_str()) {
-        return Err(CommandError::new("invalid_theme", "Select one of the available application themes."));
+        return Err(CommandError::new(
+            "invalid_theme",
+            "Select one of the available application themes.",
+        ));
     }
     validate_font(&settings.ui_font)?;
     validate_font(&settings.card_font)?;
     if !(80..=140).contains(&settings.ui_scale) {
-        return Err(CommandError::new("invalid_ui_scale", "Interface scale must be between 80% and 140%."));
+        return Err(CommandError::new(
+            "invalid_ui_scale",
+            "Interface scale must be between 80% and 140%.",
+        ));
     }
     if !(12..=32).contains(&settings.card_base_size) {
-        return Err(CommandError::new("invalid_card_size", "Default card text size must be between 12 and 32 pixels."));
+        return Err(CommandError::new(
+            "invalid_card_size",
+            "Default card text size must be between 12 and 32 pixels.",
+        ));
     }
     if !(0..=MAX_DAILY_LIMIT).contains(&settings.daily_new_limit)
         || !(0..=MAX_DAILY_LIMIT).contains(&settings.daily_review_limit)
@@ -192,7 +222,9 @@ mod tests {
     #[test]
     fn loads_and_persists_workload_defaults() {
         let database = Database::open_in_memory().expect("database should open");
-        let mut settings = database.with_connection(load_settings).expect("settings should load");
+        let mut settings = database
+            .with_connection(load_settings)
+            .expect("settings should load");
         assert_eq!(settings.daily_new_limit, 20);
         assert_eq!(settings.daily_review_limit, 200);
         settings.daily_new_limit = 12;
@@ -200,7 +232,9 @@ mod tests {
         database
             .with_connection(|connection| save_settings_in_connection(connection, &settings))
             .expect("settings should save");
-        let loaded = database.with_connection(load_settings).expect("settings should reload");
+        let loaded = database
+            .with_connection(load_settings)
+            .expect("settings should reload");
         assert_eq!(loaded.daily_new_limit, 12);
         assert_eq!(loaded.daily_review_limit, 80);
     }

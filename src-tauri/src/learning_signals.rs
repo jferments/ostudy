@@ -6,10 +6,7 @@ use crate::error::CommandError;
 
 /// A reset creates a new current-learning epoch without deleting historical
 /// review evidence. Only reviews after the latest reset participate here.
-pub fn needs_more_practice(
-    connection: &Connection,
-    card_id: &str,
-) -> Result<bool, CommandError> {
+pub fn needs_more_practice(connection: &Connection, card_id: &str) -> Result<bool, CommandError> {
     let reset_at: Option<i64> = connection
         .query_row(
             "SELECT MAX(occurred_at) FROM schedule_action_events
@@ -30,7 +27,9 @@ pub fn needs_more_practice(
         )
         .map_err(CommandError::database)?;
     let outcomes = statement
-        .query_map(params![card_id, reset_at.unwrap_or(-1)], |row| row.get::<_, i64>(0))
+        .query_map(params![card_id, reset_at.unwrap_or(-1)], |row| {
+            row.get::<_, i64>(0)
+        })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
@@ -67,7 +66,9 @@ pub fn count_needing_more_practice(
     }
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
     let cards = statement
-        .query_map(rusqlite::params_from_iter(values.iter()), |row| row.get::<_, String>(0))
+        .query_map(rusqlite::params_from_iter(values.iter()), |row| {
+            row.get::<_, String>(0)
+        })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
@@ -87,7 +88,12 @@ fn needs_more_practice_from_recent(recent_descending: &[i64]) -> bool {
     if recent_descending.len() >= 2 && recent_descending[0] == 0 && recent_descending[1] == 0 {
         return true;
     }
-    recent_descending.iter().take(5).filter(|value| **value == 0).count() >= 3
+    recent_descending
+        .iter()
+        .take(5)
+        .filter(|value| **value == 0)
+        .count()
+        >= 3
 }
 
 #[cfg(test)]
