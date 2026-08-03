@@ -1,3 +1,11 @@
+//! Tauri composition root for the native application.
+//!
+//! Startup resolves the managed application paths and opens the SQLite library
+//! before either value is published as Tauri state. `Database::open` validates
+//! the migration ledger and runs required compatibility normalization, so a
+//! failed durable initialization stops startup instead of exposing commands to
+//! a partially initialized library.
+
 mod analytics;
 mod assets;
 mod authoring;
@@ -31,6 +39,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // Resolve and validate every managed resource before registering
+            // state. Command handlers may assume that both the paths and the
+            // database represent the same successfully initialized app-data
+            // directory for the lifetime of this process.
             let app_data_directory = app.path().app_data_dir().map_err(|error| {
                 io::Error::other(format!(
                     "Could not resolve the application data directory: {error}"
@@ -56,6 +68,11 @@ pub fn run() {
             );
             Ok(())
         })
+        // Registered command names and serialized DTOs form the bundled
+        // React/Rust transport contract. Several entries intentionally point at
+        // compatibility wrappers that compose older package formats with newer
+        // metadata and normalization; internal refactors must preserve the
+        // externally registered names unless every caller changes with them.
         .invoke_handler(tauri::generate_handler![
             decks::list_decks,
             decks::get_deck,
