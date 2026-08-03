@@ -157,11 +157,32 @@ def main() -> int:
             time.monotonic() + 15,
         )
 
+        chart_data_button = find_element(
+            session_id,
+            "xpath",
+            "//button[contains(normalize-space(.), 'View chart data')]",
+            time.monotonic() + 15,
+        )
+        request("POST", f"/session/{session_id}/element/{chart_data_button}/click", {})
+        find_element(
+            session_id,
+            "css selector",
+            "table[aria-label='Data represented in the learning progress chart']",
+            time.monotonic() + 15,
+        )
+        wait_for_element_text(
+            session_id,
+            "css selector",
+            "main h1",
+            "Analytics",
+            time.monotonic() + 5,
+        )
+
         settings_button = find_element(
             session_id,
             "xpath",
             "//button[contains(normalize-space(.), 'Settings')]",
-            deadline,
+            time.monotonic() + 15,
         )
         request("POST", f"/session/{session_id}/element/{settings_button}/click", {})
         wait_for_element_text(
@@ -172,7 +193,10 @@ def main() -> int:
             time.monotonic() + 15,
         )
 
-        print("Native smoke test passed: launched ostudy and opened Analytics and Settings.")
+        print(
+            "Native smoke test passed: launched ostudy, exercised Analytics, "
+            "and opened Settings."
+        )
         return 0
     except Exception:
         print("\n--- tauri-driver log ---")
