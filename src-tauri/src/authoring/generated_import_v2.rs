@@ -1,8 +1,8 @@
-//! Strict content-only import for LLM-generated `.ostudy.json` files.
-//!
-//! This file is included inside the `authoring` module so imports reuse the
-//! ordinary card validation, duplicate, tag, generated-card, and scheduling
-//! implementation instead of maintaining a parallel write path.
+// Strict content-only import for LLM-generated `.ostudy.json` files.
+//
+// This file is included inside the `authoring` module so imports reuse the
+// ordinary card validation, duplicate, tag, generated-card, and scheduling
+// implementation instead of maintaining a parallel write path.
 
 const GENERATED_IMPORT_FORMAT: &str = "ostudy-flashcards";
 const GENERATED_IMPORT_VERSION: i64 = 1;
