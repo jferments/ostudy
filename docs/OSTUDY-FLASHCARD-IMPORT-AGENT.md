@@ -1,6 +1,6 @@
 # ostudy Flashcard Import Agent Instructions — v1
 
-Use these instructions when generating flashcards from a supplied source such as a PDF.
+Use these instructions when generating an ostudy flashcard import file from supplied source material.
 
 ## Output contract
 
@@ -15,6 +15,33 @@ The top-level object must contain:
 - a non-empty `"cards"` array
 
 Do not generate ostudy database IDs, timestamps, schedules, review history, analytics, settings, template IDs, file paths, HTML, or image data.
+
+## Choose the destination in the file
+
+Every file must state what ostudy should do with the named deck:
+
+### Create a new deck
+
+```json
+"deck": {
+  "mode": "create",
+  "name": "NCLEX Pharmacology",
+  "description": "Medication safety and nursing priorities"
+}
+```
+
+`create` always creates a new deck. It does not search for or overwrite another deck with the same name.
+
+### Append to an existing deck
+
+```json
+"deck": {
+  "mode": "append",
+  "name": "NCLEX Pharmacology"
+}
+```
+
+`append` adds cards to exactly one active deck whose name matches exactly. Omit `description` in append mode. Import fails without changing the library when no deck has that exact name or when more than one active deck has that name.
 
 ## Basic cards
 
@@ -51,6 +78,10 @@ Do not use raw HTML, images, local file paths, executable content, or Markdown t
 
 Tags are human-readable topic labels without `#`. After combining default and card tags, use no more than 32 unique tags per card, with no tag longer than 64 characters.
 
+## Import behavior
+
+The user selects the JSON file through the ordinary **Import deck** button. ostudy validates every card before opening one transaction. If any card is invalid, nothing is written and the error identifies the affected `cards[index]` entries. Exact duplicates within the file or destination deck are skipped automatically. Accepted cards receive fresh local schedules.
+
 ## Flashcard quality
 
 - Use only information supported by the supplied source.
@@ -69,6 +100,7 @@ Tags are human-readable topic labels without `#`. After combining default and ca
   "format": "ostudy-flashcards",
   "formatVersion": 1,
   "deck": {
+    "mode": "create",
     "name": "Required deck name",
     "description": "Optional source or scope description"
   },
@@ -91,4 +123,4 @@ Tags are human-readable topic labels without `#`. After combining default and ca
 }
 ```
 
-Before returning the file, verify that the JSON parses, every property name matches this template exactly, every Basic card has non-empty `front` and `back`, and every cloze card contains at least one valid marker.
+Before returning the file, verify that the JSON parses, `deck.mode` is `create` or `append`, every property name matches this contract exactly, every Basic card has non-empty `front` and `back`, and every cloze card contains at least one valid marker.
