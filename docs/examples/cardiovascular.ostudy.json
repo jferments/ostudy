@@ -1,0 +1,32 @@
+{
+  "format": "ostudy-flashcards",
+  "formatVersion": 1,
+  "deck": {
+    "mode": "create",
+    "name": "Cardiovascular Physiology",
+    "description": "Example generated flashcards for testing the ostudy JSON importer."
+  },
+  "defaultTags": ["cardiovascular physiology", "generated import"],
+  "cards": [
+    {
+      "type": "basic",
+      "front": "What determines **cardiac output**?",
+      "back": "**Cardiac output = heart rate × stroke volume.**\n\nIt is the volume of blood pumped by one ventricle per minute.",
+      "reverseEnabled": false,
+      "tags": ["hemodynamics"]
+    },
+    {
+      "type": "basic",
+      "front": "What is the heart's normal primary pacemaker?",
+      "back": "The **sinoatrial node**.",
+      "reverseEnabled": true,
+      "tags": ["cardiac conduction"]
+    },
+    {
+      "type": "cloze",
+      "text": "The {{c1::sinoatrial node}} normally initiates the cardiac impulse, which then travels to the {{c2::atrioventricular node}}.",
+      "mode": "one_at_a_time",
+      "tags": ["cardiac conduction"]
+    }
+  ]
+}
