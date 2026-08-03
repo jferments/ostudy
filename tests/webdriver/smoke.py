@@ -68,6 +68,35 @@ def element_text(session_id: str, element_id: str) -> str:
     return str(value)
 
 
+def wait_for_element_text(
+    session_id: str,
+    using: str,
+    value: str,
+    expected: str,
+    deadline: float,
+) -> None:
+    last_text: str | None = None
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            result = request(
+                "POST",
+                f"/session/{session_id}/element",
+                {"using": using, "value": value},
+            )
+            if isinstance(result, dict) and ELEMENT_KEY in result:
+                last_text = element_text(session_id, str(result[ELEMENT_KEY]))
+                if last_text.strip() == expected:
+                    return
+        except Exception as error:  # The old element may be replaced during navigation.
+            last_error = error
+        time.sleep(0.2)
+    raise TimeoutError(
+        f"Expected {using}={value} to contain {expected!r}; "
+        f"last text: {last_text!r}; last error: {last_error}"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--application", required=True, type=Path)
@@ -113,6 +142,21 @@ def main() -> int:
         if brand_text.strip() != "ostudy":
             raise AssertionError(f"Expected ostudy branding, found {brand_text!r}")
 
+        analytics_button = find_element(
+            session_id,
+            "xpath",
+            "//button[contains(normalize-space(.), 'Analytics')]",
+            deadline,
+        )
+        request("POST", f"/session/{session_id}/element/{analytics_button}/click", {})
+        wait_for_element_text(
+            session_id,
+            "css selector",
+            "main h1",
+            "Analytics",
+            time.monotonic() + 15,
+        )
+
         settings_button = find_element(
             session_id,
             "xpath",
@@ -120,12 +164,15 @@ def main() -> int:
             deadline,
         )
         request("POST", f"/session/{session_id}/element/{settings_button}/click", {})
-        heading = find_element(session_id, "css selector", "main h1", time.monotonic() + 15)
-        heading_text = element_text(session_id, heading)
-        if heading_text.strip() != "Settings":
-            raise AssertionError(f"Expected Settings screen, found {heading_text!r}")
+        wait_for_element_text(
+            session_id,
+            "css selector",
+            "main h1",
+            "Settings",
+            time.monotonic() + 15,
+        )
 
-        print("Native smoke test passed: launched ostudy and opened Settings.")
+        print("Native smoke test passed: launched ostudy and opened Analytics and Settings.")
         return 0
     except Exception:
         print("\n--- tauri-driver log ---")
