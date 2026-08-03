@@ -139,6 +139,7 @@ describe("ActivePractice", () => {
 
   it("routes compact schedule controls to the exact-card action callback", () => {
     const props = renderActive();
+    const onScheduleAction = vi.mocked(props.onScheduleAction);
 
     fireEvent.click(screen.getByText("More"));
     fireEvent.click(screen.getByRole("button", { name: "Bury until tomorrow" }));
@@ -146,11 +147,11 @@ describe("ActivePractice", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reschedule for tomorrow" }));
     fireEvent.click(screen.getByRole("button", { name: "Reset schedule" }));
 
-    expect(props.onScheduleAction).toHaveBeenNthCalledWith(1, "bury");
-    expect(props.onScheduleAction).toHaveBeenNthCalledWith(2, "suspend");
-    expect(props.onScheduleAction.mock.calls[2]?.[0]).toBe("reschedule");
-    expect(typeof props.onScheduleAction.mock.calls[2]?.[1]).toBe("number");
-    expect(props.onScheduleAction).toHaveBeenNthCalledWith(4, "reset");
+    expect(onScheduleAction).toHaveBeenNthCalledWith(1, "bury");
+    expect(onScheduleAction).toHaveBeenNthCalledWith(2, "suspend");
+    expect(onScheduleAction.mock.calls[2]?.[0]).toBe("reschedule");
+    expect(typeof onScheduleAction.mock.calls[2]?.[1]).toBe("number");
+    expect(onScheduleAction).toHaveBeenNthCalledWith(4, "reset");
   });
 
   it("renders the authoritative session mode, deck, and weak-card signal", () => {
