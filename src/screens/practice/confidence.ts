@@ -1,4 +1,5 @@
-import type { RecentReview, ReviewOutcome } from "../../ipc";
+import type { RecentReview } from "../../analytics-ipc";
+import type { ReviewOutcome } from "../../ipc";
 
 export type ConfidenceScore = 0 | 1 | 2 | 3;
 export type ConfidenceCounts = [number, number, number, number];
