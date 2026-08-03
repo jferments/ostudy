@@ -17,6 +17,7 @@ use crate::{
 };
 
 const MAX_RESPONSE_TIME_MS: i64 = 86_400_000;
+type PracticeSessionState = (Option<i64>, Option<i64>, Option<i64>, Option<i64>);
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -218,7 +219,7 @@ fn submit_review_in_connection(
         return Ok(existing);
     }
 
-    let session_state: Option<(Option<i64>, Option<i64>, Option<i64>, Option<i64>)> = transaction
+    let session_state: Option<PracticeSessionState> = transaction
         .query_row(
             "SELECT psc.revealed_at, psc.rated_at, psc.dismissed_at, ps.completed_at
              FROM practice_session_cards psc
