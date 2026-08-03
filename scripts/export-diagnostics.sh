@@ -45,9 +45,6 @@ if command -v git >/dev/null 2>&1 && git -C "$ROOT_DIR" rev-parse --is-inside-wo
 fi
 
 cp "$ROOT_DIR/package.json" "$ROOT_DIR/versions.env" "$TEMP_DIR/"
-# Temporary Stage 5 analytics lock-generation support. This line is removed as
-# soon as the pinned runner has returned the regenerated frozen lockfile.
-cp "$ROOT_DIR/pnpm-lock.yaml" "$TEMP_DIR/"
 LOG_PATH="${XDG_STATE_HOME:-$HOME/.local/state}/ostudy/ostudy.jsonl"
 if [[ -f "$LOG_PATH" ]]; then
   tail -n 1000 "$LOG_PATH" > "$TEMP_DIR/logs/ostudy.jsonl"
