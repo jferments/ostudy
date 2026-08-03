@@ -60,6 +60,7 @@ const [
   rustCommands,
   app,
   ipc,
+  analyticsIpc,
   cards,
   authoringWrites,
   scheduler,
@@ -86,6 +87,7 @@ const [
   read("src-tauri", "src", "lib.rs"),
   read("src", "App.tsx"),
   read("src", "ipc.ts"),
+  read("src", "analytics-ipc.ts"),
   read("src-tauri", "src", "cards.rs"),
   read("src-tauri", "src", "authoring", "writes_and_transfer.rs"),
   read("src-tauri", "src", "scheduler.rs"),
@@ -116,6 +118,8 @@ const versions = {
   "@tauri-apps/plugin-opener": env.get("TAURI_OPENER_VERSION"),
   react: env.get("REACT_VERSION"),
   "react-dom": env.get("REACT_VERSION"),
+  "chart.js": env.get("CHART_JS_VERSION"),
+  "react-chartjs-2": env.get("REACT_CHARTJS_2_VERSION"),
   "@types/react": env.get("REACT_TYPES_VERSION"),
   "@types/react-dom": env.get("REACT_DOM_TYPES_VERSION"),
   "@vitejs/plugin-react": env.get("VITE_REACT_PLUGIN_VERSION"),
@@ -198,6 +202,7 @@ if (!releaseFixture.includes("Immutable database fixture captured for the ostudy
   failures.push("0.1.0 migration fixture is not a complete historical schema snapshot");
 }
 
+const frontendIpc = `${ipc}\n${analyticsIpc}`;
 for (const command of [
   "list_decks", "get_deck", "create_deck", "update_deck", "delete_deck",
   "list_cards", "delete_card",
@@ -208,11 +213,12 @@ for (const command of [
   "import_image", "get_settings", "save_settings", "get_app_info",
   "start_selected_practice", "start_card_practice",
   "mark_practice_card_viewed", "mark_practice_card_revealed",
-  "submit_practice_review", "complete_practice_session", "get_analytics",
+  "submit_practice_review", "complete_practice_session",
+  "get_analytics", "get_recent_practice_reviews",
   "export_deck", "import_deck",
 ]) {
   if (!rustCommands.includes(command)) failures.push(`Rust command not registered: ${command}`);
-  if (!ipc.includes(`"${command}"`)) failures.push(`frontend command missing: ${command}`);
+  if (!frontendIpc.includes(`"${command}"`)) failures.push(`frontend command missing: ${command}`);
 }
 
 if (!authoringWrites.includes('const CONTENT_FORMAT: &str = "tiptap-json"') ||
@@ -259,6 +265,7 @@ for (const requiredPath of [
   "scripts/smoke-native.sh",
   "scripts/release.sh",
   "tests/webdriver/smoke.py",
+  "src/analytics-ipc.ts",
   "src/test/setup.ts",
   "src/components/Toast.test.tsx",
   "src/screens/SettingsScreen.test.tsx",
