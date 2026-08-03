@@ -1,0 +1,391 @@
+import { invoke } from "@tauri-apps/api/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  analyzeBulkCards,
+  applyScheduleAction,
+  bulkCreateCards,
+  bulkTagCards,
+  completePracticeSession,
+  createCardTemplate,
+  createDeck,
+  createGeneratedCard,
+  createMutationId,
+  createSubmissionId,
+  deleteCards,
+  exportDeck,
+  findDuplicateCards,
+  generateCardsFromTemplate,
+  getAnalytics as _unused,
+  getAppInfo,
+  getCardTemplate,
+  getCardTypeInfo,
+  getDeck,
+  getErrorCode,
+  getErrorMessage,
+  getOrganizedCard,
+  getPracticeWorkload,
+  getSettings,
+  importDeck,
+  importImage,
+  listCardTemplates,
+  listCards,
+  listDecks,
+  listMatchingCards,
+  listTags,
+  markPracticeCardRevealed,
+  markPracticeCardViewed,
+  previewTemplateCards,
+  saveSettings,
+  searchCards,
+  startCardPractice,
+  startSelectedPractice,
+  submitPracticeReview,
+  transferCards,
+  updateCardTemplate,
+  updateDeck,
+  updateGeneratedCard,
+  type AppSettings,
+  type CardSearchInput,
+  type CreateCardTemplateInput,
+  type CreateGeneratedCardInput,
+} from "./ipc";
+import { makeSettings, paragraphDocument } from "./test/factories";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+}));
+
+const deckId = "a".repeat(32);
+const noteId = "b".repeat(32);
+const cardId = "c".repeat(32);
+const templateId = "d".repeat(32);
+
+const searchInput: CardSearchInput = {
+  deckIds: [deckId],
+  query: "warfarin",
+  tagIds: [],
+  dueFilter: "due",
+  statusFilter: "active",
+  reviewedFilter: "all",
+  sort: "relevance",
+  limit: 100,
+  offset: 0,
+};
+
+const generatedInput: CreateGeneratedCardInput = {
+  deckId,
+  cardType: "basic",
+  reverseEnabled: true,
+  clozeSource: "",
+  clozeMode: "one_at_a_time",
+  frontDoc: paragraphDocument("Question"),
+  backDoc: paragraphDocument("Answer"),
+  frontText: "Question",
+  backText: "Answer",
+  tags: ["Medication"],
+  allowDuplicate: false,
+};
+
+const templateInput: CreateCardTemplateInput = {
+  name: "Medication",
+  description: "",
+  fields: [{ id: "e".repeat(32), name: "Name", description: "" }],
+  rules: [
+    {
+      id: "f".repeat(32),
+      name: "Name card",
+      frontDoc: paragraphDocument("{{Name}}"),
+      backDoc: paragraphDocument("{{Name}}"),
+    },
+  ],
+};
+
+async function expectInvocation(
+  operation: () => Promise<unknown>,
+  command: string,
+  payload?: Record<string, unknown>,
+): Promise<void> {
+  vi.mocked(invoke).mockResolvedValueOnce(undefined);
+  await operation();
+  if (payload === undefined) {
+    expect(invoke).toHaveBeenLastCalledWith(command);
+  } else {
+    expect(invoke).toHaveBeenLastCalledWith(command, payload);
+  }
+}
+
+describe("typed Tauri IPC wrappers", () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset();
+  });
+
+  it("wires deck and card-library commands with their exact payload shapes", async () => {
+    await expectInvocation(listDecks, "list_decks");
+    await expectInvocation(() => getDeck(deckId), "get_deck", { deckId });
+    await expectInvocation(
+      () => createDeck({ name: "Pharmacology", description: "NCLEX" }),
+      "create_deck",
+      { input: { name: "Pharmacology", description: "NCLEX" } },
+    );
+    await expectInvocation(
+      () =>
+        updateDeck({
+          deckId,
+          name: "Advanced pharmacology",
+          description: "",
+          revision: 2,
+        }),
+      "update_deck",
+      {
+        input: {
+          deckId,
+          name: "Advanced pharmacology",
+          description: "",
+          revision: 2,
+        },
+      },
+    );
+    await expectInvocation(() => listCards(deckId), "list_cards", { deckId });
+    await expectInvocation(() => listTags(), "list_tags", {
+      input: { deckIds: [] },
+    });
+    await expectInvocation(() => searchCards(searchInput), "search_cards", {
+      input: searchInput,
+    });
+    await expectInvocation(
+      () => listMatchingCards(searchInput),
+      "list_matching_cards",
+      { input: searchInput },
+    );
+    await expectInvocation(
+      () => getOrganizedCard(noteId),
+      "get_organized_card",
+      { noteId },
+    );
+  });
+
+  it("wires generated-card, template, duplicate, and bulk commands", async () => {
+    await expectInvocation(
+      () => createGeneratedCard(generatedInput),
+      "create_generated_card",
+      { input: generatedInput },
+    );
+    await expectInvocation(
+      () =>
+        updateGeneratedCard({
+          ...generatedInput,
+          noteId,
+          revision: 3,
+        }),
+      "update_generated_card",
+      { input: { ...generatedInput, noteId, revision: 3 } },
+    );
+    await expectInvocation(() => getCardTypeInfo(noteId), "get_card_type_info", {
+      noteId,
+    });
+    await expectInvocation(listCardTemplates, "list_card_templates");
+    await expectInvocation(
+      () => getCardTemplate(templateId),
+      "get_card_template",
+      { templateId },
+    );
+    await expectInvocation(
+      () => createCardTemplate(templateInput),
+      "create_card_template",
+      { input: templateInput },
+    );
+    await expectInvocation(
+      () =>
+        updateCardTemplate({
+          ...templateInput,
+          templateId,
+          revision: 4,
+        }),
+      "update_card_template",
+      { input: { ...templateInput, templateId, revision: 4 } },
+    );
+    const values = [
+      {
+        fieldId: templateInput.fields[0]?.id ?? "",
+        doc: paragraphDocument("Lisinopril"),
+        text: "Lisinopril",
+      },
+    ];
+    await expectInvocation(
+      () =>
+        previewTemplateCards({
+          templateId,
+          templateRevision: 4,
+          values,
+        }),
+      "preview_template_cards",
+      { input: { templateId, templateRevision: 4, values } },
+    );
+    await expectInvocation(
+      () =>
+        generateCardsFromTemplate({
+          deckId,
+          templateId,
+          templateRevision: 4,
+          values,
+          tags: ["ACE inhibitor"],
+        }),
+      "generate_cards_from_template",
+      {
+        input: {
+          deckId,
+          templateId,
+          templateRevision: 4,
+          values,
+          tags: ["ACE inhibitor"],
+        },
+      },
+    );
+    await expectInvocation(
+      () =>
+        findDuplicateCards({
+          deckId,
+          frontText: "Question",
+          backText: "Answer",
+          excludeNoteId: noteId,
+        }),
+      "find_duplicate_cards",
+      {
+        input: {
+          deckId,
+          frontText: "Question",
+          backText: "Answer",
+          excludeNoteId: noteId,
+        },
+      },
+    );
+    const rows = [{ question: "Q", answer: "A", tags: [] }];
+    await expectInvocation(
+      () => analyzeBulkCards({ deckId, rows }),
+      "analyze_bulk_cards",
+      { input: { deckId, rows } },
+    );
+    await expectInvocation(
+      () => bulkCreateCards({ deckId, rows }),
+      "bulk_create_cards",
+      { input: { deckId, rows } },
+    );
+    await expectInvocation(
+      () =>
+        transferCards({
+          noteIds: [noteId],
+          targetDeckId: "1".repeat(32),
+          mode: "copy",
+          skipDuplicates: true,
+        }),
+      "transfer_cards",
+      {
+        input: {
+          noteIds: [noteId],
+          targetDeckId: "1".repeat(32),
+          mode: "copy",
+          skipDuplicates: true,
+        },
+      },
+    );
+    await expectInvocation(
+      () => bulkTagCards({ noteIds: [noteId], tags: ["Cardiology"], mode: "add" }),
+      "bulk_tag_cards",
+      { input: { noteIds: [noteId], tags: ["Cardiology"], mode: "add" } },
+    );
+    await expectInvocation(() => deleteCards([noteId]), "delete_cards", {
+      input: { noteIds: [noteId] },
+    });
+  });
+
+  it("wires settings, practice, scheduling, assets, and transfer commands", async () => {
+    const settings: AppSettings = makeSettings({ dailyNewLimit: 12 });
+    await expectInvocation(getSettings, "get_settings");
+    await expectInvocation(() => saveSettings(settings), "save_settings", {
+      input: settings,
+    });
+    await expectInvocation(getAppInfo, "get_app_info");
+    await expectInvocation(() => importImage("/tmp/image.png"), "import_image", {
+      filePath: "/tmp/image.png",
+    });
+    await expectInvocation(
+      () => getPracticeWorkload([deckId]),
+      "get_practice_workload",
+      { input: { deckIds: [deckId] } },
+    );
+    await expectInvocation(
+      () => startSelectedPractice({ deckIds: [deckId], shuffle: true, mode: "scheduled" }),
+      "start_selected_practice",
+      { input: { deckIds: [deckId], shuffle: true, mode: "scheduled" } },
+    );
+    await expectInvocation(
+      () => startCardPractice({ cardIds: [cardId], shuffle: false }),
+      "start_card_practice",
+      { input: { cardIds: [cardId], shuffle: false } },
+    );
+    await expectInvocation(
+      () => markPracticeCardViewed("2".repeat(32), cardId),
+      "mark_practice_card_viewed",
+      { input: { sessionId: "2".repeat(32), cardId } },
+    );
+    await expectInvocation(
+      () => markPracticeCardRevealed("2".repeat(32), cardId),
+      "mark_practice_card_revealed",
+      { input: { sessionId: "2".repeat(32), cardId } },
+    );
+    const review = {
+      sessionId: "2".repeat(32),
+      cardId,
+      submissionId: "3".repeat(32),
+      outcome: "somewhat_confident" as const,
+      responseTimeMs: 2_500,
+      scheduleRevision: 2,
+    };
+    await expectInvocation(() => submitPracticeReview(review), "submit_practice_review", {
+      input: review,
+    });
+    await expectInvocation(
+      () => completePracticeSession("2".repeat(32)),
+      "complete_practice_session",
+      { sessionId: "2".repeat(32) },
+    );
+    const mutation = {
+      mutationId: "4".repeat(32),
+      cardIds: [cardId],
+      action: "bury" as const,
+    };
+    await expectInvocation(() => applyScheduleAction(mutation), "apply_schedule_action", {
+      input: mutation,
+    });
+    await expectInvocation(
+      () => exportDeck(deckId, "/tmp/deck.studydeck"),
+      "export_deck",
+      { input: { deckId, destinationPath: "/tmp/deck.studydeck" } },
+    );
+    await expectInvocation(() => importDeck("/tmp/deck.studydeck"), "import_deck", {
+      sourcePath: "/tmp/deck.studydeck",
+    });
+  });
+
+  it("creates transport identifiers without hyphens", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValueOnce("11111111-2222-3333-4444-555555555555")
+      .mockReturnValueOnce("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+
+    expect(createSubmissionId()).toBe("11111111222233334444555555555555");
+    expect(createMutationId()).toBe("aaaaaaaabbbbccccddddeeeeeeeeeeee");
+  });
+
+  it("extracts stable command errors and preserves useful fallback messages", () => {
+    const payload = { code: "deck_changed", message: "Reload the deck." };
+    expect(getErrorCode(payload)).toBe("deck_changed");
+    expect(getErrorMessage(payload)).toBe("Reload the deck.");
+    expect(getErrorCode(new Error("failure"))).toBeNull();
+    expect(getErrorMessage(new Error("failure"))).toBe("failure");
+    expect(getErrorMessage("native failure")).toBe("native failure");
+    expect(getErrorMessage({ code: "unknown" })).toBe(
+      "An unexpected error occurred.",
+    );
+  });
+});
