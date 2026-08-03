@@ -5,7 +5,7 @@ import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { Toast, type ToastMessage } from "./components/Toast";
 import { AnalyticsScreen } from "./screens/AnalyticsScreen";
 import { CardsScreen } from "./screens/CardsScreen";
-import { DecksScreen } from "./screens/DecksScreen";
+import { DecksImportScreen as DecksScreen } from "./screens/DecksImportScreen";
 import { PracticeScreen } from "./screens/PracticeScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { TemplatesScreen } from "./screens/TemplatesScreen";
