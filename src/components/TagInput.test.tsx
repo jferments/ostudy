@@ -20,10 +20,16 @@ function Harness({ initial = [] }: { initial?: string[] }) {
   );
 }
 
+function datalistValues(): string[] {
+  return [...document.querySelectorAll<HTMLDataListElement>("datalist option")].map(
+    (option) => option.value,
+  );
+}
+
 describe("TagInput", () => {
   it("normalizes whitespace and accepts Enter, comma, and blur", () => {
     render(<Harness />);
-    const input = screen.getByRole("textbox", { name: "Tags" });
+    const input = screen.getByRole("combobox", { name: "Tags" });
 
     fireEvent.change(input, { target: { value: "  Medication   safety  " } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -46,7 +52,7 @@ describe("TagInput", () => {
 
   it("rejects case-insensitive duplicates and supports keyboard removal", () => {
     render(<Harness initial={["Cardiology", "Medication"]} />);
-    const input = screen.getByRole("textbox", { name: "Tags" });
+    const input = screen.getByRole("combobox", { name: "Tags" });
 
     fireEvent.change(input, { target: { value: "cardiology" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -61,14 +67,10 @@ describe("TagInput", () => {
   it("removes a selected chip and omits it from suggestions", () => {
     render(<Harness initial={["Cardiology"]} />);
 
-    expect(
-      screen.queryByRole("option", { name: /Cardiology/u }),
-    ).toBeNull();
-    expect(
-      screen.getByRole("option", { name: /Medication safety/u }),
-    ).toBeTruthy();
+    expect(datalistValues()).toEqual(["Medication safety"]);
 
     fireEvent.click(screen.getByRole("button", { name: "Remove Cardiology tag" }));
     expect(screen.getByLabelText("Current tags").textContent).toBe("");
+    expect(datalistValues()).toEqual(["Cardiology", "Medication safety"]);
   });
 });
