@@ -38,3 +38,32 @@ step "Generate the Stage 5 analytics JavaScript lockfile once"
 pnpm install --no-frozen-lockfile
 printf 'The regenerated pnpm lockfile is ready for the failure diagnostic artifact.\n'
 exit 91
+
+step "React tests (Vitest + Testing Library)"
+pnpm test
+
+step "Rust formatting"
+cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+step "Rust linting"
+cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
+
+step "Rust unit, integration, and migration-fixture tests"
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
+
+step "Standalone Tauri build"
+pnpm tauri build --debug --no-bundle --ci -- --locked
+"$SCRIPT_DIR/verify-rust-dependencies.sh"
+[[ -x "$OSTUDY_BINARY" ]]
+ostudy_write_build_stamp "$(node -p "require('./package.json').version")"
+
+if [[ "${OSTUDY_SKIP_NATIVE_SMOKE:-0}" == "1" ]]; then
+  printf '\nSKIP Native WebDriver smoke test (OSTUDY_SKIP_NATIVE_SMOKE=1).\n'
+else
+  step "Native Tauri/WebDriver smoke test"
+  "$SCRIPT_DIR/smoke-native.sh"
+fi
+
+trap - ERR
+printf '\n\033[1;32mAll ostudy checks passed.\033[0m\n'
+printf 'The current standalone build is ready for ./run-app.sh.\n'
