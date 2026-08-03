@@ -422,9 +422,8 @@ fn load_analytics(
     for card in &cards {
         deck_names.insert(card.deck_id.clone(), card.deck_name.clone());
         let active = card.suspended_at.is_none();
-        let due = active
-            && card.due_at <= now
-            && card.buried_until.is_none_or(|value| value <= now);
+        let due =
+            active && card.due_at <= now && card.buried_until.is_none_or(|value| value <= now);
         if active {
             summary.card_count += 1;
             active_decks.insert(card.deck_id.clone());
@@ -606,10 +605,7 @@ fn load_analytics(
                 correct_count: accumulator.scope.reviews.correct_count,
                 correct_rate,
                 average_confidence: accumulator.scope.reviews.average_confidence(),
-                average_response_time_ms: accumulator
-                    .scope
-                    .reviews
-                    .average_response_time_ms(),
+                average_response_time_ms: accumulator.scope.reviews.average_response_time_ms(),
                 total_study_time_ms: accumulator.scope.reviews.response_time_total,
                 last_practiced_at: accumulator.scope.reviews.last_practiced_at,
                 trend_delta,
@@ -917,15 +913,9 @@ fn build_bucket_specs(
 ) -> Result<Vec<BucketSpec>, CommandError> {
     let today = Local::now().date_naive();
     match range {
-        AnalyticsRange::Days30 => {
-            date_buckets(today - Duration::days(29), today, 1, now)
-        }
-        AnalyticsRange::Days90 => {
-            date_buckets(today - Duration::days(89), today, 7, now)
-        }
-        AnalyticsRange::Year1 => {
-            date_buckets(today - Duration::days(364), today, 7, now)
-        }
+        AnalyticsRange::Days30 => date_buckets(today - Duration::days(29), today, 1, now),
+        AnalyticsRange::Days90 => date_buckets(today - Duration::days(89), today, 7, now),
+        AnalyticsRange::Year1 => date_buckets(today - Duration::days(364), today, 7, now),
         AnalyticsRange::All => monthly_buckets(first_review_at.unwrap_or(now), now),
     }
 }
@@ -953,10 +943,7 @@ fn date_buckets(
     Ok(buckets)
 }
 
-fn monthly_buckets(
-    first_review_at: i64,
-    now: i64,
-) -> Result<Vec<BucketSpec>, CommandError> {
+fn monthly_buckets(first_review_at: i64, now: i64) -> Result<Vec<BucketSpec>, CommandError> {
     let first_date = Local
         .timestamp_millis_opt(first_review_at)
         .earliest()
@@ -1056,13 +1043,7 @@ fn build_timeline(
 
 fn recent_review(review: &ReviewRow, card: Option<&CardSnapshot>) -> RecentReviewDto {
     let tags = card
-        .map(|value| {
-            value
-                .tags
-                .iter()
-                .map(|tag| tag.name.clone())
-                .collect()
-        })
+        .map(|value| value.tags.iter().map(|tag| tag.name.clone()).collect())
         .unwrap_or_default();
     RecentReviewDto {
         id: review.id.clone(),
@@ -1092,9 +1073,7 @@ fn load_recent_sessions(
             accumulator.study_time_ms = accumulator
                 .study_time_ms
                 .saturating_add(review.response_time_ms);
-            accumulator.last_reviewed_at = accumulator
-                .last_reviewed_at
-                .max(review.reviewed_at);
+            accumulator.last_reviewed_at = accumulator.last_reviewed_at.max(review.reviewed_at);
         }
     }
     let mut ids = event_accumulators
@@ -1150,10 +1129,8 @@ fn load_recent_sessions(
                 .map(|value| value.deck_names.iter().cloned().collect::<Vec<_>>())
                 .unwrap_or_default();
             if names.is_empty() {
-                let deck_ids = serde_json::from_str::<Vec<String>>(
-                    &row.selected_deck_ids_json,
-                )
-                .unwrap_or_default();
+                let deck_ids = serde_json::from_str::<Vec<String>>(&row.selected_deck_ids_json)
+                    .unwrap_or_default();
                 names = deck_ids
                     .into_iter()
                     .filter_map(|deck_id| deck_names.get(&deck_id).cloned())
@@ -1360,19 +1337,10 @@ mod tests {
 
     #[test]
     fn tag_classification_uses_retention_and_learning_signals() {
-        assert_eq!(
-            classify_tag(3, Some(1.0), 0, 0.9),
-            "building_data"
-        );
-        assert_eq!(
-            classify_tag(10, Some(0.75), 0, 0.9),
-            "needs_attention"
-        );
+        assert_eq!(classify_tag(3, Some(1.0), 0, 0.9), "building_data");
+        assert_eq!(classify_tag(10, Some(0.75), 0, 0.9), "needs_attention");
         assert_eq!(classify_tag(10, Some(0.95), 0, 0.9), "strong");
         assert_eq!(classify_tag(10, Some(0.9), 0, 0.9), "on_track");
-        assert_eq!(
-            classify_tag(10, Some(1.0), 1, 0.9),
-            "needs_attention"
-        );
+        assert_eq!(classify_tag(10, Some(1.0), 1, 0.9), "needs_attention");
     }
 }
