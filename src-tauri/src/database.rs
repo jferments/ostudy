@@ -160,7 +160,9 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
-            .map_err(|error| format!("Could not inspect migration {}: {error}", migration.version))?;
+            .map_err(|error| {
+                format!("Could not inspect migration {}: {error}", migration.version)
+            })?;
         if let Some((name, checksum)) = existing {
             if name != migration.name || checksum != migration.checksum {
                 return Err(format!(
@@ -173,7 +175,10 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
 
         let applied_at = unix_time_millis().map_err(|error| error.message)?;
         let transaction = connection.transaction().map_err(|error| {
-            format!("Could not begin database migration {}: {error}", migration.version)
+            format!(
+                "Could not begin database migration {}: {error}",
+                migration.version
+            )
         })?;
         transaction
             .execute_batch(migration.sql)
@@ -182,15 +187,27 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
             .execute(
                 "INSERT INTO schema_migrations (version, name, checksum, applied_at)
                  VALUES (?1, ?2, ?3, ?4)",
-                params![migration.version, migration.name, migration.checksum, applied_at],
+                params![
+                    migration.version,
+                    migration.name,
+                    migration.checksum,
+                    applied_at
+                ],
             )
-            .map_err(|error| format!("Could not record migration {}: {error}", migration.version))?;
+            .map_err(|error| {
+                format!("Could not record migration {}: {error}", migration.version)
+            })?;
         transaction
             .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
-            .map_err(|error| format!("Could not set SQLite user_version for migration {}: {error}", migration.version))?;
-        transaction
-            .commit()
-            .map_err(|error| format!("Could not commit migration {}: {error}", migration.version))?;
+            .map_err(|error| {
+                format!(
+                    "Could not set SQLite user_version for migration {}: {error}",
+                    migration.version
+                )
+            })?;
+        transaction.commit().map_err(|error| {
+            format!("Could not commit migration {}: {error}", migration.version)
+        })?;
     }
     Ok(())
 }
@@ -274,6 +291,105 @@ mod tests {
     }
 
     #[test]
+    fn schema_four_upgrades_forward_without_rewriting_history_or_losing_cards() {
+        let mut connection = Connection::open_in_memory().expect("database should open");
+        configure_connection(&connection).expect("connection should configure");
+        initialize_migration_ledger(&connection).expect("ledger should initialize");
+        for migration in MIGRATIONS.iter().filter(|migration| migration.version <= 4) {
+            let transaction = connection.transaction().expect("migration should start");
+            transaction
+                .execute_batch(migration.sql)
+                .expect("historical migration should apply");
+            transaction
+                .execute(
+                    "INSERT INTO schema_migrations (version, name, checksum, applied_at)
+                     VALUES (?1, ?2, ?3, ?4)",
+                    params![
+                        migration.version,
+                        migration.name,
+                        migration.checksum,
+                        migration.version
+                    ],
+                )
+                .expect("migration should be recorded");
+            transaction
+                .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
+                .expect("user version should advance");
+            transaction.commit().expect("migration should commit");
+        }
+        connection
+            .execute(
+                "INSERT INTO decks (
+                     id, name, description, sort_order, created_at, updated_at, revision
+                 ) VALUES (?1, 'Preserved deck', '', 0, 10, 10, 1)",
+                ["11111111111111111111111111111111"],
+            )
+            .expect("deck should insert");
+        connection
+            .execute(
+                "INSERT INTO notes (
+                     id, deck_id, note_type, content_format, content_schema_version,
+                     front_doc, back_doc, front_text, back_text, duplicate_hash,
+                     created_at, updated_at, revision
+                 ) VALUES (
+                     ?1, ?2, 'basic', 'tiptap-json', 1,
+                     '{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Question\"}]}]}',
+                     '{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Answer\"}]}]}',
+                     'Question', 'Answer', 'legacy-hash', 10, 10, 1
+                 )",
+                params![
+                    "22222222222222222222222222222222",
+                    "11111111111111111111111111111111"
+                ],
+            )
+            .expect("note should insert");
+        connection
+            .execute(
+                "INSERT INTO cards (
+                     id, note_id, deck_id, direction, template_ordinal, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, 'forward', 0, 10, 10)",
+                params![
+                    "33333333333333333333333333333333",
+                    "22222222222222222222222222222222",
+                    "11111111111111111111111111111111"
+                ],
+            )
+            .expect("card should insert");
+
+        initialize_connection(&mut connection).expect("schema 4 should upgrade");
+
+        let preserved: (String, String, String) = connection
+            .query_row(
+                "SELECT n.front_text, n.back_text, c.id
+                 FROM notes n JOIN cards c ON c.note_id = n.id
+                 WHERE n.id = ?1",
+                ["22222222222222222222222222222222"],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("card should remain");
+        assert_eq!(preserved.0, "Question");
+        assert_eq!(preserved.1, "Answer");
+        assert_eq!(preserved.2, "33333333333333333333333333333333");
+        let trigger_exists: i64 = connection
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM sqlite_master
+                     WHERE type = 'trigger'
+                       AND name = 'notes_duplicate_hash_after_legacy_update'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .expect("trigger query should work");
+        assert_eq!(trigger_exists, 0);
+
+        let migrated_version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("version should be readable");
+        assert_eq!(migrated_version, LATEST_SCHEMA_VERSION);
+    }
+
+    #[test]
     fn every_released_schema_fixture_upgrades_to_latest() {
         for fixture in RELEASED_SCHEMA_FIXTURES {
             let mut connection = Connection::open_in_memory().expect("fixture should open");
@@ -297,9 +413,21 @@ mod tests {
 
     #[test]
     fn historical_migration_checksums_remain_exact() {
-        assert_eq!(MIGRATIONS[3].checksum, "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d");
-        assert_eq!(MIGRATIONS[5].checksum, "c07b900b2119f6eae6a4de58aeb3af9ab5882ee21d5c29ac7a5c7fcee6b86be8");
-        assert_eq!(MIGRATIONS[6].checksum, "91d120cb0b72c72c40d499a2c8be9b090be96ca760b2bb5a71072e2b71ed45e1");
-        assert_eq!(MIGRATIONS[7].checksum, "862b5277d92154d5586b7924023fb64f7cfee08d566b52efbd625fcbab410b2e");
+        assert_eq!(
+            MIGRATIONS[3].checksum,
+            "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d"
+        );
+        assert_eq!(
+            MIGRATIONS[5].checksum,
+            "c07b900b2119f6eae6a4de58aeb3af9ab5882ee21d5c29ac7a5c7fcee6b86be8"
+        );
+        assert_eq!(
+            MIGRATIONS[6].checksum,
+            "91d120cb0b72c72c40d499a2c8be9b090be96ca760b2bb5a71072e2b71ed45e1"
+        );
+        assert_eq!(
+            MIGRATIONS[7].checksum,
+            "862b5277d92154d5586b7924023fb64f7cfee08d566b52efbd625fcbab410b2e"
+        );
     }
 }
