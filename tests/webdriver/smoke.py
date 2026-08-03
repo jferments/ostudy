@@ -199,7 +199,13 @@ def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
         deadline,
     )
     send_keys(session_id, name_input, deck_name)
-    click_text_button(session_id, "Create deck", deadline)
+    create_button = find_element(
+        session_id,
+        "xpath",
+        "//section[@role='dialog']//button[normalize-space(.)='Create deck']",
+        deadline,
+    )
+    click(session_id, create_button)
     wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
 
     click_text_button(session_id, "Add flashcard", deadline)
@@ -222,7 +228,13 @@ def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
         deadline,
     )
 
-    click_text_button(session_id, "Practice", deadline)
+    practice_button = find_element(
+        session_id,
+        "xpath",
+        "//main//button[normalize-space(.)='Practice']",
+        deadline,
+    )
+    click(session_id, practice_button)
     show_answer = find_element(
         session_id,
         "xpath",
