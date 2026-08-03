@@ -7,7 +7,9 @@ import "./ProgressChart";
 
 describe("ProgressChart Chart.js registration", () => {
   it("registers both controllers required by the mixed progress chart", () => {
-    expect(ChartJS.registry.getController("bar").id).toBe("bar");
-    expect(ChartJS.registry.getController("line").id).toBe("line");
+    // Chart.js throws the exact runtime error reported by the Analytics error
+    // boundary when a requested controller has not been registered.
+    expect(() => ChartJS.registry.getController("bar")).not.toThrow();
+    expect(() => ChartJS.registry.getController("line")).not.toThrow();
   });
 });
