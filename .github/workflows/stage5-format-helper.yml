@@ -1,0 +1,39 @@
+name: Stage 5 format helper
+
+on:
+  push:
+    branches:
+      - agent/phase-2-stage-5-scheduling-controls
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+
+      - name: Install pinned Rust formatter
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+          rustup default 1.97.1
+
+      - name: Format Rust source
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Upload formatted Stage 5 files
+        uses: actions/upload-artifact@v7
+        with:
+          name: stage5-rustfmt
+          path: |
+            src-tauri/src/database.rs
+            src-tauri/src/learning_signals.rs
+            src-tauri/src/practice.rs
+            src-tauri/src/practice_selection.rs
+            src-tauri/src/schedule_controls.rs
+            src-tauri/src/scheduler.rs
+            src-tauri/src/settings.rs
+            src-tauri/src/workload.rs
+          if-no-files-found: error
