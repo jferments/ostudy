@@ -164,10 +164,11 @@ def main() -> int:
             time.monotonic() + 15,
         )
         request("POST", f"/session/{session_id}/element/{chart_data_button}/click", {})
-        find_element(
+        wait_for_element_text(
             session_id,
             "css selector",
-            "table[aria-label='Data represented in the learning progress chart']",
+            ".chart-data-table caption",
+            "Data represented in the learning progress chart",
             time.monotonic() + 15,
         )
         wait_for_element_text(
