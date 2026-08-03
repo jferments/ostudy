@@ -1,6 +1,9 @@
 name: Stage 5 format helper
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - agent/phase-2-stage-5-scheduling-controls
