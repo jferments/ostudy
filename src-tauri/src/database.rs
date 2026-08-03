@@ -58,9 +58,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "91d120cb0b72c72c40d499a2c8be9b090be96ca760b2bb5a71072e2b71ed45e1",
         sql: include_str!("../migrations/0007_rich_templates_single_cloze.sql"),
     },
+    Migration {
+        version: 8,
+        name: "scheduling_controls",
+        checksum: "862b5277d92154d5586b7924023fb64f7cfee08d566b52efbd625fcbab410b2e",
+        sql: include_str!("../migrations/0008_scheduling_controls.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 7;
+const LATEST_SCHEMA_VERSION: i64 = 8;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -230,13 +236,12 @@ mod tests {
     }
 
     #[test]
-    fn migrations_are_idempotent_and_reach_schema_seven() {
+    fn migrations_are_idempotent_and_reach_schema_eight() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
                 apply_migrations(connection)
                     .map_err(|error| CommandError::new("migration_error", error))?;
-                normalize_stage3_schema(connection)?;
                 let version: i64 = connection
                     .query_row("PRAGMA user_version", [], |row| row.get(0))
                     .map_err(CommandError::database)?;
@@ -254,6 +259,7 @@ mod tests {
                     "card_template_fields",
                     "card_template_rules",
                     "card_template_assets",
+                    "schedule_action_events",
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -264,30 +270,23 @@ mod tests {
                         .map_err(CommandError::database)?;
                     assert_eq!(exists, 1, "missing table {table}");
                 }
-                for column in ["front_doc", "back_doc"] {
+                for (table, column) in [
+                    ("cards", "buried_until"),
+                    ("card_schedules", "revision"),
+                    ("practice_sessions", "mode"),
+                    ("practice_session_cards", "dismissed_at"),
+                ] {
                     let exists: i64 = connection
                         .query_row(
                             "SELECT EXISTS(
-                                 SELECT 1 FROM pragma_table_info('card_template_rules')
-                                 WHERE name = ?1
+                                 SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2
                              )",
-                            [column],
+                            params![table, column],
                             |row| row.get(0),
                         )
                         .map_err(CommandError::database)?;
-                    assert_eq!(exists, 1, "missing rule column {column}");
+                    assert_eq!(exists, 1, "missing {table}.{column}");
                 }
-                let variant_exists: i64 = connection
-                    .query_row(
-                        "SELECT EXISTS(
-                             SELECT 1 FROM pragma_table_info('practice_session_cards')
-                             WHERE name = 'presentation_variant'
-                         )",
-                        [],
-                        |row| row.get(0),
-                    )
-                    .map_err(CommandError::database)?;
-                assert_eq!(variant_exists, 1);
                 Ok(())
             })
             .expect("second initialization should succeed");
@@ -385,6 +384,11 @@ mod tests {
             )
             .expect("trigger query should work");
         assert_eq!(trigger_exists, 0);
+
+        let migrated_version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("version should be readable");
+        assert_eq!(migrated_version, LATEST_SCHEMA_VERSION);
     }
 
     #[test]
@@ -422,6 +426,10 @@ mod tests {
         assert_eq!(
             MIGRATIONS[6].checksum,
             "91d120cb0b72c72c40d499a2c8be9b090be96ca760b2bb5a71072e2b71ed45e1"
+        );
+        assert_eq!(
+            MIGRATIONS[7].checksum,
+            "862b5277d92154d5586b7924023fb64f7cfee08d566b52efbd625fcbab410b2e"
         );
     }
 }

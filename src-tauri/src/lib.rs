@@ -5,16 +5,19 @@ mod cards;
 mod database;
 mod decks;
 mod error;
+mod learning_signals;
 mod logging;
 mod paths;
 mod practice;
 mod practice_selection;
+mod schedule_controls;
 mod scheduler;
 mod settings;
 mod stage3_transfer;
 mod tagged_transfer;
 mod transfer;
 mod util;
+mod workload;
 
 use std::io;
 
@@ -88,12 +91,14 @@ pub fn run() {
             settings::get_settings,
             settings::save_settings,
             settings::get_app_info,
+            practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
             practice_selection::start_card_practice,
             practice::mark_practice_card_viewed,
             practice::mark_practice_card_revealed,
             practice::submit_practice_review,
             practice::complete_practice_session,
+            schedule_controls::apply_schedule_action,
             analytics::get_analytics,
             stage3_transfer::export_deck_with_card_types,
             authoring::import_deck_with_single_cloze_normalization

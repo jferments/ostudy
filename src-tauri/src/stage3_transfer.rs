@@ -422,22 +422,31 @@ fn validate_payload(payload: &Stage3Payload) -> Result<(), CommandError> {
                         "A fill-in-the-blank note contains invalid metadata.",
                     ));
                 }
+                let canonical_single_card = cards.len() == 1
+                    && cards[0].direction == "forward"
+                    && cards[0].template_ordinal == 0;
                 if note.cloze_mode == "all_together" {
-                    if cards.len() != 1
-                        || forward[0].template_ordinal != 0
-                        || cards[0].direction != "forward"
-                    {
+                    if !canonical_single_card {
                         return Err(CommandError::invalid_package(
                             "An all-blanks card contains inconsistent generated cards.",
                         ));
                     }
-                } else if cards.iter().any(|card| {
-                    !matches!(card.direction.as_str(), "forward" | "cloze")
-                        || card.template_ordinal <= 0
-                }) {
-                    return Err(CommandError::invalid_package(
-                        "A one-at-a-time blank card contains an invalid blank identity.",
-                    ));
+                } else {
+                    // Current one-at-a-time cards use one canonical forward/0
+                    // identity and rotate the hidden blank through a durable
+                    // practice-session presentation snapshot. Older Stage 3
+                    // packages used forward/cloze siblings with positive blank
+                    // ordinals; those remain importable and are normalized to
+                    // the canonical identity immediately after import.
+                    let legacy_blank_cards = cards.iter().all(|card| {
+                        matches!(card.direction.as_str(), "forward" | "cloze")
+                            && card.template_ordinal > 0
+                    });
+                    if !canonical_single_card && !legacy_blank_cards {
+                        return Err(CommandError::invalid_package(
+                            "A one-at-a-time blank card contains an invalid blank identity.",
+                        ));
+                    }
                 }
             }
             _ => {
@@ -714,4 +723,66 @@ fn temporary_package_path() -> PathBuf {
         "ostudy-stage3-import-{}-{suffix}.studydeck",
         std::process::id()
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn one_at_a_time_note() -> Stage3Note {
+        Stage3Note {
+            source_id: "a".repeat(32),
+            note_type: "cloze".to_string(),
+            reverse_enabled: false,
+            cloze_source: "{{c1::alpha}} and {{c2::beta}}".to_string(),
+            cloze_mode: "one_at_a_time".to_string(),
+            front_text: "alpha and beta".to_string(),
+            back_text: "alpha and beta".to_string(),
+            created_at: 10,
+            updated_at: 10,
+            revision: 1,
+        }
+    }
+
+    fn card(id_character: char, direction: &str, template_ordinal: i64) -> Stage3Card {
+        Stage3Card {
+            source_id: id_character.to_string().repeat(32),
+            source_note_id: "a".repeat(32),
+            direction: direction.to_string(),
+            template_ordinal,
+            created_at: 10,
+            updated_at: 10,
+        }
+    }
+
+    #[test]
+    fn canonical_one_at_a_time_cloze_payload_is_exportable() {
+        let payload = Stage3Payload {
+            notes: vec![one_at_a_time_note()],
+            cards: vec![card('b', "forward", 0)],
+        };
+
+        validate_payload(&payload).expect("canonical one-card cloze should validate");
+    }
+
+    #[test]
+    fn legacy_multi_card_cloze_payload_remains_importable() {
+        let payload = Stage3Payload {
+            notes: vec![one_at_a_time_note()],
+            cards: vec![card('b', "forward", 1), card('c', "cloze", 2)],
+        };
+
+        validate_payload(&payload).expect("legacy cloze siblings should validate for import");
+    }
+
+    #[test]
+    fn mixed_canonical_and_legacy_cloze_identities_are_rejected() {
+        let payload = Stage3Payload {
+            notes: vec![one_at_a_time_note()],
+            cards: vec![card('b', "forward", 0), card('c', "cloze", 2)],
+        };
+
+        let error = validate_payload(&payload).expect_err("mixed identities must fail");
+        assert_eq!(error.code, "invalid_deck_package");
+    }
 }

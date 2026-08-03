@@ -24,6 +24,7 @@ mod tests {
             query: query.to_string(),
             tag_ids: vec![],
             due_filter: "all".to_string(),
+            status_filter: "active".to_string(),
             reviewed_filter: "all".to_string(),
             sort: if query.is_empty() {
                 "updated_desc".to_string()

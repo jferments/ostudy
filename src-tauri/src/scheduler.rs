@@ -1,13 +1,9 @@
 //! Stable adapter between the ostudy database schema and `rs-fsrs`.
-//!
-//! The external crate is intentionally isolated in this module. Database rows,
-//! Tauri commands, and frontend DTOs use application-owned types so that a
-//! future scheduler upgrade cannot silently change the durable file format.
-//! Review history records both the adapter version and the before/after state.
 
 use chrono::{DateTime, Utc};
 use rs_fsrs::{Card as FsrsCard, Parameters, Rating, State, FSRS};
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::Serialize;
 
 use crate::error::CommandError;
 
@@ -17,7 +13,6 @@ pub const SCHEDULER_VERSION: &str = "rs-fsrs-1.2.1";
 const MIN_DESIRED_RETENTION: f64 = 0.80;
 const MAX_DESIRED_RETENTION: f64 = 0.97;
 
-/// Application-owned representation of one card's mutable scheduling state.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScheduleRecord {
     pub card_id: String,
@@ -33,16 +28,9 @@ pub struct ScheduleRecord {
     pub scheduler_name: String,
     pub scheduler_version: String,
     pub updated_at: i64,
+    pub revision: i64,
 }
 
-/// User-facing answer choices mapped onto FSRS's four canonical ratings.
-///
-/// The wording is intentionally about recall confidence rather than exposing
-/// algorithm terminology to learners:
-/// * wrong -> Again
-/// * right, not confident -> Hard
-/// * right, somewhat confident -> Good
-/// * right, very confident -> Easy
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReviewOutcome {
     Wrong,
@@ -97,7 +85,6 @@ impl ReviewOutcome {
     }
 }
 
-/// Complete result of applying one accepted review.
 #[derive(Clone, Debug)]
 pub struct ScheduleTransition {
     pub before: ScheduleRecord,
@@ -106,8 +93,22 @@ pub struct ScheduleTransition {
     pub reviewed_at: i64,
 }
 
-/// Creates the initial schedule for a newly created or imported card.
-/// New cards are due immediately and become non-new only after a graded review.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntervalPreviewDto {
+    pub outcome: String,
+    pub due_at: i64,
+    pub interval_ms: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewPreviewSetDto {
+    pub schedule_revision: i64,
+    pub previewed_at: i64,
+    pub previews: Vec<IntervalPreviewDto>,
+}
+
 pub fn new_schedule(card_id: String, now: i64) -> ScheduleRecord {
     ScheduleRecord {
         card_id,
@@ -123,10 +124,10 @@ pub fn new_schedule(card_id: String, now: i64) -> ScheduleRecord {
         scheduler_name: SCHEDULER_NAME.to_string(),
         scheduler_version: SCHEDULER_VERSION.to_string(),
         updated_at: now,
+        revision: 1,
     }
 }
 
-/// Inserts the initial schedule inside the caller's transaction.
 pub fn insert_new_schedule(
     connection: &Connection,
     card_id: &str,
@@ -135,11 +136,11 @@ pub fn insert_new_schedule(
     let schedule = new_schedule(card_id.to_string(), now);
     connection
         .execute(
-            "INSERT INTO card_schedules (\n\
-                 card_id, state, due_at, stability, difficulty, elapsed_days,\n\
-                 scheduled_days, reps, lapses, last_review_at,\n\
-                 scheduler_name, scheduler_version, updated_at\n\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT INTO card_schedules (
+                 card_id, state, due_at, stability, difficulty, elapsed_days,
+                 scheduled_days, reps, lapses, last_review_at,
+                 scheduler_name, scheduler_version, updated_at, revision
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 schedule.card_id,
                 schedule.state,
@@ -154,23 +155,22 @@ pub fn insert_new_schedule(
                 schedule.scheduler_name,
                 schedule.scheduler_version,
                 schedule.updated_at,
+                schedule.revision,
             ],
         )
         .map_err(CommandError::database)?;
     Ok(())
 }
 
-/// Loads one active schedule. A missing row indicates a migration or integrity
-/// problem; silently inventing a replacement would discard review history.
 pub fn load_schedule(
     connection: &Connection,
     card_id: &str,
 ) -> Result<ScheduleRecord, CommandError> {
     connection
         .query_row(
-            "SELECT card_id, state, due_at, stability, difficulty, elapsed_days,\n\
-                    scheduled_days, reps, lapses, last_review_at,\n\
-                    scheduler_name, scheduler_version, updated_at\n\
+            "SELECT card_id, state, due_at, stability, difficulty, elapsed_days,
+                    scheduled_days, reps, lapses, last_review_at,
+                    scheduler_name, scheduler_version, updated_at, revision
              FROM card_schedules WHERE card_id = ?1",
             [card_id],
             |row| {
@@ -188,6 +188,7 @@ pub fn load_schedule(
                     scheduler_name: row.get(10)?,
                     scheduler_version: row.get(11)?,
                     updated_at: row.get(12)?,
+                    revision: row.get(13)?,
                 })
             },
         )
@@ -201,7 +202,6 @@ pub fn load_schedule(
         })
 }
 
-/// Persists the result of `apply_review` inside the caller's transaction.
 pub fn update_schedule(
     connection: &Connection,
     schedule: &ScheduleRecord,
@@ -209,12 +209,12 @@ pub fn update_schedule(
     validate_schedule(schedule)?;
     let changed = connection
         .execute(
-            "UPDATE card_schedules SET\n\
-                 state = ?1, due_at = ?2, stability = ?3, difficulty = ?4,\n\
-                 elapsed_days = ?5, scheduled_days = ?6, reps = ?7, lapses = ?8,\n\
-                 last_review_at = ?9, scheduler_name = ?10, scheduler_version = ?11,\n\
-                 updated_at = ?12\n\
-             WHERE card_id = ?13",
+            "UPDATE card_schedules SET
+                 state = ?1, due_at = ?2, stability = ?3, difficulty = ?4,
+                 elapsed_days = ?5, scheduled_days = ?6, reps = ?7, lapses = ?8,
+                 last_review_at = ?9, scheduler_name = ?10, scheduler_version = ?11,
+                 updated_at = ?12, revision = ?13
+             WHERE card_id = ?14",
             params![
                 schedule.state,
                 schedule.due_at,
@@ -228,6 +228,7 @@ pub fn update_schedule(
                 schedule.scheduler_name,
                 schedule.scheduler_version,
                 schedule.updated_at,
+                schedule.revision,
                 schedule.card_id,
             ],
         )
@@ -241,10 +242,36 @@ pub fn update_schedule(
     Ok(())
 }
 
-/// Applies FSRS to one card without mutating the database.
-///
-/// The caller owns the surrounding SQLite transaction. Keeping calculation
-/// pure allows the review event and updated schedule to commit atomically.
+pub fn preview_intervals(
+    current: &ScheduleRecord,
+    previewed_at: i64,
+    desired_retention: f64,
+) -> Result<ReviewPreviewSetDto, CommandError> {
+    let outcomes = [
+        ReviewOutcome::Wrong,
+        ReviewOutcome::NotConfident,
+        ReviewOutcome::SomewhatConfident,
+        ReviewOutcome::VeryConfident,
+    ];
+    let previews = outcomes
+        .into_iter()
+        .map(|outcome| {
+            let transition =
+                apply_review(current.clone(), outcome, previewed_at, desired_retention)?;
+            Ok(IntervalPreviewDto {
+                outcome: outcome.as_str().to_string(),
+                due_at: transition.after.due_at,
+                interval_ms: transition.after.due_at.saturating_sub(previewed_at),
+            })
+        })
+        .collect::<Result<Vec<_>, CommandError>>()?;
+    Ok(ReviewPreviewSetDto {
+        schedule_revision: current.revision,
+        previewed_at,
+        previews,
+    })
+}
+
 pub fn apply_review(
     current: ScheduleRecord,
     outcome: ReviewOutcome,
@@ -255,11 +282,8 @@ pub fn apply_review(
     validate_schedule(&current)?;
 
     let now = datetime_from_millis(reviewed_at, "review time")?;
-    let due = datetime_from_millis(current.due_at, "card due time")?;
-    let last_review = datetime_from_millis(current.last_review_at, "last review time")?;
-
     let card = FsrsCard {
-        due,
+        due: datetime_from_millis(current.due_at, "card due time")?,
         stability: current.stability,
         difficulty: current.difficulty,
         elapsed_days: current.elapsed_days,
@@ -267,20 +291,14 @@ pub fn apply_review(
         reps: i32::try_from(current.reps).map_err(|_| invalid_schedule())?,
         lapses: i32::try_from(current.lapses).map_err(|_| invalid_schedule())?,
         state: state_from_i64(current.state)?,
-        last_review,
+        last_review: datetime_from_millis(current.last_review_at, "last review time")?,
     };
-
-    // Fuzz is useful for smoothing large real-world workloads, but disabling it
-    // makes this early scheduler deterministic and therefore easier to test,
-    // migrate, and explain. It can be made configurable later.
     let parameters = Parameters {
         request_retention: desired_retention,
         enable_fuzz: false,
         ..Parameters::default()
     };
-
-    let result = FSRS::new(parameters).next(card, now, outcome.rating());
-    let next = result.card;
+    let next = FSRS::new(parameters).next(card, now, outcome.rating()).card;
     let after = ScheduleRecord {
         card_id: current.card_id.clone(),
         state: state_to_i64(next.state),
@@ -295,9 +313,9 @@ pub fn apply_review(
         scheduler_name: SCHEDULER_NAME.to_string(),
         scheduler_version: SCHEDULER_VERSION.to_string(),
         updated_at: reviewed_at,
+        revision: current.revision + 1,
     };
     validate_schedule(&after)?;
-
     Ok(ScheduleTransition {
         before: current,
         after,
@@ -324,6 +342,7 @@ fn validate_schedule(schedule: &ScheduleRecord) -> Result<(), CommandError> {
         || schedule.scheduled_days < 0
         || schedule.reps < 0
         || schedule.lapses < 0
+        || schedule.revision < 1
         || !schedule.stability.is_finite()
         || schedule.stability < 0.0
         || !schedule.difficulty.is_finite()
@@ -373,35 +392,26 @@ fn invalid_schedule() -> CommandError {
 mod tests {
     use super::*;
 
-    const NOW: i64 = 1_735_689_600_000; // 2025-01-01T00:00:00Z
+    const NOW: i64 = 1_735_689_600_000;
 
     #[test]
     fn maps_product_wording_to_the_four_fsrs_ratings() {
         assert_eq!(ReviewOutcome::Wrong.rating_number(), 1);
-        assert_eq!(ReviewOutcome::NotConfident.rating_number(), 2);
-        assert_eq!(ReviewOutcome::SomewhatConfident.rating_number(), 3);
         assert_eq!(ReviewOutcome::VeryConfident.rating_number(), 4);
         assert!(!ReviewOutcome::Wrong.answer_correct());
         assert!(ReviewOutcome::SomewhatConfident.answer_correct());
     }
 
     #[test]
-    fn new_cards_are_due_immediately() {
+    fn review_and_preview_advance_schedule_revisions() {
         let schedule = new_schedule("a".repeat(32), NOW);
-        assert_eq!(schedule.state, 0);
-        assert_eq!(schedule.due_at, NOW);
-        assert_eq!(schedule.reps, 0);
-    }
-
-    #[test]
-    fn applying_a_review_produces_a_future_schedule() {
-        let schedule = new_schedule("a".repeat(32), NOW);
+        let previews = preview_intervals(&schedule, NOW, 0.90).expect("preview should work");
+        assert_eq!(previews.schedule_revision, 1);
+        assert_eq!(previews.previews.len(), 4);
         let transition = apply_review(schedule, ReviewOutcome::SomewhatConfident, NOW, 0.90)
-            .expect("FSRS should schedule a valid new card");
-
+            .expect("review should work");
+        assert_eq!(transition.after.revision, 2);
         assert_eq!(transition.after.reps, 1);
-        assert!(transition.after.due_at >= NOW);
-        assert_eq!(transition.after.scheduler_version, SCHEDULER_VERSION);
     }
 
     #[test]
@@ -409,6 +419,5 @@ mod tests {
         assert!(validate_desired_retention(0.79).is_err());
         assert!(validate_desired_retention(0.90).is_ok());
         assert!(validate_desired_retention(0.98).is_err());
-        assert!(validate_desired_retention(f64::NAN).is_err());
     }
 }

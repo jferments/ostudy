@@ -62,6 +62,8 @@ const settings: ipc.AppSettings = {
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
+  dailyNewLimit: 20,
+  dailyReviewLimit: 200,
 };
 
 describe("DecksScreen", () => {

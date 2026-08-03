@@ -197,6 +197,12 @@ export interface TagSummary {
 }
 
 export type DueFilter = "all" | "due" | "not_due";
+export type CardStatusFilter =
+  | "all"
+  | "active"
+  | "suspended"
+  | "buried"
+  | "needs_more_practice";
 export type ReviewedFilter =
   | "all"
   | "never"
@@ -216,6 +222,7 @@ export interface CardSearchInput {
   query: string;
   tagIds: string[];
   dueFilter: DueFilter;
+  statusFilter: CardStatusFilter;
   reviewedFilter: ReviewedFilter;
   sort: CardSort;
   limit: number;
@@ -235,6 +242,9 @@ export interface CardBrowserRow {
   dueAt: number;
   lastReviewedAt: number | null;
   reviewCount: number;
+  suspendedAt: number | null;
+  buriedUntil: number | null;
+  needsMorePractice: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -327,6 +337,8 @@ export interface AppSettings {
   confirmDeletions: boolean;
   practiceShuffle: boolean;
   desiredRetention: number;
+  dailyNewLimit: number;
+  dailyReviewLimit: number;
 }
 
 export interface AppInfo {
@@ -337,22 +349,45 @@ export interface AppInfo {
   databaseSchemaVersion: number;
 }
 
+export type PracticeMode = "scheduled" | "extra" | "custom";
+
 export interface PracticeCard {
   card: Flashcard;
   deckName: string;
   dueAt: number;
+  scheduleState: number;
+  needsMorePractice: boolean;
 }
 
 export interface PracticeSession {
   id: string;
   cards: PracticeCard[];
   shuffle: boolean;
+  mode: PracticeMode;
   startedAt: number;
+}
+
+export interface PracticeWorkloadOverview {
+  newLimit: number;
+  reviewLimit: number;
+  newCompleted: number;
+  reviewsCompleted: number;
+  newRemaining: number;
+  reviewsRemaining: number;
+  dueReviews: number;
+  dueNew: number;
+  scheduledReviews: number;
+  scheduledNew: number;
+  omittedDueReviews: number;
+  omittedDueNew: number;
+  needsMorePractice: number;
+  extraAvailable: number;
 }
 
 export interface StartPracticeInput {
   deckIds: string[];
   shuffle: boolean;
+  mode: "scheduled" | "extra";
 }
 
 export interface StartCardPracticeInput {
@@ -366,12 +401,25 @@ export type ReviewOutcome =
   | "somewhat_confident"
   | "very_confident";
 
+export interface IntervalPreview {
+  outcome: ReviewOutcome;
+  dueAt: number;
+  intervalMs: number;
+}
+
+export interface ReviewPreviewSet {
+  scheduleRevision: number;
+  previewedAt: number;
+  previews: IntervalPreview[];
+}
+
 export interface SubmitReviewInput {
   sessionId: string;
   cardId: string;
   submissionId: string;
   outcome: ReviewOutcome;
   responseTimeMs: number;
+  scheduleRevision: number;
 }
 
 export interface ReviewResult {
@@ -379,9 +427,31 @@ export interface ReviewResult {
   rating: 1 | 2 | 3 | 4;
   outcome: ReviewOutcome;
   dueAt: number;
+  intervalMs: number;
   completed: boolean;
   ratedCount: number;
   correctCount: number;
+}
+
+export type ScheduleAction =
+  | "suspend"
+  | "resume"
+  | "bury"
+  | "unbury"
+  | "reset"
+  | "reschedule";
+
+export interface ScheduleActionInput {
+  mutationId: string;
+  cardIds: string[];
+  action: ScheduleAction;
+  dueAt?: number;
+  sessionId?: string;
+}
+
+export interface ScheduleActionResult {
+  affectedCount: number;
+  action: ScheduleAction;
 }
 
 export interface DeckAnalytics {
@@ -480,9 +550,7 @@ export async function searchCards(input: CardSearchInput): Promise<CardSearchPag
   return invoke<CardSearchPage>("search_cards", { input });
 }
 
-export async function listMatchingCards(
-  input: CardSearchInput,
-): Promise<SelectionCard[]> {
+export async function listMatchingCards(input: CardSearchInput): Promise<SelectionCard[]> {
   return invoke<SelectionCard[]>("list_matching_cards", { input });
 }
 
@@ -490,15 +558,11 @@ export async function getOrganizedCard(noteId: string): Promise<OrganizedCard> {
   return invoke<OrganizedCard>("get_organized_card", { noteId });
 }
 
-export async function createOrganizedCard(
-  input: CreateOrganizedCardInput,
-): Promise<OrganizedCard> {
+export async function createOrganizedCard(input: CreateOrganizedCardInput): Promise<OrganizedCard> {
   return invoke<OrganizedCard>("create_organized_card", { input });
 }
 
-export async function updateOrganizedCard(
-  input: UpdateOrganizedCardInput,
-): Promise<OrganizedCard> {
+export async function updateOrganizedCard(input: UpdateOrganizedCardInput): Promise<OrganizedCard> {
   return invoke<OrganizedCard>("update_organized_card", { input });
 }
 
@@ -506,15 +570,11 @@ export async function getCardTypeInfo(noteId: string): Promise<CardTypeInfo> {
   return invoke<CardTypeInfo>("get_card_type_info", { noteId });
 }
 
-export async function createGeneratedCard(
-  input: CreateGeneratedCardInput,
-): Promise<OrganizedCard> {
+export async function createGeneratedCard(input: CreateGeneratedCardInput): Promise<OrganizedCard> {
   return invoke<OrganizedCard>("create_generated_card", { input });
 }
 
-export async function updateGeneratedCard(
-  input: UpdateGeneratedCardInput,
-): Promise<OrganizedCard> {
+export async function updateGeneratedCard(input: UpdateGeneratedCardInput): Promise<OrganizedCard> {
   return invoke<OrganizedCard>("update_generated_card", { input });
 }
 
@@ -526,15 +586,11 @@ export async function getCardTemplate(templateId: string): Promise<CardTemplate>
   return invoke<CardTemplate>("get_card_template", { templateId });
 }
 
-export async function createCardTemplate(
-  input: CreateCardTemplateInput,
-): Promise<CardTemplate> {
+export async function createCardTemplate(input: CreateCardTemplateInput): Promise<CardTemplate> {
   return invoke<CardTemplate>("create_card_template", { input });
 }
 
-export async function updateCardTemplate(
-  input: UpdateCardTemplateInput,
-): Promise<CardTemplate> {
+export async function updateCardTemplate(input: UpdateCardTemplateInput): Promise<CardTemplate> {
   return invoke<CardTemplate>("update_card_template", { input });
 }
 
@@ -542,47 +598,31 @@ export async function deleteCardTemplate(templateId: string): Promise<void> {
   return invoke<void>("delete_card_template", { templateId });
 }
 
-export async function previewTemplateCards(
-  input: PreviewTemplateCardsInput,
-): Promise<TemplateCardPreview[]> {
+export async function previewTemplateCards(input: PreviewTemplateCardsInput): Promise<TemplateCardPreview[]> {
   return invoke<TemplateCardPreview[]>("preview_template_cards", { input });
 }
 
-export async function generateCardsFromTemplate(
-  input: GenerateTemplateCardsInput,
-): Promise<GenerateTemplateCardsResult> {
-  return invoke<GenerateTemplateCardsResult>("generate_cards_from_template", {
-    input,
-  });
+export async function generateCardsFromTemplate(input: GenerateTemplateCardsInput): Promise<GenerateTemplateCardsResult> {
+  return invoke<GenerateTemplateCardsResult>("generate_cards_from_template", { input });
 }
 
-export async function findDuplicateCards(
-  input: DuplicateCheckInput,
-): Promise<DuplicateCard[]> {
+export async function findDuplicateCards(input: DuplicateCheckInput): Promise<DuplicateCard[]> {
   return invoke<DuplicateCard[]>("find_duplicate_cards", { input });
 }
 
-export async function analyzeBulkCards(
-  input: AnalyzeBulkCardsInput,
-): Promise<BulkAnalyzeResult> {
+export async function analyzeBulkCards(input: AnalyzeBulkCardsInput): Promise<BulkAnalyzeResult> {
   return invoke<BulkAnalyzeResult>("analyze_bulk_cards", { input });
 }
 
-export async function bulkCreateCards(
-  input: BulkCreateCardsInput,
-): Promise<BulkCreateResult> {
+export async function bulkCreateCards(input: BulkCreateCardsInput): Promise<BulkCreateResult> {
   return invoke<BulkCreateResult>("bulk_create_cards", { input });
 }
 
-export async function transferCards(
-  input: TransferCardsInput,
-): Promise<TransferCardsResult> {
+export async function transferCards(input: TransferCardsInput): Promise<TransferCardsResult> {
   return invoke<TransferCardsResult>("transfer_cards", { input });
 }
 
-export async function bulkTagCards(
-  input: BulkTagCardsInput,
-): Promise<BulkActionResult> {
+export async function bulkTagCards(input: BulkTagCardsInput): Promise<BulkActionResult> {
   return invoke<BulkActionResult>("bulk_tag_cards", { input });
 }
 
@@ -606,64 +646,49 @@ export async function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("get_app_info");
 }
 
-/**
- * Starts the user-selected session used by the interface. Each deck contributes
- * due cards first, or all active cards when that deck has nothing due.
- */
-export async function startSelectedPractice(
-  input: StartPracticeInput,
-): Promise<PracticeSession> {
+export async function getPracticeWorkload(deckIds: string[]): Promise<PracticeWorkloadOverview> {
+  return invoke<PracticeWorkloadOverview>("get_practice_workload", { input: { deckIds } });
+}
+
+export async function startSelectedPractice(input: StartPracticeInput): Promise<PracticeSession> {
   return invoke<PracticeSession>("start_selected_practice", { input });
 }
 
-/** Starts a temporary session from an explicit Search/Filter result set. */
-export async function startCardPractice(
-  input: StartCardPracticeInput,
-): Promise<PracticeSession> {
+export async function startCardPractice(input: StartCardPracticeInput): Promise<PracticeSession> {
   return invoke<PracticeSession>("start_card_practice", { input });
 }
 
-export async function markPracticeCardViewed(
-  sessionId: string,
-  cardId: string,
-): Promise<void> {
-  return invoke<void>("mark_practice_card_viewed", {
-    input: { sessionId, cardId },
-  });
+export async function markPracticeCardViewed(sessionId: string, cardId: string): Promise<void> {
+  return invoke<void>("mark_practice_card_viewed", { input: { sessionId, cardId } });
 }
 
 export async function markPracticeCardRevealed(
   sessionId: string,
   cardId: string,
-): Promise<void> {
-  return invoke<void>("mark_practice_card_revealed", {
+): Promise<ReviewPreviewSet> {
+  return invoke<ReviewPreviewSet>("mark_practice_card_revealed", {
     input: { sessionId, cardId },
   });
 }
 
-export async function submitPracticeReview(
-  input: SubmitReviewInput,
-): Promise<ReviewResult> {
+export async function submitPracticeReview(input: SubmitReviewInput): Promise<ReviewResult> {
   return invoke<ReviewResult>("submit_practice_review", { input });
 }
 
-export async function completePracticeSession(
-  sessionId: string,
-): Promise<void> {
+export async function completePracticeSession(sessionId: string): Promise<void> {
   return invoke<void>("complete_practice_session", { sessionId });
+}
+
+export async function applyScheduleAction(input: ScheduleActionInput): Promise<ScheduleActionResult> {
+  return invoke<ScheduleActionResult>("apply_schedule_action", { input });
 }
 
 export async function getAnalytics(): Promise<Analytics> {
   return invoke<Analytics>("get_analytics");
 }
 
-export async function exportDeck(
-  deckId: string,
-  destinationPath: string,
-): Promise<ExportResult> {
-  return invoke<ExportResult>("export_deck", {
-    input: { deckId, destinationPath },
-  });
+export async function exportDeck(deckId: string, destinationPath: string): Promise<ExportResult> {
+  return invoke<ExportResult>("export_deck", { input: { deckId, destinationPath } });
 }
 
 export async function importDeck(sourcePath: string): Promise<ImportResult> {
@@ -671,6 +696,10 @@ export async function importDeck(sourcePath: string): Promise<ImportResult> {
 }
 
 export function createSubmissionId(): string {
+  return crypto.randomUUID().replaceAll("-", "");
+}
+
+export function createMutationId(): string {
   return crypto.randomUUID().replaceAll("-", "");
 }
 
@@ -683,20 +712,13 @@ export function getErrorCode(error: unknown): string | null {
 }
 
 export function getErrorMessage(error: unknown): string {
-  if (typeof error === "string" && error.trim() !== "") {
-    return error;
-  }
-
+  if (typeof error === "string" && error.trim() !== "") return error;
   if (typeof error === "object" && error !== null) {
     const payload = error as CommandErrorPayload;
     if (typeof payload.message === "string" && payload.message.trim() !== "") {
       return payload.message;
     }
   }
-
-  if (error instanceof Error && error.message.trim() !== "") {
-    return error.message;
-  }
-
+  if (error instanceof Error && error.message.trim() !== "") return error.message;
   return "An unexpected error occurred.";
 }

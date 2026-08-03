@@ -73,6 +73,9 @@ pub struct CardBrowserRowDto {
     pub due_at: i64,
     pub last_reviewed_at: Option<i64>,
     pub review_count: i64,
+    pub suspended_at: Option<i64>,
+    pub buried_until: Option<i64>,
+    pub needs_more_practice: bool,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -110,6 +113,8 @@ pub struct SearchCardsInput {
     pub tag_ids: Vec<String>,
     #[serde(default = "default_due_filter")]
     pub due_filter: String,
+    #[serde(default = "default_status_filter")]
+    pub status_filter: String,
     #[serde(default = "default_reviewed_filter")]
     pub reviewed_filter: String,
     #[serde(default = "default_sort")]
