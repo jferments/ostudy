@@ -1,3 +1,8 @@
+// These helpers provide immediate editor feedback and predictable URL
+// normalization. They do not establish the persisted trust boundary: Rust
+// independently validates every link in authored, generated, and imported rich
+// documents before storage. Keep the two allowlists behaviorally aligned, but
+// never rely on this browser-side check to make untrusted content safe.
 const EXPLICIT_SCHEME = /^[a-z][a-z0-9+.-]*:/iu;
 const SUPPORTED_SCHEME = /^(https?:\/\/|mailto:|tel:)/iu;
 const UNSAFE_LINK_CHARACTER = /[\s\u0000-\u001f\u007f]/u;
