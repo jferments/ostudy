@@ -95,6 +95,7 @@ describe("PracticeScreen", () => {
   it("shows FSRS interval previews and submits the preview revision", async () => {
     render(<PracticeScreen decks={[deck]} settings={settings} launchRequest={null} onLaunchConsumed={vi.fn()} showToast={vi.fn()} />);
     fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+    await screen.findByText("1 cards in the scheduled session");
     fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
     fireEvent.click(await screen.findByRole("button", { name: "Show answer" }));
     expect(await screen.findByRole("button", { name: /1 Hard, About 1 day/u })).toBeTruthy();
