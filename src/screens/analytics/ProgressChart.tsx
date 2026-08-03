@@ -1,10 +1,12 @@
 import { useMemo } from "react";
 import {
+  BarController,
   BarElement,
   CategoryScale,
   Chart as ChartJS,
   Legend,
   LinearScale,
+  LineController,
   LineElement,
   PointElement,
   Tooltip,
@@ -19,6 +21,8 @@ import type { AnalyticsRange, TimelineBucket } from "../../analytics-ipc";
 ChartJS.register(
   CategoryScale,
   LinearScale,
+  BarController,
+  LineController,
   BarElement,
   LineElement,
   PointElement,
