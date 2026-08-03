@@ -3,18 +3,42 @@ name: Check
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  generate-analytics-lock:
+  check:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      CARGO_TERM_COLOR: always
+
     steps:
-      - name: Check out analytics branch
+      - name: Check out repository
         uses: actions/checkout@v6
-        with:
-          ref: agent/phase-2-stage-5-learning-analytics
+
+      - name: Install Ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            jq \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            pkg-config \
+            python3 \
+            sqlite3 \
+            webkit2gtk-driver \
+            xauth \
+            xvfb
 
       - name: Install pinned Node and pnpm
         uses: actions/setup-node@v6
@@ -25,14 +49,29 @@ jobs:
       - name: Install pnpm
         run: npm install --global pnpm@11.14.0
 
-      - name: Generate and publish exact frozen lock
+      - name: Install pinned Rust toolchain
         run: |
-          pnpm install --lockfile-only --no-frozen-lockfile
-          git add pnpm-lock.yaml
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore: regenerate analytics lockfile"
-          git push origin HEAD:agent/phase-2-stage-5-learning-analytics
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.97.1
+
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --version 2.0.6 --locked
+
+      - name: Run the repository gate
+        run: |
+          set -o pipefail
+          ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-check.log"
+
+      - name: Export diagnostics after a failure
+        if: failure()
+        run: ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-diagnostics.tar.gz"
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ostudy-check-diagnostics
+          path: |
+            ${{ runner.temp }}/ostudy-diagnostics.tar.gz
+            ${{ runner.temp }}/ostudy-check.log
+          if-no-files-found: ignore
