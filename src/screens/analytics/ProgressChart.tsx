@@ -9,6 +9,7 @@ import {
   PointElement,
   Tooltip,
   type ChartData,
+  type ChartDataset,
   type ChartOptions,
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
@@ -41,6 +42,9 @@ const monthFormatter = new Intl.DateTimeFormat(undefined, {
   year: "2-digit",
 });
 
+type ChartPoint = number | null;
+type BarChartData = ChartData<"bar", ChartPoint[], string>;
+
 export function ProgressChart({
   buckets,
   range,
@@ -52,53 +56,54 @@ export function ProgressChart({
     () => buckets.map((bucket) => formatBucketLabel(bucket.startAt, range)),
     [buckets, range],
   );
-  const data = useMemo<ChartData<"bar" | "line", (number | null)[], string>>(
-    () => ({
-      labels,
-      datasets: [
-        {
-          type: "bar",
-          label: metric === "cards" ? "Cards practiced" : "Focused study minutes",
-          data: buckets.map((bucket) =>
-            metric === "cards"
-              ? bucket.cardsPracticed
-              : Math.round((bucket.studyTimeMs / 60_000) * 10) / 10,
-          ),
-          backgroundColor: buckets.map((bucket) =>
-            bucket.containsHighlightedSession ? colors.warning : colors.accentSoft,
-          ),
-          borderColor: colors.accent,
-          borderWidth: 1,
-          borderRadius: 5,
-          yAxisID: "volume",
-          order: 2,
-        },
-        {
-          type: "line",
-          label: "Remembered",
-          data: buckets.map((bucket) =>
-            bucket.correctRate === null ? null : Math.round(bucket.correctRate * 1000) / 10,
-          ),
-          borderColor: colors.success,
-          backgroundColor: colors.success,
-          pointBackgroundColor: buckets.map((bucket) =>
-            bucket.containsHighlightedSession ? colors.warning : colors.success,
-          ),
-          pointBorderColor: colors.surface,
-          pointBorderWidth: 2,
-          pointRadius: buckets.map((bucket) =>
-            bucket.containsHighlightedSession ? 5 : bucket.correctRate === null ? 0 : 3,
-          ),
-          spanGaps: false,
-          tension: 0.24,
-          yAxisID: "recall",
-          order: 1,
-        },
-      ],
-    }),
-    [buckets, colors, labels, metric],
-  );
-  const options = useMemo<ChartOptions<"bar" | "line">>(
+  const data = useMemo<BarChartData>(() => {
+    const volumeDataset: ChartDataset<"bar", ChartPoint[]> = {
+      type: "bar",
+      label: metric === "cards" ? "Cards practiced" : "Focused study minutes",
+      data: buckets.map((bucket) =>
+        metric === "cards"
+          ? bucket.cardsPracticed
+          : Math.round((bucket.studyTimeMs / 60_000) * 10) / 10,
+      ),
+      backgroundColor: buckets.map((bucket) =>
+        bucket.containsHighlightedSession ? colors.warning : colors.accentSoft,
+      ),
+      borderColor: colors.accent,
+      borderWidth: 1,
+      borderRadius: 5,
+      yAxisID: "volume",
+      order: 2,
+    };
+    const recallDataset: ChartDataset<"line", ChartPoint[]> = {
+      type: "line",
+      label: "Remembered",
+      data: buckets.map((bucket) =>
+        bucket.correctRate === null ? null : Math.round(bucket.correctRate * 1000) / 10,
+      ),
+      borderColor: colors.success,
+      backgroundColor: colors.success,
+      pointBackgroundColor: buckets.map((bucket) =>
+        bucket.containsHighlightedSession ? colors.warning : colors.success,
+      ),
+      pointBorderColor: colors.surface,
+      pointBorderWidth: 2,
+      pointRadius: buckets.map((bucket) =>
+        bucket.containsHighlightedSession ? 5 : bucket.correctRate === null ? 0 : 3,
+      ),
+      spanGaps: false,
+      tension: 0.24,
+      yAxisID: "recall",
+      order: 1,
+    };
+
+    // Chart.js supports mixed datasets when the outer chart has a default type
+    // and each non-default dataset declares its own type. The React adapter's
+    // generic is intentionally anchored to the outer bar chart, so the mixed
+    // dataset array is narrowed only at this boundary.
+    const datasets = [volumeDataset, recallDataset] as unknown as BarChartData["datasets"];
+    return { labels, datasets };
+  }, [buckets, colors, labels, metric]);
+  const options = useMemo<ChartOptions<"bar">>(
     () => ({
       responsive: true,
       maintainAspectRatio: false,
@@ -212,7 +217,7 @@ function readChartColors(): ChartColors {
     textSoft: value("--text-soft", "#b6c1d2"),
     muted: value("--muted", "#7f8da4"),
     border: value("--border", "#2b3950"),
-    grid: `color-mix(in srgb, ${value("--border", "#2b3950")} 70%, transparent)`,
+    grid: value("--border", "#2b3950"),
   };
 }
 
