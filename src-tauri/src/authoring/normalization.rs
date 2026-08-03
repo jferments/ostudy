@@ -14,6 +14,11 @@ fn collapse_whitespace(value: &str) -> String {
 }
 
 fn duplicate_hash(front: &str, back: &str) -> String {
+    // This stable FNV-1a value is only a candidate index. Duplicate checks must
+    // still compare both complete normalized strings before reporting a match;
+    // the hash is deliberately not treated as a collision-resistant identity.
+    // The explicit separator prevents ambiguous concatenations such as
+    // (`ab`, `c`) and (`a`, `bc`) from sharing the same input byte stream.
     let mut hash = 0xcbf29ce484222325_u64;
     for byte in front
         .as_bytes()

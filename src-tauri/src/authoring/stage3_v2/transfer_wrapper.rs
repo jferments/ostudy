@@ -1,3 +1,12 @@
+/// Public `import_deck` compatibility entry point.
+///
+/// The Stage 3 transfer layer first imports the core package and restores any
+/// optional reverse/cloze metadata that newer packages contain. This wrapper
+/// then runs the canonical Stage 3 normalization so packages created before the
+/// single-cloze-card invariant are immediately represented by one active cloze
+/// identity. The package's original count can include rows retired by that
+/// normalization, so the result is recounted from active local cards before it
+/// is returned to the frontend.
 #[tauri::command(rename = "import_deck")]
 pub fn import_deck_with_single_cloze_normalization(
     database: State<'_, Database>,
