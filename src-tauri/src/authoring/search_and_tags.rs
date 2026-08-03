@@ -49,11 +49,12 @@ fn list_tags_in_connection(
           ORDER BY t.name COLLATE NOCASE ASC",
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    statement
+    let tags = statement
         .query_map(params_from_iter(values.iter()), tag_from_row)
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(tags)
 }
 
 fn tag_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TagDto> {
@@ -198,7 +199,10 @@ fn build_search_sql(input: &SearchCardsInput, now: i64) -> Result<SearchSql, Com
         conditions.push(format!("c.deck_id IN ({placeholders})"));
     }
     if let Some(query) = fts_query {
-        conditions.push(format!("card_search_fts MATCH ?{}", push_value(&mut values, query)));
+        conditions.push(format!(
+            "card_search_fts MATCH ?{}",
+            push_value(&mut values, query)
+        ));
     }
     for tag_id in &input.tag_ids {
         let index = push_value(&mut values, tag_id.clone());
@@ -246,19 +250,31 @@ fn build_search_sql(input: &SearchCardsInput, now: i64) -> Result<SearchSql, Com
         "never" => conditions.push("s.reps = 0".to_string()),
         "last_1_day" => {
             conditions.push("s.reps > 0".to_string());
-            conditions.push(format!("s.last_review_at >= ?{}", push_value(&mut values, now.saturating_sub(DAY_MS))));
+            conditions.push(format!(
+                "s.last_review_at >= ?{}",
+                push_value(&mut values, now.saturating_sub(DAY_MS))
+            ));
         }
         "last_7_days" => {
             conditions.push("s.reps > 0".to_string());
-            conditions.push(format!("s.last_review_at >= ?{}", push_value(&mut values, now.saturating_sub(7 * DAY_MS))));
+            conditions.push(format!(
+                "s.last_review_at >= ?{}",
+                push_value(&mut values, now.saturating_sub(7 * DAY_MS))
+            ));
         }
         "last_30_days" => {
             conditions.push("s.reps > 0".to_string());
-            conditions.push(format!("s.last_review_at >= ?{}", push_value(&mut values, now.saturating_sub(30 * DAY_MS))));
+            conditions.push(format!(
+                "s.last_review_at >= ?{}",
+                push_value(&mut values, now.saturating_sub(30 * DAY_MS))
+            ));
         }
         "older_30_days" => {
             conditions.push("s.reps > 0".to_string());
-            conditions.push(format!("s.last_review_at < ?{}", push_value(&mut values, now.saturating_sub(30 * DAY_MS))));
+            conditions.push(format!(
+                "s.last_review_at < ?{}",
+                push_value(&mut values, now.saturating_sub(30 * DAY_MS))
+            ));
         }
         _ => {}
     }
@@ -267,7 +283,9 @@ fn build_search_sql(input: &SearchCardsInput, now: i64) -> Result<SearchSql, Com
         "relevance" if fts_query_is_present(&input.query) => {
             "bm25(card_search_fts) ASC, n.updated_at DESC, c.template_ordinal ASC"
         }
-        "question_asc" => "n.front_text COLLATE NOCASE ASC, n.updated_at DESC, c.template_ordinal ASC",
+        "question_asc" => {
+            "n.front_text COLLATE NOCASE ASC, n.updated_at DESC, c.template_ordinal ASC"
+        }
         "due_asc" => "s.due_at ASC, n.updated_at DESC, c.template_ordinal ASC",
         "last_reviewed_desc" => {
             "CASE WHEN s.reps > 0 THEN 0 ELSE 1 END ASC, s.last_review_at DESC, n.updated_at DESC, c.template_ordinal ASC"
@@ -300,7 +318,9 @@ fn search_cards_in_connection(
         where_sql = search.where_sql,
     );
     let total_count: i64 = connection
-        .query_row(&count_sql, params_from_iter(search.values.iter()), |row| row.get(0))
+        .query_row(&count_sql, params_from_iter(search.values.iter()), |row| {
+            row.get(0)
+        })
         .map_err(CommandError::database)?;
     let limit_index = push_value(&mut search.values, input.limit);
     let offset_index = push_value(&mut search.values, input.offset);
@@ -329,15 +349,24 @@ fn search_cards_in_connection(
         where_sql = search.where_sql,
         order_sql = search.order_sql,
     );
-    let mut statement = connection.prepare(&query_sql).map_err(CommandError::database)?;
+    let mut statement = connection
+        .prepare(&query_sql)
+        .map_err(CommandError::database)?;
     let raw_cards = statement
         .query_map(params_from_iter(search.values.iter()), |row| {
             Ok((
-                row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, i64>(5)?,
-                row.get::<_, Option<i64>>(6)?, row.get::<_, i64>(7)?,
-                row.get::<_, Option<i64>>(8)?, row.get::<_, Option<i64>>(9)?,
-                row.get::<_, i64>(10)?, row.get::<_, i64>(11)?,
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, Option<i64>>(6)?,
+                row.get::<_, i64>(7)?,
+                row.get::<_, Option<i64>>(8)?,
+                row.get::<_, Option<i64>>(9)?,
+                row.get::<_, i64>(10)?,
+                row.get::<_, i64>(11)?,
             ))
         })
         .map_err(CommandError::database)?
@@ -346,19 +375,13 @@ fn search_cards_in_connection(
 
     let cards = raw_cards
         .into_iter()
-        .map(|(card_id, note_id, deck_id, deck_name, tags, due_at, last_reviewed_at, review_count, suspended_at, buried_until, created_at, updated_at)| {
-            let rendered = render_stored_card_presentation(connection, &card_id)?;
-            Ok(CardBrowserRowDto {
-                needs_more_practice: crate::learning_signals::needs_more_practice(connection, &card_id)?,
+        .map(
+            |(
                 card_id,
                 note_id,
                 deck_id,
                 deck_name,
-                card_type: rendered.card_type,
-                card_label: rendered.card_label,
-                front_text: rendered.front_text,
-                back_text: rendered.back_text,
-                tags: split_tags(&tags),
+                tags,
                 due_at,
                 last_reviewed_at,
                 review_count,
@@ -366,8 +389,32 @@ fn search_cards_in_connection(
                 buried_until,
                 created_at,
                 updated_at,
-            })
-        })
+            )| {
+                let rendered = render_stored_card_presentation(connection, &card_id)?;
+                Ok(CardBrowserRowDto {
+                    needs_more_practice: crate::learning_signals::needs_more_practice(
+                        connection,
+                        &card_id,
+                    )?,
+                    card_id,
+                    note_id,
+                    deck_id,
+                    deck_name,
+                    card_type: rendered.card_type,
+                    card_label: rendered.card_label,
+                    front_text: rendered.front_text,
+                    back_text: rendered.back_text,
+                    tags: split_tags(&tags),
+                    due_at,
+                    last_reviewed_at,
+                    review_count,
+                    suspended_at,
+                    buried_until,
+                    created_at,
+                    updated_at,
+                })
+            },
+        )
         .collect::<Result<Vec<_>, CommandError>>()?;
     Ok(CardSearchPageDto { cards, total_count })
 }
@@ -502,11 +549,12 @@ fn load_tag_names(connection: &Connection, note_id: &str) -> Result<Vec<String>,
              ORDER BY t.name COLLATE NOCASE ASC",
         )
         .map_err(CommandError::database)?;
-    statement
+    let tags = statement
         .query_map([note_id], |row| row.get(0))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(tags)
 }
 
 fn validate_tags(values: Vec<String>) -> Result<Vec<ValidatedTag>, CommandError> {
@@ -520,7 +568,10 @@ fn validate_tags(values: Vec<String>) -> Result<Vec<ValidatedTag>, CommandError>
     let mut tags = Vec::new();
     for value in values {
         let name = collapse_whitespace(&value);
-        if name.is_empty() || name.chars().count() > MAX_TAG_CHARS || name.chars().any(char::is_control) {
+        if name.is_empty()
+            || name.chars().count() > MAX_TAG_CHARS
+            || name.chars().any(char::is_control)
+        {
             return Err(CommandError::new(
                 "invalid_tag",
                 format!("Each tag must contain 1 to {MAX_TAG_CHARS} visible characters."),
