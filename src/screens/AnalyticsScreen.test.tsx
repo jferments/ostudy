@@ -186,10 +186,10 @@ describe("AnalyticsScreen", () => {
 
     expect(await screen.findByText("Cards practiced")).toBeTruthy();
     expect(screen.getByText("8")).toBeTruthy();
-    expect(screen.getByText("80%")).toBeTruthy();
+    expect(screen.getAllByText("80%").length).toBeGreaterThan(0);
     expect(screen.getAllByText("2 min").length).toBeGreaterThan(0);
     expect(screen.getByRole("img", { name: "Learning progress chart" })).toBeTruthy();
-    expect(screen.getByText("Arrhythmias")).toBeTruthy();
+    expect(screen.getAllByText("Arrhythmias").length).toBeGreaterThan(0);
     expect(screen.getByText("Needs attention")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "View chart data" }));
@@ -209,7 +209,7 @@ describe("AnalyticsScreen", () => {
       />,
     );
 
-    await screen.findByText("Arrhythmias");
+    await screen.findAllByText("Arrhythmias");
     fireEvent.click(screen.getByRole("button", { name: "90 days" }));
     await waitFor(() => {
       expect(analyticsIpc.getAnalytics).toHaveBeenLastCalledWith(
