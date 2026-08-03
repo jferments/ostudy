@@ -87,6 +87,8 @@ pub fn run() {
             authoring::delete_card_template,
             authoring::preview_template_cards,
             authoring::generate_cards_from_template,
+            authoring::inspect_flashcard_import,
+            authoring::commit_flashcard_import,
             assets::import_image,
             settings::get_settings,
             settings::save_settings,
