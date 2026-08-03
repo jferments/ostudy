@@ -143,7 +143,9 @@ fn initialize_migration_ledger(connection: &Connection) -> Result<(), String> {
 fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
     initialize_migration_ledger(connection)?;
     let newest_version: Option<i64> = connection
-        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| row.get(0))
+        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
         .map_err(|error| format!("Could not read the database schema version: {error}"))?;
     if newest_version.unwrap_or(0) > LATEST_SCHEMA_VERSION {
         return Err(format!(
