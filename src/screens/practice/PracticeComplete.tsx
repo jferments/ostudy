@@ -5,6 +5,7 @@ interface PracticeCompleteProps {
   confidenceCounts: ConfidenceCounts;
   isStarting: boolean;
   errorMessage: string | null;
+  onViewAnalytics: () => void;
   onChooseDecks: () => void;
   onRestart: () => void;
 }
@@ -14,6 +15,7 @@ export function PracticeComplete({
   confidenceCounts,
   isStarting,
   errorMessage,
+  onViewAnalytics,
   onChooseDecks,
   onRestart,
 }: PracticeCompleteProps) {
@@ -32,12 +34,15 @@ export function PracticeComplete({
           <span>Medium {confidenceCounts[2]}</span>
           <span>Easy {confidenceCounts[3]}</span>
         </p>
-        <div className="completion-actions">
-          <button type="button" className="secondary-button" onClick={onChooseDecks}>
-            Choose decks
+        <div className="completion-actions analytics-completion-actions">
+          <button type="button" className="primary-button" onClick={onViewAnalytics}>
+            View analytics
           </button>
-          <button type="button" className="primary-button" disabled={isStarting} onClick={onRestart}>
-            {isStarting ? "Starting…" : "Practice due cards again"}
+          <button type="button" className="secondary-button" onClick={onChooseDecks}>
+            Back to practice
+          </button>
+          <button type="button" className="text-button" disabled={isStarting} onClick={onRestart}>
+            {isStarting ? "Starting…" : "Practice this scope again"}
           </button>
         </div>
         {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
