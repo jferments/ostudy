@@ -1,0 +1,85 @@
+name: Stage 5 compile fix helper
+
+on:
+  push:
+    branches:
+      - agent/phase-2-stage-5-scheduling-controls
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out task branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/phase-2-stage-5-scheduling-controls
+
+      - name: Apply exact compile fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          tests = Path("src-tauri/src/authoring/tests.rs")
+          text = tests.read_text()
+          old = '''            due_filter: "all".to_string(),
+            reviewed_filter: "all".to_string(),'''
+          new = '''            due_filter: "all".to_string(),
+            status_filter: "active".to_string(),
+            reviewed_filter: "all".to_string(),'''
+          if text.count(old) != 1:
+              raise SystemExit("unexpected SearchCardsInput fixture shape")
+          tests.write_text(text.replace(old, new))
+
+          search = Path("src-tauri/src/authoring/search_and_tags.rs")
+          text = search.read_text()
+          old = '''    statement
+        .query_map(params_from_iter(values.iter()), tag_from_row)
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
+}'''
+          new = '''    let tags = statement
+        .query_map(params_from_iter(values.iter()), tag_from_row)
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    Ok(tags)
+}'''
+          if text.count(old) != 1:
+              raise SystemExit("unexpected list_tags iterator shape")
+          text = text.replace(old, new)
+
+          old = '''    statement
+        .query_map([note_id], |row| row.get(0))
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
+}'''
+          new = '''    let tags = statement
+        .query_map([note_id], |row| row.get(0))
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    Ok(tags)
+}'''
+          if text.count(old) != 1:
+              raise SystemExit("unexpected load_tag_names iterator shape")
+          search.write_text(text.replace(old, new))
+          PY
+
+      - name: Format and publish fixes
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+          rustup default 1.97.1
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          git add src-tauri/src/authoring/tests.rs src-tauri/src/authoring/search_and_tags.rs
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: repair Stage 5 native compile errors"
+          git push origin HEAD:agent/phase-2-stage-5-scheduling-controls
