@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AnalyticsLaunchRequest, PracticeLaunchRequest } from "./App";
@@ -166,7 +166,8 @@ describe("App shell", () => {
 
     render(<App />);
     await screen.findByRole("heading", { name: "Decks mock" });
-    fireEvent.click(screen.getByRole("button", { name: /Practice/u }));
+    const navigation = screen.getByRole("navigation", { name: "Main navigation" });
+    fireEvent.click(within(navigation).getByRole("button", { name: "Practice" }));
     fireEvent.click(
       await screen.findByRole("button", { name: "Open session analytics" }),
     );
