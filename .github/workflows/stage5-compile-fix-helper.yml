@@ -1,9 +1,9 @@
 name: Stage 5 compile fix helper
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/phase-2-stage-5-scheduling-controls
+      - main
 
 permissions:
   contents: write
@@ -22,52 +22,62 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          tests = Path("src-tauri/src/authoring/tests.rs")
-          text = tests.read_text()
-          old = '''            due_filter: "all".to_string(),
-            reviewed_filter: "all".to_string(),'''
-          new = '''            due_filter: "all".to_string(),
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text()
+              old_count = text.count(old)
+              new_count = text.count(new)
+              if old_count == 1 and new_count == 0:
+                  path.write_text(text.replace(old, new))
+                  return
+              if old_count == 0 and new_count == 1:
+                  return
+              raise SystemExit(f"unexpected {label} shape: old={old_count} new={new_count}")
+
+          replace_once(
+              Path("src-tauri/src/authoring/tests.rs"),
+              '''            due_filter: "all".to_string(),
+            reviewed_filter: "all".to_string(),''',
+              '''            due_filter: "all".to_string(),
             status_filter: "active".to_string(),
-            reviewed_filter: "all".to_string(),'''
-          if text.count(old) != 1:
-              raise SystemExit("unexpected SearchCardsInput fixture shape")
-          tests.write_text(text.replace(old, new))
+            reviewed_filter: "all".to_string(),''',
+              "SearchCardsInput fixture",
+          )
 
           search = Path("src-tauri/src/authoring/search_and_tags.rs")
-          text = search.read_text()
-          old = '''    statement
+          replace_once(
+              search,
+              '''    statement
         .query_map(params_from_iter(values.iter()), tag_from_row)
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)
-}'''
-          new = '''    let tags = statement
+}''',
+              '''    let tags = statement
         .query_map(params_from_iter(values.iter()), tag_from_row)
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
     Ok(tags)
-}'''
-          if text.count(old) != 1:
-              raise SystemExit("unexpected list_tags iterator shape")
-          text = text.replace(old, new)
-
-          old = '''    statement
+}''',
+              "list_tags iterator",
+          )
+          replace_once(
+              search,
+              '''    statement
         .query_map([note_id], |row| row.get(0))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)
-}'''
-          new = '''    let tags = statement
+}''',
+              '''    let tags = statement
         .query_map([note_id], |row| row.get(0))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
     Ok(tags)
-}'''
-          if text.count(old) != 1:
-              raise SystemExit("unexpected load_tag_names iterator shape")
-          search.write_text(text.replace(old, new))
+}''',
+              "load_tag_names iterator",
+          )
           PY
 
       - name: Format and publish fixes
