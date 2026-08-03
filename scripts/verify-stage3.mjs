@@ -75,8 +75,10 @@ for (const [version, migration] of [[6, migration6], [7, migration7]]) {
     failures.push(`database.rs checksum mismatch for migration 000${version}: ${checksum}`);
   }
 }
-if (!database.includes("LATEST_SCHEMA_VERSION: i64 = 7")) {
-  failures.push("database schema version was not advanced to 7");
+const schemaVersionMatch = database.match(/LATEST_SCHEMA_VERSION: i64 = (\d+)/u);
+const schemaVersion = schemaVersionMatch ? Number(schemaVersionMatch[1]) : Number.NaN;
+if (!Number.isInteger(schemaVersion) || schemaVersion < 7) {
+  failures.push("database schema version is older than the completed Stage 3 schema");
 }
 for (const fragment of [
   "ALTER TABLE notes ADD COLUMN reverse_enabled",
