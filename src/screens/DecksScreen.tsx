@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
 import { Modal } from "../components/Modal";
+import { importGeneratedFlashcards } from "../generatedImport";
 import {
   createDeck,
   deleteCard,
@@ -218,6 +219,28 @@ export function DecksScreen({
     }
   }
 
+  async function showImportedDeck(
+    deckId: string,
+    successMessage: string,
+  ): Promise<void> {
+    const deck = await getDeck(deckId);
+    setSelectedDeck(deck);
+    setCards([]);
+    setEditingCard(null);
+    setSearch("");
+    setView("detail");
+    showToast("success", successMessage);
+    try {
+      setCards(await listCards(deck.id));
+    } catch (error: unknown) {
+      showToast(
+        "info",
+        `The deck was imported, but its cards could not be displayed yet: ${getErrorMessage(error)}`,
+      );
+    }
+    void refreshDeckListAfterMutation();
+  }
+
   async function handleImport(): Promise<void> {
     if (transferringRef.current) return;
     transferringRef.current = true;
@@ -227,29 +250,47 @@ export function DecksScreen({
         title: "Import an ostudy deck",
         multiple: false,
         directory: false,
-        filters: [{ name: "ostudy deck", extensions: ["studydeck"] }],
+        filters: [
+          {
+            name: "ostudy deck or generated JSON",
+            extensions: ["studydeck", "json"],
+          },
+        ],
       });
       if (typeof selected !== "string") return;
 
-      const result = await importDeck(selected);
-      setSelectedDeck(result.deck);
-      setCards([]);
-      setEditingCard(null);
-      setSearch("");
-      setView("detail");
-      showToast(
-        "success",
-        `Imported “${result.deck.name}” with ${result.cardCount} ${result.cardCount === 1 ? "card" : "cards"}.`,
-      );
-      try {
-        setCards(await listCards(result.deck.id));
-      } catch (error: unknown) {
-        showToast(
-          "info",
-          `The deck was imported, but its cards could not be displayed yet: ${getErrorMessage(error)}`,
+      const normalizedPath = selected.toLocaleLowerCase();
+      if (normalizedPath.endsWith(".studydeck")) {
+        const result = await importDeck(selected);
+        await showImportedDeck(
+          result.deck.id,
+          `Imported “${result.deck.name}” with ${result.cardCount} ${
+            result.cardCount === 1 ? "card" : "cards"
+          }.`,
         );
+        return;
       }
-      void refreshDeckListAfterMutation();
+
+      if (normalizedPath.endsWith(".json")) {
+        const result = await importGeneratedFlashcards(selected);
+        const duplicateMessage =
+          result.skippedDuplicateCount > 0
+            ? ` ${result.skippedDuplicateCount} exact ${
+                result.skippedDuplicateCount === 1 ? "duplicate was" : "duplicates were"
+              } skipped.`
+            : "";
+        await showImportedDeck(
+          result.deckId,
+          `Imported ${result.createdNoteCount} source ${
+            result.createdNoteCount === 1 ? "note" : "notes"
+          } as ${result.createdCardCount} scheduled ${
+            result.createdCardCount === 1 ? "card" : "cards"
+          }.${duplicateMessage}`,
+        );
+        return;
+      }
+
+      throw new Error("Select an ostudy .studydeck or generated .ostudy.json file.");
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
     } finally {
