@@ -100,6 +100,7 @@ pub fn run() {
             practice::complete_practice_session,
             schedule_controls::apply_schedule_action,
             analytics::get_analytics,
+            analytics::get_recent_practice_reviews,
             stage3_transfer::export_deck_with_card_types,
             authoring::import_deck_with_single_cloze_normalization
         ])
