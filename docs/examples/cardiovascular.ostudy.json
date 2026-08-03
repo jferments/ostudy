@@ -2,6 +2,7 @@
   "format": "ostudy-flashcards",
   "formatVersion": 1,
   "deck": {
+    "mode": "create",
     "name": "Cardiovascular Physiology",
     "description": "Example generated flashcards for testing the ostudy JSON importer."
   },
