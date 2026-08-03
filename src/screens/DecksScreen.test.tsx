@@ -1,12 +1,18 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as generatedImport from "../generatedImport";
 import * as ipc from "../ipc";
 import { DecksScreen } from "./DecksScreen";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn(),
   save: vi.fn(),
+}));
+
+vi.mock("../generatedImport", () => ({
+  importGeneratedFlashcards: vi.fn(),
 }));
 
 vi.mock("../ipc", () => ({
@@ -66,8 +72,23 @@ const settings: ipc.AppSettings = {
   dailyReviewLimit: 200,
 };
 
+function renderDecks(showToast = vi.fn()) {
+  render(
+    <DecksScreen
+      decks={[deck]}
+      settings={settings}
+      refreshDecks={async () => [deck]}
+      onPracticeDeck={vi.fn()}
+      onDirtyChange={vi.fn()}
+      showToast={showToast}
+    />,
+  );
+  return showToast;
+}
+
 describe("DecksScreen", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(ipc.getDeck).mockResolvedValue(deck);
     vi.mocked(ipc.listCards).mockResolvedValue([card]);
   });
@@ -101,5 +122,56 @@ describe("DecksScreen", () => {
     fireEvent.click(detailPractice);
 
     expect(onPracticeDeck).toHaveBeenCalledWith(deck.id);
+  });
+
+  it("imports generated JSON through the ordinary Import deck button", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/tmp/nclex.ostudy.json");
+    vi.mocked(generatedImport.importGeneratedFlashcards).mockResolvedValue({
+      deckId: deck.id,
+      createdNoteCount: 15,
+      createdCardCount: 15,
+      skippedDuplicateCount: 0,
+    });
+    const showToast = renderDecks();
+
+    fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
+
+    await waitFor(() => {
+      expect(generatedImport.importGeneratedFlashcards).toHaveBeenCalledWith(
+        "/tmp/nclex.ostudy.json",
+      );
+    });
+    expect(ipc.importDeck).not.toHaveBeenCalled();
+    expect(openDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: [
+          expect.objectContaining({ extensions: ["studydeck", "json"] }),
+        ],
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Dog facts" })).toBeTruthy();
+    });
+    expect(showToast).toHaveBeenCalledWith(
+      "success",
+      "Imported 15 source notes as 15 scheduled cards.",
+    );
+  });
+
+  it("continues to import studydeck packages through the same button", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/tmp/dog-facts.studydeck");
+    vi.mocked(ipc.importDeck).mockResolvedValue({
+      deck,
+      cardCount: 2,
+      assetCount: 0,
+    });
+    renderDecks();
+
+    fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
+
+    await waitFor(() => {
+      expect(ipc.importDeck).toHaveBeenCalledWith("/tmp/dog-facts.studydeck");
+    });
+    expect(generatedImport.importGeneratedFlashcards).not.toHaveBeenCalled();
   });
 });
