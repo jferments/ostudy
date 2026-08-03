@@ -11,6 +11,6 @@ include!("authoring/search_and_tags.rs");
 include!("authoring/writes_and_transfer.rs");
 include!("authoring/stage3_v2.rs");
 include!("authoring/stage3/transfer.rs");
-include!("authoring/generated_import.rs");
+include!("authoring/generated_import_v2.rs");
 include!("authoring/normalization.rs");
 include!("authoring/tests.rs");
