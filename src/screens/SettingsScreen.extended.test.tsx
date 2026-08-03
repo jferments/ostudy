@@ -73,9 +73,10 @@ describe("SettingsScreen extended behavior", () => {
     const props = renderSettings();
     await screen.findByText("/tmp/ostudy/data");
 
-    fireEvent.change(screen.getByRole("slider", { name: "Desired retention" }), {
-      target: { value: "94" },
-    });
+    fireEvent.change(
+      screen.getByRole("slider", { name: /Desired retention/u }),
+      { target: { value: "94" } },
+    );
 
     await waitFor(() => {
       expect(props.onPreviewSettings).toHaveBeenLastCalledWith(
