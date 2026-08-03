@@ -21,7 +21,7 @@ function Harness({ initial = [] }: { initial?: string[] }) {
 }
 
 function datalistValues(): string[] {
-  return [...document.querySelectorAll<HTMLDataListElement>("datalist option")].map(
+  return [...document.querySelectorAll<HTMLOptionElement>("datalist option")].map(
     (option) => option.value,
   );
 }
