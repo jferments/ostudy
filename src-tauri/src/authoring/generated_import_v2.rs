@@ -353,7 +353,12 @@ fn prepare_import_card(
                     back_text: String::new(),
                 },
                 tags,
-                if reverse_enabled { "basic_reverse" } else { "basic" }.to_string(),
+                if reverse_enabled {
+                    "basic_reverse"
+                } else {
+                    "basic"
+                }
+                .to_string(),
             )
         }
         GeneratedImportCard::Cloze { text, mode, tags } => (
@@ -377,9 +382,8 @@ fn prepare_import_card(
     let tags = validate_tags(combined).map_err(|error| {
         CommandError::new(error.code, format!("{path}.tags: {}", error.message))
     })?;
-    let prepared = prepare_generated_note(draft).map_err(|error| {
-        CommandError::new(error.code, format!("{path}: {}", error.message))
-    })?;
+    let prepared = prepare_generated_note(draft)
+        .map_err(|error| CommandError::new(error.code, format!("{path}: {}", error.message)))?;
     let normalized = normalized_pair(
         &prepared.content.front_text,
         &prepared.content.back_text,
@@ -508,7 +512,10 @@ fn markdown_document(source: &str, path: &str) -> Result<Value, CommandError> {
         ));
     }
     if source.contains("![") {
-        return Err(unsupported_markdown(path, "images are not supported in version 1"));
+        return Err(unsupported_markdown(
+            path,
+            "images are not supported in version 1",
+        ));
     }
     if source.contains('<') || source.contains('>') && source.contains("</") {
         return Err(unsupported_markdown(path, "raw HTML is not supported"));
@@ -517,7 +524,10 @@ fn markdown_document(source: &str, path: &str) -> Result<Value, CommandError> {
         let trimmed = line.trim();
         trimmed.starts_with('|') && trimmed.ends_with('|')
     }) {
-        return Err(unsupported_markdown(path, "Markdown tables are not supported in version 1"));
+        return Err(unsupported_markdown(
+            path,
+            "Markdown tables are not supported in version 1",
+        ));
     }
 
     let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
@@ -539,7 +549,10 @@ fn markdown_document(source: &str, path: &str) -> Result<Value, CommandError> {
                 index += 1;
             }
             if index == lines.len() {
-                return Err(unsupported_markdown(path, "a fenced code block is not closed"));
+                return Err(unsupported_markdown(
+                    path,
+                    "a fenced code block is not closed",
+                ));
             }
             index += 1;
             nodes.push(json!({
@@ -579,7 +592,9 @@ fn markdown_document(source: &str, path: &str) -> Result<Value, CommandError> {
         if bullet_item(line).is_some() {
             let mut items = Vec::new();
             while index < lines.len() {
-                let Some(text) = bullet_item(lines[index]) else { break; };
+                let Some(text) = bullet_item(lines[index]) else {
+                    break;
+                };
                 items.push(json!({
                     "type": "listItem",
                     "content": [{"type": "paragraph", "content": inline_nodes(text, path)?}]
@@ -592,7 +607,9 @@ fn markdown_document(source: &str, path: &str) -> Result<Value, CommandError> {
         if let Some((start, _)) = ordered_item(line) {
             let mut items = Vec::new();
             while index < lines.len() {
-                let Some((_, text)) = ordered_item(lines[index]) else { break; };
+                let Some((_, text)) = ordered_item(lines[index]) else {
+                    break;
+                };
                 items.push(json!({
                     "type": "listItem",
                     "content": [{"type": "paragraph", "content": inline_nodes(text, path)?}]
@@ -605,9 +622,7 @@ fn markdown_document(source: &str, path: &str) -> Result<Value, CommandError> {
 
         let mut paragraph = vec![line.to_string()];
         index += 1;
-        while index < lines.len()
-            && !lines[index].trim().is_empty()
-            && !is_block_start(lines[index])
+        while index < lines.len() && !lines[index].trim().is_empty() && !is_block_start(lines[index])
         {
             paragraph.push(lines[index].to_string());
             index += 1;
@@ -621,7 +636,10 @@ fn markdown_document(source: &str, path: &str) -> Result<Value, CommandError> {
 }
 
 fn unsupported_markdown(path: &str, detail: &str) -> CommandError {
-    CommandError::new("unsupported_import_markdown", format!("{path}: {detail}."))
+    CommandError::new(
+        "unsupported_import_markdown",
+        format!("{path}: {detail}."),
+    )
 }
 
 fn heading_level(line: &str) -> Option<usize> {
@@ -693,8 +711,7 @@ fn inline_nodes(text: &str, path: &str) -> Result<Vec<Value>, CommandError> {
         ];
         let mut matched = false;
         for (marker, mark_type) in markers {
-            if remainder.starts_with(marker) {
-                let after = &remainder[marker.len()..];
+            if let Some(after) = remainder.strip_prefix(marker) {
                 if let Some(close) = after.find(marker) {
                     let value = &after[..close];
                     if value.is_empty() {
@@ -718,7 +735,10 @@ fn inline_nodes(text: &str, path: &str) -> Result<Vec<Value>, CommandError> {
         let take = next.max(1);
         let value = &remainder[..take];
         if value.contains('[') && value.contains("](") {
-            return Err(unsupported_markdown(path, "a Markdown link is malformed"));
+            return Err(unsupported_markdown(
+                path,
+                "a Markdown link is malformed",
+            ));
         }
         nodes.push(json!({"type": "text", "text": value}));
         cursor += take;
@@ -751,18 +771,20 @@ fn next_inline_marker(value: &str) -> Option<usize> {
 
 fn sha256_hex(bytes: &[u8]) -> String {
     const INITIAL: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
     ];
     const K: [u32; 64] = [
-        0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
-        0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
-        0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
-        0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
-        0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
-        0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
-        0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
-        0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
     ];
     let bit_len = (bytes.len() as u64).wrapping_mul(8);
     let mut padded = bytes.to_vec();
