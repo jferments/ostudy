@@ -34,6 +34,10 @@ node "$SCRIPT_DIR/verify-stage3.mjs"
 prepare_cargo_target "$ROOT_DIR"
 printf 'Cargo parallel jobs: %s\n' "$CARGO_BUILD_JOBS"
 
+step "Test policy and repository script syntax"
+node "$SCRIPT_DIR/verify-test-policy.mjs"
+bash "$SCRIPT_DIR/verify-script-syntax.sh"
+
 step "Frozen JavaScript installation and dependency verification"
 pnpm install --frozen-lockfile
 pnpm run verify:versions
@@ -41,6 +45,9 @@ pnpm run verify:versions
 
 step "React tests (Vitest + Testing Library)"
 pnpm test
+
+step "Frontend type checking and production build"
+pnpm run build
 
 step "Rust formatting"
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check

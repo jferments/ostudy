@@ -27,6 +27,9 @@ mod transfer;
 mod util;
 mod workload;
 
+#[cfg(test)]
+mod regression_tests;
+
 use std::io;
 
 use database::Database;

@@ -246,3 +246,6 @@ mod tests {
         assert!(validate_font("custom:Bad\nfont").is_err());
     }
 }
+
+#[cfg(test)]
+include!("settings/extended_tests.rs");

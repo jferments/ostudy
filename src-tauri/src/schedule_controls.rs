@@ -251,3 +251,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+include!("schedule_controls/extended_tests.rs");

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal native Tauri smoke test using the W3C WebDriver protocol."""
+"""Native Tauri smoke workflow using only the W3C WebDriver protocol."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def request(method: str, path: str, payload: dict[str, Any] | None = None) -> An
         method=method,
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=10) as response:
+    with urllib.request.urlopen(req, timeout=15) as response:
         decoded = json.loads(response.read().decode("utf-8"))
     if isinstance(decoded, dict) and isinstance(decoded.get("value"), dict):
         error = decoded["value"].get("error")
@@ -46,6 +46,31 @@ def wait_for_driver(deadline: float) -> None:
     raise TimeoutError("tauri-driver did not become ready")
 
 
+def create_session(application: Path) -> str:
+    result = request(
+        "POST",
+        "/session",
+        {
+            "capabilities": {
+                "alwaysMatch": {
+                    "browserName": "wry",
+                    "tauri:options": {"application": str(application)},
+                }
+            }
+        },
+    )
+    if not isinstance(result, dict):
+        raise RuntimeError(f"Unexpected new-session response: {result!r}")
+    session_id = str(result.get("sessionId") or "")
+    if not session_id:
+        raise RuntimeError(f"New-session response did not contain a session id: {result!r}")
+    return session_id
+
+
+def delete_session(session_id: str) -> None:
+    request("DELETE", f"/session/{session_id}")
+
+
 def find_element(session_id: str, using: str, value: str, deadline: float) -> str:
     last_error: Exception | None = None
     while time.monotonic() < deadline:
@@ -57,15 +82,62 @@ def find_element(session_id: str, using: str, value: str, deadline: float) -> st
             )
             if isinstance(result, dict) and ELEMENT_KEY in result:
                 return str(result[ELEMENT_KEY])
-        except Exception as error:  # WebDriver returns no-such-element while React loads.
+        except Exception as error:  # WebDriver reports no-such-element while React loads.
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(f"Element was not found: {using}={value}; last error: {last_error}")
 
 
+def find_elements(
+    session_id: str,
+    using: str,
+    value: str,
+    minimum: int,
+    deadline: float,
+) -> list[str]:
+    last_count = 0
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            result = request(
+                "POST",
+                f"/session/{session_id}/elements",
+                {"using": using, "value": value},
+            )
+            if isinstance(result, list):
+                elements = [
+                    str(item[ELEMENT_KEY])
+                    for item in result
+                    if isinstance(item, dict) and ELEMENT_KEY in item
+                ]
+                last_count = len(elements)
+                if len(elements) >= minimum:
+                    return elements
+        except Exception as error:
+            last_error = error
+        time.sleep(0.2)
+    raise TimeoutError(
+        f"Expected at least {minimum} elements for {using}={value}; "
+        f"last count: {last_count}; last error: {last_error}"
+    )
+
+
 def element_text(session_id: str, element_id: str) -> str:
     value = request("GET", f"/session/{session_id}/element/{element_id}/text")
     return str(value)
+
+
+def click(session_id: str, element_id: str) -> None:
+    request("POST", f"/session/{session_id}/element/{element_id}/click", {})
+
+
+def send_keys(session_id: str, element_id: str, text: str) -> None:
+    click(session_id, element_id)
+    request(
+        "POST",
+        f"/session/{session_id}/element/{element_id}/value",
+        {"text": text, "value": list(text)},
+    )
 
 
 def wait_for_element_text(
@@ -97,6 +169,163 @@ def wait_for_element_text(
     )
 
 
+def click_text_button(session_id: str, label: str, deadline: float) -> None:
+    element = find_element(
+        session_id,
+        "xpath",
+        f"//button[normalize-space(.)={json.dumps(label)}]",
+        deadline,
+    )
+    click(session_id, element)
+
+
+def verify_shell(session_id: str, deadline: float) -> None:
+    brand = find_element(session_id, "css selector", ".brand-block strong", deadline)
+    brand_text = element_text(session_id, brand)
+    if brand_text.strip() != "ostudy":
+        raise AssertionError(f"Expected ostudy branding, found {brand_text!r}")
+
+
+def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
+    deck_name = "Native smoke deck"
+    question = "What does the native smoke test persist?"
+    answer = "A deck, a card, and one accepted review."
+
+    click_text_button(session_id, "New deck", deadline)
+    name_input = find_element(
+        session_id,
+        "css selector",
+        "input[placeholder='NCLEX Pharmacology']",
+        deadline,
+    )
+    send_keys(session_id, name_input, deck_name)
+    create_button = find_element(
+        session_id,
+        "xpath",
+        "//section[@role='dialog']//button[normalize-space(.)='Create deck']",
+        deadline,
+    )
+    click(session_id, create_button)
+    wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
+
+    click_text_button(session_id, "Add flashcard", deadline)
+    editors = find_elements(
+        session_id,
+        "css selector",
+        ".rich-editor-content[contenteditable='true']",
+        2,
+        deadline,
+    )
+    send_keys(session_id, editors[0], question)
+    send_keys(session_id, editors[1], answer)
+    click_text_button(session_id, "Save card", deadline)
+    wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
+    find_element(
+        session_id,
+        "xpath",
+        f"//strong[normalize-space(.)={json.dumps(question)}]",
+        deadline,
+    )
+
+    practice_button = find_element(
+        session_id,
+        "xpath",
+        "//main//button[normalize-space(.)='Practice']",
+        deadline,
+    )
+    click(session_id, practice_button)
+    show_answer = find_element(
+        session_id,
+        "xpath",
+        "//button[normalize-space(.)='Show answer']",
+        deadline,
+    )
+    click(session_id, show_answer)
+    # The visual label is composed from nested spans, and XPath string-value
+    # concatenation does not guarantee the visual whitespace between them.
+    # Select the score through its explicit keyboard and accessible-name
+    # contract instead of waiting for a text substring that cannot match.
+    medium = find_element(
+        session_id,
+        "css selector",
+        "button.confidence-score-button[aria-keyshortcuts='2'][aria-label^='2 Medium,']",
+        deadline,
+    )
+    click(session_id, medium)
+    wait_for_element_text(
+        session_id,
+        "css selector",
+        "main h1",
+        "Session complete",
+        deadline,
+    )
+
+    click_text_button(session_id, "View analytics", deadline)
+    wait_for_element_text(session_id, "css selector", "main h1", "Analytics", deadline)
+    find_element(
+        session_id,
+        "xpath",
+        f"//*[normalize-space(.)={json.dumps(question)}]",
+        deadline,
+    )
+    click_text_button(session_id, "View chart data", deadline)
+    wait_for_element_text(
+        session_id,
+        "css selector",
+        ".chart-data-table caption",
+        "Data represented in the learning progress chart",
+        deadline,
+    )
+    return deck_name, question
+
+
+def verify_persistence_after_restart(
+    session_id: str,
+    deck_name: str,
+    question: str,
+    deadline: float,
+) -> None:
+    verify_shell(session_id, deadline)
+    deck_button = find_element(
+        session_id,
+        "xpath",
+        f"//button[contains(normalize-space(.), {json.dumps(deck_name)})]",
+        deadline,
+    )
+    click(session_id, deck_button)
+    wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
+    find_element(
+        session_id,
+        "xpath",
+        f"//strong[normalize-space(.)={json.dumps(question)}]",
+        deadline,
+    )
+
+    analytics_button = find_element(
+        session_id,
+        "xpath",
+        "//nav[@aria-label='Main navigation']//button[contains(normalize-space(.), 'Analytics')]",
+        deadline,
+    )
+    click(session_id, analytics_button)
+    wait_for_element_text(session_id, "css selector", "main h1", "Analytics", deadline)
+    find_element(
+        session_id,
+        "xpath",
+        f"//*[normalize-space(.)={json.dumps(question)}]",
+        deadline,
+    )
+
+    settings_button = find_element(
+        session_id,
+        "xpath",
+        "//nav[@aria-label='Main navigation']//button[contains(normalize-space(.), 'Settings')]",
+        deadline,
+    )
+    click(session_id, settings_button)
+    wait_for_element_text(session_id, "css selector", "main h1", "Settings", deadline)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--application", required=True, type=Path)
@@ -118,85 +347,24 @@ def main() -> int:
 
     try:
         wait_for_driver(time.monotonic() + 20)
-        result = request(
-            "POST",
-            "/session",
-            {
-                "capabilities": {
-                    "alwaysMatch": {
-                        "browserName": "wry",
-                        "tauri:options": {"application": str(application)},
-                    }
-                }
-            },
-        )
-        if not isinstance(result, dict):
-            raise RuntimeError(f"Unexpected new-session response: {result!r}")
-        session_id = str(result.get("sessionId") or "")
-        if not session_id:
-            raise RuntimeError(f"New-session response did not contain a session id: {result!r}")
+        session_id = create_session(application)
+        deadline = time.monotonic() + 45
+        verify_shell(session_id, deadline)
+        deck_name, question = create_and_review_card(session_id, deadline)
 
-        deadline = time.monotonic() + 30
-        brand = find_element(session_id, "css selector", ".brand-block strong", deadline)
-        brand_text = element_text(session_id, brand)
-        if brand_text.strip() != "ostudy":
-            raise AssertionError(f"Expected ostudy branding, found {brand_text!r}")
-
-        analytics_button = find_element(
+        delete_session(session_id)
+        session_id = None
+        session_id = create_session(application)
+        verify_persistence_after_restart(
             session_id,
-            "xpath",
-            "//button[contains(normalize-space(.), 'Analytics')]",
-            deadline,
-        )
-        request("POST", f"/session/{session_id}/element/{analytics_button}/click", {})
-        wait_for_element_text(
-            session_id,
-            "css selector",
-            "main h1",
-            "Analytics",
-            time.monotonic() + 15,
-        )
-
-        chart_data_button = find_element(
-            session_id,
-            "xpath",
-            "//button[contains(normalize-space(.), 'View chart data')]",
-            time.monotonic() + 15,
-        )
-        request("POST", f"/session/{session_id}/element/{chart_data_button}/click", {})
-        wait_for_element_text(
-            session_id,
-            "css selector",
-            ".chart-data-table caption",
-            "Data represented in the learning progress chart",
-            time.monotonic() + 15,
-        )
-        wait_for_element_text(
-            session_id,
-            "css selector",
-            "main h1",
-            "Analytics",
-            time.monotonic() + 5,
-        )
-
-        settings_button = find_element(
-            session_id,
-            "xpath",
-            "//button[contains(normalize-space(.), 'Settings')]",
-            time.monotonic() + 15,
-        )
-        request("POST", f"/session/{session_id}/element/{settings_button}/click", {})
-        wait_for_element_text(
-            session_id,
-            "css selector",
-            "main h1",
-            "Settings",
-            time.monotonic() + 15,
+            deck_name,
+            question,
+            time.monotonic() + 45,
         )
 
         print(
-            "Native smoke test passed: launched ostudy, exercised Analytics, "
-            "and opened Settings."
+            "Native smoke test passed: created a deck and card, accepted a review, "
+            "restarted ostudy, and verified durable content and analytics."
         )
         return 0
     except Exception:
@@ -205,11 +373,18 @@ def main() -> int:
             print(log_path.read_text(encoding="utf-8"))
         except OSError:
             pass
+        if session_id:
+            try:
+                source = request("GET", f"/session/{session_id}/source")
+                print("\n--- current WebView source (truncated) ---")
+                print(str(source)[:12_000])
+            except Exception:
+                pass
         raise
     finally:
         if session_id:
             try:
-                request("DELETE", f"/session/{session_id}")
+                delete_session(session_id)
             except Exception:
                 pass
         if driver.poll() is None:
