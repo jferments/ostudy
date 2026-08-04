@@ -220,11 +220,10 @@ def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
     send_keys(session_id, editors[1], answer)
     click_text_button(session_id, "Save card", deadline)
     wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
-    wait_for_element_text(
+    find_element(
         session_id,
         "xpath",
         f"//strong[normalize-space(.)={json.dumps(question)}]",
-        question,
         deadline,
     )
 
@@ -259,11 +258,10 @@ def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
 
     click_text_button(session_id, "View analytics", deadline)
     wait_for_element_text(session_id, "css selector", "main h1", "Analytics", deadline)
-    wait_for_element_text(
+    find_element(
         session_id,
         "xpath",
         f"//*[normalize-space(.)={json.dumps(question)}]",
-        question,
         deadline,
     )
     click_text_button(session_id, "View chart data", deadline)
@@ -292,11 +290,10 @@ def verify_persistence_after_restart(
     )
     click(session_id, deck_button)
     wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
-    wait_for_element_text(
+    find_element(
         session_id,
         "xpath",
         f"//strong[normalize-space(.)={json.dumps(question)}]",
-        question,
         deadline,
     )
 
@@ -308,11 +305,10 @@ def verify_persistence_after_restart(
     )
     click(session_id, analytics_button)
     wait_for_element_text(session_id, "css selector", "main h1", "Analytics", deadline)
-    wait_for_element_text(
+    find_element(
         session_id,
         "xpath",
         f"//*[normalize-space(.)={json.dumps(question)}]",
-        question,
         deadline,
     )
 
