@@ -13,6 +13,12 @@ export interface ToastMessage {
   action?: ToastAction;
 }
 
+export type ShowToast = (
+  kind: ToastMessage["kind"],
+  text: string,
+  action?: ToastAction,
+) => void;
+
 interface ToastProps {
   toast: ToastMessage | null;
   onDismiss: () => void;
@@ -41,8 +47,6 @@ export function Toast({ toast, onDismiss }: ToastProps) {
       await toast.action.run();
       onDismiss();
     } catch {
-      // The action owner reports its domain-specific error. Leaving the action
-      // enabled allows an intentional retry while the recovery window remains.
       setIsRunningAction(false);
     }
   }
