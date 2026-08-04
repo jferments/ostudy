@@ -6,9 +6,12 @@ import { RichTextView } from "../editor/RichTextView";
 import {
   EMPTY_RICH_DOCUMENT,
   cloneDocument,
+  collectAssetIds,
   isDocumentEmpty,
 } from "../editor/richText";
 import {
+  beginAssetDraft,
+  cancelAssetDraft,
   createGeneratedCard,
   findDuplicateCards,
   generateCardsFromTemplate,
@@ -20,6 +23,7 @@ import {
   listDecks,
   listTags,
   previewTemplateCards,
+  syncAssetDraft,
   updateGeneratedCard,
   type Asset,
   type BuiltInCardType,
@@ -97,6 +101,8 @@ export function CardEditorScreen({
   const [frontText, setFrontText] = useState(card?.frontText ?? "");
   const [backText, setBackText] = useState(card?.backText ?? "");
   const [assets, setAssets] = useState<Asset[]>(card?.assets ?? []);
+  const [assetDraftId, setAssetDraftId] = useState<string | null>(null);
+  const assetDraftRef = useRef<string | null>(null);
   const [tags, setTags] = useState<string[]>(
     card && "tags" in card ? card.tags : [],
   );
@@ -131,11 +137,63 @@ export function CardEditorScreen({
   const canSave =
     contentReady && selectedDeckId !== "" && !isSaving && !isLoadingType;
   const assetIds = useMemo(() => new Set(assets.map((asset) => asset.id)), [assets]);
+  const usedAssetIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const id of collectAssetIds(frontDoc)) ids.add(id);
+    for (const id of collectAssetIds(backDoc)) ids.add(id);
+    for (const value of templateValues) {
+      for (const id of collectAssetIds(value.doc)) ids.add(id);
+    }
+    return [...ids].sort();
+  }, [backDoc, frontDoc, templateValues]);
+  const usedAssetKey = usedAssetIds.join(",");
 
   useEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    let current = true;
+    setAssetDraftId(null);
+    void beginAssetDraft("card", card?.noteId)
+      .then((draft) => {
+        if (!current) {
+          void cancelAssetDraft(draft.id).catch(() => undefined);
+          return;
+        }
+        assetDraftRef.current = draft.id;
+        setAssetDraftId(draft.id);
+      })
+      .catch((error: unknown) => {
+        if (current) {
+          setErrorMessage(`The managed image draft could not open: ${getErrorMessage(error)}`);
+        }
+      });
+    return () => {
+      current = false;
+      const draftId = assetDraftRef.current;
+      assetDraftRef.current = null;
+      if (draftId) {
+        void cancelAssetDraft(draftId).catch((error: unknown) => {
+          console.error("Unable to cancel the image draft:", getErrorMessage(error));
+        });
+      }
+    };
+  }, [card?.noteId]);
+
+  useEffect(() => {
+    if (!assetDraftId) return;
+    const retained = usedAssetKey === "" ? [] : usedAssetKey.split(",");
+    const timer = window.setTimeout(() => {
+      void syncAssetDraft(assetDraftId, retained).catch((error: unknown) => {
+        if (assetDraftRef.current === assetDraftId) {
+          setErrorMessage(`The image draft could not be synchronized: ${getErrorMessage(error)}`);
+        }
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [assetDraftId, usedAssetKey]);
 
   useEffect(() => {
     if (providedDecks) {
@@ -274,6 +332,17 @@ export function CardEditorScreen({
     setTemplatePreviews([]);
   }
 
+  function markAssetDraftCommitted(): void {
+    assetDraftRef.current = null;
+    setAssetDraftId(null);
+  }
+
+  async function openFreshAssetDraft(): Promise<void> {
+    const draft = await beginAssetDraft("card");
+    assetDraftRef.current = draft.id;
+    setAssetDraftId(draft.id);
+  }
+
   async function buildTemplatePreview(): Promise<void> {
     if (!selectedCustomTemplate || !templateValuesComplete || isPreviewingTemplate) return;
     setIsPreviewingTemplate(true);
@@ -321,21 +390,14 @@ export function CardEditorScreen({
           templateRevision: selectedCustomTemplate.revision,
           values: templateValues,
           tags,
+          assetDraftId: assetDraftId ?? undefined,
         });
+        markAssetDraftCommitted();
         setDirty(false);
         setTemplatePreviews([]);
         await onTemplateGenerated(result, continueAdding, selectedCustomTemplate);
         if (continueAdding) {
-          setTemplateValues(
-            selectedCustomTemplate.fields.map((field) => ({
-              fieldId: field.id,
-              doc: cloneDocument(EMPTY_RICH_DOCUMENT),
-              text: "",
-            })),
-          );
-          setAssets(selectedCustomTemplate.assets);
-          setTags([]);
-          setEditorGeneration((value) => value + 1);
+          await resetForAnother(selectedCustomTemplate.assets);
         }
         return;
       }
@@ -370,6 +432,7 @@ export function CardEditorScreen({
         backText,
         tags,
         allowDuplicate,
+        assetDraftId: assetDraftId ?? undefined,
       };
       const saved =
         existing && card
@@ -380,11 +443,12 @@ export function CardEditorScreen({
             })
           : await createGeneratedCard(common);
 
+      markAssetDraftCommitted();
       setDirty(false);
       setDuplicateMatches([]);
       try {
         await onSaved(saved, continueAdding && !existing);
-        if (continueAdding && !existing) resetForAnother();
+        if (continueAdding && !existing) await resetForAnother([]);
       } catch (error: unknown) {
         setErrorMessage(
           `The flashcard was saved, but the screen could not finish updating: ${getErrorMessage(error)}`,
@@ -409,19 +473,33 @@ export function CardEditorScreen({
     }
   }
 
-  function resetForAnother(): void {
+  async function resetForAnother(initialAssets: Asset[]): Promise<void> {
     setFrontDoc(cloneDocument(EMPTY_RICH_DOCUMENT));
     setBackDoc(cloneDocument(EMPTY_RICH_DOCUMENT));
     setFrontText("");
     setBackText("");
-    setAssets([]);
+    setAssets(initialAssets);
     setTags([]);
     setReverseEnabled(false);
     setClozeSource("");
     setClozeMode("one_at_a_time");
+    setTemplateValues(
+      selectedCustomTemplate
+        ? selectedCustomTemplate.fields.map((field) => ({
+            fieldId: field.id,
+            doc: cloneDocument(EMPTY_RICH_DOCUMENT),
+            text: "",
+          }))
+        : [],
+    );
     setPreviewOpen(false);
     setPreviewAnswer(false);
     setEditorGeneration((value) => value + 1);
+    try {
+      await openFreshAssetDraft();
+    } catch (error: unknown) {
+      setErrorMessage(`The next image draft could not open: ${getErrorMessage(error)}`);
+    }
   }
 
   function openMoveCopy(): void {
@@ -433,9 +511,22 @@ export function CardEditorScreen({
     setMoveCopyOpen(true);
   }
 
-  function cancel(): void {
+  async function cancel(): Promise<void> {
     if (isSaving) return;
     if (dirty && !window.confirm("Discard the changes to this flashcard?")) return;
+    const draftId = assetDraftRef.current;
+    assetDraftRef.current = null;
+    setAssetDraftId(null);
+    if (draftId) {
+      try {
+        await cancelAssetDraft(draftId);
+      } catch (error: unknown) {
+        assetDraftRef.current = draftId;
+        setAssetDraftId(draftId);
+        setErrorMessage(`The image draft could not be canceled: ${getErrorMessage(error)}`);
+        return;
+      }
+    }
     onCancel();
   }
 
@@ -449,7 +540,7 @@ export function CardEditorScreen({
     <div className="card-editor-screen" aria-busy={isSaving || isLoadingType}>
       <header className="screen-header card-editor-header">
         <div>
-          <button type="button" className="back-button" disabled={isSaving} onClick={cancel}>
+          <button type="button" className="back-button" disabled={isSaving} onClick={() => void cancel()}>
             ← {deck.name}
           </button>
           <h1>{title}</h1>
@@ -479,7 +570,7 @@ export function CardEditorScreen({
               {previewOpen ? "Hide preview" : "Preview card"}
             </button>
           ) : null}
-          <button type="button" className="secondary-button" disabled={isSaving} onClick={cancel}>
+          <button type="button" className="secondary-button" disabled={isSaving} onClick={() => void cancel()}>
             Cancel
           </button>
           {!existing ? (
@@ -605,6 +696,7 @@ export function CardEditorScreen({
               values={templateValues}
               previews={templatePreviews}
               assets={assets}
+              assetDraftId={assetDraftId}
               disabled={isSaving}
               isPreviewing={isPreviewingTemplate}
               onAssetImported={addAsset}
@@ -635,6 +727,7 @@ export function CardEditorScreen({
                 label="Question"
                 document={frontDoc}
                 assets={assets}
+                assetDraftId={assetDraftId}
                 disabled={isSaving}
                 onAssetImported={addAsset}
                 onChange={(document: RichDocument, plainText: string) => {
@@ -648,6 +741,7 @@ export function CardEditorScreen({
                 label="Answer"
                 document={backDoc}
                 assets={assets}
+                assetDraftId={assetDraftId}
                 disabled={isSaving}
                 onAssetImported={addAsset}
                 onChange={(document: RichDocument, plainText: string) => {

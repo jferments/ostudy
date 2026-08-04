@@ -18,11 +18,20 @@ const cards: ipc.SelectionCard[] = [
   { cardId: "d".repeat(32), noteId: "e".repeat(32), deckId: "c".repeat(32) },
 ];
 
+function cleanupDeletionResult(): ipc.DeletionResult {
+  return {
+    affectedCount: 0,
+    undoToken: "f".repeat(32),
+    undoExpiresAt: Date.now() + 10_000,
+    subjectLabel: "Temporary deck",
+  };
+}
+
 describe("PracticeResultsModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetTestEntityIds();
-    vi.mocked(ipc.deleteDeck).mockResolvedValue(undefined);
+    vi.mocked(ipc.deleteDeck).mockResolvedValue(cleanupDeletionResult());
   });
 
   it("starts a temporary exact-card session without creating a deck", () => {

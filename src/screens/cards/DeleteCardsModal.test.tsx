@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ToastAction } from "../../components/Toast";
 import * as ipc from "../../ipc";
 import { DeleteCardsModal } from "./DeleteCardsModal";
 
@@ -8,20 +9,36 @@ vi.mock("../../ipc", () => ({
   deleteCards: vi.fn(),
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
+  undoDeletion: vi.fn(),
 }));
 
 const cards: ipc.SelectionCard[] = [
   { cardId: "a".repeat(32), noteId: "b".repeat(32), deckId: "c".repeat(32) },
   { cardId: "d".repeat(32), noteId: "e".repeat(32), deckId: "c".repeat(32) },
 ];
+const undoToken = "f".repeat(32);
+
+function deletionResult(affectedCount: number): ipc.DeletionResult {
+  return {
+    affectedCount,
+    undoToken,
+    undoExpiresAt: Date.now() + 10_000,
+    subjectLabel: affectedCount === 1 ? "Flashcard" : `${affectedCount} flashcards`,
+  };
+}
 
 describe("DeleteCardsModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.deleteCards).mockResolvedValue({ affectedCount: 2 });
+    vi.mocked(ipc.deleteCards).mockResolvedValue(deletionResult(2));
+    vi.mocked(ipc.undoDeletion).mockResolvedValue({
+      restoredCount: 2,
+      entityKind: "cards",
+      subjectLabel: "2 flashcards",
+    });
   });
 
-  it("deletes unique note identities and refreshes after the durable mutation", async () => {
+  it("deletes unique note identities and publishes an exact undo action", async () => {
     const onComplete = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
     const showToast = vi.fn();
@@ -34,7 +51,7 @@ describe("DeleteCardsModal", () => {
       />,
     );
 
-    expect(screen.getByText(/local scheduling state/u)).toBeTruthy();
+    expect(screen.getByText(/brief Undo window/u)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Delete 2 cards" }));
 
     await waitFor(() => {
@@ -42,13 +59,22 @@ describe("DeleteCardsModal", () => {
         cards.map((card) => card.noteId),
       );
       expect(onComplete).toHaveBeenCalledOnce();
-      expect(showToast).toHaveBeenCalledWith("success", "Deleted 2 cards.");
+      expect(showToast).toHaveBeenCalledWith(
+        "success",
+        "Deleted 2 cards.",
+        expect.objectContaining({ label: "Undo" }),
+      );
       expect(onClose).toHaveBeenCalledOnce();
     });
+
+    const action = showToast.mock.calls[0]?.[2] as ToastAction;
+    await action.run();
+    expect(ipc.undoDeletion).toHaveBeenCalledWith(undoToken);
+    expect(onComplete).toHaveBeenCalledTimes(2);
   });
 
-  it("uses singular confirmation copy for one source note", async () => {
-    vi.mocked(ipc.deleteCards).mockResolvedValue({ affectedCount: 1 });
+  it("uses singular confirmation and undo copy for one source note", async () => {
+    vi.mocked(ipc.deleteCards).mockResolvedValue(deletionResult(1));
     const showToast = vi.fn();
     render(
       <DeleteCardsModal
@@ -62,7 +88,11 @@ describe("DeleteCardsModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete 1 card" }));
 
     await waitFor(() => {
-      expect(showToast).toHaveBeenCalledWith("success", "Deleted 1 card.");
+      expect(showToast).toHaveBeenCalledWith(
+        "success",
+        "Deleted 1 card.",
+        expect.objectContaining({ label: "Undo" }),
+      );
     });
   });
 

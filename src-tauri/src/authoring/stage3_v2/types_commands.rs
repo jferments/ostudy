@@ -41,6 +41,8 @@ pub struct CreateGeneratedCardInput {
     pub tags: Vec<String>,
     #[serde(default)]
     pub allow_duplicate: bool,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,6 +66,8 @@ pub struct UpdateGeneratedCardInput {
     pub tags: Vec<String>,
     #[serde(default)]
     pub allow_duplicate: bool,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -94,6 +98,8 @@ pub struct CreateCardTemplateInput {
     pub description: String,
     pub fields: Vec<CardTemplateFieldInput>,
     pub rules: Vec<CardTemplateRuleInput>,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,6 +112,8 @@ pub struct UpdateCardTemplateInput {
     pub description: String,
     pub fields: Vec<CardTemplateFieldInput>,
     pub rules: Vec<CardTemplateRuleInput>,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -166,6 +174,8 @@ pub struct GenerateTemplateCardsInput {
     pub values: Vec<TemplateValueInput>,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -300,7 +310,27 @@ pub fn create_card_template(
 ) -> Result<CardTemplateDto, CommandError> {
     database.with_connection(|connection| {
         let input = prepare_automatic_create_template_input(connection, input)?;
-        let template = create_card_template_in_connection(connection, &paths, input)?;
+        let draft_id = input.asset_draft_id.clone();
+        let asset_ids = collect_template_input_asset_ids(&input.rules)?;
+        let created = create_card_template_in_connection(connection, &paths, input)?;
+        finalize_assets_after_committed_write(
+            connection,
+            &paths,
+            &asset_ids,
+            draft_id.as_deref(),
+            &created.id,
+            "create_card_template",
+        );
+        let template = match load_stored_template(connection, &paths, &created.id, true) {
+            Ok(stored) => stored.dto,
+            Err(error) => {
+                crate::logging::error(
+                    "committed_template_refresh_failed",
+                    format!("template_id={} error={}", created.id, error.message),
+                );
+                created
+            }
+        };
         normalize_card_template_dto_for_editing(template)
     })
 }
@@ -313,11 +343,31 @@ pub fn update_card_template(
 ) -> Result<CardTemplateDto, CommandError> {
     database.with_connection(|connection| {
         let input = prepare_automatic_update_template_input(connection, input)?;
+        let draft_id = input.asset_draft_id.clone();
+        let asset_ids = collect_template_input_asset_ids(&input.rules)?;
         let has_new_children = template_update_contains_new_children(connection, &input)?;
-        let template = if has_new_children {
+        let updated = if has_new_children {
             update_card_template_with_stable_children_in_connection(connection, &paths, input)?
         } else {
             update_card_template_in_connection(connection, &paths, input)?
+        };
+        finalize_assets_after_committed_write(
+            connection,
+            &paths,
+            &asset_ids,
+            draft_id.as_deref(),
+            &updated.id,
+            "update_card_template",
+        );
+        let template = match load_stored_template(connection, &paths, &updated.id, true) {
+            Ok(stored) => stored.dto,
+            Err(error) => {
+                crate::logging::error(
+                    "committed_template_refresh_failed",
+                    format!("template_id={} error={}", updated.id, error.message),
+                );
+                updated
+            }
         };
         normalize_card_template_dto_for_editing(template)
     })
@@ -356,9 +406,89 @@ pub fn generate_cards_from_template(
 ) -> Result<GenerateTemplateCardsResultDto, CommandError> {
     validate_entity_id(&input.deck_id, "deck")?;
     validate_entity_id(&input.template_id, "card template")?;
+    let draft_id = input.asset_draft_id.clone();
+    let owner_id = input.deck_id.clone();
+    let asset_ids = collect_template_value_asset_ids(&input.values)?;
     database.with_connection(|connection| {
-        generate_automatic_template_cards_in_connection(connection, &paths, input)
+        let result = generate_automatic_template_cards_in_connection(connection, &paths, input)?;
+        finalize_assets_after_committed_write(
+            connection,
+            &paths,
+            &asset_ids,
+            draft_id.as_deref(),
+            &owner_id,
+            "generate_cards_from_template",
+        );
+        Ok(result)
     })
+}
+
+fn finalize_assets_after_committed_write(
+    connection: &mut Connection,
+    paths: &AppPaths,
+    asset_ids: &[String],
+    draft_id: Option<&str>,
+    owner_id: &str,
+    operation: &str,
+) {
+    let transaction = match connection.transaction_with_behavior(TransactionBehavior::Immediate) {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            crate::logging::error(
+                "committed_asset_finalization_start_failed",
+                format!("operation={operation} owner_id={owner_id} error={error}"),
+            );
+            return;
+        }
+    };
+    let finalization = match finalize_assets_for_owner(
+        &transaction,
+        paths,
+        asset_ids,
+        draft_id,
+        Some(owner_id),
+    ) {
+        Ok(finalization) => finalization,
+        Err(error) => {
+            crate::logging::error(
+                "committed_asset_finalization_failed",
+                format!(
+                    "operation={operation} owner_id={owner_id} error={}",
+                    error.message
+                ),
+            );
+            return;
+        }
+    };
+    if let Err(error) = transaction.commit() {
+        crate::logging::error(
+            "committed_asset_finalization_commit_failed",
+            format!("operation={operation} owner_id={owner_id} error={error}"),
+        );
+        return;
+    }
+    finalization.cleanup();
+}
+
+fn collect_template_input_asset_ids(
+    rules: &[CardTemplateRuleInput],
+) -> Result<Vec<String>, CommandError> {
+    let mut ids = BTreeSet::new();
+    for rule in rules {
+        ids.extend(crate::cards::collect_asset_ids(&rule.front_doc)?);
+        ids.extend(crate::cards::collect_asset_ids(&rule.back_doc)?);
+    }
+    Ok(ids.into_iter().collect())
+}
+
+fn collect_template_value_asset_ids(
+    values: &[TemplateValueInput],
+) -> Result<Vec<String>, CommandError> {
+    let mut ids = BTreeSet::new();
+    for value in values {
+        ids.extend(crate::cards::collect_asset_ids(&value.doc)?);
+    }
+    Ok(ids.into_iter().collect())
 }
 
 fn default_stage3_cloze_mode() -> String {

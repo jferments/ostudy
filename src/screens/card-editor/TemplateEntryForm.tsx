@@ -13,6 +13,7 @@ interface TemplateEntryFormProps {
   values: TemplateValueInput[];
   previews: TemplateCardPreview[];
   assets: Asset[];
+  assetDraftId: string | null;
   disabled: boolean;
   isPreviewing: boolean;
   onValuesChange: (values: TemplateValueInput[]) => void;
@@ -25,6 +26,7 @@ export function TemplateEntryForm({
   values,
   previews,
   assets,
+  assetDraftId,
   disabled,
   isPreviewing,
   onValuesChange,
@@ -66,6 +68,7 @@ export function TemplateEntryForm({
               description={field.description || "Enter the content for this field."}
               document={value.doc}
               assets={assets}
+              assetDraftId={assetDraftId}
               disabled={disabled}
               onAssetImported={onAssetImported}
               onChange={(doc, text) => updateValue(field.id, doc, text)}

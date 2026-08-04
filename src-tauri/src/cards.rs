@@ -8,7 +8,9 @@
 
 use std::collections::BTreeSet;
 
-use rusqlite::{params, Connection, OptionalExtension};
+#[cfg(test)]
+use rusqlite::params;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::State;
@@ -18,8 +20,11 @@ use crate::{
     database::Database,
     error::CommandError,
     paths::AppPaths,
-    util::{unix_time_millis, validate_entity_id},
+    util::validate_entity_id,
 };
+
+#[cfg(test)]
+use crate::util::unix_time_millis;
 
 const MAX_DOCUMENT_BYTES: usize = 1_000_000;
 const MAX_PLAIN_TEXT_CHARS: usize = 200_000;
@@ -72,12 +77,6 @@ pub fn list_cards(
 ) -> Result<Vec<CardDto>, CommandError> {
     validate_entity_id(&deck_id, "deck")?;
     database.with_connection(|connection| list_cards_from_connection(connection, &paths, &deck_id))
-}
-
-#[tauri::command]
-pub fn delete_card(database: State<'_, Database>, note_id: String) -> Result<(), CommandError> {
-    validate_entity_id(&note_id, "note")?;
-    database.with_connection(|connection| delete_card_in_connection(connection, &note_id))
 }
 
 pub(crate) fn list_cards_from_connection(
@@ -141,39 +140,6 @@ pub(crate) fn get_card_from_connection(
         .ok_or_else(|| CommandError::new("card_not_found", "That flashcard no longer exists."))?;
 
     hydrate_card(connection, paths, raw)
-}
-
-fn delete_card_in_connection(
-    connection: &mut Connection,
-    note_id: &str,
-) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    let transaction = connection.transaction().map_err(CommandError::database)?;
-
-    let changed = transaction
-        .execute(
-            "UPDATE notes\n\
-             SET deleted_at = ?1, updated_at = ?1, revision = revision + 1\n\
-             WHERE id = ?2 AND deleted_at IS NULL",
-            params![now, note_id],
-        )
-        .map_err(CommandError::database)?;
-    if changed == 0 {
-        return Err(CommandError::new(
-            "card_not_found",
-            "That flashcard no longer exists.",
-        ));
-    }
-
-    transaction
-        .execute(
-            "UPDATE cards\n\
-             SET deleted_at = ?1, updated_at = ?1\n\
-             WHERE note_id = ?2 AND deleted_at IS NULL",
-            params![now, note_id],
-        )
-        .map_err(CommandError::database)?;
-    transaction.commit().map_err(CommandError::database)
 }
 
 fn hydrate_card(
@@ -1155,9 +1121,16 @@ mod tests {
             .expect("cards should list");
         assert_eq!(cards.len(), 1);
 
-        database
-            .with_connection(|connection| delete_card_in_connection(connection, &note_id))
+        let deletion = database
+            .with_connection(|connection| {
+                crate::deletion::delete_cards(
+                    connection,
+                    vec![note_id.clone()],
+                    "Flashcard".to_string(),
+                )
+            })
             .expect("card should delete");
+        assert_eq!(deletion.affected_count, 1);
         let cards = database
             .with_connection(|connection| list_cards_from_connection(connection, &paths, &deck.id))
             .expect("cards should list");

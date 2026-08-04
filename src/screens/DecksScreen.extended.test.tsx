@@ -24,6 +24,7 @@ vi.mock("../ipc", () => ({
     error instanceof Error ? error.message : "Unexpected error",
   importDeck: vi.fn(),
   listCards: vi.fn(),
+  undoDeletion: vi.fn(),
   updateDeck: vi.fn(),
 }));
 vi.mock("./CardEditorScreen", () => ({
@@ -47,6 +48,15 @@ function renderDeckLibrary(
   };
   render(<DecksScreen {...props} />);
   return { deck, props, refreshDecks, showToast };
+}
+
+function deletionResult(deckName: string): ipc.DeletionResult {
+  return {
+    affectedCount: 1,
+    undoToken: "f".repeat(32),
+    undoExpiresAt: Date.now() + 10_000,
+    subjectLabel: `Deck “${deckName}”`,
+  };
 }
 
 describe("DecksScreen extended behavior", () => {
@@ -223,7 +233,7 @@ describe("DecksScreen extended behavior", () => {
     expect(ipc.deleteDeck).not.toHaveBeenCalled();
 
     confirm.mockReturnValue(true);
-    vi.mocked(ipc.deleteDeck).mockResolvedValue(undefined);
+    vi.mocked(ipc.deleteDeck).mockResolvedValue(deletionResult(deck.name));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(ipc.deleteDeck).toHaveBeenCalledWith(deck.id));
   });

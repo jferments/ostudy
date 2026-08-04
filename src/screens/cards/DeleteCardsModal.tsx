@@ -1,17 +1,14 @@
 import { useState } from "react";
 
 import { Modal } from "../../components/Modal";
-import {
-  deleteCards,
-  getErrorMessage,
-  type SelectionCard,
-} from "../../ipc";
+import type { ShowToast } from "../../components/Toast";
+import { deleteCards, getErrorMessage, undoDeletion, type SelectionCard } from "../../ipc";
 
 interface DeleteCardsModalProps {
   cards: SelectionCard[];
   onClose: () => void;
   onComplete: () => void | Promise<void>;
-  showToast: (kind: "success" | "error" | "info", text: string) => void;
+  showToast: ShowToast;
 }
 
 export function DeleteCardsModal({
@@ -28,30 +25,38 @@ export function DeleteCardsModal({
     setIsDeleting(true);
     setErrorMessage(null);
 
-    let affectedCount: number;
     try {
       const result = await deleteCards(cards.map((card) => card.noteId));
-      affectedCount = result.affectedCount;
+      let refreshSuffix = "";
+      try {
+        await onComplete();
+      } catch (error: unknown) {
+        refreshSuffix = ` The current view could not refresh: ${getErrorMessage(error)}`;
+      }
+      showToast(
+        refreshSuffix ? "info" : "success",
+        `Deleted ${result.affectedCount} ${
+          result.affectedCount === 1 ? "card" : "cards"
+        }.${refreshSuffix}`,
+        {
+          label: "Undo",
+          expiresAt: result.undoExpiresAt,
+          run: async () => {
+            try {
+              await undoDeletion(result.undoToken);
+              await onComplete();
+            } catch (error: unknown) {
+              showToast("error", getErrorMessage(error));
+              throw error;
+            }
+          },
+        },
+      );
+      onClose();
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
-      setIsDeleting(false);
-      return;
-    }
-
-    showToast(
-      "success",
-      `Deleted ${affectedCount} ${affectedCount === 1 ? "card" : "cards"}.`,
-    );
-    try {
-      await onComplete();
-    } catch (error: unknown) {
-      showToast(
-        "info",
-        `The cards were deleted, but the current view could not refresh: ${getErrorMessage(error)}`,
-      );
     } finally {
       setIsDeleting(false);
-      onClose();
     }
   }
 
@@ -66,8 +71,8 @@ export function DeleteCardsModal({
     >
       <div className="delete-cards-form" aria-busy={isDeleting}>
         <div className="inline-alert delete-warning">
-          This removes the selected cards from their decks, including their local
-          scheduling state. This action cannot be undone from inside ostudy.
+          This removes the selected cards from their decks. Their schedules, review
+          history, tags, and images remain recoverable during the brief Undo window.
         </div>
         {errorMessage ? (
           <div className="inline-alert error-alert">{errorMessage}</div>

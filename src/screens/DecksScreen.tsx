@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
 import { Modal } from "../components/Modal";
+import type { ShowToast } from "../components/Toast";
 import { importGeneratedFlashcards } from "../generatedImport";
 import {
   createDeck,
@@ -13,6 +14,7 @@ import {
   getErrorMessage,
   importDeck,
   listCards,
+  undoDeletion,
   updateDeck,
   type AppSettings,
   type CardTemplate,
@@ -29,7 +31,7 @@ interface DecksScreenProps {
   refreshDecks: () => Promise<Deck[]>;
   onPracticeDeck: (deckId: string) => void;
   onDirtyChange: (dirty: boolean) => void;
-  showToast: (kind: "success" | "error" | "info", text: string) => void;
+  showToast: ShowToast;
 }
 
 type DeckView = "library" | "detail" | "editor";
@@ -167,14 +169,26 @@ export function DecksScreen({
       return;
     }
     try {
-      await deleteDeck(deck.id);
+      const deletion = await deleteDeck(deck.id);
       if (selectedDeck?.id === deck.id) {
         setSelectedDeck(null);
         setCards([]);
         setEditingCard(null);
         setView("library");
       }
-      showToast("success", `Deleted “${deck.name}”.`);
+      showToast("success", `Deleted “${deck.name}”.`, {
+        label: "Undo",
+        expiresAt: deletion.undoExpiresAt,
+        run: async () => {
+          try {
+            await undoDeletion(deletion.undoToken);
+            await refreshDecks();
+          } catch (error: unknown) {
+            showToast("error", getErrorMessage(error));
+            throw error;
+          }
+        },
+      });
       void refreshDeckListAfterMutation();
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
@@ -193,9 +207,23 @@ export function DecksScreen({
       return;
     }
     try {
-      await deleteCard(card.noteId);
-      showToast("success", "Flashcard deleted.");
-      if (selectedDeck) await refreshSelectedDeckAfterMutation(selectedDeck.id);
+      const deletion = await deleteCard(card.noteId);
+      const deckId = selectedDeck?.id;
+      showToast("success", "Flashcard deleted.", {
+        label: "Undo",
+        expiresAt: deletion.undoExpiresAt,
+        run: async () => {
+          try {
+            await undoDeletion(deletion.undoToken);
+            if (deckId) await refreshSelectedDeckAfterMutation(deckId);
+            else await refreshDecks();
+          } catch (error: unknown) {
+            showToast("error", getErrorMessage(error));
+            throw error;
+          }
+        },
+      });
+      if (deckId) await refreshSelectedDeckAfterMutation(deckId);
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
     }
@@ -232,9 +260,6 @@ export function DecksScreen({
     successMessage: string,
     committedDeck?: Deck,
   ): Promise<void> {
-    // The import command is the durable boundary. Announce that result before
-    // attempting detail hydration so a display failure cannot be mistaken for
-    // a failed import and encourage the user to import the same file twice.
     showToast("success", successMessage);
     setCards([]);
     setEditingCard(null);

@@ -48,6 +48,7 @@ const [
   read("src-tauri", "src", "lib.rs"),
   readJoined(
     ["src-tauri", "src", "authoring.rs"],
+    ["src-tauri", "src", "deletion_commands.rs"],
     ["src-tauri", "src", "authoring", "types.rs"],
     ["src-tauri", "src", "authoring", "commands.rs"],
     ["src-tauri", "src", "authoring", "search_and_tags.rs"],

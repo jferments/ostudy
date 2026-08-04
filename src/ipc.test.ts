@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   analyzeBulkCards,
   applyScheduleAction,
+  beginAssetDraft,
   bulkCreateCards,
   bulkTagCards,
+  cancelAssetDraft,
   completePracticeSession,
   createCardTemplate,
   createDeck,
@@ -41,7 +43,9 @@ import {
   startCardPractice,
   startSelectedPractice,
   submitPracticeReview,
+  syncAssetDraft,
   transferCards,
+  undoDeletion,
   updateCardTemplate,
   updateDeck,
   updateGeneratedCard,
@@ -60,6 +64,7 @@ const deckId = "a".repeat(32);
 const noteId = "b".repeat(32);
 const cardId = "c".repeat(32);
 const templateId = "d".repeat(32);
+const draftId = "7".repeat(32);
 
 const searchInput: CardSearchInput = {
   deckIds: [deckId],
@@ -297,17 +302,31 @@ describe("typed Tauri IPC wrappers", () => {
     await expectInvocation(() => deleteCards([noteId]), "delete_cards", {
       input: { noteIds: [noteId] },
     });
+    await expectInvocation(() => undoDeletion("8".repeat(32)), "undo_deletion", {
+      input: { undoToken: "8".repeat(32) },
+    });
   });
 
-  it("wires settings, practice, scheduling, assets, and transfer commands", async () => {
+  it("wires settings, practice, scheduling, asset drafts, and transfer commands", async () => {
     const settings: AppSettings = makeSettings({ dailyNewLimit: 12 });
     await expectInvocation(getSettings, "get_settings");
     await expectInvocation(() => saveSettings(settings), "save_settings", {
       input: settings,
     });
     await expectInvocation(getAppInfo, "get_app_info");
-    await expectInvocation(() => importImage("/tmp/image.png"), "import_image", {
-      filePath: "/tmp/image.png",
+    await expectInvocation(
+      () => beginAssetDraft("card", noteId),
+      "begin_asset_draft",
+      { input: { purpose: "card", ownerId: noteId } },
+    );
+    await expectInvocation(() => syncAssetDraft(draftId, [cardId]), "sync_asset_draft", {
+      input: { draftId, assetIds: [cardId] },
+    });
+    await expectInvocation(() => importImage("/tmp/image.png", draftId), "import_image", {
+      input: { filePath: "/tmp/image.png", draftId },
+    });
+    await expectInvocation(() => cancelAssetDraft(draftId), "cancel_asset_draft", {
+      draftId,
     });
     await expectInvocation(
       () => getPracticeWorkload([deckId]),

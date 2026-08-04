@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 use tauri::State;
 
 use crate::{
+    asset_lifecycle::{ensure_assets_available, finalize_assets_for_owner},
     assets::{ensure_assets_exist, AssetDto},
     cards::{get_card_from_connection, validate_content, CardDto, ValidatedContent},
     database::Database,
@@ -137,6 +138,8 @@ pub struct CreateOrganizedCardInput {
     pub tags: Vec<String>,
     #[serde(default)]
     pub allow_duplicate: bool,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -153,6 +156,8 @@ pub struct UpdateOrganizedCardInput {
     pub tags: Vec<String>,
     #[serde(default)]
     pub allow_duplicate: bool,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -236,11 +241,6 @@ pub struct BulkTagCardsInput {
     pub mode: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct DeleteCardsInput {
-    pub note_ids: Vec<String>,
-}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

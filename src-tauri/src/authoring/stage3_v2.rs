@@ -15,3 +15,4 @@ include!("stage3_v2/auto_template_layout.rs");
 include!("stage3_v2/normalization.rs");
 include!("stage3_v2/transfer_wrapper.rs");
 include!("stage3_v2/tests.rs");
+include!("stage3_v2/asset_lifecycle_tests.rs");

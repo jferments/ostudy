@@ -1,17 +1,20 @@
 //! Tauri composition root for the native application.
 //!
-//! Startup resolves the managed application paths and opens the SQLite library
-//! before either value is published as Tauri state. `Database::open` validates
-//! the migration ledger and runs required compatibility normalization, so a
-//! failed durable initialization stops startup instead of exposing commands to
-//! a partially initialized library.
+//! Startup resolves the managed application paths, opens and migrates SQLite,
+//! finalizes expired deletion recovery windows, and reconciles the asset ledger
+//! with the managed filesystem before publishing any Tauri state. A failed
+//! durable initialization therefore stops startup instead of exposing commands
+//! to a partially reconciled library.
 
 mod analytics;
+mod asset_lifecycle;
 mod assets;
 mod authoring;
 mod cards;
 mod database;
 mod decks;
+mod deletion;
+mod deletion_commands;
 mod error;
 mod learning_signals;
 mod logging;
@@ -24,6 +27,7 @@ mod settings;
 mod stage3_transfer;
 mod tagged_transfer;
 mod transfer;
+mod transfer_lifecycle;
 mod util;
 mod workload;
 
@@ -42,10 +46,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            // Resolve and validate every managed resource before registering
-            // state. Command handlers may assume that both the paths and the
-            // database represent the same successfully initialized app-data
-            // directory for the lifetime of this process.
             let app_data_directory = app.path().app_data_dir().map_err(|error| {
                 io::Error::other(format!(
                     "Could not resolve the application data directory: {error}"
@@ -53,6 +53,11 @@ pub fn run() {
             })?;
             let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
+
+            deletion::finalize_expired_deletions(&database)
+                .map_err(|error| io::Error::other(error.message))?;
+            asset_lifecycle::reconcile_startup(&database, &paths)
+                .map_err(|error| io::Error::other(error.message))?;
 
             if !app.manage(paths.clone()) {
                 return Err(io::Error::other("Application paths were already initialized.").into());
@@ -64,26 +69,21 @@ pub fn run() {
             logging::info(
                 "application_started",
                 format!(
-                    "data_directory={} database={}",
+                    "data_directory={} database={} asset_reconciliation=complete",
                     paths.app_data_dir().display(),
                     paths.database_path().display()
                 ),
             );
             Ok(())
         })
-        // Registered command names and serialized DTOs form the bundled
-        // React/Rust transport contract. Several entries intentionally point at
-        // compatibility wrappers that compose older package formats with newer
-        // metadata and normalization; internal refactors must preserve the
-        // externally registered names unless every caller changes with them.
         .invoke_handler(tauri::generate_handler![
             decks::list_decks,
             decks::get_deck,
             decks::create_deck,
             decks::update_deck,
-            decks::delete_deck,
+            deletion_commands::delete_deck_with_undo,
             cards::list_cards,
-            cards::delete_card,
+            deletion_commands::delete_card_with_undo,
             authoring::list_tags,
             authoring::search_cards,
             authoring::list_matching_cards,
@@ -96,7 +96,7 @@ pub fn run() {
             // Registered externally as the stable `transfer_cards` IPC command.
             authoring::transfer_generated_cards,
             authoring::bulk_tag_cards,
-            authoring::delete_cards,
+            deletion_commands::delete_cards_with_undo,
             authoring::get_card_type_info,
             authoring::create_generated_card,
             authoring::update_generated_card,
@@ -108,7 +108,11 @@ pub fn run() {
             authoring::preview_template_cards,
             authoring::generate_cards_from_template,
             authoring::import_generated_flashcards,
+            asset_lifecycle::begin_asset_draft,
+            asset_lifecycle::cancel_asset_draft,
+            asset_lifecycle::sync_asset_draft,
             assets::import_image,
+            deletion::undo_deletion,
             settings::get_settings,
             settings::save_settings,
             settings::get_app_info,

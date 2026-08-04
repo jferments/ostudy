@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import type { ShowToast } from "../components/Toast";
+import { collectAssetIds, EMPTY_RICH_DOCUMENT, cloneDocument } from "../editor/richText";
 import {
+  beginAssetDraft,
+  cancelAssetDraft,
   createCardTemplate,
   deleteCardTemplate,
   getErrorMessage,
   listCardTemplates,
+  syncAssetDraft,
   updateCardTemplate,
   type Asset,
   type CardTemplate,
@@ -12,12 +17,11 @@ import {
   type CardTemplateRuleInput,
   type RichDocument,
 } from "../ipc";
-import { EMPTY_RICH_DOCUMENT, cloneDocument } from "../editor/richText";
 import { TemplateLayoutEditor } from "./templates/TemplateLayoutEditor";
 
 interface TemplatesScreenProps {
   onDirtyChange: (dirty: boolean) => void;
-  showToast: (kind: "success" | "error" | "info", text: string) => void;
+  showToast: ShowToast;
 }
 
 interface FieldDraft extends CardTemplateFieldInput {
@@ -52,11 +56,22 @@ export function TemplatesScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [draft, setDraft] = useState<TemplateDraft | null>(null);
   const [baseline, setBaseline] = useState<TemplateDraft | null>(null);
+  const [assetDraftId, setAssetDraftId] = useState<string | null>(null);
+  const assetDraftRef = useRef<string | null>(null);
   const savingRef = useRef(false);
   const dirty = useMemo(
     () => draft !== null && JSON.stringify(draft) !== JSON.stringify(baseline),
     [baseline, draft],
   );
+  const usedAssetIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const rule of draft?.rules ?? []) {
+      for (const id of collectAssetIds(rule.frontDoc)) ids.add(id);
+      for (const id of collectAssetIds(rule.backDoc)) ids.add(id);
+    }
+    return [...ids].sort();
+  }, [draft?.rules]);
+  const usedAssetKey = usedAssetIds.join(",");
 
   useEffect(() => {
     void loadTemplates();
@@ -66,6 +81,31 @@ export function TemplatesScreen({
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    return () => {
+      const draftId = assetDraftRef.current;
+      assetDraftRef.current = null;
+      if (draftId) {
+        void cancelAssetDraft(draftId).catch((error: unknown) => {
+          console.error("Unable to cancel template image draft:", getErrorMessage(error));
+        });
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!assetDraftId) return;
+    const retained = usedAssetKey === "" ? [] : usedAssetKey.split(",");
+    const timer = window.setTimeout(() => {
+      void syncAssetDraft(assetDraftId, retained).catch((error: unknown) => {
+        if (assetDraftRef.current === assetDraftId) {
+          setErrorMessage(`The image draft could not be synchronized: ${getErrorMessage(error)}`);
+        }
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [assetDraftId, usedAssetKey]);
 
   async function loadTemplates(): Promise<void> {
     setIsLoading(true);
@@ -79,23 +119,44 @@ export function TemplatesScreen({
     }
   }
 
-  function beginCreate(): void {
-    const next = newTemplateDraft();
+  async function openDraft(next: TemplateDraft): Promise<void> {
     setDraft(next);
     setBaseline(next);
+    setAssetDraftId(null);
     setErrorMessage(null);
+    try {
+      const assetDraft = await beginAssetDraft("template", next.id);
+      assetDraftRef.current = assetDraft.id;
+      setAssetDraftId(assetDraft.id);
+    } catch (error: unknown) {
+      setErrorMessage(`The managed image draft could not open: ${getErrorMessage(error)}`);
+    }
+  }
+
+  function beginCreate(): void {
+    void openDraft(newTemplateDraft());
   }
 
   function beginEdit(template: CardTemplate): void {
-    const next = draftFromTemplate(template);
-    setDraft(next);
-    setBaseline(next);
-    setErrorMessage(null);
+    void openDraft(draftFromTemplate(template));
   }
 
-  function cancelEdit(): void {
+  async function cancelEdit(): Promise<void> {
     if (isSaving) return;
     if (dirty && !window.confirm("Discard the changes to this card template?")) return;
+    const draftId = assetDraftRef.current;
+    assetDraftRef.current = null;
+    setAssetDraftId(null);
+    if (draftId) {
+      try {
+        await cancelAssetDraft(draftId);
+      } catch (error: unknown) {
+        assetDraftRef.current = draftId;
+        setAssetDraftId(draftId);
+        setErrorMessage(`The image draft could not be canceled: ${getErrorMessage(error)}`);
+        return;
+      }
+    }
     setDraft(null);
     setBaseline(null);
     setErrorMessage(null);
@@ -126,6 +187,7 @@ export function TemplatesScreen({
           frontDoc,
           backDoc,
         })),
+        assetDraftId: assetDraftId ?? undefined,
       };
       const saved = draft.id
         ? await updateCardTemplate({
@@ -134,6 +196,8 @@ export function TemplatesScreen({
             revision: draft.revision ?? 1,
           })
         : await createCardTemplate(input);
+      assetDraftRef.current = null;
+      setAssetDraftId(null);
       setTemplates((current) => {
         const withoutSaved = current.filter((template) => template.id !== saved.id);
         return [...withoutSaved, saved].sort((left, right) =>
@@ -165,6 +229,10 @@ export function TemplatesScreen({
       await deleteCardTemplate(template.id);
       setTemplates((current) => current.filter((item) => item.id !== template.id));
       if (draft?.id === template.id) {
+        const imageDraft = assetDraftRef.current;
+        assetDraftRef.current = null;
+        setAssetDraftId(null);
+        if (imageDraft) await cancelAssetDraft(imageDraft);
         setDraft(null);
         setBaseline(null);
       }
@@ -187,7 +255,7 @@ export function TemplatesScreen({
       <div className="screen templates-screen" aria-busy={isSaving}>
         <header className="screen-header compact-screen-header">
           <div>
-            <button type="button" className="back-button" onClick={cancelEdit}>
+            <button type="button" className="back-button" onClick={() => void cancelEdit()}>
               ← Templates
             </button>
             <h1>{draft.id ? "Edit card template" : "New card template"}</h1>
@@ -201,7 +269,7 @@ export function TemplatesScreen({
               type="button"
               className="secondary-button"
               disabled={isSaving}
-              onClick={cancelEdit}
+              onClick={() => void cancelEdit()}
             >
               Cancel
             </button>
@@ -405,6 +473,7 @@ export function TemplatesScreen({
                     label="Question layout"
                     document={rule.frontDoc}
                     assets={draft.assets}
+                    assetDraftId={assetDraftId}
                     disabled={isSaving}
                     onAssetImported={addAsset}
                     onChange={(frontDoc) => updateRule(setDraft, rule.key, { frontDoc })}
@@ -413,6 +482,7 @@ export function TemplatesScreen({
                     label="Answer layout"
                     document={rule.backDoc}
                     assets={draft.assets}
+                    assetDraftId={assetDraftId}
                     disabled={isSaving}
                     onAssetImported={addAsset}
                     onChange={(backDoc) => updateRule(setDraft, rule.key, { backDoc })}
