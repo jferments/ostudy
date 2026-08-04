@@ -120,6 +120,42 @@ describe("MoveCopyModal", () => {
     });
   });
 
+  it("treats a failed refresh as committed transfer success", async () => {
+    vi.mocked(ipc.transferCards).mockResolvedValue({
+      affectedCount: 1,
+      skippedDuplicates: 0,
+    });
+    const source = makeDeck({ name: "Source" });
+    const target = makeDeck({ name: "Target" });
+    const onComplete = vi.fn().mockRejectedValue(new Error("Search refresh failed."));
+    const onClose = vi.fn();
+    const showToast = vi.fn();
+
+    render(
+      <MoveCopyModal
+        cards={[{ noteId: "a".repeat(32), deckId: source.id }]}
+        decks={[source, target]}
+        onClose={onClose}
+        onComplete={onComplete}
+        showToast={showToast}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Move 1 card" }));
+
+    await waitFor(() => {
+      expect(ipc.transferCards).toHaveBeenCalledOnce();
+      expect(onComplete).toHaveBeenCalledOnce();
+      expect(showToast).toHaveBeenNthCalledWith(1, "success", "Moved 1 card.");
+      expect(showToast).toHaveBeenNthCalledWith(
+        2,
+        "info",
+        "The cards were moved, but the current view could not refresh: Search refresh failed.",
+      );
+      expect(onClose).toHaveBeenCalledOnce();
+    });
+  });
+
   it("shows an empty state when no different destination exists", () => {
     const onlyDeck = makeDeck({ name: "Only deck" });
     render(

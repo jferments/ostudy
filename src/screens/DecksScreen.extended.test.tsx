@@ -138,6 +138,38 @@ describe("DecksScreen extended behavior", () => {
     expect(screen.getByRole("heading", { name: imported.name })).toBeTruthy();
   });
 
+  it("does not reclassify a committed studydeck import when detail refresh fails", async () => {
+    const imported = makeDeck({ name: "Imported deck", cardCount: 2 });
+    vi.mocked(openDialog).mockResolvedValue("/tmp/imported.studydeck");
+    vi.mocked(ipc.importDeck).mockResolvedValue({
+      deck: imported,
+      cardCount: 2,
+      assetCount: 0,
+    });
+    vi.mocked(ipc.listCards).mockRejectedValue(new Error("Card list unavailable."));
+    const refreshDecks = vi.fn().mockResolvedValue([imported]);
+    const { showToast } = renderDeckLibrary(undefined, { refreshDecks });
+
+    fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
+
+    await waitFor(() => {
+      expect(ipc.importDeck).toHaveBeenCalledOnce();
+      expect(showToast).toHaveBeenNthCalledWith(
+        1,
+        "success",
+        "Imported “Imported deck” with 2 cards.",
+      );
+      expect(showToast).toHaveBeenNthCalledWith(
+        2,
+        "info",
+        "The deck was imported, but it could not be displayed yet: Card list unavailable.",
+      );
+      expect(refreshDecks).toHaveBeenCalledOnce();
+    });
+    expect(showToast).not.toHaveBeenCalledWith("error", expect.anything());
+    expect(screen.getByRole("heading", { name: imported.name })).toBeTruthy();
+  });
+
   it("keeps the library usable when a studydeck import fails", async () => {
     vi.mocked(openDialog).mockResolvedValue("/tmp/broken.studydeck");
     vi.mocked(ipc.importDeck).mockRejectedValue(new Error("Invalid deck package."));

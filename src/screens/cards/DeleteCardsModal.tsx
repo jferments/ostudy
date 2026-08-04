@@ -27,18 +27,31 @@ export function DeleteCardsModal({
     if (cards.length === 0 || isDeleting) return;
     setIsDeleting(true);
     setErrorMessage(null);
+
+    let affectedCount: number;
     try {
       const result = await deleteCards(cards.map((card) => card.noteId));
-      await onComplete();
-      showToast(
-        "success",
-        `Deleted ${result.affectedCount} ${result.affectedCount === 1 ? "card" : "cards"}.`,
-      );
-      onClose();
+      affectedCount = result.affectedCount;
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
+      setIsDeleting(false);
+      return;
+    }
+
+    showToast(
+      "success",
+      `Deleted ${affectedCount} ${affectedCount === 1 ? "card" : "cards"}.`,
+    );
+    try {
+      await onComplete();
+    } catch (error: unknown) {
+      showToast(
+        "info",
+        `The cards were deleted, but the current view could not refresh: ${getErrorMessage(error)}`,
+      );
     } finally {
       setIsDeleting(false);
+      onClose();
     }
   }
 

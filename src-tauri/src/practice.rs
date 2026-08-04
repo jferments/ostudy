@@ -46,7 +46,7 @@ pub struct PracticeCardEventInput {
     pub card_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SubmitReviewInput {
     pub session_id: String,
@@ -68,6 +68,25 @@ pub struct ReviewResultDto {
     pub completed: bool,
     pub rated_count: i64,
     pub correct_count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReviewRequestIdentity<'a> {
+    session_id: &'a str,
+    card_id: &'a str,
+    outcome: &'a str,
+    response_time_ms: i64,
+    schedule_revision: i64,
+}
+
+struct ExistingReviewSubmission {
+    request_fingerprint: Option<String>,
+    session_id: Option<String>,
+    card_id: String,
+    outcome: String,
+    response_time_ms: i64,
+    result: ReviewResultDto,
 }
 
 #[tauri::command]
@@ -203,11 +222,12 @@ fn practice_card_state_error(
     })
 }
 
-fn submit_review_in_connection(
+pub(crate) fn submit_review_in_connection(
     connection: &mut Connection,
     input: SubmitReviewInput,
 ) -> Result<ReviewResultDto, CommandError> {
     let outcome = ReviewOutcome::parse(&input.outcome)?;
+    let request_fingerprint = review_request_fingerprint(&input)?;
     let reviewed_at = unix_time_millis()?;
     let desired_retention = load_settings(connection)?.desired_retention;
     let transaction = connection
@@ -215,8 +235,9 @@ fn submit_review_in_connection(
         .map_err(CommandError::database)?;
 
     if let Some(existing) = review_result_for_submission(&transaction, &input.submission_id)? {
+        ensure_equivalent_review_retry(&existing, &input, &request_fingerprint)?;
         transaction.commit().map_err(CommandError::database)?;
-        return Ok(existing);
+        return Ok(existing.result);
     }
 
     let session_state: Option<PracticeSessionState> = transaction
@@ -269,7 +290,6 @@ fn submit_review_in_connection(
         ));
     }
     let transition = apply_review(current, outcome, reviewed_at, desired_retention)?;
-    insert_review_event(&transaction, &input, &transition, reviewed_at)?;
     update_schedule(&transaction, &transition.after)?;
 
     let updated = transaction
@@ -304,7 +324,7 @@ fn submit_review_in_connection(
         )
         .map_err(CommandError::database)?;
     let result = ReviewResultDto {
-        card_id: input.card_id,
+        card_id: input.card_id.clone(),
         rating: outcome.rating_number(),
         outcome: outcome.as_str().to_string(),
         due_at: transition.after.due_at,
@@ -313,14 +333,62 @@ fn submit_review_in_connection(
         rated_count,
         correct_count,
     };
+    insert_review_event(
+        &transaction,
+        &input,
+        &request_fingerprint,
+        &transition,
+        &result,
+        reviewed_at,
+    )?;
     transaction.commit().map_err(CommandError::database)?;
     Ok(result)
+}
+
+fn review_request_fingerprint(input: &SubmitReviewInput) -> Result<String, CommandError> {
+    let identity = ReviewRequestIdentity {
+        session_id: &input.session_id,
+        card_id: &input.card_id,
+        outcome: &input.outcome,
+        response_time_ms: input.response_time_ms,
+        schedule_revision: input.schedule_revision,
+    };
+    let json = serde_json::to_string(&identity).map_err(CommandError::serialization)?;
+    Ok(format!("review:v1:{json}"))
+}
+
+fn ensure_equivalent_review_retry(
+    existing: &ExistingReviewSubmission,
+    input: &SubmitReviewInput,
+    request_fingerprint: &str,
+) -> Result<(), CommandError> {
+    let equivalent = match existing.request_fingerprint.as_deref() {
+        Some(stored) => stored == request_fingerprint,
+        None => {
+            // Rows created before schema 9 have no complete request fingerprint.
+            // Preserve their historical replay behavior while still comparing every
+            // request field that the old ledger recorded.
+            existing.session_id.as_deref() == Some(input.session_id.as_str())
+                && existing.card_id == input.card_id
+                && existing.outcome == input.outcome
+                && existing.response_time_ms == input.response_time_ms
+        }
+    };
+    if equivalent {
+        return Ok(());
+    }
+    Err(CommandError::new(
+        "idempotency_conflict",
+        "That review retry identifier was already used for a different request. Reveal the card again before rating it.",
+    ))
 }
 
 fn insert_review_event(
     connection: &Connection,
     input: &SubmitReviewInput,
+    request_fingerprint: &str,
     transition: &ScheduleTransition,
+    result: &ReviewResultDto,
     created_at: i64,
 ) -> Result<(), CommandError> {
     let event_id = generate_id(connection)?;
@@ -332,10 +400,13 @@ fn insert_review_event(
                  state_before, state_after, due_before, due_after,
                  stability_before, stability_after, difficulty_before, difficulty_after,
                  scheduled_days_before, scheduled_days_after,
-                 scheduler_name, scheduler_version, created_at
+                 scheduler_name, scheduler_version, created_at,
+                 request_fingerprint, result_completed,
+                 result_rated_count, result_correct_count
              ) VALUES (
                  ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
-                 ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
+                 ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22,
+                 ?23, ?24, ?25, ?26
              )",
             params![
                 event_id,
@@ -360,6 +431,10 @@ fn insert_review_event(
                 SCHEDULER_NAME,
                 SCHEDULER_VERSION,
                 created_at,
+                request_fingerprint,
+                bool_to_integer(result.completed),
+                result.rated_count,
+                result.correct_count,
             ],
         )
         .map_err(CommandError::database)?;
@@ -369,27 +444,47 @@ fn insert_review_event(
 fn review_result_for_submission(
     connection: &Connection,
     submission_id: &str,
-) -> Result<Option<ReviewResultDto>, CommandError> {
+) -> Result<Option<ExistingReviewSubmission>, CommandError> {
     connection
         .query_row(
-            "SELECT r.card_id, r.rating, r.confidence, r.due_after, r.reviewed_at,
+            "SELECT r.request_fingerprint, r.session_id, r.card_id, r.confidence,
+                    r.response_time_ms, r.rating, r.due_after, r.reviewed_at,
+                    r.result_completed, r.result_rated_count, r.result_correct_count,
                     ps.completed_at, ps.rated_count, ps.correct_count
              FROM review_events r
              LEFT JOIN practice_sessions ps ON ps.id = r.session_id
              WHERE r.submission_id = ?1",
             [submission_id],
             |row| {
-                let due_at: i64 = row.get(3)?;
-                let reviewed_at: i64 = row.get(4)?;
-                Ok(ReviewResultDto {
-                    card_id: row.get(0)?,
-                    rating: row.get(1)?,
-                    outcome: row.get(2)?,
-                    due_at,
-                    interval_ms: due_at.saturating_sub(reviewed_at),
-                    completed: row.get::<_, Option<i64>>(5)?.is_some(),
-                    rated_count: row.get::<_, Option<i64>>(6)?.unwrap_or(0),
-                    correct_count: row.get::<_, Option<i64>>(7)?.unwrap_or(0),
+                let due_at: i64 = row.get(6)?;
+                let reviewed_at: i64 = row.get(7)?;
+                let stored_completed: Option<i64> = row.get(8)?;
+                let stored_rated_count: Option<i64> = row.get(9)?;
+                let stored_correct_count: Option<i64> = row.get(10)?;
+                let current_completed: Option<i64> = row.get(11)?;
+                let current_rated_count: Option<i64> = row.get(12)?;
+                let current_correct_count: Option<i64> = row.get(13)?;
+                let card_id: String = row.get(2)?;
+                let outcome: String = row.get(3)?;
+                let response_time_ms: i64 = row.get(4)?;
+                Ok(ExistingReviewSubmission {
+                    request_fingerprint: row.get(0)?,
+                    session_id: row.get(1)?,
+                    card_id: card_id.clone(),
+                    outcome: outcome.clone(),
+                    response_time_ms,
+                    result: ReviewResultDto {
+                        card_id,
+                        rating: row.get(5)?,
+                        outcome,
+                        due_at,
+                        interval_ms: due_at.saturating_sub(reviewed_at),
+                        completed: stored_completed
+                            .map(|value| value != 0)
+                            .unwrap_or(current_completed.is_some()),
+                        rated_count: stored_rated_count.or(current_rated_count).unwrap_or(0),
+                        correct_count: stored_correct_count.or(current_correct_count).unwrap_or(0),
+                    },
                 })
             },
         )
@@ -460,6 +555,9 @@ fn validate_review_input(input: &SubmitReviewInput) -> Result<(), CommandError> 
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod operation_tests;
 
 #[cfg(test)]
 mod tests {

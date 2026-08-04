@@ -64,9 +64,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "862b5277d92154d5586b7924023fb64f7cfee08d566b52efbd625fcbab410b2e",
         sql: include_str!("../migrations/0008_scheduling_controls.sql"),
     },
+    Migration {
+        version: 9,
+        name: "operation_boundaries",
+        checksum: "1482b734fadc2e71720e53c397131916179a3e7966c8461bf9d4fe3d5e51dc15",
+        sql: include_str!("../migrations/0009_operation_boundaries.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 8;
+const LATEST_SCHEMA_VERSION: i64 = 9;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -236,7 +242,7 @@ mod tests {
     }
 
     #[test]
-    fn migrations_are_idempotent_and_reach_schema_eight() {
+    fn migrations_are_idempotent_and_reach_schema_nine() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
@@ -275,6 +281,12 @@ mod tests {
                     ("card_schedules", "revision"),
                     ("practice_sessions", "mode"),
                     ("practice_session_cards", "dismissed_at"),
+                    ("practice_sessions", "start_operation_id"),
+                    ("practice_sessions", "start_request_fingerprint"),
+                    ("review_events", "request_fingerprint"),
+                    ("review_events", "result_completed"),
+                    ("review_events", "result_rated_count"),
+                    ("review_events", "result_correct_count"),
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -430,6 +442,10 @@ mod tests {
         assert_eq!(
             MIGRATIONS[7].checksum,
             "862b5277d92154d5586b7924023fb64f7cfee08d566b52efbd625fcbab410b2e"
+        );
+        assert_eq!(
+            MIGRATIONS[8].checksum,
+            "1482b734fadc2e71720e53c397131916179a3e7966c8461bf9d4fe3d5e51dc15"
         );
     }
 }

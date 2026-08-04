@@ -6,7 +6,7 @@ use std::{
 };
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
@@ -29,6 +29,7 @@ const MAX_SESSION_CARDS: usize = 10_000;
 const DAY_MS: i64 = 86_400_000;
 
 type PendingCard = (String, String, String, i64, i64, bool, String);
+type StoredSessionCard = (String, String, String, String, i64, i64);
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -39,6 +40,7 @@ pub struct PracticeWorkloadInput {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct StartPracticeInput {
+    pub operation_id: String,
     pub deck_ids: Vec<String>,
     pub shuffle: bool,
     pub mode: String,
@@ -47,8 +49,24 @@ pub struct StartPracticeInput {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct StartCardPracticeInput {
+    pub operation_id: String,
     pub card_ids: Vec<String>,
     pub shuffle: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SelectedPracticeRequestIdentity<'a> {
+    deck_ids: &'a [String],
+    shuffle: bool,
+    mode: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CardPracticeRequestIdentity<'a> {
+    card_ids: &'a [String],
+    shuffle: bool,
 }
 
 #[tauri::command]
@@ -69,6 +87,7 @@ pub fn start_selected_practice(
     paths: State<'_, AppPaths>,
     input: StartPracticeInput,
 ) -> Result<PracticeSessionDto, CommandError> {
+    validate_entity_id(&input.operation_id, "practice start operation")?;
     let deck_ids = validate_deck_ids(input.deck_ids)?;
     if !matches!(input.mode.as_str(), "scheduled" | "extra") {
         return Err(CommandError::new(
@@ -80,6 +99,7 @@ pub fn start_selected_practice(
         start_selected_practice_in_connection(
             connection,
             &paths,
+            input.operation_id,
             deck_ids,
             input.shuffle,
             &input.mode,
@@ -93,19 +113,34 @@ pub fn start_card_practice(
     paths: State<'_, AppPaths>,
     input: StartCardPracticeInput,
 ) -> Result<PracticeSessionDto, CommandError> {
+    validate_entity_id(&input.operation_id, "practice start operation")?;
     let card_ids = validate_card_ids(input.card_ids)?;
     database.with_connection(|connection| {
-        start_card_practice_in_connection(connection, &paths, card_ids, input.shuffle)
+        start_card_practice_in_connection(
+            connection,
+            &paths,
+            input.operation_id,
+            card_ids,
+            input.shuffle,
+        )
     })
 }
 
-fn start_selected_practice_in_connection(
+pub(crate) fn start_selected_practice_in_connection(
     connection: &mut Connection,
     paths: &AppPaths,
+    operation_id: String,
     deck_ids: Vec<String>,
     shuffle: bool,
     mode: &str,
 ) -> Result<PracticeSessionDto, CommandError> {
+    let request_fingerprint = selected_practice_request_fingerprint(&deck_ids, shuffle, mode)?;
+    if let Some(existing) =
+        practice_session_for_operation(connection, paths, &operation_id, &request_fingerprint)?
+    {
+        return Ok(existing);
+    }
+
     let deck_names = load_deck_names(connection, &deck_ids)?;
     let planned = if mode == "scheduled" {
         let settings = load_settings(connection)?;
@@ -123,16 +158,32 @@ fn start_selected_practice_in_connection(
     }
     let pending = hydrate_pending_variants(connection, planned)?;
     create_practice_session(
-        connection, paths, deck_ids, deck_names, pending, shuffle, mode,
+        connection,
+        paths,
+        operation_id,
+        request_fingerprint,
+        deck_ids,
+        deck_names,
+        pending,
+        shuffle,
+        mode,
     )
 }
 
-fn start_card_practice_in_connection(
+pub(crate) fn start_card_practice_in_connection(
     connection: &mut Connection,
     paths: &AppPaths,
+    operation_id: String,
     card_ids: Vec<String>,
     shuffle: bool,
 ) -> Result<PracticeSessionDto, CommandError> {
+    let request_fingerprint = card_practice_request_fingerprint(&card_ids, shuffle)?;
+    if let Some(existing) =
+        practice_session_for_operation(connection, paths, &operation_id, &request_fingerprint)?
+    {
+        return Ok(existing);
+    }
+
     let now = unix_time_millis()?;
     let mut deck_names = HashMap::new();
     let mut selected_decks = BTreeSet::new();
@@ -189,12 +240,142 @@ fn start_card_practice_in_connection(
     create_practice_session(
         connection,
         paths,
+        operation_id,
+        request_fingerprint,
         selected_decks.into_iter().collect(),
         deck_names,
         pending,
         shuffle,
         "custom",
     )
+}
+
+fn selected_practice_request_fingerprint(
+    deck_ids: &[String],
+    shuffle: bool,
+    mode: &str,
+) -> Result<String, CommandError> {
+    let identity = SelectedPracticeRequestIdentity {
+        deck_ids,
+        shuffle,
+        mode,
+    };
+    let json = serde_json::to_string(&identity).map_err(CommandError::serialization)?;
+    Ok(format!("practice-selected:v1:{json}"))
+}
+
+fn card_practice_request_fingerprint(
+    card_ids: &[String],
+    shuffle: bool,
+) -> Result<String, CommandError> {
+    let identity = CardPracticeRequestIdentity { card_ids, shuffle };
+    let json = serde_json::to_string(&identity).map_err(CommandError::serialization)?;
+    Ok(format!("practice-cards:v1:{json}"))
+}
+
+fn practice_session_for_operation(
+    connection: &Connection,
+    paths: &AppPaths,
+    operation_id: &str,
+    request_fingerprint: &str,
+) -> Result<Option<PracticeSessionDto>, CommandError> {
+    let existing: Option<(String, Option<String>)> = connection
+        .query_row(
+            "SELECT id, start_request_fingerprint
+             FROM practice_sessions
+             WHERE start_operation_id = ?1",
+            [operation_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    let Some((session_id, stored_fingerprint)) = existing else {
+        return Ok(None);
+    };
+    if stored_fingerprint.as_deref() != Some(request_fingerprint) {
+        return Err(CommandError::new(
+            "idempotency_conflict",
+            "That practice retry identifier was already used for a different session request.",
+        ));
+    }
+    load_practice_session(connection, paths, &session_id)
+        .map(Some)
+        .map_err(|error| {
+            crate::logging::error(
+                "committed_practice_session_reload_failed",
+                format!("session {session_id}: {} ({})", error.message, error.code),
+            );
+            CommandError::new(
+                "committed_practice_session_unavailable",
+                "The practice session was created, but its cards could not be reloaded. No duplicate session was created. Return to Practice and try again.",
+            )
+        })
+}
+
+fn load_practice_session(
+    connection: &Connection,
+    paths: &AppPaths,
+    session_id: &str,
+) -> Result<PracticeSessionDto, CommandError> {
+    let metadata: (i64, String, i64) = connection
+        .query_row(
+            "SELECT shuffle, mode, started_at
+             FROM practice_sessions WHERE id = ?1",
+            [session_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?
+        .ok_or_else(|| {
+            CommandError::new(
+                "practice_session_not_found",
+                "That practice session no longer exists.",
+            )
+        })?;
+    let mut statement = connection
+        .prepare(
+            "SELECT psc.card_id, psc.presentation_variant, c.deck_id, d.name,
+                    s.due_at, s.state
+             FROM practice_session_cards psc
+             JOIN cards c ON c.id = psc.card_id
+             JOIN decks d ON d.id = c.deck_id
+             JOIN card_schedules s ON s.card_id = c.id
+             WHERE psc.session_id = ?1
+             ORDER BY psc.position ASC",
+        )
+        .map_err(CommandError::database)?;
+    let stored = statement
+        .query_map([session_id], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ))
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<StoredSessionCard>, _>>()
+        .map_err(CommandError::database)?;
+    let mut cards = Vec::with_capacity(stored.len());
+    for (card_id, variant, _deck_id, deck_name, due_at, state) in stored {
+        let card = get_generated_card_for_practice(connection, paths, &card_id, &variant)?;
+        cards.push(PracticeCardDto {
+            card,
+            deck_name,
+            due_at,
+            schedule_state: state,
+            needs_more_practice: needs_more_practice(connection, &card_id)?,
+        });
+    }
+    Ok(PracticeSessionDto {
+        id: session_id.to_string(),
+        cards,
+        shuffle: metadata.0 != 0,
+        mode: metadata.1,
+        started_at: metadata.2,
+    })
 }
 
 fn load_deck_names(
@@ -248,6 +429,8 @@ fn hydrate_pending_variants(
 fn create_practice_session(
     connection: &mut Connection,
     paths: &AppPaths,
+    operation_id: String,
+    request_fingerprint: String,
     selected_deck_ids: Vec<String>,
     deck_names: HashMap<String, String>,
     mut pending_cards: Vec<PendingCard>,
@@ -261,10 +444,7 @@ fn create_practice_session(
         ));
     }
     let now = unix_time_millis()?;
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(CommandError::database)?;
-    let session_id = generate_id(&transaction)?;
+    let session_id = generate_id(connection)?;
     if shuffle {
         pending_cards.sort_by_key(|(_, card_id, _, due_at, state, weak, _)| {
             (
@@ -275,13 +455,37 @@ fn create_practice_session(
             )
         });
     }
+
+    // Build every fallible part of the response before the transaction begins.
+    // Once the rows commit, the command can return the already prepared DTO
+    // rather than discovering an asset/content error after durable success.
+    let mut cards = Vec::with_capacity(pending_cards.len());
+    for (deck_id, card_id, _, due_at, state, weak, variant) in &pending_cards {
+        let card = get_generated_card_for_practice(connection, paths, card_id, variant)?;
+        let deck_name = deck_names
+            .get(deck_id)
+            .cloned()
+            .unwrap_or_else(|| "Deck".to_string());
+        cards.push(PracticeCardDto {
+            card,
+            deck_name,
+            due_at: *due_at,
+            schedule_state: *state,
+            needs_more_practice: *weak,
+        });
+    }
+
     let selected_deck_ids_json =
         serde_json::to_string(&selected_deck_ids).map_err(CommandError::serialization)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(CommandError::database)?;
     transaction
         .execute(
             "INSERT INTO practice_sessions (
-                 id, selected_deck_ids_json, shuffle, card_count, mode, started_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                 id, selected_deck_ids_json, shuffle, card_count, mode, started_at,
+                 start_operation_id, start_request_fingerprint
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 session_id,
                 selected_deck_ids_json,
@@ -289,6 +493,8 @@ fn create_practice_session(
                 i64::try_from(pending_cards.len()).unwrap_or(i64::MAX),
                 mode,
                 now,
+                operation_id,
+                request_fingerprint,
             ],
         )
         .map_err(CommandError::database)?;
@@ -309,21 +515,6 @@ fn create_practice_session(
     }
     transaction.commit().map_err(CommandError::database)?;
 
-    let mut cards = Vec::with_capacity(pending_cards.len());
-    for (deck_id, card_id, _, due_at, state, weak, variant) in pending_cards {
-        let card = get_generated_card_for_practice(connection, paths, &card_id, &variant)?;
-        let deck_name = deck_names
-            .get(&deck_id)
-            .cloned()
-            .unwrap_or_else(|| "Deck".to_string());
-        cards.push(PracticeCardDto {
-            card,
-            deck_name,
-            due_at,
-            schedule_state: state,
-            needs_more_practice: weak,
-        });
-    }
     Ok(PracticeSessionDto {
         id: session_id,
         cards,
@@ -384,3 +575,6 @@ fn shuffle_key(session_id: &str, card_id: &str) -> u64 {
     card_id.hash(&mut hasher);
     hasher.finish()
 }
+
+#[cfg(test)]
+mod operation_tests;

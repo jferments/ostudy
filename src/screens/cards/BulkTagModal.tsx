@@ -36,24 +36,37 @@ export function BulkTagModal({
     if (tags.length === 0 || cards.length === 0 || isSaving) return;
     setIsSaving(true);
     setErrorMessage(null);
+
+    let affectedCount: number;
     try {
       const result = await bulkTagCards({
         noteIds: cards.map((card) => card.noteId),
         tags,
         mode,
       });
-      await onComplete();
-      showToast(
-        "success",
-        `${adding ? "Added tags to" : "Removed tags from"} ${result.affectedCount} ${
-          result.affectedCount === 1 ? "card" : "cards"
-        }.`,
-      );
-      onClose();
+      affectedCount = result.affectedCount;
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
+      setIsSaving(false);
+      return;
+    }
+
+    showToast(
+      "success",
+      `${adding ? "Added tags to" : "Removed tags from"} ${affectedCount} ${
+        affectedCount === 1 ? "card" : "cards"
+      }.`,
+    );
+    try {
+      await onComplete();
+    } catch (error: unknown) {
+      showToast(
+        "info",
+        `The tag changes were saved, but the current view could not refresh: ${getErrorMessage(error)}`,
+      );
     } finally {
       setIsSaving(false);
+      onClose();
     }
   }
 
