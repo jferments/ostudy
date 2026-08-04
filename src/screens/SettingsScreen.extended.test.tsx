@@ -36,7 +36,7 @@ describe("SettingsScreen extended behavior", () => {
       dataDirectory: "/tmp/ostudy/data",
       databasePath: "/tmp/ostudy/data/library.sqlite3",
       imageDirectory: "/tmp/ostudy/data/assets/images",
-      databaseSchemaVersion: 8,
+      databaseSchemaVersion: 9,
     });
     vi.mocked(ipc.saveSettings).mockImplementation(async (settings) => settings);
   });
