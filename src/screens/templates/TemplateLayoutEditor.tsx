@@ -5,6 +5,7 @@ interface TemplateLayoutEditorProps {
   label: string;
   document: RichDocument;
   assets: Asset[];
+  assetDraftId: string | null;
   disabled: boolean;
   onChange: (document: RichDocument) => void;
   onAssetImported: (asset: Asset) => void;
@@ -14,6 +15,7 @@ export function TemplateLayoutEditor({
   label,
   document,
   assets,
+  assetDraftId,
   disabled,
   onChange,
   onAssetImported,
@@ -27,6 +29,7 @@ export function TemplateLayoutEditor({
         }
         document={document}
         assets={assets}
+        assetDraftId={assetDraftId}
         disabled={disabled}
         onAssetImported={onAssetImported}
         onChange={(nextDocument) => onChange(nextDocument)}
