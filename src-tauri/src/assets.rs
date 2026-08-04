@@ -1,21 +1,16 @@
-use std::{
-    fs::{self, File},
-    io::Read,
-    path::Path,
-};
+use std::{fs::File, io::Read, path::Path};
 
-use rusqlite::{params, Connection};
+use rusqlite::Connection;
 use serde::Serialize;
 use tauri::State;
 
 use crate::{
+    asset_lifecycle::{stage_image, ImportImageInput},
     database::Database,
     error::CommandError,
     paths::AppPaths,
-    util::{generate_id, unix_time_millis, validate_entity_id},
+    util::validate_entity_id,
 };
-
-const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,100 +23,17 @@ pub struct AssetDto {
     pub created_at: i64,
 }
 
+/// Stages an image inside an explicit editor/import draft.
+///
+/// The stable Tauri command name remains `import_image`; only its payload gains
+/// the draft identity needed to make cancel, save, and crash behavior explicit.
 #[tauri::command]
 pub fn import_image(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
-    file_path: String,
+    input: ImportImageInput,
 ) -> Result<AssetDto, CommandError> {
-    let source_path = std::fs::canonicalize(&file_path).map_err(CommandError::io)?;
-    if !source_path.is_file() {
-        return Err(CommandError::new(
-            "invalid_image",
-            "Select an image file, not a folder.",
-        ));
-    }
-
-    let metadata = std::fs::metadata(&source_path).map_err(CommandError::io)?;
-    if metadata.len() == 0 {
-        return Err(CommandError::new(
-            "invalid_image",
-            "The selected image is empty.",
-        ));
-    }
-    if metadata.len() > MAX_IMAGE_BYTES {
-        return Err(CommandError::new(
-            "image_too_large",
-            "Images cannot exceed 25 MB.",
-        ));
-    }
-
-    let (mime_type, extension) = detect_image_type(&source_path)?;
-    let original_filename = validate_original_filename(
-        source_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("image"),
-    )?;
-    let now = unix_time_millis()?;
-
-    let (asset, final_path) = database.with_connection(|connection| {
-        let id = generate_id(connection)?;
-        let relative_path = AppPaths::image_relative_path(&id, extension);
-        let final_path = paths.resolve_relative(&relative_path);
-        let temporary_path = final_path.with_extension(format!("{extension}.tmp"));
-
-        if let Some(parent) = final_path.parent() {
-            fs::create_dir_all(parent).map_err(CommandError::io)?;
-        }
-        fs::copy(&source_path, &temporary_path).map_err(CommandError::io)?;
-        File::open(&temporary_path)
-            .and_then(|file| file.sync_all())
-            .map_err(CommandError::io)?;
-        fs::rename(&temporary_path, &final_path).map_err(|error| {
-            let _ = fs::remove_file(&temporary_path);
-            CommandError::io(error)
-        })?;
-
-        let insert_result = connection.execute(
-            "INSERT INTO assets (\n\
-                 id, original_filename, mime_type, byte_size, relative_path, created_at\n\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                id,
-                original_filename,
-                mime_type,
-                i64::try_from(metadata.len()).unwrap_or(i64::MAX),
-                relative_path,
-                now
-            ],
-        );
-
-        if let Err(error) = insert_result {
-            let _ = fs::remove_file(&final_path);
-            return Err(CommandError::database(error));
-        }
-
-        let asset = AssetDto {
-            id,
-            original_filename: original_filename.clone(),
-            mime_type: mime_type.to_string(),
-            byte_size: i64::try_from(metadata.len()).unwrap_or(i64::MAX),
-            file_path: final_path.to_string_lossy().into_owned(),
-            created_at: now,
-        };
-
-        Ok((asset, final_path))
-    })?;
-
-    if !final_path.exists() {
-        return Err(CommandError::new(
-            "file_error",
-            "The image record was saved, but its local file could not be found.",
-        ));
-    }
-
-    Ok(asset)
+    stage_image(database.inner(), paths.inner(), input)
 }
 
 pub(crate) fn get_assets_for_note(
@@ -131,11 +43,13 @@ pub(crate) fn get_assets_for_note(
 ) -> Result<Vec<AssetDto>, CommandError> {
     let mut statement = connection
         .prepare(
-            "SELECT DISTINCT a.id, a.original_filename, a.mime_type, a.byte_size,\n\
-                    a.relative_path, a.created_at\n\
-             FROM assets a\n\
-             JOIN note_assets na ON na.asset_id = a.id\n\
-             WHERE na.note_id = ?1 AND a.deleted_at IS NULL\n\
+            "SELECT DISTINCT a.id, a.original_filename, a.mime_type, a.byte_size,
+                    a.relative_path, a.created_at
+             FROM assets a
+             JOIN note_assets na ON na.asset_id = a.id
+             WHERE na.note_id = ?1
+               AND a.deleted_at IS NULL
+               AND a.lifecycle_state = 'ready'
              ORDER BY a.created_at ASC, a.id ASC",
         )
         .map_err(CommandError::database)?;
@@ -161,6 +75,10 @@ pub(crate) fn get_assets_for_note(
         .map_err(CommandError::database)
 }
 
+/// Compatibility validation used by paths that are converted to explicit
+/// finalization in the same Stage 3.3 change set. A staged row is not sufficient
+/// for a durable save by itself; the caller must also finalize it with the
+/// matching draft before committing.
 pub(crate) fn ensure_assets_exist(
     connection: &Connection,
     asset_ids: &[String],
@@ -169,8 +87,11 @@ pub(crate) fn ensure_assets_exist(
         validate_entity_id(asset_id, "asset")?;
         let exists: i64 = connection
             .query_row(
-                "SELECT EXISTS(\n\
-                     SELECT 1 FROM assets WHERE id = ?1 AND deleted_at IS NULL\n\
+                "SELECT EXISTS(
+                     SELECT 1 FROM assets
+                     WHERE id = ?1
+                       AND deleted_at IS NULL
+                       AND lifecycle_state IN ('staged', 'ready')
                  )",
                 [asset_id],
                 |row| row.get(0),
@@ -179,11 +100,10 @@ pub(crate) fn ensure_assets_exist(
         if exists == 0 {
             return Err(CommandError::new(
                 "asset_not_found",
-                "One of the images used by this card is no longer available.",
+                "One of the images used by this content is no longer available.",
             ));
         }
     }
-
     Ok(())
 }
 
@@ -225,7 +145,9 @@ pub(crate) fn detect_image_bytes(
     ))
 }
 
-fn detect_image_type(path: &Path) -> Result<(&'static str, &'static str), CommandError> {
+pub(crate) fn detect_image_type(
+    path: &Path,
+) -> Result<(&'static str, &'static str), CommandError> {
     let mut file = File::open(path).map_err(CommandError::io)?;
     let mut header = [0_u8; 16];
     let bytes_read = file.read(&mut header).map_err(CommandError::io)?;
