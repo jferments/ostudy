@@ -11,6 +11,7 @@ import {
   createDeck,
   createGeneratedCard,
   createMutationId,
+  createOperationId,
   createSubmissionId,
   deleteCards,
   exportDeck,
@@ -313,16 +314,25 @@ describe("typed Tauri IPC wrappers", () => {
       "get_practice_workload",
       { input: { deckIds: [deckId] } },
     );
+    const selectedStart = {
+      operationId: "5".repeat(32),
+      deckIds: [deckId],
+      shuffle: true,
+      mode: "scheduled" as const,
+    };
     await expectInvocation(
-      () => startSelectedPractice({ deckIds: [deckId], shuffle: true, mode: "scheduled" }),
+      () => startSelectedPractice(selectedStart),
       "start_selected_practice",
-      { input: { deckIds: [deckId], shuffle: true, mode: "scheduled" } },
+      { input: selectedStart },
     );
-    await expectInvocation(
-      () => startCardPractice({ cardIds: [cardId], shuffle: false }),
-      "start_card_practice",
-      { input: { cardIds: [cardId], shuffle: false } },
-    );
+    const cardStart = {
+      operationId: "6".repeat(32),
+      cardIds: [cardId],
+      shuffle: false,
+    };
+    await expectInvocation(() => startCardPractice(cardStart), "start_card_practice", {
+      input: cardStart,
+    });
     await expectInvocation(
       () => markPracticeCardViewed("2".repeat(32), cardId),
       "mark_practice_card_viewed",
@@ -369,9 +379,11 @@ describe("typed Tauri IPC wrappers", () => {
 
   it("creates transport identifiers without hyphens", () => {
     vi.spyOn(globalThis.crypto, "randomUUID")
+      .mockReturnValueOnce("00000000-1111-2222-3333-444444444444")
       .mockReturnValueOnce("11111111-2222-3333-4444-555555555555")
       .mockReturnValueOnce("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
 
+    expect(createOperationId()).toBe("00000000111122223333444444444444");
     expect(createSubmissionId()).toBe("11111111222233334444555555555555");
     expect(createMutationId()).toBe("aaaaaaaabbbbccccddddeeeeeeeeeeee");
   });
