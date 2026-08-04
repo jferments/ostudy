@@ -11,6 +11,8 @@ vi.mock("../editor/RichTextView", () => ({
   RichTextView: () => <div>Preview</div>,
 }));
 vi.mock("../ipc", () => ({
+  beginAssetDraft: vi.fn(),
+  cancelAssetDraft: vi.fn(),
   createGeneratedCard: vi.fn(),
   findDuplicateCards: vi.fn(),
   generateCardsFromTemplate: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock("../ipc", () => ({
   listDecks: vi.fn(),
   listTags: vi.fn(),
   previewTemplateCards: vi.fn(),
+  syncAssetDraft: vi.fn(),
   transferCards: vi.fn(),
   updateGeneratedCard: vi.fn(),
 }));
@@ -75,9 +78,18 @@ const card: ipc.OrganizedCard = {
   revision: 1,
 };
 
+const draftId = "9".repeat(32);
+
 describe("CardEditorScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(ipc.beginAssetDraft).mockResolvedValue({
+      id: draftId,
+      purpose: "card",
+      expiresAt: Date.now() + 10_000,
+    });
+    vi.mocked(ipc.cancelAssetDraft).mockResolvedValue(undefined);
+    vi.mocked(ipc.syncAssetDraft).mockResolvedValue(undefined);
     vi.mocked(ipc.listDecks).mockResolvedValue([deck, secondDeck]);
     vi.mocked(ipc.listTags).mockResolvedValue([]);
     vi.mocked(ipc.listCardTemplates).mockResolvedValue([]);
@@ -102,7 +114,7 @@ describe("CardEditorScreen", () => {
     });
   });
 
-  it("loads the saved Basic type, places tags after both sides, and saves the selected deck", async () => {
+  it("opens a managed draft, loads the saved Basic type, and commits that draft with the selected deck", async () => {
     const onSaved = vi.fn();
     render(
       <CardEditorScreen
@@ -118,6 +130,7 @@ describe("CardEditorScreen", () => {
 
     expect(await screen.findByText("Medication")).toBeTruthy();
     await waitFor(() => {
+      expect(ipc.beginAssetDraft).toHaveBeenCalledWith("card", card.noteId);
       expect(ipc.getCardTypeInfo).toHaveBeenCalledWith(card.noteId);
       expect(
         (screen.getByRole("combobox", { name: "Card template" }) as HTMLSelectElement)
@@ -162,6 +175,7 @@ describe("CardEditorScreen", () => {
           reverseEnabled: false,
           tags: ["Medication"],
           allowDuplicate: true,
+          assetDraftId: draftId,
         }),
       );
       expect(onSaved).toHaveBeenCalled();
