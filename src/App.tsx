@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AnalyticsRange } from "./analytics-ipc";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
-import { Toast, type ToastMessage } from "./components/Toast";
+import { Toast, type ShowToast, type ToastMessage } from "./components/Toast";
 import { AnalyticsScreen } from "./screens/AnalyticsScreen";
 import { CardsScreen } from "./screens/CardsScreen";
 import { DecksScreen } from "./screens/DecksScreen";
@@ -71,14 +71,11 @@ function App() {
   const [hasUnsavedTemplate, setHasUnsavedTemplate] = useState(false);
   const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
 
-  const showToast = useCallback(
-    (kind: ToastMessage["kind"], text: string) => {
-      const id = toastSequence.current;
-      toastSequence.current += 1;
-      setToast({ id, kind, text });
-    },
-    [],
-  );
+  const showToast = useCallback<ShowToast>((kind, text, action) => {
+    const id = toastSequence.current;
+    toastSequence.current += 1;
+    setToast(action ? { id, kind, text, action } : { id, kind, text });
+  }, []);
 
   const refreshDecks = useCallback(async () => {
     const loaded = await listDecks();
