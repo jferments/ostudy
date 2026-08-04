@@ -68,12 +68,6 @@ pub fn update_deck(
     database.with_connection(|connection| update_deck_in_connection(connection, input))
 }
 
-#[tauri::command]
-pub fn delete_deck(database: State<'_, Database>, deck_id: String) -> Result<(), CommandError> {
-    validate_entity_id(&deck_id, "deck")?;
-    database.with_connection(|connection| delete_deck_in_connection(connection, &deck_id))
-}
-
 pub(crate) fn list_decks_from_connection(
     connection: &mut Connection,
 ) -> Result<Vec<DeckDto>, CommandError> {
@@ -221,49 +215,6 @@ fn update_deck_in_connection(
     }
 
     get_deck_from_connection(connection, &input.deck_id)
-}
-
-fn delete_deck_in_connection(
-    connection: &mut Connection,
-    deck_id: &str,
-) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    let transaction = connection.transaction().map_err(CommandError::database)?;
-
-    let changed = transaction
-        .execute(
-            "UPDATE decks\n\
-             SET deleted_at = ?1, updated_at = ?1, revision = revision + 1\n\
-             WHERE id = ?2 AND deleted_at IS NULL",
-            params![now, deck_id],
-        )
-        .map_err(CommandError::database)?;
-
-    if changed == 0 {
-        return Err(CommandError::new(
-            "deck_not_found",
-            "That deck no longer exists.",
-        ));
-    }
-
-    transaction
-        .execute(
-            "UPDATE notes\n\
-             SET deleted_at = COALESCE(deleted_at, ?1), updated_at = ?1, revision = revision + 1\n\
-             WHERE deck_id = ?2 AND deleted_at IS NULL",
-            params![now, deck_id],
-        )
-        .map_err(CommandError::database)?;
-    transaction
-        .execute(
-            "UPDATE cards\n\
-             SET deleted_at = COALESCE(deleted_at, ?1), updated_at = ?1\n\
-             WHERE deck_id = ?2 AND deleted_at IS NULL",
-            params![now, deck_id],
-        )
-        .map_err(CommandError::database)?;
-
-    transaction.commit().map_err(CommandError::database)
 }
 
 pub(crate) fn validate_name(value: String) -> Result<String, CommandError> {

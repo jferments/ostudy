@@ -353,11 +353,12 @@ fn finalize_expired_in_connection(
                  ORDER BY expires_at, id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([now], operation_from_row)
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     if operations.is_empty() {
         return Ok(());
@@ -527,11 +528,12 @@ fn load_active_note_ids_for_deck(
              ORDER BY created_at, id",
         )
         .map_err(CommandError::database)?;
-    statement
+    let note_ids = statement
         .query_map([deck_id], |row| row.get::<_, String>(0))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(note_ids)
 }
 
 fn load_active_card_ids(

@@ -132,7 +132,9 @@ pub fn sync_asset_draft(
     input: SyncAssetDraftInput,
 ) -> Result<(), CommandError> {
     validate_entity_id(&input.draft_id, "asset draft")?;
-    let retained = normalize_asset_ids(input.asset_ids)?;
+    let retained = normalize_asset_ids(input.asset_ids)?
+        .into_iter()
+        .collect::<BTreeSet<_>>();
     let cleanup = database.with_connection(|connection| {
         let now = unix_time_millis()?;
         ensure_active_draft(connection, &input.draft_id, now)?;
@@ -709,11 +711,12 @@ fn reconcile_in_connection(
         let mut statement = connection
             .prepare("SELECT id FROM assets ORDER BY created_at, id")
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([], |row| row.get::<_, String>(0))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     for asset_id in asset_ids {
         reconcile_asset(connection, paths, &asset_id, now, &mut cleanup)?;
@@ -735,11 +738,12 @@ fn expire_drafts(
                  WHERE committed_at IS NULL AND canceled_at IS NULL AND expires_at < ?1",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([now], |row| row.get::<_, String>(0))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     for draft_id in draft_ids {
         cleanup.extend(abandon_draft_in_connection(
@@ -1126,7 +1130,7 @@ fn load_assets_for_draft(
              FROM assets WHERE draft_id = ?1 ORDER BY created_at, id",
         )
         .map_err(CommandError::database)?;
-    statement
+    let assets = statement
         .query_map([draft_id], |row| {
             Ok(AssetRecord {
                 id: row.get(0)?,
@@ -1144,7 +1148,8 @@ fn load_assets_for_draft(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(assets)
 }
 
 fn reference_count(connection: &Connection, asset_id: &str) -> Result<i64, CommandError> {
