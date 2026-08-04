@@ -6,6 +6,11 @@ on:
       - agent/stage-3-4-3-5-transfer-repairs
     paths:
       - .github/workflows/stage34-35-apply.yml
+      - scripts/verify-stage2.mjs
+      - scripts/verify-stage3.mjs
+      - scripts/verify-stage34-35.mjs
+      - src/**
+      - src-tauri/**
 
 permissions:
   contents: read
