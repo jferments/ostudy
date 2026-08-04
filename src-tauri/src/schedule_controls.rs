@@ -115,10 +115,15 @@ struct CardActionPlan {
     suspended_after: Option<i64>,
     buried_before: Option<i64>,
     buried_after: Option<i64>,
-    changed: bool,
+    schedule_changed: bool,
+    session_dismissal_needed: bool,
 }
 
 impl CardActionPlan {
+    fn changed(&self) -> bool {
+        self.schedule_changed || self.session_dismissal_needed
+    }
+
     fn control_changed(&self) -> bool {
         self.suspended_before != self.suspended_after
             || self.buried_before != self.buried_after
@@ -156,9 +161,9 @@ fn apply_in_connection(
 
     validate_session_relationships(&transaction, &input)?;
 
-    // Every selected card and schedule is loaded before the first write. Any
-    // missing/deleted card, missing schedule, or session mismatch therefore
-    // rejects the whole operation and leaves every selected card untouched.
+    // Every selected card, schedule, and relevant session-card state is loaded
+    // before the first write. Any invalid member therefore rejects the entire
+    // batch and leaves all selected cards unchanged.
     let mut plans = Vec::with_capacity(input.card_ids.len());
     for card_id in &input.card_ids {
         let control_state: Option<(Option<i64>, Option<i64>)> = transaction
@@ -177,6 +182,12 @@ fn apply_in_connection(
             ));
         };
         let before = load_schedule(&transaction, card_id)?;
+        let session_dismissal_needed = session_dismissal_needed(
+            &transaction,
+            input.session_id.as_deref(),
+            card_id,
+            input.action,
+        )?;
         plans.push(plan_card_action(
             card_id,
             before,
@@ -186,10 +197,11 @@ fn apply_in_connection(
             input.due_at,
             bury_until,
             now,
+            session_dismissal_needed,
         )?);
     }
 
-    let changed_count = i64::try_from(plans.iter().filter(|plan| plan.changed).count())
+    let changed_count = i64::try_from(plans.iter().filter(|plan| plan.changed()).count())
         .unwrap_or(i64::MAX);
     let requested_count = i64::try_from(plans.len()).unwrap_or(i64::MAX);
     let result = ScheduleActionResultDto {
@@ -208,9 +220,9 @@ fn apply_in_connection(
                  occurred_at, created_at
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
             params![
-                input.mutation_id,
-                input.request_fingerprint,
-                input.session_id,
+                input.mutation_id.as_str(),
+                input.request_fingerprint.as_str(),
+                input.session_id.as_deref(),
                 input.action.as_str(),
                 input.due_at,
                 result.requested_count,
@@ -223,53 +235,67 @@ fn apply_in_connection(
         .map_err(CommandError::database)?;
 
     let mut session_counters_may_have_changed = false;
-    for plan in plans.iter().filter(|plan| plan.changed) {
-        if plan.control_changed() {
-            let updated = transaction
-                .execute(
-                    "UPDATE cards
-                     SET suspended_at = ?1, buried_until = ?2, updated_at = ?3
-                     WHERE id = ?4 AND deleted_at IS NULL",
-                    params![
-                        plan.suspended_after,
-                        plan.buried_after,
-                        now,
-                        plan.card_id,
-                    ],
-                )
-                .map_err(CommandError::database)?;
-            if updated != 1 {
-                return Err(CommandError::new(
-                    "schedule_card_not_found",
-                    "A selected card changed while the schedule operation was running. No schedules were changed.",
-                ));
-            }
-        }
-        update_schedule(&transaction, &plan.after)?;
-        insert_card_event(&transaction, &input, plan, now)?;
-
-        if let Some(session_id) = &input.session_id {
-            if input.action.dismisses_from_session() {
-                let disposition = if input.action == ScheduleActionKind::Suspend {
-                    "suspended"
-                } else {
-                    "buried"
-                };
-                let dismissed = transaction
+    for plan in plans.iter().filter(|plan| plan.changed()) {
+        if plan.schedule_changed {
+            if plan.control_changed() {
+                let updated = transaction
                     .execute(
-                        "UPDATE practice_session_cards
-                         SET dismissed_at = COALESCE(dismissed_at, ?1), disposition = ?2
-                         WHERE session_id = ?3 AND card_id = ?4 AND rated_at IS NULL",
-                        params![now, disposition, session_id, plan.card_id],
+                        "UPDATE cards
+                         SET suspended_at = ?1, buried_until = ?2, updated_at = ?3
+                         WHERE id = ?4 AND deleted_at IS NULL",
+                        params![
+                            plan.suspended_after,
+                            plan.buried_after,
+                            now,
+                            plan.card_id.as_str(),
+                        ],
                     )
                     .map_err(CommandError::database)?;
-                session_counters_may_have_changed |= dismissed > 0;
+                if updated != 1 {
+                    return Err(CommandError::new(
+                        "schedule_card_not_found",
+                        "A selected card changed while the schedule operation was running. No schedules were changed.",
+                    ));
+                }
             }
+            update_schedule(&transaction, &plan.after)?;
         }
+
+        if plan.session_dismissal_needed {
+            let session_id = input.session_id.as_deref().ok_or_else(|| {
+                CommandError::new(
+                    "practice_session_not_found",
+                    "The practice session context was lost. No schedules were changed.",
+                )
+            })?;
+            let disposition = if input.action == ScheduleActionKind::Suspend {
+                "suspended"
+            } else {
+                "buried"
+            };
+            let dismissed = transaction
+                .execute(
+                    "UPDATE practice_session_cards
+                     SET dismissed_at = ?1, disposition = ?2
+                     WHERE session_id = ?3 AND card_id = ?4
+                       AND rated_at IS NULL AND dismissed_at IS NULL",
+                    params![now, disposition, session_id, plan.card_id.as_str()],
+                )
+                .map_err(CommandError::database)?;
+            if dismissed != 1 {
+                return Err(CommandError::new(
+                    "schedule_session_card_changed",
+                    "A practice-session card changed while the schedule operation was running. No schedules were changed.",
+                ));
+            }
+            session_counters_may_have_changed = true;
+        }
+
+        insert_card_event(&transaction, &input, plan, now)?;
     }
 
     if session_counters_may_have_changed {
-        if let Some(session_id) = &input.session_id {
+        if let Some(session_id) = input.session_id.as_deref() {
             refresh_session_counters(&transaction, session_id, now)?;
         }
     }
@@ -288,11 +314,12 @@ fn plan_card_action(
     due_at: Option<i64>,
     bury_until: Option<i64>,
     now: i64,
+    session_dismissal_needed: bool,
 ) -> Result<CardActionPlan, CommandError> {
     let mut after = before.clone();
     let mut suspended_after = suspended_before;
     let mut buried_after = buried_before;
-    let changed = match action {
+    let schedule_changed = match action {
         ScheduleActionKind::Suspend => {
             if suspended_before.is_none() {
                 suspended_after = Some(now);
@@ -355,7 +382,7 @@ fn plan_card_action(
         }
     };
 
-    if changed
+    if schedule_changed
         && matches!(
             action,
             ScheduleActionKind::Suspend
@@ -376,7 +403,8 @@ fn plan_card_action(
         suspended_after,
         buried_before,
         buried_after,
-        changed,
+        schedule_changed,
+        session_dismissal_needed,
     })
 }
 
@@ -391,6 +419,30 @@ fn is_canonical_new_schedule(schedule: &ScheduleRecord, now: i64) -> bool {
         && schedule.lapses == 0
         && schedule.scheduler_name == SCHEDULER_NAME
         && schedule.scheduler_version == SCHEDULER_VERSION
+}
+
+fn session_dismissal_needed(
+    connection: &Connection,
+    session_id: Option<&str>,
+    card_id: &str,
+    action: ScheduleActionKind,
+) -> Result<bool, CommandError> {
+    let Some(session_id) = session_id else {
+        return Ok(false);
+    };
+    if !action.dismisses_from_session() {
+        return Ok(false);
+    }
+    let state: (Option<i64>, Option<i64>) = connection
+        .query_row(
+            "SELECT rated_at, dismissed_at
+             FROM practice_session_cards
+             WHERE session_id = ?1 AND card_id = ?2",
+            params![session_id, card_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(CommandError::database)?;
+    Ok(state.0.is_none() && state.1.is_none())
 }
 
 fn insert_card_event(
@@ -415,9 +467,9 @@ fn insert_card_event(
              )",
             params![
                 event_id,
-                input.mutation_id,
-                input.session_id,
-                plan.card_id,
+                input.mutation_id.as_str(),
+                input.session_id.as_deref(),
+                plan.card_id.as_str(),
                 input.action.as_str(),
                 plan.before.due_at,
                 plan.after.due_at,
@@ -440,7 +492,7 @@ fn validate_session_relationships(
     connection: &Connection,
     input: &ValidatedScheduleAction,
 ) -> Result<(), CommandError> {
-    let Some(session_id) = &input.session_id else {
+    let Some(session_id) = input.session_id.as_deref() else {
         return Ok(());
     };
     let exists: i64 = connection
