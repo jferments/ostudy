@@ -56,6 +56,7 @@ const [
   migration1,
   migration2,
   migration3,
+  migration10,
   database,
   rustCommands,
   app,
@@ -67,6 +68,7 @@ const [
   transfer,
   launcher,
   buildScript,
+  checkFastScript,
   checkScript,
   setupScript,
   checkWorkflow,
@@ -83,6 +85,7 @@ const [
   read("src-tauri", "migrations", "0001_decks.sql"),
   read("src-tauri", "migrations", "0002_cards_assets_settings_practice.sql"),
   read("src-tauri", "migrations", "0003_fsrs_reviews.sql"),
+  read("src-tauri", "migrations", "0010_transactional_schedule_actions.sql"),
   read("src-tauri", "src", "database.rs"),
   read("src-tauri", "src", "lib.rs"),
   read("src", "App.tsx"),
@@ -94,6 +97,7 @@ const [
   read("src-tauri", "src", "transfer.rs"),
   read("run-app.sh"),
   read("scripts", "build.sh"),
+  read("scripts", "check-fast.sh"),
   read("scripts", "check.sh"),
   read("scripts", "setup-ubuntu.sh"),
   read(".github", "workflows", "check.yml"),
@@ -188,9 +192,12 @@ for (const permission of ["core:default", "dialog:default", "opener:default"]) {
   if (!capability.permissions?.includes(permission)) failures.push(`capability missing ${permission}`);
 }
 
-for (const [label, text] of [["0001", migration1], ["0002", migration2], ["0003", migration3]]) {
+for (const [label, text] of [["0001", migration1], ["0002", migration2], ["0003", migration3], ["0010", migration10]]) {
   const checksum = createHash("sha256").update(text).digest("hex");
   if (!database.includes(`"${checksum}"`)) failures.push(`database.rs checksum mismatch for ${label}: ${checksum}`);
+}
+if (!database.includes("LATEST_SCHEMA_VERSION: i64 = 10")) {
+  failures.push("database.rs does not declare schema 10 as current");
 }
 if (!database.includes('release: "0.1.0"') || !database.includes("v0.1.0.sql")) {
   failures.push("0.1.0 release schema fixture is not registered");
@@ -241,7 +248,15 @@ for (const required of [
 }
 for (const required of [
   "pnpm test",
+  "pnpm exec tsc",
   "cargo fmt",
+  "cargo check",
+]) {
+  if (!checkFastScript.includes(required)) failures.push(`check-fast.sh missing: ${required}`);
+}
+for (const required of [
+  "check-fast.sh",
+  "pnpm run build",
   "cargo clippy",
   "cargo test",
   "pnpm tauri build --debug --no-bundle --ci",
@@ -250,8 +265,23 @@ for (const required of [
   if (!checkScript.includes(required)) failures.push(`check.sh missing: ${required}`);
 }
 if (!setupScript.includes('"$SCRIPT_DIR/build.sh"')) failures.push("setup does not create the initial build");
-if (!checkWorkflow.includes("./scripts/check.sh")) failures.push("GitHub check workflow does not run the local gate");
+for (const required of [
+  "bash ./scripts/check-fast.sh",
+  "./scripts/check.sh",
+  "OSTUDY_FAST_CHECK_PASSED",
+  "github.event.pull_request.draft == false",
+]) {
+  if (!checkWorkflow.includes(required)) failures.push(`GitHub check workflow missing: ${required}`);
+}
 if (!releaseWorkflow.includes("./scripts/release.sh")) failures.push("release workflow does not use the release script");
+for (const [name, workflow] of [["check", checkWorkflow], ["release", releaseWorkflow]]) {
+  if (!workflow.includes("runs-on: [self-hosted, linux, x64, ostudy]")) {
+    failures.push(`${name} workflow is not pinned to the Multipass self-hosted runner labels`);
+  }
+  if (/runs-on:\s*(?:ubuntu|windows|macos)-/u.test(workflow)) {
+    failures.push(`${name} workflow still uses a GitHub-hosted runner`);
+  }
+}
 if (!pullRequestTemplate.includes("Acceptance criteria") || !pullRequestTemplate.includes("./scripts/check.sh")) {
   failures.push("pull request template is missing acceptance criteria or validation");
 }
@@ -260,6 +290,8 @@ for (const requiredPath of [
   "scripts/build.sh",
   "scripts/build-state.sh",
   "scripts/cargo-target.sh",
+  "scripts/check-fast.sh",
+  "scripts/check.sh",
   "scripts/export-diagnostics.sh",
   "scripts/log-run.py",
   "scripts/smoke-native.sh",
@@ -300,4 +332,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("OK   ostudy identity, versions, migrations, tests, build scripts, CI, diagnostics, and release files are internally consistent.");
+console.log("OK   ostudy identity, versions, migrations, tests, build scripts, tiered self-hosted CI, diagnostics, and release files are internally consistent.");
