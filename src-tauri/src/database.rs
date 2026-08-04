@@ -513,7 +513,15 @@ mod tests {
                         changed_count, unchanged_count
                  FROM schedule_action_operations WHERE id = ?1",
                 [mutation_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .expect("parent operation should be preserved");
         assert_eq!(operation, (None, "suspend".to_string(), 1, 1, 0));
@@ -523,7 +531,15 @@ mod tests {
                         schedule_revision_before, schedule_revision_after
                  FROM schedule_action_events WHERE id = ?1",
                 [event_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .expect("child event should be preserved");
         assert_eq!(
@@ -537,7 +553,11 @@ mod tests {
             )
         );
         let foreign_key_errors: i64 = connection
-            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_foreign_key_check",
+                [],
+                |row| row.get(0),
+            )
             .expect("foreign key check should run");
         assert_eq!(foreign_key_errors, 0);
     }
