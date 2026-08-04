@@ -38,6 +38,9 @@ pub struct ScheduleActionInput {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScheduleActionResultDto {
+    /// Stable Stage 3.1 response field. For a batch this is the number of
+    /// cards that actually changed, not merely the number requested.
+    pub affected_count: i64,
     pub requested_count: i64,
     pub changed_count: i64,
     pub unchanged_count: i64,
@@ -196,6 +199,7 @@ fn apply_in_connection(
     let changed_count =
         i64::try_from(plans.iter().filter(|plan| plan.changed()).count()).unwrap_or(i64::MAX);
     let result = ScheduleActionResultDto {
+        affected_count: changed_count,
         requested_count,
         changed_count,
         unchanged_count: requested_count.saturating_sub(changed_count),
@@ -598,14 +602,16 @@ fn existing_operation(
             [mutation_id],
             |row| {
                 let action: String = row.get(3)?;
+                let changed_count: i64 = row.get(5)?;
                 Ok(ExistingScheduleOperation {
                     request_fingerprint: row.get(0)?,
                     session_id: row.get(1)?,
                     due_at: row.get(2)?,
                     result: ScheduleActionResultDto {
                         action,
+                        affected_count: changed_count,
                         requested_count: row.get(4)?,
-                        changed_count: row.get(5)?,
+                        changed_count,
                         unchanged_count: row.get(6)?,
                         rejected_count: row.get(7)?,
                     },
