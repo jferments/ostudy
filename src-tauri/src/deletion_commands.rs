@@ -16,8 +16,8 @@ pub struct DeleteCardsInput {
     pub note_ids: Vec<String>,
 }
 
-#[tauri::command]
-pub fn delete_card(
+#[tauri::command(rename = "delete_card")]
+pub fn delete_card_with_undo(
     database: State<'_, Database>,
     note_id: String,
 ) -> Result<DeletionResultDto, CommandError> {
@@ -27,8 +27,8 @@ pub fn delete_card(
     })
 }
 
-#[tauri::command]
-pub fn delete_cards(
+#[tauri::command(rename = "delete_cards")]
+pub fn delete_cards_with_undo(
     database: State<'_, Database>,
     input: DeleteCardsInput,
 ) -> Result<DeletionResultDto, CommandError> {
@@ -45,8 +45,8 @@ pub fn delete_cards(
     database.with_connection(|connection| deletion::delete_cards(connection, input.note_ids, label))
 }
 
-#[tauri::command]
-pub fn delete_deck(
+#[tauri::command(rename = "delete_deck")]
+pub fn delete_deck_with_undo(
     database: State<'_, Database>,
     deck_id: String,
 ) -> Result<DeletionResultDto, CommandError> {
