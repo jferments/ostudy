@@ -8,6 +8,7 @@ on:
       - .github/workflows/stage34-35-apply.yml
       - scripts/verify-stage2.mjs
       - scripts/verify-stage3.mjs
+      - scripts/verify-stage33.mjs
       - scripts/verify-stage34-35.mjs
       - src/**
       - src-tauri/**
