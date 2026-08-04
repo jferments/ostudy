@@ -105,6 +105,33 @@ text = replace_once(
     "(\n                        row.get::<_, i64>(1)? == 1,\n                        row.get::<_, String>(2)?,\n                        row.get::<_, String>(3)?,\n                    ),",
     "legacy metadata types",
 )
+text = replace_once(
+    text,
+    '''            let cloze_mode = legacy_metadata.map_or(row.12, |value| value.2.clone());
+            Ok(PackageNote {''',
+    '''            let cloze_mode = legacy_metadata.map_or(row.12, |value| value.2.clone());
+            let duplicate_hash = if row.9.is_empty() {
+                duplicate_fingerprint(&validated.front_text, &validated.back_text)
+            } else {
+                row.9
+            };
+            Ok(PackageNote {''',
+    "legacy duplicate fingerprint binding",
+)
+text = replace_once(
+    text,
+    '''                front_text: validated.front_text,
+                back_text: validated.back_text,
+                duplicate_hash: if row.9.is_empty() {
+                    duplicate_fingerprint(&validated.front_text, &validated.back_text)
+                } else {
+                    row.9
+                },''',
+    '''                front_text: validated.front_text,
+                back_text: validated.back_text,
+                duplicate_hash,''',
+    "legacy duplicate fingerprint field",
+)
 write(path, text)
 
 for rust_file in [
