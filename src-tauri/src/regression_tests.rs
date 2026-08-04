@@ -371,8 +371,7 @@ fn workload_excludes_suspended_and_buried_cards_and_protects_review_backlog() {
             let now = unix_time_millis()?;
             let (_, review_id) = create_basic_card(connection, &deck_id, "Review", "A", now)?;
             let (_, new_id) = create_basic_card(connection, &deck_id, "New", "A", now)?;
-            let (_, suspended_id) =
-                create_basic_card(connection, &deck_id, "Suspended", "A", now)?;
+            let (_, suspended_id) = create_basic_card(connection, &deck_id, "Suspended", "A", now)?;
             let (_, buried_id) = create_basic_card(connection, &deck_id, "Buried", "A", now)?;
 
             connection
