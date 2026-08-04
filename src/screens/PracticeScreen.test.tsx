@@ -182,7 +182,10 @@ describe("PracticeScreen", () => {
     vi.mocked(ipc.markPracticeCardRevealed).mockResolvedValue(previews);
     vi.mocked(ipc.completePracticeSession).mockResolvedValue(undefined);
     vi.mocked(ipc.applyScheduleAction).mockResolvedValue({
-      affectedCount: 1,
+      requestedCount: 1,
+      changedCount: 1,
+      unchangedCount: 0,
+      rejectedCount: 0,
       action: "bury",
     });
     vi.mocked(ipc.startSelectedPractice).mockResolvedValue(session);
