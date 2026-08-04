@@ -70,9 +70,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "1482b734fadc2e71720e53c397131916179a3e7966c8461bf9d4fe3d5e51dc15",
         sql: include_str!("../migrations/0009_operation_boundaries.sql"),
     },
+    Migration {
+        version: 10,
+        name: "transactional_schedule_actions",
+        checksum: "2eb5d6faf72c7199b859fbc7a4858d9def7cf8c0a25ae61703d8c129d84eab05",
+        sql: include_str!("../migrations/0010_transactional_schedule_actions.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 9;
+const LATEST_SCHEMA_VERSION: i64 = 10;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -242,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn migrations_are_idempotent_and_reach_schema_nine() {
+    fn migrations_are_idempotent_and_reach_schema_ten() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
@@ -265,6 +271,7 @@ mod tests {
                     "card_template_fields",
                     "card_template_rules",
                     "card_template_assets",
+                    "schedule_action_operations",
                     "schedule_action_events",
                 ] {
                     let exists: i64 = connection
@@ -287,6 +294,9 @@ mod tests {
                     ("review_events", "result_completed"),
                     ("review_events", "result_rated_count"),
                     ("review_events", "result_correct_count"),
+                    ("schedule_action_operations", "request_fingerprint"),
+                    ("schedule_action_operations", "changed_count"),
+                    ("schedule_action_events", "operation_id"),
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -446,6 +456,10 @@ mod tests {
         assert_eq!(
             MIGRATIONS[8].checksum,
             "1482b734fadc2e71720e53c397131916179a3e7966c8461bf9d4fe3d5e51dc15"
+        );
+        assert_eq!(
+            MIGRATIONS[9].checksum,
+            "2eb5d6faf72c7199b859fbc7a4858d9def7cf8c0a25ae61703d8c129d84eab05"
         );
     }
 }
