@@ -224,17 +224,16 @@ fn rich_content_derives_authoritative_text_and_rejects_unsafe_structures() {
     );
 
     let oversized_snapshot = "x".repeat(200_001);
-    assert_eq!(
-        validate_content(
-            paragraph("Question"),
-            paragraph("Answer"),
-            oversized_snapshot,
-            String::new(),
-        )
-        .expect_err("oversized snapshots must be bounded")
-        .code,
-        "card_text_too_large"
-    );
+    let oversized_error = match validate_content(
+        paragraph("Question"),
+        paragraph("Answer"),
+        oversized_snapshot,
+        String::new(),
+    ) {
+        Ok(_) => panic!("oversized snapshots must be bounded"),
+        Err(error) => error,
+    };
+    assert_eq!(oversized_error.code, "card_text_too_large");
 }
 
 #[test]
