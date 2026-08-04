@@ -1,0 +1,41 @@
+name: Stage 3.3 expiry fixture fix
+
+on:
+  push:
+    branches:
+      - agent/stage-3-3-managed-assets-undo-delete
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/stage-3-3-managed-assets-undo-delete
+          fetch-depth: 0
+
+      - name: Expose user-local tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Fix and verify deletion expiry fixture
+        run: |
+          python3 scripts/apply-stage33-expiry-fixture-fix.py
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          cargo test --manifest-path src-tauri/Cargo.toml --locked deletion::tests::expired_and_conflicting_undo_requests_fail_visibly
+
+      - name: Commit corrected fixture
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri
+          git commit -m "test: use a valid expired deletion operation"
+          git push origin HEAD:agent/stage-3-3-managed-assets-undo-delete
