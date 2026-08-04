@@ -17,6 +17,7 @@ import {
   createSubmissionId,
   deleteCards,
   exportDeck,
+  exportLibraryBackup,
   findDuplicateCards,
   generateCardsFromTemplate,
   getAppInfo,
@@ -37,6 +38,7 @@ import {
   listTags,
   markPracticeCardRevealed,
   markPracticeCardViewed,
+  prepareLibraryRestore,
   previewTemplateCards,
   saveSettings,
   searchCards,
@@ -65,6 +67,7 @@ const noteId = "b".repeat(32);
 const cardId = "c".repeat(32);
 const templateId = "d".repeat(32);
 const draftId = "7".repeat(32);
+const importOperationId = "9".repeat(32);
 
 const searchInput: CardSearchInput = {
   deckIds: [deckId],
@@ -307,7 +310,7 @@ describe("typed Tauri IPC wrappers", () => {
     });
   });
 
-  it("wires settings, practice, scheduling, asset drafts, and transfer commands", async () => {
+  it("wires settings, practice, scheduling, asset drafts, transfer, and backup commands", async () => {
     const settings: AppSettings = makeSettings({ dailyNewLimit: 12 });
     await expectInvocation(getSettings, "get_settings");
     await expectInvocation(() => saveSettings(settings), "save_settings", {
@@ -391,9 +394,21 @@ describe("typed Tauri IPC wrappers", () => {
       "export_deck",
       { input: { deckId, destinationPath: "/tmp/deck.studydeck" } },
     );
-    await expectInvocation(() => importDeck("/tmp/deck.studydeck"), "import_deck", {
-      sourcePath: "/tmp/deck.studydeck",
-    });
+    await expectInvocation(
+      () => importDeck("/tmp/deck.studydeck", importOperationId),
+      "import_deck",
+      { input: { sourcePath: "/tmp/deck.studydeck", operationId: importOperationId } },
+    );
+    await expectInvocation(
+      () => exportLibraryBackup("/tmp/library.ostudybackup"),
+      "export_library_backup",
+      { input: { destinationPath: "/tmp/library.ostudybackup" } },
+    );
+    await expectInvocation(
+      () => prepareLibraryRestore("/tmp/library.ostudybackup"),
+      "prepare_library_restore",
+      { input: { sourcePath: "/tmp/library.ostudybackup" } },
+    );
   });
 
   it("creates transport identifiers without hyphens", () => {
