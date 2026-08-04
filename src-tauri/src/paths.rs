@@ -5,18 +5,27 @@ pub struct AppPaths {
     app_data_dir: PathBuf,
     database_path: PathBuf,
     images_dir: PathBuf,
+    asset_staging_dir: PathBuf,
+    asset_quarantine_dir: PathBuf,
 }
 
 impl AppPaths {
     pub fn new(app_data_dir: PathBuf) -> std::io::Result<Self> {
         let database_path = app_data_dir.join("library.sqlite3");
-        let images_dir = app_data_dir.join("assets").join("images");
+        let assets_dir = app_data_dir.join("assets");
+        let images_dir = assets_dir.join("images");
+        let asset_staging_dir = assets_dir.join("staging");
+        let asset_quarantine_dir = assets_dir.join("quarantine");
         std::fs::create_dir_all(&images_dir)?;
+        std::fs::create_dir_all(&asset_staging_dir)?;
+        std::fs::create_dir_all(&asset_quarantine_dir)?;
 
         Ok(Self {
             app_data_dir,
             database_path,
             images_dir,
+            asset_staging_dir,
+            asset_quarantine_dir,
         })
     }
 
@@ -32,11 +41,27 @@ impl AppPaths {
         &self.images_dir
     }
 
+    pub fn asset_staging_dir(&self) -> &Path {
+        &self.asset_staging_dir
+    }
+
+    pub fn asset_quarantine_dir(&self) -> &Path {
+        &self.asset_quarantine_dir
+    }
+
     pub fn resolve_relative(&self, relative_path: &str) -> PathBuf {
         self.app_data_dir.join(relative_path)
     }
 
     pub fn image_relative_path(id: &str, extension: &str) -> String {
         format!("assets/images/{id}.{extension}")
+    }
+
+    pub fn staged_asset_relative_path(draft_id: &str, asset_id: &str, extension: &str) -> String {
+        format!("assets/staging/{draft_id}-{asset_id}.{extension}.stage")
+    }
+
+    pub fn quarantined_asset_relative_path(asset_id: &str, suffix: &str) -> String {
+        format!("assets/quarantine/{asset_id}-{suffix}.quarantine")
     }
 }
