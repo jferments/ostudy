@@ -14,6 +14,7 @@ mod cards;
 mod database;
 mod decks;
 mod deletion;
+mod deletion_commands;
 mod error;
 mod learning_signals;
 mod logging;
@@ -52,9 +53,6 @@ pub fn run() {
             let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
 
-            // Deletion relationship cleanup can make assets newly unreferenced,
-            // so it must run before the asset reconciler. Both operations are
-            // idempotent and complete before commands can observe the library.
             deletion::finalize_expired_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
             asset_lifecycle::reconcile_startup(&database, &paths)
@@ -77,17 +75,14 @@ pub fn run() {
             );
             Ok(())
         })
-        // Registered command names and serialized DTOs form the bundled
-        // React/Rust transport contract. Internal refactors preserve these names
-        // unless every caller changes in the same branch.
         .invoke_handler(tauri::generate_handler![
             decks::list_decks,
             decks::get_deck,
             decks::create_deck,
             decks::update_deck,
-            decks::delete_deck,
+            deletion_commands::delete_deck,
             cards::list_cards,
-            cards::delete_card,
+            deletion_commands::delete_card,
             authoring::list_tags,
             authoring::search_cards,
             authoring::list_matching_cards,
@@ -99,7 +94,7 @@ pub fn run() {
             authoring::bulk_create_cards,
             authoring::transfer_generated_cards,
             authoring::bulk_tag_cards,
-            authoring::delete_cards,
+            deletion_commands::delete_cards,
             authoring::get_card_type_info,
             authoring::create_generated_card,
             authoring::update_generated_card,
