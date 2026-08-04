@@ -191,6 +191,7 @@ pub struct AnalyticsDto {
 
 #[derive(Clone, Copy, Debug)]
 enum AnalyticsRange {
+    Days7,
     Days30,
     Days90,
     Year1,
@@ -200,19 +201,21 @@ enum AnalyticsRange {
 impl AnalyticsRange {
     fn parse(value: &str) -> Result<Self, CommandError> {
         match value {
+            "7d" => Ok(Self::Days7),
             "30d" => Ok(Self::Days30),
             "90d" => Ok(Self::Days90),
             "1y" => Ok(Self::Year1),
             "all" => Ok(Self::All),
             _ => Err(CommandError::new(
                 "invalid_analytics_range",
-                "Choose 30 days, 90 days, one year, or all time.",
+                "Choose 7 days, 30 days, 90 days, one year, or all time.",
             )),
         }
     }
 
     fn as_str(self) -> &'static str {
         match self {
+            Self::Days7 => "7d",
             Self::Days30 => "30d",
             Self::Days90 => "90d",
             Self::Year1 => "1y",
@@ -222,6 +225,7 @@ impl AnalyticsRange {
 
     fn duration_ms(self) -> Option<i64> {
         match self {
+            Self::Days7 => Some(7 * DAY_MS),
             Self::Days30 => Some(30 * DAY_MS),
             Self::Days90 => Some(90 * DAY_MS),
             Self::Year1 => Some(365 * DAY_MS),
@@ -231,7 +235,7 @@ impl AnalyticsRange {
 
     fn granularity(self) -> &'static str {
         match self {
-            Self::Days30 => "day",
+            Self::Days7 | Self::Days30 => "day",
             Self::Days90 | Self::Year1 => "week",
             Self::All => "month",
         }
@@ -674,7 +678,7 @@ fn load_analytics(
 }
 
 fn default_range() -> String {
-    "30d".to_string()
+    "7d".to_string()
 }
 
 fn normalize_query(mut input: AnalyticsQueryDto) -> Result<AnalyticsQueryDto, CommandError> {
@@ -913,6 +917,7 @@ fn build_bucket_specs(
 ) -> Result<Vec<BucketSpec>, CommandError> {
     let today = Local::now().date_naive();
     match range {
+        AnalyticsRange::Days7 => date_buckets(today - Duration::days(6), today, 1, now),
         AnalyticsRange::Days30 => date_buckets(today - Duration::days(29), today, 1, now),
         AnalyticsRange::Days90 => date_buckets(today - Duration::days(89), today, 7, now),
         AnalyticsRange::Year1 => date_buckets(today - Duration::days(364), today, 7, now),
@@ -1305,14 +1310,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_library_has_zeroed_scoped_analytics() {
+    fn empty_library_uses_the_default_week_range() {
         let database = Database::open_in_memory().expect("database should open");
         let analytics = database
             .with_connection(|connection| {
                 load_analytics(
                     connection,
                     AnalyticsQueryDto {
-                        range: "30d".to_string(),
+                        range: default_range(),
                         deck_ids: Vec::new(),
                         tag_ids: Vec::new(),
                         highlighted_session_id: None,
@@ -1320,11 +1325,12 @@ mod tests {
                 )
             })
             .expect("analytics should load");
+        assert_eq!(analytics.scope.range, "7d");
         assert_eq!(analytics.summary.deck_count, 0);
         assert_eq!(analytics.summary.card_count, 0);
         assert_eq!(analytics.summary.review_count, 0);
         assert_eq!(analytics.summary.correct_rate, None);
-        assert_eq!(analytics.timeline.len(), 30);
+        assert_eq!(analytics.timeline.len(), 7);
     }
 
     #[test]
