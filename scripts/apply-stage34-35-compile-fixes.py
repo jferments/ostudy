@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Correct generated Rust ownership/type issues before qualification."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def read(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def write(path: str, content: str) -> None:
+    (ROOT / path).write_text(content, encoding="utf-8")
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected one match, found {count}")
+    return text.replace(old, new, 1)
+
+
+def leading_spaces(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def materialize_tail_query_results(path: str) -> None:
+    """Bind block-tail query_map chains before their Statement is dropped.
+
+    rusqlite's MappedRows destructor retains the Statement borrow through the
+    tail expression. Rust therefore requires the collected result to be assigned
+    to a local before the enclosing block or function closes.
+    """
+
+    lines = read(path).splitlines()
+    output: list[str] = []
+    index = 0
+    changed = 0
+    while index < len(lines):
+        line = lines[index]
+        if line.strip() == "statement" and index + 1 < len(lines):
+            indent = leading_spaces(line)
+            if lines[index + 1].lstrip().startswith(".query_map("):
+                end = index + 1
+                while end < len(lines):
+                    candidate = lines[end]
+                    if candidate.strip() and leading_spaces(candidate) <= indent:
+                        break
+                    end += 1
+                if end < len(lines) and lines[end].lstrip().startswith("}"):
+                    tail = end - 1
+                    while tail > index and not lines[tail].strip():
+                        tail -= 1
+                    output.append(" " * indent + "let rows = statement")
+                    output.extend(lines[index + 1 : tail])
+                    output.append(lines[tail] + ";")
+                    output.append(" " * indent + "rows")
+                    index = end
+                    changed += 1
+                    continue
+        output.append(line)
+        index += 1
+
+    if changed:
+        write(path, "\n".join(output) + "\n")
+
+
+# Imports used only by test modules should not warn in normal builds.
+path = "src-tauri/src/data_repairs.rs"
+text = read(path)
+text = text.replace("    error::CommandError,\n", "")
+text = replace_once(
+    text,
+    "    use crate::database::Database;",
+    "    use crate::{database::Database, error::CommandError};",
+    "repair test import",
+)
+write(path, text)
+
+path = "src-tauri/src/library_backup.rs"
+text = read(path).replace("    io::{Read, Write},\n", "    io::Write,\n")
+write(path, text)
+
+# The legacy metadata tuple needs explicit String types for both optional text
+# fields; inference cannot see through map_or's later clone calls.
+path = "src-tauri/src/studydeck/read.rs"
+text = read(path)
+text = replace_once(
+    text,
+    "(row.get::<_, i64>(1)? == 1, row.get(2)?, row.get(3)?),",
+    "(\n                        row.get::<_, i64>(1)? == 1,\n                        row.get::<_, String>(2)?,\n                        row.get::<_, String>(3)?,\n                    ),",
+    "legacy metadata types",
+)
+write(path, text)
+
+for rust_file in [
+    "src-tauri/src/authoring/commands.rs",
+    "src-tauri/src/authoring/stage3_v2/normalization.rs",
+    "src-tauri/src/studydeck/export.rs",
+    "src-tauri/src/studydeck/import.rs",
+    "src-tauri/src/studydeck/read.rs",
+    "src-tauri/src/library_backup.rs",
+]:
+    materialize_tail_query_results(rust_file)
+
+print("Applied Stage 3.4/3.5 native compile corrections.")
