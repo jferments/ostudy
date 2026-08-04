@@ -165,7 +165,7 @@ function App() {
     if (next === "analytics") {
       const requestId = analyticsRequestSequence.current;
       analyticsRequestSequence.current += 1;
-      setAnalyticsLaunch({ requestId, range: "30d", deckIds: [], tagIds: [] });
+      setAnalyticsLaunch({ requestId, range: "7d", deckIds: [], tagIds: [] });
     }
     if (next === "decks" || next === "cards") {
       void refreshDecks().catch((error: unknown) => {
@@ -196,7 +196,7 @@ function App() {
     analyticsRequestSequence.current += 1;
     setAnalyticsLaunch({
       requestId,
-      range: "30d",
+      range: "7d",
       deckIds,
       tagIds: [],
       highlightedSessionId: sessionId,
