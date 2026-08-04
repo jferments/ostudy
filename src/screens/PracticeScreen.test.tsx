@@ -165,11 +165,16 @@ function renderPractice(
   return props;
 }
 
-async function startAndReveal(): Promise<void> {
+async function startSession(): Promise<void> {
   fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
   await screen.findByText("1 cards in the scheduled session");
   fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Show answer" }));
+  await screen.findByRole("button", { name: "Show answer" });
+}
+
+async function startAndReveal(): Promise<void> {
+  await startSession();
+  fireEvent.click(screen.getByRole("button", { name: "Show answer" }));
   await screen.findByRole("button", { name: /1 Hard, About 1 day/u });
 }
 
@@ -182,7 +187,10 @@ describe("PracticeScreen", () => {
     vi.mocked(ipc.markPracticeCardRevealed).mockResolvedValue(previews);
     vi.mocked(ipc.completePracticeSession).mockResolvedValue(undefined);
     vi.mocked(ipc.applyScheduleAction).mockResolvedValue({
-      affectedCount: 1,
+      requestedCount: 1,
+      changedCount: 1,
+      unchangedCount: 0,
+      rejectedCount: 0,
       action: "bury",
     });
     vi.mocked(ipc.startSelectedPractice).mockResolvedValue(session);
@@ -318,5 +326,32 @@ describe("PracticeScreen", () => {
     expect(second).toEqual(first);
     expect(first?.submissionId).toBe("f".repeat(32));
     expect(ipc.createSubmissionId).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries an ambiguous schedule action with the same mutation request", async () => {
+    vi.mocked(ipc.applyScheduleAction)
+      .mockRejectedValueOnce(new Error("Native response was lost."))
+      .mockResolvedValueOnce({
+        requestedCount: 1,
+        changedCount: 1,
+        unchangedCount: 0,
+        rejectedCount: 0,
+        action: "bury",
+      });
+    renderPractice();
+    await startSession();
+
+    fireEvent.click(screen.getByRole("button", { name: "Bury until tomorrow" }));
+    expect(
+      await screen.findByText(/Repeat the same schedule action to safely retry it/u),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Bury until tomorrow" }));
+
+    await screen.findByRole("button", { name: "View analytics" });
+    expect(ipc.applyScheduleAction).toHaveBeenCalledTimes(2);
+    expect(ipc.createMutationId).toHaveBeenCalledOnce();
+    expect(vi.mocked(ipc.applyScheduleAction).mock.calls[1]?.[0]).toEqual(
+      vi.mocked(ipc.applyScheduleAction).mock.calls[0]?.[0],
+    );
   });
 });
