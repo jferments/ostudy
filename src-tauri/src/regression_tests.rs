@@ -147,7 +147,12 @@ fn insert_reset_event(
                  NULL, NULL, NULL, NULL,
                  1, 2, ?4, ?4
              )",
-            params![generate_id(connection)?, generate_id(connection)?, card_id, occurred_at],
+            params![
+                generate_id(connection)?,
+                generate_id(connection)?,
+                card_id,
+                occurred_at
+            ],
         )
         .map_err(CommandError::database)?;
     Ok(())
@@ -330,7 +335,10 @@ fn generated_card_identity_is_unique_even_while_a_presentation_is_disabled() {
                  ) VALUES (?1, ?2, ?3, 'forward', 0, 22, 22)",
                 params![generate_id(connection)?, note_id, deck_id],
             );
-            assert!(duplicate.is_err(), "disabled identities must be reactivated, not replaced");
+            assert!(
+                duplicate.is_err(),
+                "disabled identities must be reactivated, not replaced"
+            );
 
             let count: i64 = connection
                 .query_row(
@@ -354,8 +362,7 @@ fn workload_excludes_suspended_and_buried_cards_and_protects_review_backlog() {
             let now = unix_time_millis()?;
             let (_, review_id) = create_basic_card(connection, &deck_id, "Review", "A", now)?;
             let (_, new_id) = create_basic_card(connection, &deck_id, "New", "A", now)?;
-            let (_, suspended_id) =
-                create_basic_card(connection, &deck_id, "Suspended", "A", now)?;
+            let (_, suspended_id) = create_basic_card(connection, &deck_id, "Suspended", "A", now)?;
             let (_, buried_id) = create_basic_card(connection, &deck_id, "Buried", "A", now)?;
 
             connection
@@ -398,18 +405,16 @@ fn workload_excludes_suspended_and_buried_cards_and_protects_review_backlog() {
             let mut settings = load_settings(connection)?;
             settings.daily_new_limit = 1;
             settings.daily_review_limit = 1;
-            let overview = workload_overview(connection, std::slice::from_ref(&deck_id), &settings)?;
+            let overview =
+                workload_overview(connection, std::slice::from_ref(&deck_id), &settings)?;
             assert_eq!(overview.due_reviews, 1);
             assert_eq!(overview.due_new, 1);
             assert_eq!(overview.scheduled_reviews, 1);
             assert_eq!(overview.scheduled_new, 1);
             assert_eq!(overview.extra_available, 2);
 
-            let (planned, _) = planned_scheduled_cards(
-                connection,
-                std::slice::from_ref(&deck_id),
-                &settings,
-            )?;
+            let (planned, _) =
+                planned_scheduled_cards(connection, std::slice::from_ref(&deck_id), &settings)?;
             assert_eq!(planned.len(), 2);
             assert_eq!(planned[0].card_id, review_id);
             assert_eq!(planned[1].card_id, new_id);
@@ -467,8 +472,12 @@ fn immutable_review_references_prevent_physical_card_removal() {
             let (_, card_id) = create_basic_card(connection, &deck_id, "Question", "Answer", 1)?;
             insert_review(connection, &card_id, 2, true)?;
 
-            let deletion = connection.execute("DELETE FROM cards WHERE id = ?1", [card_id.as_str()]);
-            assert!(deletion.is_err(), "review history must retain its card identity");
+            let deletion =
+                connection.execute("DELETE FROM cards WHERE id = ?1", [card_id.as_str()]);
+            assert!(
+                deletion.is_err(),
+                "review history must retain its card identity"
+            );
             let review_count: i64 = connection
                 .query_row(
                     "SELECT COUNT(*) FROM review_events WHERE card_id = ?1",
