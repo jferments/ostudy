@@ -17,14 +17,12 @@ def write(path: str, content: str) -> None:
     (ROOT / path).write_text(content, encoding="utf-8")
 
 
-def replace_once(text: str, old: str, new: str, label: str) -> str:
-    count = text.count(old)
-    if count != 1:
-        raise SystemExit(f"{label}: expected one match, found {count}")
-    return text.replace(old, new, 1)
-
-
-def regex_once(text: str, pattern: str, replacement: str, label: str) -> str:
+def regex_once(
+    text: str,
+    pattern: str,
+    replacement: str | re.Callable,
+    label: str,
+) -> str:
     updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
     if count != 1:
         raise SystemExit(f"{label}: expected one regex match, found {count}")
@@ -34,11 +32,13 @@ def regex_once(text: str, pattern: str, replacement: str, label: str) -> str:
 # Backup validation must not require write access beside a user-selected backup.
 path = "src-tauri/src/library_backup.rs"
 text = read(path)
-text = replace_once(
+text = regex_once(
     text,
-    '''    let temporary = extract_database_to
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| source.with_extension(format!("validate.{}.sqlite3", std::process::id())));''',
+    r'''    let temporary = extract_database_to\s*
+        \.map\(Path::to_path_buf\)\s*
+        \.unwrap_or_else\(\|\| \{\s*
+            source\.with_extension\(format!\("validate\.\{\}\.sqlite3", std::process::id\(\)\)\)\s*
+        \}\);''',
     '''    let temporary = extract_database_to.map(Path::to_path_buf).unwrap_or_else(|| {
         std::env::temp_dir().join(format!(
             "ostudy-backup-validation-{}-{}.sqlite3",
@@ -54,20 +54,26 @@ write(path, text)
 # staging before the SQLite transaction rolls back.
 path = "src-tauri/src/studydeck/import.rs"
 text = read(path)
+
+
+def wrap_promotion(match: re.Match[str]) -> str:
+    return f'''    let mut promoted = Vec::new();
+    let promotion_result = (|| -> Result<(), CommandError> {{
+{match.group("body")}
+        Ok(())
+    }})();
+    if let Err(error) = promotion_result {{
+        compensate_promotions(&promoted);
+        return Err(error);
+    }}
+
+    if let Err(error) = transaction.commit() {{'''
+
+
 text = regex_once(
     text,
     r'''    let mut promoted = Vec::new\(\);\n(?P<body>.*?)\n    if let Err\(error\) = transaction\.commit\(\) \{''',
-    '''    let mut promoted = Vec::new();
-    let promotion_result = (|| -> Result<(), CommandError> {
-\g<body>
-        Ok(())
-    })();
-    if let Err(error) = promotion_result {
-        compensate_promotions(&promoted);
-        return Err(error);
-    }
-
-    if let Err(error) = transaction.commit() {''',
+    wrap_promotion,
     "import promotion compensation",
 )
 write(path, text)
