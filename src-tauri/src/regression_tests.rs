@@ -132,10 +132,25 @@ fn insert_reset_event(
     card_id: &str,
     occurred_at: i64,
 ) -> Result<(), CommandError> {
+    let operation_id = generate_id(connection)?;
+    connection
+        .execute(
+            "INSERT INTO schedule_action_operations (
+                 id, request_fingerprint, session_id, action, due_at,
+                 requested_count, changed_count, unchanged_count, rejected_count,
+                 occurred_at, created_at
+             ) VALUES (?1, ?2, NULL, 'reset', NULL, 1, 1, 0, 0, ?3, ?3)",
+            params![
+                operation_id,
+                format!("regression-reset:v1:{card_id}:{occurred_at}"),
+                occurred_at,
+            ],
+        )
+        .map_err(CommandError::database)?;
     connection
         .execute(
             "INSERT INTO schedule_action_events (
-                 id, mutation_id, session_id, card_id, action,
+                 id, operation_id, session_id, card_id, action,
                  due_before, due_after, state_before, state_after,
                  suspended_before, suspended_after,
                  buried_until_before, buried_until_after,
@@ -147,12 +162,7 @@ fn insert_reset_event(
                  NULL, NULL, NULL, NULL,
                  1, 2, ?4, ?4
              )",
-            params![
-                generate_id(connection)?,
-                generate_id(connection)?,
-                card_id,
-                occurred_at
-            ],
+            params![generate_id(connection)?, operation_id, card_id, occurred_at],
         )
         .map_err(CommandError::database)?;
     Ok(())
@@ -361,7 +371,8 @@ fn workload_excludes_suspended_and_buried_cards_and_protects_review_backlog() {
             let now = unix_time_millis()?;
             let (_, review_id) = create_basic_card(connection, &deck_id, "Review", "A", now)?;
             let (_, new_id) = create_basic_card(connection, &deck_id, "New", "A", now)?;
-            let (_, suspended_id) = create_basic_card(connection, &deck_id, "Suspended", "A", now)?;
+            let (_, suspended_id) =
+                create_basic_card(connection, &deck_id, "Suspended", "A", now)?;
             let (_, buried_id) = create_basic_card(connection, &deck_id, "Buried", "A", now)?;
 
             connection
