@@ -46,7 +46,7 @@ export function AnalyticsScreen({
   onPracticeCards,
   showToast,
 }: AnalyticsScreenProps) {
-  const [range, setRange] = useState<AnalyticsRange>("30d");
+  const [range, setRange] = useState<AnalyticsRange>("7d");
   const [selectedDeckIds, setSelectedDeckIds] = useState<Set<string>>(new Set());
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [availableTags, setAvailableTags] = useState<TagSummary[]>([]);
@@ -172,6 +172,7 @@ export function AnalyticsScreen({
       <section className="analytics-filter-panel" aria-label="Analytics filters">
         <div className="analytics-range-control" role="group" aria-label="Time range">
           {([
+            ["7d", "7 days"],
             ["30d", "30 days"],
             ["90d", "90 days"],
             ["1y", "1 year"],
