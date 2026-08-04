@@ -26,8 +26,12 @@ fn create_generated_card_in_database(
         back_text,
         tags,
         allow_duplicate,
+        asset_draft_id,
     } = input;
     validate_entity_id(&deck_id, "deck")?;
+    if let Some(draft_id) = asset_draft_id.as_deref() {
+        validate_entity_id(draft_id, "asset draft")?;
+    }
     let prepared = prepare_generated_note(GeneratedNoteDraft {
         card_type,
         reverse_enabled,
@@ -38,6 +42,7 @@ fn create_generated_card_in_database(
         front_text,
         back_text,
     })?;
+    let asset_ids = content_asset_ids(&prepared.content);
     let tags = validate_tags(tags)?;
     let normalized = normalized_pair(&prepared.content.front_text, &prepared.content.back_text);
     let hash = duplicate_hash(&normalized.0, &normalized.1);
@@ -47,7 +52,12 @@ fn create_generated_card_in_database(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         ensure_active_deck(&transaction, &deck_id)?;
-        ensure_assets_exist(&transaction, &content_asset_ids(&prepared.content))?;
+        ensure_assets_available(
+            &transaction,
+            &paths,
+            &asset_ids,
+            asset_draft_id.as_deref(),
+        )?;
         if !allow_duplicate
             && duplicate_checkable(&prepared.content.front_text, &prepared.content.back_text)
             && has_exact_duplicate(
@@ -100,7 +110,15 @@ fn create_generated_card_in_database(
         )?;
         replace_note_assets(&transaction, &note_id, &prepared.content)?;
         replace_note_tags(&transaction, &note_id, &tags, now)?;
+        let finalization = finalize_assets_for_owner(
+            &transaction,
+            &paths,
+            &asset_ids,
+            asset_draft_id.as_deref(),
+            Some(&note_id),
+        )?;
         transaction.commit().map_err(CommandError::database)?;
+        finalization.cleanup();
         Ok(note_id)
     })?;
 
@@ -126,9 +144,13 @@ fn update_generated_card_in_database(
         back_text,
         tags,
         allow_duplicate,
+        asset_draft_id,
     } = input;
     validate_entity_id(&note_id, "note")?;
     validate_entity_id(&deck_id, "deck")?;
+    if let Some(draft_id) = asset_draft_id.as_deref() {
+        validate_entity_id(draft_id, "asset draft")?;
+    }
     if revision < 1 {
         return Err(CommandError::new(
             "invalid_revision",
@@ -145,6 +167,7 @@ fn update_generated_card_in_database(
         front_text,
         back_text,
     })?;
+    let asset_ids = content_asset_ids(&prepared.content);
     let tags = validate_tags(tags)?;
     let normalized = normalized_pair(&prepared.content.front_text, &prepared.content.back_text);
     let hash = duplicate_hash(&normalized.0, &normalized.1);
@@ -154,7 +177,12 @@ fn update_generated_card_in_database(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         ensure_active_deck(&transaction, &deck_id)?;
-        ensure_assets_exist(&transaction, &content_asset_ids(&prepared.content))?;
+        ensure_assets_available(
+            &transaction,
+            &paths,
+            &asset_ids,
+            asset_draft_id.as_deref(),
+        )?;
         let existing_type: Option<String> = transaction
             .query_row(
                 "SELECT note_type FROM notes WHERE id = ?1 AND deleted_at IS NULL",
@@ -231,12 +259,19 @@ fn update_generated_card_in_database(
         )?;
         replace_note_assets(&transaction, &note_id, &prepared.content)?;
         replace_note_tags(&transaction, &note_id, &tags, now)?;
-        transaction.commit().map_err(CommandError::database)
+        let finalization = finalize_assets_for_owner(
+            &transaction,
+            &paths,
+            &asset_ids,
+            asset_draft_id.as_deref(),
+            Some(&note_id),
+        )?;
+        transaction.commit().map_err(CommandError::database)?;
+        finalization.cleanup();
+        Ok(())
     })?;
 
-    database.with_connection(|connection| {
-        hydrate_organized_card(connection, &paths, &note_id)
-    })
+    database.with_connection(|connection| hydrate_organized_card(connection, &paths, &note_id))
 }
 
 fn prepare_generated_note(
