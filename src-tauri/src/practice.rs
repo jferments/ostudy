@@ -482,12 +482,8 @@ fn review_result_for_submission(
                         completed: stored_completed
                             .map(|value| value != 0)
                             .unwrap_or(current_completed.is_some()),
-                        rated_count: stored_rated_count
-                            .or(current_rated_count)
-                            .unwrap_or(0),
-                        correct_count: stored_correct_count
-                            .or(current_correct_count)
-                            .unwrap_or(0),
+                        rated_count: stored_rated_count.or(current_rated_count).unwrap_or(0),
+                        correct_count: stored_correct_count.or(current_correct_count).unwrap_or(0),
                     },
                 })
             },
