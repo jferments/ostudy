@@ -31,7 +31,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 3,
         name: "fsrs_reviews",
-        checksum: "49dd1e24e463c9a08a59e243d90143e2874459dd2a4a8d5f61613d5df7ebcae3",
+        checksum: "49dd1e24e463c9a08a59e243d90143e2874459ddf5ab4b36e55c8b",
         sql: include_str!("../migrations/0003_fsrs_reviews.sql"),
     },
     Migration {
@@ -76,9 +76,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "bff6ab81045823654725e1f022de7c2c9b1715c63205273a24fd7db03eb0a82a",
         sql: include_str!("../migrations/0010_transactional_schedule_actions.sql"),
     },
+    Migration {
+        version: 11,
+        name: "managed_asset_lifecycle",
+        checksum: "fc9d0b9601cbb45a99bb93b8ed448e150013186b88cb87430c84193176ad7280",
+        sql: include_str!("../migrations/0011_managed_asset_lifecycle.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 10;
+const LATEST_SCHEMA_VERSION: i64 = 11;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -248,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn migrations_are_idempotent_and_reach_schema_ten() {
+    fn migrations_are_idempotent_and_reach_schema_eleven() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
@@ -273,6 +279,9 @@ mod tests {
                     "card_template_assets",
                     "schedule_action_operations",
                     "schedule_action_events",
+                    "asset_drafts",
+                    "asset_reconciliation_events",
+                    "deletion_operations",
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -297,6 +306,11 @@ mod tests {
                     ("schedule_action_operations", "request_fingerprint"),
                     ("schedule_action_operations", "changed_count"),
                     ("schedule_action_events", "operation_id"),
+                    ("assets", "lifecycle_state"),
+                    ("assets", "draft_id"),
+                    ("assets", "staged_relative_path"),
+                    ("assets", "quarantine_relative_path"),
+                    ("deletion_operations", "expires_at"),
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -460,6 +474,10 @@ mod tests {
         assert_eq!(
             MIGRATIONS[9].checksum,
             "bff6ab81045823654725e1f022de7c2c9b1715c63205273a24fd7db03eb0a82a"
+        );
+        assert_eq!(
+            MIGRATIONS[10].checksum,
+            "fc9d0b9601cbb45a99bb93b8ed448e150013186b88cb87430c84193176ad7280"
         );
     }
 }
