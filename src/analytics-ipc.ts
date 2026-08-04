@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { ReviewOutcome } from "./ipc";
 
-export type AnalyticsRange = "30d" | "90d" | "1y" | "all";
+export type AnalyticsRange = "7d" | "30d" | "90d" | "1y" | "all";
 export type TagAnalyticsStatus =
   | "building_data"
   | "needs_attention"
