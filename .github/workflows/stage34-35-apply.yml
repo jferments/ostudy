@@ -1,4 +1,4 @@
-name: Stage 3.4 and 3.5 fast qualification
+name: Stage 3.4 and 3.5 full qualification
 
 on:
   push:
@@ -6,12 +6,6 @@ on:
       - agent/stage-3-4-3-5-transfer-repairs
     paths:
       - .github/workflows/stage34-35-apply.yml
-      - scripts/verify-stage2.mjs
-      - scripts/verify-stage3.mjs
-      - scripts/verify-stage33.mjs
-      - scripts/verify-stage34-35.mjs
-      - src/**
-      - src-tauri/**
 
 permissions:
   contents: read
@@ -21,5 +15,5 @@ jobs:
     runs-on: [self-hosted, linux, x64, ostudy]
     steps:
       - uses: actions/checkout@v4
-      - name: Run fast high-return checks
-        run: bash ./scripts/check-fast.sh
+      - name: Run complete qualification gate
+        run: ./scripts/check.sh
