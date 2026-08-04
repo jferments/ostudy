@@ -55,7 +55,7 @@ const [
   read("src", "screens", "CardsScreen.tsx"),
   read("src", "card-types.css"),
   read("src", "rich-templates.css"),
-  read("src-tauri", "src", "stage3_transfer.rs"),
+  read("src-tauri", "src", "studydeck.rs"),
   read("docs", "ARCHITECTURE.md"),
   read("docs", "CARD-FORMAT-AND-DATA-MODEL.md"),
 ]);
@@ -229,13 +229,13 @@ if (richStyles.includes(".template-field-inserter")) {
 }
 
 for (const fragment of [
-  "CREATE TABLE IF NOT EXISTS card_type_metadata",
-  "restore_imported_card_types",
+  "CURRENT_PACKAGE_VERSION",
+  "fresh-local-schedules",
   "insert_new_schedule",
 ]) {
   if (!stage3Transfer.includes(fragment)) failures.push(`studydeck support missing: ${fragment}`);
 }
-if (stage3Transfer.includes("card_templates")) {
+if (stage3Transfer.includes("CREATE TABLE card_templates")) {
   failures.push("reusable authoring templates must not be exported with decks");
 }
 

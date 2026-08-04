@@ -81,7 +81,10 @@ fn prepare_operation(
         }
         if status == "completed" {
             let deck_id = deck_id.ok_or_else(|| {
-                CommandError::new("invalid_import_operation", "The saved import result is incomplete.")
+                CommandError::new(
+                    "invalid_import_operation",
+                    "The saved import result is incomplete.",
+                )
             })?;
             return Ok(Some(ImportResultDto {
                 deck: get_deck_from_connection(connection, &deck_id)?,
@@ -112,7 +115,13 @@ fn prepare_operation(
                  id, request_fingerprint, package_format, package_version,
                  status, created_at, updated_at
              ) VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?5)",
-            params![operation_id, fingerprint, PACKAGE_FORMAT, package_version, now],
+            params![
+                operation_id,
+                fingerprint,
+                PACKAGE_FORMAT,
+                package_version,
+                now
+            ],
         )
         .map_err(CommandError::database)?;
     Ok(None)
@@ -409,7 +418,9 @@ fn apply_package_transaction(
             compensate_promotions(&promoted);
             return Err(CommandError::io(error));
         }
-        if let Err(error) = sync_directory(staged.parent()).and_then(|_| sync_directory(final_path.parent())) {
+        if let Err(error) =
+            sync_directory(staged.parent()).and_then(|_| sync_directory(final_path.parent()))
+        {
             let _ = fs::rename(&final_path, &staged);
             compensate_promotions(&promoted);
             return Err(error);
@@ -505,11 +516,12 @@ fn cleanup_operation_drafts(
                  WHERE purpose = 'import' AND owner_id = ?1 AND committed_at IS NULL",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([operation_id], |row| row.get::<_, String>(0))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     for draft_id in draft_ids {
         cleanup_draft(connection, paths, &draft_id)?;
@@ -529,7 +541,7 @@ fn cleanup_draft(
                  FROM assets WHERE draft_id = ?1",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([draft_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -539,7 +551,8 @@ fn cleanup_draft(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)

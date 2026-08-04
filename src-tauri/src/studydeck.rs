@@ -373,11 +373,7 @@ fn table_exists(connection: &Connection, table: &str) -> Result<bool, CommandErr
         .map_err(CommandError::database)
 }
 
-fn column_exists(
-    connection: &Connection,
-    table: &str,
-    column: &str,
-) -> Result<bool, CommandError> {
+fn column_exists(connection: &Connection, table: &str, column: &str) -> Result<bool, CommandError> {
     let sql = format!(
         "SELECT EXISTS(SELECT 1 FROM pragma_table_info('{}') WHERE name = ?1)",
         table.replace('\'', "''")
@@ -458,7 +454,11 @@ fn rewrite_asset_ids(
     Ok(())
 }
 
-fn validate_timestamp_pair(created_at: i64, updated_at: i64, label: &str) -> Result<(), CommandError> {
+fn validate_timestamp_pair(
+    created_at: i64,
+    updated_at: i64,
+    label: &str,
+) -> Result<(), CommandError> {
     if created_at < 0 || updated_at < created_at {
         return Err(CommandError::invalid_package(format!(
             "The package contains invalid {label} timestamps."
@@ -477,8 +477,16 @@ fn normalize_tag_name(value: &str) -> String {
 }
 
 fn duplicate_fingerprint(front: &str, back: &str) -> String {
-    let front = front.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
-    let back = back.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+    let front = front
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    let back = back
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
     let mut hash = 0xcbf29ce484222325_u64;
     for byte in front
         .as_bytes()
@@ -508,9 +516,8 @@ fn write_new_file(path: &Path, data: &[u8]) -> Result<(), CommandError> {
 
 #[cfg(unix)]
 fn sync_directory(path: Option<&Path>) -> Result<(), CommandError> {
-    let path = path.ok_or_else(|| {
-        CommandError::new("invalid_path", "The parent directory is unavailable.")
-    })?;
+    let path = path
+        .ok_or_else(|| CommandError::new("invalid_path", "The parent directory is unavailable."))?;
     File::open(path)
         .and_then(|directory| directory.sync_all())
         .map_err(CommandError::io)

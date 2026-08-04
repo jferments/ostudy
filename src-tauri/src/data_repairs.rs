@@ -10,7 +10,6 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBe
 
 use crate::{
     authoring::{apply_stage3_data_repairs, backfill_duplicate_hashes_in_connection},
-    error::CommandError,
     util::unix_time_millis,
 };
 
@@ -46,7 +45,9 @@ pub(crate) fn apply_required_repairs(connection: &mut Connection) -> Result<(), 
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
-            .map_err(|error| format!("Could not inspect data repair {}: {error}", repair.version))?;
+            .map_err(|error| {
+                format!("Could not inspect data repair {}: {error}", repair.version)
+            })?;
         if let Some((name, checksum)) = existing {
             if name != repair.name || checksum != repair.checksum {
                 return Err(format!(
@@ -94,7 +95,9 @@ pub(crate) fn verify_repair_ledger(connection: &Connection) -> Result<(), String
             )
             .optional()
             .map_err(|error| format!("Could not verify data repair {}: {error}", repair.version))?;
-        if recorded.as_ref().map(|row| (row.0.as_str(), row.1.as_str()))
+        if recorded
+            .as_ref()
+            .map(|row| (row.0.as_str(), row.1.as_str()))
             != Some((repair.name, repair.checksum))
         {
             return Err(format!(
@@ -134,7 +137,7 @@ fn repair_stage3_data(transaction: &Transaction<'_>) -> Result<i64, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::Database;
+    use crate::{database::Database, error::CommandError};
 
     #[test]
     fn canonical_database_repair_pass_is_a_no_op() {

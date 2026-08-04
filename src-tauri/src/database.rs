@@ -3,7 +3,7 @@ use std::{path::Path, sync::Mutex, time::Duration};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::{
-    authoring::{backfill_duplicate_hashes, normalize_stage3_schema},
+    data_repairs::{apply_required_repairs, verify_repair_ledger},
     error::CommandError,
     util::unix_time_millis,
 };
@@ -82,9 +82,21 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "fc9d0b9601cbb45a99bb93b8ed448e150013186b88cb87430c84193176ad7280",
         sql: include_str!("../migrations/0011_managed_asset_lifecycle.sql"),
     },
+    Migration {
+        version: 12,
+        name: "versioned_data_repairs",
+        checksum: "6776fd4d70ed8bac79dd01774d27d7dca97ece65742dabd69a55077dc6a721a3",
+        sql: include_str!("../migrations/0012_versioned_data_repairs.sql"),
+    },
+    Migration {
+        version: 13,
+        name: "canonical_data_model",
+        checksum: "5e1359dea514e0c4d50928def26edf90c3cab9fc9432328deb22b98ba2ae1261",
+        sql: include_str!("../migrations/0013_canonical_data_model.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 11;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 13;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -126,9 +138,10 @@ impl Database {
 
 fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
     configure_connection(connection)?;
-    apply_migrations(connection)?;
-    backfill_duplicate_hashes(connection)?;
-    normalize_stage3_schema(connection).map_err(|error| error.message)?;
+    apply_migrations_through(connection, 12)?;
+    apply_required_repairs(connection)?;
+    apply_migrations_after(connection, 12)?;
+    verify_repair_ledger(connection)?;
     Ok(())
 }
 
@@ -159,6 +172,32 @@ fn initialize_migration_ledger(connection: &Connection) -> Result<(), String> {
 }
 
 fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
+    apply_migration_range(connection, 1, LATEST_SCHEMA_VERSION)
+}
+
+fn apply_migrations_through(
+    connection: &mut Connection,
+    maximum_version: i64,
+) -> Result<(), String> {
+    apply_migration_range(connection, 1, maximum_version)
+}
+
+fn apply_migrations_after(
+    connection: &mut Connection,
+    minimum_exclusive: i64,
+) -> Result<(), String> {
+    apply_migration_range(
+        connection,
+        minimum_exclusive.saturating_add(1),
+        LATEST_SCHEMA_VERSION,
+    )
+}
+
+fn apply_migration_range(
+    connection: &mut Connection,
+    minimum_version: i64,
+    maximum_version: i64,
+) -> Result<(), String> {
     initialize_migration_ledger(connection)?;
     let newest_version: Option<i64> = connection
         .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
@@ -172,7 +211,9 @@ fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
         ));
     }
 
-    for migration in MIGRATIONS {
+    for migration in MIGRATIONS.iter().filter(|migration| {
+        migration.version >= minimum_version && migration.version <= maximum_version
+    }) {
         let existing: Option<(String, String)> = connection
             .query_row(
                 "SELECT name, checksum FROM schema_migrations WHERE version = ?1",
@@ -254,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn migrations_are_idempotent_and_reach_schema_eleven() {
+    fn migrations_and_repairs_are_idempotent_and_reach_schema_thirteen() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
@@ -282,6 +323,8 @@ mod tests {
                     "asset_drafts",
                     "asset_reconciliation_events",
                     "deletion_operations",
+                    "data_repairs",
+                    "deck_import_operations",
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -311,6 +354,8 @@ mod tests {
                     ("assets", "staged_relative_path"),
                     ("assets", "quarantine_relative_path"),
                     ("deletion_operations", "expires_at"),
+                    ("data_repairs", "changed_rows"),
+                    ("deck_import_operations", "request_fingerprint"),
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -478,6 +523,14 @@ mod tests {
         assert_eq!(
             MIGRATIONS[10].checksum,
             "fc9d0b9601cbb45a99bb93b8ed448e150013186b88cb87430c84193176ad7280"
+        );
+        assert_eq!(
+            MIGRATIONS[11].checksum,
+            "6776fd4d70ed8bac79dd01774d27d7dca97ece65742dabd69a55077dc6a721a3"
+        );
+        assert_eq!(
+            MIGRATIONS[12].checksum,
+            "5e1359dea514e0c4d50928def26edf90c3cab9fc9432328deb22b98ba2ae1261"
         );
     }
 }

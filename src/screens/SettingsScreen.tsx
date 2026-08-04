@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 import {
+  exportLibraryBackup,
   getAppInfo,
   getErrorMessage,
+  prepareLibraryRestore,
   saveSettings,
   type AppInfo,
   type AppSettings,
@@ -41,6 +44,8 @@ export function SettingsScreen({
   const [savedBaseline, setSavedBaseline] = useState(settings);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isTransferringLibrary, setIsTransferringLibrary] = useState(false);
+  const [restorePrepared, setRestorePrepared] = useState(false);
   const savingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(savedBaseline);
@@ -68,6 +73,57 @@ export function SettingsScreen({
   function update(patch: Partial<AppSettings>): void {
     if (savingRef.current) return;
     setDraft((current) => ({ ...current, ...patch }));
+  }
+
+  async function backupLibrary(): Promise<void> {
+    if (isTransferringLibrary) return;
+    const destination = await save({
+      title: "Back up the complete ostudy library",
+      defaultPath: `ostudy-library-${new Date().toISOString().slice(0, 10)}.ostudybackup`,
+      filters: [{ name: "ostudy library backup", extensions: ["ostudybackup"] }],
+    });
+    if (typeof destination !== "string") return;
+    setIsTransferringLibrary(true);
+    setErrorMessage(null);
+    try {
+      const result = await exportLibraryBackup(destination);
+      showToast(
+        "success",
+        `Backed up ${result.deckCount} ${result.deckCount === 1 ? "deck" : "decks"}, ${result.templateCount} ${result.templateCount === 1 ? "template" : "templates"}, and ${result.reviewCount} review ${result.reviewCount === 1 ? "event" : "events"}.`,
+      );
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsTransferringLibrary(false);
+    }
+  }
+
+  async function restoreLibrary(): Promise<void> {
+    if (isTransferringLibrary) return;
+    const source = await open({
+      title: "Choose an ostudy library backup",
+      multiple: false,
+      directory: false,
+      filters: [{ name: "ostudy library backup", extensions: ["ostudybackup"] }],
+    });
+    if (typeof source !== "string") return;
+    if (!window.confirm(
+      "Restore this complete library on the next ostudy launch? The current library will be replaced after validation.",
+    )) return;
+    setIsTransferringLibrary(true);
+    setErrorMessage(null);
+    try {
+      const result = await prepareLibraryRestore(source);
+      setRestorePrepared(result.restartRequired);
+      showToast(
+        "info",
+        `Restore prepared for ${result.deckCount} ${result.deckCount === 1 ? "deck" : "decks"}. Close and reopen ostudy to apply it.`,
+      );
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsTransferringLibrary(false);
+    }
   }
 
   async function persist(): Promise<void> {
@@ -181,6 +237,34 @@ export function SettingsScreen({
           ) : (
             <div className="inline-progress">Reading storage paths…</div>
           )}
+          <div className="storage-backup-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={isTransferringLibrary}
+              onClick={() => void backupLibrary()}
+            >
+              {isTransferringLibrary ? "Working…" : "Back up library"}
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={isTransferringLibrary}
+              onClick={() => void restoreLibrary()}
+            >
+              Restore backup
+            </button>
+          </div>
+          <p className="settings-note">
+            Complete backups include every deck, reusable template, managed image,
+            schedule, review event, practice session, analytics source record, and setting.
+            Shared .studydeck files remain content-only and receive fresh schedules when imported.
+          </p>
+          {restorePrepared ? (
+            <div className="inline-alert info-alert">
+              Restore is prepared. Close every ostudy window and reopen the application to apply it.
+            </div>
+          ) : null}
         </section>
       </div>
     </div>
@@ -188,6 +272,7 @@ export function SettingsScreen({
 }
 
 interface ThemeOptionProps {
+
   name: string;
   value: AppSettings["theme"];
   selected: boolean;

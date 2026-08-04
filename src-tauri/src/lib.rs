@@ -11,12 +11,14 @@ mod asset_lifecycle;
 mod assets;
 mod authoring;
 mod cards;
+mod data_repairs;
 mod database;
 mod decks;
 mod deletion;
 mod deletion_commands;
 mod error;
 mod learning_signals;
+mod library_backup;
 mod logging;
 mod paths;
 mod practice;
@@ -24,10 +26,7 @@ mod practice_selection;
 mod schedule_controls;
 mod scheduler;
 mod settings;
-mod stage3_transfer;
-mod tagged_transfer;
-mod transfer;
-mod transfer_lifecycle;
+mod studydeck;
 mod util;
 mod workload;
 
@@ -52,7 +51,12 @@ pub fn run() {
                 ))
             })?;
             let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
+            let pending_restore =
+                library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
+            if let Some(restore) = pending_restore {
+                restore.commit();
+            }
 
             deletion::finalize_expired_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
@@ -116,6 +120,8 @@ pub fn run() {
             settings::get_settings,
             settings::save_settings,
             settings::get_app_info,
+            library_backup::export_library_backup,
+            library_backup::prepare_library_restore,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
             practice_selection::start_card_practice,
@@ -126,8 +132,8 @@ pub fn run() {
             schedule_controls::apply_schedule_action,
             analytics::get_analytics,
             analytics::get_recent_practice_reviews,
-            stage3_transfer::export_deck_with_card_types,
-            authoring::import_deck_with_single_cloze_normalization
+            studydeck::export_deck,
+            studydeck::import_deck
         ])
         .run(tauri::generate_context!())
         .expect("error while running ostudy");

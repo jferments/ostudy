@@ -98,10 +98,8 @@ pub(super) fn export_deck_from_connection(
                     note.note_type,
                     note.content_format,
                     note.content_schema_version,
-                    serde_json::to_string(&note.front_doc)
-                        .map_err(CommandError::serialization)?,
-                    serde_json::to_string(&note.back_doc)
-                        .map_err(CommandError::serialization)?,
+                    serde_json::to_string(&note.front_doc).map_err(CommandError::serialization)?,
+                    serde_json::to_string(&note.back_doc).map_err(CommandError::serialization)?,
                     note.front_text,
                     note.back_text,
                     note.duplicate_hash,
@@ -257,7 +255,7 @@ fn load_snapshot(
                  ORDER BY created_at, id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([deck_id], |row| {
                 let front_json: String = row.get(5)?;
                 let back_json: String = row.get(6)?;
@@ -291,10 +289,8 @@ fn load_snapshot(
                     note_type: row.2,
                     content_format: row.3,
                     content_schema_version: row.4,
-                    front_doc: serde_json::from_str(&row.5)
-                        .map_err(CommandError::serialization)?,
-                    back_doc: serde_json::from_str(&row.6)
-                        .map_err(CommandError::serialization)?,
+                    front_doc: serde_json::from_str(&row.5).map_err(CommandError::serialization)?,
+                    back_doc: serde_json::from_str(&row.6).map_err(CommandError::serialization)?,
                     front_text: row.7,
                     back_text: row.8,
                     duplicate_hash: row.9,
@@ -306,7 +302,8 @@ fn load_snapshot(
                     revision: row.15,
                 })
             })
-            .collect::<Result<Vec<_>, CommandError>>()?
+            .collect::<Result<Vec<_>, CommandError>>()?;
+        rows
     };
 
     let cards = {
@@ -322,7 +319,7 @@ fn load_snapshot(
                  ORDER BY c.created_at, c.id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([deck_id], |row| {
                 Ok(PackageCard {
                     source_id: row.get(0)?,
@@ -335,7 +332,8 @@ fn load_snapshot(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
 
     let tags = {
@@ -350,7 +348,7 @@ fn load_snapshot(
                  ORDER BY t.normalized_name, t.id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([deck_id], |row| {
                 Ok(PackageTag {
                     source_id: row.get(0)?,
@@ -362,7 +360,8 @@ fn load_snapshot(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
 
     let note_tags = {
@@ -375,11 +374,12 @@ fn load_snapshot(
                  ORDER BY nt.note_id, nt.tag_id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([deck_id], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
 
     let note_assets = {
@@ -392,11 +392,12 @@ fn load_snapshot(
                  ORDER BY na.note_id, na.asset_id, na.side",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([deck_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
 
     let assets = {

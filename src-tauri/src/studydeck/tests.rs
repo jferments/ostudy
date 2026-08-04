@@ -39,14 +39,10 @@ fn current_package_round_trip_preserves_content_and_uses_fresh_schedules() {
             let reverse_id = generate_id(connection)?;
             let front = paragraph("What does lisinopril inhibit?");
             let back = paragraph("Angiotensin-converting enzyme");
-            let validated = validate_content(
-                front,
-                back,
-                String::new(),
-                String::new(),
-            )?;
-            connection.execute(
-                "INSERT INTO notes (
+            let validated = validate_content(front, back, String::new(), String::new())?;
+            connection
+                .execute(
+                    "INSERT INTO notes (
                      id, deck_id, note_type, content_format, content_schema_version,
                      front_doc, back_doc, front_text, back_text, duplicate_hash,
                      reverse_enabled, cloze_source, cloze_mode,
@@ -56,43 +52,52 @@ fn current_package_round_trip_preserves_content_and_uses_fresh_schedules() {
                      ?3, ?4, ?5, ?6, ?7,
                      1, '', 'one_at_a_time', 10, 10, 1
                  )",
-                params![
-                    note_id,
-                    deck.id,
-                    validated.front_doc_json,
-                    validated.back_doc_json,
-                    validated.front_text,
-                    validated.back_text,
-                    duplicate_fingerprint(&validated.front_text, &validated.back_text),
-                ],
-            ).map_err(CommandError::database)?;
+                    params![
+                        note_id,
+                        deck.id,
+                        validated.front_doc_json,
+                        validated.back_doc_json,
+                        validated.front_text,
+                        validated.back_text,
+                        duplicate_fingerprint(&validated.front_text, &validated.back_text),
+                    ],
+                )
+                .map_err(CommandError::database)?;
             for (card_id, direction) in [(&forward_id, "forward"), (&reverse_id, "reverse")] {
-                connection.execute(
-                    "INSERT INTO cards (
+                connection
+                    .execute(
+                        "INSERT INTO cards (
                          id, note_id, deck_id, direction, template_ordinal,
                          created_at, updated_at
                      ) VALUES (?1, ?2, ?3, ?4, 0, 10, 10)",
-                    params![card_id, note_id, deck.id, direction],
-                ).map_err(CommandError::database)?;
+                        params![card_id, note_id, deck.id, direction],
+                    )
+                    .map_err(CommandError::database)?;
                 insert_new_schedule(connection, card_id, 10)?;
             }
-            connection.execute(
-                "UPDATE card_schedules
+            connection
+                .execute(
+                    "UPDATE card_schedules
                  SET state = 2, due_at = 99, reps = 4, revision = 3
                  WHERE card_id = ?1",
-                [forward_id.as_str()],
-            ).map_err(CommandError::database)?;
+                    [forward_id.as_str()],
+                )
+                .map_err(CommandError::database)?;
             let tag_id = generate_id(connection)?;
-            connection.execute(
-                "INSERT INTO tags (
+            connection
+                .execute(
+                    "INSERT INTO tags (
                      id, name, normalized_name, created_at, updated_at
                  ) VALUES (?1, 'Cardiology', 'cardiology', 10, 10)",
-                [tag_id.as_str()],
-            ).map_err(CommandError::database)?;
-            connection.execute(
-                "INSERT INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
-                params![note_id, tag_id],
-            ).map_err(CommandError::database)?;
+                    [tag_id.as_str()],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
+                    params![note_id, tag_id],
+                )
+                .map_err(CommandError::database)?;
             Ok(deck.id)
         })
         .expect("fixture");
@@ -109,11 +114,9 @@ fn current_package_round_trip_preserves_content_and_uses_fresh_schedules() {
             Ok(())
         })
         .expect("export");
-    let package_connection = Connection::open_with_flags(
-        &package_path,
-        OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .expect("package");
+    let package_connection =
+        Connection::open_with_flags(&package_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .expect("package");
     assert_eq!(
         metadata_value(&package_connection, "formatVersion").expect("version"),
         "2"
@@ -152,26 +155,30 @@ fn current_package_round_trip_preserves_content_and_uses_fresh_schedules() {
 
     target
         .with_connection(|connection| {
-            let counts: (i64, i64, i64) = connection.query_row(
-                "SELECT
+            let counts: (i64, i64, i64) = connection
+                .query_row(
+                    "SELECT
                      (SELECT COUNT(*) FROM decks WHERE deleted_at IS NULL),
                      (SELECT COUNT(*) FROM cards c
                       JOIN notes n ON n.id = c.note_id
                       WHERE c.deck_id = ?1 AND c.deleted_at IS NULL AND n.deleted_at IS NULL),
                      (SELECT COUNT(*) FROM note_tags nt
                       JOIN notes n ON n.id = nt.note_id WHERE n.deck_id = ?1)",
-                [first.deck.id.as_str()],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            ).map_err(CommandError::database)?;
+                    [first.deck.id.as_str()],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .map_err(CommandError::database)?;
             assert_eq!(counts, (1, 2, 1));
-            let fresh: (i64, i64) = connection.query_row(
-                "SELECT MIN(s.reps), MAX(s.reps)
+            let fresh: (i64, i64) = connection
+                .query_row(
+                    "SELECT MIN(s.reps), MAX(s.reps)
                  FROM card_schedules s
                  JOIN cards c ON c.id = s.card_id
                  WHERE c.deck_id = ?1",
-                [first.deck.id.as_str()],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            ).map_err(CommandError::database)?;
+                    [first.deck.id.as_str()],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .map_err(CommandError::database)?;
             assert_eq!(fresh, (0, 0));
             Ok(())
         })
@@ -186,8 +193,9 @@ fn legacy_multi_card_cloze_is_adapted_before_import() {
     let paths = temp_paths("legacy");
     let package_path = paths.app_data_dir().join("legacy.studydeck");
     let package = Connection::open(&package_path).expect("package");
-    package.execute_batch(
-        "CREATE TABLE package_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
+    package
+        .execute_batch(
+            "CREATE TABLE package_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
          INSERT INTO package_metadata VALUES ('format', 'studydeck-sqlite');
          INSERT INTO package_metadata VALUES ('formatVersion', '1');
          CREATE TABLE deck (
@@ -219,35 +227,44 @@ fn legacy_multi_card_cloze_is_adapted_before_import() {
          CREATE TABLE card_type_metadata (
              source_note_id TEXT PRIMARY KEY, reverse_enabled INTEGER NOT NULL,
              cloze_source TEXT NOT NULL, cloze_mode TEXT NOT NULL
-         ) STRICT;"
-    ).expect("schema");
+         ) STRICT;",
+        )
+        .expect("schema");
     let deck_id = "1".repeat(32);
     let note_id = "2".repeat(32);
-    package.execute(
-        "INSERT INTO deck VALUES (?1, 'Legacy cloze', '', 1, 1, 1)",
-        [deck_id.as_str()],
-    ).expect("deck");
-    package.execute(
-        "INSERT INTO notes VALUES (
+    package
+        .execute(
+            "INSERT INTO deck VALUES (?1, 'Legacy cloze', '', 1, 1, 1)",
+            [deck_id.as_str()],
+        )
+        .expect("deck");
+    package
+        .execute(
+            "INSERT INTO notes VALUES (
              ?1, ?2, 'cloze', 'tiptap-json', 1,
              ?3, ?4, 'The heart pumps blood.', 'heart · blood', 1, 1, 1
          )",
-        params![
-            note_id,
-            deck_id,
-            serde_json::to_string(&paragraph("The heart pumps blood.")).unwrap(),
-            serde_json::to_string(&paragraph("heart · blood")).unwrap(),
-        ],
-    ).expect("note");
-    package.execute(
-        "INSERT INTO card_type_metadata VALUES (?1, 0, ?2, 'one_at_a_time')",
-        params![note_id, "The {{c1::heart}} pumps {{c2::blood}}."],
-    ).expect("metadata");
+            params![
+                note_id,
+                deck_id,
+                serde_json::to_string(&paragraph("The heart pumps blood.")).unwrap(),
+                serde_json::to_string(&paragraph("heart · blood")).unwrap(),
+            ],
+        )
+        .expect("note");
+    package
+        .execute(
+            "INSERT INTO card_type_metadata VALUES (?1, 0, ?2, 'one_at_a_time')",
+            params![note_id, "The {{c1::heart}} pumps {{c2::blood}}."],
+        )
+        .expect("metadata");
     for (id, ordinal) in [("3".repeat(32), 1), ("4".repeat(32), 2)] {
-        package.execute(
-            "INSERT INTO cards VALUES (?1, ?2, 'cloze', ?3, 1, 1)",
-            params![id, note_id, ordinal],
-        ).expect("card");
+        package
+            .execute(
+                "INSERT INTO cards VALUES (?1, ?2, 'cloze', ?3, 1, 1)",
+                params![id, note_id, ordinal],
+            )
+            .expect("card");
     }
     drop(package);
 

@@ -10,7 +10,7 @@
 
 use std::{
     fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    io::Write,
     path::{Component, Path, PathBuf},
     time::Duration,
 };
@@ -102,23 +102,20 @@ pub(crate) struct PendingRestoreGuard {
 }
 
 impl PendingRestoreGuard {
-    pub(crate) fn commit(mut self) -> Result<(), String> {
+    pub(crate) fn commit(mut self) {
+        // Once the restored database has opened and migrated successfully, a
+        // cleanup failure must never invoke Drop's rollback against that live
+        // connection. Mark the guard committed first and treat stale rollback
+        // files as conservative cleanup residue for the next maintenance pass.
+        self.committed = true;
         if let Some(path) = self.rollback_database.take() {
-            remove_file_if_exists(&path).map_err(|error| {
-                format!("Could not remove the previous database backup: {error}")
-            })?;
+            let _ = remove_file_if_exists(&path);
         }
         if let Some(path) = self.rollback_assets.take() {
-            remove_dir_if_exists(&path).map_err(|error| {
-                format!("Could not remove the previous asset backup: {error}")
-            })?;
+            let _ = remove_dir_if_exists(&path);
         }
-        remove_file_if_exists(&self.pending_package)
-            .map_err(|error| format!("Could not remove the completed restore package: {error}"))?;
-        remove_dir_if_exists(&self.staging_root)
-            .map_err(|error| format!("Could not remove restore staging: {error}"))?;
-        self.committed = true;
-        Ok(())
+        let _ = remove_file_if_exists(&self.pending_package);
+        let _ = remove_dir_if_exists(&self.staging_root);
     }
 }
 
@@ -200,15 +197,18 @@ pub(crate) fn apply_pending_restore(
     let had_database = database_path.exists();
     let had_assets = assets_path.exists();
     if had_database {
-        fs::rename(&database_path, &rollback_database)
-            .map_err(|error| format!("Could not stage the current database for rollback: {error}"))?;
+        fs::rename(&database_path, &rollback_database).map_err(|error| {
+            format!("Could not stage the current database for rollback: {error}")
+        })?;
     }
     if had_assets {
         if let Err(error) = fs::rename(&assets_path, &rollback_assets) {
             if had_database {
                 let _ = fs::rename(&rollback_database, &database_path);
             }
-            return Err(format!("Could not stage current images for rollback: {error}"));
+            return Err(format!(
+                "Could not stage current images for rollback: {error}"
+            ));
         }
     }
     if let Err(error) = fs::rename(&staged_database, &database_path) {
@@ -248,9 +248,9 @@ fn export_backup(
     paths: &AppPaths,
     destination: &Path,
 ) -> Result<LibraryBackupResultDto, CommandError> {
-    let parent = destination.parent().ok_or_else(|| {
-        CommandError::new("invalid_backup_path", "Choose a valid backup folder.")
-    })?;
+    let parent = destination
+        .parent()
+        .ok_or_else(|| CommandError::new("invalid_backup_path", "Choose a valid backup folder."))?;
     if !parent.is_dir() {
         return Err(CommandError::new(
             "invalid_backup_path",
@@ -302,7 +302,9 @@ fn export_backup(
              PRAGMA trusted_schema = OFF;",
         )
         .map_err(CommandError::database)?;
-    package.execute_batch(PACKAGE_SCHEMA).map_err(CommandError::database)?;
+    package
+        .execute_batch(PACKAGE_SCHEMA)
+        .map_err(CommandError::database)?;
     let transaction = package.transaction().map_err(CommandError::database)?;
     let created_at = unix_time_millis()?;
     for (key, value) in [
@@ -310,7 +312,10 @@ fn export_backup(
         ("formatVersion", BACKUP_VERSION.to_string()),
         ("createdAt", created_at.to_string()),
         ("applicationVersion", env!("CARGO_PKG_VERSION").to_string()),
-        ("schemaVersion", snapshot_schema_version(&snapshot)?.to_string()),
+        (
+            "schemaVersion",
+            snapshot_schema_version(&snapshot)?.to_string(),
+        ),
         ("deckCount", summary.deck_count.to_string()),
         ("templateCount", summary.template_count.to_string()),
         ("reviewCount", summary.review_count.to_string()),
@@ -434,8 +439,13 @@ fn validate_backup_package(
             "The backup is empty or exceeds the supported size limit.",
         ));
     }
-    let package = Connection::open_with_flags(source, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|error| CommandError::new("invalid_backup", format!("Could not open the backup: {error}")))?;
+    let package =
+        Connection::open_with_flags(source, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|error| {
+            CommandError::new(
+                "invalid_backup",
+                format!("Could not open the backup: {error}"),
+            )
+        })?;
     package
         .execute_batch("PRAGMA trusted_schema = OFF; PRAGMA query_only = ON;")
         .map_err(CommandError::database)?;
@@ -452,7 +462,11 @@ fn validate_backup_package(
         ));
     }
     let database_bytes: Vec<u8> = package
-        .query_row("SELECT data FROM database_snapshot WHERE id = 1", [], |row| row.get(0))
+        .query_row(
+            "SELECT data FROM database_snapshot WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
         .map_err(CommandError::database)?;
     if database_bytes.is_empty() || database_bytes.len() > MAX_DATABASE_SNAPSHOT_BYTES {
         return Err(CommandError::new(
@@ -462,7 +476,9 @@ fn validate_backup_package(
     }
     let temporary = extract_database_to
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| source.with_extension(format!("validate.{}.sqlite3", std::process::id())));
+        .unwrap_or_else(|| {
+            source.with_extension(format!("validate.{}.sqlite3", std::process::id()))
+        });
     remove_file_if_exists(&temporary).map_err(CommandError::io)?;
     write_new_file(&temporary, &database_bytes)?;
     let snapshot = Connection::open_with_flags(&temporary, OpenFlags::SQLITE_OPEN_READ_ONLY)
@@ -491,9 +507,16 @@ fn extract_backup_package(
     fs::create_dir_all(assets_path.join("images")).map_err(CommandError::io)?;
     fs::create_dir_all(assets_path.join("staging")).map_err(CommandError::io)?;
     fs::create_dir_all(assets_path.join("quarantine")).map_err(CommandError::io)?;
-    validate_backup_assets(&package, &snapshot, Some(assets_path.parent().ok_or_else(|| {
-        CommandError::new("invalid_restore_path", "The restore staging path is invalid.")
-    })?))?;
+    validate_backup_assets(
+        &package,
+        &snapshot,
+        Some(assets_path.parent().ok_or_else(|| {
+            CommandError::new(
+                "invalid_restore_path",
+                "The restore staging path is invalid.",
+            )
+        })?),
+    )?;
     sync_directory(assets_path)?;
     Ok(summary)
 }
@@ -601,7 +624,11 @@ fn validate_snapshot_database(connection: &Connection) -> Result<(), CommandErro
 
 fn snapshot_schema_version(connection: &Connection) -> Result<i64, CommandError> {
     connection
-        .query_row("SELECT COALESCE(MAX(version), 0) FROM schema_migrations", [], |row| row.get(0))
+        .query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+            [],
+            |row| row.get(0),
+        )
         .map_err(CommandError::database)
 }
 
@@ -618,17 +645,18 @@ fn snapshot_summary(connection: &Connection) -> Result<BackupSummary, CommandErr
     })
 }
 
-fn count_table(
-    connection: &Connection,
-    table: &str,
-    condition: &str,
-) -> Result<i64, CommandError> {
+fn count_table(connection: &Connection, table: &str, condition: &str) -> Result<i64, CommandError> {
     let allowed_tables = ["decks", "card_templates", "review_events", "assets"];
     if !allowed_tables.contains(&table) {
-        return Err(CommandError::new("invalid_backup_query", "Invalid backup count table."));
+        return Err(CommandError::new(
+            "invalid_backup_query",
+            "Invalid backup count table.",
+        ));
     }
     let sql = format!("SELECT COUNT(*) FROM {table} WHERE {condition}");
-    connection.query_row(&sql, [], |row| row.get(0)).map_err(CommandError::database)
+    connection
+        .query_row(&sql, [], |row| row.get(0))
+        .map_err(CommandError::database)
 }
 
 fn backup_metadata(connection: &Connection, key: &str) -> Result<String, CommandError> {
@@ -659,7 +687,9 @@ fn normalize_backup_path(value: &str) -> Result<PathBuf, CommandError> {
 }
 
 fn pending_restore_path(paths: &AppPaths) -> PathBuf {
-    paths.app_data_dir().join("pending-library-restore.ostudybackup")
+    paths
+        .app_data_dir()
+        .join("pending-library-restore.ostudybackup")
 }
 
 fn validate_managed_asset_path(value: &str) -> Result<(), CommandError> {
@@ -692,7 +722,10 @@ fn replace_file(temporary: &Path, destination: &Path) -> Result<(), CommandError
         fs::rename(temporary, destination).map_err(CommandError::io)?;
     }
     sync_directory(destination.parent().ok_or_else(|| {
-        CommandError::new("invalid_backup_path", "The backup parent directory is invalid.")
+        CommandError::new(
+            "invalid_backup_path",
+            "The backup parent directory is invalid.",
+        )
     })?)
 }
 
@@ -706,7 +739,10 @@ fn copy_and_sync(source: &Path, destination: &Path) -> Result<(), CommandError> 
     std::io::copy(&mut input, &mut output).map_err(CommandError::io)?;
     output.sync_all().map_err(CommandError::io)?;
     sync_directory(destination.parent().ok_or_else(|| {
-        CommandError::new("invalid_backup_path", "The backup staging directory is invalid.")
+        CommandError::new(
+            "invalid_backup_path",
+            "The backup staging directory is invalid.",
+        )
     })?)
 }
 

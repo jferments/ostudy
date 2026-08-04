@@ -198,9 +198,9 @@ pub(super) fn validate_package_data(
                     && cards[0].direction == "forward"
                     && cards[0].template_ordinal == 0;
                 let legacy = !strict_current
-                    && cards.iter().all(|card| {
-                        matches!(card.direction.as_str(), "cloze" | "forward")
-                    });
+                    && cards
+                        .iter()
+                        .all(|card| matches!(card.direction.as_str(), "cloze" | "forward"));
                 if note.reverse_enabled
                     || note.cloze_source.trim().is_empty()
                     || (!canonical && !legacy)
@@ -215,11 +215,7 @@ pub(super) fn validate_package_data(
     }
 
     let expected_assets = expected_asset_links(&data.notes)?;
-    let actual_assets = data
-        .note_assets
-        .iter()
-        .cloned()
-        .collect::<BTreeSet<_>>();
+    let actual_assets = data.note_assets.iter().cloned().collect::<BTreeSet<_>>();
     if expected_assets != actual_assets {
         return Err(CommandError::invalid_package(
             "Image references do not match the packaged rich documents.",
@@ -311,7 +307,8 @@ fn read_deck(connection: &Connection, version: i64) -> Result<PackageDeck, Comma
             "A deck package must contain exactly one deck.",
         ));
     }
-    let has_sort_order = version >= CURRENT_PACKAGE_VERSION && column_exists(connection, "deck", "sort_order")?;
+    let has_sort_order =
+        version >= CURRENT_PACKAGE_VERSION && column_exists(connection, "deck", "sort_order")?;
     let sql = if has_sort_order {
         "SELECT source_id, name, description, sort_order,
                 created_at, updated_at, revision FROM deck"
@@ -339,26 +336,32 @@ fn read_notes(
     version: i64,
     deck: &PackageDeck,
 ) -> Result<Vec<PackageNote>, CommandError> {
-    let metadata = if version == LEGACY_PACKAGE_VERSION && table_exists(connection, "card_type_metadata")? {
-        let mut statement = connection
-            .prepare(
-                "SELECT source_note_id, reverse_enabled, cloze_source, cloze_mode
+    let metadata =
+        if version == LEGACY_PACKAGE_VERSION && table_exists(connection, "card_type_metadata")? {
+            let mut statement = connection
+                .prepare(
+                    "SELECT source_note_id, reverse_enabled, cloze_source, cloze_mode
                  FROM card_type_metadata",
-            )
-            .map_err(CommandError::database)?;
-        statement
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    (row.get::<_, i64>(1)? == 1, row.get(2)?, row.get(3)?),
-                ))
-            })
-            .map_err(CommandError::database)?
-            .collect::<Result<HashMap<_, _>, _>>()
-            .map_err(CommandError::database)?
-    } else {
-        HashMap::new()
-    };
+                )
+                .map_err(CommandError::database)?;
+            let rows = statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        (
+                            row.get::<_, i64>(1)? == 1,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                        ),
+                    ))
+                })
+                .map_err(CommandError::database)?
+                .collect::<Result<HashMap<_, _>, _>>()
+                .map_err(CommandError::database)?;
+            rows
+        } else {
+            HashMap::new()
+        };
 
     let sql = if version == CURRENT_PACKAGE_VERSION {
         "SELECT source_id, source_deck_id, note_type,
@@ -419,9 +422,18 @@ fn read_notes(
             let reverse_enabled = legacy_metadata.map_or(row.10 == 1, |value| value.0);
             let cloze_source = legacy_metadata.map_or(row.11, |value| value.1.clone());
             let cloze_mode = legacy_metadata.map_or(row.12, |value| value.2.clone());
+            let duplicate_hash = if row.9.is_empty() {
+                duplicate_fingerprint(&validated.front_text, &validated.back_text)
+            } else {
+                row.9
+            };
             Ok(PackageNote {
                 source_id: row.0,
-                source_deck_id: if row.1.is_empty() { deck.source_id.clone() } else { row.1 },
+                source_deck_id: if row.1.is_empty() {
+                    deck.source_id.clone()
+                } else {
+                    row.1
+                },
                 note_type: row.2,
                 content_format: row.3,
                 content_schema_version: row.4,
@@ -431,11 +443,7 @@ fn read_notes(
                     .map_err(CommandError::serialization)?,
                 front_text: validated.front_text,
                 back_text: validated.back_text,
-                duplicate_hash: if row.9.is_empty() {
-                    duplicate_fingerprint(&validated.front_text, &validated.back_text)
-                } else {
-                    row.9
-                },
+                duplicate_hash,
                 reverse_enabled,
                 cloze_source,
                 cloze_mode,
@@ -485,8 +493,8 @@ fn read_tags(
     if !table_exists(connection, "tags")? {
         return Ok(Vec::new());
     }
-    let has_timestamps = version == CURRENT_PACKAGE_VERSION
-        && column_exists(connection, "tags", "created_at")?;
+    let has_timestamps =
+        version == CURRENT_PACKAGE_VERSION && column_exists(connection, "tags", "created_at")?;
     let sql = if has_timestamps {
         "SELECT source_id, name, normalized_name, created_at, updated_at
          FROM tags ORDER BY normalized_name, source_id"
@@ -496,7 +504,7 @@ fn read_tags(
     };
     let mut statement = connection.prepare(sql).map_err(CommandError::database)?;
     let values = if has_timestamps {
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok(PackageTag {
                     source_id: row.get(0)?,
@@ -508,9 +516,10 @@ fn read_tags(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     } else {
-        statement
+        let rows = statement
             .query_map([deck.created_at], |row| {
                 Ok(PackageTag {
                     source_id: row.get(0)?,
@@ -522,7 +531,8 @@ fn read_tags(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     Ok(values)
 }
@@ -537,11 +547,12 @@ fn read_note_tags(connection: &Connection) -> Result<Vec<(String, String)>, Comm
              FROM note_tags ORDER BY source_note_id, source_tag_id",
         )
         .map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database);
+    rows
 }
 
 fn read_assets(connection: &Connection) -> Result<Vec<PackageAsset>, CommandError> {
@@ -551,7 +562,7 @@ fn read_assets(connection: &Connection) -> Result<Vec<PackageAsset>, CommandErro
              FROM assets ORDER BY source_id",
         )
         .map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map([], |row| {
             Ok(PackageAsset {
                 source_id: row.get(0)?,
@@ -563,7 +574,8 @@ fn read_assets(connection: &Connection) -> Result<Vec<PackageAsset>, CommandErro
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database);
+    rows
 }
 
 fn read_note_assets(
@@ -575,11 +587,12 @@ fn read_note_assets(
              FROM note_assets ORDER BY source_note_id, source_asset_id, side",
         )
         .map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database);
+    rows
 }
 
 fn canonicalize_legacy_presentations(data: &mut PackageData) -> Result<(), CommandError> {
@@ -599,8 +612,16 @@ fn canonicalize_legacy_presentations(data: &mut PackageData) -> Result<(), Comma
             CommandError::invalid_package("A source note has no generated cards.")
         })?;
         cards.sort_by(|left, right| {
-            let left_rank = (left.direction != "forward", left.template_ordinal, &left.source_id);
-            let right_rank = (right.direction != "forward", right.template_ordinal, &right.source_id);
+            let left_rank = (
+                left.direction != "forward",
+                left.template_ordinal,
+                &left.source_id,
+            );
+            let right_rank = (
+                right.direction != "forward",
+                right.template_ordinal,
+                &right.source_id,
+            );
             left_rank.cmp(&right_rank)
         });
         if note.note_type == "cloze" {
