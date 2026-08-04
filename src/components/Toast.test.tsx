@@ -51,10 +51,12 @@ describe("Toast", () => {
       />,
     );
 
-    const action = screen.getByRole("button", { name: "Undo" });
-    fireEvent.click(action);
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(run).toHaveBeenCalledOnce();
-    expect(screen.getByRole("button", { name: "Restoring…" })).toBeDisabled();
+    expect(
+      (screen.getByRole("button", { name: "Restoring…" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
 
     resolveUndo();
     await waitFor(() => expect(onDismiss).toHaveBeenCalledOnce());
@@ -76,7 +78,9 @@ describe("Toast", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Undo" })).not.toBeDisabled();
+      expect(
+        (screen.getByRole("button", { name: "Undo" }) as HTMLButtonElement).disabled,
+      ).toBe(false);
     });
   });
 });
