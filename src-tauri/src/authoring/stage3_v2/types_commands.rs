@@ -41,6 +41,8 @@ pub struct CreateGeneratedCardInput {
     pub tags: Vec<String>,
     #[serde(default)]
     pub allow_duplicate: bool,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,6 +66,8 @@ pub struct UpdateGeneratedCardInput {
     pub tags: Vec<String>,
     #[serde(default)]
     pub allow_duplicate: bool,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -94,6 +98,8 @@ pub struct CreateCardTemplateInput {
     pub description: String,
     pub fields: Vec<CardTemplateFieldInput>,
     pub rules: Vec<CardTemplateRuleInput>,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,6 +112,8 @@ pub struct UpdateCardTemplateInput {
     pub description: String,
     pub fields: Vec<CardTemplateFieldInput>,
     pub rules: Vec<CardTemplateRuleInput>,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -166,6 +174,8 @@ pub struct GenerateTemplateCardsInput {
     pub values: Vec<TemplateValueInput>,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
