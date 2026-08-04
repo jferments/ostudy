@@ -91,6 +91,7 @@ struct ScheduleActionRequestIdentity<'a> {
     session_id: Option<&'a str>,
 }
 
+#[derive(Debug)]
 struct ValidatedScheduleAction {
     mutation_id: String,
     card_ids: Vec<String>,
