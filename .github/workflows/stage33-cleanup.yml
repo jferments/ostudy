@@ -23,13 +23,13 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Apply exact cleanup
+      - name: Apply exact recovery edits
         run: |
-          python3 scripts/apply-stage33-cleanup.py
+          python3 scripts/apply-stage33-recovery-fixes.py
           python3 scripts/apply-stage33-verifier-move.py
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
 
-      - name: Commit cleanup
+      - name: Commit recovery edits
         run: |
           if git diff --quiet; then
             exit 0
