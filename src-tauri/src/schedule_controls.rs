@@ -125,8 +125,7 @@ impl CardActionPlan {
     }
 
     fn control_changed(&self) -> bool {
-        self.suspended_before != self.suspended_after
-            || self.buried_before != self.buried_after
+        self.suspended_before != self.suspended_after || self.buried_before != self.buried_after
     }
 }
 
@@ -201,8 +200,8 @@ fn apply_in_connection(
         )?);
     }
 
-    let changed_count = i64::try_from(plans.iter().filter(|plan| plan.changed()).count())
-        .unwrap_or(i64::MAX);
+    let changed_count =
+        i64::try_from(plans.iter().filter(|plan| plan.changed()).count()).unwrap_or(i64::MAX);
     let requested_count = i64::try_from(plans.len()).unwrap_or(i64::MAX);
     let result = ScheduleActionResultDto {
         requested_count,
@@ -633,9 +632,7 @@ fn validate_input(input: ScheduleActionInput) -> Result<ValidatedScheduleAction,
     if unique.len() > MAX_SCHEDULE_ACTION_CARDS {
         return Err(CommandError::new(
             "too_many_schedule_cards",
-            format!(
-                "A schedule operation can contain at most {MAX_SCHEDULE_ACTION_CARDS} cards."
-            ),
+            format!("A schedule operation can contain at most {MAX_SCHEDULE_ACTION_CARDS} cards."),
         ));
     }
     let card_ids = unique.into_iter().collect::<Vec<_>>();
