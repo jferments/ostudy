@@ -44,6 +44,9 @@ export function MoveCopyModal({
     if (targetDeckId === "" || cards.length === 0 || isSaving) return;
     setIsSaving(true);
     setErrorMessage(null);
+
+    let affectedCount: number;
+    let skippedDuplicates: number;
     try {
       const result = await transferCards({
         noteIds: cards.map((card) => card.noteId),
@@ -51,25 +54,35 @@ export function MoveCopyModal({
         mode,
         skipDuplicates,
       });
-      await onComplete();
-      const verb = mode === "move" ? "Moved" : "Copied";
-      const duplicateCopy =
-        result.skippedDuplicates > 0
-          ? ` ${result.skippedDuplicates} ${
-              result.skippedDuplicates === 1 ? "duplicate was" : "duplicates were"
-            } skipped.`
-          : "";
-      showToast?.(
-        "success",
-        `${verb} ${result.affectedCount} ${
-          result.affectedCount === 1 ? "card" : "cards"
-        }.${duplicateCopy}`,
-      );
-      onClose();
+      affectedCount = result.affectedCount;
+      skippedDuplicates = result.skippedDuplicates;
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
+      setIsSaving(false);
+      return;
+    }
+
+    const verb = mode === "move" ? "Moved" : "Copied";
+    const duplicateCopy =
+      skippedDuplicates > 0
+        ? ` ${skippedDuplicates} ${
+            skippedDuplicates === 1 ? "duplicate was" : "duplicates were"
+          } skipped.`
+        : "";
+    showToast?.(
+      "success",
+      `${verb} ${affectedCount} ${affectedCount === 1 ? "card" : "cards"}.${duplicateCopy}`,
+    );
+
+    try {
+      await onComplete();
+    } catch (error: unknown) {
+      const message = `The cards were ${mode === "move" ? "moved" : "copied"}, but the current view could not refresh: ${getErrorMessage(error)}`;
+      if (showToast) showToast("info", message);
+      else setErrorMessage(message);
     } finally {
       setIsSaving(false);
+      onClose();
     }
   }
 
