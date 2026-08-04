@@ -310,7 +310,22 @@ pub fn create_card_template(
 ) -> Result<CardTemplateDto, CommandError> {
     database.with_connection(|connection| {
         let input = prepare_automatic_create_template_input(connection, input)?;
-        let template = create_card_template_in_connection(connection, &paths, input)?;
+        let draft_id = input.asset_draft_id.clone();
+        let asset_ids = collect_template_input_asset_ids(&input.rules)?;
+        let created = create_card_template_in_connection(connection, &paths, input)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        let finalization = finalize_assets_for_owner(
+            &transaction,
+            &paths,
+            &asset_ids,
+            draft_id.as_deref(),
+            Some(&created.id),
+        )?;
+        transaction.commit().map_err(CommandError::database)?;
+        finalization.cleanup();
+        let template = load_stored_template(connection, &paths, &created.id, true)?.dto;
         normalize_card_template_dto_for_editing(template)
     })
 }
@@ -323,12 +338,27 @@ pub fn update_card_template(
 ) -> Result<CardTemplateDto, CommandError> {
     database.with_connection(|connection| {
         let input = prepare_automatic_update_template_input(connection, input)?;
+        let draft_id = input.asset_draft_id.clone();
+        let asset_ids = collect_template_input_asset_ids(&input.rules)?;
         let has_new_children = template_update_contains_new_children(connection, &input)?;
-        let template = if has_new_children {
+        let updated = if has_new_children {
             update_card_template_with_stable_children_in_connection(connection, &paths, input)?
         } else {
             update_card_template_in_connection(connection, &paths, input)?
         };
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        let finalization = finalize_assets_for_owner(
+            &transaction,
+            &paths,
+            &asset_ids,
+            draft_id.as_deref(),
+            Some(&updated.id),
+        )?;
+        transaction.commit().map_err(CommandError::database)?;
+        finalization.cleanup();
+        let template = load_stored_template(connection, &paths, &updated.id, true)?.dto;
         normalize_card_template_dto_for_editing(template)
     })
 }
@@ -366,9 +396,46 @@ pub fn generate_cards_from_template(
 ) -> Result<GenerateTemplateCardsResultDto, CommandError> {
     validate_entity_id(&input.deck_id, "deck")?;
     validate_entity_id(&input.template_id, "card template")?;
+    let draft_id = input.asset_draft_id.clone();
+    let owner_id = input.deck_id.clone();
+    let asset_ids = collect_template_value_asset_ids(&input.values)?;
     database.with_connection(|connection| {
-        generate_automatic_template_cards_in_connection(connection, &paths, input)
+        let result = generate_automatic_template_cards_in_connection(connection, &paths, input)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        let finalization = finalize_assets_for_owner(
+            &transaction,
+            &paths,
+            &asset_ids,
+            draft_id.as_deref(),
+            Some(&owner_id),
+        )?;
+        transaction.commit().map_err(CommandError::database)?;
+        finalization.cleanup();
+        Ok(result)
     })
+}
+
+fn collect_template_input_asset_ids(
+    rules: &[CardTemplateRuleInput],
+) -> Result<Vec<String>, CommandError> {
+    let mut ids = BTreeSet::new();
+    for rule in rules {
+        ids.extend(crate::cards::collect_asset_ids(&rule.front_doc)?);
+        ids.extend(crate::cards::collect_asset_ids(&rule.back_doc)?);
+    }
+    Ok(ids.into_iter().collect())
+}
+
+fn collect_template_value_asset_ids(
+    values: &[TemplateValueInput],
+) -> Result<Vec<String>, CommandError> {
+    let mut ids = BTreeSet::new();
+    for value in values {
+        ids.extend(crate::cards::collect_asset_ids(&value.doc)?);
+    }
+    Ok(ids.into_iter().collect())
 }
 
 fn default_stage3_cloze_mode() -> String {
