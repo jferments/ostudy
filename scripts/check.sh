@@ -16,41 +16,23 @@ cd "$ROOT_DIR"
 
 CURRENT_STEP="initialization"
 step() { CURRENT_STEP="$*"; printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"; }
-trap 'status=$?; printf "\n\033[1;31mFAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; exit "$status"' ERR
+trap 'status=$?; printf "\n\033[1;31mFULL CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; exit "$status"' ERR
 
-step "Environment and repository diagnostics"
+if [[ "${OSTUDY_FAST_CHECK_PASSED:-0}" != "1" ]]; then
+  bash "$SCRIPT_DIR/check-fast.sh"
+fi
+
+step "Native environment qualification"
 if [[ "${OSTUDY_SKIP_NATIVE_SMOKE:-0}" == "1" ]]; then
   "$SCRIPT_DIR/doctor.sh"
 else
   "$SCRIPT_DIR/doctor.sh" --native-smoke
 fi
-node "$SCRIPT_DIR/verify-project-manifests.mjs"
-node "$SCRIPT_DIR/verify-stage2.mjs"
-node "$SCRIPT_DIR/verify-stage3.mjs"
-[[ -f pnpm-lock.yaml && -f src-tauri/Cargo.lock ]] || {
-  printf 'ERROR: committed pnpm and Cargo lockfiles are required.\n' >&2
-  exit 1
-}
 prepare_cargo_target "$ROOT_DIR"
 printf 'Cargo parallel jobs: %s\n' "$CARGO_BUILD_JOBS"
 
-step "Test policy and repository script syntax"
-node "$SCRIPT_DIR/verify-test-policy.mjs"
-bash "$SCRIPT_DIR/verify-script-syntax.sh"
-
-step "Frozen JavaScript installation and dependency verification"
-pnpm install --frozen-lockfile
-pnpm run verify:versions
-[[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]]
-
-step "React tests (Vitest + Testing Library)"
-pnpm test
-
-step "Frontend type checking and production build"
+step "Frontend production build"
 pnpm run build
-
-step "Rust formatting"
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 
 step "Rust linting"
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
