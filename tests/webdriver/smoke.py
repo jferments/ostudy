@@ -241,10 +241,14 @@ def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
         deadline,
     )
     click(session_id, show_answer)
+    # The visual label is composed from nested spans, and XPath string-value
+    # concatenation does not guarantee the visual whitespace between them.
+    # Select the score through its explicit keyboard and accessible-name
+    # contract instead of waiting for a text substring that cannot match.
     medium = find_element(
         session_id,
-        "xpath",
-        "//button[contains(normalize-space(.), '2 Medium')]",
+        "css selector",
+        "button.confidence-score-button[aria-keyshortcuts='2'][aria-label^='2 Medium,']",
         deadline,
     )
     click(session_id, medium)
