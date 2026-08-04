@@ -1,5 +1,3 @@
-use std::{fs::File, io::Read, path::Path};
-
 use rusqlite::Connection;
 use serde::Serialize;
 use tauri::State;
@@ -143,13 +141,6 @@ pub(crate) fn detect_image_bytes(
         "unsupported_image",
         "Use a PNG, JPEG, GIF, or WebP image.",
     ))
-}
-
-pub(crate) fn detect_image_type(path: &Path) -> Result<(&'static str, &'static str), CommandError> {
-    let mut file = File::open(path).map_err(CommandError::io)?;
-    let mut header = [0_u8; 16];
-    let bytes_read = file.read(&mut header).map_err(CommandError::io)?;
-    detect_image_bytes(&header[..bytes_read])
 }
 
 #[cfg(test)]
