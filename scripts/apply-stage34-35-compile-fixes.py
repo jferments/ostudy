@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Correct generated Rust ownership/type issues before qualification."""
+"""Correct generated Rust ownership/type and canonical-schema issues."""
 
 from __future__ import annotations
 
@@ -28,12 +28,7 @@ def leading_spaces(line: str) -> int:
 
 
 def materialize_tail_query_results(path: str) -> None:
-    """Bind block-tail query_map chains before their Statement is dropped.
-
-    rusqlite's MappedRows destructor retains the Statement borrow through the
-    tail expression. Rust therefore requires the collected result to be assigned
-    to a local before the enclosing block or function closes.
-    """
+    """Bind block-tail query_map chains before their Statement is dropped."""
 
     lines = read(path).splitlines()
     output: list[str] = []
@@ -84,6 +79,22 @@ path = "src-tauri/src/library_backup.rs"
 text = read(path).replace("    io::{Read, Write},\n", "    io::Write,\n")
 write(path, text)
 
+# The active template writer must use only the schema-13 rich document columns.
+path = "src-tauri/src/authoring/stage3_v2/templates.rs"
+text = read(path)
+text = replace_once(
+    text,
+    '''                "INSERT INTO card_template_rules (
+                     id, template_id, name, front_pattern, back_pattern,
+                     front_doc, back_doc, position
+                 ) VALUES (?1, ?2, ?3, '[rich document]', '[rich document]', ?4, ?5, ?6)",''',
+    '''                "INSERT INTO card_template_rules (
+                     id, template_id, name, front_doc, back_doc, position
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",''',
+    "canonical template insert",
+)
+write(path, text)
+
 # The legacy metadata tuple needs explicit String types for both optional text
 # fields; inference cannot see through map_or's later clone calls.
 path = "src-tauri/src/studydeck/read.rs"
@@ -106,4 +117,4 @@ for rust_file in [
 ]:
     materialize_tail_query_results(rust_file)
 
-print("Applied Stage 3.4/3.5 native compile corrections.")
+print("Applied Stage 3.4/3.5 native compile and canonical-schema corrections.")
