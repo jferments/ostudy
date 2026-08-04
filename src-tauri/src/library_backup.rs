@@ -477,7 +477,11 @@ fn validate_backup_package(
     let temporary = extract_database_to
         .map(Path::to_path_buf)
         .unwrap_or_else(|| {
-            source.with_extension(format!("validate.{}.sqlite3", std::process::id()))
+            std::env::temp_dir().join(format!(
+                "ostudy-backup-validation-{}-{}.sqlite3",
+                std::process::id(),
+                unix_time_millis().unwrap_or_default()
+            ))
         });
     remove_file_if_exists(&temporary).map_err(CommandError::io)?;
     write_new_file(&temporary, &database_bytes)?;

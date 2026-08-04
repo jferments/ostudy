@@ -400,70 +400,78 @@ fn apply_package_transaction(
     }
 
     let mut promoted = Vec::new();
-    for new_id in asset_map.values() {
-        let row: (String, String) = transaction
-            .query_row(
-                "SELECT relative_path, staged_relative_path
+    let promotion_result = (|| -> Result<(), CommandError> {
+        for new_id in asset_map.values() {
+            let row: (String, String) = transaction
+                .query_row(
+                    "SELECT relative_path, staged_relative_path
                  FROM assets WHERE id = ?1 AND lifecycle_state = 'staged' AND draft_id = ?2",
-                params![new_id, draft_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .map_err(CommandError::database)?;
-        let staged = paths.resolve_relative(&row.1);
-        let final_path = paths.resolve_relative(&row.0);
-        if let Some(parent) = final_path.parent() {
-            fs::create_dir_all(parent).map_err(CommandError::io)?;
-        }
-        if let Err(error) = fs::rename(&staged, &final_path) {
-            compensate_promotions(&promoted);
-            return Err(CommandError::io(error));
-        }
-        if let Err(error) =
-            sync_directory(staged.parent()).and_then(|_| sync_directory(final_path.parent()))
-        {
-            let _ = fs::rename(&final_path, &staged);
-            compensate_promotions(&promoted);
-            return Err(error);
-        }
-        promoted.push((final_path, staged));
-        transaction
-            .execute(
-                "UPDATE assets
+                    params![new_id, draft_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .map_err(CommandError::database)?;
+            let staged = paths.resolve_relative(&row.1);
+            let final_path = paths.resolve_relative(&row.0);
+            if let Some(parent) = final_path.parent() {
+                fs::create_dir_all(parent).map_err(CommandError::io)?;
+            }
+            if let Err(error) = fs::rename(&staged, &final_path) {
+                compensate_promotions(&promoted);
+                return Err(CommandError::io(error));
+            }
+            if let Err(error) =
+                sync_directory(staged.parent()).and_then(|_| sync_directory(final_path.parent()))
+            {
+                let _ = fs::rename(&final_path, &staged);
+                compensate_promotions(&promoted);
+                return Err(error);
+            }
+            promoted.push((final_path, staged));
+            transaction
+                .execute(
+                    "UPDATE assets
                  SET lifecycle_state = 'ready', draft_id = NULL,
                      staged_relative_path = NULL, ready_at = COALESCE(ready_at, ?1),
                      verified_at = ?1, updated_at = ?1,
                      lifecycle_reason = '', deleted_at = NULL
                  WHERE id = ?2",
-                params![imported_at, new_id],
-            )
-            .map_err(CommandError::database)?;
-    }
+                    params![imported_at, new_id],
+                )
+                .map_err(CommandError::database)?;
+        }
 
-    transaction
-        .execute(
-            "UPDATE asset_drafts
+        transaction
+            .execute(
+                "UPDATE asset_drafts
              SET owner_id = ?1, updated_at = ?2, committed_at = ?2
              WHERE id = ?3 AND committed_at IS NULL AND canceled_at IS NULL",
-            params![deck_id, imported_at, draft_id],
-        )
-        .map_err(CommandError::database)?;
-    transaction
-        .execute(
-            "UPDATE deck_import_operations
+                params![deck_id, imported_at, draft_id],
+            )
+            .map_err(CommandError::database)?;
+        transaction
+            .execute(
+                "UPDATE deck_import_operations
              SET status = 'completed', result_deck_id = ?1,
                  result_card_count = ?2, result_asset_count = ?3,
                  error_code = NULL, updated_at = ?4, completed_at = ?4
              WHERE id = ?5 AND request_fingerprint = ?6 AND status = 'pending'",
-            params![
-                deck_id,
-                i64::try_from(package.cards.len()).unwrap_or(i64::MAX),
-                i64::try_from(package.assets.len()).unwrap_or(i64::MAX),
-                imported_at,
-                operation_id,
-                fingerprint,
-            ],
-        )
-        .map_err(CommandError::database)?;
+                params![
+                    deck_id,
+                    i64::try_from(package.cards.len()).unwrap_or(i64::MAX),
+                    i64::try_from(package.assets.len()).unwrap_or(i64::MAX),
+                    imported_at,
+                    operation_id,
+                    fingerprint,
+                ],
+            )
+            .map_err(CommandError::database)?;
+
+        Ok(())
+    })();
+    if let Err(error) = promotion_result {
+        compensate_promotions(&promoted);
+        return Err(error);
+    }
 
     if let Err(error) = transaction.commit() {
         compensate_promotions(&promoted);
