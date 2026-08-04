@@ -31,7 +31,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 3,
         name: "fsrs_reviews",
-        checksum: "49dd1e24e463c9a08a59e243d90143e2874459ddf5ab4b36e55c8b",
+        checksum: "49dd1e24e463c9a08a59e243d90143e2874459dd2a4a8d5f61613d5df7ebcae3",
         sql: include_str!("../migrations/0003_fsrs_reviews.sql"),
     },
     Migration {
