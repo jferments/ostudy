@@ -19,7 +19,7 @@ step() { CURRENT_STEP="$*"; printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"
 trap 'status=$?; printf "\n\033[1;31mFULL CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; exit "$status"' ERR
 
 if [[ "${OSTUDY_FAST_CHECK_PASSED:-0}" != "1" ]]; then
-  "$SCRIPT_DIR/check-fast.sh"
+  bash "$SCRIPT_DIR/check-fast.sh"
 fi
 
 step "Native environment qualification"
