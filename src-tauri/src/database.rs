@@ -171,6 +171,7 @@ fn initialize_migration_ledger(connection: &Connection) -> Result<(), String> {
         .map_err(|error| format!("Could not initialize the migration ledger: {error}"))
 }
 
+#[cfg(test)]
 fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
     apply_migration_range(connection, 1, LATEST_SCHEMA_VERSION)
 }

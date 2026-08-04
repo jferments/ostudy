@@ -617,7 +617,7 @@ fn validate_snapshot_database(connection: &Connection) -> Result<(), CommandErro
         ));
     }
     let version = snapshot_schema_version(connection)?;
-    if version < 3 || version > LATEST_SCHEMA_VERSION {
+    if !(3..=LATEST_SCHEMA_VERSION).contains(&version) {
         return Err(CommandError::new(
             "unsupported_backup_schema",
             format!("This backup uses unsupported database schema {version}."),

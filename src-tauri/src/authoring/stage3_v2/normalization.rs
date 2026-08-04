@@ -10,16 +10,6 @@ pub(crate) fn apply_stage3_data_repairs(
     Ok(i64::try_from(changed).unwrap_or(i64::MAX))
 }
 
-pub(crate) fn normalize_stage3_schema(
-    connection: &mut Connection,
-) -> Result<(), CommandError> {
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(CommandError::database)?;
-    apply_stage3_data_repairs(&transaction)?;
-    transaction.commit().map_err(CommandError::database)
-}
-
 fn normalize_abandoned_image_occlusion(
     connection: &Connection,
 ) -> Result<(), CommandError> {

@@ -469,7 +469,6 @@ fn validate_timestamp_pair(
 
 fn normalize_tag_name(value: &str) -> String {
     value
-        .trim()
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")

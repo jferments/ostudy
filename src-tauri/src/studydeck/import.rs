@@ -2,6 +2,14 @@ use super::*;
 use crate::scheduler::insert_new_schedule;
 use rusqlite::TransactionBehavior;
 
+struct StoredImportOperation {
+    request_fingerprint: String,
+    status: String,
+    result_deck_id: Option<String>,
+    result_card_count: Option<i64>,
+    result_asset_count: Option<i64>,
+}
+
 pub(super) fn import_package(
     connection: &mut Connection,
     paths: &AppPaths,
@@ -54,33 +62,33 @@ fn prepare_operation(
     fingerprint: &str,
     package_version: i64,
 ) -> Result<Option<ImportResultDto>, CommandError> {
-    let existing: Option<(String, String, Option<String>, Option<i64>, Option<i64>)> = connection
+    let existing: Option<StoredImportOperation> = connection
         .query_row(
             "SELECT request_fingerprint, status, result_deck_id,
                     result_card_count, result_asset_count
              FROM deck_import_operations WHERE id = ?1",
             [operation_id],
             |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                ))
+                Ok(StoredImportOperation {
+                    request_fingerprint: row.get(0)?,
+                    status: row.get(1)?,
+                    result_deck_id: row.get(2)?,
+                    result_card_count: row.get(3)?,
+                    result_asset_count: row.get(4)?,
+                })
             },
         )
         .optional()
         .map_err(CommandError::database)?;
-    if let Some((recorded_fingerprint, status, deck_id, card_count, asset_count)) = existing {
-        if recorded_fingerprint != fingerprint {
+    if let Some(existing) = existing {
+        if existing.request_fingerprint != fingerprint {
             return Err(CommandError::new(
                 "idempotency_conflict",
                 "This deck import operation identifier was already used for another file.",
             ));
         }
-        if status == "completed" {
-            let deck_id = deck_id.ok_or_else(|| {
+        if existing.status == "completed" {
+            let deck_id = existing.result_deck_id.ok_or_else(|| {
                 CommandError::new(
                     "invalid_import_operation",
                     "The saved import result is incomplete.",
@@ -88,8 +96,8 @@ fn prepare_operation(
             })?;
             return Ok(Some(ImportResultDto {
                 deck: get_deck_from_connection(connection, &deck_id)?,
-                card_count: card_count.unwrap_or_default(),
-                asset_count: asset_count.unwrap_or_default(),
+                card_count: existing.result_card_count.unwrap_or_default(),
+                asset_count: existing.result_asset_count.unwrap_or_default(),
             }));
         }
         cleanup_operation_drafts(connection, paths, operation_id)?;

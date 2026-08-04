@@ -482,13 +482,3 @@ pub(crate) fn backfill_duplicate_hashes_in_connection(
     }
     Ok(i64::try_from(rows.len()).unwrap_or(i64::MAX))
 }
-
-pub(crate) fn backfill_duplicate_hashes(connection: &mut Connection) -> Result<(), String> {
-    let transaction = connection
-        .transaction()
-        .map_err(|error| format!("Could not start duplicate backfill: {error}"))?;
-    backfill_duplicate_hashes_in_connection(&transaction)?;
-    transaction
-        .commit()
-        .map_err(|error| format!("Could not commit duplicate backfill: {error}"))
-}
