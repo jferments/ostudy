@@ -141,6 +141,7 @@ describe("App shell", () => {
     expect(
       await screen.findByRole("heading", { name: "Analytics mock" }),
     ).toBeTruthy();
+    expect(screen.getByLabelText("Analytics launch").textContent).toBe("7d||");
   });
 
   it("launches exact deck practice from the deck screen", async () => {
@@ -160,7 +161,7 @@ describe("App shell", () => {
     );
   });
 
-  it("carries a completed practice session into scoped analytics", async () => {
+  it("carries a completed practice session into week-scoped analytics", async () => {
     vi.mocked(ipc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(ipc.listDecks).mockResolvedValue([makeDeck()]);
 
@@ -176,7 +177,7 @@ describe("App shell", () => {
       await screen.findByRole("heading", { name: "Analytics mock" }),
     ).toBeTruthy();
     expect(screen.getByLabelText("Analytics launch").textContent).toBe(
-      "30d|deck-from-practice|session-1",
+      "7d|deck-from-practice|session-1",
     );
   });
 

@@ -46,7 +46,7 @@ const settings: ipc.AppSettings = {
 
 const analytics: analyticsIpc.Analytics = {
   scope: {
-    range: "30d",
+    range: "7d",
     startAt: 1,
     endAt: 2,
     bucketGranularity: "day",
@@ -163,6 +163,7 @@ const analytics: analyticsIpc.Analytics = {
 
 describe("AnalyticsScreen", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(analyticsIpc.getAnalytics).mockResolvedValue(analytics);
     vi.mocked(ipc.listTags).mockResolvedValue([
       { id: analytics.tagStats[0].tagId, name: "Arrhythmias", cardCount: 6 },
@@ -172,7 +173,7 @@ describe("AnalyticsScreen", () => {
     ]);
   });
 
-  it("shows scoped progress, study time, and an accessible data alternative", async () => {
+  it("starts with the past week and shows an accessible data alternative", async () => {
     render(
       <AnalyticsScreen
         decks={[deck]}
@@ -185,6 +186,15 @@ describe("AnalyticsScreen", () => {
     );
 
     expect(await screen.findByText("Cards practiced")).toBeTruthy();
+    await waitFor(() => {
+      expect(analyticsIpc.getAnalytics).toHaveBeenCalledWith({
+        range: "7d",
+        deckIds: [],
+        tagIds: [],
+        highlightedSessionId: undefined,
+      });
+    });
+    expect(screen.getByRole("button", { name: "7 days" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("8")).toBeTruthy();
     expect(screen.getAllByText("80%").length).toBeGreaterThan(0);
     expect(screen.getAllByText("2 min").length).toBeGreaterThan(0);

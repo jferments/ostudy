@@ -3,9 +3,11 @@ import { useRef, useState } from "react";
 import {
   applyScheduleAction,
   createMutationId,
+  getErrorCode,
   getErrorMessage,
   type SelectionCard,
 } from "../../ipc";
+import { scheduleActionNotice } from "./scheduleActionResult";
 
 interface ScheduleActionModalProps {
   cards: SelectionCard[];
@@ -13,6 +15,11 @@ interface ScheduleActionModalProps {
   onClose: () => void;
   onComplete: () => Promise<void>;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
+}
+
+interface PendingScheduleMutation {
+  key: string;
+  mutationId: string;
 }
 
 export function ScheduleActionModal({
@@ -27,40 +34,49 @@ export function ScheduleActionModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const savingRef = useRef(false);
+  const pendingMutationRef = useRef<PendingScheduleMutation | null>(null);
 
   async function submit(): Promise<void> {
     if (savingRef.current) return;
     const dueAt = action === "reschedule" ? resolveDueAt(dueChoice, customDate) : undefined;
     if (action === "reschedule" && dueAt === null) {
+      pendingMutationRef.current = null;
       setErrorMessage("Choose a valid custom due date.");
       return;
     }
+    const cardIds = [...new Set(cards.map((card) => card.cardId))].sort();
+    const key = JSON.stringify({ action, cardIds, dueAt });
+    const mutationId = mutationIdForRequest(key);
+
     savingRef.current = true;
     setIsSaving(true);
     setErrorMessage(null);
 
+    let result;
     try {
-      for (const card of cards) {
-        await applyScheduleAction({
-          mutationId: createMutationId(),
-          cardIds: [card.cardId],
-          action,
-          dueAt: dueAt ?? undefined,
-        });
-      }
+      result = await applyScheduleAction({
+        mutationId,
+        cardIds,
+        action,
+        dueAt: dueAt ?? undefined,
+      });
+      pendingMutationRef.current = null;
     } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
+      if (getErrorCode(error) !== null) {
+        pendingMutationRef.current = null;
+        setErrorMessage(getErrorMessage(error));
+      } else {
+        setErrorMessage(
+          `${getErrorMessage(error)} Choose the same action again to safely retry the complete selection.`,
+        );
+      }
       savingRef.current = false;
       setIsSaving(false);
       return;
     }
 
-    showToast(
-      "success",
-      action === "reset"
-        ? `Reset ${cards.length} ${cards.length === 1 ? "card" : "cards"} to New.`
-        : `Rescheduled ${cards.length} ${cards.length === 1 ? "card" : "cards"}.`,
-    );
+    const notice = scheduleActionNotice(result, cardIds.length);
+    showToast(notice.kind, notice.text);
     try {
       await onComplete();
     } catch (error: unknown) {
@@ -71,8 +87,23 @@ export function ScheduleActionModal({
     } finally {
       savingRef.current = false;
       setIsSaving(false);
-      onClose();
+      close();
     }
+  }
+
+  function mutationIdForRequest(key: string): string {
+    if (pendingMutationRef.current?.key === key) {
+      return pendingMutationRef.current.mutationId;
+    }
+    const mutationId = createMutationId();
+    pendingMutationRef.current = { key, mutationId };
+    return mutationId;
+  }
+
+  function close(): void {
+    if (savingRef.current) return;
+    pendingMutationRef.current = null;
+    onClose();
   }
 
   return (
@@ -80,7 +111,7 @@ export function ScheduleActionModal({
       className="modal-backdrop schedule-action-dialog"
       role="presentation"
       onMouseDown={(event) => {
-        if (event.currentTarget === event.target && !isSaving) onClose();
+        if (event.currentTarget === event.target) close();
       }}
     >
       <section
@@ -102,7 +133,7 @@ export function ScheduleActionModal({
             type="button"
             className="text-button"
             disabled={isSaving}
-            onClick={onClose}
+            onClick={close}
           >
             Close
           </button>
@@ -110,7 +141,8 @@ export function ScheduleActionModal({
         {action === "reset" ? (
           <div className="inline-alert warning-alert">
             The selected cards will become New and due now. Existing review history
-            remains available for later analytics.
+            remains available for later analytics. The complete selection changes in
+            one transaction or not at all.
           </div>
         ) : (
           <div className="schedule-action-options">
@@ -118,7 +150,11 @@ export function ScheduleActionModal({
               <span>New due date</span>
               <select
                 value={dueChoice}
-                onChange={(event) => setDueChoice(event.currentTarget.value)}
+                disabled={isSaving}
+                onChange={(event) => {
+                  pendingMutationRef.current = null;
+                  setDueChoice(event.currentTarget.value);
+                }}
               >
                 <option value="today">Today</option>
                 <option value="tomorrow">Tomorrow</option>
@@ -133,13 +169,18 @@ export function ScheduleActionModal({
                 <input
                   type="date"
                   value={customDate}
-                  onChange={(event) => setCustomDate(event.currentTarget.value)}
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    pendingMutationRef.current = null;
+                    setCustomDate(event.currentTarget.value);
+                  }}
                 />
               </label>
             ) : null}
             <p className="muted-copy">
               Rescheduling changes the next due date without recording a successful
-              review or changing FSRS difficulty and stability.
+              review or changing FSRS difficulty and stability. The complete selection
+              changes in one transaction or not at all.
             </p>
           </div>
         )}
@@ -151,7 +192,7 @@ export function ScheduleActionModal({
             type="button"
             className="secondary-button"
             disabled={isSaving}
-            onClick={onClose}
+            onClick={close}
           >
             Cancel
           </button>
