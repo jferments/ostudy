@@ -313,19 +313,24 @@ pub fn create_card_template(
         let draft_id = input.asset_draft_id.clone();
         let asset_ids = collect_template_input_asset_ids(&input.rules)?;
         let created = create_card_template_in_connection(connection, &paths, input)?;
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        let finalization = finalize_assets_for_owner(
-            &transaction,
+        finalize_assets_after_committed_write(
+            connection,
             &paths,
             &asset_ids,
             draft_id.as_deref(),
-            Some(&created.id),
-        )?;
-        transaction.commit().map_err(CommandError::database)?;
-        finalization.cleanup();
-        let template = load_stored_template(connection, &paths, &created.id, true)?.dto;
+            &created.id,
+            "create_card_template",
+        );
+        let template = match load_stored_template(connection, &paths, &created.id, true) {
+            Ok(stored) => stored.dto,
+            Err(error) => {
+                crate::logging::error(
+                    "committed_template_refresh_failed",
+                    format!("template_id={} error={}", created.id, error.message),
+                );
+                created
+            }
+        };
         normalize_card_template_dto_for_editing(template)
     })
 }
@@ -346,19 +351,24 @@ pub fn update_card_template(
         } else {
             update_card_template_in_connection(connection, &paths, input)?
         };
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        let finalization = finalize_assets_for_owner(
-            &transaction,
+        finalize_assets_after_committed_write(
+            connection,
             &paths,
             &asset_ids,
             draft_id.as_deref(),
-            Some(&updated.id),
-        )?;
-        transaction.commit().map_err(CommandError::database)?;
-        finalization.cleanup();
-        let template = load_stored_template(connection, &paths, &updated.id, true)?.dto;
+            &updated.id,
+            "update_card_template",
+        );
+        let template = match load_stored_template(connection, &paths, &updated.id, true) {
+            Ok(stored) => stored.dto,
+            Err(error) => {
+                crate::logging::error(
+                    "committed_template_refresh_failed",
+                    format!("template_id={} error={}", updated.id, error.message),
+                );
+                updated
+            }
+        };
         normalize_card_template_dto_for_editing(template)
     })
 }
@@ -401,20 +411,63 @@ pub fn generate_cards_from_template(
     let asset_ids = collect_template_value_asset_ids(&input.values)?;
     database.with_connection(|connection| {
         let result = generate_automatic_template_cards_in_connection(connection, &paths, input)?;
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        let finalization = finalize_assets_for_owner(
-            &transaction,
+        finalize_assets_after_committed_write(
+            connection,
             &paths,
             &asset_ids,
             draft_id.as_deref(),
-            Some(&owner_id),
-        )?;
-        transaction.commit().map_err(CommandError::database)?;
-        finalization.cleanup();
+            &owner_id,
+            "generate_cards_from_template",
+        );
         Ok(result)
     })
+}
+
+fn finalize_assets_after_committed_write(
+    connection: &mut Connection,
+    paths: &AppPaths,
+    asset_ids: &[String],
+    draft_id: Option<&str>,
+    owner_id: &str,
+    operation: &str,
+) {
+    let transaction = match connection.transaction_with_behavior(TransactionBehavior::Immediate) {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            crate::logging::error(
+                "committed_asset_finalization_start_failed",
+                format!("operation={operation} owner_id={owner_id} error={error}"),
+            );
+            return;
+        }
+    };
+    let finalization = match finalize_assets_for_owner(
+        &transaction,
+        paths,
+        asset_ids,
+        draft_id,
+        Some(owner_id),
+    ) {
+        Ok(finalization) => finalization,
+        Err(error) => {
+            crate::logging::error(
+                "committed_asset_finalization_failed",
+                format!(
+                    "operation={operation} owner_id={owner_id} error={}",
+                    error.message
+                ),
+            );
+            return;
+        }
+    };
+    if let Err(error) = transaction.commit() {
+        crate::logging::error(
+            "committed_asset_finalization_commit_failed",
+            format!("operation={operation} owner_id={owner_id} error={error}"),
+        );
+        return;
+    }
+    finalization.cleanup();
 }
 
 fn collect_template_input_asset_ids(
