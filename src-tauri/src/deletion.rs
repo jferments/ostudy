@@ -752,7 +752,9 @@ mod tests {
                     delete_cards(connection, vec![note_id.clone()], "Flashcard".to_string())?;
                 connection
                     .execute(
-                        "UPDATE deletion_operations SET expires_at = 0 WHERE id = ?1",
+                        "UPDATE deletion_operations
+                         SET deleted_at = 1, expires_at = 1, created_at = 1
+                         WHERE id = ?1",
                         [deleted.undo_token.as_str()],
                     )
                     .map_err(CommandError::database)?;
