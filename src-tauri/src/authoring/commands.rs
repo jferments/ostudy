@@ -41,14 +41,23 @@ pub fn create_organized_card(
     paths: State<'_, AppPaths>,
     input: CreateOrganizedCardInput,
 ) -> Result<OrganizedCardDto, CommandError> {
-    validate_entity_id(&input.deck_id, "deck")?;
-    let content = validate_content(
-        input.front_doc,
-        input.back_doc,
-        input.front_text,
-        input.back_text,
-    )?;
-    let tags = validate_tags(input.tags)?;
+    let CreateOrganizedCardInput {
+        deck_id,
+        front_doc,
+        back_doc,
+        front_text,
+        back_text,
+        tags,
+        allow_duplicate,
+        asset_draft_id,
+    } = input;
+    validate_entity_id(&deck_id, "deck")?;
+    if let Some(draft_id) = asset_draft_id.as_deref() {
+        validate_entity_id(draft_id, "asset draft")?;
+    }
+    let content = validate_content(front_doc, back_doc, front_text, back_text)?;
+    let asset_ids = content_asset_ids(&content);
+    let tags = validate_tags(tags)?;
     let normalized = normalized_pair(&content.front_text, &content.back_text);
     let duplicate_hash = duplicate_hash(&normalized.0, &normalized.1);
 
@@ -56,12 +65,18 @@ pub fn create_organized_card(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
-        ensure_active_deck(&transaction, &input.deck_id)?;
-        if !input.allow_duplicate
+        ensure_active_deck(&transaction, &deck_id)?;
+        ensure_assets_available(
+            &transaction,
+            &paths,
+            &asset_ids,
+            asset_draft_id.as_deref(),
+        )?;
+        if !allow_duplicate
             && duplicate_checkable(&content.front_text, &content.back_text)
             && has_exact_duplicate(
                 &transaction,
-                &input.deck_id,
+                &deck_id,
                 &duplicate_hash,
                 &normalized.0,
                 &normalized.1,
@@ -73,13 +88,21 @@ pub fn create_organized_card(
         let now = unix_time_millis()?;
         let note_id = insert_organized_card(
             &transaction,
-            &input.deck_id,
+            &deck_id,
             content,
             &tags,
             &duplicate_hash,
             now,
         )?;
+        let finalization = finalize_assets_for_owner(
+            &transaction,
+            &paths,
+            &asset_ids,
+            asset_draft_id.as_deref(),
+            Some(&note_id),
+        )?;
         transaction.commit().map_err(CommandError::database)?;
+        finalization.cleanup();
         Ok(note_id)
     })?;
 
@@ -92,21 +115,32 @@ pub fn update_organized_card(
     paths: State<'_, AppPaths>,
     input: UpdateOrganizedCardInput,
 ) -> Result<OrganizedCardDto, CommandError> {
-    validate_entity_id(&input.note_id, "note")?;
-    validate_entity_id(&input.deck_id, "deck")?;
-    if input.revision < 1 {
+    let UpdateOrganizedCardInput {
+        note_id,
+        deck_id,
+        revision,
+        front_doc,
+        back_doc,
+        front_text,
+        back_text,
+        tags,
+        allow_duplicate,
+        asset_draft_id,
+    } = input;
+    validate_entity_id(&note_id, "note")?;
+    validate_entity_id(&deck_id, "deck")?;
+    if let Some(draft_id) = asset_draft_id.as_deref() {
+        validate_entity_id(draft_id, "asset draft")?;
+    }
+    if revision < 1 {
         return Err(CommandError::new(
             "invalid_revision",
             "The card revision is invalid.",
         ));
     }
-    let content = validate_content(
-        input.front_doc,
-        input.back_doc,
-        input.front_text,
-        input.back_text,
-    )?;
-    let tags = validate_tags(input.tags)?;
+    let content = validate_content(front_doc, back_doc, front_text, back_text)?;
+    let asset_ids = content_asset_ids(&content);
+    let tags = validate_tags(tags)?;
     let normalized = normalized_pair(&content.front_text, &content.back_text);
     let duplicate_hash = duplicate_hash(&normalized.0, &normalized.1);
 
@@ -114,15 +148,20 @@ pub fn update_organized_card(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
-        ensure_assets_exist(&transaction, &content_asset_ids(&content))?;
-        ensure_active_deck(&transaction, &input.deck_id)?;
+        ensure_assets_available(
+            &transaction,
+            &paths,
+            &asset_ids,
+            asset_draft_id.as_deref(),
+        )?;
+        ensure_active_deck(&transaction, &deck_id)?;
 
         let note_exists: i64 = transaction
             .query_row(
                 "SELECT EXISTS(
                      SELECT 1 FROM notes WHERE id = ?1 AND deleted_at IS NULL
                  )",
-                [input.note_id.as_str()],
+                [note_id.as_str()],
                 |row| row.get(0),
             )
             .map_err(CommandError::database)?;
@@ -133,15 +172,15 @@ pub fn update_organized_card(
             ));
         }
 
-        if !input.allow_duplicate
+        if !allow_duplicate
             && duplicate_checkable(&content.front_text, &content.back_text)
             && has_exact_duplicate(
                 &transaction,
-                &input.deck_id,
+                &deck_id,
                 &duplicate_hash,
                 &normalized.0,
                 &normalized.1,
-                Some(&input.note_id),
+                Some(&note_id),
             )?
         {
             return Err(duplicate_error());
@@ -156,15 +195,15 @@ pub fn update_organized_card(
                      updated_at = ?7, revision = revision + 1
                  WHERE id = ?8 AND revision = ?9 AND deleted_at IS NULL",
                 params![
-                    input.deck_id,
+                    deck_id,
                     content.front_doc_json,
                     content.back_doc_json,
                     content.front_text,
                     content.back_text,
                     duplicate_hash,
                     now,
-                    input.note_id,
-                    input.revision,
+                    note_id,
+                    revision,
                 ],
             )
             .map_err(CommandError::database)?;
@@ -179,17 +218,24 @@ pub fn update_organized_card(
                 "UPDATE cards
                  SET deck_id = ?1, updated_at = ?2
                  WHERE note_id = ?3 AND deleted_at IS NULL",
-                params![input.deck_id, now, input.note_id],
+                params![deck_id, now, note_id],
             )
             .map_err(CommandError::database)?;
-        replace_note_assets(&transaction, &input.note_id, &content)?;
-        replace_note_tags(&transaction, &input.note_id, &tags, now)?;
-        transaction.commit().map_err(CommandError::database)
+        replace_note_assets(&transaction, &note_id, &content)?;
+        replace_note_tags(&transaction, &note_id, &tags, now)?;
+        let finalization = finalize_assets_for_owner(
+            &transaction,
+            &paths,
+            &asset_ids,
+            asset_draft_id.as_deref(),
+            Some(&note_id),
+        )?;
+        transaction.commit().map_err(CommandError::database)?;
+        finalization.cleanup();
+        Ok(())
     })?;
 
-    database.with_connection(|connection| {
-        hydrate_organized_card(connection, &paths, &input.note_id)
-    })
+    database.with_connection(|connection| hydrate_organized_card(connection, &paths, &note_id))
 }
 
 #[tauri::command]
@@ -390,56 +436,6 @@ pub fn bulk_tag_cards(
                     }
                 }
             }
-        }
-        cleanup_unused_tags(&transaction)?;
-        transaction.commit().map_err(CommandError::database)?;
-        Ok(BulkActionResultDto {
-            affected_count: i64::try_from(note_ids.len()).unwrap_or(i64::MAX),
-        })
-    })
-}
-
-#[tauri::command]
-pub fn delete_cards(
-    database: State<'_, Database>,
-    input: DeleteCardsInput,
-) -> Result<BulkActionResultDto, CommandError> {
-    let note_ids = validate_note_ids_for_action(
-        input.note_ids,
-        MAX_BULK_ACTION_NOTES,
-        "Delete",
-    )?;
-    database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        let now = unix_time_millis()?;
-        for note_id in &note_ids {
-            let changed = transaction
-                .execute(
-                    "UPDATE notes
-                     SET deleted_at = ?1, updated_at = ?1, revision = revision + 1
-                     WHERE id = ?2 AND deleted_at IS NULL",
-                    params![now, note_id],
-                )
-                .map_err(CommandError::database)?;
-            if changed != 1 {
-                return Err(CommandError::new(
-                    "card_not_found",
-                    "A selected flashcard no longer exists.",
-                ));
-            }
-            transaction
-                .execute(
-                    "UPDATE cards
-                     SET deleted_at = ?1, updated_at = ?1
-                     WHERE note_id = ?2 AND deleted_at IS NULL",
-                    params![now, note_id],
-                )
-                .map_err(CommandError::database)?;
-            transaction
-                .execute("DELETE FROM note_tags WHERE note_id = ?1", [note_id])
-                .map_err(CommandError::database)?;
         }
         cleanup_unused_tags(&transaction)?;
         transaction.commit().map_err(CommandError::database)?;
