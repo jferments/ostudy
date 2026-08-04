@@ -22,6 +22,7 @@ import {
   type PracticeWorkloadOverview,
   type ReviewPreviewSet,
   type ScheduleAction,
+  type ScheduleActionInput,
   type SubmitReviewInput,
 } from "../ipc";
 import { ActivePractice } from "./practice/ActivePractice";
@@ -54,6 +55,11 @@ interface PendingReviewOperation {
   cardId: string;
   score: ConfidenceScore;
   input: SubmitReviewInput;
+}
+
+interface PendingScheduleOperation {
+  key: string;
+  input: ScheduleActionInput;
 }
 
 const COMMITTED_START_RETRY_CODE = "committed_practice_session_unavailable";
@@ -95,6 +101,7 @@ export function PracticeScreen({
   const handledLaunchRequestRef = useRef<number | null>(null);
   const pendingStartRef = useRef<PendingStartOperation | null>(null);
   const pendingReviewRef = useRef<PendingReviewOperation | null>(null);
+  const pendingScheduleRef = useRef<PendingScheduleOperation | null>(null);
   const current = session?.cards[position] ?? null;
 
   const loadRecentPractice = useCallback(async (): Promise<void> => {
@@ -194,6 +201,7 @@ export function PracticeScreen({
   function initializeSession(started: PracticeSession): void {
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
+    pendingScheduleRef.current = null;
     setSession(started);
     setPosition(0);
     setRevealed(false);
@@ -217,6 +225,7 @@ export function PracticeScreen({
     handledLaunchRequestRef.current = launchRequest.requestId;
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
+    pendingScheduleRef.current = null;
     setSession(null);
     setCompleted(false);
     setErrorMessage(null);
@@ -261,6 +270,10 @@ export function PracticeScreen({
       setErrorMessage("Retry the pending rating before revealing another answer.");
       return;
     }
+    if (pendingScheduleRef.current) {
+      setErrorMessage("Retry the pending schedule action before revealing the answer.");
+      return;
+    }
     revealingRef.current = true;
     setIsRevealing(true);
     setErrorMessage(null);
@@ -277,6 +290,10 @@ export function PracticeScreen({
 
   async function submitScore(score: ConfidenceScore): Promise<void> {
     if (!session || !current || !revealed || !previewSet || ratingRef.current) return;
+    if (pendingScheduleRef.current) {
+      setErrorMessage("Retry the pending schedule action before rating this card.");
+      return;
+    }
     const pending = pendingReviewRef.current;
     if (
       pending &&
@@ -353,40 +370,80 @@ export function PracticeScreen({
     }
     if (
       action === "reset" &&
+      !pendingScheduleRef.current &&
       !window.confirm(
         "Reset this card to New? Its review history will remain, but its current FSRS schedule will restart.",
       )
     ) {
       return;
     }
-    managingRef.current = true;
-    setIsManaging(true);
-    setErrorMessage(null);
-    try {
-      await applyScheduleAction({
+
+    const key = JSON.stringify({
+      sessionId: session.id,
+      cardId: current.card.id,
+      action,
+      dueAt: dueAt ?? null,
+    });
+    const pending = pendingScheduleRef.current;
+    if (pending && pending.key !== key) {
+      setErrorMessage(
+        "The result of the previous schedule action is still unknown. Repeat that exact action before choosing another one.",
+      );
+      return;
+    }
+    const input: ScheduleActionInput =
+      pending?.input ??
+      {
         mutationId: createMutationId(),
         cardIds: [current.card.id],
         action,
         dueAt,
         sessionId: session.id,
-      });
+      };
+    if (!pending) pendingScheduleRef.current = { key, input };
+
+    managingRef.current = true;
+    setIsManaging(true);
+    setErrorMessage(null);
+    try {
+      const result = await applyScheduleAction(input);
+      pendingScheduleRef.current = null;
       if (action === "bury" || action === "suspend") {
         showToast(
-          "info",
-          action === "bury" ? "Card buried until tomorrow." : "Card suspended.",
+          result.changedCount > 0 ? "info" : "success",
+          action === "bury"
+            ? result.changedCount > 0
+              ? "Card buried until tomorrow."
+              : "Card was already buried."
+            : result.changedCount > 0
+              ? "Card suspended."
+              : "Card was already suspended.",
         );
         advanceOrComplete(position + 1 >= session.cards.length);
       } else {
         showToast(
-          "success",
-          action === "reset" ? "Card schedule reset." : "Card rescheduled.",
+          result.changedCount > 0 ? "success" : "info",
+          action === "reset"
+            ? result.changedCount > 0
+              ? "Card schedule reset."
+              : "Card was already New and due."
+            : result.changedCount > 0
+              ? "Card rescheduled."
+              : "Card was already due at that time.",
         );
         setRevealed(false);
         setPreviewSet(null);
         questionShownAtRef.current = Date.now();
       }
     } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
+      if (getErrorCode(error) === null) {
+        setErrorMessage(
+          `${getErrorMessage(error)} Repeat the same schedule action to safely retry it without applying it twice.`,
+        );
+      } else {
+        pendingScheduleRef.current = null;
+        setErrorMessage(getErrorMessage(error));
+      }
     } finally {
       managingRef.current = false;
       setIsManaging(false);
@@ -395,6 +452,7 @@ export function PracticeScreen({
 
   function advanceOrComplete(backendCompleted: boolean): void {
     pendingReviewRef.current = null;
+    pendingScheduleRef.current = null;
     if (!session || backendCompleted || position + 1 >= session.cards.length) {
       setCompleted(true);
       void loadRecentPractice();
@@ -409,6 +467,10 @@ export function PracticeScreen({
     if (!session || endingRef.current) return;
     if (pendingReviewRef.current) {
       setErrorMessage("Retry the pending rating before ending this session.");
+      return;
+    }
+    if (pendingScheduleRef.current) {
+      setErrorMessage("Retry the pending schedule action before ending this session.");
       return;
     }
     endingRef.current = true;
@@ -428,6 +490,7 @@ export function PracticeScreen({
   function resetToSetup(): void {
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
+    pendingScheduleRef.current = null;
     setSession(null);
     setPosition(0);
     setRevealed(false);
