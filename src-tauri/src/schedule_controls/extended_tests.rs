@@ -11,6 +11,10 @@ mod extended_tests {
         util::generate_id,
     };
 
+    fn test_id(value: u8) -> String {
+        format!("{value:032x}")
+    }
+
     fn paragraph(text: &str) -> serde_json::Value {
         json!({
             "type": "doc",
@@ -96,9 +100,9 @@ mod extended_tests {
         connection: &Connection,
         deck_id: &str,
         card_ids: &[String],
-        marker: char,
+        marker: u8,
     ) -> Result<String, CommandError> {
-        let session_id = marker.to_string().repeat(32);
+        let session_id = test_id(marker);
         connection
             .execute(
                 "INSERT INTO practice_sessions (
@@ -106,7 +110,8 @@ mod extended_tests {
                  ) VALUES (?1, ?2, 0, ?3, 'custom', 10)",
                 params![
                     session_id,
-                    serde_json::to_string(&vec![deck_id]).map_err(CommandError::serialization)?,
+                    serde_json::to_string(&vec![deck_id])
+                        .map_err(CommandError::serialization)?,
                     i64::try_from(card_ids.len()).unwrap_or(i64::MAX),
                 ],
             )
@@ -154,11 +159,11 @@ mod extended_tests {
 
     fn action_input(
         card_ids: &[String],
-        mutation: char,
+        mutation: u8,
         action: &str,
     ) -> ScheduleActionInput {
         ScheduleActionInput {
-            mutation_id: mutation.to_string().repeat(32),
+            mutation_id: test_id(mutation),
             card_ids: card_ids.to_vec(),
             action: action.to_string(),
             due_at: None,
@@ -168,23 +173,37 @@ mod extended_tests {
 
     fn operation_counts(
         connection: &Connection,
-        mutation_id: &str,
+        mutation: u8,
     ) -> Result<(i64, i64), CommandError> {
+        let mutation_id = test_id(mutation);
         let parents = connection
             .query_row(
                 "SELECT COUNT(*) FROM schedule_action_operations WHERE id = ?1",
-                [mutation_id],
+                [mutation_id.as_str()],
                 |row| row.get(0),
             )
             .map_err(CommandError::database)?;
         let children = connection
             .query_row(
                 "SELECT COUNT(*) FROM schedule_action_events WHERE operation_id = ?1",
-                [mutation_id],
+                [mutation_id.as_str()],
                 |row| row.get(0),
             )
             .map_err(CommandError::database)?;
         Ok((parents, children))
+    }
+
+    fn suspended_at(
+        connection: &Connection,
+        card_id: &str,
+    ) -> Result<Option<i64>, CommandError> {
+        connection
+            .query_row(
+                "SELECT suspended_at FROM cards WHERE id = ?1",
+                [card_id],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)
     }
 
     #[test]
@@ -195,7 +214,7 @@ mod extended_tests {
                 let (_, card_ids) = create_cards(connection, 3)?;
                 let result = apply_in_connection(
                     connection,
-                    action_input(&card_ids, 'a', "suspend"),
+                    action_input(&card_ids, 1, "suspend"),
                 )?;
 
                 assert_eq!(
@@ -208,16 +227,9 @@ mod extended_tests {
                         action: "suspend".to_string(),
                     }
                 );
-                assert_eq!(operation_counts(connection, &"a".repeat(32))?, (1, 3));
+                assert_eq!(operation_counts(connection, 1)?, (1, 3));
                 for card_id in &card_ids {
-                    let suspended_at: Option<i64> = connection
-                        .query_row(
-                            "SELECT suspended_at FROM cards WHERE id = ?1",
-                            [card_id],
-                            |row| row.get(0),
-                        )
-                        .map_err(CommandError::database)?;
-                    assert!(suspended_at.is_some());
+                    assert!(suspended_at(connection, card_id)?.is_some());
                     assert_eq!(load_schedule(connection, card_id)?.revision, 2);
                 }
                 let stored: (String, i64, i64, i64) = connection
@@ -225,7 +237,7 @@ mod extended_tests {
                         "SELECT request_fingerprint, requested_count,
                                 changed_count, unchanged_count
                          FROM schedule_action_operations WHERE id = ?1",
-                        ["a".repeat(32)],
+                        [test_id(1)],
                         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
                     )
                     .map_err(CommandError::database)?;
@@ -247,21 +259,13 @@ mod extended_tests {
 
                 let error = apply_in_connection(
                     connection,
-                    action_input(&card_ids, 'b', "suspend"),
+                    action_input(&card_ids, 2, "suspend"),
                 )
                 .expect_err("one missing member must reject the whole batch");
                 assert_eq!(error.code, "schedule_card_not_found");
-
-                let suspended_at: Option<i64> = connection
-                    .query_row(
-                        "SELECT suspended_at FROM cards WHERE id = ?1",
-                        [valid.as_str()],
-                        |row| row.get(0),
-                    )
-                    .map_err(CommandError::database)?;
-                assert_eq!(suspended_at, None);
+                assert_eq!(suspended_at(connection, &valid)?, None);
                 assert_eq!(load_schedule(connection, &valid)?.revision, 1);
-                assert_eq!(operation_counts(connection, &"b".repeat(32))?, (0, 0));
+                assert_eq!(operation_counts(connection, 2)?, (0, 0));
                 Ok(())
             })
             .expect("the rejected batch should leave durable state untouched");
@@ -275,37 +279,30 @@ mod extended_tests {
                 let (_, card_ids) = create_cards(connection, 2)?;
                 let first = apply_in_connection(
                     connection,
-                    action_input(&card_ids, 'c', "suspend"),
+                    action_input(&card_ids, 3, "suspend"),
                 )?;
 
-                let mut reversed = card_ids.clone();
-                reversed.reverse();
-                reversed.push(card_ids[0].clone());
+                let mut reordered = card_ids.clone();
+                reordered.reverse();
+                reordered.push(card_ids[0].clone());
                 let replay = apply_in_connection(
                     connection,
-                    action_input(&reversed, 'c', "suspend"),
+                    action_input(&reordered, 3, "suspend"),
                 )?;
                 assert_eq!(replay, first);
-                assert_eq!(operation_counts(connection, &"c".repeat(32))?, (1, 2));
+                assert_eq!(operation_counts(connection, 3)?, (1, 2));
                 for card_id in &card_ids {
                     assert_eq!(load_schedule(connection, card_id)?.revision, 2);
                 }
 
                 let conflict = apply_in_connection(
                     connection,
-                    action_input(&card_ids, 'c', "resume"),
+                    action_input(&card_ids, 3, "resume"),
                 )
                 .expect_err("one operation ID cannot describe another request");
                 assert_eq!(conflict.code, "idempotency_conflict");
                 for card_id in &card_ids {
-                    let suspended_at: Option<i64> = connection
-                        .query_row(
-                            "SELECT suspended_at FROM cards WHERE id = ?1",
-                            [card_id],
-                            |row| row.get(0),
-                        )
-                        .map_err(CommandError::database)?;
-                    assert!(suspended_at.is_some());
+                    assert!(suspended_at(connection, card_id)?.is_some());
                 }
                 Ok(())
             })
@@ -320,28 +317,28 @@ mod extended_tests {
                 let (_, card_ids) = create_cards(connection, 2)?;
                 apply_in_connection(
                     connection,
-                    action_input(&card_ids[..1], 'd', "suspend"),
+                    action_input(&card_ids[..1], 4, "suspend"),
                 )?;
                 let first_revision = load_schedule(connection, &card_ids[0])?.revision;
 
                 let mixed = apply_in_connection(
                     connection,
-                    action_input(&card_ids, 'e', "suspend"),
+                    action_input(&card_ids, 5, "suspend"),
                 )?;
                 assert_eq!(mixed.requested_count, 2);
                 assert_eq!(mixed.changed_count, 1);
                 assert_eq!(mixed.unchanged_count, 1);
-                assert_eq!(operation_counts(connection, &"e".repeat(32))?, (1, 1));
+                assert_eq!(operation_counts(connection, 5)?, (1, 1));
                 assert_eq!(load_schedule(connection, &card_ids[0])?.revision, first_revision);
                 assert_eq!(load_schedule(connection, &card_ids[1])?.revision, 2);
 
                 let no_op = apply_in_connection(
                     connection,
-                    action_input(&card_ids, 'f', "suspend"),
+                    action_input(&card_ids, 6, "suspend"),
                 )?;
                 assert_eq!(no_op.changed_count, 0);
                 assert_eq!(no_op.unchanged_count, 2);
-                assert_eq!(operation_counts(connection, &"f".repeat(32))?, (1, 0));
+                assert_eq!(operation_counts(connection, 6)?, (1, 0));
                 assert_eq!(load_schedule(connection, &card_ids[0])?.revision, 2);
                 assert_eq!(load_schedule(connection, &card_ids[1])?.revision, 2);
                 Ok(())
@@ -359,19 +356,19 @@ mod extended_tests {
 
                 let fresh = apply_in_connection(
                     connection,
-                    action_input(&card_ids, 'g', "reset"),
+                    action_input(&card_ids, 7, "reset"),
                 )?;
                 assert_eq!((fresh.changed_count, fresh.unchanged_count), (0, 1));
                 assert_eq!(load_schedule(connection, card_id)?.revision, 1);
-                assert_eq!(operation_counts(connection, &"g".repeat(32))?, (1, 0));
+                assert_eq!(operation_counts(connection, 7)?, (1, 0));
 
                 let current_due = load_schedule(connection, card_id)?.due_at;
-                let mut same_due = action_input(&card_ids, 'h', "reschedule");
+                let mut same_due = action_input(&card_ids, 8, "reschedule");
                 same_due.due_at = Some(current_due);
                 let rescheduled = apply_in_connection(connection, same_due)?;
                 assert_eq!((rescheduled.changed_count, rescheduled.unchanged_count), (0, 1));
                 assert_eq!(load_schedule(connection, card_id)?.revision, 1);
-                assert_eq!(operation_counts(connection, &"h".repeat(32))?, (1, 0));
+                assert_eq!(operation_counts(connection, 8)?, (1, 0));
 
                 connection
                     .execute(
@@ -385,7 +382,7 @@ mod extended_tests {
                 insert_review(connection, card_id)?;
                 let reset = apply_in_connection(
                     connection,
-                    action_input(&card_ids, 'i', "reset"),
+                    action_input(&card_ids, 9, "reset"),
                 )?;
                 assert_eq!((reset.changed_count, reset.unchanged_count), (1, 0));
                 let reset_schedule = load_schedule(connection, card_id)?;
@@ -414,21 +411,21 @@ mod extended_tests {
                 let (_, card_ids) = create_cards(connection, 1)?;
                 let first = apply_in_connection(
                     connection,
-                    action_input(&card_ids, 'j', "bury"),
+                    action_input(&card_ids, 10, "bury"),
                 )?;
                 assert_eq!(first.changed_count, 1);
                 let revision = load_schedule(connection, &card_ids[0])?.revision;
 
                 let repeated = apply_in_connection(
                     connection,
-                    action_input(&card_ids, 'k', "bury"),
+                    action_input(&card_ids, 11, "bury"),
                 )?;
                 assert_eq!((repeated.changed_count, repeated.unchanged_count), (0, 1));
                 assert_eq!(load_schedule(connection, &card_ids[0])?.revision, revision);
-                assert_eq!(operation_counts(connection, &"k".repeat(32))?, (1, 0));
+                assert_eq!(operation_counts(connection, 11)?, (1, 0));
                 Ok(())
             })
-            .expect("bury should not shorten or repeatedly extend the same deadline");
+            .expect("bury should not repeatedly extend the same deadline");
     }
 
     #[test]
@@ -437,8 +434,8 @@ mod extended_tests {
         database
             .with_connection(|connection| {
                 let (deck_id, card_ids) = create_cards(connection, 2)?;
-                let session_id = create_session(connection, &deck_id, &card_ids, 'l')?;
-                let mut input = action_input(&card_ids, 'm', "bury");
+                let session_id = create_session(connection, &deck_id, &card_ids, 12)?;
+                let mut input = action_input(&card_ids, 13, "bury");
                 input.session_id = Some(session_id.clone());
 
                 let result = apply_in_connection(connection, input)?;
@@ -464,25 +461,25 @@ mod extended_tests {
                     )
                     .map_err(CommandError::database)?;
                 assert!(completed_at.is_some());
-                assert_eq!(operation_counts(connection, &"m".repeat(32))?, (1, 2));
+                assert_eq!(operation_counts(connection, 13)?, (1, 2));
                 Ok(())
             })
             .expect("session disposition and schedule changes must share one commit");
     }
 
     #[test]
-    fn stale_session_card_is_dismissed_even_when_control_state_is_already_satisfied() {
+    fn stale_session_card_is_dismissed_when_control_is_already_satisfied() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
                 let (deck_id, card_ids) = create_cards(connection, 1)?;
                 apply_in_connection(
                     connection,
-                    action_input(&card_ids, 'n', "suspend"),
+                    action_input(&card_ids, 14, "suspend"),
                 )?;
                 let revision = load_schedule(connection, &card_ids[0])?.revision;
-                let session_id = create_session(connection, &deck_id, &card_ids, 'o')?;
-                let mut input = action_input(&card_ids, 'p', "suspend");
+                let session_id = create_session(connection, &deck_id, &card_ids, 15)?;
+                let mut input = action_input(&card_ids, 16, "suspend");
                 input.session_id = Some(session_id.clone());
 
                 let result = apply_in_connection(connection, input)?;
@@ -492,7 +489,7 @@ mod extended_tests {
                     .query_row(
                         "SELECT schedule_revision_before, schedule_revision_after
                          FROM schedule_action_events WHERE operation_id = ?1",
-                        ["p".repeat(32)],
+                        [test_id(16)],
                         |row| Ok((row.get(0)?, row.get(1)?)),
                     )
                     .map_err(CommandError::database)?;
@@ -516,25 +513,18 @@ mod extended_tests {
         database
             .with_connection(|connection| {
                 let (deck_id, card_ids) = create_cards(connection, 2)?;
-                let session_id = create_session(connection, &deck_id, &card_ids[..1], 'q')?;
-                let mut input = action_input(&card_ids, 'r', "suspend");
+                let session_id = create_session(connection, &deck_id, &card_ids[..1], 17)?;
+                let mut input = action_input(&card_ids, 18, "suspend");
                 input.session_id = Some(session_id);
 
                 let error = apply_in_connection(connection, input)
                     .expect_err("every card must belong to the supplied session");
                 assert_eq!(error.code, "schedule_session_card_mismatch");
                 for card_id in &card_ids {
-                    let suspended_at: Option<i64> = connection
-                        .query_row(
-                            "SELECT suspended_at FROM cards WHERE id = ?1",
-                            [card_id],
-                            |row| row.get(0),
-                        )
-                        .map_err(CommandError::database)?;
-                    assert_eq!(suspended_at, None);
+                    assert_eq!(suspended_at(connection, card_id)?, None);
                     assert_eq!(load_schedule(connection, card_id)?.revision, 1);
                 }
-                assert_eq!(operation_counts(connection, &"r".repeat(32))?, (0, 0));
+                assert_eq!(operation_counts(connection, 18)?, (0, 0));
                 Ok(())
             })
             .expect("session validation must happen before any mutation");
@@ -543,15 +533,15 @@ mod extended_tests {
     #[test]
     fn strict_inputs_reject_unknown_fields_empty_selections_and_invalid_due_dates() {
         let unknown = serde_json::from_value::<ScheduleActionInput>(json!({
-            "mutationId": "a".repeat(32),
-            "cardIds": ["b".repeat(32)],
+            "mutationId": test_id(19),
+            "cardIds": [test_id(20)],
             "action": "suspend",
             "legacyFlag": true
         }))
         .expect_err("unknown fields must not be ignored");
         assert!(unknown.to_string().contains("legacyFlag"));
 
-        let empty = action_input(&[], 'a', "suspend");
+        let empty = action_input(&[], 21, "suspend");
         assert_eq!(
             validate_input(empty)
                 .expect_err("an empty batch must fail")
@@ -559,8 +549,8 @@ mod extended_tests {
             "invalid_schedule_selection"
         );
 
-        let card_ids = vec!["b".repeat(32)];
-        let mut invalid = action_input(&card_ids, 'a', "reschedule");
+        let card_ids = vec![test_id(22)];
+        let mut invalid = action_input(&card_ids, 23, "reschedule");
         invalid.due_at = Some(-1);
         assert_eq!(
             validate_input(invalid)
@@ -569,7 +559,7 @@ mod extended_tests {
             "invalid_reschedule_date"
         );
 
-        let mut unexpected = action_input(&card_ids, 'a', "suspend");
+        let mut unexpected = action_input(&card_ids, 24, "suspend");
         unexpected.due_at = Some(1);
         assert_eq!(
             validate_input(unexpected)
