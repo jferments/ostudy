@@ -743,7 +743,16 @@ fn verify_referenced_asset(
             ),
         );
         transition_asset(
-            connection, asset, "missing", None, None, &reason, now, "missing",
+            connection,
+            asset,
+            AssetTransition {
+                state: "missing",
+                staged_relative_path: None,
+                quarantine_relative_path: None,
+                reason: &reason,
+                event: "missing",
+            },
+            now,
         )?;
         return Ok(false);
     }
@@ -777,7 +786,18 @@ fn reconcile_asset(
             if !verify_referenced_asset(connection, &asset, &final_path, now)? {
                 return Ok(());
             }
-            transition_asset(connection, &asset, "ready", None, None, "", now, "restored")?;
+            transition_asset(
+                connection,
+                &asset,
+                AssetTransition {
+                    state: "ready",
+                    staged_relative_path: None,
+                    quarantine_relative_path: None,
+                    reason: "",
+                    event: "restored",
+                },
+                now,
+            )?;
             return Ok(());
         }
         if staged_exists {
@@ -792,12 +812,14 @@ fn reconcile_asset(
             transition_asset(
                 connection,
                 &asset,
-                "ready",
-                None,
-                None,
-                "recovered referenced staged file",
+                AssetTransition {
+                    state: "ready",
+                    staged_relative_path: None,
+                    quarantine_relative_path: None,
+                    reason: "recovered referenced staged file",
+                    event: "restored",
+                },
                 now,
-                "restored",
             )?;
             return Ok(());
         }
@@ -813,24 +835,28 @@ fn reconcile_asset(
             transition_asset(
                 connection,
                 &asset,
-                "ready",
-                None,
-                None,
-                "restored referenced quarantine file",
+                AssetTransition {
+                    state: "ready",
+                    staged_relative_path: None,
+                    quarantine_relative_path: None,
+                    reason: "restored referenced quarantine file",
+                    event: "restored",
+                },
                 now,
-                "restored",
             )?;
             return Ok(());
         }
         transition_asset(
             connection,
             &asset,
-            "missing",
-            asset.staged_relative_path.as_deref(),
-            asset.quarantine_relative_path.as_deref(),
-            "referenced file absent",
+            AssetTransition {
+                state: "missing",
+                staged_relative_path: asset.staged_relative_path.as_deref(),
+                quarantine_relative_path: asset.quarantine_relative_path.as_deref(),
+                reason: "referenced file absent",
+                event: "missing",
+            },
             now,
-            "missing",
         )?;
         return Ok(());
     }
@@ -853,12 +879,14 @@ fn reconcile_asset(
                 transition_asset(
                     connection,
                     &asset,
-                    "deleted",
-                    asset.staged_relative_path.as_deref(),
-                    None,
-                    "unreferenced staged asset expired",
+                    AssetTransition {
+                        state: "deleted",
+                        staged_relative_path: asset.staged_relative_path.as_deref(),
+                        quarantine_relative_path: None,
+                        reason: "unreferenced staged asset expired",
+                        event: "deleted",
+                    },
                     now,
-                    "deleted",
                 )?;
             }
         }
@@ -867,12 +895,14 @@ fn reconcile_asset(
                 transition_asset(
                     connection,
                     &asset,
-                    "deleted",
-                    None,
-                    None,
-                    "unreferenced ready file absent",
+                    AssetTransition {
+                        state: "deleted",
+                        staged_relative_path: None,
+                        quarantine_relative_path: None,
+                        reason: "unreferenced ready file absent",
+                        event: "deleted",
+                    },
                     now,
-                    "deleted",
                 )?;
             } else if now.saturating_sub(asset.updated_at.max(asset.created_at))
                 >= RECOVERY_GRACE_MS
@@ -886,23 +916,27 @@ fn reconcile_asset(
                 transition_asset(
                     connection,
                     &asset,
-                    "ready",
-                    None,
-                    None,
-                    "unreferenced file returned",
+                    AssetTransition {
+                        state: "ready",
+                        staged_relative_path: None,
+                        quarantine_relative_path: None,
+                        reason: "unreferenced file returned",
+                        event: "restored",
+                    },
                     now,
-                    "restored",
                 )?;
             } else {
                 transition_asset(
                     connection,
                     &asset,
-                    "deleted",
-                    None,
-                    None,
-                    "unreferenced missing asset retired",
+                    AssetTransition {
+                        state: "deleted",
+                        staged_relative_path: None,
+                        quarantine_relative_path: None,
+                        reason: "unreferenced missing asset retired",
+                        event: "deleted",
+                    },
                     now,
-                    "deleted",
                 )?;
             }
         }
@@ -914,12 +948,14 @@ fn reconcile_asset(
                 transition_asset(
                     connection,
                     &asset,
-                    "deleted",
-                    None,
-                    asset.quarantine_relative_path.as_deref(),
-                    "quarantine grace elapsed",
+                    AssetTransition {
+                        state: "deleted",
+                        staged_relative_path: None,
+                        quarantine_relative_path: asset.quarantine_relative_path.as_deref(),
+                        reason: "quarantine grace elapsed",
+                        event: "deleted",
+                    },
                     now,
-                    "deleted",
                 )?;
             }
         }
@@ -956,12 +992,14 @@ fn quarantine_asset_file(
     transition_asset(
         connection,
         asset,
-        "quarantined",
-        None,
-        Some(&relative),
-        "unreferenced managed file quarantined",
+        AssetTransition {
+            state: "quarantined",
+            staged_relative_path: None,
+            quarantine_relative_path: Some(&relative),
+            reason: "unreferenced managed file quarantined",
+            event: "quarantined",
+        },
         now,
-        "quarantined",
     )
 }
 
@@ -1029,16 +1067,27 @@ fn quarantine_unknown_files(
     Ok(())
 }
 
+struct AssetTransition<'a> {
+    state: &'a str,
+    staged_relative_path: Option<&'a str>,
+    quarantine_relative_path: Option<&'a str>,
+    reason: &'a str,
+    event: &'a str,
+}
+
 fn transition_asset(
     connection: &Connection,
     asset: &AssetRecord,
-    state: &str,
-    staged_relative_path: Option<&str>,
-    quarantine_relative_path: Option<&str>,
-    reason: &str,
+    transition: AssetTransition<'_>,
     now: i64,
-    event: &str,
 ) -> Result<(), CommandError> {
+    let AssetTransition {
+        state,
+        staged_relative_path,
+        quarantine_relative_path,
+        reason,
+        event,
+    } = transition;
     let changed = asset.lifecycle_state != state
         || asset.staged_relative_path.as_deref() != staged_relative_path
         || asset.quarantine_relative_path.as_deref() != quarantine_relative_path

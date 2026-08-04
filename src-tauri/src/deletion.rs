@@ -467,7 +467,7 @@ fn load_operation(
                 "This deletion can no longer be undone.",
             )
         })
-        .and_then(|row| operation_from_values(row))
+        .and_then(operation_from_values)
 }
 
 fn operation_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<(String, DeletionOperation)> {
