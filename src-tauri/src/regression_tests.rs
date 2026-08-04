@@ -132,10 +132,25 @@ fn insert_reset_event(
     card_id: &str,
     occurred_at: i64,
 ) -> Result<(), CommandError> {
+    let operation_id = generate_id(connection)?;
+    connection
+        .execute(
+            "INSERT INTO schedule_action_operations (
+                 id, request_fingerprint, session_id, action, due_at,
+                 requested_count, changed_count, unchanged_count, rejected_count,
+                 occurred_at, created_at
+             ) VALUES (?1, ?2, NULL, 'reset', NULL, 1, 1, 0, 0, ?3, ?3)",
+            params![
+                operation_id,
+                format!("regression-reset:v1:{card_id}:{occurred_at}"),
+                occurred_at,
+            ],
+        )
+        .map_err(CommandError::database)?;
     connection
         .execute(
             "INSERT INTO schedule_action_events (
-                 id, mutation_id, session_id, card_id, action,
+                 id, operation_id, session_id, card_id, action,
                  due_before, due_after, state_before, state_after,
                  suspended_before, suspended_after,
                  buried_until_before, buried_until_after,
@@ -147,12 +162,7 @@ fn insert_reset_event(
                  NULL, NULL, NULL, NULL,
                  1, 2, ?4, ?4
              )",
-            params![
-                generate_id(connection)?,
-                generate_id(connection)?,
-                card_id,
-                occurred_at
-            ],
+            params![generate_id(connection)?, operation_id, card_id, occurred_at],
         )
         .map_err(CommandError::database)?;
     Ok(())
