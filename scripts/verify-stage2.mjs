@@ -38,7 +38,7 @@ const [
   editor,
   bulkEntry,
   cardStyles,
-  taggedTransfer,
+  studydeckTransfer,
   rustSourceTree,
   workflowEntries,
 ] = await Promise.all([
@@ -67,10 +67,10 @@ const [
   read("src", "screens", "cards", "BulkEntryModal.tsx"),
   read("src", "card-organization.css"),
   readJoined(
-    ["src-tauri", "src", "tagged_transfer.rs"],
-    ["src-tauri", "src", "tagged_transfer", "types_and_commands.rs"],
-    ["src-tauri", "src", "tagged_transfer", "export.rs"],
-    ["src-tauri", "src", "tagged_transfer", "import.rs"],
+    ["src-tauri", "src", "studydeck.rs"],
+    ["src-tauri", "src", "studydeck", "export.rs"],
+    ["src-tauri", "src", "studydeck", "import.rs"],
+    ["src-tauri", "src", "studydeck", "read.rs"],
   ),
   readTree(["src-tauri", "src"], ".rs"),
   readdir(join(root, ".github", "workflows")),
@@ -287,10 +287,14 @@ for (const fragment of [
   if (!cardStyles.includes(fragment)) failures.push(`responsive card styles missing: ${fragment}`);
 }
 if (
-  !taggedTransfer.includes("CREATE TABLE IF NOT EXISTS tags") ||
-  !taggedTransfer.includes("apply_imported_tags")
+  !studydeckTransfer.includes("CREATE TABLE tags") ||
+  !studydeckTransfer.includes("CREATE TABLE note_tags") ||
+  !studydeckTransfer.includes("INSERT INTO tags") ||
+  !studydeckTransfer.includes("INSERT INTO note_tags") ||
+  !studydeckTransfer.includes("read_tags") ||
+  !studydeckTransfer.includes("read_note_tags")
 ) {
-  failures.push("deck packages do not preserve optional tag metadata");
+  failures.push("canonical deck packages do not preserve tag metadata end to end");
 }
 
 if (failures.length > 0) {
