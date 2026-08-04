@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +22,13 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     if count != 1:
         raise SystemExit(f"{label}: expected one match, found {count}")
     return text.replace(old, new, 1)
+
+
+def regex_once(text: str, pattern: str, replacement: str, label: str) -> str:
+    updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+    if count != 1:
+        raise SystemExit(f"{label}: expected one regex match, found {count}")
+    return updated
 
 
 def leading_spaces(line: str) -> int:
@@ -77,6 +85,20 @@ write(path, text)
 
 path = "src-tauri/src/library_backup.rs"
 text = read(path).replace("    io::{Read, Write},\n", "    io::Write,\n")
+text = replace_once(
+    text,
+    '''    let temporary = extract_database_to
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| source.with_extension(format!("validate.{}.sqlite3", std::process::id())));''',
+    '''    let temporary = extract_database_to.map(Path::to_path_buf).unwrap_or_else(|| {
+        std::env::temp_dir().join(format!(
+            "ostudy-backup-validation-{}-{}.sqlite3",
+            std::process::id(),
+            unix_time_millis().unwrap_or_default()
+        ))
+    });''',
+    "backup validation temp path",
+)
 write(path, text)
 
 # The active template writer must use only the schema-13 rich document columns.
@@ -131,6 +153,28 @@ text = replace_once(
                 back_text: validated.back_text,
                 duplicate_hash,''',
     "legacy duplicate fingerprint field",
+)
+write(path, text)
+
+# Every error after the first staged-file rename must return all already-renamed
+# files to staging before the SQLite transaction rolls back.
+path = "src-tauri/src/studydeck/import.rs"
+text = read(path)
+text = regex_once(
+    text,
+    r'''    let mut promoted = Vec::new\(\);\n(?P<body>.*?)\n    if let Err\(error\) = transaction\.commit\(\) \{''',
+    '''    let mut promoted = Vec::new();
+    let promotion_result = (|| -> Result<(), CommandError> {
+\g<body>
+        Ok(())
+    })();
+    if let Err(error) = promotion_result {
+        compensate_promotions(&promoted);
+        return Err(error);
+    }
+
+    if let Err(error) = transaction.commit() {''',
+    "import promotion compensation",
 )
 write(path, text)
 
