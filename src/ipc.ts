@@ -385,12 +385,14 @@ export interface PracticeWorkloadOverview {
 }
 
 export interface StartPracticeInput {
+  operationId: string;
   deckIds: string[];
   shuffle: boolean;
   mode: "scheduled" | "extra";
 }
 
 export interface StartCardPracticeInput {
+  operationId: string;
   cardIds: string[];
   shuffle: boolean;
 }
@@ -646,6 +648,10 @@ export async function exportDeck(deckId: string, destinationPath: string): Promi
 
 export async function importDeck(sourcePath: string): Promise<ImportResult> {
   return invoke<ImportResult>("import_deck", { sourcePath });
+}
+
+export function createOperationId(): string {
+  return crypto.randomUUID().replaceAll("-", "");
 }
 
 export function createSubmissionId(): string {
