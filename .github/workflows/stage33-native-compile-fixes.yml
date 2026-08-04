@@ -1,0 +1,210 @@
+name: Stage 3.3 native compile fixes
+
+on:
+  push:
+    branches:
+      - agent/stage-3-3-managed-assets-undo-delete
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/stage-3-3-managed-assets-undo-delete
+          fetch-depth: 0
+
+      - name: Expose user-local tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Remove superseded delete paths and fix query lifetimes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected one exact match in {path}: {old[:80]!r}")
+              path.write_text(text.replace(old, new, 1))
+
+          def regex_once(path: Path, pattern: str, replacement: str) -> None:
+              text = path.read_text()
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f"expected one regex match in {path}: {pattern[:80]!r}")
+              path.write_text(updated)
+
+          cards = Path("src-tauri/src/cards.rs")
+          replace_once(
+              cards,
+              '''#[tauri::command]
+          pub fn delete_card(database: State<'_, Database>, note_id: String) -> Result<(), CommandError> {
+              validate_entity_id(&note_id, "note")?;
+              database.with_connection(|connection| delete_card_in_connection(connection, &note_id))
+          }
+
+          ''',
+              "",
+          )
+          regex_once(
+              cards,
+              r'''fn delete_card_in_connection\(.*?\n\}\n\n(?=fn hydrate_card)''',
+              "",
+          )
+
+          decks = Path("src-tauri/src/decks.rs")
+          replace_once(
+              decks,
+              '''#[tauri::command]
+          pub fn delete_deck(database: State<'_, Database>, deck_id: String) -> Result<(), CommandError> {
+              validate_entity_id(&deck_id, "deck")?;
+              database.with_connection(|connection| delete_deck_in_connection(connection, &deck_id))
+          }
+
+          ''',
+              "",
+          )
+          regex_once(
+              decks,
+              r'''fn delete_deck_in_connection\(.*?\n\}\n\n(?=pub\(crate\) fn validate_name)''',
+              "",
+          )
+
+          assets = Path("src-tauri/src/asset_lifecycle.rs")
+          replace_once(
+              assets,
+              "    let retained = normalize_asset_ids(input.asset_ids)?;",
+              "    let retained = normalize_asset_ids(input.asset_ids)?\n        .into_iter()\n        .collect::<BTreeSet<_>>();",
+          )
+          replace_once(
+              assets,
+              '''        statement
+              .query_map([], |row| row.get::<_, String>(0))
+              .map_err(CommandError::database)?
+              .collect::<Result<Vec<_>, _>>()
+              .map_err(CommandError::database)?
+              ''',
+              '''        let rows = statement
+              .query_map([], |row| row.get::<_, String>(0))
+              .map_err(CommandError::database)?
+              .collect::<Result<Vec<_>, _>>()
+              .map_err(CommandError::database)?;
+          rows
+              ''',
+          )
+          replace_once(
+              assets,
+              '''        statement
+              .query_map([now], |row| row.get::<_, String>(0))
+              .map_err(CommandError::database)?
+              .collect::<Result<Vec<_>, _>>()
+              .map_err(CommandError::database)?
+              ''',
+              '''        let rows = statement
+              .query_map([now], |row| row.get::<_, String>(0))
+              .map_err(CommandError::database)?
+              .collect::<Result<Vec<_>, _>>()
+              .map_err(CommandError::database)?;
+          rows
+              ''',
+          )
+          replace_once(
+              assets,
+              '''    statement
+              .query_map([draft_id], |row| {
+                  Ok(AssetRecord {
+                      id: row.get(0)?,
+                      original_filename: row.get(1)?,
+                      mime_type: row.get(2)?,
+                      byte_size: row.get(3)?,
+                      relative_path: row.get(4)?,
+                      lifecycle_state: row.get(5)?,
+                      draft_id: row.get(6)?,
+                      staged_relative_path: row.get(7)?,
+                      quarantine_relative_path: row.get(8)?,
+                      created_at: row.get(9)?,
+                      updated_at: row.get(10)?,
+                  })
+              })
+              .map_err(CommandError::database)?
+              .collect::<Result<Vec<_>, _>>()
+              .map_err(CommandError::database)
+          ''',
+              '''    let assets = statement
+              .query_map([draft_id], |row| {
+                  Ok(AssetRecord {
+                      id: row.get(0)?,
+                      original_filename: row.get(1)?,
+                      mime_type: row.get(2)?,
+                      byte_size: row.get(3)?,
+                      relative_path: row.get(4)?,
+                      lifecycle_state: row.get(5)?,
+                      draft_id: row.get(6)?,
+                      staged_relative_path: row.get(7)?,
+                      quarantine_relative_path: row.get(8)?,
+                      created_at: row.get(9)?,
+                      updated_at: row.get(10)?,
+                  })
+              })
+              .map_err(CommandError::database)?
+              .collect::<Result<Vec<_>, _>>()
+              .map_err(CommandError::database)?;
+          Ok(assets)
+          ''',
+          )
+
+          deletion = Path("src-tauri/src/deletion.rs")
+          replace_once(
+              deletion,
+              '''        statement
+              .query_map([now], operation_from_row)
+              .map_err(CommandError::database)?
+              .collect::<Result<Vec<_>, _>>()
+              .map_err(CommandError::database)?
+              ''',
+              '''        let rows = statement
+              .query_map([now], operation_from_row)
+              .map_err(CommandError::database)?
+              .collect::<Result<Vec<_>, _>>()
+              .map_err(CommandError::database)?;
+          rows
+              ''',
+          )
+          replace_once(
+              deletion,
+              '''    statement
+              .query_map([deck_id], |row| row.get::<_, String>(0))
+              .map_err(CommandError::database)?
+              .collect::<Result<Vec<_>, _>>()
+              .map_err(CommandError::database)
+          ''',
+              '''    let note_ids = statement
+              .query_map([deck_id], |row| row.get::<_, String>(0))
+              .map_err(CommandError::database)?
+              .collect::<Result<Vec<_>, _>>()
+              .map_err(CommandError::database)?;
+          Ok(note_ids)
+          ''',
+          )
+          PY
+
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Commit fixes
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri
+          git commit -m "fix: compile Stage 3.3 native boundaries"
+          git push origin HEAD:agent/stage-3-3-managed-assets-undo-delete
