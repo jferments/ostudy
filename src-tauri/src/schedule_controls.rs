@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
-use serde::{Deserialize, Serialize};
+use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 use tauri::State;
 
 use crate::{
@@ -35,17 +35,31 @@ pub struct ScheduleActionInput {
     pub session_id: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ScheduleActionResultDto {
-    /// Stable Stage 3.1 response field. For a batch this is the number of
-    /// cards that actually changed, not merely the number requested.
-    pub affected_count: i64,
     pub requested_count: i64,
     pub changed_count: i64,
     pub unchanged_count: i64,
     pub rejected_count: i64,
     pub action: String,
+}
+
+impl Serialize for ScheduleActionResultDto {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("ScheduleActionResultDto", 6)?;
+        // `affectedCount` is the stable Stage 3.1 response field. For a batch
+        // it means cards that actually changed, not merely cards requested.
+        state.serialize_field("affectedCount", &self.changed_count)?;
+        state.serialize_field("requestedCount", &self.requested_count)?;
+        state.serialize_field("changedCount", &self.changed_count)?;
+        state.serialize_field("unchangedCount", &self.unchanged_count)?;
+        state.serialize_field("rejectedCount", &self.rejected_count)?;
+        state.serialize_field("action", &self.action)?;
+        state.end()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -199,7 +213,6 @@ fn apply_in_connection(
     let changed_count =
         i64::try_from(plans.iter().filter(|plan| plan.changed()).count()).unwrap_or(i64::MAX);
     let result = ScheduleActionResultDto {
-        affected_count: changed_count,
         requested_count,
         changed_count,
         unchanged_count: requested_count.saturating_sub(changed_count),
@@ -609,7 +622,6 @@ fn existing_operation(
                     due_at: row.get(2)?,
                     result: ScheduleActionResultDto {
                         action,
-                        affected_count: changed_count,
                         requested_count: row.get(4)?,
                         changed_count,
                         unchanged_count: row.get(6)?,
