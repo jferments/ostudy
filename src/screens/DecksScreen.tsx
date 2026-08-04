@@ -159,7 +159,9 @@ export function DecksScreen({
     if (
       settings.confirmDeletions &&
       !window.confirm(
-        `Delete “${deck.name}” and its ${deck.cardCount} ${deck.cardCount === 1 ? "card" : "cards"}?`,
+        `Delete “${deck.name}” and its ${deck.cardCount} ${
+          deck.cardCount === 1 ? "card" : "cards"
+        }?`,
       )
     ) {
       return;
@@ -182,7 +184,11 @@ export function DecksScreen({
   async function handleDeleteCard(card: Flashcard): Promise<void> {
     if (
       settings.confirmDeletions &&
-      !window.confirm(`Delete this flashcard and every generated direction?\n\n${card.frontText || "Image card"}`)
+      !window.confirm(
+        `Delete this flashcard and every generated direction?\n\n${
+          card.frontText || "Image card"
+        }`,
+      )
     ) {
       return;
     }
@@ -209,7 +215,9 @@ export function DecksScreen({
       const result = await exportDeck(deck.id, destination);
       showToast(
         "success",
-        `Exported ${result.cardCount} ${result.cardCount === 1 ? "card" : "cards"}.`,
+        `Exported ${result.cardCount} ${
+          result.cardCount === 1 ? "card" : "cards"
+        }.`,
       );
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
@@ -222,23 +230,39 @@ export function DecksScreen({
   async function showImportedDeck(
     deckId: string,
     successMessage: string,
+    committedDeck?: Deck,
   ): Promise<void> {
-    const deck = await getDeck(deckId);
-    setSelectedDeck(deck);
+    // The import command is the durable boundary. Announce that result before
+    // attempting detail hydration so a display failure cannot be mistaken for
+    // a failed import and encourage the user to import the same file twice.
+    showToast("success", successMessage);
     setCards([]);
     setEditingCard(null);
     setSearch("");
-    setView("detail");
-    showToast("success", successMessage);
+    if (committedDeck) {
+      setSelectedDeck(committedDeck);
+      setView("detail");
+    }
+
     try {
-      setCards(await listCards(deck.id));
+      const [deck, loadedCards] = await Promise.all([
+        committedDeck ? Promise.resolve(committedDeck) : getDeck(deckId),
+        listCards(deckId),
+      ]);
+      setSelectedDeck(deck);
+      setCards(loadedCards);
+      setView("detail");
     } catch (error: unknown) {
+      if (!committedDeck) {
+        setSelectedDeck(null);
+        setView("library");
+      }
       showToast(
         "info",
-        `The deck was imported, but its cards could not be displayed yet: ${getErrorMessage(error)}`,
+        `The deck was imported, but it could not be displayed yet: ${getErrorMessage(error)}`,
       );
     }
-    void refreshDeckListAfterMutation();
+    await refreshDeckListAfterMutation();
   }
 
   async function handleImport(): Promise<void> {
@@ -267,6 +291,7 @@ export function DecksScreen({
           `Imported “${result.deck.name}” with ${result.cardCount} ${
             result.cardCount === 1 ? "card" : "cards"
           }.`,
+          result.deck,
         );
         return;
       }
@@ -332,7 +357,6 @@ export function DecksScreen({
             setEditingCard(null);
             setView("detail");
           }
-          await refreshSelectedDeckAfterMutation(selectedDeck.id);
           const duplicateMessage =
             result.skippedDuplicates > 0
               ? ` ${result.skippedDuplicates} exact ${
@@ -345,6 +369,7 @@ export function DecksScreen({
               result.createdCount === 1 ? "card" : "cards"
             } from “${template.name}”.${duplicateMessage}`,
           );
+          await refreshSelectedDeckAfterMutation(selectedDeck.id);
         }}
       />
     );
@@ -383,7 +408,9 @@ export function DecksScreen({
 
           {decks.length === 0 ? (
             <section className="empty-library-card">
-              <div className="empty-icon" aria-hidden="true">?</div>
+              <div className="empty-icon" aria-hidden="true">
+                ?
+              </div>
               <h2>Create your first deck</h2>
               <div className="empty-actions">
                 <button
@@ -413,7 +440,9 @@ export function DecksScreen({
                     className="deck-card-main"
                     onClick={() => void openDeck(deck.id)}
                   >
-                    <span className="deck-card-mark" aria-hidden="true">▤</span>
+                    <span className="deck-card-mark" aria-hidden="true">
+                      ▤
+                    </span>
                     <span className="deck-card-copy">
                       <strong>{deck.name}</strong>
                       {deck.description ? <span>{deck.description}</span> : null}
@@ -458,7 +487,11 @@ export function DecksScreen({
         <>
           <header className="screen-header deck-detail-header">
             <div>
-              <button type="button" className="back-button" onClick={() => setView("library")}>
+              <button
+                type="button"
+                className="back-button"
+                onClick={() => setView("library")}
+              >
                 ← All decks
               </button>
               <div className="deck-title-row">
@@ -510,7 +543,9 @@ export function DecksScreen({
 
           {cards.length === 0 ? (
             <section className="compact-empty-state large-empty-state">
-              <div className="empty-icon" aria-hidden="true">+</div>
+              <div className="empty-icon" aria-hidden="true">
+                +
+              </div>
               <h2>This deck is empty</h2>
               <button
                 type="button"
@@ -537,7 +572,9 @@ export function DecksScreen({
                 </label>
                 <span className="card-count-summary">
                   {visibleCards.length === cards.length
-                    ? `${cards.length} ${cards.length === 1 ? "source note" : "source notes"}`
+                    ? `${cards.length} ${
+                        cards.length === 1 ? "source note" : "source notes"
+                      }`
                     : `${visibleCards.length} of ${cards.length} source notes`}
                   {` · ${selectedDeck.cardCount} generated ${
                     selectedDeck.cardCount === 1 ? "card" : "cards"
@@ -568,7 +605,9 @@ export function DecksScreen({
                           <small>Question / source</small>
                           <strong>{summarize(card.frontText, card.assets.length > 0)}</strong>
                         </span>
-                        <span className="card-row-divider" aria-hidden="true">→</span>
+                        <span className="card-row-divider" aria-hidden="true">
+                          →
+                        </span>
                         <span className="card-row-side">
                           <small>Answer</small>
                           <strong>{summarize(card.backText, card.assets.length > 0)}</strong>
@@ -577,7 +616,9 @@ export function DecksScreen({
                       <div className="card-row-actions">
                         <span>
                           {card.assets.length > 0
-                            ? `${card.assets.length} image${card.assets.length === 1 ? "" : "s"}`
+                            ? `${card.assets.length} image${
+                                card.assets.length === 1 ? "" : "s"
+                              }`
                             : "Text"}
                         </span>
                         <button
@@ -712,7 +753,9 @@ function DeckFormModal({ mode, deck, onClose, onSave }: DeckFormModalProps) {
 function practiceTitle(deck: Deck): string {
   if (deck.cardCount === 0) return "Add a flashcard before practicing this deck";
   if (deck.dueCount === 0) return "Practice all cards; none are currently due";
-  return `${deck.dueCount} ${deck.dueCount === 1 ? "card is" : "cards are"} due`;
+  return `${deck.dueCount} ${
+    deck.dueCount === 1 ? "card is" : "cards are"
+  } due`;
 }
 
 function safeFilename(name: string): string {
