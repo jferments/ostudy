@@ -135,12 +135,9 @@ pub(crate) fn start_selected_practice_in_connection(
     mode: &str,
 ) -> Result<PracticeSessionDto, CommandError> {
     let request_fingerprint = selected_practice_request_fingerprint(&deck_ids, shuffle, mode)?;
-    if let Some(existing) = practice_session_for_operation(
-        connection,
-        paths,
-        &operation_id,
-        &request_fingerprint,
-    )? {
+    if let Some(existing) =
+        practice_session_for_operation(connection, paths, &operation_id, &request_fingerprint)?
+    {
         return Ok(existing);
     }
 
@@ -181,12 +178,9 @@ pub(crate) fn start_card_practice_in_connection(
     shuffle: bool,
 ) -> Result<PracticeSessionDto, CommandError> {
     let request_fingerprint = card_practice_request_fingerprint(&card_ids, shuffle)?;
-    if let Some(existing) = practice_session_for_operation(
-        connection,
-        paths,
-        &operation_id,
-        &request_fingerprint,
-    )? {
+    if let Some(existing) =
+        practice_session_for_operation(connection, paths, &operation_id, &request_fingerprint)?
+    {
         return Ok(existing);
     }
 
