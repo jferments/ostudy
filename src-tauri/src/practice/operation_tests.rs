@@ -78,7 +78,10 @@ fn create_session(
             "INSERT INTO practice_sessions (
                  id, selected_deck_ids_json, shuffle, card_count, mode, started_at
              ) VALUES (?1, '[]', 0, ?2, 'custom', 10)",
-            params![session_id, i64::try_from(card_ids.len()).unwrap_or(i64::MAX)],
+            params![
+                session_id,
+                i64::try_from(card_ids.len()).unwrap_or(i64::MAX)
+            ],
         )
         .map_err(CommandError::database)?;
     for (position, card_id) in card_ids.iter().enumerate() {
@@ -129,15 +132,11 @@ fn equivalent_review_retry_returns_the_original_committed_result() {
             .id;
             let first_card = create_card(connection, &deck_id, "First", 0)?;
             let second_card = create_card(connection, &deck_id, "Second", 1)?;
-            let session_id = create_session(connection, &[first_card.clone(), second_card.clone()])?;
+            let session_id =
+                create_session(connection, &[first_card.clone(), second_card.clone()])?;
 
             record_practice_event(connection, &session_id, &first_card, true)?;
-            let first_input = review_input(
-                &session_id,
-                &first_card,
-                'a',
-                "somewhat_confident",
-            );
+            let first_input = review_input(&session_id, &first_card, 'a', "somewhat_confident");
             let first = submit_review_in_connection(connection, first_input.clone())?;
             assert_eq!(first.rated_count, 1);
             assert_eq!(first.correct_count, 1);
@@ -180,7 +179,10 @@ fn equivalent_review_retry_returns_the_original_committed_result() {
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
                 )
                 .map_err(CommandError::database)?;
-            assert!(stored.0.as_deref().is_some_and(|value| value.starts_with("review:v1:")));
+            assert!(stored
+                .0
+                .as_deref()
+                .is_some_and(|value| value.starts_with("review:v1:")));
             assert_eq!(stored.1, Some(0));
             assert_eq!(stored.2, Some(1));
             assert_eq!(stored.3, Some(1));
