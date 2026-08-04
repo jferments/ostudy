@@ -15,6 +15,7 @@ interface RichTextEditorProps {
   description?: string;
   document: RichDocument;
   assets: Asset[];
+  assetDraftId?: string | null;
   onChange: (document: RichDocument, plainText: string) => void;
   onAssetImported: (asset: Asset) => void;
   minHeight?: number;
@@ -29,6 +30,7 @@ export function RichTextEditor({
   description,
   document,
   assets,
+  assetDraftId = null,
   onChange,
   onAssetImported,
   minHeight = 180,
@@ -73,6 +75,10 @@ export function RichTextEditor({
 
   async function addImage(): Promise<void> {
     if (!editor || disabled || isImportingImage) return;
+    if (!assetDraftId) {
+      setEditorError("The managed image draft is still opening. Try again in a moment.");
+      return;
+    }
 
     setEditorError(null);
     setIsImportingImage(true);
@@ -89,7 +95,7 @@ export function RichTextEditor({
       });
       if (typeof selected !== "string") return;
 
-      const asset = await importImage(selected);
+      const asset = await importImage(selected, assetDraftId);
       onAssetImported(asset);
       editor
         .chain()
@@ -164,6 +170,7 @@ export function RichTextEditor({
           onAddImage={() => void addImage()}
           onOpenLink={openLinkEditor}
           isImportingImage={isImportingImage}
+          imageDraftReady={assetDraftId !== null}
           disabled={disabled}
         />
         {linkOpen ? (
@@ -217,6 +224,7 @@ interface EditorToolbarProps {
   onAddImage: () => void;
   onOpenLink: () => void;
   isImportingImage: boolean;
+  imageDraftReady: boolean;
   disabled: boolean;
 }
 
@@ -225,6 +233,7 @@ function EditorToolbar({
   onAddImage,
   onOpenLink,
   isImportingImage,
+  imageDraftReady,
   disabled,
 }: EditorToolbarProps) {
   const blockType = editor.isActive("heading", { level: 1 })
@@ -468,7 +477,7 @@ function EditorToolbar({
           label="Insert image"
           onMouseDown={preserveSelection}
           onClick={onAddImage}
-          disabled={isImportingImage}
+          disabled={isImportingImage || !imageDraftReady}
         >
           {isImportingImage ? "Adding…" : "Image"}
         </ToolbarButton>
@@ -566,4 +575,3 @@ function normalizeColor(value: unknown, fallback: string): string {
     ? value
     : fallback;
 }
-
