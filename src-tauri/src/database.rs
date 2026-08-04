@@ -70,9 +70,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "1482b734fadc2e71720e53c397131916179a3e7966c8461bf9d4fe3d5e51dc15",
         sql: include_str!("../migrations/0009_operation_boundaries.sql"),
     },
+    Migration {
+        version: 10,
+        name: "transactional_schedule_actions",
+        checksum: "8955e66df02412ee76d852ef4db63e3490f42438e0b727d70e90a33b1eef8f14",
+        sql: include_str!("../migrations/0010_transactional_schedule_actions.sql"),
+    },
 ];
 
-const LATEST_SCHEMA_VERSION: i64 = 9;
+const LATEST_SCHEMA_VERSION: i64 = 10;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -242,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn migrations_are_idempotent_and_reach_schema_nine() {
+    fn migrations_are_idempotent_and_reach_schema_ten() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
@@ -265,6 +271,7 @@ mod tests {
                     "card_template_fields",
                     "card_template_rules",
                     "card_template_assets",
+                    "schedule_action_operations",
                     "schedule_action_events",
                 ] {
                     let exists: i64 = connection
@@ -287,6 +294,9 @@ mod tests {
                     ("review_events", "result_completed"),
                     ("review_events", "result_rated_count"),
                     ("review_events", "result_correct_count"),
+                    ("schedule_action_operations", "request_fingerprint"),
+                    ("schedule_action_operations", "changed_count"),
+                    ("schedule_action_events", "operation_id"),
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -404,6 +414,135 @@ mod tests {
     }
 
     #[test]
+    fn schema_nine_schedule_events_upgrade_to_parent_operations_without_loss() {
+        let mut connection = Connection::open_in_memory().expect("database should open");
+        configure_connection(&connection).expect("connection should configure");
+        initialize_migration_ledger(&connection).expect("ledger should initialize");
+        for migration in MIGRATIONS.iter().filter(|migration| migration.version <= 9) {
+            let transaction = connection.transaction().expect("migration should start");
+            transaction
+                .execute_batch(migration.sql)
+                .expect("historical migration should apply");
+            transaction
+                .execute(
+                    "INSERT INTO schema_migrations (version, name, checksum, applied_at)
+                     VALUES (?1, ?2, ?3, ?4)",
+                    params![
+                        migration.version,
+                        migration.name,
+                        migration.checksum,
+                        migration.version
+                    ],
+                )
+                .expect("migration should be recorded");
+            transaction
+                .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
+                .expect("user version should advance");
+            transaction.commit().expect("migration should commit");
+        }
+
+        let deck_id = "44444444444444444444444444444444";
+        let note_id = "55555555555555555555555555555555";
+        let card_id = "66666666666666666666666666666666";
+        let event_id = "77777777777777777777777777777777";
+        let mutation_id = "88888888888888888888888888888888";
+        connection
+            .execute(
+                "INSERT INTO decks (
+                     id, name, description, sort_order, created_at, updated_at, revision
+                 ) VALUES (?1, 'Legacy schedule actions', '', 0, 10, 10, 1)",
+                [deck_id],
+            )
+            .expect("deck should insert");
+        connection
+            .execute(
+                "INSERT INTO notes (
+                     id, deck_id, note_type, content_format, content_schema_version,
+                     front_doc, back_doc, front_text, back_text, duplicate_hash,
+                     created_at, updated_at, revision
+                 ) VALUES (
+                     ?1, ?2, 'basic', 'tiptap-json', 1,
+                     '{\"type\":\"doc\",\"content\":[]}',
+                     '{\"type\":\"doc\",\"content\":[]}',
+                     'Question', 'Answer', 'legacy-action', 10, 10, 1
+                 )",
+                params![note_id, deck_id],
+            )
+            .expect("note should insert");
+        connection
+            .execute(
+                "INSERT INTO cards (
+                     id, note_id, deck_id, direction, template_ordinal,
+                     created_at, updated_at, suspended_at
+                 ) VALUES (?1, ?2, ?3, 'forward', 0, 10, 10, 20)",
+                params![card_id, note_id, deck_id],
+            )
+            .expect("card should insert");
+        crate::scheduler::insert_new_schedule(&connection, card_id, 10)
+            .expect("schedule should insert");
+        connection
+            .execute(
+                "UPDATE card_schedules SET revision = 2 WHERE card_id = ?1",
+                [card_id],
+            )
+            .expect("schedule revision should update");
+        connection
+            .execute(
+                "INSERT INTO schedule_action_events (
+                     id, mutation_id, session_id, card_id, action,
+                     due_before, due_after, state_before, state_after,
+                     suspended_before, suspended_after,
+                     buried_until_before, buried_until_after,
+                     schedule_revision_before, schedule_revision_after,
+                     occurred_at, created_at
+                 ) VALUES (
+                     ?1, ?2, NULL, ?3, 'suspend',
+                     10, 10, 0, 0,
+                     NULL, 20, NULL, NULL,
+                     1, 2, 20, 20
+                 )",
+                params![event_id, mutation_id, card_id],
+            )
+            .expect("schema-nine event should insert");
+
+        apply_migrations(&mut connection).expect("schema nine should upgrade");
+
+        let operation: (Option<String>, String, i64, i64, i64) = connection
+            .query_row(
+                "SELECT request_fingerprint, action, requested_count,
+                        changed_count, unchanged_count
+                 FROM schedule_action_operations WHERE id = ?1",
+                [mutation_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .expect("parent operation should be preserved");
+        assert_eq!(operation, (None, "suspend".to_string(), 1, 1, 0));
+        let event: (String, String, String, i64, i64) = connection
+            .query_row(
+                "SELECT id, operation_id, card_id,
+                        schedule_revision_before, schedule_revision_after
+                 FROM schedule_action_events WHERE id = ?1",
+                [event_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .expect("child event should be preserved");
+        assert_eq!(
+            event,
+            (
+                event_id.to_string(),
+                mutation_id.to_string(),
+                card_id.to_string(),
+                1,
+                2
+            )
+        );
+        let foreign_key_errors: i64 = connection
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| row.get(0))
+            .expect("foreign key check should run");
+        assert_eq!(foreign_key_errors, 0);
+    }
+
+    #[test]
     fn every_released_schema_fixture_upgrades_to_latest() {
         for fixture in RELEASED_SCHEMA_FIXTURES {
             let mut connection = Connection::open_in_memory().expect("fixture should open");
@@ -446,6 +585,10 @@ mod tests {
         assert_eq!(
             MIGRATIONS[8].checksum,
             "1482b734fadc2e71720e53c397131916179a3e7966c8461bf9d4fe3d5e51dc15"
+        );
+        assert_eq!(
+            MIGRATIONS[9].checksum,
+            "8955e66df02412ee76d852ef4db63e3490f42438e0b727d70e90a33b1eef8f14"
         );
     }
 }
