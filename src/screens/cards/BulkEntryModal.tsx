@@ -108,42 +108,63 @@ export function BulkEntryModal({
     }
     setIsSaving(true);
     setErrorMessage(null);
-    try {
-      const cardRows = payload();
-      if (!analysis) {
-        const result = await analyzeBulkCards({ deckId, rows: cardRows });
-        if (result.duplicateCount > 0) {
-          const draftIds = result.duplicateRowIndices
-            .map((index) => populatedRows[index]?.id)
-            .filter((id): id is number => typeof id === "number");
-          setDuplicateRowIds(new Set(draftIds));
-          setAnalysis({
-            ...result,
-            uniqueCount: Math.max(0, cardRows.length - result.duplicateCount),
-          });
-          return;
-        }
-      }
+    const cardRows = payload();
 
+    if (!analysis) {
+      let result: BulkAnalyzeResult;
+      try {
+        result = await analyzeBulkCards({ deckId, rows: cardRows });
+      } catch (error: unknown) {
+        setErrorMessage(getErrorMessage(error));
+        setIsSaving(false);
+        return;
+      }
+      if (result.duplicateCount > 0) {
+        const draftIds = result.duplicateRowIndices
+          .map((index) => populatedRows[index]?.id)
+          .filter((id): id is number => typeof id === "number");
+        setDuplicateRowIds(new Set(draftIds));
+        setAnalysis({
+          ...result,
+          uniqueCount: Math.max(0, cardRows.length - result.duplicateCount),
+        });
+        setIsSaving(false);
+        return;
+      }
+    }
+
+    let createdCount: number;
+    let skippedDuplicates: number;
+    try {
       const result = await bulkCreateCards({ deckId, rows: cardRows });
-      await onSaved();
-      const duplicateCopy =
-        result.skippedDuplicates > 0
-          ? ` ${result.skippedDuplicates} exact ${
-              result.skippedDuplicates === 1 ? "duplicate was" : "duplicates were"
-            } removed.`
-          : "";
-      showToast(
-        "success",
-        `Added ${result.createdCount} ${
-          result.createdCount === 1 ? "card" : "cards"
-        }.${duplicateCopy}`,
-      );
-      onClose();
+      createdCount = result.createdCount;
+      skippedDuplicates = result.skippedDuplicates;
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
+      setIsSaving(false);
+      return;
+    }
+
+    const duplicateCopy =
+      skippedDuplicates > 0
+        ? ` ${skippedDuplicates} exact ${
+            skippedDuplicates === 1 ? "duplicate was" : "duplicates were"
+          } removed.`
+        : "";
+    showToast(
+      "success",
+      `Added ${createdCount} ${createdCount === 1 ? "card" : "cards"}.${duplicateCopy}`,
+    );
+    try {
+      await onSaved();
+    } catch (error: unknown) {
+      showToast(
+        "info",
+        `The cards were added, but the current view could not refresh: ${getErrorMessage(error)}`,
+      );
     } finally {
       setIsSaving(false);
+      onClose();
     }
   }
 
@@ -267,7 +288,10 @@ export function BulkEntryModal({
         {analysis ? (
           <section className="duplicate-review-panel" aria-live="polite">
             <div>
-              <h3>Remove {analysis.duplicateCount} exact duplicate{analysis.duplicateCount === 1 ? "" : "s"}?</h3>
+              <h3>
+                Remove {analysis.duplicateCount} exact duplicate
+                {analysis.duplicateCount === 1 ? "" : "s"}?
+              </h3>
               <p>
                 Duplicate rows are highlighted above. They will be omitted; the
                 remaining {uniqueCount} unique {uniqueCount === 1 ? "card" : "cards"}
