@@ -26,6 +26,7 @@ jobs:
       - name: Apply exact cleanup
         run: |
           python3 scripts/apply-stage33-cleanup.py
+          python3 scripts/apply-stage33-verifier-move.py
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
 
       - name: Commit cleanup
@@ -35,6 +36,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src-tauri
-          git commit -m "fix: complete Stage 3.3 native cleanup"
+          git add src-tauri scripts/verify-stage2.mjs
+          git commit -m "fix: complete Stage 3.3 recovery boundaries"
           git push origin HEAD:agent/stage-3-3-managed-assets-undo-delete
