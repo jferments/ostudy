@@ -21,7 +21,7 @@ describe("SettingsScreen", () => {
     vi.mocked(ipc.getAppInfo).mockResolvedValue({
       appVersion: "0.1.0", dataDirectory: "/tmp/ostudy/data",
       databasePath: "/tmp/ostudy/data/library.sqlite3",
-      imageDirectory: "/tmp/ostudy/data/assets/images", databaseSchemaVersion: 9,
+      imageDirectory: "/tmp/ostudy/data/assets/images", databaseSchemaVersion: 10,
     });
     vi.mocked(ipc.saveSettings).mockImplementation(async (input) => input);
   });
