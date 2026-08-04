@@ -8,7 +8,9 @@
 
 use std::collections::BTreeSet;
 
-use rusqlite::{params, Connection, OptionalExtension};
+#[cfg(test)]
+use rusqlite::params;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::State;
@@ -18,8 +20,11 @@ use crate::{
     database::Database,
     error::CommandError,
     paths::AppPaths,
-    util::{unix_time_millis, validate_entity_id},
+    util::validate_entity_id,
 };
+
+#[cfg(test)]
+use crate::util::unix_time_millis;
 
 const MAX_DOCUMENT_BYTES: usize = 1_000_000;
 const MAX_PLAIN_TEXT_CHARS: usize = 200_000;
