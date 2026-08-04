@@ -20,7 +20,10 @@ CREATE TABLE deck_import_operations (
     package_format         TEXT NOT NULL,
     package_version        INTEGER NOT NULL CHECK(package_version >= 1),
     status                 TEXT NOT NULL CHECK(status IN ('pending', 'completed', 'failed')),
-    result_deck_id         TEXT REFERENCES decks(id) ON DELETE SET NULL,
+    -- The committed result is immutable operation history rather than live deck
+    -- ownership. Keeping the ID as plain text allows a later deck deletion
+    -- without invalidating an already-completed retry record.
+    result_deck_id         TEXT,
     result_card_count      INTEGER CHECK(result_card_count IS NULL OR result_card_count >= 0),
     result_asset_count     INTEGER CHECK(result_asset_count IS NULL OR result_asset_count >= 0),
     error_code             TEXT,
