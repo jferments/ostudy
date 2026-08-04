@@ -27,6 +27,7 @@ mod settings;
 mod stage3_transfer;
 mod tagged_transfer;
 mod transfer;
+mod transfer_lifecycle;
 mod util;
 mod workload;
 
