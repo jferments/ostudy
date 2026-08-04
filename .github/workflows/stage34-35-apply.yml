@@ -1,0 +1,31 @@
+name: Apply Stage 3.4 and 3.5 source changes
+
+on:
+  push:
+    branches:
+      - agent/stage-3-4-3-5-transfer-repairs
+    paths:
+      - scripts/apply-stage34-35-core.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply repair cutover
+        run: python3 scripts/apply-stage34-35-core.py
+      - name: Format Rust
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+      - name: Commit generated source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/src src-tauri/migrations
+          git commit -m "refactor: make startup repairs versioned and no-op" || exit 0
+          git push origin HEAD:agent/stage-3-4-3-5-transfer-repairs
