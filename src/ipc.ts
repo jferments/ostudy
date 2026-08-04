@@ -452,7 +452,10 @@ export interface ScheduleActionInput {
 }
 
 export interface ScheduleActionResult {
-  affectedCount: number;
+  requestedCount: number;
+  changedCount: number;
+  unchangedCount: number;
+  rejectedCount: number;
   action: ScheduleAction;
 }
 
