@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, MutableRefObject } from "react";
 
 import {
   applyScheduleAction,
   createMutationId,
+  getErrorCode,
   getErrorMessage,
   getOrganizedCard,
   listMatchingCards,
@@ -31,6 +32,7 @@ import { DeleteCardsModal } from "./cards/DeleteCardsModal";
 import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { PracticeResultsModal } from "./cards/PracticeResultsModal";
 import { ScheduleActionModal } from "./cards/ScheduleActionModal";
+import { scheduleActionNotice } from "./cards/scheduleActionResult";
 
 interface CardsScreenProps {
   decks: Deck[];
@@ -51,6 +53,11 @@ type SelectionAction =
   | "unbury"
   | "reschedule"
   | "reset";
+
+interface PendingScheduleMutation {
+  key: string;
+  mutationId: string;
+}
 
 const PAGE_SIZE = 100;
 
@@ -90,6 +97,7 @@ export function CardsScreen({
     "the current results",
   );
   const requestSequence = useRef(0);
+  const pendingScheduleMutationRef = useRef<PendingScheduleMutation | null>(null);
 
   const normalizedSort: CardSort =
     query.trim() === "" && sort === "relevance" ? "updated_desc" : sort;
@@ -168,6 +176,7 @@ export function CardsScreen({
 
   useEffect(() => {
     setSelectedCards(new Map());
+    pendingScheduleMutationRef.current = null;
     const timeout = window.setTimeout(() => void loadCards(), 180);
     return () => window.clearTimeout(timeout);
   }, [loadCards]);
@@ -211,6 +220,12 @@ export function CardsScreen({
   }
 
   function toggleSelected(card: SelectionCard): void {
+    if (pendingScheduleMutationRef.current) {
+      setErrorMessage(
+        "Retry the unresolved schedule action before changing the selected cards.",
+      );
+      return;
+    }
     setSelectedCards((current) => {
       const next = new Map(current);
       if (next.has(card.cardId)) next.delete(card.cardId);
@@ -220,6 +235,12 @@ export function CardsScreen({
   }
 
   function selectVisible(): void {
+    if (pendingScheduleMutationRef.current) {
+      setErrorMessage(
+        "Retry the unresolved schedule action before changing the selected cards.",
+      );
+      return;
+    }
     setSelectedCards((current) => {
       const next = new Map(current);
       for (const card of page.cards) next.set(card.cardId, selectionFromRow(card));
@@ -229,6 +250,12 @@ export function CardsScreen({
 
   async function selectAllMatching(): Promise<void> {
     if (page.totalCount === 0 || isSelectingAll) return;
+    if (pendingScheduleMutationRef.current) {
+      setErrorMessage(
+        "Retry the unresolved schedule action before changing the selected cards.",
+      );
+      return;
+    }
     setIsSelectingAll(true);
     setErrorMessage(null);
     try {
@@ -268,32 +295,38 @@ export function CardsScreen({
     action: Exclude<ScheduleAction, "reset" | "reschedule">,
   ): Promise<void> {
     if (cards.length === 0 || isApplyingSchedule) return;
+    const cardIds = [...new Set(cards.map((card) => card.cardId))].sort();
+    const key = JSON.stringify({ action, cardIds });
+    const pending = pendingScheduleMutationRef.current;
+    if (pending && pending.key !== key) {
+      setErrorMessage(
+        "The result of the previous schedule action is still unknown. Repeat that exact action before starting another one.",
+      );
+      return;
+    }
+    const mutationId = mutationIdForSchedule(pendingScheduleMutationRef, key);
     setIsApplyingSchedule(true);
     setErrorMessage(null);
+
+    let result;
     try {
-      for (const card of cards) {
-        await applyScheduleAction({
-          mutationId: createMutationId(),
-          cardIds: [card.cardId],
-          action,
-        });
-      }
+      result = await applyScheduleAction({ mutationId, cardIds, action });
+      pendingScheduleMutationRef.current = null;
     } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
+      if (getErrorCode(error) !== null) {
+        pendingScheduleMutationRef.current = null;
+        setErrorMessage(getErrorMessage(error));
+      } else {
+        setErrorMessage(
+          `${getErrorMessage(error)} Choose the same schedule action again to safely retry the complete selection.`,
+        );
+      }
       setIsApplyingSchedule(false);
       return;
     }
 
-    const labels: Record<typeof action, string> = {
-      suspend: "Suspended",
-      resume: "Resumed",
-      bury: "Buried until tomorrow",
-      unbury: "Unburied",
-    };
-    showToast(
-      "success",
-      `${labels[action]} ${cards.length} ${cards.length === 1 ? "card" : "cards"}.`,
-    );
+    const notice = scheduleActionNotice(result);
+    showToast(notice.kind, notice.text);
     await reconcileAfterCommit("The schedule change");
     setIsApplyingSchedule(false);
   }
@@ -667,7 +700,15 @@ export function CardsScreen({
           <button
             type="button"
             className="text-button"
-            onClick={() => setSelectedCards(new Map())}
+            onClick={() => {
+              if (pendingScheduleMutationRef.current) {
+                setErrorMessage(
+                  "Retry the unresolved schedule action before changing the selected cards.",
+                );
+              } else {
+                setSelectedCards(new Map());
+              }
+            }}
           >
             Deselect all
           </button>
@@ -708,7 +749,15 @@ export function CardsScreen({
                 type="button"
                 className="secondary-button"
                 disabled={selectedCards.size === 0}
-                onClick={() => setSelectedCards(new Map())}
+                onClick={() => {
+                  if (pendingScheduleMutationRef.current) {
+                    setErrorMessage(
+                      "Retry the unresolved schedule action before changing the selected cards.",
+                    );
+                  } else {
+                    setSelectedCards(new Map());
+                  }
+                }}
               >
                 Deselect all
               </button>
@@ -838,6 +887,16 @@ export function CardsScreen({
       ) : null}
     </div>
   );
+}
+
+function mutationIdForSchedule(
+  pendingRef: MutableRefObject<PendingScheduleMutation | null>,
+  key: string,
+): string {
+  if (pendingRef.current?.key === key) return pendingRef.current.mutationId;
+  const mutationId = createMutationId();
+  pendingRef.current = { key, mutationId };
+  return mutationId;
 }
 
 function uniqueNotes(cards: SelectionCard[]): SelectionCard[] {
