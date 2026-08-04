@@ -178,84 +178,6 @@ pub(crate) fn stage_image(
     })
 }
 
-pub(crate) fn begin_import_draft(
-    connection: &mut Connection,
-) -> Result<AssetDraftDto, CommandError> {
-    begin_draft_in_connection(connection, "import", None)
-}
-
-pub(crate) fn stage_import_asset(
-    connection: &Connection,
-    paths: &AppPaths,
-    draft_id: &str,
-    asset_id: &str,
-    original_filename: &str,
-    mime_type: &str,
-    data: &[u8],
-) -> Result<AssetDto, CommandError> {
-    validate_entity_id(draft_id, "asset draft")?;
-    validate_entity_id(asset_id, "asset")?;
-    ensure_active_draft(connection, draft_id, unix_time_millis()?)?;
-    let original_filename = validate_original_filename(original_filename)?;
-    if data.is_empty() || data.len() as u64 > MAX_IMAGE_BYTES {
-        return Err(CommandError::new(
-            "invalid_image",
-            "An imported image is empty or exceeds 25 MB.",
-        ));
-    }
-    let (detected_mime, extension) = detect_image_bytes(data)?;
-    if detected_mime != mime_type {
-        return Err(CommandError::new(
-            "asset_type_mismatch",
-            "An imported image does not match its declared file type.",
-        ));
-    }
-    let now = unix_time_millis()?;
-    let relative_path = AppPaths::image_relative_path(asset_id, extension);
-    let staged_relative_path = AppPaths::staged_asset_relative_path(draft_id, asset_id, extension);
-    let staged_path = paths.resolve_relative(&staged_relative_path);
-    create_parent(&staged_path)?;
-    write_new_file(&staged_path, data)?;
-    sync_directory(staged_path.parent())?;
-
-    if let Err(error) = connection.execute(
-        "INSERT INTO assets (
-             id, original_filename, mime_type, byte_size, relative_path, created_at,
-             lifecycle_state, draft_id, staged_relative_path, updated_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'staged', ?7, ?8, ?6)",
-        params![
-            asset_id,
-            original_filename,
-            mime_type,
-            i64::try_from(data.len()).unwrap_or(i64::MAX),
-            relative_path,
-            now,
-            draft_id,
-            staged_relative_path,
-        ],
-    ) {
-        let _ = fs::remove_file(&staged_path);
-        return Err(CommandError::database(error));
-    }
-    record_event(
-        connection,
-        Some(asset_id),
-        "staged",
-        None,
-        Some(&staged_relative_path),
-        "import asset staged",
-        now,
-    )?;
-    Ok(AssetDto {
-        id: asset_id.to_string(),
-        original_filename,
-        mime_type: mime_type.to_string(),
-        byte_size: i64::try_from(data.len()).unwrap_or(i64::MAX),
-        file_path: staged_path.to_string_lossy().into_owned(),
-        created_at: now,
-    })
-}
-
 pub(crate) fn finalize_assets_for_owner(
     transaction: &Transaction<'_>,
     paths: &AppPaths,
@@ -970,6 +892,9 @@ fn quarantine_unknown_files(
     paths: &AppPaths,
     now: i64,
 ) -> Result<(), CommandError> {
+    // Recreate the conservative holding directory if an external cleanup tool
+    // removed it between launches.
+    fs::create_dir_all(paths.asset_quarantine_dir()).map_err(CommandError::io)?;
     let mut known = HashSet::new();
     let mut statement = connection
         .prepare("SELECT relative_path, staged_relative_path, quarantine_relative_path FROM assets")
@@ -1227,16 +1152,6 @@ fn verify_asset_file(asset: &AssetRecord, path: &Path) -> Result<(), CommandErro
         ));
     }
     Ok(())
-}
-
-fn write_new_file(path: &Path, data: &[u8]) -> Result<(), CommandError> {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .map_err(CommandError::io)?;
-    file.write_all(data).map_err(CommandError::io)?;
-    file.sync_all().map_err(CommandError::io)
 }
 
 fn create_parent(path: &Path) -> Result<(), CommandError> {

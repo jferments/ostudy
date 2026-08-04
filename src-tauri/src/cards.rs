@@ -8,7 +8,7 @@
 
 use std::collections::BTreeSet;
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::State;
@@ -18,7 +18,7 @@ use crate::{
     database::Database,
     error::CommandError,
     paths::AppPaths,
-    util::validate_entity_id,
+    util::{unix_time_millis, validate_entity_id},
 };
 
 const MAX_DOCUMENT_BYTES: usize = 1_000_000;
@@ -1116,9 +1116,16 @@ mod tests {
             .expect("cards should list");
         assert_eq!(cards.len(), 1);
 
-        database
-            .with_connection(|connection| delete_card_in_connection(connection, &note_id))
+        let deletion = database
+            .with_connection(|connection| {
+                crate::deletion::delete_cards(
+                    connection,
+                    vec![note_id.clone()],
+                    "Flashcard".to_string(),
+                )
+            })
             .expect("card should delete");
+        assert_eq!(deletion.affected_count, 1);
         let cards = database
             .with_connection(|connection| list_cards_from_connection(connection, &paths, &deck.id))
             .expect("cards should list");

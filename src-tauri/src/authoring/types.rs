@@ -241,11 +241,6 @@ pub struct BulkTagCardsInput {
     pub mode: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct DeleteCardsInput {
-    pub note_ids: Vec<String>,
-}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
