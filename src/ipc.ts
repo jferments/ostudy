@@ -36,6 +36,25 @@ export interface Asset {
   createdAt: number;
 }
 
+export interface AssetDraft {
+  id: string;
+  purpose: "card" | "template" | "import";
+  expiresAt: number;
+}
+
+export interface DeletionResult {
+  affectedCount: number;
+  undoToken: string;
+  undoExpiresAt: number;
+  subjectLabel: string;
+}
+
+export interface UndoDeletionResult {
+  restoredCount: number;
+  entityKind: "deck" | "cards";
+  subjectLabel: string;
+}
+
 export interface Flashcard {
   id: string;
   noteId: string;
@@ -64,6 +83,7 @@ export interface CreateOrganizedCardInput {
   backText: string;
   tags: string[];
   allowDuplicate: boolean;
+  assetDraftId?: string;
 }
 
 export interface UpdateOrganizedCardInput {
@@ -76,6 +96,7 @@ export interface UpdateOrganizedCardInput {
   backText: string;
   tags: string[];
   allowDuplicate: boolean;
+  assetDraftId?: string;
 }
 
 export interface CardTypeInfo {
@@ -98,6 +119,7 @@ export interface CreateGeneratedCardInput {
   backText: string;
   tags: string[];
   allowDuplicate: boolean;
+  assetDraftId?: string;
 }
 
 export interface UpdateGeneratedCardInput extends CreateGeneratedCardInput {
@@ -150,6 +172,7 @@ export interface CreateCardTemplateInput {
   description: string;
   fields: CardTemplateFieldInput[];
   rules: CardTemplateRuleInput[];
+  assetDraftId?: string;
 }
 
 export interface UpdateCardTemplateInput extends CreateCardTemplateInput {
@@ -182,6 +205,7 @@ export interface PreviewTemplateCardsInput {
 export interface GenerateTemplateCardsInput extends PreviewTemplateCardsInput {
   deckId: string;
   tags: string[];
+  assetDraftId?: string;
 }
 
 export interface GenerateTemplateCardsResult {
@@ -489,16 +513,35 @@ export async function updateDeck(input: UpdateDeckInput): Promise<Deck> {
   return invoke<Deck>("update_deck", { input });
 }
 
-export async function deleteDeck(deckId: string): Promise<void> {
-  return invoke<void>("delete_deck", { deckId });
+export async function deleteDeck(deckId: string): Promise<DeletionResult> {
+  return invoke<DeletionResult>("delete_deck", { deckId });
 }
 
 export async function listCards(deckId: string): Promise<Flashcard[]> {
   return invoke<Flashcard[]>("list_cards", { deckId });
 }
 
-export async function deleteCard(noteId: string): Promise<void> {
-  return invoke<void>("delete_card", { noteId });
+export async function deleteCard(noteId: string): Promise<DeletionResult> {
+  return invoke<DeletionResult>("delete_card", { noteId });
+}
+
+export async function undoDeletion(undoToken: string): Promise<UndoDeletionResult> {
+  return invoke<UndoDeletionResult>("undo_deletion", { input: { undoToken } });
+}
+
+export async function beginAssetDraft(
+  purpose: AssetDraft["purpose"],
+  ownerId?: string,
+): Promise<AssetDraft> {
+  return invoke<AssetDraft>("begin_asset_draft", { input: { purpose, ownerId } });
+}
+
+export async function cancelAssetDraft(draftId: string): Promise<void> {
+  return invoke<void>("cancel_asset_draft", { draftId });
+}
+
+export async function syncAssetDraft(draftId: string, assetIds: string[]): Promise<void> {
+  return invoke<void>("sync_asset_draft", { input: { draftId, assetIds } });
 }
 
 export async function listTags(deckIds: string[] = []): Promise<TagSummary[]> {
@@ -585,12 +628,12 @@ export async function bulkTagCards(input: BulkTagCardsInput): Promise<BulkAction
   return invoke<BulkActionResult>("bulk_tag_cards", { input });
 }
 
-export async function deleteCards(noteIds: string[]): Promise<BulkActionResult> {
-  return invoke<BulkActionResult>("delete_cards", { input: { noteIds } });
+export async function deleteCards(noteIds: string[]): Promise<DeletionResult> {
+  return invoke<DeletionResult>("delete_cards", { input: { noteIds } });
 }
 
-export async function importImage(filePath: string): Promise<Asset> {
-  return invoke<Asset>("import_image", { filePath });
+export async function importImage(filePath: string, draftId: string): Promise<Asset> {
+  return invoke<Asset>("import_image", { input: { filePath, draftId } });
 }
 
 export async function getSettings(): Promise<AppSettings> {
