@@ -210,8 +210,7 @@ pub(crate) fn stage_import_asset(
     }
     let now = unix_time_millis()?;
     let relative_path = AppPaths::image_relative_path(asset_id, extension);
-    let staged_relative_path =
-        AppPaths::staged_asset_relative_path(draft_id, asset_id, extension);
+    let staged_relative_path = AppPaths::staged_asset_relative_path(draft_id, asset_id, extension);
     let staged_path = paths.resolve_relative(&staged_relative_path);
     create_parent(&staged_path)?;
     write_new_file(&staged_path, data)?;
@@ -336,10 +335,7 @@ pub(crate) fn ensure_assets_available(
     Ok(())
 }
 
-pub(crate) fn reconcile_startup(
-    database: &Database,
-    paths: &AppPaths,
-) -> Result<(), CommandError> {
+pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result<(), CommandError> {
     let cleanup = database.with_connection(|connection| {
         reconcile_in_connection(connection, paths, unix_time_millis()?)
     })?;
@@ -690,14 +686,8 @@ fn abandon_draft_in_connection(
         return Ok(Vec::new());
     }
     let transaction = connection.transaction().map_err(CommandError::database)?;
-    let cleanup = retire_unused_draft_assets(
-        &transaction,
-        paths,
-        draft_id,
-        &BTreeSet::new(),
-        now,
-        reason,
-    )?;
+    let cleanup =
+        retire_unused_draft_assets(&transaction, paths, draft_id, &BTreeSet::new(), now, reason)?;
     transaction
         .execute(
             "UPDATE asset_drafts SET updated_at = ?1, canceled_at = ?1 WHERE id = ?2",
@@ -787,16 +777,7 @@ fn reconcile_asset(
     if references > 0 {
         if final_exists {
             verify_asset_file(&asset, &final_path)?;
-            transition_asset(
-                connection,
-                &asset,
-                "ready",
-                None,
-                None,
-                "",
-                now,
-                "restored",
-            )?;
+            transition_asset(connection, &asset, "ready", None, None, "", now, "restored")?;
             return Ok(());
         }
         if staged_exists {
@@ -853,9 +834,10 @@ fn reconcile_asset(
     match asset.lifecycle_state.as_str() {
         "staged" => {
             if staged_exists {
-                let draft_active = asset.draft_id.as_deref().is_some_and(|draft_id| {
-                    ensure_active_draft(connection, draft_id, now).is_ok()
-                });
+                let draft_active = asset
+                    .draft_id
+                    .as_deref()
+                    .is_some_and(|draft_id| ensure_active_draft(connection, draft_id, now).is_ok());
                 if draft_active {
                     return Ok(());
                 }
@@ -888,7 +870,9 @@ fn reconcile_asset(
                     now,
                     "deleted",
                 )?;
-            } else if now.saturating_sub(asset.updated_at.max(asset.created_at)) >= RECOVERY_GRACE_MS {
+            } else if now.saturating_sub(asset.updated_at.max(asset.created_at))
+                >= RECOVERY_GRACE_MS
+            {
                 quarantine_asset_file(connection, paths, &asset, &final_path, now)?;
             }
         }
@@ -984,9 +968,7 @@ fn quarantine_unknown_files(
 ) -> Result<(), CommandError> {
     let mut known = HashSet::new();
     let mut statement = connection
-        .prepare(
-            "SELECT relative_path, staged_relative_path, quarantine_relative_path FROM assets",
-        )
+        .prepare("SELECT relative_path, staged_relative_path, quarantine_relative_path FROM assets")
         .map_err(CommandError::database)?;
     let rows = statement
         .query_map([], |row| {
@@ -1201,7 +1183,15 @@ fn record_event(
             "INSERT INTO asset_reconciliation_events (
                  id, asset_id, action, from_path, to_path, detail, occurred_at
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![id, asset_id, action, from_path, to_path, detail, occurred_at],
+            params![
+                id,
+                asset_id,
+                action,
+                from_path,
+                to_path,
+                detail,
+                occurred_at
+            ],
         )
         .map_err(CommandError::database)?;
     Ok(())
@@ -1254,7 +1244,10 @@ fn create_parent(path: &Path) -> Result<(), CommandError> {
 #[cfg(unix)]
 fn sync_directory(path: Option<&Path>) -> Result<(), CommandError> {
     let path = path.ok_or_else(|| {
-        CommandError::new("invalid_asset_path", "The managed image directory is invalid.")
+        CommandError::new(
+            "invalid_asset_path",
+            "The managed image directory is invalid.",
+        )
     })?;
     File::open(path)
         .and_then(|directory| directory.sync_all())
@@ -1341,14 +1334,9 @@ mod tests {
                         ..Default::default()
                     },
                 ] {
-                    let error = stage_source_in_connection(
-                        connection,
-                        &paths,
-                        &source,
-                        &draft.id,
-                        faults,
-                    )
-                    .expect_err("fault should fail");
+                    let error =
+                        stage_source_in_connection(connection, &paths, &source, &draft.id, faults)
+                            .expect_err("fault should fail");
                     assert!(error.code.starts_with("asset_test_"));
                 }
                 let count: i64 = connection
@@ -1459,8 +1447,20 @@ mod tests {
         database
             .with_connection(|connection| {
                 let draft = begin_draft_in_connection(connection, "card", None)?;
-                let kept = stage_source_in_connection(connection, &paths, &source, &draft.id, Default::default())?;
-                let removed = stage_source_in_connection(connection, &paths, &source, &draft.id, Default::default())?;
+                let kept = stage_source_in_connection(
+                    connection,
+                    &paths,
+                    &source,
+                    &draft.id,
+                    Default::default(),
+                )?;
+                let removed = stage_source_in_connection(
+                    connection,
+                    &paths,
+                    &source,
+                    &draft.id,
+                    Default::default(),
+                )?;
                 let retained = BTreeSet::from([kept.id.clone()]);
                 let transaction = connection.transaction().map_err(CommandError::database)?;
                 let cleanup = retire_unused_draft_assets(
@@ -1476,7 +1476,8 @@ mod tests {
                 assert!(Path::new(&kept.file_path).exists());
                 assert!(!Path::new(&removed.file_path).exists());
 
-                let cleanup = abandon_draft_in_connection(connection, &paths, &draft.id, "test cancel")?;
+                let cleanup =
+                    abandon_draft_in_connection(connection, &paths, &draft.id, "test cancel")?;
                 remove_paths_best_effort(&cleanup);
                 assert!(!Path::new(&kept.file_path).exists());
                 Ok(())

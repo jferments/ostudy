@@ -469,9 +469,7 @@ fn load_operation(
         .and_then(|row| operation_from_values(row))
 }
 
-fn operation_from_row(
-    row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<(String, DeletionOperation)> {
+fn operation_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<(String, DeletionOperation)> {
     let id: String = row.get(0)?;
     let values = (
         row.get::<_, String>(1)?,
@@ -484,8 +482,7 @@ fn operation_from_row(
         row.get::<_, Option<i64>>(8)?,
         row.get::<_, Option<i64>>(9)?,
     );
-    let operation = operation_from_values(values)
-        .map_err(|_| rusqlite::Error::InvalidQuery)?;
+    let operation = operation_from_values(values).map_err(|_| rusqlite::Error::InvalidQuery)?;
     Ok((id, operation))
 }
 
@@ -502,10 +499,10 @@ type StoredOperationValues = (
 );
 
 fn operation_from_values(values: StoredOperationValues) -> Result<DeletionOperation, CommandError> {
-    let note_ids = serde_json::from_str::<Vec<String>>(&values.3)
-        .map_err(CommandError::serialization)?;
-    let card_ids = serde_json::from_str::<Vec<String>>(&values.4)
-        .map_err(CommandError::serialization)?;
+    let note_ids =
+        serde_json::from_str::<Vec<String>>(&values.3).map_err(CommandError::serialization)?;
+    let card_ids =
+        serde_json::from_str::<Vec<String>>(&values.4).map_err(CommandError::serialization)?;
     Ok(DeletionOperation {
         entity_kind: values.0,
         subject_label: values.1,
@@ -613,14 +610,23 @@ mod tests {
         )?;
         let note_id = generate_id(connection)?;
         let card_id = generate_id(connection)?;
-        connection.execute(
-            "INSERT INTO notes (
+        connection
+            .execute(
+                "INSERT INTO notes (
                  id, deck_id, note_type, content_format, content_schema_version,
                  front_doc, back_doc, front_text, back_text, duplicate_hash,
                  created_at, updated_at, revision
              ) VALUES (?1, ?2, 'basic', 'tiptap-json', 1, ?3, ?4, ?5, ?6, '', 1, 1, 1)",
-            params![note_id, deck_id, content.front_doc_json, content.back_doc_json, content.front_text, content.back_text],
-        ).map_err(CommandError::database)?;
+                params![
+                    note_id,
+                    deck_id,
+                    content.front_doc_json,
+                    content.back_doc_json,
+                    content.front_text,
+                    content.back_text
+                ],
+            )
+            .map_err(CommandError::database)?;
         connection.execute(
             "INSERT INTO cards (id, note_id, deck_id, direction, template_ordinal, created_at, updated_at)
              VALUES (?1, ?2, ?3, 'forward', 0, 1, 1)",
@@ -633,107 +639,142 @@ mod tests {
     #[test]
     fn card_deletion_restores_exact_rows_and_preserves_relationships() {
         let database = Database::open_in_memory().expect("database should open");
-        database.with_connection(|connection| {
-            let deck = create_deck_in_connection(
-                connection,
-                CreateDeckInput { name: "Undo".to_string(), description: None },
-            )?;
-            let (note_id, card_id) = create_note(connection, &deck.id, "Question")?;
-            let tag_id = generate_id(connection)?;
-            connection.execute(
-                "INSERT INTO tags (id, name, normalized_name, created_at, updated_at)
+        database
+            .with_connection(|connection| {
+                let deck = create_deck_in_connection(
+                    connection,
+                    CreateDeckInput {
+                        name: "Undo".to_string(),
+                        description: None,
+                    },
+                )?;
+                let (note_id, card_id) = create_note(connection, &deck.id, "Question")?;
+                let tag_id = generate_id(connection)?;
+                connection
+                    .execute(
+                        "INSERT INTO tags (id, name, normalized_name, created_at, updated_at)
                  VALUES (?1, 'Undo', 'undo', 1, 1)",
-                [tag_id.as_str()],
-            ).map_err(CommandError::database)?;
-            connection.execute(
-                "INSERT INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
-                params![note_id, tag_id],
-            ).map_err(CommandError::database)?;
+                        [tag_id.as_str()],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
+                        params![note_id, tag_id],
+                    )
+                    .map_err(CommandError::database)?;
 
-            let deleted = delete_cards(connection, vec![note_id.clone()], "Flashcard".to_string())?;
-            assert_eq!(deleted.affected_count, 1);
-            let restored = undo_in_connection(connection, &deleted.undo_token)?;
-            assert_eq!(restored.restored_count, 1);
-            let state: (Option<i64>, Option<i64>, i64) = connection.query_row(
-                "SELECT n.deleted_at, c.deleted_at,
+                let deleted =
+                    delete_cards(connection, vec![note_id.clone()], "Flashcard".to_string())?;
+                assert_eq!(deleted.affected_count, 1);
+                let restored = undo_in_connection(connection, &deleted.undo_token)?;
+                assert_eq!(restored.restored_count, 1);
+                let state: (Option<i64>, Option<i64>, i64) = connection
+                    .query_row(
+                        "SELECT n.deleted_at, c.deleted_at,
                         (SELECT COUNT(*) FROM note_tags WHERE note_id = n.id)
                  FROM notes n JOIN cards c ON c.note_id = n.id
                  WHERE n.id = ?1 AND c.id = ?2",
-                params![note_id, card_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            ).map_err(CommandError::database)?;
-            assert_eq!(state, (None, None, 1));
-            Ok(())
-        }).expect("card should be restored exactly");
+                        params![note_id, card_id],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(state, (None, None, 1));
+                Ok(())
+            })
+            .expect("card should be restored exactly");
     }
 
     #[test]
     fn deck_undo_restores_only_rows_tombstoned_by_that_operation() {
         let database = Database::open_in_memory().expect("database should open");
-        database.with_connection(|connection| {
-            let deck = create_deck_in_connection(
-                connection,
-                CreateDeckInput { name: "Deck undo".to_string(), description: None },
-            )?;
-            let (active_note, active_card) = create_note(connection, &deck.id, "Active")?;
-            let (old_note, old_card) = create_note(connection, &deck.id, "Old deleted")?;
-            connection.execute(
-                "UPDATE notes SET deleted_at = 5 WHERE id = ?1",
-                [old_note.as_str()],
-            ).map_err(CommandError::database)?;
-            connection.execute(
-                "UPDATE cards SET deleted_at = 5 WHERE id = ?1",
-                [old_card.as_str()],
-            ).map_err(CommandError::database)?;
+        database
+            .with_connection(|connection| {
+                let deck = create_deck_in_connection(
+                    connection,
+                    CreateDeckInput {
+                        name: "Deck undo".to_string(),
+                        description: None,
+                    },
+                )?;
+                let (active_note, active_card) = create_note(connection, &deck.id, "Active")?;
+                let (old_note, old_card) = create_note(connection, &deck.id, "Old deleted")?;
+                connection
+                    .execute(
+                        "UPDATE notes SET deleted_at = 5 WHERE id = ?1",
+                        [old_note.as_str()],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "UPDATE cards SET deleted_at = 5 WHERE id = ?1",
+                        [old_card.as_str()],
+                    )
+                    .map_err(CommandError::database)?;
 
-            let deleted = delete_deck(connection, &deck.id)?;
-            undo_in_connection(connection, &deleted.undo_token)?;
-            let restored: (Option<i64>, Option<i64>) = connection.query_row(
+                let deleted = delete_deck(connection, &deck.id)?;
+                undo_in_connection(connection, &deleted.undo_token)?;
+                let restored: (Option<i64>, Option<i64>) = connection.query_row(
                 "SELECT n.deleted_at, c.deleted_at FROM notes n JOIN cards c ON c.note_id = n.id
                  WHERE n.id = ?1 AND c.id = ?2",
                 params![active_note, active_card],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             ).map_err(CommandError::database)?;
-            let old: (Option<i64>, Option<i64>) = connection.query_row(
+                let old: (Option<i64>, Option<i64>) = connection.query_row(
                 "SELECT n.deleted_at, c.deleted_at FROM notes n JOIN cards c ON c.note_id = n.id
                  WHERE n.id = ?1 AND c.id = ?2",
                 params![old_note, old_card],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             ).map_err(CommandError::database)?;
-            assert_eq!(restored, (None, None));
-            assert_eq!(old, (Some(5), Some(5)));
-            Ok(())
-        }).expect("deck undo should not revive prior tombstones");
+                assert_eq!(restored, (None, None));
+                assert_eq!(old, (Some(5), Some(5)));
+                Ok(())
+            })
+            .expect("deck undo should not revive prior tombstones");
     }
 
     #[test]
     fn expired_and_conflicting_undo_requests_fail_visibly() {
         let database = Database::open_in_memory().expect("database should open");
-        database.with_connection(|connection| {
-            let deck = create_deck_in_connection(
-                connection,
-                CreateDeckInput { name: "Expiry".to_string(), description: None },
-            )?;
-            let (note_id, _) = create_note(connection, &deck.id, "Question")?;
-            let deleted = delete_cards(connection, vec![note_id.clone()], "Flashcard".to_string())?;
-            connection.execute(
-                "UPDATE deletion_operations SET expires_at = 0 WHERE id = ?1",
-                [deleted.undo_token.as_str()],
-            ).map_err(CommandError::database)?;
-            let expired = undo_in_connection(connection, &deleted.undo_token)
-                .expect_err("expired undo must fail");
-            assert_eq!(expired.code, "deletion_undo_expired");
+        database
+            .with_connection(|connection| {
+                let deck = create_deck_in_connection(
+                    connection,
+                    CreateDeckInput {
+                        name: "Expiry".to_string(),
+                        description: None,
+                    },
+                )?;
+                let (note_id, _) = create_note(connection, &deck.id, "Question")?;
+                let deleted =
+                    delete_cards(connection, vec![note_id.clone()], "Flashcard".to_string())?;
+                connection
+                    .execute(
+                        "UPDATE deletion_operations SET expires_at = 0 WHERE id = ?1",
+                        [deleted.undo_token.as_str()],
+                    )
+                    .map_err(CommandError::database)?;
+                let expired = undo_in_connection(connection, &deleted.undo_token)
+                    .expect_err("expired undo must fail");
+                assert_eq!(expired.code, "deletion_undo_expired");
 
-            let second_note = create_note(connection, &deck.id, "Second")?.0;
-            let second = delete_cards(connection, vec![second_note.clone()], "Flashcard".to_string())?;
-            connection.execute(
-                "UPDATE notes SET deleted_at = 999 WHERE id = ?1",
-                [second_note.as_str()],
-            ).map_err(CommandError::database)?;
-            let conflict = undo_in_connection(connection, &second.undo_token)
-                .expect_err("changed tombstone must fail");
-            assert_eq!(conflict.code, "deletion_undo_conflict");
-            Ok(())
-        }).expect("undo failures should be explicit");
+                let second_note = create_note(connection, &deck.id, "Second")?.0;
+                let second = delete_cards(
+                    connection,
+                    vec![second_note.clone()],
+                    "Flashcard".to_string(),
+                )?;
+                connection
+                    .execute(
+                        "UPDATE notes SET deleted_at = 999 WHERE id = ?1",
+                        [second_note.as_str()],
+                    )
+                    .map_err(CommandError::database)?;
+                let conflict = undo_in_connection(connection, &second.undo_token)
+                    .expect_err("changed tombstone must fail");
+                assert_eq!(conflict.code, "deletion_undo_conflict");
+                Ok(())
+            })
+            .expect("undo failures should be explicit");
     }
 }

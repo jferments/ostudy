@@ -145,9 +145,7 @@ pub(crate) fn detect_image_bytes(
     ))
 }
 
-pub(crate) fn detect_image_type(
-    path: &Path,
-) -> Result<(&'static str, &'static str), CommandError> {
+pub(crate) fn detect_image_type(path: &Path) -> Result<(&'static str, &'static str), CommandError> {
     let mut file = File::open(path).map_err(CommandError::io)?;
     let mut header = [0_u8; 16];
     let bytes_read = file.read(&mut header).map_err(CommandError::io)?;

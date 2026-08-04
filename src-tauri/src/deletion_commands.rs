@@ -32,7 +32,11 @@ pub fn delete_cards(
     database: State<'_, Database>,
     input: DeleteCardsInput,
 ) -> Result<DeletionResultDto, CommandError> {
-    let count = input.note_ids.iter().collect::<std::collections::BTreeSet<_>>().len();
+    let count = input
+        .note_ids
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
     let label = if count == 1 {
         "Flashcard".to_string()
     } else {
