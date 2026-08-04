@@ -139,7 +139,7 @@ export function makePracticeSession(
 export function makeAnalytics(overrides: Partial<Analytics> = {}): Analytics {
   const base: Analytics = {
     scope: {
-      range: "30d",
+      range: "7d",
       startAt: 1,
       endAt: 2,
       bucketGranularity: "day",
