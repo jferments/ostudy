@@ -36,7 +36,7 @@ jobs:
       - name: Run fast high-return checks
         run: |
           set -o pipefail
-          ./scripts/check-fast.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-fast-check.log"
+          bash ./scripts/check-fast.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-fast-check.log"
 
       - name: Run full qualification gate
         if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
