@@ -49,7 +49,7 @@ vi.mock("./CardEditorScreen", () => ({
 }));
 
 function renderDeckLibrary(
-  deck = makeDeck({ name: "Cardiology", cardCount: 1 }),
+  deck = makeDeck({ name: "Cardiology", sourceNoteCount: 1, generatedCardCount: 1 }),
   overrides: Partial<React.ComponentProps<typeof DecksScreen>> = {},
 ) {
   const refreshDecks = vi.fn().mockResolvedValue([deck]);
@@ -83,12 +83,12 @@ describe("DecksScreen extended behavior", () => {
     resetTestEntityIds();
     vi.mocked(openDialog).mockResolvedValue(null);
     vi.mocked(saveDialog).mockResolvedValue(null);
-    vi.mocked(ipc.listCards).mockResolvedValue([]);
+    vi.mocked(ipc.listDeckCards).mockResolvedValue({ cards: [], totalCount: 0 });
   });
 
   it("creates a named deck and opens its detail view", async () => {
     const existing = makeDeck({ name: "Existing" });
-    const created = makeDeck({ name: "Neurology", description: "CNS review", cardCount: 0 });
+    const created = makeDeck({ name: "Neurology", description: "CNS review", sourceNoteCount: 0, generatedCardCount: 0 });
     vi.mocked(ipc.createDeck).mockResolvedValue(created);
     const { refreshDecks, showToast } = renderDeckLibrary(existing);
 

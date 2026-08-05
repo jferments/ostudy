@@ -70,7 +70,6 @@ const template: ipc.CardTemplate = {
   assets: [],
   createdAt: 1,
   updatedAt: 1,
-  archivedAt: null,
   revision: 1,
 };
 

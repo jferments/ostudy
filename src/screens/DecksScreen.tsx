@@ -302,12 +302,13 @@ export function DecksScreen({
     }
 
     try {
-      const [deck, loadedCards] = await Promise.all([
+      const [deck, page] = await Promise.all([
         committedDeck ? Promise.resolve(committedDeck) : getDeck(deckId),
-        listCards(deckId),
+        listDeckCards(deckId, "", 50, 0),
       ]);
       setSelectedDeck(deck);
-      setCards(loadedCards);
+      setCards(page.cards);
+      setCardTotal(page.totalCount);
       setView("detail");
     } catch (error: unknown) {
       if (!committedDeck) {

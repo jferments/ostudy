@@ -122,18 +122,7 @@ describe("ScheduleActionModal", () => {
         action: "reschedule",
       }),
     );
-    expect(typeof submitted?.dueAt).toBe("number");
-
-    const due = new Date(submitted?.dueAt ?? Number.NaN);
-    const expectedDay = new Date(startedOn);
-    expectedDay.setDate(expectedDay.getDate() + 1);
-    expect(due.getFullYear()).toBe(expectedDay.getFullYear());
-    expect(due.getMonth()).toBe(expectedDay.getMonth());
-    expect(due.getDate()).toBe(expectedDay.getDate());
-    expect(due.getHours()).toBe(12);
-    expect(due.getMinutes()).toBe(0);
-    expect(due.getSeconds()).toBe(0);
-    expect(due.getMilliseconds()).toBe(0);
+    expect(submitted?.reschedule).toEqual({ kind: "tomorrow" });
   });
 
   it("rejects an empty custom date without issuing a mutation", () => {

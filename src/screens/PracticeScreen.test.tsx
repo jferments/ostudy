@@ -80,7 +80,6 @@ const card: ipc.Flashcard = {
   assets: [],
   createdAt: 1,
   updatedAt: 1,
-  archivedAt: null,
   revision: 1,
 };
 const session: ipc.PracticeSession = {
