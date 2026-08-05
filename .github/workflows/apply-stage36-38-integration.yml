@@ -1,0 +1,40 @@
+name: Apply Stage 3.6-3.8 integration
+
+on:
+  push:
+    branches:
+      - agent/stage-3-6-3-8-scheduling-analytics-clean
+    paths:
+      - scripts/apply-stage36-38-integration.py
+      - .github/workflows/apply-stage36-38-integration.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/stage-3-6-3-8-scheduling-analytics-clean
+      - name: Expose user-local tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Apply native integration
+        run: python3 scripts/apply-stage36-38-integration.py
+      - name: Refresh Rust lockfile and format
+        run: |
+          cargo check --manifest-path src-tauri/Cargo.toml
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+      - name: Commit integrated native slice
+        run: |
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: integrate Stage 3.6-3.8 native contracts"
+          git push origin HEAD:agent/stage-3-6-3-8-scheduling-analytics-clean
