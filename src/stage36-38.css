@@ -1,0 +1,217 @@
+/* Stage 3.6–3.8: bounded list projections, archive controls, and responsive filters. */
+
+.card-search-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 290px) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.card-filter-sidebar,
+.card-results-panel,
+.archived-decks-panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+}
+
+.card-filter-sidebar {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.card-filter-sidebar > label,
+.card-filter-sidebar > fieldset {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.card-filter-sidebar > label > span,
+.card-filter-sidebar legend {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.card-filter-sidebar .filter-checklist {
+  position: static;
+  width: auto;
+  max-height: 230px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.card-results-panel {
+  overflow: hidden;
+}
+
+.card-results-toolbar {
+  display: flex;
+  min-height: 58px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+}
+
+.card-results-toolbar > span {
+  color: var(--text-soft);
+  font-weight: 740;
+}
+
+.card-results-table {
+  display: grid;
+}
+
+.search-card-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) minmax(110px, auto);
+  align-items: center;
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-card-row:last-child {
+  border-bottom: 0;
+}
+
+.search-card-row:hover {
+  background: var(--surface-raised);
+}
+
+.search-card-row > input {
+  justify-self: center;
+}
+
+.search-card-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr);
+  min-width: 0;
+  gap: 18px;
+  border: 0;
+  padding: 14px 12px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.search-card-main span,
+.search-card-main strong,
+.search-card-main small {
+  display: block;
+  min-width: 0;
+}
+
+.search-card-main strong,
+.search-card-main > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-card-main small {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.search-card-row > span:last-child {
+  padding: 0 16px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-align: right;
+}
+
+.selection-action-bar {
+  position: sticky;
+  z-index: 25;
+  bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 11px 14px;
+  background: color-mix(in srgb, var(--surface) 90%, var(--accent));
+  box-shadow: var(--shadow);
+}
+
+.selection-action-bar select {
+  min-width: 190px;
+}
+
+.selection-action-bar .primary-button {
+  margin-left: auto;
+}
+
+.archived-decks-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+  padding: 16px;
+}
+
+.archived-decks-panel > h2,
+.archived-decks-panel > p {
+  margin: 0;
+}
+
+.archived-decks-panel > p {
+  color: var(--muted);
+}
+
+.archived-decks-panel .deck-card.archived {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  box-shadow: none;
+}
+
+@media (max-width: 860px) {
+  .card-search-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .card-filter-sidebar {
+    position: static;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+
+  .search-card-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .selection-action-bar .primary-button {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .search-card-row {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .search-card-row > span:last-child {
+    grid-column: 2;
+    padding: 0 12px 12px;
+    text-align: left;
+  }
+
+  .archived-decks-panel .deck-card.archived {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
