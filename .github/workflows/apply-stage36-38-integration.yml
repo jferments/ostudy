@@ -5,7 +5,9 @@ on:
     branches:
       - agent/stage-3-6-3-8-scheduling-analytics-clean
     paths:
+      - scripts/prepare-stage36-38-integration.py
       - scripts/apply-stage36-38-integration.py
+      - scripts/finalize-stage36-38-native-integration.py
       - src-tauri/Cargo.toml
       - .github/workflows/apply-stage36-38-integration.yml
   workflow_dispatch:
@@ -27,10 +29,13 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: Apply native integration
-        run: python3 scripts/apply-stage36-38-integration.py
-      - name: Refresh Rust lockfile and format
         run: |
-          cargo check --manifest-path src-tauri/Cargo.toml
+          python3 scripts/prepare-stage36-38-integration.py
+          python3 scripts/apply-stage36-38-integration.py
+          python3 scripts/finalize-stage36-38-native-integration.py
+      - name: Refresh lockfile and format Rust
+        run: |
+          cargo update --manifest-path src-tauri/Cargo.toml
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
       - name: Commit integrated native slice
         run: |
@@ -39,3 +44,5 @@ jobs:
           git add -A
           git commit -m "refactor: integrate Stage 3.6-3.8 native contracts"
           git push origin HEAD:agent/stage-3-6-3-8-scheduling-analytics-clean
+      - name: Compile integrated native slice
+        run: cargo check --manifest-path src-tauri/Cargo.toml
