@@ -5,7 +5,7 @@ on:
     branches:
       - agent/stage-3-6-3-8-scheduling-analytics-projections
     paths:
-      - scripts/apply-stage36-38-fast-fixes2.py
+      - scripts/apply-stage36-38-fast-fixes3.py
       - .github/workflows/stage36-38-apply.yml
   workflow_dispatch:
 
@@ -25,8 +25,8 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - name: Apply exact transfer corrections
-        run: python3 scripts/apply-stage36-38-fast-fixes2.py
+      - name: Apply explicit import and export result units
+        run: python3 scripts/apply-stage36-38-fast-fixes3.py
       - name: Format Rust
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
       - name: Commit generated source
@@ -37,7 +37,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No source changes were required."
           else
-            git commit -m "fix: complete bounded deck transfer contracts"
+            git commit -m "fix: make studydeck result units explicit"
             git push origin HEAD:agent/stage-3-6-3-8-scheduling-analytics-projections
           fi
       - name: Run fast gate on generated source
