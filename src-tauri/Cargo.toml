@@ -16,6 +16,8 @@ tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
 chrono = "=0.4.45"
+chrono-tz = "=0.10.4"
+iana-time-zone = "=0.1.65"
 rs-fsrs = "=1.2.1"
 rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled", "backup"] }
 serde = { version = "=1.0.229", features = ["derive"] }
