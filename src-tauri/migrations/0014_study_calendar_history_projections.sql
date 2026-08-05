@@ -26,11 +26,24 @@ CREATE TABLE practice_session_card_snapshots (
     card_type               TEXT NOT NULL CHECK(card_type IN ('basic', 'cloze')),
     card_label              TEXT NOT NULL,
     presentation_variant    TEXT NOT NULL,
+    question_doc            TEXT NOT NULL,
+    answer_doc              TEXT NOT NULL,
+    answer_text             TEXT NOT NULL,
     question_excerpt        TEXT NOT NULL,
     question_text_hash      TEXT NOT NULL CHECK(length(question_text_hash) = 64),
     question_was_truncated  INTEGER NOT NULL CHECK(question_was_truncated IN (0, 1)),
     captured_at             INTEGER NOT NULL,
     PRIMARY KEY(session_id, card_id)
+) STRICT;
+
+CREATE TABLE practice_session_card_asset_snapshots (
+    session_id  TEXT NOT NULL,
+    card_id     TEXT NOT NULL,
+    asset_id    TEXT NOT NULL CHECK(length(asset_id) = 32),
+    PRIMARY KEY(session_id, card_id, asset_id),
+    FOREIGN KEY(session_id, card_id)
+        REFERENCES practice_session_card_snapshots(session_id, card_id)
+        ON DELETE CASCADE
 ) STRICT;
 
 CREATE INDEX practice_session_card_snapshots_deck_idx

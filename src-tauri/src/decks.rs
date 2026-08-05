@@ -5,6 +5,7 @@ use tauri::State;
 use crate::{
     database::Database,
     error::CommandError,
+    practice::refresh_session_counters,
     study_calendar::StudyTimeContext,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
@@ -256,6 +257,35 @@ fn archive_deck_in_connection(
             params![now, deck_id],
         )
         .map_err(CommandError::database)?;
+    let archive_session_ids = {
+        let mut statement = transaction
+            .prepare(
+                "SELECT DISTINCT psc.session_id
+                 FROM practice_session_cards psc
+                 JOIN cards c ON c.id = psc.card_id
+                 JOIN practice_sessions ps ON ps.id = psc.session_id
+                 WHERE c.deck_id = ?1 AND ps.completed_at IS NULL
+                   AND psc.rated_at IS NULL AND psc.dismissed_at IS NULL",
+            )
+            .map_err(CommandError::database)?;
+        statement
+            .query_map([deck_id], |row| row.get::<_, String>(0))
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    };
+    transaction
+        .execute(
+            "UPDATE practice_session_cards
+             SET dismissed_at = ?1, disposition = 'suspended'
+             WHERE rated_at IS NULL AND dismissed_at IS NULL
+               AND card_id IN (SELECT id FROM cards WHERE deck_id = ?2)",
+            params![now, deck_id],
+        )
+        .map_err(CommandError::database)?;
+    for session_id in archive_session_ids {
+        refresh_session_counters(&transaction, &session_id, now)?;
+    }
     transaction.commit().map_err(CommandError::database)?;
     get_deck_from_connection(connection, deck_id)
 }

@@ -19,8 +19,8 @@ use crate::{
         load_schedule, new_schedule, update_schedule, ScheduleRecord, SCHEDULER_NAME,
         SCHEDULER_VERSION,
     },
+    study_calendar::{parse_local_date, StudyTimeContext},
     util::{generate_id, unix_time_millis, validate_entity_id},
-    workload::next_local_day_start_millis,
 };
 
 const MAX_SCHEDULE_ACTION_CARDS: usize = 10_000;
@@ -31,8 +31,17 @@ pub struct ScheduleActionInput {
     pub mutation_id: String,
     pub card_ids: Vec<String>,
     pub action: String,
-    pub due_at: Option<i64>,
+    pub reschedule: Option<RescheduleIntentInput>,
     pub session_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase", tag = "kind", deny_unknown_fields)]
+pub enum RescheduleIntentInput {
+    DueNow,
+    Tomorrow,
+    CalendarDays { days: i64 },
+    CalendarDate { date: String },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -109,7 +118,7 @@ impl ScheduleActionKind {
 struct ScheduleActionRequestIdentity<'a> {
     card_ids: &'a [String],
     action: &'a str,
-    due_at: Option<i64>,
+    reschedule: Option<&'a RescheduleIntentInput>,
     session_id: Option<&'a str>,
 }
 
@@ -118,7 +127,7 @@ struct ValidatedScheduleAction {
     mutation_id: String,
     card_ids: Vec<String>,
     action: ScheduleActionKind,
-    due_at: Option<i64>,
+    reschedule: Option<RescheduleIntentInput>,
     session_id: Option<String>,
     request_fingerprint: String,
 }
@@ -165,12 +174,11 @@ fn apply_in_connection(
     input: ScheduleActionInput,
 ) -> Result<ScheduleActionResultDto, CommandError> {
     let input = validate_input(input)?;
-    let now = unix_time_millis()?;
-    let bury_until = if input.action == ScheduleActionKind::Bury {
-        Some(next_local_day_start_millis()?)
-    } else {
-        None
-    };
+    let calendar = StudyTimeContext::capture()?;
+    let now = calendar.now_utc_millis;
+    let bury_until =
+        (input.action == ScheduleActionKind::Bury).then_some(calendar.tomorrow_start_utc_millis);
+    let resolved_due_at = resolve_reschedule(&input, &calendar)?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
@@ -202,7 +210,7 @@ fn apply_in_connection(
             control_state.0,
             control_state.1,
             input.action,
-            input.due_at,
+            resolved_due_at,
             bury_until,
             now,
             session_dismissal_needed,
@@ -220,7 +228,7 @@ fn apply_in_connection(
         action: input.action.as_str().to_string(),
     };
 
-    insert_operation(&transaction, &input, &result, now)?;
+    insert_operation(&transaction, &input, resolved_due_at, &result, now)?;
 
     let mut refresh_session = false;
     for plan in plans.iter().filter(|plan| plan.changed()) {
@@ -392,6 +400,7 @@ fn is_canonical_new_schedule(schedule: &ScheduleRecord, now: i64) -> bool {
 fn insert_operation(
     connection: &Connection,
     input: &ValidatedScheduleAction,
+    resolved_due_at: Option<i64>,
     result: &ScheduleActionResultDto,
     now: i64,
 ) -> Result<(), CommandError> {
@@ -407,7 +416,7 @@ fn insert_operation(
                 input.request_fingerprint.as_str(),
                 input.session_id.as_deref(),
                 input.action.as_str(),
-                input.due_at,
+                resolved_due_at,
                 result.requested_count,
                 result.changed_count,
                 result.unchanged_count,
@@ -660,7 +669,7 @@ fn ensure_equivalent_retry(
                 .map_err(CommandError::database)?;
             existing.result.action == input.action.as_str()
                 && existing.session_id == input.session_id
-                && existing.due_at == input.due_at
+                && existing.due_at.is_some() == input.reschedule.is_some()
                 && card_ids == input.card_ids
         }
     };
@@ -673,6 +682,32 @@ fn ensure_equivalent_retry(
     ))
 }
 
+fn resolve_reschedule(
+    input: &ValidatedScheduleAction,
+    context: &StudyTimeContext,
+) -> Result<Option<i64>, CommandError> {
+    let Some(intent) = input.reschedule.as_ref() else {
+        return Ok(None);
+    };
+    let resolved = match intent {
+        RescheduleIntentInput::DueNow => context.now_utc_millis,
+        RescheduleIntentInput::Tomorrow => context.tomorrow_start_utc_millis,
+        RescheduleIntentInput::CalendarDays { days } => {
+            if !(1..=3650).contains(days) {
+                return Err(CommandError::new(
+                    "invalid_reschedule_date",
+                    "Choose between 1 and 3650 local calendar days.",
+                ));
+            }
+            context.resolve_date_or_now(context.date_after_days(*days)?)?
+        }
+        RescheduleIntentInput::CalendarDate { date } => {
+            context.resolve_date_or_now(parse_local_date(date)?)?
+        }
+    };
+    Ok(Some(resolved))
+}
+
 fn validate_input(input: ScheduleActionInput) -> Result<ValidatedScheduleAction, CommandError> {
     validate_entity_id(&input.mutation_id, "schedule mutation")?;
     if let Some(session_id) = &input.session_id {
@@ -680,19 +715,16 @@ fn validate_input(input: ScheduleActionInput) -> Result<ValidatedScheduleAction,
     }
     let action = ScheduleActionKind::parse(&input.action)?;
     if action == ScheduleActionKind::Reschedule {
-        let due_at = input.due_at.ok_or_else(|| {
-            CommandError::new("missing_reschedule_date", "Choose a new due date.")
-        })?;
-        if due_at < 0 {
+        if input.reschedule.is_none() {
             return Err(CommandError::new(
-                "invalid_reschedule_date",
-                "The new due date is invalid.",
+                "missing_reschedule_date",
+                "Choose a new due date.",
             ));
         }
-    } else if input.due_at.is_some() {
+    } else if input.reschedule.is_some() {
         return Err(CommandError::new(
             "unexpected_reschedule_date",
-            "A due date is only valid when rescheduling.",
+            "A date intent is only valid when rescheduling.",
         ));
     }
 
@@ -717,7 +749,7 @@ fn validate_input(input: ScheduleActionInput) -> Result<ValidatedScheduleAction,
     let identity = ScheduleActionRequestIdentity {
         card_ids: &card_ids,
         action: action.as_str(),
-        due_at: input.due_at,
+        reschedule: input.reschedule.as_ref(),
         session_id: input.session_id.as_deref(),
     };
     let json = serde_json::to_string(&identity).map_err(CommandError::serialization)?;
@@ -726,7 +758,7 @@ fn validate_input(input: ScheduleActionInput) -> Result<ValidatedScheduleAction,
         mutation_id: input.mutation_id,
         card_ids,
         action,
-        due_at: input.due_at,
+        reschedule: input.reschedule,
         session_id: input.session_id,
         request_fingerprint: format!("schedule-action:v1:{json}"),
     })
@@ -748,7 +780,7 @@ mod tests {
             mutation_id: test_id(1),
             card_ids: vec![second.clone(), first.clone(), second],
             action: "suspend".to_string(),
-            due_at: None,
+            reschedule: None,
             session_id: None,
         })
         .expect("a bounded batch should validate");

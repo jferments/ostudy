@@ -134,7 +134,7 @@ pub(crate) fn delete_deck(
     let deck_name: Option<String> = transaction
         .query_row(
             "SELECT name FROM decks
-             WHERE id = ?1 AND deleted_at IS NULL AND archived_at IS NULL",
+             WHERE id = ?1 AND deleted_at IS NULL",
             [deck_id],
             |row| row.get(0),
         )
@@ -153,7 +153,7 @@ pub(crate) fn delete_deck(
         .execute(
             "UPDATE decks
              SET deleted_at = ?1, updated_at = ?1, revision = revision + 1
-             WHERE id = ?2 AND deleted_at IS NULL AND archived_at IS NULL",
+             WHERE id = ?2 AND deleted_at IS NULL",
             params![now, deck_id],
         )
         .map_err(CommandError::database)?;

@@ -587,6 +587,24 @@ fn render_cloze_answer(parsed: &ParsedCloze, target: Option<u32>) -> String {
     )
 }
 
+pub(crate) fn presentation_variant_for_projected(
+    note_type: &str,
+    cloze_source: &str,
+    cloze_mode: &str,
+    reps: i64,
+) -> Result<String, CommandError> {
+    if note_type != "cloze" {
+        return Ok(String::new());
+    }
+    validate_cloze_mode(cloze_mode)?;
+    if cloze_mode == "all_together" {
+        return Ok("cloze:all".to_string());
+    }
+    let parsed = parse_cloze(cloze_source)?;
+    let index = usize::try_from(reps.max(0)).unwrap_or(0) % parsed.groups.len();
+    Ok(format!("cloze:{}", parsed.groups[index]))
+}
+
 pub(crate) fn presentation_variant_for_card(
     connection: &Connection,
     card_id: &str,
@@ -616,16 +634,7 @@ pub(crate) fn presentation_variant_for_card(
                 "That generated card is no longer available.",
             )
         })?;
-    if stored.0 != "cloze" {
-        return Ok(String::new());
-    }
-    validate_cloze_mode(&stored.2)?;
-    if stored.2 == "all_together" {
-        return Ok("cloze:all".to_string());
-    }
-    let parsed = parse_cloze(&stored.1)?;
-    let index = usize::try_from(stored.3.max(0)).unwrap_or(0) % parsed.groups.len();
-    Ok(format!("cloze:{}", parsed.groups[index]))
+    presentation_variant_for_projected(&stored.0, &stored.1, &stored.2, stored.3)
 }
 
 fn cloze_target_from_variant(

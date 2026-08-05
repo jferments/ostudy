@@ -97,7 +97,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 14,
         name: "study_calendar_history_projections",
-        checksum: "aa29f85d0b8f7c09564ba061c385b962db11a002113904ca21a20f1dc21d20be",
+        checksum: "c406e0f7a878f0a7b911a1f62fe653bc25aeefe4775685ff781e9901ea72a7b3",
         sql: include_str!("../migrations/0014_study_calendar_history_projections.sql"),
     },
 ];
