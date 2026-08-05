@@ -67,7 +67,7 @@ for(const forbidden of ["Input guidance","Include the therapeutic class","Templa
 for(const fragment of ["templateRevision","TemplateEntryForm","generateCardsFromTemplate"]){if(!editor.includes(fragment))failures.push(`card editor missing rich template behavior: ${fragment}`)}
 for(const fragment of ["1 card ·","Hide one blank per review","rotates through the marked blanks"]){if(!clozeEditor.includes(fragment))failures.push(`single-card cloze copy missing: ${fragment}`)}
 if(clozeEditor.includes("ACE inhibitors"))failures.push("cloze editor retains pharmacology-specific example copy");
-for(const fragment of ["selectedCards.has(card.cardId)","setPracticeCards(selected)","card.cardLabel"]){if(!cardsScreen.includes(fragment))failures.push(`Search/Filter card identity behavior missing: ${fragment}`)}
+for(const fragment of ["selectedCards.has(card.cardId)","setPracticeCards([...selectedCards.values()])","card.cardLabel"]){if(!cardsScreen.includes(fragment))failures.push(`Search/Filter card identity behavior missing: ${fragment}`)}
 for(const fragment of [".cloze-editor",".template-rule-card",".card-type-badge"]){if(!cardStyles.includes(fragment))failures.push(`Stage 3 base styles missing: ${fragment}`)}
 if(!richStyles.includes(".template-field-placeholder"))failures.push("rich template placeholder styles are missing");if(richStyles.includes(".template-field-inserter"))failures.push("manual template field inserter styles remain");
 for(const fragment of ["CURRENT_PACKAGE_VERSION","fresh-local-schedules","insert_new_schedule"]){if(!stage3Transfer.includes(fragment))failures.push(`studydeck support missing: ${fragment}`)}if(stage3Transfer.includes("CREATE TABLE card_templates"))failures.push("reusable authoring templates must not be exported with decks");
