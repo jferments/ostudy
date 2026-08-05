@@ -101,7 +101,6 @@ export function CardsScreen({
   const [moveCopyCards, setMoveCopyCards] = useState<SelectionCard[]>([]);
   const [practiceCards, setPracticeCards] =
     useState<SelectionCard[] | null>(null);
-  const [practiceLoading, setPracticeLoading] = useState(false);
   const [scheduleActionCards, setScheduleActionCards] = useState<
     SelectionCard[]
   >([]);
@@ -264,7 +263,6 @@ export function CardsScreen({
 
   function closePracticeResults(): void {
     setPracticeCards(null);
-    setPracticeLoading(false);
   }
 
   function runSelectionAction(action: SelectionAction): void {
@@ -611,12 +609,13 @@ export function CardsScreen({
       {bulkOpen ? (
         <BulkEntryModal
           decks={decks}
-          initialDeckId={deckIds.size === 1 ? [...deckIds][0] : undefined}
+          defaultDeckId={deckIds.size === 1 ? [...deckIds][0] : undefined}
           onClose={() => setBulkOpen(false)}
-          onComplete={async () => {
+          onSaved={async () => {
             setBulkOpen(false);
             await refreshAfterMutation();
           }}
+          showToast={showToast}
         />
       ) : null}
       {moveCopyCards.length > 0 ? (
@@ -635,11 +634,13 @@ export function CardsScreen({
         <BulkTagModal
           cards={[...selectedCards.values()]}
           mode={selectionAction === "add_tags" ? "add" : "remove"}
+          suggestions={tags}
           onClose={() => setSelectionAction(null)}
           onComplete={async () => {
             setSelectionAction(null);
             await refreshAfterMutation();
           }}
+          showToast={showToast}
         />
       ) : null}
       {selectionAction === "delete" ? (
@@ -665,12 +666,11 @@ export function CardsScreen({
       {practiceCards ? (
         <PracticeResultsModal
           cards={practiceCards}
+          sourceLabel="the current filtered results"
+          refreshDecks={refreshDecks}
+          onPracticeCards={onPracticeCards}
           onClose={closePracticeResults}
-          onStart={(ids) => {
-            setPracticeLoading(true);
-            onPracticeCards(ids);
-          }}
-          isStarting={practiceLoading}
+          showToast={showToast}
         />
       ) : null}
     </div>
