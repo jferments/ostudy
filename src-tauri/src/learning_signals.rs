@@ -1,104 +1,61 @@
-//! Deterministic learning signals shared by workload selection and card search.
+//! Deterministic learning signals shared by workload, search, and analytics.
 
-use rusqlite::{params, Connection};
+use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 
-use crate::error::CommandError;
+use crate::{
+    error::CommandError,
+    projections::{learning_signals as projection, scope::append_in_filter},
+    studyability,
+};
 
 /// A reset creates a new current-learning epoch without deleting historical
-/// review evidence. Only reviews after the latest reset participate here.
+/// review evidence. One SQL projection supplies the signal for the requested
+/// card; list paths join the same projection instead of calling this per row.
 pub fn needs_more_practice(connection: &Connection, card_id: &str) -> Result<bool, CommandError> {
-    let reset_at: Option<i64> = connection
-        .query_row(
-            "SELECT MAX(occurred_at) FROM schedule_action_events
-             WHERE card_id = ?1 AND action = 'reset'",
-            [card_id],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
-
-    let mut statement = connection
-        .prepare(
-            "SELECT answer_correct
-             FROM review_events
-             WHERE card_id = ?1
-               AND reviewed_at > ?2
-             ORDER BY reviewed_at DESC, created_at DESC
-             LIMIT 5",
-        )
-        .map_err(CommandError::database)?;
-    let outcomes = statement
-        .query_map(params![card_id, reset_at.unwrap_or(-1)], |row| {
-            row.get::<_, i64>(0)
-        })
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-
-    Ok(needs_more_practice_from_recent(&outcomes))
+    let sql = format!(
+        "WITH {ctes}
+         SELECT {value}
+         FROM cards c
+         {join}
+         WHERE c.id = ?1",
+        ctes = projection::LEARNING_SIGNAL_CTES,
+        value = projection::value_sql(),
+        join = projection::join_sql(),
+    );
+    connection
+        .query_row(&sql, [card_id], |row| row.get::<_, i64>(0))
+        .map(|value| value != 0)
+        .map_err(CommandError::database)
 }
 
 pub fn count_needing_more_practice(
     connection: &Connection,
     deck_ids: &[String],
 ) -> Result<i64, CommandError> {
-    let mut sql = String::from(
-        "SELECT c.id
+    let mut conditions = vec![studyability::current_card_sql("c", "n", "d").to_string()];
+    let mut values = Vec::<SqlValue>::new();
+    append_in_filter(&mut conditions, &mut values, "c.deck_id", deck_ids);
+    let sql = format!(
+        "WITH {ctes}
+         SELECT COALESCE(SUM(CASE WHEN {value} = 1 THEN 1 ELSE 0 END), 0)
          FROM cards c
          JOIN notes n ON n.id = c.note_id
          JOIN decks d ON d.id = c.deck_id
-         WHERE c.deleted_at IS NULL
-           AND c.suspended_at IS NULL
-           AND n.deleted_at IS NULL
-           AND d.deleted_at IS NULL
-           AND d.archived_at IS NULL",
+         {join}
+         WHERE {conditions}",
+        ctes = projection::LEARNING_SIGNAL_CTES,
+        value = projection::value_sql(),
+        join = projection::join_sql(),
+        conditions = conditions.join(" AND "),
     );
-    let mut values: Vec<String> = Vec::new();
-    if !deck_ids.is_empty() {
-        let placeholders = deck_ids
-            .iter()
-            .map(|deck_id| {
-                values.push(deck_id.clone());
-                format!("?{}", values.len())
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        sql.push_str(&format!(" AND c.deck_id IN ({placeholders})"));
-    }
-    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    let cards = statement
-        .query_map(rusqlite::params_from_iter(values.iter()), |row| {
-            row.get::<_, String>(0)
-        })
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-    let mut count = 0_i64;
-    for card_id in cards {
-        if needs_more_practice(connection, &card_id)? {
-            count += 1;
-        }
-    }
-    Ok(count)
-}
-
-fn needs_more_practice_from_recent(recent_descending: &[i64]) -> bool {
-    if recent_descending.len() >= 2 && recent_descending[0] == 1 && recent_descending[1] == 1 {
-        return false;
-    }
-    if recent_descending.len() >= 2 && recent_descending[0] == 0 && recent_descending[1] == 0 {
-        return true;
-    }
-    recent_descending
-        .iter()
-        .take(5)
-        .filter(|value| **value == 0)
-        .count()
-        >= 3
+    connection
+        .query_row(&sql, params_from_iter(values.iter()), |row| row.get(0))
+        .map_err(CommandError::database)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::needs_more_practice_from_recent;
+    use crate::projections::learning_signals::needs_more_practice_from_recent;
 
     #[test]
     fn repeated_wrong_answers_require_more_practice() {

@@ -1,19 +1,26 @@
-//! Daily workload accounting and authoritative scheduled-session planning.
+//! Daily workload accounting and bounded scheduled-session planning.
 
-use std::collections::{BTreeMap, BTreeSet};
-
-use chrono::{Local, TimeZone};
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 use serde::Serialize;
 
 use crate::{
     error::CommandError,
-    learning_signals::{count_needing_more_practice, needs_more_practice},
+    projections::{
+        learning_signals as signal_projection,
+        scope::{append_in_filter, push_value},
+    },
     settings::AppSettingsDto,
-    util::unix_time_millis,
+    study_calendar::StudyTimeContext,
+    studyability,
 };
 
-const DAY_MS: i64 = 86_400_000;
+const MAX_PLANNED_CARDS: i64 = 10_000;
+
+#[derive(Clone, Copy, Debug)]
+pub struct StudyScope<'a> {
+    pub deck_ids: &'a [String],
+    pub tag_ids: &'a [String],
+}
 
 #[derive(Clone, Debug)]
 pub struct PlannedCard {
@@ -34,7 +41,9 @@ pub struct WorkloadOverviewDto {
     pub reviews_completed: i64,
     pub new_remaining: i64,
     pub reviews_remaining: i64,
+    #[serde(rename = "studyableDueReviews")]
     pub due_reviews: i64,
+    #[serde(rename = "studyableDueNew")]
     pub due_new: i64,
     pub scheduled_reviews: i64,
     pub scheduled_new: i64,
@@ -44,78 +53,85 @@ pub struct WorkloadOverviewDto {
     pub extra_available: i64,
 }
 
-pub fn local_day_start_millis() -> Result<i64, CommandError> {
-    let now = Local::now();
-    let midnight = now
-        .date_naive()
-        .and_hms_opt(0, 0, 0)
-        .ok_or_else(|| CommandError::new("invalid_local_day", "The local study day is invalid."))?;
-    Local
-        .from_local_datetime(&midnight)
-        .earliest()
-        .map(|value| value.timestamp_millis())
-        .ok_or_else(|| {
-            CommandError::new(
-                "invalid_local_day",
-                "The local study day could not be resolved for this time zone.",
-            )
-        })
-}
-
-pub fn next_local_day_start_millis() -> Result<i64, CommandError> {
-    let now = Local::now();
-    let tomorrow = now
-        .date_naive()
-        .succ_opt()
-        .and_then(|date| date.and_hms_opt(0, 0, 0))
-        .ok_or_else(|| {
-            CommandError::new(
-                "invalid_local_day",
-                "Tomorrow is outside the supported date range.",
-            )
-        })?;
-    Local
-        .from_local_datetime(&tomorrow)
-        .earliest()
-        .map(|value| value.timestamp_millis())
-        .ok_or_else(|| {
-            CommandError::new(
-                "invalid_local_day",
-                "Tomorrow could not be resolved for this time zone.",
-            )
-        })
-}
-
+/// Deck-only helper retained for native unit fixtures. Product commands use
+/// [`workload_overview_for_scope`] so one captured time context is shared with
+/// selection and response assembly.
 pub fn workload_overview(
     connection: &Connection,
     deck_ids: &[String],
     settings: &AppSettingsDto,
 ) -> Result<WorkloadOverviewDto, CommandError> {
-    let now = unix_time_millis()?;
-    let day_start = local_day_start_millis()?;
+    let time = StudyTimeContext::capture()?;
+    workload_overview_for_scope(
+        connection,
+        StudyScope {
+            deck_ids,
+            tag_ids: &[],
+        },
+        settings,
+        &time,
+    )
+}
+
+pub fn workload_overview_for_scope(
+    connection: &Connection,
+    scope: StudyScope<'_>,
+    settings: &AppSettingsDto,
+    time: &StudyTimeContext,
+) -> Result<WorkloadOverviewDto, CommandError> {
+    let local_date = time.local_date.to_string();
     let (new_completed, reviews_completed): (i64, i64) = connection
         .query_row(
             "SELECT
-                 COALESCE(SUM(CASE WHEN state_before = 0 THEN 1 ELSE 0 END), 0),
-                 COALESCE(SUM(CASE WHEN state_before <> 0 THEN 1 ELSE 0 END), 0)
-             FROM review_events
-             WHERE reviewed_at >= ?1",
-            [day_start],
+                 COALESCE(SUM(CASE WHEN r.state_before = 0 THEN 1 ELSE 0 END), 0),
+                 COALESCE(SUM(CASE WHEN r.state_before <> 0 THEN 1 ELSE 0 END), 0)
+             FROM review_events r
+             JOIN review_event_attributions a ON a.review_event_id = r.id
+             WHERE a.review_local_date = ?1",
+            [local_date],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(CommandError::database)?;
-    let new_remaining = (settings.daily_new_limit - new_completed).max(0);
-    let reviews_remaining = (settings.daily_review_limit - reviews_completed).max(0);
-    let candidates = load_candidates(connection, deck_ids, now, true)?;
-    let due_reviews = candidates.iter().filter(|card| card.state != 0).count() as i64;
-    let due_new = candidates.iter().filter(|card| card.state == 0).count() as i64;
+
+    let mut values = vec![SqlValue::Integer(time.now_utc_millis)];
+    let conditions = scoped_studyable_conditions(scope, &mut values);
+    let sql = format!(
+        "WITH {signals}
+         SELECT
+             COALESCE(SUM(CASE WHEN s.due_at <= ?1 AND s.state <> 0 THEN 1 ELSE 0 END), 0),
+             COALESCE(SUM(CASE WHEN s.due_at <= ?1 AND s.state = 0 THEN 1 ELSE 0 END), 0),
+             COUNT(*),
+             COALESCE(SUM(CASE WHEN {signal_value} = 1 THEN 1 ELSE 0 END), 0)
+         FROM cards c
+         JOIN notes n ON n.id = c.note_id
+         JOIN decks d ON d.id = c.deck_id
+         JOIN card_schedules s ON s.card_id = c.id
+         {signal_join}
+         WHERE {conditions}",
+        signals = signal_projection::LEARNING_SIGNAL_CTES,
+        signal_value = signal_projection::value_sql(),
+        signal_join = signal_projection::join_sql(),
+        conditions = conditions.join(" AND "),
+    );
+    let (due_reviews, due_new, extra_available, needs_more_practice): (i64, i64, i64, i64) =
+        connection
+            .query_row(&sql, params_from_iter(values.iter()), |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .map_err(CommandError::database)?;
+
+    let new_remaining = settings.daily_new_limit.saturating_sub(new_completed).max(0);
+    let reviews_remaining = settings
+        .daily_review_limit
+        .saturating_sub(reviews_completed)
+        .max(0);
     let scheduled_reviews = due_reviews.min(reviews_remaining);
     let scheduled_new = if due_reviews > reviews_remaining {
         0
     } else {
         due_new.min(new_remaining)
     };
-    let extra_available = count_extra_available(connection, deck_ids, now)?;
+
     Ok(WorkloadOverviewDto {
         new_limit: settings.daily_new_limit,
         review_limit: settings.daily_review_limit,
@@ -129,7 +145,7 @@ pub fn workload_overview(
         scheduled_new,
         omitted_due_reviews: due_reviews.saturating_sub(scheduled_reviews),
         omitted_due_new: due_new.saturating_sub(scheduled_new),
-        needs_more_practice: count_needing_more_practice(connection, deck_ids)?,
+        needs_more_practice,
         extra_available,
     })
 }
@@ -139,32 +155,42 @@ pub fn planned_scheduled_cards(
     deck_ids: &[String],
     settings: &AppSettingsDto,
 ) -> Result<(Vec<PlannedCard>, WorkloadOverviewDto), CommandError> {
-    let now = unix_time_millis()?;
-    let overview = workload_overview(connection, deck_ids, settings)?;
-    let mut candidates = load_candidates(connection, deck_ids, now, true)?;
-    candidates.sort_by_key(|card| {
-        (
-            card.due_at.div_euclid(DAY_MS),
-            !card.needs_more_practice,
-            card.due_at,
-            card.card_id.clone(),
-        )
-    });
+    let time = StudyTimeContext::capture()?;
+    planned_scheduled_cards_for_scope(
+        connection,
+        StudyScope {
+            deck_ids,
+            tag_ids: &[],
+        },
+        settings,
+        &time,
+    )
+}
 
-    let reviews = candidates
-        .iter()
-        .filter(|card| card.state != 0)
-        .take(usize::try_from(overview.scheduled_reviews).unwrap_or(0))
-        .cloned()
-        .collect::<Vec<_>>();
-    let mut selected = fair_interleave(reviews);
+pub fn planned_scheduled_cards_for_scope(
+    connection: &Connection,
+    scope: StudyScope<'_>,
+    settings: &AppSettingsDto,
+    time: &StudyTimeContext,
+) -> Result<(Vec<PlannedCard>, WorkloadOverviewDto), CommandError> {
+    let overview = workload_overview_for_scope(connection, scope, settings, time)?;
+    let mut selected = load_ranked_cards(
+        connection,
+        scope,
+        time,
+        Some(false),
+        true,
+        overview.scheduled_reviews,
+    )?;
     if overview.scheduled_new > 0 {
-        let new_cards = candidates
-            .into_iter()
-            .filter(|card| card.state == 0)
-            .take(usize::try_from(overview.scheduled_new).unwrap_or(0))
-            .collect::<Vec<_>>();
-        selected.extend(fair_interleave(new_cards));
+        selected.extend(load_ranked_cards(
+            connection,
+            scope,
+            time,
+            Some(true),
+            true,
+            overview.scheduled_new,
+        )?);
     }
     Ok((selected, overview))
 }
@@ -173,118 +199,130 @@ pub fn planned_extra_cards(
     connection: &Connection,
     deck_ids: &[String],
 ) -> Result<Vec<PlannedCard>, CommandError> {
-    let now = unix_time_millis()?;
-    let mut cards = load_candidates(connection, deck_ids, now, false)?;
-    cards.sort_by_key(|card| {
-        (
-            card.due_at > now,
-            card.due_at.div_euclid(DAY_MS),
-            !card.needs_more_practice,
-            card.due_at,
-            card.card_id.clone(),
-        )
-    });
-    Ok(fair_interleave(cards))
+    let time = StudyTimeContext::capture()?;
+    planned_extra_cards_for_scope(
+        connection,
+        StudyScope {
+            deck_ids,
+            tag_ids: &[],
+        },
+        &time,
+    )
 }
 
-fn load_candidates(
+pub fn planned_extra_cards_for_scope(
     connection: &Connection,
-    deck_ids: &[String],
-    now: i64,
-    due_only: bool,
+    scope: StudyScope<'_>,
+    time: &StudyTimeContext,
 ) -> Result<Vec<PlannedCard>, CommandError> {
-    let mut values: Vec<SqlValue> = Vec::new();
-    let mut conditions = vec![
-        "c.deleted_at IS NULL".to_string(),
-        "c.suspended_at IS NULL".to_string(),
-        "(c.buried_until IS NULL OR c.buried_until <= ?1)".to_string(),
-        "n.deleted_at IS NULL".to_string(),
-        "d.deleted_at IS NULL".to_string(),
-        "d.archived_at IS NULL".to_string(),
-    ];
-    values.push(now.into());
+    load_ranked_cards(
+        connection,
+        scope,
+        time,
+        None,
+        false,
+        MAX_PLANNED_CARDS,
+    )
+}
+
+fn load_ranked_cards(
+    connection: &Connection,
+    scope: StudyScope<'_>,
+    time: &StudyTimeContext,
+    new_only: Option<bool>,
+    due_only: bool,
+    limit: i64,
+) -> Result<Vec<PlannedCard>, CommandError> {
+    if limit <= 0 {
+        return Ok(Vec::new());
+    }
+    let mut values = vec![SqlValue::Integer(time.now_utc_millis)];
+    let mut conditions = scoped_studyable_conditions(scope, &mut values);
     if due_only {
-        values.push(now.into());
-        conditions.push("s.due_at <= ?2".to_string());
+        conditions.push("s.due_at <= ?1".to_string());
     }
-    if !deck_ids.is_empty() {
-        let placeholders = deck_ids
-            .iter()
-            .map(|deck_id| {
-                values.push(deck_id.clone().into());
-                format!("?{}", values.len())
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        conditions.push(format!("c.deck_id IN ({placeholders})"));
+    match new_only {
+        Some(true) => conditions.push("s.state = 0".to_string()),
+        Some(false) => conditions.push("s.state <> 0".to_string()),
+        None => {}
     }
+    let limit_index = push_value(&mut values, limit.min(MAX_PLANNED_CARDS));
     let sql = format!(
-        "SELECT c.deck_id, c.id, c.note_id, s.due_at, s.state
-         FROM cards c
-         JOIN notes n ON n.id = c.note_id
-         JOIN decks d ON d.id = c.deck_id
-         JOIN card_schedules s ON s.card_id = c.id
-         WHERE {}",
-        conditions.join(" AND ")
+        "WITH {signals},
+         eligible AS (
+             SELECT
+                 c.deck_id,
+                 c.id AS card_id,
+                 c.note_id,
+                 s.due_at,
+                 s.state,
+                 {signal_value} AS needs_more_practice,
+                 date(s.due_at / 1000, 'unixepoch', 'localtime') AS due_local_date
+             FROM cards c
+             JOIN notes n ON n.id = c.note_id
+             JOIN decks d ON d.id = c.deck_id
+             JOIN card_schedules s ON s.card_id = c.id
+             {signal_join}
+             WHERE {conditions}
+         ),
+         ranked AS (
+             SELECT *,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY deck_id
+                        ORDER BY due_local_date ASC,
+                                 needs_more_practice DESC,
+                                 due_at ASC,
+                                 card_id ASC
+                    ) AS deck_rank
+             FROM eligible
+         )
+         SELECT deck_id, card_id, note_id, due_at, state, needs_more_practice
+         FROM ranked
+         ORDER BY due_local_date ASC,
+                  deck_rank ASC,
+                  deck_id ASC,
+                  needs_more_practice DESC,
+                  due_at ASC,
+                  card_id ASC
+         LIMIT ?{limit_index}",
+        signals = signal_projection::LEARNING_SIGNAL_CTES,
+        signal_value = signal_projection::value_sql(),
+        signal_join = signal_projection::join_sql(),
+        conditions = conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    let rows = statement
+    statement
         .query_map(params_from_iter(values.iter()), |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, i64>(4)?,
-            ))
+            Ok(PlannedCard {
+                deck_id: row.get(0)?,
+                card_id: row.get(1)?,
+                note_id: row.get(2)?,
+                due_at: row.get(3)?,
+                state: row.get(4)?,
+                needs_more_practice: row.get::<_, i64>(5)? != 0,
+            })
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-    rows.into_iter()
-        .map(|(deck_id, card_id, note_id, due_at, state)| {
-            Ok(PlannedCard {
-                deck_id,
-                needs_more_practice: needs_more_practice(connection, &card_id)?,
-                card_id,
-                note_id,
-                due_at,
-                state,
-            })
-        })
-        .collect()
+        .map_err(CommandError::database)
 }
 
-fn count_extra_available(
-    connection: &Connection,
-    deck_ids: &[String],
-    now: i64,
-) -> Result<i64, CommandError> {
-    Ok(i64::try_from(load_candidates(connection, deck_ids, now, false)?.len()).unwrap_or(i64::MAX))
-}
-
-fn fair_interleave(cards: Vec<PlannedCard>) -> Vec<PlannedCard> {
-    let mut by_deck: BTreeMap<String, Vec<PlannedCard>> = BTreeMap::new();
-    for card in cards {
-        by_deck.entry(card.deck_id.clone()).or_default().push(card);
+fn scoped_studyable_conditions(
+    scope: StudyScope<'_>,
+    values: &mut Vec<SqlValue>,
+) -> Vec<String> {
+    let mut conditions = vec![studyability::studyable_card_sql("?1")];
+    append_in_filter(&mut conditions, values, "c.deck_id", scope.deck_ids);
+    for tag_id in scope.tag_ids {
+        let tag_index = push_value(values, tag_id.clone());
+        conditions.push(format!(
+            "EXISTS (
+                 SELECT 1 FROM note_tags filter_nt
+                 WHERE filter_nt.note_id = n.id AND filter_nt.tag_id = ?{tag_index}
+             )"
+        ));
     }
-    let deck_ids = by_deck.keys().cloned().collect::<BTreeSet<_>>();
-    let mut result = Vec::new();
-    loop {
-        let mut added = false;
-        for deck_id in &deck_ids {
-            if let Some(cards) = by_deck.get_mut(deck_id) {
-                if !cards.is_empty() {
-                    result.push(cards.remove(0));
-                    added = true;
-                }
-            }
-        }
-        if !added {
-            break;
-        }
-    }
-    result
+    conditions
 }
 
 #[cfg(test)]
@@ -292,18 +330,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fair_interleave_prevents_one_deck_from_monopolizing() {
-        let make = |deck: &str, card: &str| PlannedCard {
-            deck_id: deck.to_string(),
-            card_id: card.to_string(),
-            note_id: card.to_string(),
-            due_at: 0,
-            state: 2,
-            needs_more_practice: false,
+    fn workload_field_names_distinguish_ready_inventory_from_daily_selection() {
+        let overview = WorkloadOverviewDto {
+            new_limit: 20,
+            review_limit: 200,
+            new_completed: 0,
+            reviews_completed: 0,
+            new_remaining: 20,
+            reviews_remaining: 200,
+            due_reviews: 250,
+            due_new: 30,
+            scheduled_reviews: 200,
+            scheduled_new: 0,
+            omitted_due_reviews: 50,
+            omitted_due_new: 30,
+            needs_more_practice: 4,
+            extra_available: 400,
         };
-        let result = fair_interleave(vec![make("a", "1"), make("a", "2"), make("b", "3")]);
-        assert_eq!(result[0].deck_id, "a");
-        assert_eq!(result[1].deck_id, "b");
-        assert_eq!(result[2].card_id, "2");
+        assert!(overview.due_reviews > overview.scheduled_reviews);
+        assert_eq!(overview.scheduled_new, 0);
     }
 }

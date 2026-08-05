@@ -97,7 +97,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 14,
         name: "review_attribution_and_projection_indexes",
-        checksum: "9a388f843f7a7a50683e334d1fb1b7a7db7e6bf6c49e3e95b7938a218d5e45f3",
+        checksum: "ed5b4f510d014b34f7c6b83c3fcf7914baaa3942e51345a74fb8a7179cc1e11a",
         sql: include_str!("../migrations/0014_review_attribution_and_projection_indexes.sql"),
     },
 ];
@@ -430,6 +430,7 @@ mod tests {
                 for (table, column) in [
                     ("cards", "archive_suspended_at"),
                     ("schedule_action_operations", "reschedule_intent_json"),
+                    ("practice_sessions", "selected_tag_ids_json"),
                     ("review_event_attributions", "review_local_date"),
                 ] {
                     let exists: i64 = connection

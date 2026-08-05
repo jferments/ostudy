@@ -10,6 +10,7 @@ const failures = [];
 const [
   migration12,
   migration13,
+  migration14,
   database,
   repairs,
   studydeck,
@@ -26,6 +27,7 @@ const [
 ] = await Promise.all([
   read("src-tauri", "migrations", "0012_versioned_data_repairs.sql"),
   read("src-tauri", "migrations", "0013_canonical_data_model.sql"),
+  read("src-tauri", "migrations", "0014_review_attribution_and_projection_indexes.sql"),
   read("src-tauri", "src", "database.rs"),
   read("src-tauri", "src", "data_repairs.rs"),
   read("src-tauri", "src", "studydeck.rs"),
@@ -41,15 +43,20 @@ const [
   read("src", "screens", "SettingsScreen.tsx"),
 ]);
 
-for (const [name, sql] of [["0012", migration12], ["0013", migration13]]) {
+for (const [name, sql] of [
+  ["0012", migration12],
+  ["0013", migration13],
+  ["0014", migration14],
+]) {
   const checksum = createHash("sha256").update(sql).digest("hex");
   if (!database.includes(checksum)) failures.push(`database.rs checksum mismatch for ${name}`);
 }
 for (const fragment of [
   "apply_migrations_through(connection, 12)",
-  "apply_required_repairs(connection)",
+  "apply_required_repairs(connection, RepairPhase::BeforeMigration(13))",
   "apply_migrations_after(connection, 12)",
-  "LATEST_SCHEMA_VERSION: i64 = 13",
+  "apply_required_repairs(connection, RepairPhase::AfterMigration(14))",
+  "LATEST_SCHEMA_VERSION: i64 = 14",
   "apply_foreign_key_disabled_migration",
   "PRAGMA foreign_key_check",
   "PRAGMA foreign_keys = ON",
@@ -64,6 +71,7 @@ for (const fragment of [
   "changed_rows",
   "duplicate_fingerprints",
   "template_and_generated_card_canonicalization",
+  "review_event_historical_attribution",
   "canonical_database_repair_pass_is_a_no_op",
 ]) {
   if (!(migration12 + repairs).includes(fragment)) failures.push(`repair boundary missing: ${fragment}`);
@@ -78,6 +86,15 @@ for (const fragment of [
   "DELETE FROM card_search_fts",
 ]) {
   if (!migration13.includes(fragment)) failures.push(`canonical schema cutover missing: ${fragment}`);
+}
+for (const fragment of [
+  "practice_session_card_snapshots",
+  "review_event_attributions",
+  "review_local_date",
+  "archive_suspended_at",
+  "selected_tag_ids_json",
+]) {
+  if (!migration14.includes(fragment)) failures.push(`Stage 3.6-3.8 schema missing: ${fragment}`);
 }
 for (const fragment of [
   "normalize_abandoned_image_occlusion",
@@ -156,5 +173,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   current studydeck exports use one snapshot, legacy packages adapt through one reader, full backups preserve analytics history, the canonical schema is physically narrowed, and startup repairs are versioned no-ops.",
+  "OK   current studydeck exports use one snapshot, legacy packages adapt through one reader, full backups preserve analytics history, the canonical schema is physically narrowed, and startup repairs remain phase-aware no-ops.",
 );

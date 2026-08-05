@@ -10,6 +10,7 @@
 
 ALTER TABLE cards ADD COLUMN archive_suspended_at INTEGER;
 ALTER TABLE schedule_action_operations ADD COLUMN reschedule_intent_json TEXT;
+ALTER TABLE practice_sessions ADD COLUMN selected_tag_ids_json TEXT NOT NULL DEFAULT '[]';
 
 CREATE TABLE practice_session_card_snapshots (
     session_id                TEXT NOT NULL
