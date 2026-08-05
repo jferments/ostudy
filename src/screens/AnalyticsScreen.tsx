@@ -58,28 +58,25 @@ export function AnalyticsScreen({
   const [practicingTagId, setPracticingTagId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const handledLaunchRef = useRef<number | null>(null);
+  const analyticsRequestRef = useRef(0);
 
   const deckIds = useMemo(() => [...selectedDeckIds].sort(), [selectedDeckIds]);
   const tagIds = useMemo(() => [...selectedTagIds].sort(), [selectedTagIds]);
 
   const load = useCallback(async (): Promise<void> => {
+    const requestId = ++analyticsRequestRef.current;
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      setAnalytics(
-        await getAnalytics({
-          range,
-          deckIds,
-          tagIds,
-          highlightedSessionId,
-        }),
-      );
+      const result = await getAnalytics({ range, deckIds, tagIds, highlightedSessionId });
+      if (analyticsRequestRef.current === requestId) setAnalytics(result);
     } catch (error: unknown) {
+      if (analyticsRequestRef.current !== requestId) return;
       const message = getErrorMessage(error);
       setErrorMessage(message);
       showToast("error", message);
     } finally {
-      setIsLoading(false);
+      if (analyticsRequestRef.current === requestId) setIsLoading(false);
     }
   }, [deckIds, highlightedSessionId, range, showToast, tagIds]);
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
@@ -60,6 +60,8 @@ export function DecksScreen({
   const [deckDialog, setDeckDialog] = useState<"create" | "edit" | null>(null);
   const [isLoadingDeck, setIsLoadingDeck] = useState(false);
   const loadingDeckRef = useRef(false);
+  const deckSearchRequestRef = useRef(0);
+  const [isSearchingCards, setIsSearchingCards] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
   const transferringRef = useRef(false);
   const pendingImportRef = useRef<{ sourcePath: string; operationId: string } | null>(null);
@@ -90,13 +92,28 @@ export function DecksScreen({
     });
   }, [decks, selectedDeckId]);
 
-  const visibleCards = useMemo(() => {
-    const normalized = search.trim().toLocaleLowerCase();
-    if (normalized === "") return cards;
-    return cards.filter((card) =>
-      `${card.questionExcerpt} ${card.answerExcerpt}`.toLocaleLowerCase().includes(normalized),
-    );
-  }, [cards, search]);
+  const visibleCards = cards;
+
+  useEffect(() => {
+    if (view !== "detail" || !selectedDeckId) return;
+    const requestId = ++deckSearchRequestRef.current;
+    const timer = window.setTimeout(() => {
+      setIsSearchingCards(true);
+      void listDeckCards(selectedDeckId, search, 50, 0)
+        .then((page) => {
+          if (deckSearchRequestRef.current !== requestId) return;
+          setCards(page.cards);
+          setCardTotal(page.totalCount);
+        })
+        .catch((error: unknown) => {
+          if (deckSearchRequestRef.current === requestId) setErrorMessage(getErrorMessage(error));
+        })
+        .finally(() => {
+          if (deckSearchRequestRef.current === requestId) setIsSearchingCards(false);
+        });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [search, selectedDeckId, view]);
 
   async function openDeck(deckId: string): Promise<void> {
     if (loadingDeckRef.current) return;
@@ -104,7 +121,7 @@ export function DecksScreen({
     setIsLoadingDeck(true);
     setErrorMessage(null);
     try {
-      const [deck, page] = await Promise.all([getDeck(deckId), listDeckCards(deckId, "", 50, 0)]);
+      const [deck, page] = await Promise.all([getDeck(deckId), listDeckCards(deckId, search, 50, 0)]);
       const loadedCards = page.cards;
       setCardTotal(page.totalCount);
       setSelectedDeck(deck);
@@ -133,7 +150,7 @@ export function DecksScreen({
 
   async function refreshSelectedDeckAfterMutation(deckId: string): Promise<void> {
     try {
-      const [deck, page] = await Promise.all([getDeck(deckId), listDeckCards(deckId, "", 50, 0)]);
+      const [deck, page] = await Promise.all([getDeck(deckId), listDeckCards(deckId, search, 50, 0)]);
       const loadedCards = page.cards;
       setCardTotal(page.totalCount);
       setSelectedDeck(deck);
@@ -475,6 +492,7 @@ export function DecksScreen({
 
           {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
           {isLoadingDeck ? <div className="inline-progress">Opening deck…</div> : null}
+          {isSearchingCards ? <div className="inline-progress">Searching this deck…</div> : null}
 
           {decks.length === 0 ? (
             <section className="empty-library-card">

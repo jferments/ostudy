@@ -98,6 +98,7 @@ export function PracticeScreen({
   const handledLaunchRequestRef = useRef<number | null>(null);
   const pendingStartRef = useRef<PendingStartOperation | null>(null);
   const pendingReviewRef = useRef<PendingReviewOperation | null>(null);
+  const workloadRequestRef = useRef(0);
   const current = session?.cards[position] ?? null;
 
   const loadRecentPractice = useCallback(async (): Promise<void> => {
@@ -110,18 +111,22 @@ export function PracticeScreen({
   }, []);
 
   const loadWorkload = useCallback(async (deckIds: string[]): Promise<void> => {
-    if (deckIds.length === 0) {
+    const requestId = ++workloadRequestRef.current;
+    if (deckIds.length === 0 && selectedTagIds.length === 0) {
       setWorkload(null);
+      setIsLoadingWorkload(false);
       return;
     }
     setIsLoadingWorkload(true);
     try {
-      setWorkload(await getPracticeWorkload(deckIds, selectedTagIds));
+      const result = await getPracticeWorkload(deckIds, selectedTagIds);
+      if (workloadRequestRef.current === requestId) setWorkload(result);
     } catch (error: unknown) {
+      if (workloadRequestRef.current !== requestId) return;
       setWorkload(null);
       setErrorMessage(getErrorMessage(error));
     } finally {
-      setIsLoadingWorkload(false);
+      if (workloadRequestRef.current === requestId) setIsLoadingWorkload(false);
     }
   }, [selectedTagIds]);
 

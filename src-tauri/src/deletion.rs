@@ -340,7 +340,7 @@ fn restore_exact_cards(
     Ok(())
 }
 
-fn finalize_expired_in_connection(
+pub(crate) fn finalize_expired_in_connection(
     connection: &mut Connection,
     now: i64,
 ) -> Result<(), CommandError> {

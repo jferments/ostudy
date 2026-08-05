@@ -922,3 +922,6 @@ fn push(values: &mut Vec<SqlValue>, value: impl Into<SqlValue>) -> usize {
     values.push(value.into());
     values.len()
 }
+
+#[cfg(test)]
+mod stage36_tests;

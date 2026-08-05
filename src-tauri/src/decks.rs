@@ -534,3 +534,6 @@ mod tests {
         assert_eq!(error.code, "invalid_deck_name");
     }
 }
+
+#[cfg(test)]
+mod stage36_tests;

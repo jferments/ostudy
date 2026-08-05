@@ -435,37 +435,60 @@ pub fn backfill_legacy_review_attributions(connection: &Connection) -> Result<i6
 }
 
 pub fn purge_deck_history(connection: &Connection, deck_id: &str) -> Result<(), CommandError> {
+    let session_ids = {
+        let mut statement = connection
+            .prepare(
+                "SELECT DISTINCT psc.session_id
+             FROM practice_session_cards psc
+             JOIN cards c ON c.id=psc.card_id
+             WHERE c.deck_id=?1",
+            )
+            .map_err(CommandError::database)?;
+        statement
+            .query_map([deck_id], |row| row.get::<_, String>(0))
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    };
     connection
         .execute(
             "DELETE FROM review_events
-             WHERE id IN (
-                 SELECT review_event_id
-                 FROM review_event_attributions
-                 WHERE deck_id = ?1
-             )",
+         WHERE card_id IN (SELECT id FROM cards WHERE deck_id=?1)
+            OR id IN (SELECT review_event_id FROM review_event_attributions WHERE deck_id=?1)",
             [deck_id],
         )
         .map_err(CommandError::database)?;
     connection
         .execute(
-            "DELETE FROM practice_session_card_snapshots WHERE deck_id = ?1",
+            "DELETE FROM practice_session_card_snapshots WHERE deck_id=?1",
             [deck_id],
         )
         .map_err(CommandError::database)?;
     connection
         .execute(
-            "DELETE FROM practice_sessions
-             WHERE NOT EXISTS (
-                 SELECT 1 FROM practice_session_cards psc
-                 WHERE psc.session_id = practice_sessions.id
-             )
-               AND NOT EXISTS (
-                 SELECT 1 FROM review_events r
-                 WHERE r.session_id = practice_sessions.id
-             )",
-            [],
+            "DELETE FROM practice_session_cards
+         WHERE card_id IN (SELECT id FROM cards WHERE deck_id=?1)",
+            [deck_id],
         )
         .map_err(CommandError::database)?;
+    for session_id in session_ids {
+        connection.execute(
+            "UPDATE practice_sessions SET
+                 card_count=(SELECT COUNT(*) FROM practice_session_cards WHERE session_id=?1),
+                 viewed_count=(SELECT COUNT(*) FROM practice_session_cards WHERE session_id=?1 AND viewed_at IS NOT NULL),
+                 revealed_count=(SELECT COUNT(*) FROM practice_session_cards WHERE session_id=?1 AND revealed_at IS NOT NULL),
+                 rated_count=(SELECT COUNT(*) FROM practice_session_cards WHERE session_id=?1 AND rated_at IS NOT NULL),
+                 correct_count=(SELECT COUNT(*) FROM practice_session_cards WHERE session_id=?1 AND rating>1)
+             WHERE id=?1",
+            [session_id],
+        ).map_err(CommandError::database)?;
+    }
+    connection.execute(
+        "DELETE FROM practice_sessions
+         WHERE NOT EXISTS (SELECT 1 FROM practice_session_cards psc WHERE psc.session_id=practice_sessions.id)
+           AND NOT EXISTS (SELECT 1 FROM review_events r WHERE r.session_id=practice_sessions.id)",
+        [],
+    ).map_err(CommandError::database)?;
     Ok(())
 }
 
