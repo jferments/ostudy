@@ -6,6 +6,7 @@ on:
       - agent/stage-3-6-3-8-scheduling-analytics-clean
     paths:
       - scripts/apply-stage36-38-integration.py
+      - src-tauri/Cargo.toml
       - .github/workflows/apply-stage36-38-integration.yml
   workflow_dispatch:
 
