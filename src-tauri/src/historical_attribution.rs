@@ -444,11 +444,12 @@ pub fn purge_deck_history(connection: &Connection, deck_id: &str) -> Result<(), 
              WHERE c.deck_id=?1",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([deck_id], |row| row.get::<_, String>(0))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     connection
         .execute(
