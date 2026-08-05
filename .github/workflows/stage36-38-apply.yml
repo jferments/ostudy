@@ -5,7 +5,7 @@ on:
     branches:
       - agent/stage-3-6-3-8-scheduling-analytics-projections
     paths:
-      - scripts/apply-stage36-38-frontend.py
+      - scripts/apply-stage36-38-test-contracts.py
       - .github/workflows/stage36-38-apply.yml
   workflow_dispatch:
 
@@ -25,10 +25,8 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - name: Apply frontend contract migration
-        run: python3 scripts/apply-stage36-38-frontend.py
-      - name: Format Rust
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+      - name: Apply frontend test contract migration
+        run: python3 scripts/apply-stage36-38-test-contracts.py
       - name: Commit generated source
         run: |
           git config user.name "ostudy automation"
@@ -37,7 +35,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No source changes were required."
           else
-            git commit -m "refactor: migrate Stage 3.6 through 3.8 frontend contracts"
+            git commit -m "test: migrate Stage 3.6 through 3.8 contracts"
             git push origin HEAD:agent/stage-3-6-3-8-scheduling-analytics-projections
           fi
       - name: Run fast gate on generated source
