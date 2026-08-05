@@ -19,8 +19,8 @@ use crate::{
         load_schedule, new_schedule, update_schedule, ScheduleRecord, SCHEDULER_NAME,
         SCHEDULER_VERSION,
     },
-    util::{generate_id, unix_time_millis, validate_entity_id},
-    workload::next_local_day_start_millis,
+    study_calendar::StudyTimeContext,
+    util::{generate_id, validate_entity_id},
 };
 
 const MAX_SCHEDULE_ACTION_CARDS: usize = 10_000;
@@ -31,7 +31,7 @@ pub struct ScheduleActionInput {
     pub mutation_id: String,
     pub card_ids: Vec<String>,
     pub action: String,
-    pub due_at: Option<i64>,
+    pub due_date: Option<String>,
     pub session_id: Option<String>,
 }
 
@@ -109,7 +109,7 @@ impl ScheduleActionKind {
 struct ScheduleActionRequestIdentity<'a> {
     card_ids: &'a [String],
     action: &'a str,
-    due_at: Option<i64>,
+    due_date: Option<&'a str>,
     session_id: Option<&'a str>,
 }
 
@@ -118,6 +118,7 @@ struct ValidatedScheduleAction {
     mutation_id: String,
     card_ids: Vec<String>,
     action: ScheduleActionKind,
+    due_date: Option<String>,
     due_at: Option<i64>,
     session_id: Option<String>,
     request_fingerprint: String,
@@ -126,6 +127,7 @@ struct ValidatedScheduleAction {
 struct ExistingScheduleOperation {
     request_fingerprint: Option<String>,
     session_id: Option<String>,
+    due_date: Option<String>,
     due_at: Option<i64>,
     result: ScheduleActionResultDto,
 }
@@ -164,10 +166,11 @@ fn apply_in_connection(
     connection: &mut Connection,
     input: ScheduleActionInput,
 ) -> Result<ScheduleActionResultDto, CommandError> {
-    let input = validate_input(input)?;
-    let now = unix_time_millis()?;
+    let context = StudyTimeContext::capture()?;
+    let input = validate_input(input, &context)?;
+    let now = context.now_utc_millis;
     let bury_until = if input.action == ScheduleActionKind::Bury {
-        Some(next_local_day_start_millis(now)?)
+        Some(context.tomorrow_start_utc_millis)
     } else {
         None
     };
@@ -399,15 +402,20 @@ fn insert_operation(
         .execute(
             "INSERT INTO schedule_action_operations (
                  id, request_fingerprint, session_id, action, due_at,
+                 reschedule_intent_json,
                  requested_count, changed_count, unchanged_count, rejected_count,
                  occurred_at, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
             params![
                 input.mutation_id.as_str(),
                 input.request_fingerprint.as_str(),
                 input.session_id.as_deref(),
                 input.action.as_str(),
                 input.due_at,
+                input
+                    .due_date
+                    .as_ref()
+                    .map(|date| serde_json::json!({"localDate": date}).to_string()),
                 result.requested_count,
                 result.changed_count,
                 result.unchanged_count,
@@ -608,24 +616,34 @@ fn existing_operation(
 ) -> Result<Option<ExistingScheduleOperation>, CommandError> {
     connection
         .query_row(
-            "SELECT request_fingerprint, session_id, due_at, action,
+            "SELECT request_fingerprint, session_id, due_at,
+                    reschedule_intent_json, action,
                     requested_count, changed_count, unchanged_count, rejected_count
              FROM schedule_action_operations
              WHERE id = ?1",
             [mutation_id],
             |row| {
-                let action: String = row.get(3)?;
-                let changed_count: i64 = row.get(5)?;
+                let intent_json: Option<String> = row.get(3)?;
+                let due_date = intent_json.as_deref().and_then(|value| {
+                    serde_json::from_str::<serde_json::Value>(value)
+                        .ok()?
+                        .get("localDate")?
+                        .as_str()
+                        .map(str::to_string)
+                });
+                let action: String = row.get(4)?;
+                let changed_count: i64 = row.get(6)?;
                 Ok(ExistingScheduleOperation {
                     request_fingerprint: row.get(0)?,
                     session_id: row.get(1)?,
+                    due_date,
                     due_at: row.get(2)?,
                     result: ScheduleActionResultDto {
                         action,
-                        requested_count: row.get(4)?,
+                        requested_count: row.get(5)?,
                         changed_count,
-                        unchanged_count: row.get(6)?,
-                        rejected_count: row.get(7)?,
+                        unchanged_count: row.get(7)?,
+                        rejected_count: row.get(8)?,
                     },
                 })
             },
@@ -660,6 +678,7 @@ fn ensure_equivalent_retry(
                 .map_err(CommandError::database)?;
             existing.result.action == input.action.as_str()
                 && existing.session_id == input.session_id
+                && existing.due_date == input.due_date
                 && existing.due_at == input.due_at
                 && card_ids == input.card_ids
         }
@@ -673,28 +692,31 @@ fn ensure_equivalent_retry(
     ))
 }
 
-fn validate_input(input: ScheduleActionInput) -> Result<ValidatedScheduleAction, CommandError> {
+fn validate_input(
+    input: ScheduleActionInput,
+    context: &StudyTimeContext,
+) -> Result<ValidatedScheduleAction, CommandError> {
     validate_entity_id(&input.mutation_id, "schedule mutation")?;
     if let Some(session_id) = &input.session_id {
         validate_entity_id(session_id, "practice session")?;
     }
     let action = ScheduleActionKind::parse(&input.action)?;
-    if action == ScheduleActionKind::Reschedule {
-        let due_at = input.due_at.ok_or_else(|| {
+    let (due_date, due_at) = if action == ScheduleActionKind::Reschedule {
+        let due_date = input.due_date.ok_or_else(|| {
             CommandError::new("missing_reschedule_date", "Choose a new due date.")
         })?;
-        if due_at < 0 {
+        let parsed = context.parse_local_date(&due_date)?;
+        let due_at = context.resolve_date_or_now(parsed)?;
+        (Some(due_date), Some(due_at))
+    } else {
+        if input.due_date.is_some() {
             return Err(CommandError::new(
-                "invalid_reschedule_date",
-                "The new due date is invalid.",
+                "unexpected_reschedule_date",
+                "A due date is only valid when rescheduling.",
             ));
         }
-    } else if input.due_at.is_some() {
-        return Err(CommandError::new(
-            "unexpected_reschedule_date",
-            "A due date is only valid when rescheduling.",
-        ));
-    }
+        (None, None)
+    };
 
     let mut unique_card_ids = BTreeSet::new();
     for card_id in input.card_ids {
@@ -717,7 +739,7 @@ fn validate_input(input: ScheduleActionInput) -> Result<ValidatedScheduleAction,
     let identity = ScheduleActionRequestIdentity {
         card_ids: &card_ids,
         action: action.as_str(),
-        due_at: input.due_at,
+        due_date: due_date.as_deref(),
         session_id: input.session_id.as_deref(),
     };
     let json = serde_json::to_string(&identity).map_err(CommandError::serialization)?;
@@ -726,9 +748,10 @@ fn validate_input(input: ScheduleActionInput) -> Result<ValidatedScheduleAction,
         mutation_id: input.mutation_id,
         card_ids,
         action,
-        due_at: input.due_at,
+        due_date,
+        due_at,
         session_id: input.session_id,
-        request_fingerprint: format!("schedule-action:v1:{json}"),
+        request_fingerprint: format!("schedule-action:v2:{json}"),
     })
 }
 
@@ -744,13 +767,17 @@ mod tests {
     fn normalizes_deduplicates_and_sorts_card_ids() {
         let first = test_id(2);
         let second = test_id(3);
-        let validated = validate_input(ScheduleActionInput {
-            mutation_id: test_id(1),
-            card_ids: vec![second.clone(), first.clone(), second],
-            action: "suspend".to_string(),
-            due_at: None,
-            session_id: None,
-        })
+        let context = StudyTimeContext::capture().expect("context");
+        let validated = validate_input(
+            ScheduleActionInput {
+                mutation_id: test_id(1),
+                card_ids: vec![second.clone(), first.clone(), second],
+                action: "suspend".to_string(),
+                due_date: None,
+                session_id: None,
+            },
+            &context,
+        )
         .expect("a bounded batch should validate");
         assert_eq!(validated.card_ids, vec![first, test_id(3)]);
     }

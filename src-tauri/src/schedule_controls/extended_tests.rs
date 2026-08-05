@@ -166,7 +166,7 @@ mod extended_tests {
             mutation_id: test_id(mutation),
             card_ids: card_ids.to_vec(),
             action: action.to_string(),
-            due_at: None,
+            due_date: None,
             session_id: None,
         }
     }
@@ -348,9 +348,17 @@ mod extended_tests {
                 assert_eq!((fresh_reset.changed_count, fresh_reset.unchanged_count), (0, 1));
                 assert_eq!(load_schedule(connection, card_id)?.revision, 1);
 
-                let current_due = load_schedule(connection, card_id)?.due_at;
+                let context = StudyTimeContext::capture()?;
+                let due_date = context.date_after_days(1)?;
+                let target = context.resolve_date_start(due_date)?;
+                connection
+                    .execute(
+                        "UPDATE card_schedules SET due_at = ?1 WHERE card_id = ?2",
+                        params![target, card_id],
+                    )
+                    .map_err(CommandError::database)?;
                 let mut same_due = action_input(&card_ids, 8, "reschedule");
-                same_due.due_at = Some(current_due);
+                same_due.due_date = Some(due_date.format("%Y-%m-%d").to_string());
                 let reschedule = apply_in_connection(connection, same_due)?;
                 assert_eq!((reschedule.changed_count, reschedule.unchanged_count), (0, 1));
                 assert_eq!(load_schedule(connection, card_id)?.revision, 1);
@@ -502,7 +510,7 @@ mod extended_tests {
 
         let card_ids = vec![test_id(20)];
         let mut invalid = action_input(&card_ids, 21, "reschedule");
-        invalid.due_at = Some(-1);
+        invalid.due_date = Some(-1);
         assert_eq!(
             validate_input(invalid)
                 .expect_err("negative dates must fail")
@@ -511,7 +519,7 @@ mod extended_tests {
         );
 
         let mut unexpected = action_input(&card_ids, 22, "suspend");
-        unexpected.due_at = Some(1);
+        unexpected.due_date = Some(1);
         assert_eq!(
             validate_input(unexpected)
                 .expect_err("non-reschedule actions cannot carry dates")
