@@ -167,7 +167,7 @@ fn apply_in_connection(
     let input = validate_input(input)?;
     let now = unix_time_millis()?;
     let bury_until = if input.action == ScheduleActionKind::Bury {
-        Some(next_local_day_start_millis()?)
+        Some(next_local_day_start_millis(now)?)
     } else {
         None
     };
