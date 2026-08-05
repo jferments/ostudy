@@ -17,6 +17,7 @@ mod decks;
 mod deletion;
 mod deletion_commands;
 mod error;
+mod historical_attribution;
 mod learning_signals;
 mod library_backup;
 mod logging;
@@ -26,6 +27,8 @@ mod practice_selection;
 mod schedule_controls;
 mod scheduler;
 mod settings;
+mod study_calendar;
+mod studyability;
 mod studydeck;
 mod util;
 mod workload;
@@ -88,9 +91,12 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             decks::list_decks,
+            decks::list_archived_decks,
             decks::get_deck,
             decks::create_deck,
             decks::update_deck,
+            decks::archive_deck,
+            decks::unarchive_deck,
             deletion_commands::delete_deck_with_undo,
             cards::list_cards,
             deletion_commands::delete_card_with_undo,
