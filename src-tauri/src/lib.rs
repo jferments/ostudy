@@ -32,6 +32,8 @@ mod workload;
 
 #[cfg(test)]
 mod regression_tests;
+#[cfg(test)]
+mod stage34_35_regression_tests;
 
 use std::io;
 
@@ -54,14 +56,18 @@ pub fn run() {
             let pending_restore =
                 library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
-            if let Some(restore) = pending_restore {
-                restore.commit();
-            }
 
+            // A prepared restore is not considered successful until the restored
+            // database has migrated and its deletion/asset reconciliation passes.
+            // If any step below fails, the guard restores the prior database and
+            // asset directory after the open database connection is dropped.
             deletion::finalize_expired_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
             asset_lifecycle::reconcile_startup(&database, &paths)
                 .map_err(|error| io::Error::other(error.message))?;
+            if let Some(restore) = pending_restore {
+                restore.commit();
+            }
 
             if !app.manage(paths.clone()) {
                 return Err(io::Error::other("Application paths were already initialized.").into());
