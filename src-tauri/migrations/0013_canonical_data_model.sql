@@ -5,9 +5,16 @@
 -- the two parent tables are rebuilt. The migration transaction runs a complete
 -- foreign-key check before commit and enforcement is restored immediately after.
 
+-- These triggers reference notes by name. Drop every one of them before the
+-- parent table is replaced so SQLite never has to compile a trigger against the
+-- short interval in which the old notes table has been removed.
+DROP TRIGGER IF EXISTS notes_duplicate_hash_after_legacy_update;
 DROP TRIGGER IF EXISTS notes_search_after_insert;
 DROP TRIGGER IF EXISTS notes_search_after_update;
 DROP TRIGGER IF EXISTS notes_search_after_delete;
+DROP TRIGGER IF EXISTS note_tags_search_after_insert;
+DROP TRIGGER IF EXISTS note_tags_search_after_delete;
+DROP TRIGGER IF EXISTS tags_search_after_update;
 
 CREATE TABLE notes_canonical (
     id                      TEXT PRIMARY KEY CHECK(length(id) = 32),
@@ -146,6 +153,47 @@ CREATE TRIGGER notes_search_after_delete
 AFTER DELETE ON notes
 BEGIN
     DELETE FROM card_search_fts WHERE rowid = OLD.rowid;
+END;
+
+CREATE TRIGGER note_tags_search_after_insert
+AFTER INSERT ON note_tags
+BEGIN
+    UPDATE card_search_fts
+    SET tags = COALESCE((
+        SELECT group_concat(t.name, ' ')
+        FROM note_tags nt
+        JOIN tags t ON t.id = nt.tag_id
+        WHERE nt.note_id = NEW.note_id
+    ), '')
+    WHERE rowid = (SELECT rowid FROM notes WHERE id = NEW.note_id);
+END;
+
+CREATE TRIGGER note_tags_search_after_delete
+AFTER DELETE ON note_tags
+BEGIN
+    UPDATE card_search_fts
+    SET tags = COALESCE((
+        SELECT group_concat(t.name, ' ')
+        FROM note_tags nt
+        JOIN tags t ON t.id = nt.tag_id
+        WHERE nt.note_id = OLD.note_id
+    ), '')
+    WHERE rowid = (SELECT rowid FROM notes WHERE id = OLD.note_id);
+END;
+
+CREATE TRIGGER tags_search_after_update
+AFTER UPDATE OF name ON tags
+BEGIN
+    UPDATE card_search_fts
+    SET tags = COALESCE((
+        SELECT group_concat(t.name, ' ')
+        FROM note_tags nt
+        JOIN tags t ON t.id = nt.tag_id
+        WHERE nt.note_id = card_search_fts.note_id
+    ), '')
+    WHERE note_id IN (
+        SELECT note_id FROM note_tags WHERE tag_id = NEW.id
+    );
 END;
 
 ALTER TABLE card_template_rules DROP COLUMN front_pattern;
