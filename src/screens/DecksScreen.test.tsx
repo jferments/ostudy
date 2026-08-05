@@ -177,7 +177,7 @@ describe("DecksScreen", () => {
     vi.mocked(openDialog).mockResolvedValue("/tmp/dog-facts.studydeck");
     vi.mocked(ipc.importDeck).mockResolvedValue({
       deck,
-      cardCount: 2,
+      generatedCardCount: 2,
       assetCount: 0,
     });
     renderDecks();

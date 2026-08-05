@@ -146,7 +146,7 @@ pub struct ExportResultDto {
 #[serde(rename_all = "camelCase")]
 pub struct ImportResultDto {
     pub deck: DeckDto,
-    pub card_count: i64,
+    pub generated_card_count: i64,
     pub asset_count: i64,
 }
 

@@ -532,7 +532,7 @@ export interface ExportResult {
 
 export interface ImportResult {
   deck: Deck;
-  cardCount: number;
+  generatedCardCount: number;
   assetCount: number;
 }
 

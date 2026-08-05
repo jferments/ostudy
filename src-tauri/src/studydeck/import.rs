@@ -96,7 +96,7 @@ fn prepare_operation(
             })?;
             return Ok(Some(ImportResultDto {
                 deck: get_deck_from_connection(connection, &deck_id)?,
-                card_count: existing.result_card_count.unwrap_or_default(),
+                generated_card_count: existing.result_card_count.unwrap_or_default(),
                 asset_count: existing.result_asset_count.unwrap_or_default(),
             }));
         }
@@ -494,7 +494,7 @@ fn apply_package_transaction(
     }
     Ok(ImportResultDto {
         deck: result_deck,
-        card_count: result_card_count,
+        generated_card_count: result_card_count,
         asset_count: result_asset_count,
     })
 }

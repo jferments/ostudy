@@ -175,7 +175,7 @@ describe("DecksScreen extended behavior", () => {
     vi.mocked(openDialog).mockResolvedValue("/tmp/imported.studydeck");
     vi.mocked(ipc.importDeck).mockResolvedValue({
       deck: imported,
-      cardCount: 2,
+      generatedCardCount: 2,
       assetCount: 0,
     });
     vi.mocked(ipc.listDeckCards).mockRejectedValue(new Error("Card list unavailable."));
