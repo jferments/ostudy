@@ -12,6 +12,8 @@ mod import;
 mod read;
 
 #[cfg(test)]
+mod extended_tests;
+#[cfg(test)]
 mod tests;
 
 use std::{

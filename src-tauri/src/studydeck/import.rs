@@ -407,6 +407,13 @@ fn apply_package_transaction(
         insert_new_schedule(&transaction, &card_id, imported_at)?;
     }
 
+    // Build the complete response before the commit. Once SQLite commits, no
+    // hydration or serialization failure may reclassify the durable import as a
+    // failed user action and encourage a duplicate retry.
+    let result_card_count = i64::try_from(package.cards.len()).unwrap_or(i64::MAX);
+    let result_asset_count = i64::try_from(package.assets.len()).unwrap_or(i64::MAX);
+    let result_deck = get_deck_from_connection(&transaction, &deck_id)?;
+
     let mut promoted = Vec::new();
     let promotion_result = (|| -> Result<(), CommandError> {
         for new_id in asset_map.values() {
@@ -465,8 +472,8 @@ fn apply_package_transaction(
              WHERE id = ?5 AND request_fingerprint = ?6 AND status = 'pending'",
                 params![
                     deck_id,
-                    i64::try_from(package.cards.len()).unwrap_or(i64::MAX),
-                    i64::try_from(package.assets.len()).unwrap_or(i64::MAX),
+                    result_card_count,
+                    result_asset_count,
                     imported_at,
                     operation_id,
                     fingerprint,
@@ -486,9 +493,9 @@ fn apply_package_transaction(
         return Err(CommandError::database(error));
     }
     Ok(ImportResultDto {
-        deck: get_deck_from_connection(connection, &deck_id)?,
-        card_count: i64::try_from(package.cards.len()).unwrap_or(i64::MAX),
-        asset_count: i64::try_from(package.assets.len()).unwrap_or(i64::MAX),
+        deck: result_deck,
+        card_count: result_card_count,
+        asset_count: result_asset_count,
     })
 }
 

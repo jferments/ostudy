@@ -103,23 +103,12 @@ fn reusing_an_import_operation_for_another_package_is_rejected() {
         .with_connection(|connection| {
             let first = basic_package("First package");
             read::validate_package_data(&first, true)?;
-            import::import_package(
-                connection,
-                &paths,
-                &operation_id,
-                &"1".repeat(64),
-                first,
-            )?;
+            import::import_package(connection, &paths, &operation_id, &"1".repeat(64), first)?;
             let second = basic_package("Different package");
             read::validate_package_data(&second, true)?;
-            let conflict = import::import_package(
-                connection,
-                &paths,
-                &operation_id,
-                &"2".repeat(64),
-                second,
-            )
-            .expect_err("operation reuse must conflict");
+            let conflict =
+                import::import_package(connection, &paths, &operation_id, &"2".repeat(64), second)
+                    .expect_err("operation reuse must conflict");
             assert_eq!(conflict.code, "idempotency_conflict");
             let active_decks: i64 = connection
                 .query_row(

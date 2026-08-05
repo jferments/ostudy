@@ -792,6 +792,9 @@ fn sync_directory(_path: &Path) -> Result<(), CommandError> {
 }
 
 #[cfg(test)]
+mod extended_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::{

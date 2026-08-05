@@ -161,7 +161,10 @@ fn versioned_repairs_migrate_legacy_rows_before_the_schema_is_narrowed() {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .expect("image note should remain");
-    assert_eq!(image_state, ("basic".to_string(), "forward".to_string(), 0, None));
+    assert_eq!(
+        image_state,
+        ("basic".to_string(), "forward".to_string(), 0, None)
+    );
 
     let cloze_cards: Vec<(String, i64, Option<i64>)> = {
         let mut statement = connection
@@ -195,8 +198,10 @@ fn versioned_repairs_migrate_legacy_rows_before_the_schema_is_narrowed() {
         )
         .expect("repaired values should exist");
     assert!(!repaired.0.is_empty());
-    assert!(repaired.1.contains("templateFieldBlock"));
-    assert!(repaired.2.contains("templateFieldInline"));
+    for document in [&repaired.1, &repaired.2] {
+        assert!(document.contains(&field_id));
+        assert!(!document.contains("{{"));
+    }
 
     for column in ["front_pattern", "back_pattern"] {
         let exists: i64 = connection
@@ -257,7 +262,8 @@ fn canonical_database_reopen_does_not_mutate_application_rows() {
     let database_path = root.join("library.sqlite3");
 
     {
-        let database = crate::database::Database::open(&database_path).expect("database should open");
+        let database =
+            crate::database::Database::open(&database_path).expect("database should open");
         database
             .with_connection(|connection| {
                 connection
