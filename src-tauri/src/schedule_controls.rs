@@ -715,11 +715,27 @@ fn validate_input(input: ScheduleActionInput) -> Result<ValidatedScheduleAction,
     }
     let action = ScheduleActionKind::parse(&input.action)?;
     if action == ScheduleActionKind::Reschedule {
-        if input.reschedule.is_none() {
-            return Err(CommandError::new(
-                "missing_reschedule_date",
-                "Choose a new due date.",
-            ));
+        match input.reschedule.as_ref() {
+            None => {
+                return Err(CommandError::new(
+                    "missing_reschedule_date",
+                    "Choose a new due date.",
+                ));
+            }
+            Some(RescheduleIntentInput::CalendarDays { days }) if !(1..=3650).contains(days) => {
+                return Err(CommandError::new(
+                    "invalid_reschedule_date",
+                    "Choose between 1 and 3650 local calendar days.",
+                ));
+            }
+            Some(RescheduleIntentInput::CalendarDate { date }) => {
+                parse_local_date(date)?;
+            }
+            Some(
+                RescheduleIntentInput::DueNow
+                | RescheduleIntentInput::Tomorrow
+                | RescheduleIntentInput::CalendarDays { .. },
+            ) => {}
         }
     } else if input.reschedule.is_some() {
         return Err(CommandError::new(

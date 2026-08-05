@@ -35,6 +35,9 @@ fn pre_canonical_database() -> Connection {
             .expect("historical migration should apply");
     }
     connection
+        .execute_batch("PRAGMA user_version = 12;")
+        .expect("historical schema version should be recorded");
+    connection
 }
 
 #[test]
@@ -312,7 +315,7 @@ fn canonical_database_reopen_does_not_mutate_application_rows() {
             let repair_rows: i64 = connection
                 .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
                 .map_err(CommandError::database)?;
-            assert_eq!(repair_rows, 2);
+            assert_eq!(repair_rows, 3);
             Ok(())
         })
         .expect("canonical startup should be read-only");

@@ -6,6 +6,7 @@ use crate::{
     cards::validate_content,
     database::Database,
     decks::{create_deck_in_connection, CreateDeckInput},
+    historical_attribution::{insert_session_snapshots, prepare_attributions},
     scheduler::{insert_new_schedule, load_schedule},
     util::generate_id,
 };
@@ -98,6 +99,13 @@ fn create_session(
             )
             .map_err(CommandError::database)?;
     }
+    let requested = card_ids
+        .iter()
+        .cloned()
+        .map(|card_id| (card_id, String::new()))
+        .collect::<Vec<_>>();
+    let attributions = prepare_attributions(connection, &requested)?;
+    insert_session_snapshots(connection, &session_id, attributions.into_values(), 10)?;
     Ok(session_id)
 }
 

@@ -168,7 +168,7 @@ pub fn planned_extra_cards_scoped(
         "WITH {signals},
          ranked AS (
              SELECT c.deck_id, c.id, s.due_at, s.state,
-                    COALESCE(ls.needs_more_practice, 0),
+                    COALESCE(ls.needs_more_practice, 0) AS needs_more_practice,
                     n.note_type, n.cloze_source, n.cloze_mode, s.reps,
                     ROW_NUMBER() OVER (
                         PARTITION BY c.deck_id
@@ -215,7 +215,7 @@ fn load_ranked(
         "WITH {signals},
          ranked AS (
              SELECT c.deck_id, c.id, s.due_at, s.state,
-                    COALESCE(ls.needs_more_practice, 0),
+                    COALESCE(ls.needs_more_practice, 0) AS needs_more_practice,
                     n.note_type, n.cloze_source, n.cloze_mode, s.reps,
                     ROW_NUMBER() OVER (
                         PARTITION BY c.deck_id
