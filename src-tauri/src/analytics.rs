@@ -1,30 +1,31 @@
-//! Deterministic learning analytics derived from the local SQLite ledger.
+//! Bounded Analytics over current inventory and immutable review attribution.
 //!
-//! Analytics never modifies scheduling state. FSRS remains authoritative for
-//! intervals, while this module groups immutable reviews and current card state
-//! into scoped, learner-facing progress summaries.
+//! Current inventory uses the canonical studyability projection. Historical
+//! metrics use only accepted review events plus immutable attribution. Retained
+//! deck/tag identities display their current names; archived decks remain in
+//! history; soft-deleted decks are excluded immediately and final deletion purges
+//! their complete history.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
-use chrono::{Datelike, Duration, Local, NaiveDate, TimeZone};
-use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
+use chrono::{Datelike, Duration, NaiveDate};
+use rusqlite::{params_from_iter, types::Value as SqlValue, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
     database::Database,
     error::CommandError,
+    projections::{learning_signals::LEARNING_SIGNAL_CTE, scope::placeholders},
     settings::load_settings,
-    util::{unix_time_millis, validate_entity_id},
-    workload::local_day_start_millis,
+    study_calendar::{CalendarWindow, StudyTimeContext},
+    util::validate_entity_id,
 };
 
-const DAY_MS: i64 = 86_400_000;
 const MAX_ANALYTICS_DECKS: usize = 256;
 const MAX_ANALYTICS_TAGS: usize = 64;
-const RECENT_REVIEW_LIMIT: usize = 20;
-const RECENT_SESSION_LIMIT: usize = 12;
-const MIN_CLASSIFICATION_REVIEWS: i64 = 5;
+const RECENT_REVIEW_LIMIT: i64 = 20;
+const RECENT_SESSION_LIMIT: i64 = 12;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -51,13 +52,20 @@ pub struct AnalyticsScopeDto {
     pub highlighted_session_id: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AnalyticsSummaryDto {
-    pub deck_count: i64,
-    pub card_count: i64,
-    pub due_now: i64,
-    pub needs_more_practice: i64,
+pub struct CurrentInventorySummaryDto {
+    pub current_deck_count: i64,
+    pub source_note_count: i64,
+    pub generated_card_count: i64,
+    pub studyable_card_count: i64,
+    pub studyable_due_count: i64,
+    pub needs_more_practice_count: i64,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoricalReviewSummaryDto {
     pub cards_practiced: i64,
     pub review_count: i64,
     pub correct_count: i64,
@@ -91,6 +99,7 @@ pub struct RatingDistributionDto {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimelineBucketDto {
+    pub label: String,
     pub start_at: i64,
     pub end_at: i64,
     pub cards_practiced: i64,
@@ -110,9 +119,11 @@ pub struct TimelineBucketDto {
 pub struct DeckAnalyticsDto {
     pub deck_id: String,
     pub deck_name: String,
-    pub card_count: i64,
-    pub due_count: i64,
-    pub needs_more_practice: i64,
+    pub archived: bool,
+    pub source_note_count: i64,
+    pub generated_card_count: i64,
+    pub studyable_due_count: i64,
+    pub needs_more_practice_count: i64,
     pub cards_practiced: i64,
     pub review_count: i64,
     pub correct_count: i64,
@@ -128,9 +139,11 @@ pub struct DeckAnalyticsDto {
 pub struct TagAnalyticsDto {
     pub tag_id: String,
     pub tag_name: String,
-    pub card_count: i64,
-    pub due_count: i64,
-    pub needs_more_practice: i64,
+    pub historical_only: bool,
+    pub source_note_count: i64,
+    pub generated_card_count: i64,
+    pub studyable_due_count: i64,
+    pub needs_more_practice_count: i64,
     pub cards_practiced: i64,
     pub review_count: i64,
     pub correct_count: i64,
@@ -147,15 +160,19 @@ pub struct TagAnalyticsDto {
 #[serde(rename_all = "camelCase")]
 pub struct RecentReviewDto {
     pub id: String,
+    pub deck_id: String,
     pub deck_name: String,
     pub card_id: String,
-    pub front_text: String,
+    pub card_label: String,
+    pub question_excerpt: String,
     pub tags: Vec<String>,
     pub outcome: String,
     pub rating: i64,
     pub response_time_ms: i64,
     pub reviewed_at: i64,
+    pub review_local_date: String,
     pub due_after: i64,
+    pub attribution_source: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -177,9 +194,33 @@ pub struct SessionAnalyticsDto {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AnalyticsDimensionDto {
+    pub id: String,
+    pub name: String,
+    pub historical_only: bool,
+    pub archived: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyticsDimensionOptionsDto {
+    pub decks: Vec<AnalyticsDimensionDto>,
+    pub tags: Vec<AnalyticsDimensionDto>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttributionCoverageDto {
+    pub captured_review_count: i64,
+    pub legacy_backfilled_review_count: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AnalyticsDto {
     pub scope: AnalyticsScopeDto,
-    pub summary: AnalyticsSummaryDto,
+    pub current_inventory: CurrentInventorySummaryDto,
+    pub history: HistoricalReviewSummaryDto,
     pub daily_limits: DailyLimitUsageDto,
     pub rating_distribution: RatingDistributionDto,
     pub timeline: Vec<TimelineBucketDto>,
@@ -187,9 +228,11 @@ pub struct AnalyticsDto {
     pub tag_stats: Vec<TagAnalyticsDto>,
     pub recent_reviews: Vec<RecentReviewDto>,
     pub recent_sessions: Vec<SessionAnalyticsDto>,
+    pub dimensions: AnalyticsDimensionOptionsDto,
+    pub attribution_coverage: AttributionCoverageDto,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum AnalyticsRange {
     Days7,
     Days30,
@@ -213,7 +256,7 @@ impl AnalyticsRange {
         }
     }
 
-    fn as_str(self) -> &'static str {
+    const fn as_str(self) -> &'static str {
         match self {
             Self::Days7 => "7d",
             Self::Days30 => "30d",
@@ -223,17 +266,7 @@ impl AnalyticsRange {
         }
     }
 
-    fn duration_ms(self) -> Option<i64> {
-        match self {
-            Self::Days7 => Some(7 * DAY_MS),
-            Self::Days30 => Some(30 * DAY_MS),
-            Self::Days90 => Some(90 * DAY_MS),
-            Self::Year1 => Some(365 * DAY_MS),
-            Self::All => None,
-        }
-    }
-
-    fn granularity(self) -> &'static str {
+    const fn granularity(self) -> &'static str {
         match self {
             Self::Days7 | Self::Days30 => "day",
             Self::Days90 | Self::Year1 => "week",
@@ -243,146 +276,74 @@ impl AnalyticsRange {
 }
 
 #[derive(Clone, Debug)]
-struct RangeWindow {
-    current_start: Option<i64>,
-    previous_start: Option<i64>,
+struct Scope {
+    range: AnalyticsRange,
+    deck_ids: Vec<String>,
+    tag_ids: Vec<String>,
+    highlighted_session_id: Option<String>,
+    context: StudyTimeContext,
+    current_window: Option<CalendarWindow>,
+    previous_window: Option<CalendarWindow>,
 }
 
-#[derive(Clone, Debug)]
-struct TagRef {
-    id: String,
-    name: String,
-}
-
-#[derive(Clone, Debug)]
-struct CardSnapshot {
-    card_id: String,
-    deck_id: String,
-    deck_name: String,
-    due_at: i64,
-    suspended_at: Option<i64>,
-    buried_until: Option<i64>,
-    needs_more_practice: bool,
-    tags: Vec<TagRef>,
-}
-
-#[derive(Clone, Debug)]
-struct CardRow {
-    card_id: String,
-    deck_id: String,
-    deck_name: String,
-    due_at: i64,
-    suspended_at: Option<i64>,
-    buried_until: Option<i64>,
-    needs_more_practice: bool,
-    tag_id: Option<String>,
-    tag_name: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-struct ReviewRow {
-    id: String,
-    session_id: Option<String>,
-    card_id: String,
-    deck_id: String,
-    deck_name: String,
-    front_text: String,
-    outcome: String,
-    rating: i64,
-    answer_correct: i64,
-    response_time_ms: i64,
-    reviewed_at: i64,
-    due_after: i64,
-    state_before: i64,
-}
-
-#[derive(Clone, Debug)]
-struct BucketSpec {
-    start_at: i64,
-    end_at: i64,
-}
-
-#[derive(Default)]
-struct ReviewAccumulator {
+#[derive(Clone, Debug, Default)]
+struct HistoricalAggregate {
+    cards_practiced: i64,
     review_count: i64,
     correct_count: i64,
-    confidence_total: i64,
-    response_time_total: i64,
-    cards: HashSet<String>,
-    sessions: HashSet<String>,
+    confidence_sum: i64,
+    response_sum: i64,
+    session_count: i64,
     last_practiced_at: Option<i64>,
 }
 
-impl ReviewAccumulator {
-    fn add(&mut self, review: &ReviewRow) {
-        self.review_count += 1;
-        self.correct_count += review.answer_correct;
-        self.confidence_total += review.rating - 1;
-        self.response_time_total = self
-            .response_time_total
-            .saturating_add(review.response_time_ms);
-        self.cards.insert(review.card_id.clone());
-        if let Some(session_id) = &review.session_id {
-            self.sessions.insert(session_id.clone());
-        }
-        self.last_practiced_at = Some(
-            self.last_practiced_at
-                .map_or(review.reviewed_at, |value| value.max(review.reviewed_at)),
-        );
-    }
-
+impl HistoricalAggregate {
     fn correct_rate(&self) -> Option<f64> {
-        rate(self.correct_count, self.review_count)
+        ratio(self.correct_count, self.review_count)
     }
 
     fn average_confidence(&self) -> Option<f64> {
-        average(self.confidence_total, self.review_count)
+        ratio(self.confidence_sum, self.review_count)
     }
 
-    fn average_response_time_ms(&self) -> Option<f64> {
-        average(self.response_time_total, self.review_count)
+    fn average_response(&self) -> Option<f64> {
+        ratio(self.response_sum, self.review_count)
     }
 }
 
-#[derive(Default)]
-struct ScopedAccumulator {
-    card_count: i64,
-    due_count: i64,
-    needs_more_practice: i64,
-    reviews: ReviewAccumulator,
-}
-
-#[derive(Default)]
-struct TagAccumulator {
-    scope: ScopedAccumulator,
-    previous_review_count: i64,
-    previous_correct_count: i64,
-}
-
-#[derive(Default)]
-struct BucketAccumulator {
-    reviews: ReviewAccumulator,
-    new_cards: HashSet<String>,
-    contains_highlighted_session: bool,
-}
-
-#[derive(Default)]
-struct SessionEventAccumulator {
-    deck_names: BTreeSet<String>,
-    study_time_ms: i64,
-    last_reviewed_at: i64,
+#[derive(Clone, Debug, Default)]
+struct InventoryAggregate {
+    source_notes: i64,
+    generated_cards: i64,
+    studyable_due: i64,
+    needs_practice: i64,
 }
 
 #[derive(Clone, Debug)]
-struct SessionRow {
-    id: String,
-    mode: String,
-    selected_deck_ids_json: String,
-    card_count: i64,
-    rated_count: i64,
-    correct_count: i64,
-    started_at: i64,
-    completed_at: Option<i64>,
+struct DailyHistoryRow {
+    local_date: NaiveDate,
+    cards_practiced: i64,
+    review_count: i64,
+    new_cards: i64,
+    remembered_count: i64,
+    confidence_sum: i64,
+    response_sum: i64,
+    study_time_ms: i64,
+    session_count: i64,
+    highlighted: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+struct BucketAccumulator {
+    cards_practiced: i64,
+    review_count: i64,
+    new_cards: i64,
+    remembered_count: i64,
+    confidence_sum: i64,
+    response_sum: i64,
+    study_time_ms: i64,
+    session_count: i64,
+    highlighted: bool,
 }
 
 #[tauri::command]
@@ -390,919 +351,1144 @@ pub fn get_analytics(
     database: State<'_, Database>,
     input: AnalyticsQueryDto,
 ) -> Result<AnalyticsDto, CommandError> {
-    database.with_connection(|connection| load_analytics(connection, input))
+    let scope = validate_scope(input)?;
+    database.with_connection(|connection| analytics_in_connection(connection, &scope))
 }
 
 #[tauri::command]
 pub fn get_recent_practice_reviews(
     database: State<'_, Database>,
 ) -> Result<Vec<RecentReviewDto>, CommandError> {
-    database.with_connection(load_recent_practice_reviews)
-}
-
-fn load_analytics(
-    connection: &mut Connection,
-    input: AnalyticsQueryDto,
-) -> Result<AnalyticsDto, CommandError> {
-    let input = normalize_query(input)?;
-    let range = AnalyticsRange::parse(&input.range)?;
-    let now = unix_time_millis()?;
-    let window = range_window(range, now);
-    let settings = load_settings(connection)?;
-    let cards = load_card_snapshots(connection, &input)?;
-    let reviews = load_review_rows(connection, &input, &window)?;
-    let card_by_id = cards
-        .iter()
-        .map(|card| (card.card_id.clone(), card))
-        .collect::<HashMap<_, _>>();
-
-    let mut summary = ScopedAccumulator::default();
-    let mut active_decks = HashSet::new();
-    let mut deck_accumulators = BTreeMap::<String, ScopedAccumulator>::new();
-    let mut deck_names = BTreeMap::<String, String>::new();
-    let mut tag_accumulators = BTreeMap::<String, TagAccumulator>::new();
-    let mut tag_names = BTreeMap::<String, String>::new();
-
-    for card in &cards {
-        deck_names.insert(card.deck_id.clone(), card.deck_name.clone());
-        let active = card.suspended_at.is_none();
-        let due =
-            active && card.due_at <= now && card.buried_until.is_none_or(|value| value <= now);
-        if active {
-            summary.card_count += 1;
-            active_decks.insert(card.deck_id.clone());
-        }
-        if due {
-            summary.due_count += 1;
-        }
-        if active && card.needs_more_practice {
-            summary.needs_more_practice += 1;
-        }
-
-        let deck = deck_accumulators.entry(card.deck_id.clone()).or_default();
-        if active {
-            deck.card_count += 1;
-        }
-        if due {
-            deck.due_count += 1;
-        }
-        if active && card.needs_more_practice {
-            deck.needs_more_practice += 1;
-        }
-
-        for tag in &card.tags {
-            tag_names.insert(tag.id.clone(), tag.name.clone());
-            let tag_accumulator = tag_accumulators.entry(tag.id.clone()).or_default();
-            if active {
-                tag_accumulator.scope.card_count += 1;
-            }
-            if due {
-                tag_accumulator.scope.due_count += 1;
-            }
-            if active && card.needs_more_practice {
-                tag_accumulator.scope.needs_more_practice += 1;
-            }
-        }
-    }
-
-    let current_reviews = reviews
-        .iter()
-        .filter(|review| {
-            window
-                .current_start
-                .is_none_or(|start| review.reviewed_at >= start)
-        })
-        .collect::<Vec<_>>();
-    let previous_reviews = reviews
-        .iter()
-        .filter(|review| {
-            window.previous_start.is_some()
-                && window
-                    .current_start
-                    .is_some_and(|start| review.reviewed_at < start)
-        })
-        .collect::<Vec<_>>();
-
-    let mut rating_distribution = RatingDistributionDto::default();
-    for &review in &current_reviews {
-        summary.reviews.add(review);
-        match review.rating {
-            1 => rating_distribution.again += 1,
-            2 => rating_distribution.hard += 1,
-            3 => rating_distribution.good += 1,
-            4 => rating_distribution.easy += 1,
-            _ => {}
-        }
-        deck_accumulators
-            .entry(review.deck_id.clone())
-            .or_default()
-            .reviews
-            .add(review);
-        if let Some(card) = card_by_id.get(&review.card_id) {
-            for tag in &card.tags {
-                tag_accumulators
-                    .entry(tag.id.clone())
-                    .or_default()
-                    .scope
-                    .reviews
-                    .add(review);
-            }
-        }
-    }
-    for review in previous_reviews {
-        if let Some(card) = card_by_id.get(&review.card_id) {
-            for tag in &card.tags {
-                let accumulator = tag_accumulators.entry(tag.id.clone()).or_default();
-                accumulator.previous_review_count += 1;
-                accumulator.previous_correct_count += review.answer_correct;
-            }
-        }
-    }
-
-    let first_current_review = current_reviews
-        .iter()
-        .map(|review| review.reviewed_at)
-        .min();
-    let bucket_specs = build_bucket_specs(range, now, first_current_review)?;
-    let timeline = build_timeline(
-        &bucket_specs,
-        &current_reviews,
-        input.highlighted_session_id.as_deref(),
-    );
-    let recent_reviews = current_reviews
-        .iter()
-        .copied()
-        .take(RECENT_REVIEW_LIMIT)
-        .map(|review| recent_review(review, card_by_id.get(&review.card_id).copied()))
-        .collect::<Vec<_>>();
-    let recent_sessions = load_recent_sessions(
-        connection,
-        &current_reviews,
-        &deck_names,
-        input.highlighted_session_id.as_deref(),
-    )?;
-
-    let mut deck_stats = deck_accumulators
-        .into_iter()
-        .map(|(deck_id, accumulator)| DeckAnalyticsDto {
-            deck_name: deck_names
-                .get(&deck_id)
-                .cloned()
-                .unwrap_or_else(|| "Deck".to_string()),
-            deck_id,
-            card_count: accumulator.card_count,
-            due_count: accumulator.due_count,
-            needs_more_practice: accumulator.needs_more_practice,
-            cards_practiced: usize_to_i64(accumulator.reviews.cards.len()),
-            review_count: accumulator.reviews.review_count,
-            correct_count: accumulator.reviews.correct_count,
-            correct_rate: accumulator.reviews.correct_rate(),
-            average_confidence: accumulator.reviews.average_confidence(),
-            average_response_time_ms: accumulator.reviews.average_response_time_ms(),
-            total_study_time_ms: accumulator.reviews.response_time_total,
-            last_practiced_at: accumulator.reviews.last_practiced_at,
-        })
-        .collect::<Vec<_>>();
-    deck_stats.sort_by(|left, right| {
-        right
-            .needs_more_practice
-            .cmp(&left.needs_more_practice)
-            .then_with(|| right.due_count.cmp(&left.due_count))
-            .then_with(|| right.review_count.cmp(&left.review_count))
-            .then_with(|| {
-                left.deck_name
-                    .to_lowercase()
-                    .cmp(&right.deck_name.to_lowercase())
-            })
-    });
-
-    let desired_retention = settings.desired_retention;
-    let mut tag_stats = tag_accumulators
-        .into_iter()
-        .map(|(tag_id, accumulator)| {
-            let correct_rate = accumulator.scope.reviews.correct_rate();
-            let previous_rate = rate(
-                accumulator.previous_correct_count,
-                accumulator.previous_review_count,
-            );
-            let trend_delta = if accumulator.scope.reviews.review_count
-                >= MIN_CLASSIFICATION_REVIEWS
-                && accumulator.previous_review_count >= MIN_CLASSIFICATION_REVIEWS
-            {
-                correct_rate
-                    .zip(previous_rate)
-                    .map(|(current, previous)| current - previous)
-            } else {
-                None
-            };
-            TagAnalyticsDto {
-                tag_name: tag_names
-                    .get(&tag_id)
-                    .cloned()
-                    .unwrap_or_else(|| "Tag".to_string()),
-                tag_id,
-                card_count: accumulator.scope.card_count,
-                due_count: accumulator.scope.due_count,
-                needs_more_practice: accumulator.scope.needs_more_practice,
-                cards_practiced: usize_to_i64(accumulator.scope.reviews.cards.len()),
-                review_count: accumulator.scope.reviews.review_count,
-                correct_count: accumulator.scope.reviews.correct_count,
-                correct_rate,
-                average_confidence: accumulator.scope.reviews.average_confidence(),
-                average_response_time_ms: accumulator.scope.reviews.average_response_time_ms(),
-                total_study_time_ms: accumulator.scope.reviews.response_time_total,
-                last_practiced_at: accumulator.scope.reviews.last_practiced_at,
-                trend_delta,
-                status: classify_tag(
-                    accumulator.scope.reviews.review_count,
-                    correct_rate,
-                    accumulator.scope.needs_more_practice,
-                    desired_retention,
-                ),
-            }
-        })
-        .collect::<Vec<_>>();
-    tag_stats.sort_by(|left, right| {
-        tag_status_rank(&left.status)
-            .cmp(&tag_status_rank(&right.status))
-            .then_with(|| right.needs_more_practice.cmp(&left.needs_more_practice))
-            .then_with(|| right.due_count.cmp(&left.due_count))
-            .then_with(|| {
-                left.correct_rate
-                    .unwrap_or(1.0)
-                    .total_cmp(&right.correct_rate.unwrap_or(1.0))
-            })
-            .then_with(|| {
-                left.tag_name
-                    .to_lowercase()
-                    .cmp(&right.tag_name.to_lowercase())
-            })
-    });
-
-    let daily_limits = load_daily_limit_usage(connection, &settings, now)?;
-    let summary_dto = AnalyticsSummaryDto {
-        deck_count: usize_to_i64(active_decks.len()),
-        card_count: summary.card_count,
-        due_now: summary.due_count,
-        needs_more_practice: summary.needs_more_practice,
-        cards_practiced: usize_to_i64(summary.reviews.cards.len()),
-        review_count: summary.reviews.review_count,
-        correct_count: summary.reviews.correct_count,
-        correct_rate: summary.reviews.correct_rate(),
-        average_confidence: summary.reviews.average_confidence(),
-        average_response_time_ms: summary.reviews.average_response_time_ms(),
-        total_study_time_ms: summary.reviews.response_time_total,
-        session_count: usize_to_i64(summary.reviews.sessions.len()),
-    };
-    let scope = AnalyticsScopeDto {
-        range: range.as_str().to_string(),
-        start_at: window.current_start,
-        end_at: now,
-        bucket_granularity: range.granularity().to_string(),
-        deck_ids: input.deck_ids,
-        tag_ids: input.tag_ids,
-        highlighted_session_id: input.highlighted_session_id,
-    };
-
-    Ok(AnalyticsDto {
-        scope,
-        summary: summary_dto,
-        daily_limits,
-        rating_distribution,
-        timeline,
-        deck_stats,
-        tag_stats,
-        recent_reviews,
-        recent_sessions,
-    })
+    let scope = validate_scope(AnalyticsQueryDto {
+        range: "all".to_string(),
+        deck_ids: Vec::new(),
+        tag_ids: Vec::new(),
+        highlighted_session_id: None,
+    })?;
+    database.with_connection(|connection| recent_reviews(connection, &scope, 12))
 }
 
 fn default_range() -> String {
     "7d".to_string()
 }
 
-fn normalize_query(mut input: AnalyticsQueryDto) -> Result<AnalyticsQueryDto, CommandError> {
-    AnalyticsRange::parse(&input.range)?;
-    input.deck_ids = normalize_ids(input.deck_ids, "deck", MAX_ANALYTICS_DECKS)?;
-    input.tag_ids = normalize_ids(input.tag_ids, "tag", MAX_ANALYTICS_TAGS)?;
+fn validate_scope(input: AnalyticsQueryDto) -> Result<Scope, CommandError> {
+    let range = AnalyticsRange::parse(&input.range)?;
+    let deck_ids = normalized_ids(input.deck_ids, "deck", MAX_ANALYTICS_DECKS)?;
+    let tag_ids = normalized_ids(input.tag_ids, "tag", MAX_ANALYTICS_TAGS)?;
     if let Some(session_id) = input.highlighted_session_id.as_deref() {
         validate_entity_id(session_id, "practice session")?;
     }
-    Ok(input)
+    let context = StudyTimeContext::capture()?;
+    let current_window = match range {
+        AnalyticsRange::Days7 => Some(context.calendar_days_window(7)?),
+        AnalyticsRange::Days30 => Some(context.calendar_days_window(30)?),
+        AnalyticsRange::Days90 => Some(context.calendar_days_window(90)?),
+        AnalyticsRange::Year1 => Some(context.one_year_window()?),
+        AnalyticsRange::All => None,
+    };
+    let previous_window = current_window
+        .map(|window| context.previous_window(window))
+        .transpose()?;
+    Ok(Scope {
+        range,
+        deck_ids,
+        tag_ids,
+        highlighted_session_id: input.highlighted_session_id,
+        context,
+        current_window,
+        previous_window,
+    })
 }
 
-fn normalize_ids(
+fn normalized_ids(
     values: Vec<String>,
     label: &str,
     maximum: usize,
 ) -> Result<Vec<String>, CommandError> {
-    if values.len() > maximum {
-        return Err(CommandError::new(
-            "too_many_analytics_filters",
-            format!("Filter analytics by at most {maximum} {label}s."),
-        ));
-    }
     let mut unique = BTreeSet::new();
     for value in values {
         validate_entity_id(&value, label)?;
         unique.insert(value);
     }
+    if unique.len() > maximum {
+        return Err(CommandError::new(
+            "analytics_scope_too_large",
+            format!("Filter Analytics by at most {maximum} {label} values."),
+        ));
+    }
     Ok(unique.into_iter().collect())
 }
 
-fn range_window(range: AnalyticsRange, now: i64) -> RangeWindow {
-    match range.duration_ms() {
-        Some(duration) => {
-            let current_start = now.saturating_sub(duration);
-            RangeWindow {
-                current_start: Some(current_start),
-                previous_start: Some(current_start.saturating_sub(duration)),
-            }
-        }
-        None => RangeWindow {
-            current_start: None,
-            previous_start: None,
+fn analytics_in_connection(
+    connection: &mut Connection,
+    scope: &Scope,
+) -> Result<AnalyticsDto, CommandError> {
+    let current_inventory = current_inventory(connection, scope)?;
+    let (history, rating_distribution) = historical_summary(connection, scope)?;
+    let settings = load_settings(connection)?;
+    let (new_completed, reviews_completed) = current_day_completed(connection, scope)?;
+    Ok(AnalyticsDto {
+        scope: AnalyticsScopeDto {
+            range: scope.range.as_str().to_string(),
+            start_at: scope.current_window.map(|window| window.start_utc_millis),
+            end_at: scope.context.now_utc_millis,
+            bucket_granularity: scope.range.granularity().to_string(),
+            deck_ids: scope.deck_ids.clone(),
+            tag_ids: scope.tag_ids.clone(),
+            highlighted_session_id: scope.highlighted_session_id.clone(),
         },
-    }
+        current_inventory,
+        history,
+        daily_limits: DailyLimitUsageDto {
+            new_limit: settings.daily_new_limit,
+            review_limit: settings.daily_review_limit,
+            new_completed,
+            reviews_completed,
+            new_remaining: (settings.daily_new_limit - new_completed).max(0),
+            reviews_remaining: (settings.daily_review_limit - reviews_completed).max(0),
+        },
+        rating_distribution,
+        timeline: timeline(connection, scope)?,
+        deck_stats: deck_stats(connection, scope)?,
+        tag_stats: tag_stats(connection, scope)?,
+        recent_reviews: recent_reviews(connection, scope, RECENT_REVIEW_LIMIT)?,
+        recent_sessions: recent_sessions(connection, scope)?,
+        dimensions: dimensions(connection)?,
+        attribution_coverage: attribution_coverage(connection, scope)?,
+    })
 }
 
-fn load_card_snapshots(
+fn current_inventory(
     connection: &Connection,
-    input: &AnalyticsQueryDto,
-) -> Result<Vec<CardSnapshot>, CommandError> {
-    let mut conditions = vec![
-        "c.deleted_at IS NULL".to_string(),
-        "n.deleted_at IS NULL".to_string(),
-        "d.deleted_at IS NULL".to_string(),
-        "d.archived_at IS NULL".to_string(),
-    ];
-    let mut values = Vec::<SqlValue>::new();
-    apply_scope_filters(&mut conditions, &mut values, input);
+    scope: &Scope,
+) -> Result<CurrentInventorySummaryDto, CommandError> {
+    let mut values = vec![scope.context.now_utc_millis.into()];
+    let filters = current_filters(scope, &mut values, "c", "n");
     let sql = format!(
-        "WITH latest_reset AS (
-             SELECT card_id, MAX(occurred_at) AS reset_at
-             FROM schedule_action_events
-             WHERE action = 'reset'
-             GROUP BY card_id
-         ),
-         ranked_reviews AS (
-             SELECT r.card_id, r.answer_correct,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY r.card_id
-                        ORDER BY r.reviewed_at DESC, r.created_at DESC
-                    ) AS review_rank
-             FROM review_events r
-             LEFT JOIN latest_reset lr ON lr.card_id = r.card_id
-             WHERE r.reviewed_at > COALESCE(lr.reset_at, -1)
-         ),
-         signals AS (
-             SELECT card_id,
-                    MAX(CASE WHEN review_rank = 1 THEN answer_correct END) AS latest_answer,
-                    MAX(CASE WHEN review_rank = 2 THEN answer_correct END) AS previous_answer,
-                    SUM(CASE WHEN review_rank <= 5 AND answer_correct = 0 THEN 1 ELSE 0 END) AS wrong_last_five
-             FROM ranked_reviews
-             WHERE review_rank <= 5
-             GROUP BY card_id
+        "WITH {signals}, scoped AS (
+             SELECT c.id, c.note_id, c.deck_id, s.due_at,
+                    c.suspended_at, c.buried_until,
+                    COALESCE(ls.needs_more_practice, 0) AS needs_more_practice
+             FROM cards c
+             JOIN notes n ON n.id = c.note_id
+             JOIN decks d ON d.id = c.deck_id
+             JOIN card_schedules s ON s.card_id = c.id
+             LEFT JOIN learning_signals ls ON ls.card_id = c.id
+             WHERE c.deleted_at IS NULL AND n.deleted_at IS NULL
+               AND d.deleted_at IS NULL AND d.archived_at IS NULL {filters}
          )
-         SELECT c.id, c.deck_id, d.name, s.due_at,
-                c.suspended_at, c.buried_until,
-                CASE
-                    WHEN sig.latest_answer = 1 AND sig.previous_answer = 1 THEN 0
-                    WHEN sig.latest_answer = 0 AND sig.previous_answer = 0 THEN 1
-                    WHEN COALESCE(sig.wrong_last_five, 0) >= 3 THEN 1
-                    ELSE 0
-                END AS needs_more_practice,
-                t.id, t.name
+         SELECT COUNT(DISTINCT deck_id), COUNT(DISTINCT note_id), COUNT(id),
+                COALESCE(SUM(CASE
+                    WHEN suspended_at IS NULL
+                     AND (buried_until IS NULL OR buried_until <= ?1)
+                    THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE
+                    WHEN suspended_at IS NULL
+                     AND (buried_until IS NULL OR buried_until <= ?1)
+                     AND due_at <= ?1
+                    THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE
+                    WHEN suspended_at IS NULL
+                     AND (buried_until IS NULL OR buried_until <= ?1)
+                    THEN needs_more_practice ELSE 0 END), 0)
+         FROM scoped",
+        signals = LEARNING_SIGNAL_CTE,
+    );
+    connection
+        .query_row(&sql, params_from_iter(values.iter()), |row| {
+            Ok(CurrentInventorySummaryDto {
+                current_deck_count: row.get(0)?,
+                source_note_count: row.get(1)?,
+                generated_card_count: row.get(2)?,
+                studyable_card_count: row.get(3)?,
+                studyable_due_count: row.get(4)?,
+                needs_more_practice_count: row.get(5)?,
+            })
+        })
+        .map_err(CommandError::database)
+}
+
+fn historical_summary(
+    connection: &Connection,
+    scope: &Scope,
+) -> Result<(HistoricalReviewSummaryDto, RatingDistributionDto), CommandError> {
+    let (where_sql, values) = historical_where(scope, None);
+    let sql = format!(
+        "SELECT COUNT(DISTINCT r.card_id), COUNT(*),
+                COALESCE(SUM(r.answer_correct), 0),
+                COALESCE(SUM(CASE r.confidence
+                    WHEN 'wrong' THEN 0 WHEN 'not_confident' THEN 1
+                    WHEN 'somewhat_confident' THEN 2 WHEN 'very_confident' THEN 3
+                    ELSE 0 END), 0),
+                COALESCE(SUM(r.response_time_ms), 0),
+                COUNT(DISTINCT r.session_id),
+                MAX(r.reviewed_at),
+                COALESCE(SUM(CASE WHEN r.rating = 1 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN r.rating = 2 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN r.rating = 3 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN r.rating = 4 THEN 1 ELSE 0 END), 0)
+         FROM review_events r
+         JOIN review_event_attributions a ON a.review_event_id = r.id
+         JOIN decks d ON d.id = a.deck_id AND d.deleted_at IS NULL
+         WHERE {where_sql}"
+    );
+    let result: (i64, i64, i64, i64, i64, i64, Option<i64>, i64, i64, i64, i64) =
+        connection
+            .query_row(&sql, params_from_iter(values.iter()), |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
+                ))
+            })
+            .map_err(CommandError::database)?;
+    Ok((
+        HistoricalReviewSummaryDto {
+            cards_practiced: result.0,
+            review_count: result.1,
+            correct_count: result.2,
+            correct_rate: ratio(result.2, result.1),
+            average_confidence: ratio(result.3, result.1),
+            average_response_time_ms: ratio(result.4, result.1),
+            total_study_time_ms: result.4,
+            session_count: result.5,
+        },
+        RatingDistributionDto {
+            again: result.7,
+            hard: result.8,
+            good: result.9,
+            easy: result.10,
+        },
+    ))
+}
+
+fn current_day_completed(
+    connection: &Connection,
+    scope: &Scope,
+) -> Result<(i64, i64), CommandError> {
+    let mut values = vec![scope.context.local_date_string().into()];
+    let filters = retained_history_scope_filters(scope, &mut values, "a");
+    connection
+        .query_row(
+            &format!(
+                "SELECT
+                     COALESCE(SUM(CASE WHEN r.state_before = 0 THEN 1 ELSE 0 END), 0),
+                     COALESCE(SUM(CASE WHEN r.state_before <> 0 THEN 1 ELSE 0 END), 0)
+                 FROM review_events r
+                 JOIN review_event_attributions a ON a.review_event_id = r.id
+                 JOIN decks d ON d.id = a.deck_id AND d.deleted_at IS NULL
+                 WHERE a.review_local_date = ?1 {filters}"
+            ),
+            params_from_iter(values.iter()),
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(CommandError::database)
+}
+
+fn deck_stats(
+    connection: &Connection,
+    scope: &Scope,
+) -> Result<Vec<DeckAnalyticsDto>, CommandError> {
+    let inventory = deck_inventory(connection, scope)?;
+    let historical = deck_history(connection, scope, scope.current_window)?;
+    let ids = inventory
+        .keys()
+        .chain(historical.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut result = Vec::new();
+    for deck_id in ids {
+        let Some((name, archived)) = connection
+            .query_row(
+                "SELECT name, archived_at IS NOT NULL
+                 FROM decks WHERE id = ?1 AND deleted_at IS NULL",
+                [deck_id.as_str()],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? != 0)),
+            )
+            .optional()
+            .map_err(CommandError::database)?
+        else {
+            continue;
+        };
+        let current = inventory.get(&deck_id).cloned().unwrap_or_default();
+        let history = historical.get(&deck_id).cloned().unwrap_or_default();
+        result.push(DeckAnalyticsDto {
+            deck_id,
+            deck_name: name,
+            archived,
+            source_note_count: current.source_notes,
+            generated_card_count: current.generated_cards,
+            studyable_due_count: current.studyable_due,
+            needs_more_practice_count: current.needs_practice,
+            cards_practiced: history.cards_practiced,
+            review_count: history.review_count,
+            correct_count: history.correct_count,
+            correct_rate: history.correct_rate(),
+            average_confidence: history.average_confidence(),
+            average_response_time_ms: history.average_response(),
+            total_study_time_ms: history.response_sum,
+            last_practiced_at: history.last_practiced_at,
+        });
+    }
+    result.sort_by(|left, right| {
+        right
+            .review_count
+            .cmp(&left.review_count)
+            .then_with(|| left.deck_name.to_lowercase().cmp(&right.deck_name.to_lowercase()))
+    });
+    Ok(result)
+}
+
+fn deck_inventory(
+    connection: &Connection,
+    scope: &Scope,
+) -> Result<BTreeMap<String, InventoryAggregate>, CommandError> {
+    let mut values = vec![scope.context.now_utc_millis.into()];
+    let filters = current_filters(scope, &mut values, "c", "n");
+    let sql = format!(
+        "WITH {signals}
+         SELECT c.deck_id, COUNT(DISTINCT c.note_id), COUNT(c.id),
+                COALESCE(SUM(CASE
+                    WHEN c.suspended_at IS NULL
+                     AND (c.buried_until IS NULL OR c.buried_until <= ?1)
+                     AND s.due_at <= ?1 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE
+                    WHEN c.suspended_at IS NULL
+                     AND (c.buried_until IS NULL OR c.buried_until <= ?1)
+                    THEN COALESCE(ls.needs_more_practice, 0) ELSE 0 END), 0)
          FROM cards c
          JOIN notes n ON n.id = c.note_id
          JOIN decks d ON d.id = c.deck_id
          JOIN card_schedules s ON s.card_id = c.id
-         LEFT JOIN signals sig ON sig.card_id = c.id
-         LEFT JOIN note_tags nt ON nt.note_id = n.id
-         LEFT JOIN tags t ON t.id = nt.tag_id
-         WHERE {conditions}
-         ORDER BY c.id, t.name COLLATE NOCASE ASC",
-        conditions = conditions.join(" AND "),
+         LEFT JOIN learning_signals ls ON ls.card_id = c.id
+         WHERE c.deleted_at IS NULL AND n.deleted_at IS NULL
+           AND d.deleted_at IS NULL AND d.archived_at IS NULL {filters}
+         GROUP BY c.deck_id",
+        signals = LEARNING_SIGNAL_CTE,
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
     let rows = statement
         .query_map(params_from_iter(values.iter()), |row| {
-            Ok(CardRow {
-                card_id: row.get(0)?,
-                deck_id: row.get(1)?,
-                deck_name: row.get(2)?,
-                due_at: row.get(3)?,
-                suspended_at: row.get(4)?,
-                buried_until: row.get(5)?,
-                needs_more_practice: row.get::<_, i64>(6)? == 1,
-                tag_id: row.get(7)?,
-                tag_name: row.get(8)?,
-            })
+            Ok((
+                row.get::<_, String>(0)?,
+                InventoryAggregate {
+                    source_notes: row.get(1)?,
+                    generated_cards: row.get(2)?,
+                    studyable_due: row.get(3)?,
+                    needs_practice: row.get(4)?,
+                },
+            ))
         })
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-
-    let mut cards = BTreeMap::<String, CardSnapshot>::new();
-    for row in rows {
-        let card = cards
-            .entry(row.card_id.clone())
-            .or_insert_with(|| CardSnapshot {
-                card_id: row.card_id,
-                deck_id: row.deck_id,
-                deck_name: row.deck_name,
-                due_at: row.due_at,
-                suspended_at: row.suspended_at,
-                buried_until: row.buried_until,
-                needs_more_practice: row.needs_more_practice,
-                tags: Vec::new(),
-            });
-        if let (Some(id), Some(name)) = (row.tag_id, row.tag_name) {
-            card.tags.push(TagRef { id, name });
-        }
-    }
-    Ok(cards.into_values().collect())
+    rows.collect::<Result<BTreeMap<_, _>, _>>()
+        .map_err(CommandError::database)
 }
 
-fn load_review_rows(
+fn deck_history(
     connection: &Connection,
-    input: &AnalyticsQueryDto,
-    window: &RangeWindow,
-) -> Result<Vec<ReviewRow>, CommandError> {
-    let mut conditions = vec![
-        "c.deleted_at IS NULL".to_string(),
-        "n.deleted_at IS NULL".to_string(),
-        "d.deleted_at IS NULL".to_string(),
-        "d.archived_at IS NULL".to_string(),
-    ];
-    let mut values = Vec::<SqlValue>::new();
-    apply_scope_filters(&mut conditions, &mut values, input);
-    if let Some(start) = window.previous_start.or(window.current_start) {
-        conditions.push(format!(
-            "r.reviewed_at >= ?{}",
-            push_value(&mut values, start)
-        ));
-    }
+    scope: &Scope,
+    window: Option<CalendarWindow>,
+) -> Result<BTreeMap<String, HistoricalAggregate>, CommandError> {
+    let (where_sql, values) = historical_where(scope, window);
     let sql = format!(
-        "SELECT r.id, r.session_id, r.card_id, c.deck_id, d.name,
-                n.front_text, r.confidence, r.rating, r.answer_correct,
-                r.response_time_ms, r.reviewed_at, r.due_after, r.state_before
+        "SELECT a.deck_id, COUNT(DISTINCT r.card_id), COUNT(*),
+                COALESCE(SUM(r.answer_correct), 0),
+                COALESCE(SUM(CASE r.confidence
+                    WHEN 'wrong' THEN 0 WHEN 'not_confident' THEN 1
+                    WHEN 'somewhat_confident' THEN 2 WHEN 'very_confident' THEN 3
+                    ELSE 0 END), 0),
+                COALESCE(SUM(r.response_time_ms), 0),
+                COUNT(DISTINCT r.session_id), MAX(r.reviewed_at)
          FROM review_events r
-         JOIN cards c ON c.id = r.card_id
-         JOIN notes n ON n.id = c.note_id
-         JOIN decks d ON d.id = c.deck_id
-         WHERE {conditions}
-         ORDER BY r.reviewed_at DESC, r.created_at DESC",
-        conditions = conditions.join(" AND "),
+         JOIN review_event_attributions a ON a.review_event_id = r.id
+         JOIN decks d ON d.id = a.deck_id AND d.deleted_at IS NULL
+         WHERE {where_sql}
+         GROUP BY a.deck_id"
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    let reviews = statement
+    let rows = statement
         .query_map(params_from_iter(values.iter()), |row| {
-            Ok(ReviewRow {
-                id: row.get(0)?,
-                session_id: row.get(1)?,
-                card_id: row.get(2)?,
-                deck_id: row.get(3)?,
-                deck_name: row.get(4)?,
-                front_text: row.get(5)?,
-                outcome: row.get(6)?,
-                rating: row.get(7)?,
-                answer_correct: row.get(8)?,
-                response_time_ms: row.get(9)?,
-                reviewed_at: row.get(10)?,
-                due_after: row.get(11)?,
-                state_before: row.get(12)?,
-            })
+            Ok((
+                row.get::<_, String>(0)?,
+                HistoricalAggregate {
+                    cards_practiced: row.get(1)?,
+                    review_count: row.get(2)?,
+                    correct_count: row.get(3)?,
+                    confidence_sum: row.get(4)?,
+                    response_sum: row.get(5)?,
+                    session_count: row.get(6)?,
+                    last_practiced_at: row.get(7)?,
+                },
+            ))
+        })
+        .map_err(CommandError::database)?;
+    rows.collect::<Result<BTreeMap<_, _>, _>>()
+        .map_err(CommandError::database)
+}
+
+fn tag_stats(
+    connection: &Connection,
+    scope: &Scope,
+) -> Result<Vec<TagAnalyticsDto>, CommandError> {
+    let inventory = tag_inventory(connection, scope)?;
+    let historical = tag_history(connection, scope, scope.current_window)?;
+    let previous = tag_history(connection, scope, scope.previous_window)?;
+    let ids = inventory
+        .keys()
+        .chain(historical.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut result = Vec::new();
+    for tag_id in ids {
+        let current_name = connection
+            .query_row(
+                "SELECT name FROM tags WHERE id = ?1",
+                [tag_id.as_str()],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(CommandError::database)?;
+        let captured_name = connection
+            .query_row(
+                "SELECT captured_name
+                 FROM review_event_tag_attributions
+                 WHERE tag_id = ?1
+                 ORDER BY review_event_id DESC LIMIT 1",
+                [tag_id.as_str()],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(CommandError::database)?;
+        let Some(name) = current_name.or(captured_name) else {
+            continue;
+        };
+        let current = inventory.get(&tag_id).cloned().unwrap_or_default();
+        let history = historical.get(&tag_id).cloned().unwrap_or_default();
+        let prior = previous.get(&tag_id).cloned().unwrap_or_default();
+        let trend_delta = trend(history.correct_rate(), prior.correct_rate());
+        let status = if history.review_count == 0 {
+            "not_practiced".to_string()
+        } else if history.correct_rate().unwrap_or_default() >= 0.85 {
+            "strong".to_string()
+        } else if history.correct_rate().unwrap_or_default() >= 0.65 {
+            "developing".to_string()
+        } else {
+            "needs_attention".to_string()
+        };
+        result.push(TagAnalyticsDto {
+            tag_id,
+            tag_name: name,
+            historical_only: current.source_notes == 0,
+            source_note_count: current.source_notes,
+            generated_card_count: current.generated_cards,
+            studyable_due_count: current.studyable_due,
+            needs_more_practice_count: current.needs_practice,
+            cards_practiced: history.cards_practiced,
+            review_count: history.review_count,
+            correct_count: history.correct_count,
+            correct_rate: history.correct_rate(),
+            average_confidence: history.average_confidence(),
+            average_response_time_ms: history.average_response(),
+            total_study_time_ms: history.response_sum,
+            last_practiced_at: history.last_practiced_at,
+            trend_delta,
+            status,
+        });
+    }
+    result.sort_by(|left, right| {
+        right
+            .review_count
+            .cmp(&left.review_count)
+            .then_with(|| left.tag_name.to_lowercase().cmp(&right.tag_name.to_lowercase()))
+    });
+    Ok(result)
+}
+
+fn tag_inventory(
+    connection: &Connection,
+    scope: &Scope,
+) -> Result<BTreeMap<String, InventoryAggregate>, CommandError> {
+    let mut values = vec![scope.context.now_utc_millis.into()];
+    let filters = current_filters(scope, &mut values, "c", "n");
+    let sql = format!(
+        "WITH {signals}
+         SELECT t.id, COUNT(DISTINCT n.id), COUNT(DISTINCT c.id),
+                COUNT(DISTINCT CASE
+                    WHEN c.suspended_at IS NULL
+                     AND (c.buried_until IS NULL OR c.buried_until <= ?1)
+                     AND s.due_at <= ?1 THEN c.id END),
+                COALESCE(SUM(DISTINCT CASE
+                    WHEN c.suspended_at IS NULL
+                     AND (c.buried_until IS NULL OR c.buried_until <= ?1)
+                     AND COALESCE(ls.needs_more_practice, 0) = 1
+                    THEN 1 ELSE 0 END), 0)
+         FROM tags t
+         JOIN note_tags nt ON nt.tag_id = t.id
+         JOIN notes n ON n.id = nt.note_id
+         JOIN cards c ON c.note_id = n.id
+         JOIN decks d ON d.id = c.deck_id
+         JOIN card_schedules s ON s.card_id = c.id
+         LEFT JOIN learning_signals ls ON ls.card_id = c.id
+         WHERE c.deleted_at IS NULL AND n.deleted_at IS NULL
+           AND d.deleted_at IS NULL AND d.archived_at IS NULL {filters}
+         GROUP BY t.id",
+        signals = LEARNING_SIGNAL_CTE,
+    );
+    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
+    let rows = statement
+        .query_map(params_from_iter(values.iter()), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                InventoryAggregate {
+                    source_notes: row.get(1)?,
+                    generated_cards: row.get(2)?,
+                    studyable_due: row.get(3)?,
+                    needs_practice: row.get(4)?,
+                },
+            ))
+        })
+        .map_err(CommandError::database)?;
+    rows.collect::<Result<BTreeMap<_, _>, _>>()
+        .map_err(CommandError::database)
+}
+
+fn tag_history(
+    connection: &Connection,
+    scope: &Scope,
+    window: Option<CalendarWindow>,
+) -> Result<BTreeMap<String, HistoricalAggregate>, CommandError> {
+    let (where_sql, values) = historical_where(scope, window);
+    let sql = format!(
+        "SELECT ta.tag_id, COUNT(DISTINCT r.card_id), COUNT(*),
+                COALESCE(SUM(r.answer_correct), 0),
+                COALESCE(SUM(CASE r.confidence
+                    WHEN 'wrong' THEN 0 WHEN 'not_confident' THEN 1
+                    WHEN 'somewhat_confident' THEN 2 WHEN 'very_confident' THEN 3
+                    ELSE 0 END), 0),
+                COALESCE(SUM(r.response_time_ms), 0),
+                COUNT(DISTINCT r.session_id), MAX(r.reviewed_at)
+         FROM review_events r
+         JOIN review_event_attributions a ON a.review_event_id = r.id
+         JOIN decks d ON d.id = a.deck_id AND d.deleted_at IS NULL
+         JOIN review_event_tag_attributions ta ON ta.review_event_id = r.id
+         WHERE {where_sql}
+         GROUP BY ta.tag_id"
+    );
+    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
+    let rows = statement
+        .query_map(params_from_iter(values.iter()), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                HistoricalAggregate {
+                    cards_practiced: row.get(1)?,
+                    review_count: row.get(2)?,
+                    correct_count: row.get(3)?,
+                    confidence_sum: row.get(4)?,
+                    response_sum: row.get(5)?,
+                    session_count: row.get(6)?,
+                    last_practiced_at: row.get(7)?,
+                },
+            ))
+        })
+        .map_err(CommandError::database)?;
+    rows.collect::<Result<BTreeMap<_, _>, _>>()
+        .map_err(CommandError::database)
+}
+
+fn timeline(
+    connection: &Connection,
+    scope: &Scope,
+) -> Result<Vec<TimelineBucketDto>, CommandError> {
+    let rows = daily_history(connection, scope)?;
+    let bounds = timeline_bounds(connection, scope)?;
+    let Some((first, last)) = bounds else {
+        return Ok(Vec::new());
+    };
+    let granularity = scope.range.granularity();
+    let mut buckets = BTreeMap::<NaiveDate, BucketAccumulator>::new();
+    for row in rows {
+        let key = bucket_start(row.local_date, granularity)?;
+        let bucket = buckets.entry(key).or_default();
+        bucket.cards_practiced += row.cards_practiced;
+        bucket.review_count += row.review_count;
+        bucket.new_cards += row.new_cards;
+        bucket.remembered_count += row.remembered_count;
+        bucket.confidence_sum += row.confidence_sum;
+        bucket.response_sum += row.response_sum;
+        bucket.study_time_ms += row.study_time_ms;
+        bucket.session_count += row.session_count;
+        bucket.highlighted |= row.highlighted;
+    }
+    let mut cursor = bucket_start(first, granularity)?;
+    let end = bucket_start(last, granularity)?;
+    let mut result = Vec::new();
+    while cursor <= end {
+        let next = next_bucket(cursor, granularity)?;
+        let item = buckets.remove(&cursor).unwrap_or_default();
+        result.push(TimelineBucketDto {
+            label: bucket_label(cursor, granularity),
+            start_at: scope.context.resolve_date_start(cursor)?,
+            end_at: scope
+                .context
+                .resolve_date_start(next)?
+                .saturating_sub(1),
+            cards_practiced: item.cards_practiced,
+            review_count: item.review_count,
+            new_cards: item.new_cards,
+            remembered_count: item.remembered_count,
+            correct_rate: ratio(item.remembered_count, item.review_count),
+            average_confidence: ratio(item.confidence_sum, item.review_count),
+            average_response_time_ms: ratio(item.response_sum, item.review_count),
+            study_time_ms: item.study_time_ms,
+            session_count: item.session_count,
+            contains_highlighted_session: item.highlighted,
+        });
+        cursor = next;
+    }
+    Ok(result)
+}
+
+fn daily_history(
+    connection: &Connection,
+    scope: &Scope,
+) -> Result<Vec<DailyHistoryRow>, CommandError> {
+    let (where_sql, mut values) = historical_where(scope, None);
+    let highlighted_index = scope.highlighted_session_id.as_ref().map(|session_id| {
+        values.push(SqlValue::Text(session_id.clone()));
+        values.len()
+    });
+    let highlighted_sql = highlighted_index
+        .map(|index| format!("MAX(CASE WHEN r.session_id = ?{index} THEN 1 ELSE 0 END)"))
+        .unwrap_or_else(|| "0".to_string());
+    let sql = format!(
+        "SELECT a.review_local_date, COUNT(DISTINCT r.card_id), COUNT(*),
+                COALESCE(SUM(CASE WHEN r.state_before = 0 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(r.answer_correct), 0),
+                COALESCE(SUM(CASE r.confidence
+                    WHEN 'wrong' THEN 0 WHEN 'not_confident' THEN 1
+                    WHEN 'somewhat_confident' THEN 2 WHEN 'very_confident' THEN 3
+                    ELSE 0 END), 0),
+                COALESCE(SUM(r.response_time_ms), 0),
+                COALESCE(SUM(r.response_time_ms), 0),
+                COUNT(DISTINCT r.session_id), {highlighted_sql}
+         FROM review_events r
+         JOIN review_event_attributions a ON a.review_event_id = r.id
+         JOIN decks d ON d.id = a.deck_id AND d.deleted_at IS NULL
+         WHERE {where_sql}
+         GROUP BY a.review_local_date
+         ORDER BY a.review_local_date"
+    );
+    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
+    let rows = statement
+        .query_map(params_from_iter(values.iter()), |row| {
+            let date: String = row.get(0)?;
+            Ok((
+                date,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, i64>(7)?,
+                row.get::<_, i64>(8)?,
+                row.get::<_, i64>(9)?,
+            ))
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    Ok(reviews)
-}
-
-fn apply_scope_filters(
-    conditions: &mut Vec<String>,
-    values: &mut Vec<SqlValue>,
-    input: &AnalyticsQueryDto,
-) {
-    if !input.deck_ids.is_empty() {
-        let placeholders = input
-            .deck_ids
-            .iter()
-            .map(|deck_id| format!("?{}", push_value(values, deck_id.clone())))
-            .collect::<Vec<_>>()
-            .join(", ");
-        conditions.push(format!("c.deck_id IN ({placeholders})"));
-    }
-    for tag_id in &input.tag_ids {
-        let index = push_value(values, tag_id.clone());
-        conditions.push(format!(
-            "EXISTS (
-                SELECT 1 FROM note_tags filter_nt
-                WHERE filter_nt.note_id = n.id AND filter_nt.tag_id = ?{index}
-             )"
-        ));
-    }
-}
-
-fn push_value(values: &mut Vec<SqlValue>, value: impl Into<SqlValue>) -> usize {
-    values.push(value.into());
-    values.len()
-}
-
-fn build_bucket_specs(
-    range: AnalyticsRange,
-    now: i64,
-    first_review_at: Option<i64>,
-) -> Result<Vec<BucketSpec>, CommandError> {
-    let today = Local::now().date_naive();
-    match range {
-        AnalyticsRange::Days7 => date_buckets(today - Duration::days(6), today, 1, now),
-        AnalyticsRange::Days30 => date_buckets(today - Duration::days(29), today, 1, now),
-        AnalyticsRange::Days90 => date_buckets(today - Duration::days(89), today, 7, now),
-        AnalyticsRange::Year1 => date_buckets(today - Duration::days(364), today, 7, now),
-        AnalyticsRange::All => monthly_buckets(first_review_at.unwrap_or(now), now),
-    }
-}
-
-fn date_buckets(
-    start_date: NaiveDate,
-    today: NaiveDate,
-    step_days: i64,
-    now: i64,
-) -> Result<Vec<BucketSpec>, CommandError> {
-    let mut buckets = Vec::new();
-    let mut date = start_date;
-    while date <= today {
-        let next = (date + Duration::days(step_days)).min(today + Duration::days(1));
-        buckets.push(BucketSpec {
-            start_at: local_midnight(date)?,
-            end_at: if next > today {
-                now.saturating_add(1)
-            } else {
-                local_midnight(next)?
+    rows.into_iter()
+        .map(
+            |(
+                date,
+                cards_practiced,
+                review_count,
+                new_cards,
+                remembered_count,
+                confidence_sum,
+                response_sum,
+                study_time_ms,
+                session_count,
+                highlighted,
+            )| {
+                Ok(DailyHistoryRow {
+                    local_date: NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(|_| {
+                        CommandError::new(
+                            "invalid_review_local_date",
+                            "A historical review contains an invalid local date.",
+                        )
+                    })?,
+                    cards_practiced,
+                    review_count,
+                    new_cards,
+                    remembered_count,
+                    confidence_sum,
+                    response_sum,
+                    study_time_ms,
+                    session_count,
+                    highlighted: highlighted != 0,
+                })
             },
-        });
-        date = next;
-    }
-    Ok(buckets)
-}
-
-fn monthly_buckets(first_review_at: i64, now: i64) -> Result<Vec<BucketSpec>, CommandError> {
-    let first_date = Local
-        .timestamp_millis_opt(first_review_at)
-        .earliest()
-        .map(|value| value.date_naive())
-        .unwrap_or_else(|| Local::now().date_naive());
-    let today = Local::now().date_naive();
-    let mut date = NaiveDate::from_ymd_opt(first_date.year(), first_date.month(), 1)
-        .ok_or_else(invalid_analytics_date)?;
-    let current_month = NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
-        .ok_or_else(invalid_analytics_date)?;
-    let mut buckets = Vec::new();
-    while date <= current_month {
-        let next = next_month(date)?;
-        buckets.push(BucketSpec {
-            start_at: local_midnight(date)?,
-            end_at: if date == current_month {
-                now.saturating_add(1)
-            } else {
-                local_midnight(next)?
-            },
-        });
-        date = next;
-    }
-    Ok(buckets)
-}
-
-fn local_midnight(date: NaiveDate) -> Result<i64, CommandError> {
-    let midnight = date
-        .and_hms_opt(0, 0, 0)
-        .ok_or_else(invalid_analytics_date)?;
-    Local
-        .from_local_datetime(&midnight)
-        .earliest()
-        .map(|value| value.timestamp_millis())
-        .ok_or_else(invalid_analytics_date)
-}
-
-fn next_month(date: NaiveDate) -> Result<NaiveDate, CommandError> {
-    let (year, month) = if date.month() == 12 {
-        (date.year().saturating_add(1), 1)
-    } else {
-        (date.year(), date.month() + 1)
-    };
-    NaiveDate::from_ymd_opt(year, month, 1).ok_or_else(invalid_analytics_date)
-}
-
-fn invalid_analytics_date() -> CommandError {
-    CommandError::new(
-        "invalid_analytics_date",
-        "The analytics date range is outside the supported calendar.",
-    )
-}
-
-fn build_timeline(
-    specs: &[BucketSpec],
-    reviews: &[&ReviewRow],
-    highlighted_session_id: Option<&str>,
-) -> Vec<TimelineBucketDto> {
-    let mut accumulators = (0..specs.len())
-        .map(|_| BucketAccumulator::default())
-        .collect::<Vec<_>>();
-    for &review in reviews {
-        if let Some(index) = specs.iter().position(|bucket| {
-            review.reviewed_at >= bucket.start_at && review.reviewed_at < bucket.end_at
-        }) {
-            let accumulator = &mut accumulators[index];
-            accumulator.reviews.add(review);
-            if review.state_before == 0 {
-                accumulator.new_cards.insert(review.card_id.clone());
-            }
-            if highlighted_session_id
-                .is_some_and(|value| review.session_id.as_deref() == Some(value))
-            {
-                accumulator.contains_highlighted_session = true;
-            }
-        }
-    }
-    specs
-        .iter()
-        .zip(accumulators)
-        .map(|(spec, accumulator)| TimelineBucketDto {
-            start_at: spec.start_at,
-            end_at: spec.end_at,
-            cards_practiced: usize_to_i64(accumulator.reviews.cards.len()),
-            review_count: accumulator.reviews.review_count,
-            new_cards: usize_to_i64(accumulator.new_cards.len()),
-            remembered_count: accumulator.reviews.correct_count,
-            correct_rate: accumulator.reviews.correct_rate(),
-            average_confidence: accumulator.reviews.average_confidence(),
-            average_response_time_ms: accumulator.reviews.average_response_time_ms(),
-            study_time_ms: accumulator.reviews.response_time_total,
-            session_count: usize_to_i64(accumulator.reviews.sessions.len()),
-            contains_highlighted_session: accumulator.contains_highlighted_session,
-        })
+        )
         .collect()
 }
 
-fn recent_review(review: &ReviewRow, card: Option<&CardSnapshot>) -> RecentReviewDto {
-    let tags = card
-        .map(|value| value.tags.iter().map(|tag| tag.name.clone()).collect())
-        .unwrap_or_default();
-    RecentReviewDto {
-        id: review.id.clone(),
-        deck_name: review.deck_name.clone(),
-        card_id: review.card_id.clone(),
-        front_text: review.front_text.clone(),
-        tags,
-        outcome: review.outcome.clone(),
-        rating: review.rating,
-        response_time_ms: review.response_time_ms,
-        reviewed_at: review.reviewed_at,
-        due_after: review.due_after,
-    }
-}
-
-fn load_recent_sessions(
+fn timeline_bounds(
     connection: &Connection,
-    reviews: &[&ReviewRow],
-    deck_names: &BTreeMap<String, String>,
-    highlighted_session_id: Option<&str>,
-) -> Result<Vec<SessionAnalyticsDto>, CommandError> {
-    let mut event_accumulators = HashMap::<String, SessionEventAccumulator>::new();
-    for &review in reviews {
-        if let Some(session_id) = &review.session_id {
-            let accumulator = event_accumulators.entry(session_id.clone()).or_default();
-            accumulator.deck_names.insert(review.deck_name.clone());
-            accumulator.study_time_ms = accumulator
-                .study_time_ms
-                .saturating_add(review.response_time_ms);
-            accumulator.last_reviewed_at = accumulator.last_reviewed_at.max(review.reviewed_at);
-        }
+    scope: &Scope,
+) -> Result<Option<(NaiveDate, NaiveDate)>, CommandError> {
+    if let Some(window) = scope.current_window {
+        return Ok(Some((window.start_local_date, window.end_local_date)));
     }
-    let mut ids = event_accumulators
-        .iter()
-        .map(|(id, accumulator)| (id.clone(), accumulator.last_reviewed_at))
-        .collect::<Vec<_>>();
-    ids.sort_by_key(|(_, reviewed_at)| std::cmp::Reverse(*reviewed_at));
-    ids.truncate(RECENT_SESSION_LIMIT);
-    if let Some(highlighted) = highlighted_session_id {
-        if !ids.iter().any(|(id, _)| id == highlighted) {
-            ids.push((highlighted.to_string(), i64::MAX));
-        }
-    }
-    if ids.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let mut values = Vec::<SqlValue>::new();
-    let placeholders = ids
-        .iter()
-        .map(|(id, _)| format!("?{}", push_value(&mut values, id.clone())))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let sql = format!(
-        "SELECT id, mode, selected_deck_ids_json, card_count, rated_count,
-                correct_count, started_at, completed_at
-         FROM practice_sessions
-         WHERE id IN ({placeholders})"
-    );
-    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    let rows = statement
-        .query_map(params_from_iter(values.iter()), |row| {
-            Ok(SessionRow {
-                id: row.get(0)?,
-                mode: row.get(1)?,
-                selected_deck_ids_json: row.get(2)?,
-                card_count: row.get(3)?,
-                rated_count: row.get(4)?,
-                correct_count: row.get(5)?,
-                started_at: row.get(6)?,
-                completed_at: row.get(7)?,
-            })
-        })
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-
-    let mut sessions = rows
-        .into_iter()
-        .map(|row| {
-            let events = event_accumulators.get(&row.id);
-            let mut names = events
-                .map(|value| value.deck_names.iter().cloned().collect::<Vec<_>>())
-                .unwrap_or_default();
-            if names.is_empty() {
-                let deck_ids = serde_json::from_str::<Vec<String>>(&row.selected_deck_ids_json)
-                    .unwrap_or_default();
-                names = deck_ids
-                    .into_iter()
-                    .filter_map(|deck_id| deck_names.get(&deck_id).cloned())
-                    .collect();
-            }
-            let end = row
-                .completed_at
-                .or_else(|| events.map(|value| value.last_reviewed_at))
-                .unwrap_or(row.started_at);
-            SessionAnalyticsDto {
-                highlighted: highlighted_session_id == Some(row.id.as_str()),
-                id: row.id,
-                mode: row.mode,
-                deck_names: names,
-                started_at: row.started_at,
-                completed_at: row.completed_at,
-                duration_ms: end.saturating_sub(row.started_at).max(0),
-                card_count: row.card_count,
-                rated_count: row.rated_count,
-                correct_count: row.correct_count,
-                correct_rate: rate(row.correct_count, row.rated_count),
-                study_time_ms: events.map_or(0, |value| value.study_time_ms),
-            }
-        })
-        .collect::<Vec<_>>();
-    sessions.sort_by_key(|session| std::cmp::Reverse(session.started_at));
-    sessions.truncate(RECENT_SESSION_LIMIT);
-    Ok(sessions)
-}
-
-fn load_daily_limit_usage(
-    connection: &Connection,
-    settings: &crate::settings::AppSettingsDto,
-    now: i64,
-) -> Result<DailyLimitUsageDto, CommandError> {
-    let day_start = local_day_start_millis()?.min(now);
-    let (new_completed, reviews_completed): (i64, i64) = connection
+    let (where_sql, values) = historical_where(scope, None);
+    let dates: Option<(String, String)> = connection
         .query_row(
-            "SELECT
-                 COALESCE(SUM(CASE WHEN state_before = 0 THEN 1 ELSE 0 END), 0),
-                 COALESCE(SUM(CASE WHEN state_before <> 0 THEN 1 ELSE 0 END), 0)
-             FROM review_events
-             WHERE reviewed_at >= ?1 AND reviewed_at <= ?2",
-            [day_start, now],
+            &format!(
+                "SELECT MIN(a.review_local_date), MAX(a.review_local_date)
+                 FROM review_events r
+                 JOIN review_event_attributions a ON a.review_event_id = r.id
+                 JOIN decks d ON d.id = a.deck_id AND d.deleted_at IS NULL
+                 WHERE {where_sql}"
+            ),
+            params_from_iter(values.iter()),
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
+        .optional()
         .map_err(CommandError::database)?;
-    Ok(DailyLimitUsageDto {
-        new_limit: settings.daily_new_limit,
-        review_limit: settings.daily_review_limit,
-        new_completed,
-        reviews_completed,
-        new_remaining: settings
-            .daily_new_limit
-            .saturating_sub(new_completed)
-            .max(0),
-        reviews_remaining: settings
-            .daily_review_limit
-            .saturating_sub(reviews_completed)
-            .max(0),
-    })
+    let Some((first, last)) = dates else {
+        return Ok(None);
+    };
+    Ok(Some((
+        NaiveDate::parse_from_str(&first, "%Y-%m-%d").map_err(|_| {
+            CommandError::new(
+                "invalid_review_local_date",
+                "Historical Analytics contains an invalid first local date.",
+            )
+        })?,
+        NaiveDate::parse_from_str(&last, "%Y-%m-%d").map_err(|_| {
+            CommandError::new(
+                "invalid_review_local_date",
+                "Historical Analytics contains an invalid last local date.",
+            )
+        })?,
+    )))
 }
 
-fn classify_tag(
-    review_count: i64,
-    correct_rate: Option<f64>,
-    needs_more_practice: i64,
-    desired_retention: f64,
-) -> String {
-    if review_count < MIN_CLASSIFICATION_REVIEWS {
-        return "building_data".to_string();
-    }
-    if needs_more_practice > 0
-        || correct_rate.is_some_and(|value| value <= desired_retention - 0.10)
-    {
-        return "needs_attention".to_string();
-    }
-    if correct_rate.is_some_and(|value| value >= desired_retention + 0.03) {
-        return "strong".to_string();
-    }
-    "on_track".to_string()
-}
-
-fn tag_status_rank(value: &str) -> i64 {
-    match value {
-        "needs_attention" => 0,
-        "building_data" => 1,
-        "on_track" => 2,
-        "strong" => 3,
-        _ => 4,
-    }
-}
-
-fn load_recent_practice_reviews(
-    connection: &mut Connection,
+fn recent_reviews(
+    connection: &Connection,
+    scope: &Scope,
+    limit: i64,
 ) -> Result<Vec<RecentReviewDto>, CommandError> {
-    let mut statement = connection
-        .prepare(
-            "SELECT r.id, d.name, r.card_id, n.front_text,
-                    COALESCE((
-                        SELECT group_concat(t.name, char(31))
-                        FROM note_tags nt
-                        JOIN tags t ON t.id = nt.tag_id
-                        WHERE nt.note_id = n.id
-                    ), ''),
-                    r.confidence, r.rating, r.response_time_ms,
-                    r.reviewed_at, r.due_after
-             FROM review_events r
-             JOIN cards c ON c.id = r.card_id
-             JOIN notes n ON n.id = c.note_id
-             JOIN decks d ON d.id = c.deck_id
-             WHERE c.deleted_at IS NULL
-               AND n.deleted_at IS NULL
-               AND d.deleted_at IS NULL
-               AND d.archived_at IS NULL
-             ORDER BY r.reviewed_at DESC, r.created_at DESC
-             LIMIT 20",
-        )
-        .map_err(CommandError::database)?;
-    let reviews = statement
-        .query_map([], |row| {
-            let tags: String = row.get(4)?;
+    let (where_sql, mut values) = historical_where(scope, None);
+    values.push(SqlValue::Integer(limit.min(RECENT_REVIEW_LIMIT).max(1)));
+    let limit_index = values.len();
+    let sql = format!(
+        "SELECT r.id, a.deck_id, d.name, r.card_id, a.card_label,
+                a.question_excerpt,
+                COALESCE((
+                    SELECT group_concat(name, char(31)) FROM (
+                        SELECT COALESCE(t.name, ta.captured_name) AS name
+                        FROM review_event_tag_attributions ta
+                        LEFT JOIN tags t ON t.id = ta.tag_id
+                        WHERE ta.review_event_id = r.id
+                        ORDER BY name COLLATE NOCASE
+                    )
+                ), ''),
+                r.confidence, r.rating, r.response_time_ms,
+                r.reviewed_at, a.review_local_date, r.due_after,
+                a.attribution_source
+         FROM review_events r
+         JOIN review_event_attributions a ON a.review_event_id = r.id
+         JOIN decks d ON d.id = a.deck_id AND d.deleted_at IS NULL
+         WHERE {where_sql}
+         ORDER BY r.reviewed_at DESC, r.created_at DESC, r.id DESC
+         LIMIT ?{limit_index}"
+    );
+    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
+    statement
+        .query_map(params_from_iter(values.iter()), |row| {
+            let tags: String = row.get(6)?;
             Ok(RecentReviewDto {
                 id: row.get(0)?,
-                deck_name: row.get(1)?,
-                card_id: row.get(2)?,
-                front_text: row.get(3)?,
-                tags: split_grouped(&tags),
-                outcome: row.get(5)?,
-                rating: row.get(6)?,
-                response_time_ms: row.get(7)?,
-                reviewed_at: row.get(8)?,
-                due_after: row.get(9)?,
+                deck_id: row.get(1)?,
+                deck_name: row.get(2)?,
+                card_id: row.get(3)?,
+                card_label: row.get(4)?,
+                question_excerpt: row.get(5)?,
+                tags: split_names(&tags),
+                outcome: row.get(7)?,
+                rating: row.get(8)?,
+                response_time_ms: row.get(9)?,
+                reviewed_at: row.get(10)?,
+                review_local_date: row.get(11)?,
+                due_after: row.get(12)?,
+                attribution_source: row.get(13)?,
+            })
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
+}
+
+fn recent_sessions(
+    connection: &Connection,
+    scope: &Scope,
+) -> Result<Vec<SessionAnalyticsDto>, CommandError> {
+    let (where_sql, mut values) = historical_where(scope, None);
+    values.push(SqlValue::Integer(RECENT_SESSION_LIMIT));
+    let limit_index = values.len();
+    let sql = format!(
+        "SELECT r.session_id, MAX(ps.mode), MIN(ps.started_at),
+                MAX(ps.completed_at), COUNT(*),
+                COALESCE(SUM(r.answer_correct), 0),
+                COALESCE(SUM(r.response_time_ms), 0),
+                COALESCE((
+                    SELECT group_concat(name, char(31)) FROM (
+                        SELECT DISTINCT d2.name AS name
+                        FROM review_events r2
+                        JOIN review_event_attributions a2
+                          ON a2.review_event_id = r2.id
+                        JOIN decks d2 ON d2.id = a2.deck_id
+                                     AND d2.deleted_at IS NULL
+                        WHERE r2.session_id = r.session_id
+                        ORDER BY name COLLATE NOCASE
+                    )
+                ), '')
+         FROM review_events r
+         JOIN review_event_attributions a ON a.review_event_id = r.id
+         JOIN decks d ON d.id = a.deck_id AND d.deleted_at IS NULL
+         JOIN practice_sessions ps ON ps.id = r.session_id
+         WHERE {where_sql}
+         GROUP BY r.session_id
+         ORDER BY MIN(ps.started_at) DESC, r.session_id DESC
+         LIMIT ?{limit_index}"
+    );
+    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
+    statement
+        .query_map(params_from_iter(values.iter()), |row| {
+            let session_id: String = row.get(0)?;
+            let started_at: i64 = row.get(2)?;
+            let completed_at: Option<i64> = row.get(3)?;
+            let rated_count: i64 = row.get(4)?;
+            let correct_count: i64 = row.get(5)?;
+            let study_time_ms: i64 = row.get(6)?;
+            let deck_names: String = row.get(7)?;
+            Ok(SessionAnalyticsDto {
+                highlighted: scope.highlighted_session_id.as_deref() == Some(&session_id),
+                id: session_id,
+                mode: row.get(1)?,
+                deck_names: split_names(&deck_names),
+                started_at,
+                completed_at,
+                duration_ms: completed_at
+                    .unwrap_or(started_at.saturating_add(study_time_ms))
+                    .saturating_sub(started_at)
+                    .max(0),
+                card_count: rated_count,
+                rated_count,
+                correct_count,
+                correct_rate: ratio(correct_count, rated_count),
+                study_time_ms,
+            })
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
+}
+
+fn dimensions(connection: &Connection) -> Result<AnalyticsDimensionOptionsDto, CommandError> {
+    let mut decks = connection
+        .prepare(
+            "SELECT d.id, d.name, d.archived_at IS NOT NULL,
+                    NOT EXISTS(
+                        SELECT 1 FROM notes n
+                        WHERE n.deck_id = d.id AND n.deleted_at IS NULL
+                    )
+             FROM decks d
+             WHERE d.deleted_at IS NULL
+               AND (
+                    EXISTS(
+                        SELECT 1 FROM notes n
+                        WHERE n.deck_id = d.id AND n.deleted_at IS NULL
+                    )
+                    OR EXISTS(
+                        SELECT 1 FROM review_event_attributions a
+                        WHERE a.deck_id = d.id
+                    )
+               )
+             ORDER BY d.name COLLATE NOCASE, d.id",
+        )
+        .map_err(CommandError::database)?
+        .query_map([], |row| {
+            Ok(AnalyticsDimensionDto {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                archived: row.get::<_, i64>(2)? != 0,
+                historical_only: row.get::<_, i64>(3)? != 0,
             })
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    Ok(reviews)
+    decks.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+
+    let tags = connection
+        .prepare(
+            "SELECT identity.tag_id,
+                    COALESCE(t.name, identity.captured_name),
+                    t.id IS NULL
+             FROM (
+                 SELECT tag_id, MAX(captured_name) AS captured_name
+                 FROM review_event_tag_attributions
+                 GROUP BY tag_id
+                 UNION
+                 SELECT id, name FROM tags
+             ) identity
+             LEFT JOIN tags t ON t.id = identity.tag_id
+             WHERE EXISTS (
+                 SELECT 1
+                 FROM review_event_tag_attributions ta
+                 JOIN review_event_attributions a
+                   ON a.review_event_id = ta.review_event_id
+                 JOIN decks d ON d.id = a.deck_id AND d.deleted_at IS NULL
+                 WHERE ta.tag_id = identity.tag_id
+             )
+             OR EXISTS (
+                 SELECT 1 FROM note_tags nt
+                 JOIN notes n ON n.id = nt.note_id
+                 JOIN decks d ON d.id = n.deck_id
+                 WHERE nt.tag_id = identity.tag_id
+                   AND n.deleted_at IS NULL
+                   AND d.deleted_at IS NULL
+                   AND d.archived_at IS NULL
+             )
+             ORDER BY 2 COLLATE NOCASE, identity.tag_id",
+        )
+        .map_err(CommandError::database)?
+        .query_map([], |row| {
+            Ok(AnalyticsDimensionDto {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                historical_only: row.get::<_, i64>(2)? != 0,
+                archived: false,
+            })
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    Ok(AnalyticsDimensionOptionsDto { decks, tags })
 }
 
-fn split_grouped(value: &str) -> Vec<String> {
+fn attribution_coverage(
+    connection: &Connection,
+    scope: &Scope,
+) -> Result<AttributionCoverageDto, CommandError> {
+    let (where_sql, values) = historical_where(scope, None);
+    connection
+        .query_row(
+            &format!(
+                "SELECT
+                     COALESCE(SUM(CASE
+                         WHEN a.attribution_source = 'captured' THEN 1 ELSE 0 END
+                     ), 0),
+                     COALESCE(SUM(CASE
+                         WHEN a.attribution_source = 'legacy_current_state_backfill'
+                         THEN 1 ELSE 0 END
+                     ), 0)
+                 FROM review_events r
+                 JOIN review_event_attributions a ON a.review_event_id = r.id
+                 JOIN decks d ON d.id = a.deck_id AND d.deleted_at IS NULL
+                 WHERE {where_sql}"
+            ),
+            params_from_iter(values.iter()),
+            |row| {
+                Ok(AttributionCoverageDto {
+                    captured_review_count: row.get(0)?,
+                    legacy_backfilled_review_count: row.get(1)?,
+                })
+            },
+        )
+        .map_err(CommandError::database)
+}
+
+fn current_filters(
+    scope: &Scope,
+    values: &mut Vec<SqlValue>,
+    card_alias: &str,
+    note_alias: &str,
+) -> String {
+    let mut filters = Vec::new();
+    if !scope.deck_ids.is_empty() {
+        filters.push(format!(
+            "AND {card_alias}.deck_id IN ({})",
+            placeholders(values, scope.deck_ids.clone())
+        ));
+    }
+    for tag_id in &scope.tag_ids {
+        values.push(SqlValue::Text(tag_id.clone()));
+        filters.push(format!(
+            "AND EXISTS (
+                 SELECT 1 FROM note_tags scope_nt
+                 WHERE scope_nt.note_id = {note_alias}.id
+                   AND scope_nt.tag_id = ?{}
+             )",
+            values.len()
+        ));
+    }
+    filters.join(" ")
+}
+
+fn historical_where(
+    scope: &Scope,
+    window_override: Option<CalendarWindow>,
+) -> (String, Vec<SqlValue>) {
+    let mut values = Vec::<SqlValue>::new();
+    let mut filters = vec!["1 = 1".to_string()];
+    let window = window_override.or(scope.current_window);
+    if let Some(window) = window {
+        values.push(SqlValue::Integer(window.start_utc_millis));
+        filters.push(format!("r.reviewed_at >= ?{}", values.len()));
+        values.push(SqlValue::Integer(window.end_utc_millis));
+        filters.push(format!("r.reviewed_at <= ?{}", values.len()));
+    }
+    if !scope.deck_ids.is_empty() {
+        filters.push(format!(
+            "a.deck_id IN ({})",
+            placeholders(&mut values, scope.deck_ids.clone())
+        ));
+    }
+    for tag_id in &scope.tag_ids {
+        values.push(SqlValue::Text(tag_id.clone()));
+        filters.push(format!(
+            "EXISTS (
+                 SELECT 1 FROM review_event_tag_attributions scope_ta
+                 WHERE scope_ta.review_event_id = r.id
+                   AND scope_ta.tag_id = ?{}
+             )",
+            values.len()
+        ));
+    }
+    (filters.join(" AND "), values)
+}
+
+fn retained_history_scope_filters(
+    scope: &Scope,
+    values: &mut Vec<SqlValue>,
+    attribution_alias: &str,
+) -> String {
+    let mut filters = Vec::new();
+    if !scope.deck_ids.is_empty() {
+        filters.push(format!(
+            "AND {attribution_alias}.deck_id IN ({})",
+            placeholders(values, scope.deck_ids.clone())
+        ));
+    }
+    for tag_id in &scope.tag_ids {
+        values.push(SqlValue::Text(tag_id.clone()));
+        filters.push(format!(
+            "AND EXISTS (
+                 SELECT 1 FROM review_event_tag_attributions scope_ta
+                 WHERE scope_ta.review_event_id = {attribution_alias}.review_event_id
+                   AND scope_ta.tag_id = ?{}
+             )",
+            values.len()
+        ));
+    }
+    filters.join(" ")
+}
+
+fn bucket_start(date: NaiveDate, granularity: &str) -> Result<NaiveDate, CommandError> {
+    match granularity {
+        "day" => Ok(date),
+        "week" => date
+            .checked_sub_signed(Duration::days(i64::from(date.weekday().num_days_from_monday())))
+            .ok_or_else(|| {
+                CommandError::new(
+                    "invalid_analytics_bucket",
+                    "A weekly Analytics bucket is outside the supported range.",
+                )
+            }),
+        "month" => date.with_day(1).ok_or_else(|| {
+            CommandError::new(
+                "invalid_analytics_bucket",
+                "A monthly Analytics bucket is invalid.",
+            )
+        }),
+        _ => Err(CommandError::new(
+            "invalid_analytics_bucket",
+            "The Analytics bucket granularity is invalid.",
+        )),
+    }
+}
+
+fn next_bucket(date: NaiveDate, granularity: &str) -> Result<NaiveDate, CommandError> {
+    match granularity {
+        "day" => date.succ_opt().ok_or_else(|| {
+            CommandError::new(
+                "invalid_analytics_bucket",
+                "The next Analytics day is outside the supported range.",
+            )
+        }),
+        "week" => date.checked_add_signed(Duration::days(7)).ok_or_else(|| {
+            CommandError::new(
+                "invalid_analytics_bucket",
+                "The next Analytics week is outside the supported range.",
+            )
+        }),
+        "month" => {
+            let (year, month) = if date.month() == 12 {
+                (date.year().saturating_add(1), 1)
+            } else {
+                (date.year(), date.month() + 1)
+            };
+            NaiveDate::from_ymd_opt(year, month, 1).ok_or_else(|| {
+                CommandError::new(
+                    "invalid_analytics_bucket",
+                    "The next Analytics month is outside the supported range.",
+                )
+            })
+        }
+        _ => Err(CommandError::new(
+            "invalid_analytics_bucket",
+            "The Analytics bucket granularity is invalid.",
+        )),
+    }
+}
+
+fn bucket_label(date: NaiveDate, granularity: &str) -> String {
+    match granularity {
+        "month" => date.format("%b %Y").to_string(),
+        _ => date.format("%Y-%m-%d").to_string(),
+    }
+}
+
+fn split_names(value: &str) -> Vec<String> {
     value
-        .split('\u{1f}')
-        .filter(|item| !item.is_empty())
+        .split('\u{001f}')
+        .filter(|name| !name.is_empty())
         .map(str::to_string)
         .collect()
 }
 
-fn rate(numerator: i64, denominator: i64) -> Option<f64> {
-    if denominator == 0 {
-        None
-    } else {
-        Some(numerator as f64 / denominator as f64)
-    }
+fn ratio(numerator: i64, denominator: i64) -> Option<f64> {
+    (denominator > 0).then(|| numerator as f64 / denominator as f64)
 }
 
-fn average(total: i64, count: i64) -> Option<f64> {
-    if count == 0 {
-        None
-    } else {
-        Some(total as f64 / count as f64)
+fn trend(current: Option<f64>, previous: Option<f64>) -> Option<f64> {
+    match (current, previous) {
+        (Some(current), Some(previous)) => Some(current - previous),
+        _ => None,
     }
-}
-
-fn usize_to_i64(value: usize) -> i64 {
-    i64::try_from(value).unwrap_or(i64::MAX)
 }
 
 #[cfg(test)]
@@ -1310,43 +1496,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_library_uses_the_default_week_range() {
-        let database = Database::open_in_memory().expect("database should open");
-        let analytics = database
-            .with_connection(|connection| {
-                load_analytics(
-                    connection,
-                    AnalyticsQueryDto {
-                        range: default_range(),
-                        deck_ids: Vec::new(),
-                        tag_ids: Vec::new(),
-                        highlighted_session_id: None,
-                    },
-                )
-            })
-            .expect("analytics should load");
-        assert_eq!(analytics.scope.range, "7d");
-        assert_eq!(analytics.summary.deck_count, 0);
-        assert_eq!(analytics.summary.card_count, 0);
-        assert_eq!(analytics.summary.review_count, 0);
-        assert_eq!(analytics.summary.correct_rate, None);
-        assert_eq!(analytics.timeline.len(), 7);
+    fn default_range_is_a_local_calendar_week() {
+        assert_eq!(default_range(), "7d");
+        assert_eq!(AnalyticsRange::parse("7d").expect("range").granularity(), "day");
     }
 
     #[test]
-    fn rate_and_average_are_none_without_reviews() {
-        assert_eq!(rate(0, 0), None);
-        assert_eq!(rate(3, 4), Some(0.75));
-        assert_eq!(average(0, 0), None);
-        assert_eq!(average(6, 3), Some(2.0));
-    }
-
-    #[test]
-    fn tag_classification_uses_retention_and_learning_signals() {
-        assert_eq!(classify_tag(3, Some(1.0), 0, 0.9), "building_data");
-        assert_eq!(classify_tag(10, Some(0.75), 0, 0.9), "needs_attention");
-        assert_eq!(classify_tag(10, Some(0.95), 0, 0.9), "strong");
-        assert_eq!(classify_tag(10, Some(0.9), 0, 0.9), "on_track");
-        assert_eq!(classify_tag(10, Some(1.0), 1, 0.9), "needs_attention");
+    fn months_advance_across_year_boundary() {
+        let december = NaiveDate::from_ymd_opt(2026, 12, 1).expect("date");
+        assert_eq!(
+            next_bucket(december, "month").expect("next"),
+            NaiveDate::from_ymd_opt(2027, 1, 1).expect("date")
+        );
     }
 }
