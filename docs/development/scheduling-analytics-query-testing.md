@@ -27,9 +27,24 @@ This checks the source architecture, React behavior, strict TypeScript, Rust for
 
 The full gate adds Clippy with warnings denied, every Rust/migration/backup test, the standalone Tauri build, dependency verification, and native restart persistence.
 
-## Manual acceptance
+## Isolated local profile
 
-Use an isolated XDG profile. Verify:
+Schema 14 is forward-only. Exercise migration and manual behavior in a disposable profile before opening a regular library:
+
+```bash
+TEST_ROOT="$(mktemp -d)"
+mkdir -p "$TEST_ROOT"/{data,config,cache,state}
+
+XDG_DATA_HOME="$TEST_ROOT/data" \
+XDG_CONFIG_HOME="$TEST_ROOT/config" \
+XDG_CACHE_HOME="$TEST_ROOT/cache" \
+XDG_STATE_HOME="$TEST_ROOT/state" \
+./run-app.sh
+```
+
+Keep a copy of the normal application-data directory shown under **Settings → Storage** until the pull request has been accepted.
+
+## Manual acceptance
 
 1. A buried or suspended overdue card is not counted as Ready now in Decks, Search/Filter, Practice, or Analytics.
 2. Bury until tomorrow becomes studyable at the next local date boundary.
