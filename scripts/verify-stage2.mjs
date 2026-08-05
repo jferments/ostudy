@@ -85,7 +85,7 @@ if(suppressions.length) failures.push(`Rust source suppresses stale diagnostics:
 const oneOff=workflowEntries.filter(name=>name.startsWith("one-off-"));if(oneOff.length) failures.push(`one-off workflows committed: ${oneOff.join(", ")}`);
 if(!practiceSelection.includes("start_card_practice")||!practiceSelection.includes("card_ids")) failures.push("filtered cards cannot start a temporary session");
 if(!app.includes('label="Search/Filter"')||!app.includes("onPracticeCards")) failures.push("Search/Filter is not registered end to end");
-for(const fragment of ["Search / Filter","availabilityFilter","reviewedFilter","Toggle visible","Select all matching","Selection action","Practice selected","PracticeResultsModal","BulkTagModal","DeleteCardsModal"])
+for(const fragment of ["Search / Filter","availabilityFilter","reviewedFilter","Select visible","Select all (","Actions for selected cards","Practice selected","PracticeResultsModal","BulkTagModal","DeleteCardsModal"])
   if(!cardsScreen.includes(fragment)) failures.push(`bounded Search/Filter screen missing: ${fragment}`);
 for(const fragment of ["<TagInput","findDuplicateCards","Save duplicate anyway","deckId: selectedDeckId",'aria-label="Deck"'])
   if(!editor.includes(fragment)) failures.push(`card editor missing: ${fragment}`);
