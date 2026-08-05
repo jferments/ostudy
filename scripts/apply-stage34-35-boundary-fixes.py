@@ -37,6 +37,21 @@ mod extended_tests;
 )
 write(path, text)
 
+path = "src-tauri/src/library_backup.rs"
+text = read(path)
+text = replace_once(
+    text,
+    '''#[cfg(test)]
+mod tests {''',
+    '''#[cfg(test)]
+mod extended_tests;
+
+#[cfg(test)]
+mod tests {''',
+    "library backup extended tests",
+)
+write(path, text)
+
 path = "src-tauri/src/studydeck/import.rs"
 text = read(path)
 text = replace_once(
@@ -82,4 +97,20 @@ text = replace_once(
 )
 write(path, text)
 
-print("Applied studydeck response and regression module boundaries.")
+path = "src-tauri/src/stage34_35_regression_tests.rs"
+text = read(path)
+text = replace_once(
+    text,
+    '''    assert!(!repaired.0.is_empty());
+    assert!(repaired.1.contains("templateFieldBlock"));
+    assert!(repaired.2.contains("templateFieldInline"));''',
+    '''    assert!(!repaired.0.is_empty());
+    for document in [&repaired.1, &repaired.2] {
+        assert!(document.contains(&field_id));
+        assert!(!document.contains("{{"));
+    }''',
+    "legacy template canonical assertion",
+)
+write(path, text)
+
+print("Applied studydeck response, backup regression, and repair test boundaries.")
