@@ -501,8 +501,9 @@ mod extended_tests {
         .expect_err("unknown fields must not be ignored");
         assert!(unknown.to_string().contains("legacyFlag"));
 
+        let context = StudyTimeContext::capture().expect("calendar context");
         assert_eq!(
-            validate_input(action_input(&[], 19, "suspend"))
+            validate_input(action_input(&[], 19, "suspend"), &context)
                 .expect_err("an empty selection must fail")
                 .code,
             "invalid_schedule_selection"
@@ -510,18 +511,18 @@ mod extended_tests {
 
         let card_ids = vec![test_id(20)];
         let mut invalid = action_input(&card_ids, 21, "reschedule");
-        invalid.due_date = Some(-1);
+        invalid.due_date = Some("not-a-date".to_string());
         assert_eq!(
-            validate_input(invalid)
-                .expect_err("negative dates must fail")
+            validate_input(invalid, &context)
+                .expect_err("invalid local dates must fail")
                 .code,
-            "invalid_reschedule_date"
+            "invalid_calendar_date"
         );
 
         let mut unexpected = action_input(&card_ids, 22, "suspend");
-        unexpected.due_date = Some(1);
+        unexpected.due_date = Some(context.local_date_string());
         assert_eq!(
-            validate_input(unexpected)
+            validate_input(unexpected, &context)
                 .expect_err("non-reschedule actions cannot carry dates")
                 .code,
             "unexpected_reschedule_date"

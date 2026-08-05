@@ -23,7 +23,7 @@ mod tests {
             deck_ids,
             query: query.to_string(),
             tag_ids: vec![],
-            due_filter: "all".to_string(),
+            availability_filter: "all".to_string(),
             status_filter: "active".to_string(),
             reviewed_filter: "all".to_string(),
             sort: if query.is_empty() {

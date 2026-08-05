@@ -9,8 +9,9 @@ use crate::{
     learning_signals::needs_more_practice,
     scheduler::insert_new_schedule,
     settings::load_settings,
+    study_calendar::StudyTimeContext,
     util::{generate_id, unix_time_millis},
-    workload::{planned_scheduled_cards, workload_overview},
+    workload::{planned_scheduled_cards_scoped, workload_overview_scoped},
 };
 
 fn paragraph(text: &str) -> Value {
@@ -414,22 +415,38 @@ fn workload_excludes_suspended_and_buried_cards_and_protects_review_backlog() {
             let mut settings = load_settings(connection)?;
             settings.daily_new_limit = 1;
             settings.daily_review_limit = 1;
-            let overview =
-                workload_overview(connection, std::slice::from_ref(&deck_id), &settings)?;
+            let overview = workload_overview_scoped(
+                connection,
+                std::slice::from_ref(&deck_id),
+                &[],
+                &settings,
+                &StudyTimeContext::capture()?,
+            )?;
             assert_eq!(overview.due_reviews, 1);
             assert_eq!(overview.due_new, 1);
             assert_eq!(overview.scheduled_reviews, 1);
             assert_eq!(overview.scheduled_new, 1);
             assert_eq!(overview.extra_available, 2);
 
-            let (planned, _) =
-                planned_scheduled_cards(connection, std::slice::from_ref(&deck_id), &settings)?;
+            let (planned, _) = planned_scheduled_cards_scoped(
+                connection,
+                std::slice::from_ref(&deck_id),
+                &[],
+                &settings,
+                &StudyTimeContext::capture()?,
+            )?;
             assert_eq!(planned.len(), 2);
             assert_eq!(planned[0].card_id, review_id);
             assert_eq!(planned[1].card_id, new_id);
 
             settings.daily_review_limit = 0;
-            let protected = workload_overview(connection, &[deck_id], &settings)?;
+            let protected = workload_overview_scoped(
+                connection,
+                &[deck_id],
+                &[],
+                &settings,
+                &StudyTimeContext::capture()?,
+            )?;
             assert_eq!(protected.scheduled_reviews, 0);
             assert_eq!(protected.scheduled_new, 0);
             assert_eq!(protected.omitted_due_reviews, 1);
