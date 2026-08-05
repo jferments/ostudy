@@ -138,7 +138,7 @@ fn current_package_round_trip_preserves_content_and_uses_fresh_schedules() {
             )
         })
         .expect("import");
-    assert_eq!(first.card_count, 2);
+    assert_eq!(first.generated_card_count, 2);
     let replay_package = read::read_package(&package_path).expect("read package");
     let replay = target
         .with_connection(|connection| {

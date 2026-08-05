@@ -255,7 +255,7 @@ pub fn get_recent_practice_reviews(
 }
 
 fn analytics_in_connection(
-    connection: &Connection,
+    connection: &mut Connection,
     scope: &Scope,
 ) -> Result<AnalyticsDto, CommandError> {
     let mut summary = current_inventory(connection, scope)?;
@@ -414,29 +414,58 @@ fn deck_stats(
     let (history_where, mut values) = history_where(scope);
     let now_index = push(&mut values, scope.context.now_utc_millis);
     let sql = format!(
-        "WITH {signals}, current_stats AS (
+        "WITH {signals},
+         current_stats(deck_id, source_note_count, generated_card_count,
+                       studyable_due_count, needs_more_practice) AS (
              SELECT c.deck_id, COUNT(DISTINCT c.note_id), COUNT(c.id),
-                    SUM(CASE WHEN c.suspended_at IS NULL AND (c.buried_until IS NULL OR c.buried_until <= ?{now_index}) AND s.due_at <= ?{now_index} THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN c.suspended_at IS NULL AND (c.buried_until IS NULL OR c.buried_until <= ?{now_index}) THEN COALESCE(ls.needs_more_practice,0) ELSE 0 END)
-             FROM cards c JOIN notes n ON n.id=c.note_id JOIN decks cd ON cd.id=c.deck_id
-             JOIN card_schedules s ON s.card_id=c.id LEFT JOIN learning_signals ls ON ls.card_id=c.id
-             WHERE c.deleted_at IS NULL AND n.deleted_at IS NULL AND cd.deleted_at IS NULL AND cd.archived_at IS NULL
+                    COALESCE(SUM(CASE WHEN c.suspended_at IS NULL
+                         AND (c.buried_until IS NULL OR c.buried_until <= ?{now_index})
+                         AND s.due_at <= ?{now_index} THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN c.suspended_at IS NULL
+                         AND (c.buried_until IS NULL OR c.buried_until <= ?{now_index})
+                         THEN COALESCE(ls.needs_more_practice,0) ELSE 0 END), 0)
+             FROM cards c JOIN notes n ON n.id=c.note_id
+             JOIN decks cd ON cd.id=c.deck_id
+             JOIN card_schedules s ON s.card_id=c.id
+             LEFT JOIN learning_signals ls ON ls.card_id=c.id
+             WHERE c.deleted_at IS NULL AND n.deleted_at IS NULL
+               AND cd.deleted_at IS NULL AND cd.archived_at IS NULL
              GROUP BY c.deck_id
-         ), history AS (
-             SELECT a.deck_id, COUNT(DISTINCT r.card_id), COUNT(*), SUM(r.answer_correct),
-                    AVG(CASE r.confidence WHEN 'wrong' THEN 0.0 WHEN 'not_confident' THEN 1.0 WHEN 'somewhat_confident' THEN 2.0 WHEN 'very_confident' THEN 3.0 END),
-                    AVG(r.response_time_ms), SUM(r.response_time_ms), MAX(r.reviewed_at)
-             FROM review_events r JOIN review_event_attributions a ON a.review_event_id=r.id
+         ),
+         history(deck_id, cards_practiced, review_count, correct_count,
+                 average_confidence, average_response_time_ms,
+                 total_study_time_ms, last_practiced_at) AS (
+             SELECT a.deck_id, COUNT(DISTINCT r.card_id), COUNT(*),
+                    COALESCE(SUM(r.answer_correct),0),
+                    AVG(CASE r.confidence WHEN 'wrong' THEN 0.0
+                        WHEN 'not_confident' THEN 1.0
+                        WHEN 'somewhat_confident' THEN 2.0
+                        WHEN 'very_confident' THEN 3.0 END),
+                    AVG(r.response_time_ms), COALESCE(SUM(r.response_time_ms),0),
+                    MAX(r.reviewed_at)
+             FROM review_events r
+             JOIN review_event_attributions a ON a.review_event_id=r.id
              JOIN decks hd ON hd.id=a.deck_id AND hd.deleted_at IS NULL
-             WHERE {history_where} GROUP BY a.deck_id
+             WHERE {history_where}
+             GROUP BY a.deck_id
          )
-         SELECT d.id,d.name,d.archived_at,COALESCE(c.column2,0),COALESCE(c.column3,0),COALESCE(c.column4,0),COALESCE(c.column5,0),
-                COALESCE(h.column2,0),COALESCE(h.column3,0),COALESCE(h.column4,0),h.column5,h.column6,COALESCE(h.column7,0),h.column8
-         FROM decks d LEFT JOIN current_stats c ON c.deck_id=d.id LEFT JOIN history h ON h.deck_id=d.id
-         WHERE d.deleted_at IS NULL AND (c.deck_id IS NOT NULL OR h.deck_id IS NOT NULL)
-         ORDER BY COALESCE(h.column8,0) DESC,d.name COLLATE NOCASE", signals=learning_signal_cte());
+         SELECT d.id,d.name,d.archived_at,
+                COALESCE(c.source_note_count,0),COALESCE(c.generated_card_count,0),
+                COALESCE(c.studyable_due_count,0),COALESCE(c.needs_more_practice,0),
+                COALESCE(h.cards_practiced,0),COALESCE(h.review_count,0),
+                COALESCE(h.correct_count,0),h.average_confidence,
+                h.average_response_time_ms,COALESCE(h.total_study_time_ms,0),
+                h.last_practiced_at
+         FROM decks d
+         LEFT JOIN current_stats c ON c.deck_id=d.id
+         LEFT JOIN history h ON h.deck_id=d.id
+         WHERE d.deleted_at IS NULL
+           AND (c.deck_id IS NOT NULL OR h.deck_id IS NOT NULL)
+         ORDER BY COALESCE(h.last_practiced_at,0) DESC,d.name COLLATE NOCASE",
+        signals = learning_signal_cte()
+    );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map(params_from_iter(values.iter()), |r| {
             let reviews: i64 = r.get(8)?;
             let correct: i64 = r.get(9)?;
@@ -460,29 +489,96 @@ fn deck_stats(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(rows)
 }
 
 fn tag_stats(connection: &Connection, scope: &Scope) -> Result<Vec<TagAnalyticsDto>, CommandError> {
-    let (where_sql, values) = history_where(scope);
-    let sql=format!(
-        "WITH history AS (
-             SELECT ta.tag_id, COALESCE(t.name,MIN(ta.captured_name)) AS tag_name,
-                    COUNT(DISTINCT r.card_id),COUNT(*),SUM(r.answer_correct),
-                    AVG(CASE r.confidence WHEN 'wrong' THEN 0.0 WHEN 'not_confident' THEN 1.0 WHEN 'somewhat_confident' THEN 2.0 WHEN 'very_confident' THEN 3.0 END),
-                    AVG(r.response_time_ms),SUM(r.response_time_ms),MAX(r.reviewed_at)
-             FROM review_events r JOIN review_event_attributions a ON a.review_event_id=r.id
+    let (history_where, mut values) = history_where(scope);
+    let current_start_index = scope
+        .start_date
+        .map(|date| push(&mut values, date.format("%Y-%m-%d").to_string()));
+    let previous_start_index = scope
+        .previous_start
+        .map(|date| push(&mut values, date.format("%Y-%m-%d").to_string()));
+    let now_index = push(&mut values, scope.context.now_utc_millis);
+    let previous_condition = match (previous_start_index, current_start_index) {
+        (Some(previous), Some(current)) => {
+            format!("a.review_local_date >= ?{previous} AND a.review_local_date < ?{current}")
+        }
+        _ => "0=1".to_string(),
+    };
+    let sql = format!(
+        "WITH {signals},
+         current_stats(tag_id, source_note_count, generated_card_count,
+                       studyable_due_count, needs_more_practice) AS (
+             SELECT nt.tag_id, COUNT(DISTINCT n.id), COUNT(DISTINCT c.id),
+                    COALESCE(SUM(CASE WHEN c.suspended_at IS NULL
+                         AND (c.buried_until IS NULL OR c.buried_until <= ?{now_index})
+                         AND s.due_at <= ?{now_index} THEN 1 ELSE 0 END),0),
+                    COALESCE(SUM(CASE WHEN c.suspended_at IS NULL
+                         AND (c.buried_until IS NULL OR c.buried_until <= ?{now_index})
+                         THEN COALESCE(ls.needs_more_practice,0) ELSE 0 END),0)
+             FROM note_tags nt JOIN notes n ON n.id=nt.note_id
+             JOIN cards c ON c.note_id=n.id JOIN decks d ON d.id=c.deck_id
+             JOIN card_schedules s ON s.card_id=c.id
+             LEFT JOIN learning_signals ls ON ls.card_id=c.id
+             WHERE n.deleted_at IS NULL AND c.deleted_at IS NULL
+               AND d.deleted_at IS NULL AND d.archived_at IS NULL
+             GROUP BY nt.tag_id
+         ),
+         history(tag_id,captured_name,cards_practiced,review_count,correct_count,
+                 average_confidence,average_response_time_ms,total_study_time_ms,
+                 last_practiced_at) AS (
+             SELECT ta.tag_id,MIN(ta.captured_name),COUNT(DISTINCT r.card_id),COUNT(*),
+                    COALESCE(SUM(r.answer_correct),0),
+                    AVG(CASE r.confidence WHEN 'wrong' THEN 0.0
+                        WHEN 'not_confident' THEN 1.0
+                        WHEN 'somewhat_confident' THEN 2.0
+                        WHEN 'very_confident' THEN 3.0 END),
+                    AVG(r.response_time_ms),COALESCE(SUM(r.response_time_ms),0),
+                    MAX(r.reviewed_at)
+             FROM review_events r
+             JOIN review_event_attributions a ON a.review_event_id=r.id
              JOIN decks d ON d.id=a.deck_id AND d.deleted_at IS NULL
              JOIN review_event_tag_attributions ta ON ta.review_event_id=r.id
-             LEFT JOIN tags t ON t.id=ta.tag_id
-             WHERE {where_sql} GROUP BY ta.tag_id
-         ) SELECT tag_id,tag_name,column3,column4,column5,column6,column7,column8,column9 FROM history ORDER BY column9 DESC,tag_name COLLATE NOCASE");
+             WHERE {history_where}
+             GROUP BY ta.tag_id
+         ),
+         previous(tag_id,correct_rate) AS (
+             SELECT ta.tag_id,1.0*SUM(r.answer_correct)/NULLIF(COUNT(*),0)
+             FROM review_events r
+             JOIN review_event_attributions a ON a.review_event_id=r.id
+             JOIN decks d ON d.id=a.deck_id AND d.deleted_at IS NULL
+             JOIN review_event_tag_attributions ta ON ta.review_event_id=r.id
+             WHERE {previous_condition}
+             GROUP BY ta.tag_id
+         ),
+         dimensions(tag_id) AS (
+             SELECT tag_id FROM current_stats UNION SELECT tag_id FROM history
+         )
+         SELECT dim.tag_id,COALESCE(t.name,h.captured_name),
+                COALESCE(c.source_note_count,0),COALESCE(c.generated_card_count,0),
+                COALESCE(c.studyable_due_count,0),COALESCE(c.needs_more_practice,0),
+                COALESCE(h.cards_practiced,0),COALESCE(h.review_count,0),
+                COALESCE(h.correct_count,0),h.average_confidence,
+                h.average_response_time_ms,COALESCE(h.total_study_time_ms,0),
+                h.last_practiced_at,p.correct_rate
+         FROM dimensions dim LEFT JOIN tags t ON t.id=dim.tag_id
+         LEFT JOIN current_stats c ON c.tag_id=dim.tag_id
+         LEFT JOIN history h ON h.tag_id=dim.tag_id
+         LEFT JOIN previous p ON p.tag_id=dim.tag_id
+         ORDER BY COALESCE(h.last_practiced_at,0) DESC,
+                  COALESCE(t.name,h.captured_name) COLLATE NOCASE",
+        signals = learning_signal_cte()
+    );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
     let rows = statement
         .query_map(params_from_iter(values.iter()), |r| {
-            let reviews: i64 = r.get(3)?;
-            let correct: i64 = r.get(4)?;
+            let reviews: i64 = r.get(7)?;
+            let correct: i64 = r.get(8)?;
             let rate = ratio(correct, reviews);
+            let previous: Option<f64> = r.get(13)?;
             let status = if reviews < 3 {
                 "building_data"
             } else if rate.unwrap_or(0.0) < 0.6 {
@@ -495,19 +591,22 @@ fn tag_stats(connection: &Connection, scope: &Scope) -> Result<Vec<TagAnalyticsD
             Ok(TagAnalyticsDto {
                 tag_id: r.get(0)?,
                 tag_name: r.get(1)?,
-                source_note_count: 0,
-                generated_card_count: 0,
-                studyable_due_count: 0,
-                needs_more_practice: 0,
-                cards_practiced: r.get(2)?,
+                source_note_count: r.get(2)?,
+                generated_card_count: r.get(3)?,
+                studyable_due_count: r.get(4)?,
+                needs_more_practice: r.get(5)?,
+                cards_practiced: r.get(6)?,
                 review_count: reviews,
                 correct_count: correct,
                 correct_rate: rate,
-                average_confidence: r.get(5)?,
-                average_response_time_ms: r.get(6)?,
-                total_study_time_ms: r.get(7)?,
-                last_practiced_at: r.get(8)?,
-                trend_delta: None,
+                average_confidence: r.get(9)?,
+                average_response_time_ms: r.get(10)?,
+                total_study_time_ms: r.get(11)?,
+                last_practiced_at: r.get(12)?,
+                trend_delta: match (rate, previous) {
+                    (Some(current), Some(old)) => Some(current - old),
+                    _ => None,
+                },
                 status: status.to_string(),
             })
         })
@@ -612,7 +711,7 @@ fn recent_reviews(
     let limit_index = push(&mut values, limit);
     let sql=format!("SELECT r.id,a.deck_id,d.name,r.card_id,a.question_excerpt,COALESCE((SELECT group_concat(name,char(31)) FROM (SELECT DISTINCT COALESCE(t.name,ta.captured_name) name FROM review_event_tag_attributions ta LEFT JOIN tags t ON t.id=ta.tag_id WHERE ta.review_event_id=r.id ORDER BY name COLLATE NOCASE)),''),r.confidence,r.rating,r.response_time_ms,r.reviewed_at,r.due_after,a.attribution_source FROM review_events r JOIN review_event_attributions a ON a.review_event_id=r.id JOIN decks d ON d.id=a.deck_id AND d.deleted_at IS NULL WHERE {where_sql} ORDER BY r.reviewed_at DESC,r.created_at DESC,r.id DESC LIMIT ?{limit_index}");
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map(params_from_iter(values.iter()), |r| {
             Ok(RecentReviewDto {
                 id: r.get(0)?,
@@ -631,7 +730,8 @@ fn recent_reviews(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(rows)
 }
 
 fn recent_sessions(
@@ -642,7 +742,7 @@ fn recent_sessions(
     let highlighted_index = push(&mut values, scope.highlighted.clone().unwrap_or_default());
     let sql=format!("SELECT ps.id,ps.mode,COALESCE((SELECT group_concat(name,char(31)) FROM (SELECT DISTINCT d2.name name FROM review_events r2 JOIN review_event_attributions a2 ON a2.review_event_id=r2.id JOIN decks d2 ON d2.id=a2.deck_id AND d2.deleted_at IS NULL WHERE r2.session_id=ps.id ORDER BY name COLLATE NOCASE)),''),ps.started_at,ps.completed_at,ps.card_count,ps.rated_count,ps.correct_count,COALESCE(SUM(r.response_time_ms),0),CASE WHEN ps.id=?{highlighted_index} THEN 1 ELSE 0 END FROM practice_sessions ps JOIN review_events r ON r.session_id=ps.id JOIN review_event_attributions a ON a.review_event_id=r.id JOIN decks d ON d.id=a.deck_id AND d.deleted_at IS NULL WHERE {where_sql} GROUP BY ps.id ORDER BY ps.started_at DESC LIMIT 12");
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map(params_from_iter(values.iter()), |r| {
             let rated: i64 = r.get(6)?;
             let correct: i64 = r.get(7)?;
@@ -667,7 +767,8 @@ fn recent_sessions(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(rows)
 }
 
 fn dimensions(connection: &Connection) -> Result<AnalyticsDimensionOptionsDto, CommandError> {

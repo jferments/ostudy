@@ -6,7 +6,7 @@
 //! Each command captures one context and passes it through subordinate queries so
 //! a request cannot straddle midnight with inconsistent interpretations.
 
-use chrono::{DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, TimeZone};
+use chrono::{Datelike, Duration, Local, LocalResult, NaiveDate, TimeZone};
 
 use crate::{error::CommandError, util::unix_time_millis};
 

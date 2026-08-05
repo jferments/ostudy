@@ -268,11 +268,12 @@ fn archive_deck_in_connection(
                    AND psc.rated_at IS NULL AND psc.dismissed_at IS NULL",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([deck_id], |row| row.get::<_, String>(0))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     transaction
         .execute(

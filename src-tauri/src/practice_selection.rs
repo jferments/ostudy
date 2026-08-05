@@ -1,7 +1,7 @@
 //! Bounded scheduled, extra, custom, and tag-scoped practice-session selection.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     hash::{Hash, Hasher},
 };
 

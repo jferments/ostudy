@@ -20,7 +20,7 @@ use crate::{
         SCHEDULER_VERSION,
     },
     study_calendar::{parse_local_date, StudyTimeContext},
-    util::{generate_id, unix_time_millis, validate_entity_id},
+    util::{generate_id, validate_entity_id},
 };
 
 const MAX_SCHEDULE_ACTION_CARDS: usize = 10_000;
