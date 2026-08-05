@@ -25,7 +25,8 @@ vi.mock("../ipc", () => ({
     error instanceof Error ? error.message : "Unexpected error",
   ),
   getOrganizedCard: vi.fn(),
-  listCardTemplates: vi.fn(),
+  getCardTemplate: vi.fn(),
+  listCardTemplateSummaries: vi.fn(),
   listDecks: vi.fn(),
   listTags: vi.fn(),
   previewTemplateCards: vi.fn(),
@@ -38,10 +39,12 @@ const deck: ipc.Deck = {
   id: "a".repeat(32),
   name: "Pharmacology",
   description: "",
-  cardCount: 2,
-  dueCount: 1,
+  sourceNoteCount: 2,
+  generatedCardCount: 2,
+  studyableDueCount: 1,
   createdAt: 1,
   updatedAt: 1,
+  archivedAt: null,
   revision: 1,
 };
 
@@ -75,6 +78,7 @@ const card: ipc.OrganizedCard = {
   dueAt: Date.now(),
   createdAt: 1,
   updatedAt: 1,
+  archivedAt: null,
   revision: 1,
 };
 
@@ -92,7 +96,7 @@ describe("CardEditorScreen", () => {
     vi.mocked(ipc.syncAssetDraft).mockResolvedValue(undefined);
     vi.mocked(ipc.listDecks).mockResolvedValue([deck, secondDeck]);
     vi.mocked(ipc.listTags).mockResolvedValue([]);
-    vi.mocked(ipc.listCardTemplates).mockResolvedValue([]);
+    vi.mocked(ipc.listCardTemplateSummaries).mockResolvedValue([]);
     vi.mocked(ipc.getCardTypeInfo).mockResolvedValue({
       cardType: "basic",
       reverseEnabled: false,

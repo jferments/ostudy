@@ -94,7 +94,7 @@ describe("ScheduleActionModal", () => {
     });
   });
 
-  it("resolves a preset due date at local noon on the next calendar day", async () => {
+  it("sends a backend-authoritative next-local-day intent", async () => {
     const startedOn = new Date();
     vi.mocked(ipc.applyScheduleAction).mockResolvedValue({
       affectedCount: 1,

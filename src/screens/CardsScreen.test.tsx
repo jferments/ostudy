@@ -56,10 +56,12 @@ const deck: ipc.Deck = {
   id: "a".repeat(32),
   name: "Pharmacology",
   description: "",
-  cardCount: 2,
-  dueCount: 1,
+  sourceNoteCount: 2,
+  generatedCardCount: 2,
+  studyableDueCount: 1,
   createdAt: 1,
   updatedAt: 1,
+  archivedAt: null,
   revision: 1,
 };
 const secondDeck: ipc.Deck = {

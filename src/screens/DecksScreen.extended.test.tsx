@@ -18,12 +18,14 @@ vi.mock("../generatedImport", () => ({
 const importOperationId = "9".repeat(32);
 
 vi.mock("../ipc", () => ({
+  archiveDeck: vi.fn(),
   createDeck: vi.fn(),
   createOperationId: vi.fn(() => importOperationId),
   deleteCard: vi.fn(),
   deleteDeck: vi.fn(),
   exportDeck: vi.fn(),
   getDeck: vi.fn(),
+  getOrganizedCard: vi.fn(),
   getErrorCode: (error: unknown) =>
     typeof error === "object" && error !== null && "code" in error
       ? String((error as { code: unknown }).code)
@@ -36,8 +38,10 @@ vi.mock("../ipc", () => ({
     return "Unexpected error";
   },
   importDeck: vi.fn(),
-  listCards: vi.fn(),
+  listArchivedDecks: vi.fn(),
+  listDeckCards: vi.fn(),
   undoDeletion: vi.fn(),
+  unarchiveDeck: vi.fn(),
   updateDeck: vi.fn(),
 }));
 vi.mock("./CardEditorScreen", () => ({
@@ -75,6 +79,7 @@ function deletionResult(deckName: string): ipc.DeletionResult {
 describe("DecksScreen extended behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(ipc.listArchivedDecks).mockResolvedValue([]);
     resetTestEntityIds();
     vi.mocked(openDialog).mockResolvedValue(null);
     vi.mocked(saveDialog).mockResolvedValue(null);

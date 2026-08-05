@@ -28,6 +28,7 @@ vi.mock("../ipc", () => ({
     }
     return "Unexpected error";
   },
+  getPracticeCardWindow: vi.fn(),
   getPracticeWorkload: vi.fn(),
   markPracticeCardRevealed: vi.fn(),
   markPracticeCardViewed: vi.fn(),
@@ -40,17 +41,19 @@ const deck: ipc.Deck = {
   id: "a".repeat(32),
   name: "Dog facts",
   description: "",
-  cardCount: 2,
-  dueCount: 1,
+  sourceNoteCount: 2,
+  generatedCardCount: 2,
+  studyableDueCount: 1,
   createdAt: 1,
   updatedAt: 1,
+  archivedAt: null,
   revision: 1,
 };
 const noDueDeck: ipc.Deck = {
   ...deck,
   id: "9".repeat(32),
   name: "Reviewed dog facts",
-  dueCount: 0,
+  studyableDueCount: 0,
 };
 const settings: ipc.AppSettings = {
   theme: "synthwave",
@@ -77,6 +80,7 @@ const card: ipc.Flashcard = {
   assets: [],
   createdAt: 1,
   updatedAt: 1,
+  archivedAt: null,
   revision: 1,
 };
 const session: ipc.PracticeSession = {
@@ -90,6 +94,8 @@ const session: ipc.PracticeSession = {
       needsMorePractice: true,
     },
   ],
+  cardCount: 1,
+  hasMore: false,
   shuffle: true,
   mode: "scheduled",
   startedAt: Date.now(),
@@ -178,6 +184,7 @@ describe("PracticeScreen", () => {
     vi.clearAllMocks();
     vi.mocked(analyticsIpc.getRecentPracticeReviews).mockResolvedValue([]);
     vi.mocked(ipc.getPracticeWorkload).mockResolvedValue(workload);
+    vi.mocked(ipc.getPracticeCardWindow).mockResolvedValue({ startPosition: 50, cards: [], hasMore: false });
     vi.mocked(ipc.markPracticeCardViewed).mockResolvedValue(undefined);
     vi.mocked(ipc.markPracticeCardRevealed).mockResolvedValue(previews);
     vi.mocked(ipc.completePracticeSession).mockResolvedValue(undefined);
@@ -199,6 +206,7 @@ describe("PracticeScreen", () => {
       expect(ipc.startSelectedPractice).toHaveBeenCalledWith({
         operationId: "0".repeat(32),
         deckIds: [deck.id],
+        tagIds: [],
         shuffle: true,
         mode: "scheduled",
       }),
@@ -218,6 +226,7 @@ describe("PracticeScreen", () => {
       expect(ipc.startSelectedPractice).toHaveBeenCalledWith({
         operationId: "0".repeat(32),
         deckIds: [noDueDeck.id],
+        tagIds: [],
         shuffle: true,
         mode: "extra",
       }),
@@ -254,6 +263,7 @@ describe("PracticeScreen", () => {
         requestId: 8,
         deckIds: [],
         cardIds: [card.id],
+        tagIds: [],
         autoStart: true,
       },
       onLaunchConsumed,

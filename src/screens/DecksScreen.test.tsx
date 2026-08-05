@@ -18,12 +18,14 @@ vi.mock("../generatedImport", () => ({
 const importOperationId = "9".repeat(32);
 
 vi.mock("../ipc", () => ({
+  archiveDeck: vi.fn(),
   createDeck: vi.fn(),
   createOperationId: vi.fn(() => importOperationId),
   deleteCard: vi.fn(),
   deleteDeck: vi.fn(),
   exportDeck: vi.fn(),
   getDeck: vi.fn(),
+  getOrganizedCard: vi.fn(),
   getErrorCode: (error: unknown) =>
     typeof error === "object" && error !== null && "code" in error
       ? String((error as { code: unknown }).code)
@@ -31,7 +33,9 @@ vi.mock("../ipc", () => ({
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
   importDeck: vi.fn(),
-  listCards: vi.fn(),
+  listArchivedDecks: vi.fn(),
+  listDeckCards: vi.fn(),
+  unarchiveDeck: vi.fn(),
   updateDeck: vi.fn(),
 }));
 
@@ -43,10 +47,12 @@ const deck: ipc.Deck = {
   id: "a".repeat(32),
   name: "Dog facts",
   description: "Dogs are cool animals",
-  cardCount: 2,
-  dueCount: 0,
+  sourceNoteCount: 2,
+  generatedCardCount: 2,
+  studyableDueCount: 0,
   createdAt: 1,
   updatedAt: 1,
+  archivedAt: null,
   revision: 1,
 };
 
@@ -62,6 +68,7 @@ const card: ipc.Flashcard = {
   assets: [],
   createdAt: 1,
   updatedAt: 1,
+  archivedAt: null,
   revision: 1,
 };
 
@@ -97,7 +104,9 @@ describe("DecksScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(ipc.getDeck).mockResolvedValue(deck);
-    vi.mocked(ipc.listCards).mockResolvedValue([card]);
+    vi.mocked(ipc.listArchivedDecks).mockResolvedValue([]);
+    vi.mocked(ipc.listDeckCards).mockResolvedValue({ cards: [{ noteId: card.noteId, primaryCardId: card.id, questionExcerpt: card.frontText, answerExcerpt: card.backText, generatedCardCount: 1, imageCount: 0, updatedAt: card.updatedAt }], totalCount: 1 });
+    vi.mocked(ipc.getOrganizedCard).mockResolvedValue({ ...card, tags: [], dueAt: Date.now() });
   });
 
   it("keeps Practice enabled for a non-empty deck with no cards due", async () => {

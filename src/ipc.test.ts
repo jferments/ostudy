@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   analyzeBulkCards,
+  archiveDeck,
   applyScheduleAction,
   beginAssetDraft,
   bulkCreateCards,
@@ -27,12 +28,14 @@ import {
   getErrorCode,
   getErrorMessage,
   getOrganizedCard,
+  getPracticeCardWindow,
   getPracticeWorkload,
   getSettings,
   importDeck,
   importImage,
-  listCardTemplates,
-  listCards,
+  listArchivedDecks,
+  listCardTemplateSummaries,
+  listDeckCards,
   listDecks,
   listMatchingCards,
   listTags,
@@ -51,6 +54,7 @@ import {
   updateCardTemplate,
   updateDeck,
   updateGeneratedCard,
+  unarchiveDeck,
   type AppSettings,
   type CardSearchInput,
   type CreateCardTemplateInput,
@@ -130,6 +134,9 @@ describe("typed Tauri IPC wrappers", () => {
 
   it("wires deck and card-library commands with their exact payload shapes", async () => {
     await expectInvocation(listDecks, "list_decks");
+    await expectInvocation(listArchivedDecks, "list_archived_decks");
+    await expectInvocation(() => archiveDeck(deckId), "archive_deck", { deckId });
+    await expectInvocation(() => unarchiveDeck(deckId), "unarchive_deck", { deckId });
     await expectInvocation(() => getDeck(deckId), "get_deck", { deckId });
     await expectInvocation(
       () => createDeck({ name: "Pharmacology", description: "NCLEX" }),
@@ -154,7 +161,7 @@ describe("typed Tauri IPC wrappers", () => {
         },
       },
     );
-    await expectInvocation(() => listCards(deckId), "list_cards", { deckId });
+    await expectInvocation(() => listDeckCards(deckId), "list_deck_cards", { input: { deckId, query: "", limit: 50, offset: 0 } });
     await expectInvocation(() => listTags(), "list_tags", {
       input: { deckIds: [] },
     });
@@ -192,7 +199,7 @@ describe("typed Tauri IPC wrappers", () => {
     await expectInvocation(() => getCardTypeInfo(noteId), "get_card_type_info", {
       noteId,
     });
-    await expectInvocation(listCardTemplates, "list_card_templates");
+    await expectInvocation(listCardTemplateSummaries, "list_card_template_summaries");
     await expectInvocation(
       () => getCardTemplate(templateId),
       "get_card_template",
@@ -334,11 +341,12 @@ describe("typed Tauri IPC wrappers", () => {
     await expectInvocation(
       () => getPracticeWorkload([deckId]),
       "get_practice_workload",
-      { input: { deckIds: [deckId] } },
+      { input: { deckIds: [deckId], tagIds: [] } },
     );
     const selectedStart = {
       operationId: "5".repeat(32),
       deckIds: [deckId],
+      tagIds: [],
       shuffle: true,
       mode: "scheduled" as const,
     };
@@ -355,6 +363,7 @@ describe("typed Tauri IPC wrappers", () => {
     await expectInvocation(() => startCardPractice(cardStart), "start_card_practice", {
       input: cardStart,
     });
+    await expectInvocation(() => getPracticeCardWindow("2".repeat(32), 50), "get_practice_card_window", { input: { sessionId: "2".repeat(32), startPosition: 50, limit: 50 } });
     await expectInvocation(
       () => markPracticeCardViewed("2".repeat(32), cardId),
       "mark_practice_card_viewed",

@@ -11,7 +11,8 @@ vi.mock("../ipc", () => ({
     error instanceof Error ? error.message : "Unexpected error",
   ),
   importImage: vi.fn(),
-  listCardTemplates: vi.fn(),
+  getCardTemplate: vi.fn(),
+  listCardTemplateSummaries: vi.fn(),
   updateCardTemplate: vi.fn(),
 }));
 
@@ -69,13 +70,15 @@ const template: ipc.CardTemplate = {
   assets: [],
   createdAt: 1,
   updatedAt: 1,
+  archivedAt: null,
   revision: 1,
 };
 
 describe("TemplatesScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.listCardTemplates).mockResolvedValue([template]);
+    vi.mocked(ipc.listCardTemplateSummaries).mockResolvedValue([{ id: template.id, name: template.name, description: template.description, fieldCount: template.fields.length, generatedCardRuleCount: template.rules.length, imageCount: template.assets.length, updatedAt: template.updatedAt, revision: template.revision }]);
+    vi.mocked(ipc.getCardTemplate).mockResolvedValue(template);
     vi.mocked(ipc.createCardTemplate).mockResolvedValue(template);
     vi.mocked(ipc.deleteCardTemplate).mockResolvedValue();
   });

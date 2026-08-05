@@ -11,7 +11,8 @@ vi.mock("../ipc", () => ({
   deleteCardTemplate: vi.fn(),
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
-  listCardTemplates: vi.fn(),
+  getCardTemplate: vi.fn(),
+  listCardTemplateSummaries: vi.fn(),
   syncAssetDraft: vi.fn(),
   updateCardTemplate: vi.fn(),
 }));
@@ -47,14 +48,15 @@ function savedTemplate(): ipc.CardTemplate {
     assets: [],
     createdAt: 1,
     updatedAt: 1,
-    revision: 1,
+    archivedAt: null,
+  revision: 1,
   };
 }
 
 describe("TemplatesScreen managed assets", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.listCardTemplates).mockResolvedValue([]);
+    vi.mocked(ipc.listCardTemplateSummaries).mockResolvedValue([]);
     vi.mocked(ipc.beginAssetDraft).mockResolvedValue({
       id: draftId,
       purpose: "template",

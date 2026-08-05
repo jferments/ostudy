@@ -185,7 +185,7 @@ export function AnalyticsScreen({
             <FilterChecklist
               label="Decks"
               emptyLabel="No decks available"
-              options={(analytics?.dimensions.decks ?? decks.map((deck) => ({ ...deck, archived: false, historicalOnly: false }))).map((deck) => ({ id: deck.id, name: deck.name, detail: deck.archived ? "Archived · history retained" : "Current deck" }))}
+              options={(analytics?.dimensions?.decks ?? decks.map((deck) => ({ ...deck, archived: false, historicalOnly: false }))).map((deck) => ({ id: deck.id, name: deck.name, detail: deck.archived ? "Archived · history retained" : "Current deck" }))}
               selected={selectedDeckIds}
               onChange={(next) => {
                 setSelectedDeckIds(next);

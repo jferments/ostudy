@@ -15,10 +15,12 @@ const deck: ipc.Deck = {
   id: "a".repeat(32),
   name: "Biology",
   description: "",
-  cardCount: 0,
-  dueCount: 0,
+  sourceNoteCount: 0,
+  generatedCardCount: 0,
+  studyableDueCount: 0,
   createdAt: 1,
   updatedAt: 1,
+  archivedAt: null,
   revision: 1,
 };
 

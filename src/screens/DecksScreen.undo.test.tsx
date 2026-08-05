@@ -6,16 +6,20 @@ import * as ipc from "../ipc";
 import { DecksScreen } from "./DecksScreen";
 
 vi.mock("../ipc", () => ({
+  archiveDeck: vi.fn(),
   createDeck: vi.fn(),
   deleteCard: vi.fn(),
   deleteDeck: vi.fn(),
   exportDeck: vi.fn(),
   getDeck: vi.fn(),
+  getOrganizedCard: vi.fn(),
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
   importDeck: vi.fn(),
-  listCards: vi.fn(),
+  listArchivedDecks: vi.fn(),
+  listDeckCards: vi.fn(),
   undoDeletion: vi.fn(),
+  unarchiveDeck: vi.fn(),
   updateDeck: vi.fn(),
 }));
 
@@ -31,10 +35,12 @@ const deck: ipc.Deck = {
   id: "a".repeat(32),
   name: "Temporary deck",
   description: "",
-  cardCount: 2,
-  dueCount: 1,
+  sourceNoteCount: 2,
+  generatedCardCount: 2,
+  studyableDueCount: 1,
   createdAt: 1,
   updatedAt: 1,
+  archivedAt: null,
   revision: 1,
 };
 const undoToken = "b".repeat(32);
@@ -56,6 +62,7 @@ const settings: ipc.AppSettings = {
 describe("DecksScreen deletion undo", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(ipc.listArchivedDecks).mockResolvedValue([]);
     vi.mocked(ipc.deleteDeck).mockResolvedValue({
       affectedCount: 2,
       undoToken,
