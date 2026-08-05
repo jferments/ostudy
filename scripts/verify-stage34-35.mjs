@@ -50,6 +50,9 @@ for (const fragment of [
   "apply_required_repairs(connection)",
   "apply_migrations_after(connection, 12)",
   "LATEST_SCHEMA_VERSION: i64 = 13",
+  "apply_foreign_key_disabled_migration",
+  "PRAGMA foreign_key_check",
+  "PRAGMA foreign_keys = ON",
 ]) {
   if (!database.includes(fragment)) failures.push(`database startup missing: ${fragment}`);
 }
@@ -68,10 +71,16 @@ for (const fragment of [
 for (const fragment of [
   "DROP COLUMN front_pattern",
   "DROP COLUMN back_pattern",
-  "notes_canonical_type_before_insert",
-  "cards_canonical_direction_before_insert",
+  "CREATE TABLE notes_canonical",
+  "CHECK(note_type IN ('basic', 'cloze'))",
+  "CREATE TABLE cards_canonical",
+  "CHECK(direction IN ('forward', 'reverse'))",
+  "DELETE FROM card_search_fts",
 ]) {
   if (!migration13.includes(fragment)) failures.push(`canonical schema cutover missing: ${fragment}`);
+}
+for (const forbidden of ["image_occlusion", "CHECK(direction IN ('forward', 'reverse', 'cloze'"] ) {
+  if (migration13.includes(forbidden)) failures.push(`canonical schema retains obsolete value: ${forbidden}`);
 }
 for (const fragment of [
   "normalize_abandoned_image_occlusion",
@@ -150,5 +159,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   current studydeck exports use one snapshot, legacy packages adapt through one reader, full backups preserve analytics history, and startup repairs are versioned no-ops.",
+  "OK   current studydeck exports use one snapshot, legacy packages adapt through one reader, full backups preserve analytics history, the canonical schema is physically narrowed, and startup repairs are versioned no-ops.",
 );
