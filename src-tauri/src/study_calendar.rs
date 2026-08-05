@@ -93,11 +93,6 @@ pub fn local_date_for_millis(value: i64) -> Result<NaiveDate, CommandError> {
         .map(|date_time| date_time.date_naive())
         .ok_or_else(invalid_calendar_time)
 }
-
-pub fn local_date_string_for_millis(value: i64) -> Result<String, CommandError> {
-    Ok(local_date_for_millis(value)?.format("%Y-%m-%d").to_string())
-}
-
 /// Resolve the first valid local instant belonging to `date`.
 ///
 /// Most zones have an unambiguous midnight. A few historical/current time-zone

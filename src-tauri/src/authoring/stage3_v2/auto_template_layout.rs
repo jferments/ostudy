@@ -80,16 +80,6 @@ fn normalize_card_template_dto_for_editing(
     }
     Ok(template)
 }
-
-fn normalize_card_template_list_for_editing(
-    templates: Vec<CardTemplateDto>,
-) -> Result<Vec<CardTemplateDto>, CommandError> {
-    templates
-        .into_iter()
-        .map(normalize_card_template_dto_for_editing)
-        .collect()
-}
-
 fn automatic_template_field_lookup_from_inputs(
     fields: &[CardTemplateFieldInput],
 ) -> Result<AutomaticTemplateFieldLookup, CommandError> {

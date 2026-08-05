@@ -19,7 +19,6 @@ mod deletion;
 mod deletion_commands;
 mod error;
 mod historical_attribution;
-mod learning_signals;
 mod library_backup;
 mod logging;
 mod paths;

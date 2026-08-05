@@ -1,26 +1,3 @@
-fn list_card_templates_in_connection(
-    connection: &mut Connection,
-    paths: &AppPaths,
-) -> Result<Vec<CardTemplateDto>, CommandError> {
-    let ids = {
-        let mut statement = connection
-            .prepare(
-                "SELECT id FROM card_templates
-                 WHERE deleted_at IS NULL
-                 ORDER BY name COLLATE NOCASE ASC, created_at ASC",
-            )
-            .map_err(CommandError::database)?;
-        let rows = statement
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(CommandError::database)?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
-    };
-    ids.into_iter()
-        .map(|id| Ok(load_stored_template(connection, paths, &id, true)?.dto))
-        .collect()
-}
-
 fn create_card_template_in_connection(
     connection: &mut Connection,
     paths: &AppPaths,

@@ -18,7 +18,6 @@ const MAX_PLANNED_CARDS: i64 = 10_000;
 pub struct PlannedCard {
     pub deck_id: String,
     pub card_id: String,
-    pub note_id: String,
     pub due_at: i64,
     pub state: i64,
     pub needs_more_practice: bool,
@@ -42,20 +41,6 @@ pub struct WorkloadOverviewDto {
     pub omitted_due_new: i64,
     pub needs_more_practice: i64,
     pub extra_available: i64,
-}
-
-pub fn workload_overview(
-    connection: &Connection,
-    deck_ids: &[String],
-    settings: &AppSettingsDto,
-) -> Result<WorkloadOverviewDto, CommandError> {
-    workload_overview_scoped(
-        connection,
-        deck_ids,
-        &[],
-        settings,
-        &StudyTimeContext::capture()?,
-    )
 }
 
 pub fn workload_overview_scoped(
@@ -142,20 +127,6 @@ pub fn workload_overview_scoped(
     })
 }
 
-pub fn planned_scheduled_cards(
-    connection: &Connection,
-    deck_ids: &[String],
-    settings: &AppSettingsDto,
-) -> Result<(Vec<PlannedCard>, WorkloadOverviewDto), CommandError> {
-    planned_scheduled_cards_scoped(
-        connection,
-        deck_ids,
-        &[],
-        settings,
-        &StudyTimeContext::capture()?,
-    )
-}
-
 pub fn planned_scheduled_cards_scoped(
     connection: &Connection,
     deck_ids: &[String],
@@ -185,13 +156,6 @@ pub fn planned_scheduled_cards_scoped(
     Ok((selected, overview))
 }
 
-pub fn planned_extra_cards(
-    connection: &Connection,
-    deck_ids: &[String],
-) -> Result<Vec<PlannedCard>, CommandError> {
-    planned_extra_cards_scoped(connection, deck_ids, &[], &StudyTimeContext::capture()?)
-}
-
 pub fn planned_extra_cards_scoped(
     connection: &Connection,
     deck_ids: &[String],
@@ -203,7 +167,7 @@ pub fn planned_extra_cards_scoped(
     let sql = format!(
         "WITH {signals},
          ranked AS (
-             SELECT c.deck_id, c.id, c.note_id, s.due_at, s.state,
+             SELECT c.deck_id, c.id, s.due_at, s.state,
                     COALESCE(ls.needs_more_practice, 0),
                     n.note_type, n.cloze_source, n.cloze_mode, s.reps,
                     ROW_NUMBER() OVER (
@@ -219,7 +183,7 @@ pub fn planned_extra_cards_scoped(
              LEFT JOIN learning_signals ls ON ls.card_id = c.id
              WHERE {scope_sql}
          )
-         SELECT deck_id, id, note_id, due_at, state, needs_more_practice,
+         SELECT deck_id, id, due_at, state, needs_more_practice,
                 note_type, cloze_source, cloze_mode, reps
          FROM ranked
          ORDER BY deck_rank, deck_id, due_at, id
@@ -250,7 +214,7 @@ fn load_ranked(
     let sql = format!(
         "WITH {signals},
          ranked AS (
-             SELECT c.deck_id, c.id, c.note_id, s.due_at, s.state,
+             SELECT c.deck_id, c.id, s.due_at, s.state,
                     COALESCE(ls.needs_more_practice, 0),
                     n.note_type, n.cloze_source, n.cloze_mode, s.reps,
                     ROW_NUMBER() OVER (
@@ -265,7 +229,7 @@ fn load_ranked(
              LEFT JOIN learning_signals ls ON ls.card_id = c.id
              WHERE {scope_sql} AND s.due_at <= ?1 AND {state_clause}
          )
-         SELECT deck_id, id, note_id, due_at, state, needs_more_practice,
+         SELECT deck_id, id, due_at, state, needs_more_practice,
                 note_type, cloze_source, cloze_mode, reps
          FROM ranked
          ORDER BY deck_rank, deck_id, due_at, id
@@ -286,14 +250,13 @@ fn query_planned(
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
+                row.get::<_, i64>(2)?,
                 row.get::<_, i64>(3)?,
                 row.get::<_, i64>(4)?,
-                row.get::<_, i64>(5)?,
+                row.get::<_, String>(5)?,
                 row.get::<_, String>(6)?,
                 row.get::<_, String>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, i64>(9)?,
+                row.get::<_, i64>(8)?,
             ))
         })
         .map_err(CommandError::database)?
@@ -301,14 +264,13 @@ fn query_planned(
         .map_err(CommandError::database)?;
     rows.into_iter()
         .map(
-            |(deck_id, card_id, note_id, due_at, state, weak, note_type, source, mode, reps)| {
+            |(deck_id, card_id, due_at, state, weak, note_type, source, mode, reps)| {
                 Ok(PlannedCard {
                     deck_id,
                     presentation_variant: presentation_variant_for_projected(
                         &note_type, &source, &mode, reps,
                     )?,
                     card_id,
-                    note_id,
                     due_at,
                     state,
                     needs_more_practice: weak != 0,
@@ -359,7 +321,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_limits_produce_no_selected_cards_without_querying() {
+    fn planner_enforces_a_hard_session_cap() {
         assert_eq!(MAX_PLANNED_CARDS, 10_000);
     }
 }

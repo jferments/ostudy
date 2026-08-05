@@ -259,15 +259,15 @@ fn analytics_in_connection(
     scope: &Scope,
 ) -> Result<AnalyticsDto, CommandError> {
     let mut summary = current_inventory(connection, scope)?;
-    let (history, ratings) = historical_summary(connection, scope)?;
-    summary.cards_practiced = history.0;
-    summary.review_count = history.1;
-    summary.correct_count = history.2;
-    summary.correct_rate = ratio(history.2, history.1);
-    summary.average_confidence = history.3;
-    summary.average_response_time_ms = history.4;
-    summary.total_study_time_ms = history.5;
-    summary.session_count = history.6;
+    let history = historical_summary(connection, scope)?;
+    summary.cards_practiced = history.cards_practiced;
+    summary.review_count = history.review_count;
+    summary.correct_count = history.correct_count;
+    summary.correct_rate = ratio(history.correct_count, history.review_count);
+    summary.average_confidence = history.average_confidence;
+    summary.average_response_time_ms = history.average_response_time_ms;
+    summary.total_study_time_ms = history.total_study_time_ms;
+    summary.session_count = history.session_count;
     let settings = load_settings(connection)?;
     let (new_completed, reviews_completed): (i64, i64) = connection
         .query_row(
@@ -301,7 +301,7 @@ fn analytics_in_connection(
             new_remaining: (settings.daily_new_limit - new_completed).max(0),
             reviews_remaining: (settings.daily_review_limit - reviews_completed).max(0),
         },
-        rating_distribution: ratings,
+        rating_distribution: history.ratings,
         timeline: timeline(connection, scope)?,
         deck_stats: deck_stats(connection, scope)?,
         tag_stats: tag_stats(connection, scope)?,
@@ -357,16 +357,21 @@ fn current_inventory(
     })
 }
 
+struct HistoricalSummary {
+    cards_practiced: i64,
+    review_count: i64,
+    correct_count: i64,
+    average_confidence: Option<f64>,
+    average_response_time_ms: Option<f64>,
+    total_study_time_ms: i64,
+    session_count: i64,
+    ratings: RatingDistributionDto,
+}
+
 fn historical_summary(
     connection: &Connection,
     scope: &Scope,
-) -> Result<
-    (
-        (i64, i64, i64, Option<f64>, Option<f64>, i64, i64),
-        RatingDistributionDto,
-    ),
-    CommandError,
-> {
+) -> Result<HistoricalSummary, CommandError> {
     let (where_sql, values) = history_where(scope);
     let sql = format!(
         "SELECT COUNT(DISTINCT r.card_id), COUNT(*), COALESCE(SUM(r.answer_correct),0),
@@ -396,15 +401,21 @@ fn historical_summary(
             ))
         })
         .map_err(CommandError::database)?;
-    Ok((
-        (row.0, row.1, row.2, row.3, row.4, row.5, row.6),
-        RatingDistributionDto {
+    Ok(HistoricalSummary {
+        cards_practiced: row.0,
+        review_count: row.1,
+        correct_count: row.2,
+        average_confidence: row.3,
+        average_response_time_ms: row.4,
+        total_study_time_ms: row.5,
+        session_count: row.6,
+        ratings: RatingDistributionDto {
             again: row.7,
             hard: row.8,
             good: row.9,
             easy: row.10,
         },
-    ))
+    })
 }
 
 fn deck_stats(

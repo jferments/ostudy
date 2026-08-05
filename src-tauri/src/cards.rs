@@ -68,52 +68,6 @@ struct RawCard {
     updated_at: i64,
     revision: i64,
 }
-
-#[tauri::command]
-pub fn list_cards(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    deck_id: String,
-) -> Result<Vec<CardDto>, CommandError> {
-    validate_entity_id(&deck_id, "deck")?;
-    database.with_connection(|connection| list_cards_from_connection(connection, &paths, &deck_id))
-}
-
-pub(crate) fn list_cards_from_connection(
-    connection: &Connection,
-    paths: &AppPaths,
-    deck_id: &str,
-) -> Result<Vec<CardDto>, CommandError> {
-    let mut statement = connection
-        .prepare(
-            "SELECT c.id, n.id, c.deck_id, c.direction, n.front_doc, n.back_doc,\n\
-                    n.front_text, n.back_text, n.created_at, n.updated_at, n.revision\n\
-             FROM cards c\n\
-             JOIN notes n ON n.id = c.note_id\n\
-             JOIN decks d ON d.id = c.deck_id\n\
-             WHERE c.deck_id = ?1\n\
-               AND c.deleted_at IS NULL\n\
-               AND n.deleted_at IS NULL\n\
-               AND d.deleted_at IS NULL\n\
-               AND d.archived_at IS NULL\n\
-               AND c.direction = 'forward'\n\
-             ORDER BY n.updated_at DESC, n.created_at DESC",
-        )
-        .map_err(CommandError::database)?;
-
-    let rows = statement
-        .query_map([deck_id], raw_card_from_row)
-        .map_err(CommandError::database)?;
-    let raw_cards = rows
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-
-    raw_cards
-        .into_iter()
-        .map(|raw| hydrate_card(connection, paths, raw))
-        .collect()
-}
-
 pub(crate) fn get_card_from_connection(
     connection: &Connection,
     paths: &AppPaths,

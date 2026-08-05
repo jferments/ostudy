@@ -212,12 +212,14 @@ pub(crate) fn start_selected_practice_in_connection(
     create_session(
         connection,
         paths,
-        operation_id,
-        fingerprint,
-        planned,
-        shuffle,
-        mode,
-        &context,
+        SessionCreation {
+            operation_id,
+            fingerprint,
+            cards: planned,
+            shuffle,
+            mode: mode.to_string(),
+            context,
+        },
     )
 }
 
@@ -237,25 +239,39 @@ pub(crate) fn start_card_practice_in_connection(
     create_session(
         connection,
         paths,
-        operation_id,
-        fingerprint,
-        planned,
-        shuffle,
-        "custom",
-        &context,
+        SessionCreation {
+            operation_id,
+            fingerprint,
+            cards: planned,
+            shuffle,
+            mode: "custom".to_string(),
+            context,
+        },
     )
+}
+
+struct SessionCreation {
+    operation_id: String,
+    fingerprint: String,
+    cards: Vec<PendingCard>,
+    shuffle: bool,
+    mode: String,
+    context: StudyTimeContext,
 }
 
 fn create_session(
     connection: &mut Connection,
     paths: &AppPaths,
-    operation_id: String,
-    fingerprint: String,
-    mut cards: Vec<PendingCard>,
-    shuffle: bool,
-    mode: &str,
-    context: &StudyTimeContext,
+    creation: SessionCreation,
 ) -> Result<PracticeSessionDto, CommandError> {
+    let SessionCreation {
+        operation_id,
+        fingerprint,
+        mut cards,
+        shuffle,
+        mode,
+        context,
+    } = creation;
     if cards.is_empty() || cards.len() > MAX_SESSION_CARDS {
         return Err(CommandError::new(
             "too_many_practice_cards",
@@ -500,26 +516,25 @@ fn load_custom_cards(
             })
             .collect::<Vec<_>>()
             .join(",");
-        let sql=format!("WITH {signals} SELECT c.deck_id,c.id,c.note_id,s.due_at,s.state,COALESCE(ls.needs_more_practice,0),n.note_type,n.cloze_source,n.cloze_mode,s.reps FROM cards c JOIN notes n ON n.id=c.note_id JOIN decks d ON d.id=c.deck_id JOIN card_schedules s ON s.card_id=c.id LEFT JOIN learning_signals ls ON ls.card_id=c.id WHERE c.id IN ({p}) AND c.deleted_at IS NULL AND n.deleted_at IS NULL AND d.deleted_at IS NULL AND d.archived_at IS NULL AND c.suspended_at IS NULL AND (c.buried_until IS NULL OR c.buried_until<=?1)",signals=learning_signal_cte());
+        let sql=format!("WITH {signals} SELECT c.deck_id,c.id,s.due_at,s.state,COALESCE(ls.needs_more_practice,0),n.note_type,n.cloze_source,n.cloze_mode,s.reps FROM cards c JOIN notes n ON n.id=c.note_id JOIN decks d ON d.id=c.deck_id JOIN card_schedules s ON s.card_id=c.id LEFT JOIN learning_signals ls ON ls.card_id=c.id WHERE c.id IN ({p}) AND c.deleted_at IS NULL AND n.deleted_at IS NULL AND d.deleted_at IS NULL AND d.archived_at IS NULL AND c.suspended_at IS NULL AND (c.buried_until IS NULL OR c.buried_until<=?1)",signals=learning_signal_cte());
         let mut st = connection.prepare(&sql).map_err(CommandError::database)?;
         let rows = st
             .query_map(params_from_iter(values.iter()), |r| {
                 Ok((
                     r.get::<_, String>(0)?,
                     r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(2)?,
                     r.get::<_, i64>(3)?,
                     r.get::<_, i64>(4)?,
-                    r.get::<_, i64>(5)?,
+                    r.get::<_, String>(5)?,
                     r.get::<_, String>(6)?,
                     r.get::<_, String>(7)?,
-                    r.get::<_, String>(8)?,
-                    r.get::<_, i64>(9)?,
+                    r.get::<_, i64>(8)?,
                 ))
             })
             .map_err(CommandError::database)?;
         for row in rows {
-            let (d, c, n, due, state, weak, typ, source, mode, reps) =
+            let (d, c, due, state, weak, typ, source, mode, reps) =
                 row.map_err(CommandError::database)?;
             let variant = presentation_variant_for_projected(&typ, &source, &mode, reps)?;
             result.insert(
@@ -527,7 +542,6 @@ fn load_custom_cards(
                 PlannedCard {
                     deck_id: d,
                     card_id: c,
-                    note_id: n,
                     due_at: due,
                     state,
                     needs_more_practice: weak != 0,

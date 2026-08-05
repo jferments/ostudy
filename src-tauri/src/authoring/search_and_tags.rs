@@ -86,9 +86,41 @@ fn list_matching_cards_in_connection(connection:&Connection,input:SearchCardsInp
     if cards.len()>MAX_SEARCH_SELECTION{return Err(CommandError::new("too_many_matching_cards",format!("More than {MAX_SEARCH_SELECTION} cards match. Narrow the filters before selecting or practicing all results.")));}Ok(cards)
 }
 
-fn fts_query_is_present(query:&str)->bool{build_fts_query(query).is_some()}
-fn push_value(values:&mut Vec<SqlValue>,value:impl Into<SqlValue>)->usize{values.push(value.into());values.len()}
-fn build_fts_query(value:&str)->Option<String>{let mut tokens=Vec::new();let mut current=String::new();for ch in value.chars(){if ch.is_alphanumeric()||matches!(ch,'_'|'-'){current.push(ch);if current.chars().count()>=MAX_TAG_CHARS{tokens.push(std::mem::take(&mut current));}}else if !current.is_empty(){tokens.push(std::mem::take(&mut current));}if tokens.len()>=20{break;}}if !current.is_empty()&&tokens.len()<20{tokens.push(current);}let quoted=tokens.into_iter().filter(|t|!t.is_empty()).map(|t|format!("\"{}\"*",t.replace('"',"\"\""))).collect::<Vec<_>>();(!quoted.is_empty()).then(||quoted.join(" AND "))}
+fn fts_query_is_present(query: &str) -> bool {
+    build_fts_query(query).is_some()
+}
+
+fn push_value(values: &mut Vec<SqlValue>, value: impl Into<SqlValue>) -> usize {
+    values.push(value.into());
+    values.len()
+}
+
+fn build_fts_query(value: &str) -> Option<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    for character in value.chars() {
+        if character.is_alphanumeric() || matches!(character, '_' | '-') {
+            current.push(character);
+            if current.chars().count() >= MAX_TAG_CHARS {
+                tokens.push(std::mem::take(&mut current));
+            }
+        } else if !current.is_empty() {
+            tokens.push(std::mem::take(&mut current));
+        }
+        if tokens.len() >= 20 {
+            break;
+        }
+    }
+    if !current.is_empty() && tokens.len() < 20 {
+        tokens.push(current);
+    }
+    let quoted = tokens
+        .into_iter()
+        .filter(|token| !token.is_empty())
+        .map(|token| format!("\"{}\"*", token.replace('"', "\"\"")))
+        .collect::<Vec<_>>();
+    (!quoted.is_empty()).then(|| quoted.join(" AND "))
+}
 
 fn hydrate_organized_card(
     connection: &Connection,
