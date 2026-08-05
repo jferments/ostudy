@@ -1,0 +1,401 @@
+exit_status=101
+
+warning: function `needs_more_practice` is never used
+ --> src/learning_signals.rs:9:8
+  |
+9 | pub fn needs_more_practice(connection: &Connection, card_id: &str) -> Result<bool, CommandError> {
+  |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `count_needing_more_practice` is never used
+  --> src/learning_signals.rs:40:8
+   |
+40 | pub fn count_needing_more_practice(
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `needs_more_practice_from_recent` is never used
+  --> src/learning_signals.rs:84:4
+   |
+84 | fn needs_more_practice_from_recent(recent_descending: &[i64]) -> bool {
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `ID_CHUNK_SIZE` is never used
+ --> src/projections/scope.rs:9:11
+  |
+9 | pub const ID_CHUNK_SIZE: usize = 250;
+  |           ^^^^^^^^^^^^^
+
+warning: function `push_integer` is never used
+  --> src/projections/scope.rs:38:8
+   |
+38 | pub fn push_integer(values: &mut Vec<SqlValue>, value: i64) -> usize {
+   |        ^^^^^^^^^^^^
+
+warning: field `utc_offset_minutes` is never read
+  --> src/study_calendar.rs:27:9
+   |
+24 | pub struct StudyTimeContext {
+   |            ---------------- field in this struct
+...
+27 |     pub utc_offset_minutes: i32,
+   |         ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `StudyTimeContext` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: struct `StudyabilityState` is never constructed
+ --> src/studyability.rs:8:12
+  |
+8 | pub struct StudyabilityState {
+  |            ^^^^^^^^^^^^^^^^^
+
+warning: methods `is_current`, `is_studyable`, and `is_studyable_due` are never used
+  --> src/studyability.rs:19:12
+   |
+18 | impl StudyabilityState {
+   | ---------------------- methods in this implementation
+19 |     pub fn is_current(self) -> bool {
+   |            ^^^^^^^^^^
+...
+23 |     pub fn is_studyable(self, now: i64) -> bool {
+   |            ^^^^^^^^^^^^
+...
+27 |     pub fn is_studyable_due(self, now: i64) -> bool {
+   |            ^^^^^^^^^^^^^^^^
+
+warning: function `current_card_conditions` is never used
+  --> src/studyability.rs:32:8
+   |
+32 | pub fn current_card_conditions(card: &str, note: &str, deck: &str) -> Vec<String> {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `studyable_card_conditions` is never used
+  --> src/studyability.rs:41:8
+   |
+41 | pub fn studyable_card_conditions(
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `studyable_due_conditions` is never used
+  --> src/studyability.rs:55:8
+   |
+55 | pub fn studyable_due_conditions(
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `current_card_sql` is never used
+  --> src/studyability.rs:67:8
+   |
+67 | pub fn current_card_sql(card: &str, note: &str, deck: &str) -> String {
+   |        ^^^^^^^^^^^^^^^^
+
+warning: function `studyable_card_sql` is never used
+  --> src/studyability.rs:71:8
+   |
+71 | pub fn studyable_card_sql(card: &str, note: &str, deck: &str, now_parameter: &str) -> String {
+   |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `studyable_due_sql` is never used
+  --> src/studyability.rs:75:8
+   |
+75 | pub fn studyable_due_sql(
+   |        ^^^^^^^^^^^^^^^^^
+
+warning: field `note_id` is never read
+  --> src/workload.rs:18:9
+   |
+15 | pub struct PlannedCard {
+   |            ----------- field in this struct
+...
+18 |     pub note_id: String,
+   |         ^^^^^^^
+   |
+   = note: `PlannedCard` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `next_local_day_start_millis` is never used
+  --> src/workload.rs:44:15
+   |
+44 | pub(crate) fn next_local_day_start_millis(now: i64) -> Result<i64, CommandError> {
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `ostudy` (lib test) generated 21 warnings (21 duplicates)
+warning: `ostudy` (lib) generated 27 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 43.85s
+     Running unittests src/lib.rs (src-tauri/target/debug/deps/ostudy_lib-5559d16c726a7c2f)
+
+running 101 tests
+test analytics::tests::default_range_is_a_local_calendar_week ... ok
+test analytics::tests::months_advance_across_year_boundary ... ok
+test assets::tests::recognizes_supported_image_signatures ... ok
+test assets::tests::rejects_unsafe_original_filenames ... ok
+test authoring::generated_import_tests::markdown_rejects_html_images_and_tables ... ok
+test authoring::generated_import_tests::card_validation_reports_every_invalid_card_before_writing ... ok
+test authoring::generated_import_tests::markdown_builds_supported_rich_document ... ok
+test authoring::generated_import_tests::strict_json_requires_a_deck_mode_and_rejects_unknown_card_fields ... ok
+test authoring::stage3_v2_tests::inline_placeholders_accept_optional_display_labels ... ok
+test authoring::stage3_v2_tests::cloze_rotation_uses_one_card_schedule_review_count ... ok
+test authoring::stage3_v2_tests::normalizes_legacy_block_placeholders_to_neutral_placeholders ... ok
+test authoring::stage3_v2_tests::keeps_simple_single_paragraph_values_inline ... ok
+test authoring::stage3_v2_tests::promotes_image_only_values_without_empty_wrapper_paragraphs ... ok
+test authoring::stage3_v2_tests::rejects_unknown_and_incomplete_typed_placeholders ... ok
+test authoring::stage3_v2_tests::promotes_lists_to_blocks_and_splits_surrounding_paragraphs ... ok
+test authoring::stage3_v2_tests::resolves_typed_field_names_to_stable_ids ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947250068,"version":"0.1.0"}
+
+thread 'asset_lifecycle::tests::corrupt_referenced_file_is_marked_missing_without_blocking_startup' (1411795) panicked at src/asset_lifecycle.rs:1782:14:
+corrupt reference should not abort reconciliation: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947250069,"version":"0.1.0"}
+
+thread 'authoring::tests::moving_preserves_card_identity_and_copying_creates_a_fresh_schedule' (1411820) panicked at src/authoring/tests.rs:17:14:
+deck should be created: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test asset_lifecycle::tests::corrupt_referenced_file_is_marked_missing_without_blocking_startup ... FAILED{
+"application":"ostudy","event":"committed_asset_finalization_failed","level":"error","message":"operation=test_post_commit_template owner_id=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa error=This image draft no longer exists.","timestampMs":1785947250075,"version":"0.1.0"}
+test authoring::tests::normalizes_tags_and_duplicate_text ... ok
+test authoring::tests::removed_authoring_fields_are_rejected ... ok
+test card_projections::tests::pages_are_bounded ... ok
+test cards::tests::accepts_complete_supported_links ... ok
+test cards::tests::accepts_supported_rich_text_and_local_image_nodes ... ok
+test cards::tests::accepts_tiptap_image_dimensions ... ok
+test cards::tests::derives_search_text_from_the_validated_document ... ok
+test cards::tests::distinguishes_unsupported_content_from_invalid_structure ... ok
+test authoring::tests::moving_preserves_card_identity_and_copying_creates_a_fresh_schedule ... FAILED
+test cards::tests::rejects_incomplete_or_unsafe_links ... ok
+test cards::tests::rejects_javascript_links ... ok
+test cards::tests::rejects_unknown_nodes_and_noncanonical_images ... ok
+test authoring::stage3_v2_asset_lifecycle_tests::post_commit_asset_failure_does_not_erase_durable_template ... ok
+test database::tests::bundled_sqlite_version_is_the_audited_release ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947250083,"version":"0.1.0"}
+
+thread 'authoring::tests::creates_searches_and_detects_tagged_cards' (1411819) panicked at src/authoring/tests.rs:17:14:
+deck should be created: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947250087,"version":"0.1.0"}
+
+thread 'asset_lifecycle::tests::repeated_reconciliation_is_idempotent_and_protects_shared_references' (1411798) panicked at src/asset_lifecycle.rs:1614:14:
+shared referenced asset must remain ready: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test authoring::tests::creates_searches_and_detects_tagged_cards ... FAILED
+test database::tests::historical_migration_checksums_remain_exact ... ok
+test authoring::generated_import_tests::create_then_append_uses_the_named_deck_and_skips_exact_duplicates ... ok
+test asset_lifecycle::tests::repeated_reconciliation_is_idempotent_and_protects_shared_references ... FAILED
+test authoring::generated_import_tests::append_requires_one_exact_active_deck_name ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947250098,"version":"0.1.0"}
+
+thread 'authoring::tests::multi_deck_filter_limits_results_to_selected_decks' (1411821) panicked at src/authoring/tests.rs:17:14:
+deck should be created: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test authoring::tests::multi_deck_filter_limits_results_to_selected_decks ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947250145,"version":"0.1.0"}
+
+thread 'asset_lifecycle::tests::post_rename_failure_is_reconciled_without_losing_a_reference' (1411797) panicked at src/asset_lifecycle.rs:1509:14:
+reconciliation should restore the final file: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test asset_lifecycle::tests::post_rename_failure_is_reconciled_without_losing_a_reference ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947250163,"version":"0.1.0"}
+
+thread 'authoring::tests::bulk_entry_skips_exact_duplicates' (1411818) panicked at src/authoring/tests.rs:17:14:
+deck should be created: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test asset_lifecycle::tests::unknown_and_unreferenced_files_are_quarantined_conservatively ... ok
+test historical_attribution::tests::question_evidence_is_bounded_and_hashed_completely ... ok
+test learning_signals::tests::repeated_wrong_answers_require_more_practice ... ok
+test learning_signals::tests::two_remembered_answers_clear_the_signal ... ok
+test asset_lifecycle::tests::staged_ingest_cleans_copy_sync_and_database_failures ... ok
+test authoring::tests::bulk_entry_skips_exact_duplicates ... FAILED
+test asset_lifecycle::tests::cancel_and_sync_remove_only_unreferenced_draft_assets ... ok
+test asset_lifecycle::tests::ordinary_multi_asset_failure_returns_prior_files_to_staging ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947251348,"version":"0.1.0"}
+
+thread 'cards::tests::lists_hydrates_and_deletes_a_card' (1411830) panicked at src/cards.rs:1065:14:
+deck should be created: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test cards::tests::lists_hydrates_and_deletes_a_card ... FAILED
+test practice::tests::review_input_requires_a_preview_revision ... ok
+test practice_selection::tests::practice_windows_are_bounded ... ok
+test data_repairs::tests::canonical_database_repair_pass_is_a_no_op ... ok
+test database::tests::migrations_and_repairs_are_idempotent_and_reach_schema_thirteen ... ok
+test database::tests::schema_four_upgrades_forward_without_rewriting_history_or_losing_cards ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947251392,"version":"0.1.0"}
+
+thread 'decks::tests::archive_ownership_preserves_manual_suspension' (1411840) panicked at src/decks.rs:510:14:
+archive: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test decks::tests::archive_ownership_preserves_manual_suspension ... FAILED
+test regression_tests::rich_content_derives_authoritative_text_and_rejects_unsafe_structures ... ok
+test database::tests::every_released_schema_fixture_upgrades_to_latest ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947251440,"version":"0.1.0"}
+
+thread 'deletion::tests::deck_undo_restores_only_rows_tombstoned_by_that_operation' (1411842) panicked at src/deletion.rs:741:14:
+deck undo should not revive prior tombstones: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947251447,"version":"0.1.0"}
+
+thread 'deletion::tests::card_deletion_restores_exact_rows_and_preserves_relationships' (1411841) panicked at src/deletion.rs:693:14:
+card should be restored exactly: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test deletion::tests::deck_undo_restores_only_rows_tombstoned_by_that_operation ... FAILED
+test deletion::tests::card_deletion_restores_exact_rows_and_preserves_relationships ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947251470,"version":"0.1.0"}
+
+thread 'deletion::tests::expired_and_conflicting_undo_requests_fail_visibly' (1411843) panicked at src/deletion.rs:788:14:
+undo failures should be explicit: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test deletion::tests::expired_and_conflicting_undo_requests_fail_visibly ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947251507,"version":"0.1.0"}
+
+thread 'practice::operation_tests::equivalent_review_retry_returns_the_original_committed_result' (1411850) panicked at src/practice/operation_tests.rs:191:10:
+an equivalent retry should be side-effect free: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test practice::operation_tests::equivalent_review_retry_returns_the_original_committed_result ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947251529,"version":"0.1.0"}
+
+thread 'library_backup::extended_tests::complete_backup_restore_replaces_the_library_with_every_history_source' (1411847) panicked at src/library_backup/extended_tests.rs:235:59:
+complete fixture: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947251538,"version":"0.1.0"}
+
+thread 'practice::operation_tests::reused_submission_id_with_a_different_payload_is_rejected' (1411851) panicked at src/practice/operation_tests.rs:231:10:
+conflicting retries should not mutate state: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test library_backup::extended_tests::complete_backup_restore_replaces_the_library_with_every_history_source ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947251545,"version":"0.1.0"}
+
+thread 'library_backup::tests::complete_backup_preserves_review_history_and_settings' (1411849) panicked at src/library_backup.rs:880:14:
+fixture: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test practice::operation_tests::reused_submission_id_with_a_different_payload_is_rejected ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947251549,"version":"0.1.0"}
+
+thread 'library_backup::extended_tests::dropping_the_restore_guard_rolls_back_the_previous_library' (1411848) panicked at src/library_backup/extended_tests.rs:329:55:
+source fixture: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test library_backup::tests::complete_backup_preserves_review_history_and_settings ... FAILED
+test library_backup::extended_tests::dropping_the_restore_guard_rolls_back_the_previous_library ... FAILED
+test schedule_controls::extended_tests::strict_inputs_reject_unknown_fields_empty_selections_and_invalid_dates ... ok
+test schedule_controls::tests::normalizes_deduplicates_and_sorts_card_ids ... ok
+test scheduler::tests::maps_product_wording_to_the_four_fsrs_ratings ... ok
+test scheduler::tests::rejects_retention_outside_the_supported_range ... ok
+test scheduler::tests::review_and_preview_advance_schedule_revisions ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252666,"version":"0.1.0"}
+
+thread 'regression_tests::fts_projection_tracks_content_tags_renames_and_soft_deletion' (1411854) panicked at src/regression_tests.rs:314:10:
+FTS triggers should remain synchronized: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test regression_tests::fts_projection_tracks_content_tags_renames_and_soft_deletion ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252692,"version":"0.1.0"}
+
+thread 'regression_tests::immutable_review_references_prevent_physical_card_removal' (1411856) panicked at src/regression_tests.rs:517:10:
+review foreign keys should remain restrictive: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test regression_tests::immutable_review_references_prevent_physical_card_removal ... FAILED
+test settings::extended_tests::strict_settings_input_rejects_removed_or_misspelled_fields ... ok
+test settings::extended_tests::validation_reports_the_specific_invalid_setting ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252704,"version":"0.1.0"}
+
+thread 'regression_tests::generated_card_identity_is_unique_even_while_a_presentation_is_disabled' (1411855) panicked at src/regression_tests.rs:363:10:
+generated-card identity constraints should hold: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252706,"version":"0.1.0"}
+
+thread 'regression_tests::needs_more_practice_uses_the_current_post_reset_learning_epoch' (1411857) panicked at src/regression_tests.rs:489:10:
+learning signals should be reproducible from history: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test regression_tests::needs_more_practice_uses_the_current_post_reset_learning_epoch ... FAILED
+test settings::tests::rejects_unsafe_custom_fonts ... ok
+test regression_tests::generated_card_identity_is_unique_even_while_a_presentation_is_disabled ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252751,"version":"0.1.0"}
+
+thread 'schedule_controls::extended_tests::canonical_retry_is_side_effect_free_and_conflicting_reuse_fails' (1411860) panicked at src/schedule_controls/extended_tests.rs:298:14:
+equivalent retries must not repeat side effects: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test schedule_controls::extended_tests::canonical_retry_is_side_effect_free_and_conflicting_reuse_fails ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252769,"version":"0.1.0"}
+
+thread 'regression_tests::workload_excludes_suspended_and_buried_cards_and_protects_review_backlog' (1411859) panicked at src/regression_tests.rs:456:10:
+workload policy should remain authoritative: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test regression_tests::workload_excludes_suspended_and_buried_cards_and_protects_review_backlog ... FAILED
+test study_calendar::tests::autumn_transition_has_a_twenty_five_hour_local_date ... ok
+test study_calendar::tests::current_custom_date_resolves_to_now_and_past_dates_fail ... ok
+test study_calendar::tests::one_year_window_clamps_leap_day ... ok
+test study_calendar::tests::spring_transition_uses_local_dates_not_twenty_four_hour_math ... ok
+test studyability::tests::burial_expires_at_the_exact_boundary ... ok
+test studyability::tests::due_requires_current_unsuspended_and_unburied ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252780,"version":"0.1.0"}
+
+thread 'schedule_controls::extended_tests::changed_and_already_satisfied_cards_are_reported_without_revision_churn' (1411861) panicked at src/schedule_controls/extended_tests.rs:333:14:
+already-satisfied controls should be explicit no-ops: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test schedule_controls::extended_tests::changed_and_already_satisfied_cards_are_reported_without_revision_churn ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252827,"version":"0.1.0"}
+
+thread 'schedule_controls::extended_tests::reset_preserves_review_history_and_exact_reschedule_can_be_a_no_op' (1411864) panicked at src/schedule_controls/extended_tests.rs:396:14:
+manual reset must preserve immutable review evidence: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test schedule_controls::extended_tests::reset_preserves_review_history_and_exact_reschedule_can_be_a_no_op ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252847,"version":"0.1.0"}
+
+thread 'schedule_controls::extended_tests::multi_card_suspend_commits_one_parent_and_every_child_event' (1411862) panicked at src/schedule_controls/extended_tests.rs:237:14:
+the complete batch should commit: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252851,"version":"0.1.0"}
+
+thread 'schedule_controls::extended_tests::session_batch_dismissal_and_completion_share_the_schedule_transaction' (1411865) panicked at src/schedule_controls/extended_tests.rs:435:14:
+session state and schedule state should commit together: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test schedule_controls::extended_tests::multi_card_suspend_commits_one_parent_and_every_child_event ... FAILED
+test schedule_controls::extended_tests::session_batch_dismissal_and_completion_share_the_schedule_transaction ... FAILED
+test workload::tests::planned_selection_is_bounded ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252865,"version":"0.1.0"}
+
+thread 'schedule_controls::extended_tests::session_only_dismissal_counts_as_a_change_without_schedule_revision_churn' (1411867) panicked at src/schedule_controls/extended_tests.rs:467:14:
+session-only durable work should be represented accurately: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test schedule_controls::extended_tests::session_only_dismissal_counts_as_a_change_without_schedule_revision_churn ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252896,"version":"0.1.0"}
+
+thread 'schedule_controls::extended_tests::one_invalid_member_rolls_back_the_complete_selection' (1411863) panicked at src/schedule_controls/extended_tests.rs:260:14:
+rejected batches should leave no durable writes: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+{"application":"ostudy","event":"serialization_error","level":"error","message":"expected ident at line 1 column 2","timestampMs":1785947252898,"version":"0.1.0"}
+test schedule_controls::extended_tests::one_invalid_member_rolls_back_the_complete_selection ... FAILED
+test settings::extended_tests::corrupted_stored_json_fails_visibly_instead_of_using_a_default ... ok
+test studydeck::tests::legacy_multi_card_cloze_is_adapted_before_import ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947252919,"version":"0.1.0"}
+
+thread 'schedule_controls::extended_tests::session_membership_mismatch_rejects_every_selected_card' (1411866) panicked at src/schedule_controls/extended_tests.rs:490:14:
+session validation should precede every mutation: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test schedule_controls::extended_tests::session_membership_mismatch_rejects_every_selected_card ... FAILED
+{"application":"ostudy","event":"database_error","level":"error","message":"no such table: review_event_attributions","timestampMs":1785947253188,"version":"0.1.0"}
+
+thread 'stage34_35_regression_tests::versioned_repairs_migrate_legacy_rows_before_the_schema_is_narrowed' (1411881) panicked at src/stage34_35_regression_tests.rs:151:45:
+repairs should succeed: "The local database operation failed. See the ostudy diagnostic log for details."
+test stage34_35_regression_tests::versioned_repairs_migrate_legacy_rows_before_the_schema_is_narrowed ... FAILED
+test settings::extended_tests::every_setting_round_trips_through_json_storage ... ok
+test settings::tests::loads_and_persists_workload_defaults ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"no such column: normalized_name in SELECT EXISTS(\n                 SELECT 1 FROM decks\n                 WHERE normalized_name = ?1 AND deleted_at IS NULL\n                   AND (?2 IS NULL OR id <> ?2)\n             ) at offset 75","timestampMs":1785947253412,"version":"0.1.0"}
+
+thread 'studydeck::tests::current_package_round_trip_preserves_content_and_uses_fresh_schedules' (1411890) panicked at src/studydeck/tests.rs:103:10:
+fixture: CommandError { code: "database_error", message: "The local database operation failed. See the ostudy diagnostic log for details." }
+test studydeck::tests::current_package_round_trip_preserves_content_and_uses_fresh_schedules ... FAILED
+test studydeck::extended_tests::reusing_an_import_operation_for_another_package_is_rejected ... ok
+
+thread 'stage34_35_regression_tests::canonical_database_reopen_does_not_mutate_application_rows' (1411879) panicked at src/stage34_35_regression_tests.rs:315:13:
+assertion `left == right` failed
+  left: 3
+ right: 2
+test stage34_35_regression_tests::canonical_database_reopen_does_not_mutate_application_rows ... FAILED
+test stage34_35_regression_tests::startup_returns_an_interrupted_import_rename_to_its_active_draft ... ok
+{"application":"ostudy","event":"database_error","level":"error","message":"injected note failure","timestampMs":1785947253428,"version":"0.1.0"}
+test studydeck::extended_tests::database_failure_after_asset_staging_leaves_no_partial_deck_or_file ... ok
+
+failures:
+
+failures:
+    asset_lifecycle::tests::corrupt_referenced_file_is_marked_missing_without_blocking_startup
+    asset_lifecycle::tests::post_rename_failure_is_reconciled_without_losing_a_reference
+    asset_lifecycle::tests::repeated_reconciliation_is_idempotent_and_protects_shared_references
+    authoring::tests::bulk_entry_skips_exact_duplicates
+    authoring::tests::creates_searches_and_detects_tagged_cards
+    authoring::tests::moving_preserves_card_identity_and_copying_creates_a_fresh_schedule
+    authoring::tests::multi_deck_filter_limits_results_to_selected_decks
+    cards::tests::lists_hydrates_and_deletes_a_card
+    decks::tests::archive_ownership_preserves_manual_suspension
+    deletion::tests::card_deletion_restores_exact_rows_and_preserves_relationships
+    deletion::tests::deck_undo_restores_only_rows_tombstoned_by_that_operation
+    deletion::tests::expired_and_conflicting_undo_requests_fail_visibly
+    library_backup::extended_tests::complete_backup_restore_replaces_the_library_with_every_history_source
+    library_backup::extended_tests::dropping_the_restore_guard_rolls_back_the_previous_library
+    library_backup::tests::complete_backup_preserves_review_history_and_settings
+    practice::operation_tests::equivalent_review_retry_returns_the_original_committed_result
+    practice::operation_tests::reused_submission_id_with_a_different_payload_is_rejected
+    regression_tests::fts_projection_tracks_content_tags_renames_and_soft_deletion
+    regression_tests::generated_card_identity_is_unique_even_while_a_presentation_is_disabled
+    regression_tests::immutable_review_references_prevent_physical_card_removal
+    regression_tests::needs_more_practice_uses_the_current_post_reset_learning_epoch
+    regression_tests::workload_excludes_suspended_and_buried_cards_and_protects_review_backlog
+    schedule_controls::extended_tests::canonical_retry_is_side_effect_free_and_conflicting_reuse_fails
+    schedule_controls::extended_tests::changed_and_already_satisfied_cards_are_reported_without_revision_churn
+    schedule_controls::extended_tests::multi_card_suspend_commits_one_parent_and_every_child_event
+    schedule_controls::extended_tests::one_invalid_member_rolls_back_the_complete_selection
+    schedule_controls::extended_tests::reset_preserves_review_history_and_exact_reschedule_can_be_a_no_op
+    schedule_controls::extended_tests::session_batch_dismissal_and_completion_share_the_schedule_transaction
+    schedule_controls::extended_tests::session_membership_mismatch_rejects_every_selected_card
+    schedule_controls::extended_tests::session_only_dismissal_counts_as_a_change_without_schedule_revision_churn
+    stage34_35_regression_tests::canonical_database_reopen_does_not_mutate_application_rows
+    stage34_35_regression_tests::versioned_repairs_migrate_legacy_rows_before_the_schema_is_narrowed
+    studydeck::tests::current_package_round_trip_preserves_content_and_uses_fresh_schedules
+
+test result: FAILED. 68 passed; 33 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.67s
+
+error: test failed, to rerun pass `--lib`
