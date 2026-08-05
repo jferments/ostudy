@@ -69,11 +69,7 @@ impl StudyTimeContext {
                 format!("The test time zone {zone_id} is invalid."),
             )
         })?;
-        Self::with_zone(
-            now_utc_millis,
-            zone_id.to_string(),
-            StudyZone::Named(zone),
-        )
+        Self::with_zone(now_utc_millis, zone_id.to_string(), StudyZone::Named(zone))
     }
 
     fn with_zone(
@@ -158,12 +154,14 @@ impl StudyTimeContext {
     }
 
     pub fn date_after_days(&self, days: i64) -> Result<NaiveDate, CommandError> {
-        self.local_date.checked_add_signed(Duration::days(days)).ok_or_else(|| {
-            CommandError::new(
-                "invalid_local_date",
-                "The requested local calendar date is outside the supported range.",
-            )
-        })
+        self.local_date
+            .checked_add_signed(Duration::days(days))
+            .ok_or_else(|| {
+                CommandError::new(
+                    "invalid_local_date",
+                    "The requested local calendar date is outside the supported range.",
+                )
+            })
     }
 
     pub fn calendar_days_window(&self, days: i64) -> Result<CalendarWindow, CommandError> {
@@ -197,8 +195,11 @@ impl StudyTimeContext {
                 "The requested year is outside the supported range.",
             )
         })?;
-        let start_local_date =
-            clamped_date(previous_year, self.local_date.month(), self.local_date.day())?;
+        let start_local_date = clamped_date(
+            previous_year,
+            self.local_date.month(),
+            self.local_date.day(),
+        )?;
         Ok(CalendarWindow {
             start_local_date,
             end_local_date: self.local_date,
@@ -207,10 +208,7 @@ impl StudyTimeContext {
         })
     }
 
-    pub fn previous_window(
-        &self,
-        current: CalendarWindow,
-    ) -> Result<CalendarWindow, CommandError> {
+    pub fn previous_window(&self, current: CalendarWindow) -> Result<CalendarWindow, CommandError> {
         let date_count = current
             .end_local_date
             .signed_duration_since(current.start_local_date)
@@ -268,7 +266,10 @@ fn local_date_and_offset(zone: &StudyZone, utc: DateTime<Utc>) -> (NaiveDate, i3
     match zone {
         StudyZone::Named(zone) => {
             let local = utc.with_timezone(zone);
-            (local.date_naive(), local.offset().fix().local_minus_utc() / 60)
+            (
+                local.date_naive(),
+                local.offset().fix().local_minus_utc() / 60,
+            )
         }
         StudyZone::Fixed(offset) => {
             let local = utc.with_timezone(offset);
@@ -277,10 +278,7 @@ fn local_date_and_offset(zone: &StudyZone, utc: DateTime<Utc>) -> (NaiveDate, i3
     }
 }
 
-fn resolve_date_start_in_zone(
-    zone: &StudyZone,
-    date: NaiveDate,
-) -> Result<i64, CommandError> {
+fn resolve_date_start_in_zone(zone: &StudyZone, date: NaiveDate) -> Result<i64, CommandError> {
     let midnight = date.and_hms_opt(0, 0, 0).ok_or_else(|| {
         CommandError::new("invalid_local_date", "The local calendar date is invalid.")
     })?;
@@ -307,10 +305,7 @@ fn resolve_date_start_in_zone(
     ))
 }
 
-fn resolve_local(
-    zone: &StudyZone,
-    candidate: NaiveDateTime,
-) -> LocalResult<DateTime<FixedOffset>> {
+fn resolve_local(zone: &StudyZone, candidate: NaiveDateTime) -> LocalResult<DateTime<FixedOffset>> {
     match zone {
         StudyZone::Named(zone) => match zone.from_local_datetime(&candidate) {
             LocalResult::Single(value) => LocalResult::Single(value.fixed_offset()),

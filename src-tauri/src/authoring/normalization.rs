@@ -41,7 +41,7 @@ fn split_tags(value: &str) -> Vec<String> {
         .collect()
 }
 
-fn default_due_filter() -> String {
+fn default_availability_filter() -> String {
     "all".to_string()
 }
 

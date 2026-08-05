@@ -64,7 +64,7 @@ fn list_tags_in_connection(
         conditions.join(" AND ")
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    statement
+    let tags = statement
         .query_map(params_from_iter(values.iter()), |row| {
             Ok(TagDto {
                 id: row.get(0)?,
@@ -76,7 +76,8 @@ fn list_tags_in_connection(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(tags)
 }
 
 fn validate_search_input(input: &SearchCardsInput) -> Result<(), CommandError> {

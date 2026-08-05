@@ -49,7 +49,7 @@ fn list_card_template_summaries_in_connection(
              ORDER BY t.name COLLATE NOCASE, t.created_at, t.id",
         )
         .map_err(CommandError::database)?;
-    statement
+    let summaries = statement
         .query_map([], |row| {
             Ok(CardTemplateSummaryDto {
                 id: row.get(0)?,
@@ -65,5 +65,6 @@ fn list_card_template_summaries_in_connection(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(summaries)
 }

@@ -293,9 +293,7 @@ pub fn insert_review_attribution(
     Ok(())
 }
 
-pub fn backfill_historical_attribution(
-    connection: &Connection,
-) -> Result<i64, CommandError> {
+pub fn backfill_historical_attribution(connection: &Connection) -> Result<i64, CommandError> {
     let context = StudyTimeContext::capture()?;
     let mut changed = 0_i64;
     loop {
@@ -384,10 +382,7 @@ pub fn backfill_historical_attribution(
     Ok(changed)
 }
 
-pub fn purge_deck_history(
-    connection: &Connection,
-    deck_id: &str,
-) -> Result<(), CommandError> {
+pub fn purge_deck_history(connection: &Connection, deck_id: &str) -> Result<(), CommandError> {
     let session_ids = {
         let mut statement = connection
             .prepare(
@@ -527,7 +522,7 @@ fn load_unattributed_reviews(
              LIMIT ?1",
         )
         .map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map([i64::try_from(limit).unwrap_or(i64::MAX)], |row| {
             Ok(LegacyReviewRow {
                 review_event_id: row.get(0)?,
@@ -552,7 +547,8 @@ fn load_unattributed_reviews(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(rows)
 }
 
 fn backfill_open_session_snapshots(
@@ -573,7 +569,7 @@ fn backfill_open_session_snapshots(
                  ORDER BY psc.session_id, psc.position",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -584,7 +580,8 @@ fn backfill_open_session_snapshots(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     let mut changed = 0_i64;
     for session in cards.chunks(ID_CHUNK_SIZE) {

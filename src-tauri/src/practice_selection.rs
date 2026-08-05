@@ -145,14 +145,7 @@ pub fn start_selected_practice(
         let context = StudyTimeContext::capture()?;
         let settings = load_settings(connection)?;
         let cards = if input.mode == "scheduled" {
-            planned_scheduled_cards_scoped(
-                connection,
-                &deck_ids,
-                &tag_ids,
-                &settings,
-                &context,
-            )?
-            .0
+            planned_scheduled_cards_scoped(connection, &deck_ids, &tag_ids, &settings, &context)?.0
         } else {
             planned_extra_cards_scoped(connection, &deck_ids, &tag_ids, &context)?
         };
@@ -349,13 +342,8 @@ fn load_session(
                 "That practice session no longer exists.",
             )
         })?;
-    let window = load_practice_card_window(
-        connection,
-        paths,
-        session_id,
-        0,
-        FIRST_PRACTICE_WINDOW,
-    )?;
+    let window =
+        load_practice_card_window(connection, paths, session_id, 0, FIRST_PRACTICE_WINDOW)?;
     Ok(PracticeSessionDto {
         id: session_id.to_string(),
         cards: window.cards,
@@ -453,8 +441,8 @@ fn load_practice_card_window(
                 weak,
                 captured_at,
             )| {
-                let front_doc = serde_json::from_str(&question_doc)
-                    .map_err(CommandError::serialization)?;
+                let front_doc =
+                    serde_json::from_str(&question_doc).map_err(CommandError::serialization)?;
                 let back_doc =
                     serde_json::from_str(&answer_doc).map_err(CommandError::serialization)?;
                 Ok(PracticeCardDto {

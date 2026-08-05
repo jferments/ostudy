@@ -64,9 +64,10 @@ fn apply_repair_range(
     maximum_version: i64,
 ) -> Result<(), String> {
     ensure_ledger_exists(connection)?;
-    for repair in REPAIRS.iter().filter(|repair| {
-        repair.version >= minimum_version && repair.version <= maximum_version
-    }) {
+    for repair in REPAIRS
+        .iter()
+        .filter(|repair| repair.version >= minimum_version && repair.version <= maximum_version)
+    {
         let existing: Option<(String, String)> = connection
             .query_row(
                 "SELECT name, checksum FROM data_repairs WHERE version = ?1",

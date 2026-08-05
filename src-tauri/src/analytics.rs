@@ -533,24 +533,35 @@ fn historical_summary(
          JOIN decks d ON d.id = a.deck_id AND d.deleted_at IS NULL
          WHERE {where_sql}"
     );
-    let result: (i64, i64, i64, i64, i64, i64, Option<i64>, i64, i64, i64, i64) =
-        connection
-            .query_row(&sql, params_from_iter(values.iter()), |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                    row.get(6)?,
-                    row.get(7)?,
-                    row.get(8)?,
-                    row.get(9)?,
-                    row.get(10)?,
-                ))
-            })
-            .map_err(CommandError::database)?;
+    let result: (
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        Option<i64>,
+        i64,
+        i64,
+        i64,
+        i64,
+    ) = connection
+        .query_row(&sql, params_from_iter(values.iter()), |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+                row.get(7)?,
+                row.get(8)?,
+                row.get(9)?,
+                row.get(10)?,
+            ))
+        })
+        .map_err(CommandError::database)?;
     Ok((
         HistoricalReviewSummaryDto {
             cards_practiced: result.0,
@@ -640,10 +651,11 @@ fn deck_stats(
         });
     }
     result.sort_by(|left, right| {
-        right
-            .review_count
-            .cmp(&left.review_count)
-            .then_with(|| left.deck_name.to_lowercase().cmp(&right.deck_name.to_lowercase()))
+        right.review_count.cmp(&left.review_count).then_with(|| {
+            left.deck_name
+                .to_lowercase()
+                .cmp(&right.deck_name.to_lowercase())
+        })
     });
     Ok(result)
 }
@@ -735,10 +747,7 @@ fn deck_history(
         .map_err(CommandError::database)
 }
 
-fn tag_stats(
-    connection: &Connection,
-    scope: &Scope,
-) -> Result<Vec<TagAnalyticsDto>, CommandError> {
+fn tag_stats(connection: &Connection, scope: &Scope) -> Result<Vec<TagAnalyticsDto>, CommandError> {
     let inventory = tag_inventory(connection, scope)?;
     let historical = tag_history(connection, scope, scope.current_window)?;
     let previous = tag_history(connection, scope, scope.previous_window)?;
@@ -805,10 +814,11 @@ fn tag_stats(
         });
     }
     result.sort_by(|left, right| {
-        right
-            .review_count
-            .cmp(&left.review_count)
-            .then_with(|| left.tag_name.to_lowercase().cmp(&right.tag_name.to_lowercase()))
+        right.review_count.cmp(&left.review_count).then_with(|| {
+            left.tag_name
+                .to_lowercase()
+                .cmp(&right.tag_name.to_lowercase())
+        })
     });
     Ok(result)
 }
@@ -937,10 +947,7 @@ fn timeline(
         result.push(TimelineBucketDto {
             label: bucket_label(cursor, granularity),
             start_at: scope.context.resolve_date_start(cursor)?,
-            end_at: scope
-                .context
-                .resolve_date_start(next)?
-                .saturating_sub(1),
+            end_at: scope.context.resolve_date_start(next)?.saturating_sub(1),
             cards_practiced: item.cards_practiced,
             review_count: item.review_count,
             new_cards: item.new_cards,
@@ -1115,7 +1122,7 @@ fn recent_reviews(
          LIMIT ?{limit_index}"
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    statement
+    let reviews = statement
         .query_map(params_from_iter(values.iter()), |row| {
             let tags: String = row.get(6)?;
             Ok(RecentReviewDto {
@@ -1137,7 +1144,8 @@ fn recent_reviews(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(reviews)
 }
 
 fn recent_sessions(
@@ -1174,7 +1182,7 @@ fn recent_sessions(
          LIMIT ?{limit_index}"
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    statement
+    let sessions = statement
         .query_map(params_from_iter(values.iter()), |row| {
             let session_id: String = row.get(0)?;
             let started_at: i64 = row.get(2)?;
@@ -1203,7 +1211,8 @@ fn recent_sessions(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(sessions)
 }
 
 fn dimensions(connection: &Connection) -> Result<AnalyticsDimensionOptionsDto, CommandError> {
@@ -1411,7 +1420,9 @@ fn bucket_start(date: NaiveDate, granularity: &str) -> Result<NaiveDate, Command
     match granularity {
         "day" => Ok(date),
         "week" => date
-            .checked_sub_signed(Duration::days(i64::from(date.weekday().num_days_from_monday())))
+            .checked_sub_signed(Duration::days(i64::from(
+                date.weekday().num_days_from_monday(),
+            )))
             .ok_or_else(|| {
                 CommandError::new(
                     "invalid_analytics_bucket",
@@ -1498,7 +1509,10 @@ mod tests {
     #[test]
     fn default_range_is_a_local_calendar_week() {
         assert_eq!(default_range(), "7d");
-        assert_eq!(AnalyticsRange::parse("7d").expect("range").granularity(), "day");
+        assert_eq!(
+            AnalyticsRange::parse("7d").expect("range").granularity(),
+            "day"
+        );
     }
 
     #[test]

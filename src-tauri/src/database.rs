@@ -3,7 +3,9 @@ use std::{path::Path, sync::Mutex, time::Duration};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::{
-    data_repairs::{apply_required_repairs, verify_repair_ledger},
+    data_repairs::{
+        apply_required_repairs_after, apply_required_repairs_through, verify_repair_ledger,
+    },
     error::CommandError,
     util::unix_time_millis,
 };
@@ -94,9 +96,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "2e56fa0b68049f8a4d2e937b1dbdb18ec45d9c9041b06f5994b3c847f1d2f049",
         sql: include_str!("../migrations/0013_canonical_data_model.sql"),
     },
+    Migration {
+        version: 14,
+        name: "review_attribution_and_projection_indexes",
+        checksum: "0d9630b33ca42fd7813172a6fba780555fb8246c375dfadfb918836655bc21bd",
+        sql: include_str!("../migrations/0014_review_attribution_and_projection_indexes.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 13;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 14;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -139,8 +147,9 @@ impl Database {
 fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
     configure_connection(connection)?;
     apply_migrations_through(connection, 12)?;
-    apply_required_repairs(connection)?;
+    apply_required_repairs_through(connection, 2)?;
     apply_migrations_after(connection, 12)?;
+    apply_required_repairs_after(connection, 2)?;
     verify_repair_ledger(connection)?;
     Ok(())
 }

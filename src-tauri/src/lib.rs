@@ -10,6 +10,7 @@ mod analytics;
 mod asset_lifecycle;
 mod assets;
 mod authoring;
+mod card_projections;
 mod cards;
 mod data_repairs;
 mod database;
@@ -17,16 +18,21 @@ mod decks;
 mod deletion;
 mod deletion_commands;
 mod error;
+mod historical_attribution;
 mod learning_signals;
 mod library_backup;
 mod logging;
 mod paths;
 mod practice;
 mod practice_selection;
+mod projections;
 mod schedule_controls;
 mod scheduler;
 mod settings;
+mod study_calendar;
+mod studyability;
 mod studydeck;
+mod template_projections;
 mod util;
 mod workload;
 
@@ -88,11 +94,14 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             decks::list_decks,
+            decks::list_archived_decks,
             decks::get_deck,
             decks::create_deck,
             decks::update_deck,
+            decks::archive_deck,
+            decks::unarchive_deck,
             deletion_commands::delete_deck_with_undo,
-            cards::list_cards,
+            card_projections::list_deck_cards,
             deletion_commands::delete_card_with_undo,
             authoring::list_tags,
             authoring::search_cards,
@@ -110,7 +119,7 @@ pub fn run() {
             authoring::get_card_type_info,
             authoring::create_generated_card,
             authoring::update_generated_card,
-            authoring::list_card_templates,
+            template_projections::list_card_template_summaries,
             authoring::get_card_template,
             authoring::create_card_template,
             authoring::update_card_template,
@@ -131,6 +140,7 @@ pub fn run() {
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
             practice_selection::start_card_practice,
+            practice_selection::get_practice_card_window,
             practice::mark_practice_card_viewed,
             practice::mark_practice_card_revealed,
             practice::submit_practice_review,

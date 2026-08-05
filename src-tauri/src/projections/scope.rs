@@ -40,10 +40,7 @@ pub fn push_integer(values: &mut Vec<SqlValue>, value: i64) -> usize {
     values.len()
 }
 
-pub fn placeholders(
-    values: &mut Vec<SqlValue>,
-    ids: impl IntoIterator<Item = String>,
-) -> String {
+pub fn placeholders(values: &mut Vec<SqlValue>, ids: impl IntoIterator<Item = String>) -> String {
     ids.into_iter()
         .map(|id| format!("?{}", push_text(values, id)))
         .collect::<Vec<_>>()

@@ -68,12 +68,7 @@ pub fn current_card_sql(card: &str, note: &str, deck: &str) -> String {
     current_card_conditions(card, note, deck).join(" AND ")
 }
 
-pub fn studyable_card_sql(
-    card: &str,
-    note: &str,
-    deck: &str,
-    now_parameter: &str,
-) -> String {
+pub fn studyable_card_sql(card: &str, note: &str, deck: &str, now_parameter: &str) -> String {
     studyable_card_conditions(card, note, deck, now_parameter).join(" AND ")
 }
 

@@ -13,6 +13,7 @@ use tauri::State;
 use crate::{
     database::Database,
     error::CommandError,
+    historical_attribution::purge_deck_history,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
@@ -133,7 +134,7 @@ pub(crate) fn delete_deck(
     let deck_name: Option<String> = transaction
         .query_row(
             "SELECT name FROM decks
-             WHERE id = ?1 AND deleted_at IS NULL AND archived_at IS NULL",
+             WHERE id = ?1 AND deleted_at IS NULL",
             [deck_id],
             |row| row.get(0),
         )
@@ -367,6 +368,11 @@ fn finalize_expired_in_connection(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     for (operation_id, operation) in operations {
+        if operation.entity_kind == "deck" {
+            if let Some(deck_id) = operation.deck_id.as_deref() {
+                purge_deck_history(&transaction, deck_id)?;
+            }
+        }
         for note_id in &operation.note_ids {
             // Relationship cleanup occurs only after undo expires. Review events,
             // schedules, notes, and cards remain soft-deleted for durable history.

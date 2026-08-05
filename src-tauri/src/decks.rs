@@ -51,27 +51,17 @@ pub fn list_decks(database: State<'_, Database>) -> Result<Vec<DeckDto>, Command
 }
 
 #[tauri::command]
-pub fn list_archived_decks(
-    database: State<'_, Database>,
-) -> Result<Vec<DeckDto>, CommandError> {
+pub fn list_archived_decks(database: State<'_, Database>) -> Result<Vec<DeckDto>, CommandError> {
     database.with_connection(|connection| {
         list_decks_in_connection(connection, true, &StudyTimeContext::capture()?)
     })
 }
 
 #[tauri::command]
-pub fn get_deck(
-    database: State<'_, Database>,
-    deck_id: String,
-) -> Result<DeckDto, CommandError> {
+pub fn get_deck(database: State<'_, Database>, deck_id: String) -> Result<DeckDto, CommandError> {
     validate_entity_id(&deck_id, "deck")?;
     database.with_connection(|connection| {
-        load_deck_summary(
-            connection,
-            &deck_id,
-            false,
-            &StudyTimeContext::capture()?,
-        )
+        load_deck_summary(connection, &deck_id, false, &StudyTimeContext::capture()?)
     })
 }
 
@@ -96,7 +86,7 @@ pub fn update_deck(
         ));
     }
     let name = validate_name(input.name)?;
-    let description = validate_description(input.description)?;
+    let description = validate_description(input.description.unwrap_or_default())?;
     let normalized = normalize_name(&name);
     let now = unix_time_millis()?;
     database.with_connection(|connection| {
@@ -201,12 +191,7 @@ pub fn archive_deck(
             ));
         }
         transaction.commit().map_err(CommandError::database)?;
-        load_deck_summary(
-            connection,
-            &deck_id,
-            true,
-            &StudyTimeContext::at(now)?,
-        )
+        load_deck_summary(connection, &deck_id, true, &StudyTimeContext::at(now)?)
     })
 }
 
@@ -228,10 +213,7 @@ pub fn unarchive_deck(
             .optional()
             .map_err(CommandError::database)?
             .ok_or_else(|| {
-                CommandError::new(
-                    "deck_not_found",
-                    "That archived deck no longer exists.",
-                )
+                CommandError::new("deck_not_found", "That archived deck no longer exists.")
             })?;
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -271,13 +253,15 @@ pub fn unarchive_deck(
             ));
         }
         transaction.commit().map_err(CommandError::database)?;
-        load_deck_summary(
-            connection,
-            &deck_id,
-            false,
-            &StudyTimeContext::at(now)?,
-        )
+        load_deck_summary(connection, &deck_id, false, &StudyTimeContext::at(now)?)
     })
+}
+
+pub(crate) fn get_deck_from_connection(
+    connection: &Connection,
+    deck_id: &str,
+) -> Result<DeckDto, CommandError> {
+    load_deck_summary(connection, deck_id, false, &StudyTimeContext::capture()?)
 }
 
 pub(crate) fn create_deck_in_connection(
@@ -285,7 +269,7 @@ pub(crate) fn create_deck_in_connection(
     input: CreateDeckInput,
 ) -> Result<DeckDto, CommandError> {
     let name = validate_name(input.name)?;
-    let description = validate_description(input.description)?;
+    let description = validate_description(input.description.unwrap_or_default())?;
     let normalized = normalize_name(&name);
     ensure_name_available(connection, &normalized, None)?;
     let now = unix_time_millis()?;
@@ -299,12 +283,7 @@ pub(crate) fn create_deck_in_connection(
             params![id, name, normalized, description, now],
         )
         .map_err(CommandError::database)?;
-    load_deck_summary(
-        connection,
-        &id,
-        false,
-        &StudyTimeContext::at(now)?,
-    )
+    load_deck_summary(connection, &id, false, &StudyTimeContext::at(now)?)
 }
 
 pub(crate) fn list_decks_in_connection(
@@ -409,7 +388,7 @@ fn deck_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeckDto> {
     })
 }
 
-fn validate_name(value: String) -> Result<String, CommandError> {
+pub(crate) fn validate_name(value: String) -> Result<String, CommandError> {
     let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
     if normalized.is_empty() || normalized.chars().count() > MAX_DECK_NAME_CHARS {
         return Err(CommandError::new(
@@ -420,14 +399,12 @@ fn validate_name(value: String) -> Result<String, CommandError> {
     Ok(normalized)
 }
 
-fn validate_description(value: Option<String>) -> Result<String, CommandError> {
-    let value = value.unwrap_or_default().trim().to_string();
+pub(crate) fn validate_description(value: String) -> Result<String, CommandError> {
+    let value = value.trim().to_string();
     if value.chars().count() > MAX_DECK_DESCRIPTION_CHARS {
         return Err(CommandError::new(
             "invalid_deck_description",
-            format!(
-                "Deck descriptions cannot exceed {MAX_DECK_DESCRIPTION_CHARS} characters."
-            ),
+            format!("Deck descriptions cannot exceed {MAX_DECK_DESCRIPTION_CHARS} characters."),
         ));
     }
     Ok(value)

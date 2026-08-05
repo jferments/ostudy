@@ -195,7 +195,7 @@ pub(crate) struct ProjectedPresentationInput {
 }'''
 if "pub(crate) struct ProjectedPresentationInput" not in content:
     content = replace_once(content, marker, marker + "\n" + projected_types + "\n", path)
-start = content.find("#[tauri::command]\npub fn list_card_templates(")
+start = -1
 if start != -1:
     end = content.find("\n#[tauri::command]\npub fn get_card_template(", start)
     if end == -1:

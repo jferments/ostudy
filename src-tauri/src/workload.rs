@@ -4,10 +4,8 @@ use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 use serde::Serialize;
 
 use crate::{
-    authoring::presentation_variant_for_projected,
-    error::CommandError,
-    projections::learning_signals::LEARNING_SIGNAL_CTE,
-    settings::AppSettingsDto,
+    authoring::presentation_variant_for_projected, error::CommandError,
+    projections::learning_signals::LEARNING_SIGNAL_CTE, settings::AppSettingsDto,
     study_calendar::StudyTimeContext,
 };
 
@@ -43,6 +41,10 @@ pub struct WorkloadOverviewDto {
     pub extra_available: i64,
 }
 
+pub(crate) fn next_local_day_start_millis(now: i64) -> Result<i64, CommandError> {
+    Ok(StudyTimeContext::at(now)?.tomorrow_start_utc_millis)
+}
+
 pub fn workload_overview_scoped(
     connection: &Connection,
     deck_ids: &[String],
@@ -50,8 +52,7 @@ pub fn workload_overview_scoped(
     settings: &AppSettingsDto,
     context: &StudyTimeContext,
 ) -> Result<WorkloadOverviewDto, CommandError> {
-    let (scope_sql, mut values) =
-        scope_conditions(deck_ids, tag_ids, context.now_utc_millis);
+    let (scope_sql, mut values) = scope_conditions(deck_ids, tag_ids, context.now_utc_millis);
     let today_index = push_value(&mut values, context.local_date_string());
     let sql = format!(
         "WITH {signals},
@@ -169,8 +170,7 @@ pub fn planned_extra_cards_scoped(
     tag_ids: &[String],
     context: &StudyTimeContext,
 ) -> Result<Vec<PlannedCard>, CommandError> {
-    let (scope_sql, mut values) =
-        scope_conditions(deck_ids, tag_ids, context.now_utc_millis);
+    let (scope_sql, mut values) = scope_conditions(deck_ids, tag_ids, context.now_utc_millis);
     let limit_index = push_value(&mut values, MAX_PLANNED_CARDS);
     let sql = format!(
         "WITH {signals},
@@ -212,8 +212,7 @@ fn load_ranked(
     if limit <= 0 {
         return Ok(Vec::new());
     }
-    let (scope_sql, mut values) =
-        scope_conditions(deck_ids, tag_ids, context.now_utc_millis);
+    let (scope_sql, mut values) = scope_conditions(deck_ids, tag_ids, context.now_utc_millis);
     let limit_index = push_value(&mut values, limit.min(MAX_PLANNED_CARDS));
     let state_clause = if new_cards {
         "s.state = 0"
@@ -291,11 +290,7 @@ fn query_planned(
         .collect()
 }
 
-fn scope_conditions(
-    deck_ids: &[String],
-    tag_ids: &[String],
-    now: i64,
-) -> (String, Vec<SqlValue>) {
+fn scope_conditions(deck_ids: &[String], tag_ids: &[String], now: i64) -> (String, Vec<SqlValue>) {
     let mut values = vec![now.into()];
     let mut conditions = vec![
         "c.deleted_at IS NULL".to_string(),
