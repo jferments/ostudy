@@ -1,13 +1,88 @@
-pub(crate) fn normalize_stage3_schema(
-    connection: &mut Connection,
+pub(crate) fn apply_stage3_data_repairs(
+    connection: &Connection,
+) -> Result<i64, CommandError> {
+    let before = connection.total_changes();
+    normalize_abandoned_image_occlusion(connection)?;
+    normalize_legacy_template_documents(connection)?;
+    normalize_explicit_template_placeholders(connection)?;
+    normalize_cloze_card_rows(connection)?;
+    let changed = connection.total_changes().saturating_sub(before);
+    Ok(i64::try_from(changed).unwrap_or(i64::MAX))
+}
+
+fn normalize_abandoned_image_occlusion(
+    connection: &Connection,
 ) -> Result<(), CommandError> {
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(CommandError::database)?;
-    normalize_legacy_template_documents(&transaction)?;
-    normalize_explicit_template_placeholders(&transaction)?;
-    normalize_cloze_card_rows(&transaction)?;
-    transaction.commit().map_err(CommandError::database)
+    let note_ids = {
+        let mut statement = connection
+            .prepare("SELECT id FROM notes WHERE note_type = 'image_occlusion'")
+            .map_err(CommandError::database)?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        rows
+    };
+    let now = unix_time_millis()?;
+    for note_id in note_ids {
+        connection
+            .execute(
+                "UPDATE notes
+                 SET note_type = 'basic', reverse_enabled = 0,
+                     cloze_source = '', cloze_mode = 'one_at_a_time',
+                     updated_at = MAX(updated_at, ?1), revision = revision + 1
+                 WHERE id = ?2 AND note_type = 'image_occlusion'",
+                params![now, note_id],
+            )
+            .map_err(CommandError::database)?;
+        let cards = {
+            let mut statement = connection
+                .prepare(
+                    "SELECT rowid, id, deleted_at
+                     FROM cards WHERE note_id = ?1
+                     ORDER BY CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END,
+                              created_at, id",
+                )
+                .map_err(CommandError::database)?;
+            let rows = statement
+                .query_map([note_id.as_str()], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                    ))
+                })
+                .map_err(CommandError::database)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(CommandError::database)?;
+            rows
+        };
+        if let Some(canonical) = cards.first() {
+            connection
+                .execute(
+                    "UPDATE cards
+                     SET direction = 'forward', template_ordinal = 0,
+                         deleted_at = NULL, updated_at = MAX(updated_at, ?1)
+                     WHERE id = ?2",
+                    params![now, canonical.1],
+                )
+                .map_err(CommandError::database)?;
+            for (rowid, card_id, _) in cards.iter().skip(1) {
+                connection
+                    .execute(
+                        "UPDATE cards
+                         SET direction = 'forward', template_ordinal = ?1,
+                             deleted_at = COALESCE(deleted_at, ?2),
+                             updated_at = MAX(updated_at, ?2)
+                         WHERE id = ?3",
+                        params![1_500_000_i64.saturating_add(*rowid), now, card_id],
+                    )
+                    .map_err(CommandError::database)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn normalize_legacy_template_documents(connection: &Connection) -> Result<(), CommandError> {
@@ -263,7 +338,7 @@ fn normalize_cloze_card_rows(connection: &Connection) -> Result<(), CommandError
             connection
                 .execute(
                     "UPDATE cards
-                     SET direction = 'cloze', template_ordinal = ?1,
+                     SET direction = 'forward', template_ordinal = ?1,
                          deleted_at = COALESCE(deleted_at, ?2), updated_at = ?2
                      WHERE id = ?3",
                     params![1_000_000_i64.saturating_add(*rowid), now, card_id],

@@ -9,8 +9,10 @@ import {
   createDeck,
   deleteCard,
   deleteDeck,
+  createOperationId,
   exportDeck,
   getDeck,
+  getErrorCode,
   getErrorMessage,
   importDeck,
   listCards,
@@ -53,6 +55,7 @@ export function DecksScreen({
   const loadingDeckRef = useRef(false);
   const [isTransferring, setIsTransferring] = useState(false);
   const transferringRef = useRef(false);
+  const pendingImportRef = useRef<{ sourcePath: string; operationId: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
@@ -310,7 +313,19 @@ export function DecksScreen({
 
       const normalizedPath = selected.toLocaleLowerCase();
       if (normalizedPath.endsWith(".studydeck")) {
-        const result = await importDeck(selected);
+        const pending =
+          pendingImportRef.current?.sourcePath === selected
+            ? pendingImportRef.current
+            : { sourcePath: selected, operationId: createOperationId() };
+        pendingImportRef.current = pending;
+        let result;
+        try {
+          result = await importDeck(selected, pending.operationId);
+          pendingImportRef.current = null;
+        } catch (error: unknown) {
+          if (getErrorCode(error) !== null) pendingImportRef.current = null;
+          throw error;
+        }
         await showImportedDeck(
           result.deck.id,
           `Imported “${result.deck.name}” with ${result.cardCount} ${

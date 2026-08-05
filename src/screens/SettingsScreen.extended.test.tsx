@@ -6,9 +6,11 @@ import { makeSettings } from "../test/factories";
 import { SettingsScreen } from "./SettingsScreen";
 
 vi.mock("../ipc", () => ({
+  exportLibraryBackup: vi.fn(),
   getAppInfo: vi.fn(),
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
+  prepareLibraryRestore: vi.fn(),
   saveSettings: vi.fn(),
 }));
 
@@ -36,7 +38,7 @@ describe("SettingsScreen extended behavior", () => {
       dataDirectory: "/tmp/ostudy/data",
       databasePath: "/tmp/ostudy/data/library.sqlite3",
       imageDirectory: "/tmp/ostudy/data/assets/images",
-      databaseSchemaVersion: 11,
+      databaseSchemaVersion: 13,
     });
     vi.mocked(ipc.saveSettings).mockImplementation(async (settings) => settings);
   });

@@ -14,14 +14,27 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 vi.mock("../generatedImport", () => ({
   importGeneratedFlashcards: vi.fn(),
 }));
+
+const importOperationId = "9".repeat(32);
+
 vi.mock("../ipc", () => ({
   createDeck: vi.fn(),
+  createOperationId: vi.fn(() => importOperationId),
   deleteCard: vi.fn(),
   deleteDeck: vi.fn(),
   exportDeck: vi.fn(),
   getDeck: vi.fn(),
-  getErrorMessage: (error: unknown) =>
-    error instanceof Error ? error.message : "Unexpected error",
+  getErrorCode: (error: unknown) =>
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code: unknown }).code)
+      : null,
+  getErrorMessage: (error: unknown) => {
+    if (error instanceof Error) return error.message;
+    if (typeof error === "object" && error !== null && "message" in error) {
+      return String((error as { message: unknown }).message);
+    }
+    return "Unexpected error";
+  },
   importDeck: vi.fn(),
   listCards: vi.fn(),
   undoDeletion: vi.fn(),
@@ -163,7 +176,10 @@ describe("DecksScreen extended behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
 
     await waitFor(() => {
-      expect(ipc.importDeck).toHaveBeenCalledOnce();
+      expect(ipc.importDeck).toHaveBeenCalledWith(
+        "/tmp/imported.studydeck",
+        importOperationId,
+      );
       expect(showToast).toHaveBeenNthCalledWith(
         1,
         "success",
@@ -182,15 +198,50 @@ describe("DecksScreen extended behavior", () => {
 
   it("keeps the library usable when a studydeck import fails", async () => {
     vi.mocked(openDialog).mockResolvedValue("/tmp/broken.studydeck");
-    vi.mocked(ipc.importDeck).mockRejectedValue(new Error("Invalid deck package."));
+    vi.mocked(ipc.importDeck).mockRejectedValue({
+      code: "invalid_deck_package",
+      message: "Invalid deck package.",
+    });
     const { showToast } = renderDeckLibrary();
 
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
 
     await waitFor(() => {
+      expect(ipc.importDeck).toHaveBeenCalledWith(
+        "/tmp/broken.studydeck",
+        importOperationId,
+      );
       expect(showToast).toHaveBeenCalledWith("error", "Invalid deck package.");
     });
     expect(screen.getByRole("heading", { name: "Decks" })).toBeTruthy();
+  });
+
+  it("reuses one import operation identity after an ambiguous transport result", async () => {
+    const imported = makeDeck({ name: "Recovered import", cardCount: 1 });
+    vi.mocked(openDialog).mockResolvedValue("/tmp/retry.studydeck");
+    vi.mocked(ipc.importDeck)
+      .mockRejectedValueOnce(new Error("Native response was interrupted."))
+      .mockResolvedValueOnce({ deck: imported, cardCount: 1, assetCount: 0 });
+    renderDeckLibrary();
+
+    fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
+    await waitFor(() => expect(ipc.importDeck).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
+
+    await waitFor(() => {
+      expect(ipc.importDeck).toHaveBeenCalledTimes(2);
+      expect(ipc.importDeck).toHaveBeenNthCalledWith(
+        1,
+        "/tmp/retry.studydeck",
+        importOperationId,
+      );
+      expect(ipc.importDeck).toHaveBeenNthCalledWith(
+        2,
+        "/tmp/retry.studydeck",
+        importOperationId,
+      );
+      expect(ipc.createOperationId).toHaveBeenCalledOnce();
+    });
   });
 
   it("does not export when the native save picker is canceled", async () => {

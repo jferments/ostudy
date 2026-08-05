@@ -445,7 +445,9 @@ pub fn bulk_tag_cards(
     })
 }
 
-pub(crate) fn backfill_duplicate_hashes(connection: &mut Connection) -> Result<(), String> {
+pub(crate) fn backfill_duplicate_hashes_in_connection(
+    connection: &Connection,
+) -> Result<i64, String> {
     let rows = {
         let mut statement = connection
             .prepare(
@@ -468,23 +470,15 @@ pub(crate) fn backfill_duplicate_hashes(connection: &mut Connection) -> Result<(
         rows
     };
 
-    if rows.is_empty() {
-        return Ok(());
-    }
-    let transaction = connection
-        .transaction()
-        .map_err(|error| format!("Could not start duplicate backfill: {error}"))?;
-    for (note_id, front_text, back_text) in rows {
-        let normalized = normalized_pair(&front_text, &back_text);
+    for (note_id, front_text, back_text) in &rows {
+        let normalized = normalized_pair(front_text, back_text);
         let hash = duplicate_hash(&normalized.0, &normalized.1);
-        transaction
+        connection
             .execute(
                 "UPDATE notes SET duplicate_hash = ?1 WHERE id = ?2",
                 params![hash, note_id],
             )
             .map_err(|error| format!("Could not update duplicate fingerprint: {error}"))?;
     }
-    transaction
-        .commit()
-        .map_err(|error| format!("Could not commit duplicate backfill: {error}"))
+    Ok(i64::try_from(rows.len()).unwrap_or(i64::MAX))
 }

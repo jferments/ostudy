@@ -11,8 +11,7 @@ const [
   database,
   rustRoot,
   assetLifecycle,
-  transferLifecycle,
-  transferWrapper,
+  studydeckImport,
   templateCommands,
   deletion,
   deletionCommands,
@@ -29,8 +28,7 @@ const [
   read("src-tauri", "src", "database.rs"),
   read("src-tauri", "src", "lib.rs"),
   read("src-tauri", "src", "asset_lifecycle.rs"),
-  read("src-tauri", "src", "transfer_lifecycle.rs"),
-  read("src-tauri", "src", "authoring", "stage3_v2", "transfer_wrapper.rs"),
+  read("src-tauri", "src", "studydeck", "import.rs"),
   read("src-tauri", "src", "authoring", "stage3_v2", "types_commands.rs"),
   read("src-tauri", "src", "deletion.rs"),
   read("src-tauri", "src", "deletion_commands.rs"),
@@ -53,7 +51,11 @@ const checksum = createHash("sha256").update(migration).digest("hex");
 requireText(database, 'version: 11', "schema registration");
 requireText(database, 'name: "managed_asset_lifecycle"', "schema registration");
 requireText(database, `checksum: "${checksum}"`, "schema checksum");
-requireText(database, "const LATEST_SCHEMA_VERSION: i64 = 11", "latest schema");
+const schemaVersionMatch = database.match(/LATEST_SCHEMA_VERSION: i64 = (\d+)/u);
+const schemaVersion = schemaVersionMatch ? Number(schemaVersionMatch[1]) : Number.NaN;
+if (!Number.isInteger(schemaVersion) || schemaVersion < 11) {
+  failures.push("latest schema no longer includes the Stage 3.3 lifecycle migration");
+}
 
 for (const state of ["staged", "ready", "missing", "quarantined", "deleted"]) {
   requireText(migration, `'${state}'`, "asset lifecycle schema");
@@ -78,7 +80,12 @@ for (const required of [
   requireText(assetLifecycle, required, "managed asset implementation");
 }
 
-for (const moduleName of ["mod asset_lifecycle;", "mod deletion;", "mod deletion_commands;", "mod transfer_lifecycle;"]) {
+for (const moduleName of [
+  "mod asset_lifecycle;",
+  "mod deletion;",
+  "mod deletion_commands;",
+  "mod studydeck;",
+]) {
   requireText(rustRoot, moduleName, "native module registration");
 }
 for (const command of [
@@ -91,13 +98,20 @@ for (const command of [
   requireText(rustRoot, command, "native command registration");
 }
 
-for (const required of ["begin_import", "finish_import", "abort_import"]) {
-  requireText(transferLifecycle, required, "managed import journal");
-  requireText(transferWrapper, `transfer_lifecycle::${required}`, "managed import wiring");
+for (const required of [
+  "deck_import_operations",
+  "create_import_draft",
+  "stage_package_assets",
+  "compensate_promotions",
+  "fail_operation",
+  "idempotency_conflict",
+  "status = 'completed'",
+]) {
+  requireText(studydeckImport, required, "managed import journal");
 }
 requireText(
-  transferWrapper,
-  "asset_import_finalize_failed",
+  studydeckImport,
+  "transaction.commit()",
   "committed import success boundary",
 );
 
@@ -158,5 +172,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Stage 3.3 managed assets, compensation, crash reconciliation, import journaling, committed-success boundaries, and exact deletion Undo are wired across schema, native commands, editors, and toasts.",
+  "OK   Stage 3.3 managed assets, compensation, crash reconciliation, canonical import journaling, committed-success boundaries, and exact deletion Undo are wired across schema, native commands, editors, and toasts.",
 );

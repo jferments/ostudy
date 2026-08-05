@@ -15,12 +15,19 @@ vi.mock("../generatedImport", () => ({
   importGeneratedFlashcards: vi.fn(),
 }));
 
+const importOperationId = "9".repeat(32);
+
 vi.mock("../ipc", () => ({
   createDeck: vi.fn(),
+  createOperationId: vi.fn(() => importOperationId),
   deleteCard: vi.fn(),
   deleteDeck: vi.fn(),
   exportDeck: vi.fn(),
   getDeck: vi.fn(),
+  getErrorCode: (error: unknown) =>
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code: unknown }).code)
+      : null,
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
   importDeck: vi.fn(),
@@ -170,8 +177,12 @@ describe("DecksScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
 
     await waitFor(() => {
-      expect(ipc.importDeck).toHaveBeenCalledWith("/tmp/dog-facts.studydeck");
+      expect(ipc.importDeck).toHaveBeenCalledWith(
+        "/tmp/dog-facts.studydeck",
+        importOperationId,
+      );
     });
+    expect(ipc.createOperationId).toHaveBeenCalledOnce();
     expect(generatedImport.importGeneratedFlashcards).not.toHaveBeenCalled();
   });
 });

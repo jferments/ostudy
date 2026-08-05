@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (...parts) => readFile(join(root, ...parts), "utf8");
+const readJoined = async (...paths) =>
+  (await Promise.all(paths.map((parts) => read(...parts)))).join("\n");
 
 const [
   migration6,
@@ -55,7 +57,12 @@ const [
   read("src", "screens", "CardsScreen.tsx"),
   read("src", "card-types.css"),
   read("src", "rich-templates.css"),
-  read("src-tauri", "src", "stage3_transfer.rs"),
+  readJoined(
+    ["src-tauri", "src", "studydeck.rs"],
+    ["src-tauri", "src", "studydeck", "export.rs"],
+    ["src-tauri", "src", "studydeck", "import.rs"],
+    ["src-tauri", "src", "studydeck", "read.rs"],
+  ),
   read("docs", "ARCHITECTURE.md"),
   read("docs", "CARD-FORMAT-AND-DATA-MODEL.md"),
 ]);
@@ -116,7 +123,7 @@ for (const command of [
 }
 
 for (const fragment of [
-  "normalize_stage3_schema",
+  "apply_stage3_data_repairs",
   "normalize_cloze_card_rows",
   "cards: vec![GeneratedCardSpec",
   'direction: "forward"',
@@ -229,13 +236,13 @@ if (richStyles.includes(".template-field-inserter")) {
 }
 
 for (const fragment of [
-  "CREATE TABLE IF NOT EXISTS card_type_metadata",
-  "restore_imported_card_types",
+  "CURRENT_PACKAGE_VERSION",
+  "fresh-local-schedules",
   "insert_new_schedule",
 ]) {
   if (!stage3Transfer.includes(fragment)) failures.push(`studydeck support missing: ${fragment}`);
 }
-if (stage3Transfer.includes("card_templates")) {
+if (stage3Transfer.includes("CREATE TABLE card_templates")) {
   failures.push("reusable authoring templates must not be exported with decks");
 }
 

@@ -542,9 +542,8 @@ fn insert_template_children(
         connection
             .execute(
                 "INSERT INTO card_template_rules (
-                     id, template_id, name, front_pattern, back_pattern,
-                     front_doc, back_doc, position
-                 ) VALUES (?1, ?2, ?3, '[rich document]', '[rich document]', ?4, ?5, ?6)",
+                     id, template_id, name, front_doc, back_doc, position
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![
                     rule.id,
                     template_id,

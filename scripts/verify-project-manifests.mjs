@@ -92,7 +92,7 @@ const [
   read("src-tauri", "src", "cards.rs"),
   read("src-tauri", "src", "authoring", "writes_and_transfer.rs"),
   read("src-tauri", "src", "scheduler.rs"),
-  read("src-tauri", "src", "transfer.rs"),
+  read("src-tauri", "src", "studydeck.rs"),
   read("run-app.sh"),
   read("scripts", "build.sh"),
   read("scripts", "check-fast.sh"),

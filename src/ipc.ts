@@ -492,6 +492,22 @@ export interface ImportResult {
   assetCount: number;
 }
 
+export interface LibraryBackupResult {
+  destinationPath: string;
+  deckCount: number;
+  templateCount: number;
+  reviewCount: number;
+  assetCount: number;
+}
+
+export interface LibraryRestoreResult {
+  deckCount: number;
+  templateCount: number;
+  reviewCount: number;
+  assetCount: number;
+  restartRequired: boolean;
+}
+
 export interface CommandErrorPayload {
   code?: string;
   message?: string;
@@ -689,8 +705,29 @@ export async function exportDeck(deckId: string, destinationPath: string): Promi
   return invoke<ExportResult>("export_deck", { input: { deckId, destinationPath } });
 }
 
-export async function importDeck(sourcePath: string): Promise<ImportResult> {
-  return invoke<ImportResult>("import_deck", { sourcePath });
+export async function importDeck(
+  sourcePath: string,
+  operationId: string,
+): Promise<ImportResult> {
+  return invoke<ImportResult>("import_deck", {
+    input: { sourcePath, operationId },
+  });
+}
+
+export async function exportLibraryBackup(
+  destinationPath: string,
+): Promise<LibraryBackupResult> {
+  return invoke<LibraryBackupResult>("export_library_backup", {
+    input: { destinationPath },
+  });
+}
+
+export async function prepareLibraryRestore(
+  sourcePath: string,
+): Promise<LibraryRestoreResult> {
+  return invoke<LibraryRestoreResult>("prepare_library_restore", {
+    input: { sourcePath },
+  });
 }
 
 export function createOperationId(): string {
