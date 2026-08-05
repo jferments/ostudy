@@ -1,0 +1,37 @@
+name: Apply final Stage 3.4 and 3.5 fixes
+
+on:
+  push:
+    branches:
+      - agent/stage-3-4-3-5-transfer-repairs
+    paths:
+      - .github/workflows/final-stage34-35-fixes.yml
+      - scripts/apply-final-stage34-35-fixes.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply final production fixes
+        run: python3 scripts/apply-final-stage34-35-fixes.py
+      - name: Qualify migration and repository contracts
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          node scripts/verify-project-manifests.mjs
+          node scripts/verify-stage34-35.mjs
+          cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+      - name: Commit qualified production source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/src/database.rs src-tauri/src/stage34_35_regression_tests.rs
+          git commit -m "fix: complete canonical schema migration" || exit 0
+          git push origin HEAD:agent/stage-3-4-3-5-transfer-repairs
