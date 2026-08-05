@@ -11,6 +11,7 @@ import "./rich-templates.css";
 import "./scheduling-controls.css";
 import "./analytics.css";
 import "./managed-assets.css";
+import "./stage36-38.css";
 
 const rootElement = document.getElementById("root");
 
