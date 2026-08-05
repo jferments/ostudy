@@ -863,14 +863,38 @@ fn reconcile_asset(
 
     match asset.lifecycle_state.as_str() {
         "staged" => {
-            if staged_exists {
-                let draft_active = asset
-                    .draft_id
-                    .as_deref()
-                    .is_some_and(|draft_id| ensure_active_draft(connection, draft_id, now).is_ok());
-                if draft_active {
+            let draft_active = asset
+                .draft_id
+                .as_deref()
+                .is_some_and(|draft_id| ensure_active_draft(connection, draft_id, now).is_ok());
+            if draft_active {
+                if staged_exists {
                     return Ok(());
                 }
+                if final_exists {
+                    let staged = staged_path.as_ref().ok_or_else(|| {
+                        CommandError::new(
+                            "asset_stage_missing",
+                            "A staged asset has no managed staging path.",
+                        )
+                    })?;
+                    create_parent(staged)?;
+                    fs::rename(&final_path, staged).map_err(CommandError::io)?;
+                    sync_directory(final_path.parent())?;
+                    sync_directory(staged.parent())?;
+                    record_event(
+                        connection,
+                        Some(&asset.id),
+                        "restored",
+                        Some(&asset.relative_path),
+                        asset.staged_relative_path.as_deref(),
+                        "returned interrupted import rename to active staging",
+                        now,
+                    )?;
+                    return Ok(());
+                }
+            }
+            if staged_exists {
                 cleanup.push(staged_path.expect("checked staged path"));
             }
             if final_exists {
