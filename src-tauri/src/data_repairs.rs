@@ -1,15 +1,16 @@
 //! One-time, versioned data canonicalization for released ostudy databases.
 //!
 //! Structural migrations remain immutable SQL history. Repairs are tracked in a
-//! separate ledger because template JSON and generated-card identity require the
-//! same validated Rust transformations used by normal authoring. Once every
-//! repair row exists, ordinary startup performs reads only and cannot churn user
-//! timestamps, revisions, FTS rows, or the WAL.
+//! separate ledger because validated rich-data transformations cannot always be
+//! expressed safely as static SQL. A repair runs only after its required schema
+//! exists. Once every applicable row is recorded, ordinary startup performs
+//! reads only and cannot churn user timestamps, revisions, FTS rows, or the WAL.
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 
 use crate::{
     authoring::{apply_stage3_data_repairs, backfill_duplicate_hashes_in_connection},
+    historical_attribution::backfill_legacy_review_attributions,
     util::unix_time_millis,
 };
 
@@ -17,6 +18,7 @@ struct DataRepair {
     version: i64,
     name: &'static str,
     checksum: &'static str,
+    required_schema: i64,
     apply: fn(&Transaction<'_>) -> Result<i64, String>,
 }
 
@@ -25,19 +27,34 @@ const REPAIRS: &[DataRepair] = &[
         version: 1,
         name: "duplicate_fingerprints",
         checksum: "fb2f07be41d479048759ac7d754a59022f2c63c3f60082eaf9a40fd28bab7993",
+        required_schema: 12,
         apply: repair_duplicate_fingerprints,
     },
     DataRepair {
         version: 2,
         name: "template_and_generated_card_canonicalization",
         checksum: "ec486bad97c8c5495755bae160bf019d61c084444cc09d88ba8e1f0135b3e663",
+        required_schema: 12,
         apply: repair_stage3_data,
+    },
+    DataRepair {
+        version: 3,
+        name: "review_event_historical_attribution",
+        checksum: "8e2c34df65a62e31e3ec0d2476dcac18c59f10e54240b2d42a37d22441f2f147",
+        required_schema: 14,
+        apply: repair_review_attribution,
     },
 ];
 
 pub(crate) fn apply_required_repairs(connection: &mut Connection) -> Result<(), String> {
     ensure_ledger_exists(connection)?;
-    for repair in REPAIRS {
+    let schema_version: i64 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|error| format!("Could not inspect schema before data repair: {error}"))?;
+    for repair in REPAIRS
+        .iter()
+        .filter(|repair| repair.required_schema <= schema_version)
+    {
         let existing: Option<(String, String)> = connection
             .query_row(
                 "SELECT name, checksum FROM data_repairs WHERE version = ?1",
@@ -86,7 +103,13 @@ pub(crate) fn apply_required_repairs(connection: &mut Connection) -> Result<(), 
 
 pub(crate) fn verify_repair_ledger(connection: &Connection) -> Result<(), String> {
     ensure_ledger_exists(connection)?;
-    for repair in REPAIRS {
+    let schema_version: i64 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|error| format!("Could not inspect schema while verifying repairs: {error}"))?;
+    for repair in REPAIRS
+        .iter()
+        .filter(|repair| repair.required_schema <= schema_version)
+    {
         let recorded: Option<(String, String)> = connection
             .query_row(
                 "SELECT name, checksum FROM data_repairs WHERE version = ?1",
@@ -132,6 +155,10 @@ fn repair_duplicate_fingerprints(transaction: &Transaction<'_>) -> Result<i64, S
 
 fn repair_stage3_data(transaction: &Transaction<'_>) -> Result<i64, String> {
     apply_stage3_data_repairs(transaction).map_err(|error| error.message)
+}
+
+fn repair_review_attribution(transaction: &Transaction<'_>) -> Result<i64, String> {
+    backfill_legacy_review_attributions(transaction).map_err(|error| error.message)
 }
 
 #[cfg(test)]

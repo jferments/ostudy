@@ -21,9 +21,7 @@ impl StudyabilityState {
     }
 
     pub fn is_studyable(self, now: i64) -> bool {
-        self.is_current()
-            && !self.suspended
-            && self.buried_until.is_none_or(|value| value <= now)
+        self.is_current() && !self.suspended && self.buried_until.is_none_or(|value| value <= now)
     }
 
     pub fn is_studyable_due(self, now: i64) -> bool {
@@ -128,15 +126,39 @@ mod tests {
     #[test]
     fn due_requires_current_unburied_unsuspended_card() {
         assert!(state().is_studyable_due(100));
-        assert!(!StudyabilityState { suspended: true, ..state() }.is_studyable_due(100));
-        assert!(!StudyabilityState { buried_until: Some(101), ..state() }.is_studyable_due(100));
-        assert!(!StudyabilityState { deck_archived: true, ..state() }.is_studyable_due(100));
-        assert!(!StudyabilityState { deck_deleted: true, ..state() }.is_studyable_due(100));
-        assert!(!StudyabilityState { due_at: 101, ..state() }.is_studyable_due(100));
+        assert!(!StudyabilityState {
+            suspended: true,
+            ..state()
+        }
+        .is_studyable_due(100));
+        assert!(!StudyabilityState {
+            buried_until: Some(101),
+            ..state()
+        }
+        .is_studyable_due(100));
+        assert!(!StudyabilityState {
+            deck_archived: true,
+            ..state()
+        }
+        .is_studyable_due(100));
+        assert!(!StudyabilityState {
+            deck_deleted: true,
+            ..state()
+        }
+        .is_studyable_due(100));
+        assert!(!StudyabilityState {
+            due_at: 101,
+            ..state()
+        }
+        .is_studyable_due(100));
     }
 
     #[test]
     fn burial_expires_at_the_exact_boundary() {
-        assert!(StudyabilityState { buried_until: Some(100), ..state() }.is_studyable(100));
+        assert!(StudyabilityState {
+            buried_until: Some(100),
+            ..state()
+        }
+        .is_studyable(100));
     }
 }

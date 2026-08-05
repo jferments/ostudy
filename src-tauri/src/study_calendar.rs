@@ -180,8 +180,7 @@ fn one_year_before(date: NaiveDate) -> Result<NaiveDate, CommandError> {
         return Ok(value);
     }
     // February 29 clamps to February 28 in the previous non-leap year.
-    NaiveDate::from_ymd_opt(date.year().saturating_sub(1), 2, 28)
-        .ok_or_else(invalid_calendar_date)
+    NaiveDate::from_ymd_opt(date.year().saturating_sub(1), 2, 28).ok_or_else(invalid_calendar_date)
 }
 
 fn invalid_calendar_date() -> CommandError {

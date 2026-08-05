@@ -207,6 +207,21 @@ pub(crate) struct RenderedCardPresentation {
     pub(crate) back_text: String,
 }
 
+
+pub(crate) struct ProjectedPresentationInput<'a> {
+    pub(crate) direction: String,
+    pub(crate) template_ordinal: i64,
+    pub(crate) note_type: String,
+    pub(crate) front_doc_json: String,
+    pub(crate) back_doc_json: String,
+    pub(crate) front_text: String,
+    pub(crate) back_text: String,
+    pub(crate) cloze_source: String,
+    pub(crate) cloze_mode: String,
+    pub(crate) reps: i64,
+    pub(crate) presentation_variant: Option<&'a str>,
+}
+
 struct PreparedGeneratedNote {
     note_type: &'static str,
     reverse_enabled: bool,

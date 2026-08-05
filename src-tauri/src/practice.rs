@@ -8,6 +8,7 @@ use crate::{
     cards::CardDto,
     database::Database,
     error::CommandError,
+    historical_attribution::insert_review_attribution,
     scheduler::{
         apply_review, load_schedule, preview_intervals, update_schedule, ReviewOutcome,
         ReviewPreviewSetDto, ScheduleTransition, SCHEDULER_NAME, SCHEDULER_VERSION,
@@ -333,12 +334,19 @@ pub(crate) fn submit_review_in_connection(
         rated_count,
         correct_count,
     };
-    insert_review_event(
+    let review_event_id = insert_review_event(
         &transaction,
         &input,
         &request_fingerprint,
         &transition,
         &result,
+        reviewed_at,
+    )?;
+    insert_review_attribution(
+        &transaction,
+        &review_event_id,
+        &input.session_id,
+        &input.card_id,
         reviewed_at,
     )?;
     transaction.commit().map_err(CommandError::database)?;
@@ -390,7 +398,7 @@ fn insert_review_event(
     transition: &ScheduleTransition,
     result: &ReviewResultDto,
     created_at: i64,
-) -> Result<(), CommandError> {
+) -> Result<String, CommandError> {
     let event_id = generate_id(connection)?;
     connection
         .execute(
@@ -438,7 +446,7 @@ fn insert_review_event(
             ],
         )
         .map_err(CommandError::database)?;
-    Ok(())
+    Ok(event_id)
 }
 
 fn review_result_for_submission(

@@ -94,9 +94,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "2e56fa0b68049f8a4d2e937b1dbdb18ec45d9c9041b06f5994b3c847f1d2f049",
         sql: include_str!("../migrations/0013_canonical_data_model.sql"),
     },
+    Migration {
+        version: 14,
+        name: "study_calendar_history_projections",
+        checksum: "aa29f85d0b8f7c09564ba061c385b962db11a002113904ca21a20f1dc21d20be",
+        sql: include_str!("../migrations/0014_study_calendar_history_projections.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 13;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 14;
 
 pub struct Database {
     connection: Mutex<Connection>,

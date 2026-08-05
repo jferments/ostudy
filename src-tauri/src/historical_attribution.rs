@@ -63,10 +63,7 @@ pub fn prepare_attributions(
     connection: &Connection,
     cards: &[(String, String)],
 ) -> Result<BTreeMap<String, PreparedAttribution>, CommandError> {
-    let variants = cards
-        .iter()
-        .cloned()
-        .collect::<BTreeMap<String, String>>();
+    let variants = cards.iter().cloned().collect::<BTreeMap<String, String>>();
     let mut rows = BTreeMap::<String, AttributionSourceRow>::new();
     let card_ids = variants.keys().cloned().collect::<Vec<_>>();
 
@@ -280,9 +277,7 @@ pub fn insert_review_attribution(
     Ok(())
 }
 
-pub fn backfill_legacy_review_attributions(
-    connection: &Connection,
-) -> Result<i64, CommandError> {
+pub fn backfill_legacy_review_attributions(connection: &Connection) -> Result<i64, CommandError> {
     let mut statement = connection
         .prepare(
             "SELECT r.id, r.card_id, r.reviewed_at,
@@ -371,9 +366,17 @@ pub fn backfill_legacy_review_attributions(
                     note_id,
                     note_revision,
                     deck_id,
-                    if note_type == "cloze" { "cloze" } else { "basic" },
+                    if note_type == "cloze" {
+                        "cloze"
+                    } else {
+                        "basic"
+                    },
                     card_label,
-                    if template_ordinal >= 0 { presentation_variant } else { String::new() },
+                    if template_ordinal >= 0 {
+                        presentation_variant
+                    } else {
+                        String::new()
+                    },
                     question_excerpt,
                     hash_text(&question),
                     bool_to_integer(question_was_truncated),

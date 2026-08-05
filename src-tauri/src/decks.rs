@@ -49,9 +49,7 @@ pub fn list_decks(database: State<'_, Database>) -> Result<Vec<DeckDto>, Command
 }
 
 #[tauri::command]
-pub fn list_archived_decks(
-    database: State<'_, Database>,
-) -> Result<Vec<DeckDto>, CommandError> {
+pub fn list_archived_decks(database: State<'_, Database>) -> Result<Vec<DeckDto>, CommandError> {
     database.with_connection(|connection| list_decks_from_connection(connection, true))
 }
 

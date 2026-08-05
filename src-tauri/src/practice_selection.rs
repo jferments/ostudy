@@ -13,6 +13,7 @@ use crate::{
     authoring::{get_generated_card_for_practice, presentation_variant_for_card},
     database::Database,
     error::CommandError,
+    historical_attribution::{insert_session_snapshots, prepare_attributions},
     learning_signals::needs_more_practice,
     paths::AppPaths,
     practice::{PracticeCardDto, PracticeSessionDto},
@@ -475,6 +476,11 @@ fn create_practice_session(
         });
     }
 
+    let attribution_cards = pending_cards
+        .iter()
+        .map(|(_, card_id, _, _, _, _, variant)| (card_id.clone(), variant.clone()))
+        .collect::<Vec<_>>();
+    let attributions = prepare_attributions(connection, &attribution_cards)?;
     let selected_deck_ids_json =
         serde_json::to_string(&selected_deck_ids).map_err(CommandError::serialization)?;
     let transaction = connection
@@ -513,6 +519,7 @@ fn create_practice_session(
             )
             .map_err(CommandError::database)?;
     }
+    insert_session_snapshots(&transaction, &session_id, attributions.into_values(), now)?;
     transaction.commit().map_err(CommandError::database)?;
 
     Ok(PracticeSessionDto {

@@ -660,6 +660,80 @@ fn cloze_target_from_variant(
     Ok(Some(parsed.groups[index]))
 }
 
+pub(crate) fn render_projected_presentation(
+    input: ProjectedPresentationInput<'_>,
+) -> Result<RenderedCardPresentation, CommandError> {
+    let ProjectedPresentationInput {
+        direction,
+        template_ordinal,
+        note_type,
+        front_doc_json,
+        back_doc_json,
+        front_text,
+        back_text,
+        cloze_source,
+        cloze_mode,
+        reps,
+        presentation_variant,
+    } = input;
+    if note_type == "basic" {
+        let front_doc =
+            serde_json::from_str(&front_doc_json).map_err(CommandError::serialization)?;
+        let back_doc =
+            serde_json::from_str(&back_doc_json).map_err(CommandError::serialization)?;
+        return match direction.as_str() {
+            "forward" => Ok(RenderedCardPresentation {
+                card_type: "basic".to_string(),
+                card_label: "Basic".to_string(),
+                front_doc,
+                back_doc,
+                front_text,
+                back_text,
+            }),
+            "reverse" => Ok(RenderedCardPresentation {
+                card_type: "basic".to_string(),
+                card_label: "Reverse".to_string(),
+                front_doc: back_doc,
+                back_doc: front_doc,
+                front_text: back_text,
+                back_text: front_text,
+            }),
+            _ => Err(CommandError::new(
+                "invalid_generated_card",
+                "A Basic note contains an unsupported generated-card direction.",
+            )),
+        };
+    }
+    if note_type != "cloze" || direction != "forward" || template_ordinal != 0 {
+        return Err(CommandError::new(
+            "invalid_generated_card",
+            "The Fill in the blank note contains an unsupported active card identity.",
+        ));
+    }
+    validate_cloze_mode(&cloze_mode)?;
+    let parsed = parse_cloze(&cloze_source)?;
+    let target = cloze_target_from_variant(&parsed, &cloze_mode, presentation_variant, reps)?;
+    let question = render_cloze_question(&parsed, target);
+    let answer = render_cloze_answer(&parsed, target);
+    let label = if cloze_mode == "all_together" {
+        "Fill in the blank · all blanks".to_string()
+    } else {
+        format!(
+            "Fill in the blank · {} alternating {}",
+            parsed.groups.len(),
+            if parsed.groups.len() == 1 { "blank" } else { "blanks" }
+        )
+    };
+    Ok(RenderedCardPresentation {
+        card_type: "cloze".to_string(),
+        card_label: label,
+        front_doc: plain_text_document(&question),
+        back_doc: plain_text_document(&answer),
+        front_text: question,
+        back_text: answer,
+    })
+}
+
 pub(crate) fn render_stored_card_presentation(
     connection: &Connection,
     card_id: &str,
