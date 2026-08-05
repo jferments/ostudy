@@ -70,7 +70,7 @@ export function CardsScreen({
 }: CardsScreenProps) {
   const [deckIds, setDeckIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
-  const [dueFilter, setDueFilter] = useState<DueFilter>("all");
+  const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>("all");
   const [statusFilter, setStatusFilter] = useState<CardStatusFilter>("active");
   const [reviewedFilter, setReviewedFilter] = useState<ReviewedFilter>("all");
   const [sort, setSort] = useState<CardSort>("updated_desc");
@@ -106,14 +106,14 @@ export function CardsScreen({
       deckIds: [...deckIds],
       query,
       tagIds: [...tagIds],
-      dueFilter,
+      availabilityFilter,
       statusFilter,
       reviewedFilter,
       sort: normalizedSort,
       limit: PAGE_SIZE,
       offset: 0,
     }),
-    [deckIds, dueFilter, normalizedSort, query, reviewedFilter, statusFilter, tagIds],
+    [deckIds, availabilityFilter, normalizedSort, query, reviewedFilter, statusFilter, tagIds],
   );
   const selected = useMemo(() => [...selectedCards.values()], [selectedCards]);
   const selectedNotes = useMemo(() => uniqueNotes(selected), [selected]);
@@ -541,11 +541,11 @@ export function CardsScreen({
           />
         </label>
         <label>
-          <span>Due</span>
+          <span>Availability</span>
           <select
-            value={dueFilter}
+            value={availabilityFilter}
             onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              setDueFilter(event.currentTarget.value as DueFilter)
+              setAvailabilityFilter(event.currentTarget.value as DueFilter)
             }
           >
             <option value="all">Any due date</option>

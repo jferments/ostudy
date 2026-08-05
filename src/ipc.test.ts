@@ -77,7 +77,7 @@ const searchInput: CardSearchInput = {
   deckIds: [deckId],
   query: "warfarin",
   tagIds: [],
-  dueFilter: "due",
+  availabilityFilter: "ready_now",
   statusFilter: "active",
   reviewedFilter: "all",
   sort: "relevance",

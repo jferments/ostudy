@@ -112,8 +112,8 @@ pub struct SearchCardsInput {
     pub query: String,
     #[serde(default)]
     pub tag_ids: Vec<String>,
-    #[serde(default = "default_due_filter")]
-    pub due_filter: String,
+    #[serde(default = "default_availability_filter")]
+    pub availability_filter: String,
     #[serde(default = "default_status_filter")]
     pub status_filter: String,
     #[serde(default = "default_reviewed_filter")]

@@ -249,7 +249,7 @@ export interface TagSummary {
   sourceNoteCount: number;
 }
 
-export type DueFilter = "all" | "due" | "not_due";
+export type AvailabilityFilter = "all" | "ready_now" | "scheduled_later";
 export type CardStatusFilter =
   | "all"
   | "active"
@@ -259,10 +259,10 @@ export type CardStatusFilter =
 export type ReviewedFilter =
   | "all"
   | "never"
-  | "last_1_day"
-  | "last_7_days"
-  | "last_30_days"
-  | "older_30_days";
+  | "today"
+  | "past_7_dates"
+  | "past_30_dates"
+  | "before_30_dates";
 export type CardSort =
   | "relevance"
   | "updated_desc"
@@ -274,7 +274,7 @@ export interface CardSearchInput {
   deckIds: string[];
   query: string;
   tagIds: string[];
-  dueFilter: DueFilter;
+  availabilityFilter: AvailabilityFilter;
   statusFilter: CardStatusFilter;
   reviewedFilter: ReviewedFilter;
   sort: CardSort;

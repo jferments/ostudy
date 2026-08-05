@@ -587,6 +587,41 @@ fn render_cloze_answer(parsed: &ParsedCloze, target: Option<u32>) -> String {
     )
 }
 
+fn render_projected_text_presentation(
+    note_type: &str,
+    direction: &str,
+    front_text: &str,
+    back_text: &str,
+    cloze_source: &str,
+    cloze_mode: &str,
+    reps: i64,
+) -> Result<(String, String, String, String), CommandError> {
+    if note_type == "basic" {
+        return match direction {
+            "forward" => Ok(("basic".to_string(), "Basic".to_string(), front_text.to_string(), back_text.to_string())),
+            "reverse" => Ok(("basic".to_string(), "Reverse".to_string(), back_text.to_string(), front_text.to_string())),
+            _ => Err(CommandError::new("invalid_generated_card", "A Basic note contains an unsupported generated-card direction.")),
+        };
+    }
+    if note_type != "cloze" || direction != "forward" {
+        return Err(CommandError::new("invalid_generated_card", "The Fill in the blank note contains an unsupported active card identity."));
+    }
+    validate_cloze_mode(cloze_mode)?;
+    let parsed = parse_cloze(cloze_source)?;
+    let target = if cloze_mode == "all_together" {
+        None
+    } else {
+        let index = usize::try_from(reps.max(0)).unwrap_or(0) % parsed.groups.len();
+        Some(parsed.groups[index])
+    };
+    let label = if cloze_mode == "all_together" {
+        "Fill in the blank · all blanks".to_string()
+    } else {
+        format!("Fill in the blank · {} alternating {}", parsed.groups.len(), if parsed.groups.len() == 1 { "blank" } else { "blanks" })
+    };
+    Ok(("cloze".to_string(), label, render_cloze_question(&parsed, target), render_cloze_answer(&parsed, target)))
+}
+
 pub(crate) fn presentation_variant_for_projected(
     note_type: &str,
     cloze_source: &str,
