@@ -5,7 +5,7 @@ on:
     branches:
       - agent/stage-3-6-3-8-scheduling-analytics-projections
     paths:
-      - scripts/apply-stage36-38-search.py
+      - scripts/apply-stage36-38-verifier-style.py
       - .github/workflows/stage36-38-apply.yml
   workflow_dispatch:
 
@@ -25,10 +25,8 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - name: Apply bounded Search and Filter projection
-        run: python3 scripts/apply-stage36-38-search.py
-      - name: Format Rust
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+      - name: Apply repository verifier patch
+        run: python3 scripts/apply-stage36-38-verifier-style.py
       - name: Commit generated source
         run: |
           git config user.name "ostudy automation"
@@ -37,7 +35,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No source changes were required."
           else
-            git commit -m "refactor: bound Search and Filter projections"
+            git commit -m "test: verify Stage 3.6 through 3.8 projection styles"
             git push origin HEAD:agent/stage-3-6-3-8-scheduling-analytics-projections
           fi
       - name: Run fast gate on generated source
