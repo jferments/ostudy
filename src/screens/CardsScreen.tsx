@@ -620,7 +620,7 @@ export function CardsScreen({
                     }}
                   />
                   <span>{tag.name}</span>
-                  <small>{tag.generatedCardCount}</small>
+                  <small>{tag.sourceNoteCount}</small>
                 </label>
               ))
             )}

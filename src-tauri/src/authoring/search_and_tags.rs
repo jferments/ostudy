@@ -61,7 +61,7 @@ fn tag_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TagDto> {
     Ok(TagDto {
         id: row.get(0)?,
         name: row.get(1)?,
-        card_count: row.get(2)?,
+        source_note_count: row.get(2)?,
     })
 }
 

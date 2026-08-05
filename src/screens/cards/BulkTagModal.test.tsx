@@ -15,7 +15,7 @@ const cards: ipc.SelectionCard[] = [
   { cardId: "d".repeat(32), noteId: "e".repeat(32), deckId: "c".repeat(32) },
 ];
 const suggestions: ipc.TagSummary[] = [
-  { id: "f".repeat(32), name: "Cardiology", cardCount: 12 },
+  { id: "f".repeat(32), name: "Cardiology", sourceNoteCount: 12 },
 ];
 
 describe("BulkTagModal", () => {

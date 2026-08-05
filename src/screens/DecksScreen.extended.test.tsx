@@ -230,7 +230,7 @@ describe("DecksScreen extended behavior", () => {
     vi.mocked(openDialog).mockResolvedValue("/tmp/retry.studydeck");
     vi.mocked(ipc.importDeck)
       .mockRejectedValueOnce(new Error("Native response was interrupted."))
-      .mockResolvedValueOnce({ deck: imported, cardCount: 1, assetCount: 0 });
+      .mockResolvedValueOnce({ deck: imported, generatedCardCount: 1, assetCount: 0 });
     renderDeckLibrary();
 
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));

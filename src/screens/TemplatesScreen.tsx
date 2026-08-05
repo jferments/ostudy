@@ -203,7 +203,17 @@ export function TemplatesScreen({
       setAssetDraftId(null);
       setTemplates((current) => {
         const withoutSaved = current.filter((template) => template.id !== saved.id);
-        return [...withoutSaved, saved].sort((left, right) =>
+        const summary: CardTemplateSummary = {
+          id: saved.id,
+          name: saved.name,
+          description: saved.description,
+          fieldCount: saved.fields.length,
+          generatedCardRuleCount: saved.rules.length,
+          imageCount: saved.assets.length,
+          updatedAt: saved.updatedAt,
+          revision: saved.revision,
+        };
+        return [...withoutSaved, summary].sort((left, right) =>
           left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
         );
       });

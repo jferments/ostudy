@@ -22,7 +22,6 @@ interface AnalyticsScreenProps {
   settings: AppSettings;
   launchRequest: AnalyticsLaunchRequest | null;
   onLaunchConsumed: () => void;
-  onPracticeCards: (cardIds: string[]) => void;
   onPracticeScope: (deckIds: string[], tagIds: string[]) => void;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
 }
@@ -43,7 +42,6 @@ export function AnalyticsScreen({
   settings,
   launchRequest,
   onLaunchConsumed,
-  onPracticeCards,
   onPracticeScope,
   showToast,
 }: AnalyticsScreenProps) {
@@ -195,7 +193,7 @@ export function AnalyticsScreen({
             <FilterChecklist
               label="Tags"
               emptyLabel={isLoadingTags ? "Loading tags…" : "No tags in this deck scope"}
-              options={availableTags.map((tag) => ({ id: tag.id, name: tag.name, detail: `${tag.generatedCardCount} cards` }))}
+              options={availableTags.map((tag) => ({ id: tag.id, name: tag.name, detail: `${tag.sourceNoteCount} cards` }))}
               selected={selectedTagIds}
               onChange={(next) => {
                 setSelectedTagIds(next);
@@ -290,7 +288,7 @@ export function AnalyticsScreen({
                   <tbody>
                     {analytics.tagStats.map((tag) => (
                       <tr key={tag.tagId}>
-                        <td><strong>{tag.tagName}</strong><small>{tag.generatedCardCount} active cards</small></td>
+                        <td><strong>{tag.tagName}</strong><small>{tag.sourceNoteCount} active cards</small></td>
                         <td>{formatLastPracticed(tag.lastPracticedAt)}</td>
                         <td>{tag.cardsPracticed} cards<small>{tag.reviewCount} reviews · {formatStudyTime(tag.totalStudyTimeMs)}</small></td>
                         <td>{formatPercent(tag.correctRate)}<small>{formatConfidence(tag.averageConfidence)}</small></td>

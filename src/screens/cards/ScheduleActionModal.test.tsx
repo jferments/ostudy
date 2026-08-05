@@ -95,7 +95,6 @@ describe("ScheduleActionModal", () => {
   });
 
   it("sends a backend-authoritative next-local-day intent", async () => {
-    const startedOn = new Date();
     vi.mocked(ipc.applyScheduleAction).mockResolvedValue({
       affectedCount: 1,
       action: "reschedule",

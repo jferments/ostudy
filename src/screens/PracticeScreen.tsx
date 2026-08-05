@@ -372,7 +372,7 @@ export function PracticeScreen({
     }
   }
 
-  async function manageCurrent(action: ScheduleAction, dueAt?: number): Promise<void> {
+  async function manageCurrent(action: ScheduleAction, reschedule?: import("../ipc").RescheduleIntent): Promise<void> {
     if (!session || !current || managingRef.current) return;
     if (pendingReviewRef.current) {
       setErrorMessage("Retry the pending rating before changing this card's schedule.");
@@ -394,7 +394,7 @@ export function PracticeScreen({
         mutationId: createMutationId(),
         cardIds: [current.card.id],
         action,
-        dueAt,
+        reschedule,
         sessionId: session.id,
       });
       if (action === "bury" || action === "suspend") {
@@ -557,11 +557,17 @@ function operationIdForStart(
 
 function selectedStartKey(
   deckIds: string[],
+  tagIds: string[],
   shuffle: boolean,
   mode: "scheduled" | "extra",
 ): string {
-  const canonicalDeckIds = [...new Set(deckIds)].sort();
-  return JSON.stringify({ kind: "selected", deckIds: canonicalDeckIds, shuffle, mode });
+  return JSON.stringify({
+    kind: "selected",
+    deckIds: [...new Set(deckIds)].sort(),
+    tagIds: [...new Set(tagIds)].sort(),
+    shuffle,
+    mode,
+  });
 }
 
 function cardStartKey(cardIds: string[], shuffle: boolean): string {

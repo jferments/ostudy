@@ -6,7 +6,7 @@ import type { TagSummary } from "../ipc";
 import { TagInput } from "./TagInput";
 
 const suggestions: TagSummary[] = [
-  { id: "a".repeat(32), name: "Cardiology", cardCount: 12 },
+  { id: "a".repeat(32), name: "Cardiology", sourceNoteCount: 12 },
   { id: "b".repeat(32), name: "Medication safety", cardCount: 4 },
 ];
 

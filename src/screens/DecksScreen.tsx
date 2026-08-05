@@ -642,11 +642,9 @@ export function DecksScreen({
                   />
                 </label>
                 <span className="card-count-summary">
-                  {visibleCards.length === cards.length
-                    ? `${cards.length} ${
-                        cards.length === 1 ? "source note" : "source notes"
-                      }`
-                    : `${visibleCards.length} of ${cards.length} source notes`}
+                  {search.trim() === ""
+                    ? `${cardTotal} ${cardTotal === 1 ? "source note" : "source notes"}`
+                    : `${visibleCards.length} matching source notes`}
                   {` · ${selectedDeck.generatedCardCount} generated ${
                     selectedDeck.generatedCardCount === 1 ? "card" : "cards"
                   }`}
@@ -695,8 +693,10 @@ export function DecksScreen({
                         <button
                           type="button"
                           onClick={() => {
-                            setEditingCard(card);
-                            setView("editor");
+                            void getOrganizedCard(card.noteId).then((loaded) => {
+                              setEditingCard(loaded);
+                              setView("editor");
+                            }).catch((error: unknown) => showToast("error", getErrorMessage(error)));
                           }}
                         >
                           Edit

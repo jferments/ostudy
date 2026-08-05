@@ -246,7 +246,7 @@ export interface GenerateTemplateCardsResult {
 export interface TagSummary {
   id: string;
   name: string;
-  cardCount: number;
+  sourceNoteCount: number;
 }
 
 export type DueFilter = "all" | "due" | "not_due";

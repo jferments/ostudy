@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { RichTextView } from "../../editor/RichTextView";
-import type { PracticeSession, ReviewPreviewSet, ScheduleAction } from "../../ipc";
+import type { PracticeSession, RescheduleIntent, ReviewPreviewSet, ScheduleAction } from "../../ipc";
 import type { ConfidenceScore } from "./confidence";
 
 interface ActivePracticeProps {
@@ -17,7 +17,7 @@ interface ActivePracticeProps {
   errorMessage: string | null;
   onReveal: () => void;
   onScore: (score: ConfidenceScore) => void;
-  onScheduleAction: (action: ScheduleAction, dueAt?: number) => void;
+  onScheduleAction: (action: ScheduleAction, reschedule?: RescheduleIntent) => void;
   onEnd: () => void;
   onLinkError: (message: string) => void;
 }
@@ -86,7 +86,7 @@ export function ActivePractice({
             <div>
               <button type="button" disabled={busy} onClick={() => onScheduleAction("bury")}>Bury until tomorrow</button>
               <button type="button" disabled={busy} onClick={() => onScheduleAction("suspend")}>Suspend card</button>
-              <button type="button" disabled={busy} onClick={() => onScheduleAction("reschedule", tomorrowAtNoon())}>Reschedule for tomorrow</button>
+              <button type="button" disabled={busy} onClick={() => onScheduleAction("reschedule", { kind: "tomorrow" })}>Reschedule for tomorrow</button>
               <button type="button" className="danger-text" disabled={busy} onClick={() => onScheduleAction("reset")}>Reset schedule</button>
             </div>
           </details>
@@ -146,9 +146,3 @@ function formatInterval(value: number | undefined): string {
   return `About ${months} ${months === 1 ? "month" : "months"}`;
 }
 
-function tomorrowAtNoon(): number {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  date.setHours(12, 0, 0, 0);
-  return date.getTime();
-}

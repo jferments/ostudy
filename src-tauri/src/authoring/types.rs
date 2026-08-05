@@ -37,7 +37,7 @@ const TAG_SEPARATOR: char = '\u{001f}';
 pub struct TagDto {
     pub id: String,
     pub name: String,
-    pub card_count: i64,
+    pub source_note_count: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]

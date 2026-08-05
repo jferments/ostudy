@@ -286,7 +286,6 @@ function App() {
               settings={activeSettings}
               launchRequest={analyticsLaunch}
               onLaunchConsumed={consumeAnalyticsLaunch}
-              onPracticeCards={practiceCards}
               onPracticeScope={practiceScope}
               showToast={showToast}
             />
