@@ -1,0 +1,42 @@
+name: Apply Stage 3.6-3.8 core
+
+on:
+  push:
+    branches:
+      - agent/stage-3-6-3-8-scheduling-analytics-projections
+    paths:
+      - scripts/apply-stage36-38-core.py
+      - .github/workflows/stage36-38-apply.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/stage-3-6-3-8-scheduling-analytics-projections
+      - name: Expose user-local tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Apply asserted source transformations
+        run: python3 scripts/apply-stage36-38-core.py
+      - name: Format Rust
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+      - name: Commit generated source
+        run: |
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No source changes were required."
+            exit 0
+          fi
+          git commit -m "refactor: wire calendar attribution core"
+          git push origin HEAD:agent/stage-3-6-3-8-scheduling-analytics-projections
