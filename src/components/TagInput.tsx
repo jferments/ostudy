@@ -81,7 +81,7 @@ export function TagInput({
             )
             .map((suggestion) => (
               <option key={suggestion.id} value={suggestion.name}>
-                {suggestion.cardCount} cards
+                {suggestion.sourceNoteCount} cards
               </option>
             ))}
         </datalist>

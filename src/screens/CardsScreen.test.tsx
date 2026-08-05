@@ -120,7 +120,7 @@ describe("CardsScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(ipc.listTags).mockResolvedValue([
-      { id: "d".repeat(32), name: "Anticoagulants", cardCount: 1 },
+      { id: "d".repeat(32), name: "Anticoagulants", sourceNoteCount: 1 },
     ]);
     vi.mocked(ipc.searchCards).mockResolvedValue({
       cards: [browserCard],
