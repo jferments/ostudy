@@ -13,18 +13,16 @@ use rusqlite::params;
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use serde_json::Value;
-use tauri::State;
 
 use crate::{
     assets::{get_assets_for_note, AssetDto},
-    database::Database,
     error::CommandError,
     paths::AppPaths,
     util::validate_entity_id,
 };
 
 #[cfg(test)]
-use crate::util::unix_time_millis;
+use crate::{database::Database, util::unix_time_millis};
 
 const MAX_DOCUMENT_BYTES: usize = 1_000_000;
 const MAX_PLAIN_TEXT_CHARS: usize = 200_000;
@@ -1070,10 +1068,22 @@ mod tests {
         assert_eq!(loaded.id, card_id);
         assert_eq!(loaded.front_text, "What is ATP?");
 
-        let cards = database
-            .with_connection(|connection| list_cards_from_connection(connection, &paths, &deck.id))
-            .expect("cards should list");
-        assert_eq!(cards.len(), 1);
+        let card_count: i64 = database
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM cards c
+                         JOIN notes n ON n.id = c.note_id
+                         WHERE c.deck_id = ?1
+                           AND c.deleted_at IS NULL
+                           AND n.deleted_at IS NULL",
+                        [deck.id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .expect("active card count should load");
+        assert_eq!(card_count, 1);
 
         let deletion = database
             .with_connection(|connection| {
@@ -1085,10 +1095,22 @@ mod tests {
             })
             .expect("card should delete");
         assert_eq!(deletion.affected_count, 1);
-        let cards = database
-            .with_connection(|connection| list_cards_from_connection(connection, &paths, &deck.id))
-            .expect("cards should list");
-        assert!(cards.is_empty());
+        let card_count: i64 = database
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM cards c
+                         JOIN notes n ON n.id = c.note_id
+                         WHERE c.deck_id = ?1
+                           AND c.deleted_at IS NULL
+                           AND n.deleted_at IS NULL",
+                        [deck.id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .expect("active card count should load");
+        assert_eq!(card_count, 0);
 
         let _ = std::fs::remove_dir_all(temporary);
     }

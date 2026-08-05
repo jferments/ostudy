@@ -6,11 +6,12 @@ use crate::{
     database::Database,
     decks::{create_deck_in_connection, CreateDeckInput},
     error::CommandError,
-    learning_signals::needs_more_practice,
     scheduler::insert_new_schedule,
     settings::load_settings,
+    study_calendar::StudyTimeContext,
+    studyability::learning_signal_cte,
     util::{generate_id, unix_time_millis},
-    workload::{planned_scheduled_cards, workload_overview},
+    workload::{planned_scheduled_cards_scoped, workload_overview_scoped},
 };
 
 fn paragraph(text: &str) -> Value {
@@ -166,6 +167,23 @@ fn insert_reset_event(
         )
         .map_err(CommandError::database)?;
     Ok(())
+}
+
+fn projected_needs_more_practice(
+    connection: &Connection,
+    card_id: &str,
+) -> Result<bool, CommandError> {
+    let sql = format!(
+        "WITH {signals}
+         SELECT COALESCE((
+             SELECT needs_more_practice FROM learning_signals WHERE card_id = ?1
+         ), 0)",
+        signals = learning_signal_cte(),
+    );
+    connection
+        .query_row(&sql, [card_id], |row| row.get::<_, i64>(0))
+        .map(|value| value != 0)
+        .map_err(CommandError::database)
 }
 
 fn fts_count(connection: &Connection, query: &str) -> Result<i64, CommandError> {
@@ -414,22 +432,34 @@ fn workload_excludes_suspended_and_buried_cards_and_protects_review_backlog() {
             let mut settings = load_settings(connection)?;
             settings.daily_new_limit = 1;
             settings.daily_review_limit = 1;
-            let overview =
-                workload_overview(connection, std::slice::from_ref(&deck_id), &settings)?;
+            let context = StudyTimeContext::capture()?;
+            let overview = workload_overview_scoped(
+                connection,
+                std::slice::from_ref(&deck_id),
+                &[],
+                &settings,
+                &context,
+            )?;
             assert_eq!(overview.due_reviews, 1);
             assert_eq!(overview.due_new, 1);
             assert_eq!(overview.scheduled_reviews, 1);
             assert_eq!(overview.scheduled_new, 1);
             assert_eq!(overview.extra_available, 2);
 
-            let (planned, _) =
-                planned_scheduled_cards(connection, std::slice::from_ref(&deck_id), &settings)?;
+            let (planned, _) = planned_scheduled_cards_scoped(
+                connection,
+                std::slice::from_ref(&deck_id),
+                &[],
+                &settings,
+                &context,
+            )?;
             assert_eq!(planned.len(), 2);
             assert_eq!(planned[0].card_id, review_id);
             assert_eq!(planned[1].card_id, new_id);
 
             settings.daily_review_limit = 0;
-            let protected = workload_overview(connection, &[deck_id], &settings)?;
+            let protected =
+                workload_overview_scoped(connection, &[deck_id], &[], &settings, &context)?;
             assert_eq!(protected.scheduled_reviews, 0);
             assert_eq!(protected.scheduled_new, 0);
             assert_eq!(protected.omitted_due_reviews, 1);
@@ -456,17 +486,17 @@ fn needs_more_practice_uses_the_current_post_reset_learning_epoch() {
             ] {
                 insert_review(connection, &card_id, time, remembered)?;
             }
-            assert!(needs_more_practice(connection, &card_id)?);
+            assert!(projected_needs_more_practice(connection, &card_id)?);
 
             insert_review(connection, &card_id, 600, true)?;
             insert_review(connection, &card_id, 700, true)?;
-            assert!(!needs_more_practice(connection, &card_id)?);
+            assert!(!projected_needs_more_practice(connection, &card_id)?);
 
             insert_reset_event(connection, &card_id, 800)?;
-            assert!(!needs_more_practice(connection, &card_id)?);
+            assert!(!projected_needs_more_practice(connection, &card_id)?);
             insert_review(connection, &card_id, 900, false)?;
             insert_review(connection, &card_id, 1_000, false)?;
-            assert!(needs_more_practice(connection, &card_id)?);
+            assert!(projected_needs_more_practice(connection, &card_id)?);
             Ok(())
         })
         .expect("learning signals should be reproducible from history");
