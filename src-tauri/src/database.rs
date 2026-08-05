@@ -91,7 +91,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 13,
         name: "canonical_data_model",
-        checksum: "5e1359dea514e0c4d50928def26edf90c3cab9fc9432328deb22b98ba2ae1261",
+        checksum: "2e56fa0b68049f8a4d2e937b1dbdb18ec45d9c9041b06f5994b3c847f1d2f049",
         sql: include_str!("../migrations/0013_canonical_data_model.sql"),
     },
 ];
@@ -236,6 +236,10 @@ fn apply_migration_range(
         }
 
         let applied_at = unix_time_millis().map_err(|error| error.message)?;
+        if migration.version == 13 {
+            apply_foreign_key_disabled_migration(connection, migration, applied_at)?;
+            continue;
+        }
         let transaction = connection.transaction().map_err(|error| {
             format!(
                 "Could not begin database migration {}: {error}",
@@ -272,6 +276,106 @@ fn apply_migration_range(
         })?;
     }
     Ok(())
+}
+
+fn apply_foreign_key_disabled_migration(
+    connection: &mut Connection,
+    migration: &Migration,
+    applied_at: i64,
+) -> Result<(), String> {
+    connection
+        .execute_batch("PRAGMA foreign_keys = OFF;")
+        .map_err(|error| {
+            format!(
+                "Could not disable foreign keys for migration {}: {error}",
+                migration.version
+            )
+        })?;
+
+    let migration_result = (|| {
+        let transaction = connection.transaction().map_err(|error| {
+            format!(
+                "Could not begin database migration {}: {error}",
+                migration.version
+            )
+        })?;
+        transaction
+            .execute_batch(migration.sql)
+            .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
+
+        let has_violation = {
+            let mut statement =
+                transaction
+                    .prepare("PRAGMA foreign_key_check")
+                    .map_err(|error| {
+                        format!(
+                            "Could not prepare migration {} foreign-key validation: {error}",
+                            migration.version
+                        )
+                    })?;
+            let mut rows = statement.query([]).map_err(|error| {
+                format!(
+                    "Could not run migration {} foreign-key validation: {error}",
+                    migration.version
+                )
+            })?;
+            rows.next()
+                .map_err(|error| {
+                    format!(
+                        "Could not inspect migration {} foreign-key validation: {error}",
+                        migration.version
+                    )
+                })?
+                .is_some()
+        };
+        if has_violation {
+            return Err(format!(
+                "Migration {} would leave invalid foreign-key references. The database was not modified.",
+                migration.version
+            ));
+        }
+
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations (version, name, checksum, applied_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    migration.version,
+                    migration.name,
+                    migration.checksum,
+                    applied_at
+                ],
+            )
+            .map_err(|error| {
+                format!("Could not record migration {}: {error}", migration.version)
+            })?;
+        transaction
+            .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
+            .map_err(|error| {
+                format!(
+                    "Could not set SQLite user_version for migration {}: {error}",
+                    migration.version
+                )
+            })?;
+        transaction
+            .commit()
+            .map_err(|error| format!("Could not commit migration {}: {error}", migration.version))
+    })();
+
+    let enforcement_result = connection
+        .execute_batch("PRAGMA foreign_keys = ON;")
+        .map_err(|error| {
+            format!(
+                "Could not restore foreign-key enforcement after migration {}: {error}",
+                migration.version
+            )
+        });
+
+    match (migration_result, enforcement_result) {
+        (Err(error), _) => Err(error),
+        (Ok(()), Err(error)) => Err(error),
+        (Ok(()), Ok(())) => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -531,7 +635,7 @@ mod tests {
         );
         assert_eq!(
             MIGRATIONS[12].checksum,
-            "5e1359dea514e0c4d50928def26edf90c3cab9fc9432328deb22b98ba2ae1261"
+            "2e56fa0b68049f8a4d2e937b1dbdb18ec45d9c9041b06f5994b3c847f1d2f049"
         );
     }
 }

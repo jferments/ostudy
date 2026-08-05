@@ -150,8 +150,20 @@ fn versioned_repairs_migrate_legacy_rows_before_the_schema_is_narrowed() {
 
     apply_required_repairs(&mut connection).expect("repairs should succeed");
     connection
+        .execute_batch("PRAGMA foreign_keys = OFF;")
+        .expect("foreign keys should disable for the physical rebuild");
+    connection
         .execute_batch(CANONICAL_MIGRATION)
         .expect("canonical migration should apply");
+    let foreign_key_violations: i64 = connection
+        .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+            row.get(0)
+        })
+        .expect("foreign-key validation should run");
+    assert_eq!(foreign_key_violations, 0);
+    connection
+        .execute_batch("PRAGMA foreign_keys = ON;")
+        .expect("foreign keys should be restored after the physical rebuild");
     verify_repair_ledger(&connection).expect("repair ledger should verify");
 
     let image_state: (String, String, i64, Option<i64>) = connection
