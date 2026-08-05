@@ -35,6 +35,10 @@ pub struct PreparedAttribution {
     pub card_type: String,
     pub card_label: String,
     pub presentation_variant: String,
+    pub question_doc_json: String,
+    pub answer_doc_json: String,
+    pub answer_text: String,
+    pub asset_ids: Vec<String>,
     pub question_excerpt: String,
     pub question_text_hash: String,
     pub question_was_truncated: bool,
@@ -128,6 +132,13 @@ pub fn prepare_attributions(
         ));
     }
 
+    let mut asset_ids = load_asset_ids_for_notes(
+        connection,
+        &rows
+            .values()
+            .map(|row| row.note_id.clone())
+            .collect::<Vec<_>>(),
+    )?;
     let mut tags = load_tags_for_notes(
         connection,
         &rows
@@ -165,6 +176,12 @@ pub fn prepare_attributions(
                 card_type: rendered.card_type,
                 card_label: rendered.card_label,
                 presentation_variant: variant,
+                question_doc_json: serde_json::to_string(&rendered.front_doc)
+                    .map_err(CommandError::serialization)?,
+                answer_doc_json: serde_json::to_string(&rendered.back_doc)
+                    .map_err(CommandError::serialization)?,
+                answer_text: rendered.back_text,
+                asset_ids: asset_ids.remove(&row.note_id).unwrap_or_default(),
                 question_excerpt,
                 question_text_hash,
                 question_was_truncated,
@@ -187,10 +204,11 @@ pub fn insert_session_snapshots(
                 "INSERT INTO practice_session_card_snapshots (
                      session_id, card_id, note_id, note_revision, deck_id,
                      card_type, card_label, presentation_variant,
+                     question_doc, answer_doc, answer_text,
                      question_excerpt, question_text_hash, question_was_truncated,
                      captured_at
                  ) VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
                  )",
                 params![
                     session_id,
@@ -201,6 +219,9 @@ pub fn insert_session_snapshots(
                     attribution.card_type,
                     attribution.card_label,
                     attribution.presentation_variant,
+                    attribution.question_doc_json,
+                    attribution.answer_doc_json,
+                    attribution.answer_text,
                     attribution.question_excerpt,
                     attribution.question_text_hash,
                     bool_to_integer(attribution.question_was_truncated),
@@ -208,6 +229,15 @@ pub fn insert_session_snapshots(
                 ],
             )
             .map_err(CommandError::database)?;
+        for asset_id in &attribution.asset_ids {
+            connection
+                .execute(
+                    "INSERT INTO practice_session_card_asset_snapshots
+                 (session_id, card_id, asset_id) VALUES (?1, ?2, ?3)",
+                    params![session_id, attribution.card_id, asset_id],
+                )
+                .map_err(CommandError::database)?;
+        }
         for tag in attribution.tags {
             connection
                 .execute(
@@ -437,6 +467,39 @@ pub fn purge_deck_history(connection: &Connection, deck_id: &str) -> Result<(), 
         )
         .map_err(CommandError::database)?;
     Ok(())
+}
+
+fn load_asset_ids_for_notes(
+    connection: &Connection,
+    note_ids: &[String],
+) -> Result<BTreeMap<String, Vec<String>>, CommandError> {
+    let mut result = BTreeMap::<String, Vec<String>>::new();
+    for chunk in note_ids.chunks(ID_CHUNK_SIZE) {
+        let values = chunk
+            .iter()
+            .cloned()
+            .map(SqlValue::Text)
+            .collect::<Vec<_>>();
+        let placeholders = (1..=values.len())
+            .map(|index| format!("?{index}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT note_id, asset_id FROM note_assets
+             WHERE note_id IN ({placeholders}) ORDER BY note_id, asset_id"
+        );
+        let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
+        let rows = statement
+            .query_map(params_from_iter(values.iter()), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(CommandError::database)?;
+        for row in rows {
+            let (note, asset) = row.map_err(CommandError::database)?;
+            result.entry(note).or_default().push(asset);
+        }
+    }
+    Ok(result)
 }
 
 fn load_tags_for_notes(

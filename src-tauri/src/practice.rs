@@ -35,9 +35,19 @@ pub struct PracticeCardDto {
 pub struct PracticeSessionDto {
     pub id: String,
     pub cards: Vec<PracticeCardDto>,
+    pub card_count: i64,
+    pub has_more: bool,
     pub shuffle: bool,
     pub mode: String,
     pub started_at: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PracticeCardWindowDto {
+    pub start_position: i64,
+    pub cards: Vec<PracticeCardDto>,
+    pub has_more: bool,
 }
 
 #[derive(Debug, Deserialize)]

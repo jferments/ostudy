@@ -1,4 +1,4 @@
-use rusqlite::Connection;
+use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 use serde::Serialize;
 use tauri::State;
 
@@ -39,38 +39,109 @@ pub(crate) fn get_assets_for_note(
     paths: &AppPaths,
     note_id: &str,
 ) -> Result<Vec<AssetDto>, CommandError> {
-    let mut statement = connection
-        .prepare(
-            "SELECT DISTINCT a.id, a.original_filename, a.mime_type, a.byte_size,
-                    a.relative_path, a.created_at
-             FROM assets a
-             JOIN note_assets na ON na.asset_id = a.id
-             WHERE na.note_id = ?1
-               AND a.deleted_at IS NULL
-               AND a.lifecycle_state = 'ready'
-             ORDER BY a.created_at ASC, a.id ASC",
-        )
-        .map_err(CommandError::database)?;
+    Ok(
+        get_assets_for_notes(connection, paths, &[note_id.to_string()])?
+            .remove(note_id)
+            .unwrap_or_default(),
+    )
+}
 
-    let rows = statement
-        .query_map([note_id], |row| {
-            let relative_path: String = row.get(4)?;
-            Ok(AssetDto {
-                id: row.get(0)?,
-                original_filename: row.get(1)?,
-                mime_type: row.get(2)?,
-                byte_size: row.get(3)?,
-                file_path: paths
-                    .resolve_relative(&relative_path)
-                    .to_string_lossy()
-                    .into_owned(),
-                created_at: row.get(5)?,
+pub(crate) fn get_assets_for_notes(
+    connection: &Connection,
+    paths: &AppPaths,
+    note_ids: &[String],
+) -> Result<BTreeMap<String, Vec<AssetDto>>, CommandError> {
+    let mut result = BTreeMap::<String, Vec<AssetDto>>::new();
+    for chunk in note_ids.chunks(250) {
+        let values = chunk
+            .iter()
+            .cloned()
+            .map(SqlValue::Text)
+            .collect::<Vec<_>>();
+        let placeholders = (1..=values.len())
+            .map(|index| format!("?{index}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT DISTINCT na.note_id, a.id, a.original_filename, a.mime_type,
+                    a.byte_size, a.relative_path, a.created_at
+             FROM note_assets na JOIN assets a ON a.id=na.asset_id
+             WHERE na.note_id IN ({placeholders})
+               AND a.deleted_at IS NULL AND a.lifecycle_state='ready'
+             ORDER BY na.note_id, a.created_at, a.id"
+        );
+        let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
+        let rows = statement
+            .query_map(params_from_iter(values.iter()), |row| {
+                let relative: String = row.get(5)?;
+                Ok((
+                    row.get::<_, String>(0)?,
+                    AssetDto {
+                        id: row.get(1)?,
+                        original_filename: row.get(2)?,
+                        mime_type: row.get(3)?,
+                        byte_size: row.get(4)?,
+                        file_path: paths
+                            .resolve_relative(&relative)
+                            .to_string_lossy()
+                            .into_owned(),
+                        created_at: row.get(6)?,
+                    },
+                ))
             })
-        })
-        .map_err(CommandError::database)?;
+            .map_err(CommandError::database)?;
+        for row in rows {
+            let (note_id, asset) = row.map_err(CommandError::database)?;
+            result.entry(note_id).or_default().push(asset);
+        }
+    }
+    Ok(result)
+}
 
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+pub(crate) fn get_assets_by_ids(
+    connection: &Connection,
+    paths: &AppPaths,
+    asset_ids: &[String],
+) -> Result<BTreeMap<String, AssetDto>, CommandError> {
+    let mut result = BTreeMap::new();
+    for chunk in asset_ids.chunks(250) {
+        let values = chunk
+            .iter()
+            .cloned()
+            .map(SqlValue::Text)
+            .collect::<Vec<_>>();
+        let placeholders = (1..=values.len())
+            .map(|index| format!("?{index}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT id, original_filename, mime_type, byte_size, relative_path, created_at
+             FROM assets WHERE id IN ({placeholders})
+               AND deleted_at IS NULL AND lifecycle_state='ready'"
+        );
+        let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
+        let rows = statement
+            .query_map(params_from_iter(values.iter()), |row| {
+                let relative: String = row.get(4)?;
+                Ok(AssetDto {
+                    id: row.get(0)?,
+                    original_filename: row.get(1)?,
+                    mime_type: row.get(2)?,
+                    byte_size: row.get(3)?,
+                    file_path: paths
+                        .resolve_relative(&relative)
+                        .to_string_lossy()
+                        .into_owned(),
+                    created_at: row.get(5)?,
+                })
+            })
+            .map_err(CommandError::database)?;
+        for row in rows {
+            let asset = row.map_err(CommandError::database)?;
+            result.insert(asset.id.clone(), asset);
+        }
+    }
+    Ok(result)
 }
 
 /// Compatibility validation used by paths that are converted to explicit

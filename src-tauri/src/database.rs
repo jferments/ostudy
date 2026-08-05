@@ -147,6 +147,7 @@ fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
     apply_migrations_through(connection, 12)?;
     apply_required_repairs(connection)?;
     apply_migrations_after(connection, 12)?;
+    apply_required_repairs(connection)?;
     verify_repair_ledger(connection)?;
     Ok(())
 }

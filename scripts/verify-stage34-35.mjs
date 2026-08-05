@@ -49,7 +49,7 @@ for (const fragment of [
   "apply_migrations_through(connection, 12)",
   "apply_required_repairs(connection)",
   "apply_migrations_after(connection, 12)",
-  "LATEST_SCHEMA_VERSION: i64 = 13",
+  "LATEST_SCHEMA_VERSION: i64 = 14",
   "apply_foreign_key_disabled_migration",
   "PRAGMA foreign_key_check",
   "PRAGMA foreign_keys = ON",
