@@ -1,15 +1,14 @@
 //! One-time, versioned data canonicalization for released ostudy databases.
 //!
-//! Structural migrations remain immutable SQL history. Repairs are tracked in a
-//! separate ledger because template JSON and generated-card identity require the
-//! same validated Rust transformations used by normal authoring. Once every
-//! repair row exists, ordinary startup performs reads only and cannot churn user
-//! timestamps, revisions, FTS rows, or the WAL.
+//! Structural migrations remain immutable SQL history. Repairs use the same
+//! validated Rust transformations as normal authoring. Once every repair row
+//! exists, ordinary startup performs reads only.
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 
 use crate::{
     authoring::{apply_stage3_data_repairs, backfill_duplicate_hashes_in_connection},
+    historical_attribution::backfill_historical_attribution,
     util::unix_time_millis,
 };
 
@@ -33,11 +32,41 @@ const REPAIRS: &[DataRepair] = &[
         checksum: "ec486bad97c8c5495755bae160bf019d61c084444cc09d88ba8e1f0135b3e663",
         apply: repair_stage3_data,
     },
+    DataRepair {
+        version: 3,
+        name: "review_attribution_backfill",
+        checksum: "05b5e6894736d84ebe60efc0ff399ae39c9c612c4cc8c9a2316f3622fd80c03d",
+        apply: repair_review_attribution,
+    },
 ];
 
+pub(crate) fn apply_required_repairs_through(
+    connection: &mut Connection,
+    maximum_version: i64,
+) -> Result<(), String> {
+    apply_repair_range(connection, 1, maximum_version)
+}
+
+pub(crate) fn apply_required_repairs_after(
+    connection: &mut Connection,
+    minimum_exclusive: i64,
+) -> Result<(), String> {
+    apply_repair_range(connection, minimum_exclusive.saturating_add(1), i64::MAX)
+}
+
 pub(crate) fn apply_required_repairs(connection: &mut Connection) -> Result<(), String> {
+    apply_repair_range(connection, 1, i64::MAX)
+}
+
+fn apply_repair_range(
+    connection: &mut Connection,
+    minimum_version: i64,
+    maximum_version: i64,
+) -> Result<(), String> {
     ensure_ledger_exists(connection)?;
-    for repair in REPAIRS {
+    for repair in REPAIRS.iter().filter(|repair| {
+        repair.version >= minimum_version && repair.version <= maximum_version
+    }) {
         let existing: Option<(String, String)> = connection
             .query_row(
                 "SELECT name, checksum FROM data_repairs WHERE version = ?1",
@@ -81,7 +110,7 @@ pub(crate) fn apply_required_repairs(connection: &mut Connection) -> Result<(), 
             .commit()
             .map_err(|error| format!("Could not commit data repair {}: {error}", repair.version))?;
     }
-    verify_repair_ledger(connection)
+    Ok(())
 }
 
 pub(crate) fn verify_repair_ledger(connection: &Connection) -> Result<(), String> {
@@ -132,6 +161,10 @@ fn repair_duplicate_fingerprints(transaction: &Transaction<'_>) -> Result<i64, S
 
 fn repair_stage3_data(transaction: &Transaction<'_>) -> Result<i64, String> {
     apply_stage3_data_repairs(transaction).map_err(|error| error.message)
+}
+
+fn repair_review_attribution(transaction: &Transaction<'_>) -> Result<i64, String> {
+    backfill_historical_attribution(transaction).map_err(|error| error.message)
 }
 
 #[cfg(test)]
