@@ -92,9 +92,9 @@ pub fn list_deck_cards(
             "n.deleted_at IS NULL".to_string(),
             "d.deleted_at IS NULL".to_string(),
             "d.archived_at IS NULL".to_string(),
-            "c.deleted_at IS NULL".to_string(),
-            "c.direction = 'forward'".to_string(),
-            "c.template_ordinal = 0".to_string(),
+            "rc.deleted_at IS NULL".to_string(),
+            "rc.direction = 'forward'".to_string(),
+            "rc.template_ordinal = 0".to_string(),
         ];
         if !input.query.trim().is_empty() {
             values.push(SqlValue::Text(format!("%{}%", input.query.trim())));
@@ -109,10 +109,10 @@ pub fn list_deck_cards(
         let total_count: i64 = connection
             .query_row(
                 &format!(
-                    "SELECT COUNT(DISTINCT n.id)
+                    "SELECT COUNT(*)
                      FROM notes n
                      JOIN decks d ON d.id = n.deck_id
-                     JOIN cards c ON c.note_id = n.id
+                     JOIN cards rc ON rc.note_id = n.id
                      WHERE {where_sql}"
                 ),
                 params_from_iter(values.iter()),
@@ -129,9 +129,7 @@ pub fn list_deck_cards(
             _ => "n.updated_at DESC, n.created_at DESC, n.id",
         };
         let sql = format!(
-            "SELECT n.id,
-                    MIN(CASE WHEN c.direction = 'forward' THEN c.id END),
-                    n.note_type, n.front_doc, n.back_doc,
+            "SELECT n.id, rc.id, n.note_type, n.front_doc, n.back_doc,
                     n.front_text, n.back_text, n.cloze_source, n.cloze_mode,
                     COUNT(c.id),
                     COALESCE(SUM(CASE
@@ -139,16 +137,17 @@ pub fn list_deck_cards(
                          AND (c.buried_until IS NULL OR c.buried_until <= ?2)
                          AND s.due_at <= ?2 THEN 1 ELSE 0 END), 0),
                     MAX(CASE WHEN s.reps > 0 THEN s.last_review_at END),
-                    n.updated_at, n.revision,
-                    MIN(s.reps)
+                    n.updated_at, n.revision, rs.reps
              FROM notes n
              JOIN decks d ON d.id = n.deck_id
-             JOIN cards c ON c.note_id = n.id
+             JOIN cards rc ON rc.note_id = n.id
+             JOIN card_schedules rs ON rs.card_id = rc.id
+             JOIN cards c ON c.note_id = n.id AND c.deleted_at IS NULL
              JOIN card_schedules s ON s.card_id = c.id
              WHERE {where_sql}
-             GROUP BY n.id, n.note_type, n.front_doc, n.back_doc,
+             GROUP BY n.id, rc.id, n.note_type, n.front_doc, n.back_doc,
                       n.front_text, n.back_text, n.cloze_source, n.cloze_mode,
-                      n.updated_at, n.revision
+                      n.updated_at, n.revision, rs.reps
              ORDER BY {order_sql}
              LIMIT ?{limit_index} OFFSET ?{offset_index}"
         );
