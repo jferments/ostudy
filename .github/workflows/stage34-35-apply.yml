@@ -1,4 +1,4 @@
-name: Apply Stage 3.4 and 3.5 lint cleanup
+name: Apply Stage 3.4 response boundary
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - agent/stage-3-4-3-5-transfer-repairs
     paths:
       - .github/workflows/stage34-35-apply.yml
-      - scripts/apply-stage34-35-clippy-fixes.py
+      - scripts/apply-stage34-35-boundary-fixes.py
 
 permissions:
   contents: write
@@ -19,16 +19,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Apply warning-free cleanup
-        run: python3 scripts/apply-stage34-35-clippy-fixes.py
-      - name: Format and lint native code
+      - name: Apply import response boundary
+        run: python3 scripts/apply-stage34-35-boundary-fixes.py
+      - name: Format and test native code
         run: |
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features
           cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
       - name: Commit corrected source
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "refactor: remove superseded normalization wrappers" || exit 0
+          git commit -m "fix: preserve committed studydeck import responses" || exit 0
           git push origin HEAD:agent/stage-3-4-3-5-transfer-repairs
