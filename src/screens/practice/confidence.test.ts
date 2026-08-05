@@ -15,6 +15,7 @@ function review(
 ): RecentReview {
   return {
     id: `${deckName}-${rating}-${reviewedAt}`,
+    deckId: "d".repeat(32),
     deckName,
     cardId: "a".repeat(32),
     frontText: "Question",
@@ -31,6 +32,7 @@ function review(
     responseTimeMs: 1_000,
     reviewedAt,
     dueAfter: reviewedAt + 60_000,
+    attributionSource: "captured",
   };
 }
 
@@ -66,9 +68,7 @@ describe("practice confidence helpers", () => {
 
   it("limits the recent deck strip to five decks", () => {
     const summaries = summarizeRecentDecks(
-      Array.from({ length: 8 }, (_, index) =>
-        review(`Deck ${index}`, 3, index),
-      ),
+      Array.from({ length: 8 }, (_, index) => review(`Deck ${index}`, 3, index)),
     );
 
     expect(summaries).toHaveLength(5);
