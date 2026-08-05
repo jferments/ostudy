@@ -1,0 +1,31 @@
+name: Capture manifest verifier failure
+
+on:
+  push:
+    branches:
+      - agent/stage-3-4-3-5-transfer-repairs
+    paths:
+      - .github/workflows/manifest-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Capture exact verifier output
+        run: |
+          mkdir -p artifacts
+          set +e
+          node scripts/verify-project-manifests.mjs > artifacts/manifest-verifier.log 2>&1
+          status=$?
+          cat artifacts/manifest-verifier.log
+          echo "$status" > artifacts/manifest-verifier.status
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stage34-35-manifest-diagnostic
+          path: artifacts/manifest-verifier.*
+          if-no-files-found: error
