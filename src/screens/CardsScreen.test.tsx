@@ -206,7 +206,7 @@ describe("CardsScreen", () => {
     vi.mocked(ipc.applyScheduleAction)
       .mockRejectedValueOnce(new Error("Native response was lost."))
       .mockResolvedValueOnce({ affectedCount: 1, action: "suspend" });
-    renderScreen();
+    const { showToast } = renderScreen();
     fireEvent.click(
       await screen.findByRole("checkbox", {
         name: "Select What reverses warfarin?",
@@ -217,9 +217,12 @@ describe("CardsScreen", () => {
     });
 
     fireEvent.change(actions, { target: { value: "suspend" } });
-    expect(
-      await screen.findByText(/safely retry the complete selection/u),
-    ).toBeTruthy();
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        "error",
+        expect.stringMatching(/safely retry the complete selection/u),
+      ),
+    );
     fireEvent.change(actions, { target: { value: "suspend" } });
 
     await waitFor(() => {
