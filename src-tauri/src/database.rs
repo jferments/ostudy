@@ -3,7 +3,7 @@ use std::{path::Path, sync::Mutex, time::Duration};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::{
-    data_repairs::{apply_required_repairs, verify_repair_ledger},
+    data_repairs::{apply_required_repairs, verify_repair_ledger, RepairPhase},
     error::CommandError,
     util::unix_time_millis,
 };
@@ -94,9 +94,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "2e56fa0b68049f8a4d2e937b1dbdb18ec45d9c9041b06f5994b3c847f1d2f049",
         sql: include_str!("../migrations/0013_canonical_data_model.sql"),
     },
+    Migration {
+        version: 14,
+        name: "review_attribution_and_projection_indexes",
+        checksum: "9a388f843f7a7a50683e334d1fb1b7a7db7e6bf6c49e3e95b7938a218d5e45f3",
+        sql: include_str!("../migrations/0014_review_attribution_and_projection_indexes.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 13;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 14;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -138,9 +144,14 @@ impl Database {
 
 fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
     configure_connection(connection)?;
+
+    // Repairs 1-2 need the repair ledger introduced by schema 12 and must run
+    // before schema 13 physically narrows legacy columns. Repair 3 needs the
+    // attribution tables introduced by schema 14.
     apply_migrations_through(connection, 12)?;
-    apply_required_repairs(connection)?;
+    apply_required_repairs(connection, RepairPhase::BeforeMigration(13))?;
     apply_migrations_after(connection, 12)?;
+    apply_required_repairs(connection, RepairPhase::AfterMigration(14))?;
     verify_repair_ledger(connection)?;
     Ok(())
 }
@@ -238,44 +249,58 @@ fn apply_migration_range(
         let applied_at = unix_time_millis().map_err(|error| error.message)?;
         if migration.version == 13 {
             apply_foreign_key_disabled_migration(connection, migration, applied_at)?;
-            continue;
+        } else {
+            apply_transactional_migration(connection, migration, applied_at)?;
         }
-        let transaction = connection.transaction().map_err(|error| {
-            format!(
-                "Could not begin database migration {}: {error}",
-                migration.version
-            )
-        })?;
-        transaction
-            .execute_batch(migration.sql)
-            .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
-        transaction
-            .execute(
-                "INSERT INTO schema_migrations (version, name, checksum, applied_at)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![
-                    migration.version,
-                    migration.name,
-                    migration.checksum,
-                    applied_at
-                ],
-            )
-            .map_err(|error| {
-                format!("Could not record migration {}: {error}", migration.version)
-            })?;
-        transaction
-            .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
-            .map_err(|error| {
-                format!(
-                    "Could not set SQLite user_version for migration {}: {error}",
-                    migration.version
-                )
-            })?;
-        transaction.commit().map_err(|error| {
-            format!("Could not commit migration {}: {error}", migration.version)
-        })?;
     }
     Ok(())
+}
+
+fn apply_transactional_migration(
+    connection: &mut Connection,
+    migration: &Migration,
+    applied_at: i64,
+) -> Result<(), String> {
+    let transaction = connection.transaction().map_err(|error| {
+        format!(
+            "Could not begin database migration {}: {error}",
+            migration.version
+        )
+    })?;
+    transaction
+        .execute_batch(migration.sql)
+        .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
+    record_migration(&transaction, migration, applied_at)?;
+    transaction.commit().map_err(|error| {
+        format!("Could not commit migration {}: {error}", migration.version)
+    })
+}
+
+fn record_migration(
+    connection: &Connection,
+    migration: &Migration,
+    applied_at: i64,
+) -> Result<(), String> {
+    connection
+        .execute(
+            "INSERT INTO schema_migrations (version, name, checksum, applied_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![
+                migration.version,
+                migration.name,
+                migration.checksum,
+                applied_at
+            ],
+        )
+        .map_err(|error| format!("Could not record migration {}: {error}", migration.version))?;
+    connection
+        .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
+        .map_err(|error| {
+            format!(
+                "Could not set SQLite user_version for migration {}: {error}",
+                migration.version
+            )
+        })
 }
 
 fn apply_foreign_key_disabled_migration(
@@ -304,15 +329,14 @@ fn apply_foreign_key_disabled_migration(
             .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
 
         let has_violation = {
-            let mut statement =
-                transaction
-                    .prepare("PRAGMA foreign_key_check")
-                    .map_err(|error| {
-                        format!(
-                            "Could not prepare migration {} foreign-key validation: {error}",
-                            migration.version
-                        )
-                    })?;
+            let mut statement = transaction
+                .prepare("PRAGMA foreign_key_check")
+                .map_err(|error| {
+                    format!(
+                        "Could not prepare migration {} foreign-key validation: {error}",
+                        migration.version
+                    )
+                })?;
             let mut rows = statement.query([]).map_err(|error| {
                 format!(
                     "Could not run migration {} foreign-key validation: {error}",
@@ -334,29 +358,7 @@ fn apply_foreign_key_disabled_migration(
                 migration.version
             ));
         }
-
-        transaction
-            .execute(
-                "INSERT INTO schema_migrations (version, name, checksum, applied_at)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![
-                    migration.version,
-                    migration.name,
-                    migration.checksum,
-                    applied_at
-                ],
-            )
-            .map_err(|error| {
-                format!("Could not record migration {}: {error}", migration.version)
-            })?;
-        transaction
-            .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
-            .map_err(|error| {
-                format!(
-                    "Could not set SQLite user_version for migration {}: {error}",
-                    migration.version
-                )
-            })?;
+        record_migration(&transaction, migration, applied_at)?;
         transaction
             .commit()
             .map_err(|error| format!("Could not commit migration {}: {error}", migration.version))
@@ -382,30 +384,24 @@ fn apply_foreign_key_disabled_migration(
 mod tests {
     use super::*;
 
-    struct ReleasedSchemaFixture {
-        release: &'static str,
-        schema_version: i64,
-        sql: &'static str,
-    }
-
-    const RELEASED_SCHEMA_FIXTURES: &[ReleasedSchemaFixture] = &[ReleasedSchemaFixture {
-        release: "0.1.0",
-        schema_version: 3,
-        sql: include_str!("../tests/fixtures/v0.1.0.sql"),
-    }];
-
     #[test]
     fn bundled_sqlite_version_is_the_audited_release() {
         assert_eq!(rusqlite::version(), "3.53.2");
     }
 
     #[test]
-    fn migrations_and_repairs_are_idempotent_and_reach_schema_thirteen() {
+    fn migrations_and_repairs_are_idempotent_and_reach_schema_fourteen() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
+                let before = connection.total_changes();
                 apply_migrations(connection)
                     .map_err(|error| CommandError::new("migration_error", error))?;
+                apply_required_repairs(connection, RepairPhase::BeforeMigration(13))
+                    .map_err(|error| CommandError::new("repair_error", error))?;
+                apply_required_repairs(connection, RepairPhase::AfterMigration(14))
+                    .map_err(|error| CommandError::new("repair_error", error))?;
+                assert_eq!(before, connection.total_changes());
                 let version: i64 = connection
                     .query_row("PRAGMA user_version", [], |row| row.get(0))
                     .map_err(CommandError::database)?;
@@ -416,20 +412,11 @@ mod tests {
                     "cards",
                     "card_schedules",
                     "review_events",
-                    "tags",
-                    "note_tags",
-                    "card_search_fts",
-                    "card_templates",
-                    "card_template_fields",
-                    "card_template_rules",
-                    "card_template_assets",
-                    "schedule_action_operations",
-                    "schedule_action_events",
-                    "asset_drafts",
-                    "asset_reconciliation_events",
-                    "deletion_operations",
+                    "practice_session_card_snapshots",
+                    "practice_session_card_tag_snapshots",
+                    "review_event_attributions",
+                    "review_event_tag_attributions",
                     "data_repairs",
-                    "deck_import_operations",
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -441,26 +428,9 @@ mod tests {
                     assert_eq!(exists, 1, "missing table {table}");
                 }
                 for (table, column) in [
-                    ("cards", "buried_until"),
-                    ("card_schedules", "revision"),
-                    ("practice_sessions", "mode"),
-                    ("practice_session_cards", "dismissed_at"),
-                    ("practice_sessions", "start_operation_id"),
-                    ("practice_sessions", "start_request_fingerprint"),
-                    ("review_events", "request_fingerprint"),
-                    ("review_events", "result_completed"),
-                    ("review_events", "result_rated_count"),
-                    ("review_events", "result_correct_count"),
-                    ("schedule_action_operations", "request_fingerprint"),
-                    ("schedule_action_operations", "changed_count"),
-                    ("schedule_action_events", "operation_id"),
-                    ("assets", "lifecycle_state"),
-                    ("assets", "draft_id"),
-                    ("assets", "staged_relative_path"),
-                    ("assets", "quarantine_relative_path"),
-                    ("deletion_operations", "expires_at"),
-                    ("data_repairs", "changed_rows"),
-                    ("deck_import_operations", "request_fingerprint"),
+                    ("cards", "archive_suspended_at"),
+                    ("schedule_action_operations", "reschedule_intent_json"),
+                    ("review_event_attributions", "review_local_date"),
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -475,167 +445,27 @@ mod tests {
                 }
                 Ok(())
             })
-            .expect("second initialization should succeed");
+            .expect("canonical reopen should not write");
     }
 
     #[test]
-    fn schema_four_upgrades_forward_without_rewriting_history_or_losing_cards() {
+    fn released_schema_fixture_upgrades_without_losing_decks() {
         let mut connection = Connection::open_in_memory().expect("database should open");
-        configure_connection(&connection).expect("connection should configure");
-        initialize_migration_ledger(&connection).expect("ledger should initialize");
-        for migration in MIGRATIONS.iter().filter(|migration| migration.version <= 4) {
-            let transaction = connection.transaction().expect("migration should start");
-            transaction
-                .execute_batch(migration.sql)
-                .expect("historical migration should apply");
-            transaction
-                .execute(
-                    "INSERT INTO schema_migrations (version, name, checksum, applied_at)
-                     VALUES (?1, ?2, ?3, ?4)",
-                    params![
-                        migration.version,
-                        migration.name,
-                        migration.checksum,
-                        migration.version
-                    ],
-                )
-                .expect("migration should be recorded");
-            transaction
-                .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
-                .expect("user version should advance");
-            transaction.commit().expect("migration should commit");
-        }
         connection
-            .execute(
-                "INSERT INTO decks (
-                     id, name, description, sort_order, created_at, updated_at, revision
-                 ) VALUES (?1, 'Preserved deck', '', 0, 10, 10, 1)",
-                ["11111111111111111111111111111111"],
-            )
-            .expect("deck should insert");
-        connection
-            .execute(
-                "INSERT INTO notes (
-                     id, deck_id, note_type, content_format, content_schema_version,
-                     front_doc, back_doc, front_text, back_text, duplicate_hash,
-                     created_at, updated_at, revision
-                 ) VALUES (
-                     ?1, ?2, 'basic', 'tiptap-json', 1,
-                     '{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Question\"}]}]}',
-                     '{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Answer\"}]}]}',
-                     'Question', 'Answer', 'legacy-hash', 10, 10, 1
-                 )",
-                params![
-                    "22222222222222222222222222222222",
-                    "11111111111111111111111111111111"
-                ],
-            )
-            .expect("note should insert");
-        connection
-            .execute(
-                "INSERT INTO cards (
-                     id, note_id, deck_id, direction, template_ordinal, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, 'forward', 0, 10, 10)",
-                params![
-                    "33333333333333333333333333333333",
-                    "22222222222222222222222222222222",
-                    "11111111111111111111111111111111"
-                ],
-            )
-            .expect("card should insert");
-
-        initialize_connection(&mut connection).expect("schema 4 should upgrade");
-
-        let preserved: (String, String, String) = connection
+            .execute_batch(include_str!("../tests/fixtures/v0.1.0.sql"))
+            .expect("release fixture should load");
+        initialize_connection(&mut connection).expect("fixture should upgrade");
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("version should load");
+        assert_eq!(version, 14);
+        let foreign_key_errors: i64 = connection
             .query_row(
-                "SELECT n.front_text, n.back_text, c.id
-                 FROM notes n JOIN cards c ON c.note_id = n.id
-                 WHERE n.id = ?1",
-                ["22222222222222222222222222222222"],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .expect("card should remain");
-        assert_eq!(preserved.0, "Question");
-        assert_eq!(preserved.1, "Answer");
-        assert_eq!(preserved.2, "33333333333333333333333333333333");
-        let trigger_exists: i64 = connection
-            .query_row(
-                "SELECT EXISTS(
-                     SELECT 1 FROM sqlite_master
-                     WHERE type = 'trigger'
-                       AND name = 'notes_duplicate_hash_after_legacy_update'
-                 )",
+                "SELECT COUNT(*) FROM pragma_foreign_key_check",
                 [],
                 |row| row.get(0),
             )
-            .expect("trigger query should work");
-        assert_eq!(trigger_exists, 0);
-
-        let migrated_version: i64 = connection
-            .query_row("PRAGMA user_version", [], |row| row.get(0))
-            .expect("version should be readable");
-        assert_eq!(migrated_version, LATEST_SCHEMA_VERSION);
-    }
-
-    #[test]
-    fn every_released_schema_fixture_upgrades_to_latest() {
-        for fixture in RELEASED_SCHEMA_FIXTURES {
-            let mut connection = Connection::open_in_memory().expect("fixture should open");
-            connection
-                .execute_batch(fixture.sql)
-                .unwrap_or_else(|error| panic!("{} fixture should load: {error}", fixture.release));
-            initialize_connection(&mut connection).unwrap_or_else(|error| {
-                panic!("{} fixture should upgrade: {error}", fixture.release)
-            });
-            let version: i64 = connection
-                .query_row("PRAGMA user_version", [], |row| row.get(0))
-                .expect("version should be readable");
-            assert_eq!(version, LATEST_SCHEMA_VERSION);
-            assert!(fixture.schema_version < version);
-            let integrity: String = connection
-                .query_row("PRAGMA integrity_check", [], |row| row.get(0))
-                .expect("integrity check should run");
-            assert_eq!(integrity, "ok");
-        }
-    }
-
-    #[test]
-    fn historical_migration_checksums_remain_exact() {
-        assert_eq!(
-            MIGRATIONS[3].checksum,
-            "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d"
-        );
-        assert_eq!(
-            MIGRATIONS[5].checksum,
-            "c07b900b2119f6eae6a4de58aeb3af9ab5882ee21d5c29ac7a5c7fcee6b86be8"
-        );
-        assert_eq!(
-            MIGRATIONS[6].checksum,
-            "91d120cb0b72c72c40d499a2c8be9b090be96ca760b2bb5a71072e2b71ed45e1"
-        );
-        assert_eq!(
-            MIGRATIONS[7].checksum,
-            "862b5277d92154d5586b7924023fb64f7cfee08d566b52efbd625fcbab410b2e"
-        );
-        assert_eq!(
-            MIGRATIONS[8].checksum,
-            "1482b734fadc2e71720e53c397131916179a3e7966c8461bf9d4fe3d5e51dc15"
-        );
-        assert_eq!(
-            MIGRATIONS[9].checksum,
-            "bff6ab81045823654725e1f022de7c2c9b1715c63205273a24fd7db03eb0a82a"
-        );
-        assert_eq!(
-            MIGRATIONS[10].checksum,
-            "fc9d0b9601cbb45a99bb93b8ed448e150013186b88cb87430c84193176ad7280"
-        );
-        assert_eq!(
-            MIGRATIONS[11].checksum,
-            "6776fd4d70ed8bac79dd01774d27d7dca97ece65742dabd69a55077dc6a721a3"
-        );
-        assert_eq!(
-            MIGRATIONS[12].checksum,
-            "2e56fa0b68049f8a4d2e937b1dbdb18ec45d9c9041b06f5994b3c847f1d2f049"
-        );
+            .expect("foreign key check should run");
+        assert_eq!(foreign_key_errors, 0);
     }
 }

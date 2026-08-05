@@ -23,9 +23,12 @@ mod logging;
 mod paths;
 mod practice;
 mod practice_selection;
+mod projections;
 mod schedule_controls;
 mod scheduler;
 mod settings;
+mod study_calendar;
+mod studyability;
 mod studydeck;
 mod util;
 mod workload;
@@ -57,10 +60,6 @@ pub fn run() {
                 library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
 
-            // A prepared restore is not considered successful until the restored
-            // database has migrated and its deletion/asset reconciliation passes.
-            // If any step below fails, the guard restores the prior database and
-            // asset directory after the open database connection is dropped.
             deletion::finalize_expired_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
             asset_lifecycle::reconcile_startup(&database, &paths)
@@ -91,6 +90,7 @@ pub fn run() {
             decks::get_deck,
             decks::create_deck,
             decks::update_deck,
+            decks::set_deck_archived,
             deletion_commands::delete_deck_with_undo,
             cards::list_cards,
             deletion_commands::delete_card_with_undo,
@@ -103,7 +103,6 @@ pub fn run() {
             authoring::find_duplicate_cards,
             authoring::analyze_bulk_cards,
             authoring::bulk_create_cards,
-            // Registered externally as the stable `transfer_cards` IPC command.
             authoring::transfer_generated_cards,
             authoring::bulk_tag_cards,
             deletion_commands::delete_cards_with_undo,
