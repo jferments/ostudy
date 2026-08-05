@@ -1,4 +1,4 @@
-name: Apply Stage 3.4 response boundary
+name: Stage 3.4 and 3.5 full qualification
 
 on:
   push:
@@ -6,30 +6,14 @@ on:
       - agent/stage-3-4-3-5-transfer-repairs
     paths:
       - .github/workflows/stage34-35-apply.yml
-      - scripts/apply-stage34-35-boundary-fixes.py
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply:
-    if: github.actor != 'github-actions[bot]'
+  check:
     runs-on: [self-hosted, linux, x64, ostudy]
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Apply import response boundary
-        run: python3 scripts/apply-stage34-35-boundary-fixes.py
-      - name: Format and test native code
-        run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all
-          cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features
-          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-      - name: Commit corrected source
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "fix: preserve committed studydeck import responses" || exit 0
-          git push origin HEAD:agent/stage-3-4-3-5-transfer-repairs
+      - name: Run complete qualification gate
+        run: ./scripts/check.sh
