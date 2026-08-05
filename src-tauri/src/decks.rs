@@ -1,10 +1,11 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
     database::Database,
     error::CommandError,
+    study_calendar::StudyTimeContext,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
@@ -12,14 +13,14 @@ const MAX_DECK_NAME_CHARS: usize = 200;
 const MAX_DECK_DESCRIPTION_CHARS: usize = 2_000;
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateDeckInput {
     pub name: String,
     pub description: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateDeckInput {
     pub deck_id: String,
     pub name: String,
@@ -33,16 +34,25 @@ pub struct DeckDto {
     pub id: String,
     pub name: String,
     pub description: String,
-    pub card_count: i64,
-    pub due_count: i64,
+    pub source_note_count: i64,
+    pub generated_card_count: i64,
+    pub studyable_due_count: i64,
     pub created_at: i64,
     pub updated_at: i64,
+    pub archived_at: Option<i64>,
     pub revision: i64,
 }
 
 #[tauri::command]
 pub fn list_decks(database: State<'_, Database>) -> Result<Vec<DeckDto>, CommandError> {
-    database.with_connection(list_decks_from_connection)
+    database.with_connection(|connection| list_decks_from_connection(connection, false))
+}
+
+#[tauri::command]
+pub fn list_archived_decks(
+    database: State<'_, Database>,
+) -> Result<Vec<DeckDto>, CommandError> {
+    database.with_connection(|connection| list_decks_from_connection(connection, true))
 }
 
 #[tauri::command]
@@ -68,38 +78,39 @@ pub fn update_deck(
     database.with_connection(|connection| update_deck_in_connection(connection, input))
 }
 
+#[tauri::command]
+pub fn archive_deck(
+    database: State<'_, Database>,
+    deck_id: String,
+) -> Result<DeckDto, CommandError> {
+    validate_entity_id(&deck_id, "deck")?;
+    database.with_connection(|connection| archive_deck_in_connection(connection, &deck_id))
+}
+
+#[tauri::command]
+pub fn unarchive_deck(
+    database: State<'_, Database>,
+    deck_id: String,
+) -> Result<DeckDto, CommandError> {
+    validate_entity_id(&deck_id, "deck")?;
+    database.with_connection(|connection| unarchive_deck_in_connection(connection, &deck_id))
+}
+
 pub(crate) fn list_decks_from_connection(
     connection: &mut Connection,
+    archived: bool,
 ) -> Result<Vec<DeckDto>, CommandError> {
-    let now = unix_time_millis()?;
-    let mut statement = connection
-        .prepare(
-            "SELECT d.id, d.name, d.description, d.created_at, d.updated_at, d.revision,\n\
-                    (SELECT COUNT(*)\n\
-                     FROM cards c\n\
-                     JOIN notes n ON n.id = c.note_id\n\
-                     WHERE c.deck_id = d.id\n\
-                       AND c.deleted_at IS NULL\n\
-                       AND n.deleted_at IS NULL) AS card_count,\n\
-                    (SELECT COUNT(*)\n\
-                     FROM cards c\n\
-                     JOIN notes n ON n.id = c.note_id\n\
-                     JOIN card_schedules s ON s.card_id = c.id\n\
-                     WHERE c.deck_id = d.id\n\
-                       AND c.deleted_at IS NULL\n\
-                       AND c.suspended_at IS NULL\n\
-                       AND n.deleted_at IS NULL\n\
-                       AND s.due_at <= ?1) AS due_count\n\
-             FROM decks d\n\
-             WHERE d.deleted_at IS NULL AND d.archived_at IS NULL\n\
-             ORDER BY d.sort_order ASC, d.name COLLATE NOCASE ASC, d.created_at ASC",
-        )
-        .map_err(CommandError::database)?;
-
+    let context = StudyTimeContext::capture()?;
+    let archive_clause = if archived {
+        "d.archived_at IS NOT NULL"
+    } else {
+        "d.archived_at IS NULL"
+    };
+    let sql = deck_projection_sql(&format!("d.deleted_at IS NULL AND {archive_clause}"));
+    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
     let rows = statement
-        .query_map([now], deck_from_row)
+        .query_map([context.now_utc_millis], deck_from_row)
         .map_err(CommandError::database)?;
-
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)
 }
@@ -108,30 +119,12 @@ pub(crate) fn get_deck_from_connection(
     connection: &Connection,
     deck_id: &str,
 ) -> Result<DeckDto, CommandError> {
-    let now = unix_time_millis()?;
+    let context = StudyTimeContext::capture()?;
+    let sql = deck_projection_sql("d.id = ?2 AND d.deleted_at IS NULL");
     connection
         .query_row(
-            "SELECT d.id, d.name, d.description, d.created_at, d.updated_at, d.revision,\n\
-                    (SELECT COUNT(*)\n\
-                     FROM cards c\n\
-                     JOIN notes n ON n.id = c.note_id\n\
-                     WHERE c.deck_id = d.id\n\
-                       AND c.deleted_at IS NULL\n\
-                       AND n.deleted_at IS NULL) AS card_count,\n\
-                    (SELECT COUNT(*)\n\
-                     FROM cards c\n\
-                     JOIN notes n ON n.id = c.note_id\n\
-                     JOIN card_schedules s ON s.card_id = c.id\n\
-                     WHERE c.deck_id = d.id\n\
-                       AND c.deleted_at IS NULL\n\
-                       AND c.suspended_at IS NULL\n\
-                       AND n.deleted_at IS NULL\n\
-                       AND s.due_at <= ?1) AS due_count\n\
-             FROM decks d\n\
-             WHERE d.id = ?2\n\
-               AND d.deleted_at IS NULL\n\
-               AND d.archived_at IS NULL",
-            params![now, deck_id],
+            &sql,
+            params![context.now_utc_millis, deck_id],
             deck_from_row,
         )
         .optional()
@@ -151,8 +144,8 @@ pub(crate) fn create_deck_in_connection(
     let id = generate_id(&transaction)?;
     let sort_order: i64 = transaction
         .query_row(
-            "SELECT COALESCE(MAX(sort_order), -1) + 1\n\
-             FROM decks\n\
+            "SELECT COALESCE(MAX(sort_order), -1) + 1
+             FROM decks
              WHERE deleted_at IS NULL",
             [],
             |row| row.get(0),
@@ -161,24 +154,15 @@ pub(crate) fn create_deck_in_connection(
 
     transaction
         .execute(
-            "INSERT INTO decks (\n\
-                 id, name, description, sort_order, created_at, updated_at, revision\n\
+            "INSERT INTO decks (
+                 id, name, description, sort_order, created_at, updated_at, revision
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?5, 1)",
             params![id, name, description, sort_order, now],
         )
         .map_err(CommandError::database)?;
     transaction.commit().map_err(CommandError::database)?;
 
-    Ok(DeckDto {
-        id,
-        name,
-        description,
-        card_count: 0,
-        due_count: 0,
-        created_at: now,
-        updated_at: now,
-        revision: 1,
-    })
+    get_deck_from_connection(connection, &id)
 }
 
 fn update_deck_in_connection(
@@ -197,12 +181,11 @@ fn update_deck_in_connection(
 
     let changed = connection
         .execute(
-            "UPDATE decks\n\
-             SET name = ?1, description = ?2, updated_at = ?3, revision = revision + 1\n\
-             WHERE id = ?4\n\
-               AND revision = ?5\n\
-               AND deleted_at IS NULL\n\
-               AND archived_at IS NULL",
+            "UPDATE decks
+             SET name = ?1, description = ?2, updated_at = ?3, revision = revision + 1
+             WHERE id = ?4
+               AND revision = ?5
+               AND deleted_at IS NULL",
             params![name, description, now, input.deck_id, input.revision],
         )
         .map_err(CommandError::database)?;
@@ -215,6 +198,184 @@ fn update_deck_in_connection(
     }
 
     get_deck_from_connection(connection, &input.deck_id)
+}
+
+fn archive_deck_in_connection(
+    connection: &mut Connection,
+    deck_id: &str,
+) -> Result<DeckDto, CommandError> {
+    let now = unix_time_millis()?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(CommandError::database)?;
+    let changed = transaction
+        .execute(
+            "UPDATE decks
+             SET archived_at = ?1, updated_at = ?1, revision = revision + 1
+             WHERE id = ?2 AND deleted_at IS NULL AND archived_at IS NULL",
+            params![now, deck_id],
+        )
+        .map_err(CommandError::database)?;
+    if changed != 1 {
+        return Err(CommandError::new(
+            "deck_not_found",
+            "That deck is already archived or no longer exists.",
+        ));
+    }
+
+    transaction
+        .execute(
+            "INSERT INTO deck_archive_cards (deck_id, card_id, archived_at)
+             SELECT ?1, c.id, ?2
+             FROM cards c
+             JOIN notes n ON n.id = c.note_id
+             WHERE c.deck_id = ?1
+               AND c.deleted_at IS NULL
+               AND n.deleted_at IS NULL
+               AND c.suspended_at IS NULL",
+            params![deck_id, now],
+        )
+        .map_err(CommandError::database)?;
+    transaction
+        .execute(
+            "UPDATE cards
+             SET suspended_at = ?1, updated_at = ?1
+             WHERE id IN (
+                 SELECT card_id FROM deck_archive_cards
+                 WHERE deck_id = ?2 AND archived_at = ?1
+             )",
+            params![now, deck_id],
+        )
+        .map_err(CommandError::database)?;
+    transaction
+        .execute(
+            "UPDATE card_schedules
+             SET updated_at = ?1, revision = revision + 1
+             WHERE card_id IN (
+                 SELECT card_id FROM deck_archive_cards
+                 WHERE deck_id = ?2 AND archived_at = ?1
+             )",
+            params![now, deck_id],
+        )
+        .map_err(CommandError::database)?;
+    transaction.commit().map_err(CommandError::database)?;
+    get_deck_from_connection(connection, deck_id)
+}
+
+fn unarchive_deck_in_connection(
+    connection: &mut Connection,
+    deck_id: &str,
+) -> Result<DeckDto, CommandError> {
+    let now = unix_time_millis()?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(CommandError::database)?;
+    let archived_at: Option<i64> = transaction
+        .query_row(
+            "SELECT archived_at FROM decks
+             WHERE id = ?1 AND deleted_at IS NULL AND archived_at IS NOT NULL",
+            [deck_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(CommandError::database)?
+        .flatten();
+    let Some(archived_at) = archived_at else {
+        return Err(CommandError::new(
+            "deck_not_found",
+            "That deck is not archived or no longer exists.",
+        ));
+    };
+
+    transaction
+        .execute(
+            "UPDATE decks
+             SET archived_at = NULL, updated_at = ?1, revision = revision + 1
+             WHERE id = ?2 AND deleted_at IS NULL AND archived_at = ?3",
+            params![now, deck_id, archived_at],
+        )
+        .map_err(CommandError::database)?;
+    transaction
+        .execute(
+            "UPDATE cards
+             SET suspended_at = NULL, updated_at = ?1
+             WHERE id IN (
+                 SELECT card_id FROM deck_archive_cards
+                 WHERE deck_id = ?2 AND archived_at = ?3
+             )
+               AND deleted_at IS NULL
+               AND suspended_at = ?3",
+            params![now, deck_id, archived_at],
+        )
+        .map_err(CommandError::database)?;
+    transaction
+        .execute(
+            "UPDATE card_schedules
+             SET updated_at = ?1, revision = revision + 1
+             WHERE card_id IN (
+                 SELECT c.id
+                 FROM cards c
+                 JOIN deck_archive_cards dac ON dac.card_id = c.id
+                 WHERE dac.deck_id = ?2 AND dac.archived_at = ?3
+                   AND c.deleted_at IS NULL AND c.suspended_at IS NULL
+             )",
+            params![now, deck_id, archived_at],
+        )
+        .map_err(CommandError::database)?;
+    transaction
+        .execute(
+            "DELETE FROM deck_archive_cards WHERE deck_id = ?1",
+            [deck_id],
+        )
+        .map_err(CommandError::database)?;
+    transaction.commit().map_err(CommandError::database)?;
+    get_deck_from_connection(connection, deck_id)
+}
+
+fn deck_projection_sql(where_sql: &str) -> String {
+    format!(
+        "WITH note_counts AS (
+             SELECT n.deck_id, COUNT(*) AS source_note_count
+             FROM notes n
+             WHERE n.deleted_at IS NULL
+             GROUP BY n.deck_id
+         ),
+         generated_counts AS (
+             SELECT c.deck_id, COUNT(*) AS generated_card_count
+             FROM cards c
+             JOIN notes n ON n.id = c.note_id
+             WHERE c.deleted_at IS NULL AND n.deleted_at IS NULL
+             GROUP BY c.deck_id
+         ),
+         due_counts AS (
+             SELECT c.deck_id, COUNT(*) AS studyable_due_count
+             FROM cards c
+             JOIN notes n ON n.id = c.note_id
+             JOIN decks eligible_deck ON eligible_deck.id = c.deck_id
+             JOIN card_schedules s ON s.card_id = c.id
+             WHERE c.deleted_at IS NULL
+               AND n.deleted_at IS NULL
+               AND eligible_deck.deleted_at IS NULL
+               AND eligible_deck.archived_at IS NULL
+               AND c.suspended_at IS NULL
+               AND (c.buried_until IS NULL OR c.buried_until <= ?1)
+               AND s.due_at <= ?1
+             GROUP BY c.deck_id
+         )
+         SELECT d.id, d.name, d.description,
+                COALESCE(nc.source_note_count, 0),
+                COALESCE(gc.generated_card_count, 0),
+                CASE WHEN d.archived_at IS NULL
+                     THEN COALESCE(dc.studyable_due_count, 0)
+                     ELSE 0 END,
+                d.created_at, d.updated_at, d.archived_at, d.revision
+         FROM decks d
+         LEFT JOIN note_counts nc ON nc.deck_id = d.id
+         LEFT JOIN generated_counts gc ON gc.deck_id = d.id
+         LEFT JOIN due_counts dc ON dc.deck_id = d.id
+         WHERE {where_sql}
+         ORDER BY d.sort_order ASC, d.name COLLATE NOCASE ASC, d.created_at ASC"
+    )
 }
 
 pub(crate) fn validate_name(value: String) -> Result<String, CommandError> {
@@ -255,11 +416,13 @@ fn deck_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DeckDto> {
         id: row.get(0)?,
         name: row.get(1)?,
         description: row.get(2)?,
-        created_at: row.get(3)?,
-        updated_at: row.get(4)?,
-        revision: row.get(5)?,
-        card_count: row.get(6)?,
-        due_count: row.get(7)?,
+        source_note_count: row.get(3)?,
+        generated_card_count: row.get(4)?,
+        studyable_due_count: row.get(5)?,
+        created_at: row.get(6)?,
+        updated_at: row.get(7)?,
+        archived_at: row.get(8)?,
+        revision: row.get(9)?,
     })
 }
 
@@ -286,6 +449,8 @@ mod tests {
         assert_eq!(created.name, "Pharmacology");
         assert_eq!(created.description, "NCLEX medications");
         assert_eq!(created.id.len(), 32);
+        assert_eq!(created.source_note_count, 0);
+        assert_eq!(created.generated_card_count, 0);
 
         let updated = database
             .with_connection(|connection| {
@@ -304,10 +469,34 @@ mod tests {
         assert_eq!(updated.revision, 2);
 
         let decks = database
-            .with_connection(list_decks_from_connection)
+            .with_connection(|connection| list_decks_from_connection(connection, false))
             .expect("decks should load");
         assert_eq!(decks.len(), 1);
         assert_eq!(decks[0].id, created.id);
+    }
+
+    #[test]
+    fn archive_round_trip_preserves_individual_suspensions() {
+        let database = Database::open_in_memory().expect("database should open");
+        let deck = database
+            .with_connection(|connection| {
+                create_deck_in_connection(
+                    connection,
+                    CreateDeckInput {
+                        name: "Archive".to_string(),
+                        description: None,
+                    },
+                )
+            })
+            .expect("deck");
+        let archived = database
+            .with_connection(|connection| archive_deck_in_connection(connection, &deck.id))
+            .expect("archive");
+        assert!(archived.archived_at.is_some());
+        let restored = database
+            .with_connection(|connection| unarchive_deck_in_connection(connection, &deck.id))
+            .expect("unarchive");
+        assert_eq!(restored.archived_at, None);
     }
 
     #[test]
