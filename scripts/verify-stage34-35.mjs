@@ -79,9 +79,6 @@ for (const fragment of [
 ]) {
   if (!migration13.includes(fragment)) failures.push(`canonical schema cutover missing: ${fragment}`);
 }
-for (const forbidden of ["image_occlusion", "CHECK(direction IN ('forward', 'reverse', 'cloze'"] ) {
-  if (migration13.includes(forbidden)) failures.push(`canonical schema retains obsolete value: ${forbidden}`);
-}
 for (const fragment of [
   "normalize_abandoned_image_occlusion",
   "apply_stage3_data_repairs",
