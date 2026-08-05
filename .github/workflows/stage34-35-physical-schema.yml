@@ -1,0 +1,35 @@
+name: Apply physical canonical schema cutover
+
+on:
+  push:
+    branches:
+      - agent/stage-3-4-3-5-transfer-repairs
+    paths:
+      - .github/workflows/stage34-35-physical-schema.yml
+      - scripts/apply-stage34-35-physical-schema.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply physical schema cutover
+        run: python3 scripts/apply-stage34-35-physical-schema.py
+      - name: Format and test native code
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+      - name: Commit corrected source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: physically narrow the canonical schema" || exit 0
+          git push origin HEAD:agent/stage-3-4-3-5-transfer-repairs
