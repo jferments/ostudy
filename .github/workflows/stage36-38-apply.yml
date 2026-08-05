@@ -5,7 +5,9 @@ on:
     branches:
       - agent/stage-3-6-3-8-scheduling-analytics-projections
     paths:
-      - scripts/apply-stage36-38-*.py
+      - scripts/apply-stage36-38-native1.py
+      - scripts/apply-stage36-38-native2.py
+      - scripts/apply-stage36-38-frontend.py
       - .github/workflows/stage36-38-apply.yml
   workflow_dispatch:
 
@@ -25,11 +27,11 @@ jobs:
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - name: Apply asserted source transformations
+      - name: Apply remaining asserted source transformations
         run: |
-          for applicator in scripts/apply-stage36-38-*.py; do
-            python3 "$applicator"
-          done
+          python3 scripts/apply-stage36-38-native1.py
+          python3 scripts/apply-stage36-38-native2.py
+          python3 scripts/apply-stage36-38-frontend.py
       - name: Format Rust
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
       - name: Commit generated source
