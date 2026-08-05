@@ -29,6 +29,7 @@ export interface PracticeLaunchRequest {
   requestId: number;
   deckIds: string[];
   cardIds: string[];
+  tagIds: string[];
   autoStart: boolean;
 }
 
@@ -157,7 +158,7 @@ function App() {
     if (next === "practice") {
       const requestId = practiceRequestSequence.current;
       practiceRequestSequence.current += 1;
-      setPracticeLaunch({ requestId, deckIds: [], cardIds: [], autoStart: false });
+      setPracticeLaunch({ requestId, deckIds: [], cardIds: [], tagIds: [], autoStart: false });
     }
     if (next === "analytics") {
       const requestId = analyticsRequestSequence.current;
@@ -176,7 +177,7 @@ function App() {
     if (!canLeaveCurrentSection()) return;
     const requestId = practiceRequestSequence.current;
     practiceRequestSequence.current += 1;
-    setPracticeLaunch({ requestId, deckIds: [deckId], cardIds: [], autoStart: true });
+    setPracticeLaunch({ requestId, deckIds: [deckId], cardIds: [], tagIds: [], autoStart: true });
     setSection("practice");
   }
 
@@ -184,7 +185,15 @@ function App() {
     if (cardIds.length === 0 || !canLeaveCurrentSection()) return;
     const requestId = practiceRequestSequence.current;
     practiceRequestSequence.current += 1;
-    setPracticeLaunch({ requestId, deckIds: [], cardIds, autoStart: true });
+    setPracticeLaunch({ requestId, deckIds: [], cardIds, tagIds: [], autoStart: true });
+    setSection("practice");
+  }
+
+  function practiceScope(deckIds: string[], tagIds: string[]): void {
+    if (!canLeaveCurrentSection()) return;
+    const requestId = practiceRequestSequence.current;
+    practiceRequestSequence.current += 1;
+    setPracticeLaunch({ requestId, deckIds, cardIds: [], tagIds, autoStart: true });
     setSection("practice");
   }
 
@@ -278,6 +287,7 @@ function App() {
               launchRequest={analyticsLaunch}
               onLaunchConsumed={consumeAnalyticsLaunch}
               onPracticeCards={practiceCards}
+              onPracticeScope={practiceScope}
               showToast={showToast}
             />
           ) : null}

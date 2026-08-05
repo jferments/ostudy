@@ -9,7 +9,6 @@ import {
 } from "../analytics-ipc";
 import {
   getErrorMessage,
-  listMatchingCards,
   listTags,
   type AppSettings,
   type Deck,
@@ -24,6 +23,7 @@ interface AnalyticsScreenProps {
   launchRequest: AnalyticsLaunchRequest | null;
   onLaunchConsumed: () => void;
   onPracticeCards: (cardIds: string[]) => void;
+  onPracticeScope: (deckIds: string[], tagIds: string[]) => void;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
 }
 
@@ -44,6 +44,7 @@ export function AnalyticsScreen({
   launchRequest,
   onLaunchConsumed,
   onPracticeCards,
+  onPracticeScope,
   showToast,
 }: AnalyticsScreenProps) {
   const [range, setRange] = useState<AnalyticsRange>("7d");
@@ -126,24 +127,7 @@ export function AnalyticsScreen({
     if (practicingTagId !== null) return;
     setPracticingTagId(tag.tagId);
     try {
-      const cards = await listMatchingCards({
-        deckIds,
-        query: "",
-        tagIds: [...new Set([...tagIds, tag.tagId])],
-        dueFilter: "due",
-        statusFilter: "active",
-        reviewedFilter: "all",
-        sort: "due_asc",
-        limit: 200,
-        offset: 0,
-      });
-      if (cards.length === 0) {
-        showToast("info", `No active ${tag.tagName} cards are due in this scope.`);
-        return;
-      }
-      onPracticeCards(cards.map((card) => card.cardId));
-    } catch (error: unknown) {
-      showToast("error", getErrorMessage(error));
+      onPracticeScope(deckIds, [...new Set([...tagIds, tag.tagId])]);
     } finally {
       setPracticingTagId(null);
     }
@@ -201,7 +185,7 @@ export function AnalyticsScreen({
             <FilterChecklist
               label="Decks"
               emptyLabel="No decks available"
-              options={decks.map((deck) => ({ id: deck.id, name: deck.name, detail: `${deck.cardCount} cards` }))}
+              options={(analytics?.dimensions.decks ?? decks.map((deck) => ({ ...deck, archived: false, historicalOnly: false }))).map((deck) => ({ id: deck.id, name: deck.name, detail: deck.archived ? "Archived · history retained" : "Current deck" }))}
               selected={selectedDeckIds}
               onChange={(next) => {
                 setSelectedDeckIds(next);
@@ -211,7 +195,7 @@ export function AnalyticsScreen({
             <FilterChecklist
               label="Tags"
               emptyLabel={isLoadingTags ? "Loading tags…" : "No tags in this deck scope"}
-              options={availableTags.map((tag) => ({ id: tag.id, name: tag.name, detail: `${tag.cardCount} cards` }))}
+              options={availableTags.map((tag) => ({ id: tag.id, name: tag.name, detail: `${tag.generatedCardCount} cards` }))}
               selected={selectedTagIds}
               onChange={(next) => {
                 setSelectedTagIds(next);
@@ -277,7 +261,7 @@ export function AnalyticsScreen({
             <MetricCard label="Remembered" value={formatPercent(analytics.summary.correctRate)} detail={`${analytics.summary.correctCount} remembered answers`} />
             <MetricCard label="Focused study" value={formatStudyTime(analytics.summary.totalStudyTimeMs)} detail={`${analytics.summary.sessionCount} session${analytics.summary.sessionCount === 1 ? "" : "s"}`} />
             <MetricCard label="Average confidence" value={formatConfidence(analytics.summary.averageConfidence)} detail="0 Wrong · 3 Easy" />
-            <MetricCard label="Due now" value={analytics.summary.dueNow} detail={`${analytics.summary.cardCount} active cards`} />
+            <MetricCard label="Due now" value={analytics.summary.studyableDueCount} detail={`${analytics.summary.generatedCardCount} active cards`} />
             <MetricCard label="Needs more practice" value={analytics.summary.needsMorePractice} detail="Repeatedly missed cards" />
           </section>
 
@@ -306,15 +290,15 @@ export function AnalyticsScreen({
                   <tbody>
                     {analytics.tagStats.map((tag) => (
                       <tr key={tag.tagId}>
-                        <td><strong>{tag.tagName}</strong><small>{tag.cardCount} active cards</small></td>
+                        <td><strong>{tag.tagName}</strong><small>{tag.generatedCardCount} active cards</small></td>
                         <td>{formatLastPracticed(tag.lastPracticedAt)}</td>
                         <td>{tag.cardsPracticed} cards<small>{tag.reviewCount} reviews · {formatStudyTime(tag.totalStudyTimeMs)}</small></td>
                         <td>{formatPercent(tag.correctRate)}<small>{formatConfidence(tag.averageConfidence)}</small></td>
                         <td><Trend value={tag.trendDelta} /></td>
-                        <td>{tag.dueCount}</td>
+                        <td>{tag.studyableDueCount}</td>
                         <td>{tag.needsMorePractice}</td>
                         <td><StatusBadge status={tag.status} /></td>
-                        <td><button type="button" className="small-primary-button" disabled={tag.dueCount === 0 || practicingTagId !== null} onClick={() => void practiceDueTag(tag)}>{practicingTagId === tag.tagId ? "Starting…" : "Practice due"}</button></td>
+                        <td><button type="button" className="small-primary-button" disabled={tag.studyableDueCount === 0 || practicingTagId !== null} onClick={() => void practiceDueTag(tag)}>{practicingTagId === tag.tagId ? "Starting…" : "Practice due"}</button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -328,7 +312,7 @@ export function AnalyticsScreen({
               <div className="panel-heading-row"><h2>Deck performance</h2></div>
               {analytics.deckStats.length === 0 ? <p className="muted-copy">No decks in this scope.</p> : (
                 <div className="analytics-table-wrap"><table className="analytics-table"><thead><tr><th>Deck</th><th>Due</th><th>Practice</th><th>Remembered</th><th>Time</th></tr></thead><tbody>
-                  {analytics.deckStats.map((deck) => <tr key={deck.deckId}><td><strong>{deck.deckName}</strong><small>{deck.cardCount} active · {deck.needsMorePractice} need practice</small></td><td>{deck.dueCount}</td><td>{deck.cardsPracticed} cards<small>{deck.reviewCount} reviews</small></td><td>{formatPercent(deck.correctRate)}<small>{formatConfidence(deck.averageConfidence)}</small></td><td>{formatStudyTime(deck.totalStudyTimeMs)}<small>{formatDuration(deck.averageResponseTimeMs)} avg</small></td></tr>)}
+                  {analytics.deckStats.map((deck) => <tr key={deck.deckId}><td><strong>{deck.deckName}</strong><small>{deck.generatedCardCount} active · {deck.needsMorePractice} need practice</small></td><td>{deck.studyableDueCount}</td><td>{deck.cardsPracticed} cards<small>{deck.reviewCount} reviews</small></td><td>{formatPercent(deck.correctRate)}<small>{formatConfidence(deck.averageConfidence)}</small></td><td>{formatStudyTime(deck.totalStudyTimeMs)}<small>{formatDuration(deck.averageResponseTimeMs)} avg</small></td></tr>)}
                 </tbody></table></div>
               )}
             </section>
@@ -372,7 +356,7 @@ function TimelineTable({ analytics }: { analytics: Analytics }) {
 
 function Trend({ value }: { value: number | null }) { if (value === null) return <span className="trend neutral">—</span>; const points = Math.round(value * 100); return <span className={points > 0 ? "trend positive" : points < 0 ? "trend negative" : "trend neutral"}>{points > 0 ? "↑" : points < 0 ? "↓" : "→"} {Math.abs(points)} pt</span>; }
 function StatusBadge({ status }: { status: TagAnalytics["status"] }) { const labels = { building_data: "Building data", needs_attention: "Needs attention", on_track: "On track", strong: "Strong" }; return <span className={`analytics-status ${status}`}>{labels[status]}</span>; }
-function workloadMessage(analytics: Analytics): string { if (analytics.dailyLimits.reviewsRemaining === 0) return "Today's review limit is reached. Due cards remain scheduled; extra study is still available from Practice."; if (analytics.summary.dueNow > analytics.dailyLimits.reviewsRemaining) return `${analytics.summary.dueNow - analytics.dailyLimits.reviewsRemaining} due cards exceed today's remaining review capacity.`; return `${analytics.dailyLimits.reviewsRemaining} reviews and ${analytics.dailyLimits.newRemaining} new cards remain in today's limits.`; }
+function workloadMessage(analytics: Analytics): string { if (analytics.dailyLimits.reviewsRemaining === 0) return "Today's review limit is reached. Due cards remain scheduled; extra study is still available from Practice."; if (analytics.summary.studyableDueCount > analytics.dailyLimits.reviewsRemaining) return `${analytics.summary.studyableDueCount - analytics.dailyLimits.reviewsRemaining} due cards exceed today's remaining review capacity.`; return `${analytics.dailyLimits.reviewsRemaining} reviews and ${analytics.dailyLimits.newRemaining} new cards remain in today's limits.`; }
 function formatPercent(value: number | null): string { return value === null ? "—" : `${Math.round(value * 100)}%`; }
 function formatConfidence(value: number | null): string { return value === null ? "—" : `${value.toFixed(1)} / 3`; }
 function formatDuration(value: number | null): string { if (value === null) return "—"; if (value < 1_000) return `${Math.round(value)} ms`; return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)} s`; }

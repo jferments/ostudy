@@ -5,6 +5,7 @@ import {
   createMutationId,
   getErrorCode,
   getErrorMessage,
+  type RescheduleIntent,
   type SelectionCard,
 } from "../../ipc";
 import { scheduleActionNotice } from "./scheduleActionResult";
@@ -38,14 +39,14 @@ export function ScheduleActionModal({
 
   async function submit(): Promise<void> {
     if (savingRef.current) return;
-    const dueAt = action === "reschedule" ? resolveDueAt(dueChoice, customDate) : undefined;
-    if (action === "reschedule" && dueAt === null) {
+    const reschedule = action === "reschedule" ? resolveReschedule(dueChoice, customDate) : undefined;
+    if (action === "reschedule" && reschedule === null) {
       pendingMutationRef.current = null;
       setErrorMessage("Choose a valid custom due date.");
       return;
     }
     const cardIds = [...new Set(cards.map((card) => card.cardId))].sort();
-    const key = JSON.stringify({ action, cardIds, dueAt });
+    const key = JSON.stringify({ action, cardIds, reschedule });
     const mutationId = mutationIdForRequest(key);
 
     savingRef.current = true;
@@ -58,7 +59,7 @@ export function ScheduleActionModal({
         mutationId,
         cardIds,
         action,
-        dueAt: dueAt ?? undefined,
+        reschedule: reschedule ?? undefined,
       });
       pendingMutationRef.current = null;
     } catch (error: unknown) {
@@ -214,16 +215,13 @@ export function ScheduleActionModal({
   );
 }
 
-function resolveDueAt(choice: string, customDate: string): number | null {
-  const date = new Date();
-  date.setHours(12, 0, 0, 0);
-  if (choice === "today") return date.getTime();
-  if (choice === "tomorrow") date.setDate(date.getDate() + 1);
-  else if (choice === "3_days") date.setDate(date.getDate() + 3);
-  else if (choice === "1_week") date.setDate(date.getDate() + 7);
-  else if (choice === "custom") {
-    const parsed = new Date(`${customDate}T12:00:00`);
-    return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+function resolveReschedule(choice: string, customDate: string): RescheduleIntent | null {
+  if (choice === "today") return { kind: "dueNow" };
+  if (choice === "tomorrow") return { kind: "tomorrow" };
+  if (choice === "3_days") return { kind: "calendarDays", days: 3 };
+  if (choice === "1_week") return { kind: "calendarDays", days: 7 };
+  if (choice === "custom" && /^\d{4}-\d{2}-\d{2}$/u.test(customDate)) {
+    return { kind: "calendarDate", date: customDate };
   }
-  return date.getTime();
+  return null;
 }

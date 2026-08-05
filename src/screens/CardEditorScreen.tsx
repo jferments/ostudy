@@ -19,7 +19,8 @@ import {
   getErrorCode,
   getErrorMessage,
   getOrganizedCard,
-  listCardTemplates,
+  getCardTemplate,
+  listCardTemplateSummaries,
   listDecks,
   listTags,
   previewTemplateCards,
@@ -28,6 +29,7 @@ import {
   type Asset,
   type BuiltInCardType,
   type CardTemplate,
+  type CardTemplateSummary,
   type ClozeMode,
   type Deck,
   type DuplicateCard,
@@ -80,11 +82,9 @@ export function CardEditorScreen({
   const selectedDeck =
     availableDecks.find((candidate) => candidate.id === selectedDeckId) ?? deck;
 
-  const [templates, setTemplates] = useState<CardTemplate[]>([]);
+  const [templates, setTemplates] = useState<CardTemplateSummary[]>([]);
   const [selectedTemplateKey, setSelectedTemplateKey] = useState("basic");
-  const selectedCustomTemplate = templates.find(
-    (template) => template.id === selectedTemplateKey,
-  );
+  const [selectedCustomTemplate, setSelectedCustomTemplate] = useState<CardTemplate | undefined>();
   const builtInCardType: BuiltInCardType =
     selectedTemplateKey === "cloze" ? "cloze" : "basic";
   const [isLoadingType, setIsLoadingType] = useState(existing);
@@ -219,7 +219,7 @@ export function CardEditorScreen({
 
   useEffect(() => {
     let current = true;
-    void listCardTemplates()
+    void listCardTemplateSummaries()
       .then((loaded) => {
         if (current) setTemplates(loaded);
       })
@@ -283,6 +283,18 @@ export function CardEditorScreen({
       current = false;
     };
   }, [card, existing]);
+
+  useEffect(() => {
+    if (selectedTemplateKey === "basic" || selectedTemplateKey === "cloze") {
+      setSelectedCustomTemplate(undefined);
+      return;
+    }
+    let current = true;
+    void getCardTemplate(selectedTemplateKey)
+      .then((template) => { if (current) setSelectedCustomTemplate(template); })
+      .catch((error: unknown) => { if (current) setErrorMessage(getErrorMessage(error)); });
+    return () => { current = false; };
+  }, [selectedTemplateKey]);
 
   useEffect(() => {
     if (!selectedCustomTemplate) {

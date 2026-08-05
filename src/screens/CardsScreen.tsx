@@ -505,7 +505,7 @@ export function CardsScreen({
                 onChange={() => setDeckIds(new Set())}
               />
               <span>All decks</span>
-              <small>{decks.reduce((sum, deck) => sum + deck.cardCount, 0)}</small>
+              <small>{decks.reduce((sum, deck) => sum + deck.generatedCardCount, 0)}</small>
             </label>
             {decks.map((deck) => (
               <label key={deck.id}>
@@ -520,7 +520,7 @@ export function CardsScreen({
                   }}
                 />
                 <span>{deck.name}</span>
-                <small>{deck.cardCount}</small>
+                <small>{deck.generatedCardCount}</small>
               </label>
             ))}
           </div>
@@ -620,7 +620,7 @@ export function CardsScreen({
                     }}
                   />
                   <span>{tag.name}</span>
-                  <small>{tag.cardCount}</small>
+                  <small>{tag.generatedCardCount}</small>
                 </label>
               ))
             )}

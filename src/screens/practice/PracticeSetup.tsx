@@ -28,7 +28,7 @@ export function PracticeSetup({
   onShuffleChange,
   onStart,
 }: PracticeSetupProps) {
-  const decksWithCards = decks.filter((deck) => deck.cardCount > 0);
+  const decksWithCards = decks.filter((deck) => deck.generatedCardCount > 0);
   const scheduledCount = (workload?.scheduledReviews ?? 0) + (workload?.scheduledNew ?? 0);
 
   if (decksWithCards.length === 0) {
@@ -63,7 +63,7 @@ export function PracticeSetup({
                   if (event.currentTarget.checked) next.add(deck.id); else next.delete(deck.id);
                   onSelectedDeckIdsChange(next);
                 }} />
-                <span><strong>{deck.name}</strong><small>{deck.dueCount > 0 ? `${deck.dueCount} due · ${deck.cardCount} total` : `No cards due · ${deck.cardCount} total`}</small></span>
+                <span><strong>{deck.name}</strong><small>{deck.studyableDueCount > 0 ? `${deck.studyableDueCount} due · ${deck.generatedCardCount} total` : `No cards due · ${deck.generatedCardCount} total`}</small></span>
               </label>
             );
           })}

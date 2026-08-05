@@ -10,6 +10,7 @@ import {
   createSubmissionId,
   getErrorCode,
   getErrorMessage,
+  getPracticeCardWindow,
   getPracticeWorkload,
   markPracticeCardRevealed,
   markPracticeCardViewed,
@@ -68,6 +69,8 @@ export function PracticeScreen({
 }: PracticeScreenProps) {
   const [selectedDeckIds, setSelectedDeckIds] = useState<Set<string>>(new Set());
   const [temporaryCardIds, setTemporaryCardIds] = useState<string[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [isLoadingWindow, setIsLoadingWindow] = useState(false);
   const [shuffle, setShuffle] = useState(settings.practiceShuffle);
   const [session, setSession] = useState<PracticeSession | null>(null);
   const [position, setPosition] = useState(0);
@@ -113,23 +116,24 @@ export function PracticeScreen({
     }
     setIsLoadingWorkload(true);
     try {
-      setWorkload(await getPracticeWorkload(deckIds));
+      setWorkload(await getPracticeWorkload(deckIds, selectedTagIds));
     } catch (error: unknown) {
       setWorkload(null);
       setErrorMessage(getErrorMessage(error));
     } finally {
       setIsLoadingWorkload(false);
     }
-  }, []);
+  }, [selectedTagIds]);
 
   const beginSession = useCallback(
     async (
       deckIds: string[],
       requestedShuffle: boolean,
       mode: "scheduled" | "extra",
+      tagIds: string[] = selectedTagIds,
     ): Promise<void> => {
       if (startingRef.current || deckIds.length === 0) return;
-      const key = selectedStartKey(deckIds, requestedShuffle, mode);
+      const key = selectedStartKey(deckIds, tagIds, requestedShuffle, mode);
       const operationId = operationIdForStart(pendingStartRef, key);
       startingRef.current = true;
       setIsStarting(true);
@@ -140,6 +144,7 @@ export function PracticeScreen({
           await startSelectedPractice({
             operationId,
             deckIds,
+            tagIds,
             shuffle: requestedShuffle,
             mode,
           }),
@@ -220,6 +225,7 @@ export function PracticeScreen({
     setSession(null);
     setCompleted(false);
     setErrorMessage(null);
+    setSelectedTagIds(launchRequest.tagIds ?? []);
     if (launchRequest.cardIds.length > 0) {
       setSelectedDeckIds(new Set());
       setTemporaryCardIds(launchRequest.cardIds);
@@ -230,13 +236,13 @@ export function PracticeScreen({
       return;
     }
     const eligible = launchRequest.deckIds.filter((deckId) =>
-      decks.some((deck) => deck.id === deckId && deck.cardCount > 0),
+      decks.some((deck) => deck.id === deckId && deck.generatedCardCount > 0),
     );
     setTemporaryCardIds([]);
     setSelectedDeckIds(new Set(eligible));
     onLaunchConsumed();
     if (launchRequest.autoStart && eligible.length > 0) {
-      void beginSession(eligible, settings.practiceShuffle, "scheduled");
+      void beginSession(eligible, settings.practiceShuffle, "scheduled", launchRequest.tagIds ?? []);
     }
   }, [
     beginCardSession,
@@ -254,6 +260,27 @@ export function PracticeScreen({
       showToast("error", getErrorMessage(error));
     });
   }, [completed, current, session, showToast]);
+
+  async function loadNextWindow(): Promise<void> {
+    if (!session || !session.hasMore || isLoadingWindow) return;
+    setIsLoadingWindow(true);
+    try {
+      const window = await getPracticeCardWindow(session.id, session.cards.length, 50);
+      setSession((current) => current && current.id === session.id
+        ? { ...current, cards: [...current.cards, ...window.cards], hasMore: window.hasMore }
+        : current);
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsLoadingWindow(false);
+    }
+  }
+
+  useEffect(() => {
+    if (session?.hasMore && position >= Math.max(0, session.cards.length - 5)) {
+      void loadNextWindow();
+    }
+  }, [position, session?.id, session?.cards.length, session?.hasMore]);
 
   async function revealAnswer(): Promise<void> {
     if (!session || !current || revealed || revealingRef.current) return;

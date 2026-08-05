@@ -8,11 +8,13 @@ import {
   createCardTemplate,
   deleteCardTemplate,
   getErrorMessage,
-  listCardTemplates,
+  getCardTemplate,
+  listCardTemplateSummaries,
   syncAssetDraft,
   updateCardTemplate,
   type Asset,
   type CardTemplate,
+  type CardTemplateSummary,
   type CardTemplateFieldInput,
   type CardTemplateRuleInput,
   type RichDocument,
@@ -50,7 +52,7 @@ export function TemplatesScreen({
   onDirtyChange,
   showToast,
 }: TemplatesScreenProps) {
-  const [templates, setTemplates] = useState<CardTemplate[]>([]);
+  const [templates, setTemplates] = useState<CardTemplateSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -111,7 +113,7 @@ export function TemplatesScreen({
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      setTemplates(await listCardTemplates());
+      setTemplates(await listCardTemplateSummaries());
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -137,8 +139,9 @@ export function TemplatesScreen({
     void openDraft(newTemplateDraft());
   }
 
-  function beginEdit(template: CardTemplate): void {
-    void openDraft(draftFromTemplate(template));
+  async function beginEdit(template: CardTemplateSummary): Promise<void> {
+    try { await openDraft(draftFromTemplate(await getCardTemplate(template.id))); }
+    catch (error: unknown) { setErrorMessage(getErrorMessage(error)); }
   }
 
   async function cancelEdit(): Promise<void> {
@@ -216,7 +219,7 @@ export function TemplatesScreen({
     }
   }
 
-  async function removeTemplate(template: CardTemplate): Promise<void> {
+  async function removeTemplate(template: CardTemplateSummary): Promise<void> {
     if (
       !window.confirm(
         `Delete “${template.name}”?\n\nCards already generated from this template will remain in their decks.`,
@@ -532,7 +535,7 @@ export function TemplatesScreen({
               <button
                 type="button"
                 className="template-library-main"
-                onClick={() => beginEdit(template)}
+                onClick={() => void beginEdit(template)}
               >
                 <span className="template-library-mark" aria-hidden="true">▧</span>
                 <span>
@@ -540,12 +543,12 @@ export function TemplatesScreen({
                   {template.description ? <small>{template.description}</small> : null}
                 </span>
                 <span className="template-library-counts">
-                  <b>{template.fields.length}</b> fields
-                  <b>{template.rules.length}</b> cards
+                  <b>{template.fieldCount}</b> fields
+                  <b>{template.generatedCardRuleCount}</b> cards
                 </span>
               </button>
               <div className="template-library-actions">
-                <button type="button" onClick={() => beginEdit(template)}>Edit</button>
+                <button type="button" onClick={() => void beginEdit(template)}>Edit</button>
                 <button
                   type="button"
                   className="danger-text"

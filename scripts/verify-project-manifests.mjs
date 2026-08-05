@@ -206,8 +206,8 @@ if (!releaseFixture.includes("Immutable database fixture captured for the ostudy
 
 const frontendIpc = `${ipc}\n${analyticsIpc}`;
 for (const command of [
-  "list_decks", "get_deck", "create_deck", "update_deck", "delete_deck",
-  "list_cards", "delete_card",
+  "list_decks", "get_practice_card_window", "unarchive_deck", "archive_deck", "list_archived_decks", "get_deck", "create_deck", "update_deck", "delete_deck",
+  "list_deck_cards", "delete_card",
   "list_tags", "search_cards", "list_matching_cards",
   "get_organized_card", "create_organized_card", "update_organized_card",
   "find_duplicate_cards", "analyze_bulk_cards", "bulk_create_cards",
