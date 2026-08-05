@@ -526,7 +526,7 @@ export interface ScheduleActionResult {
 
 export interface ExportResult {
   destinationPath: string;
-  cardCount: number;
+  generatedCardCount: number;
   assetCount: number;
 }
 

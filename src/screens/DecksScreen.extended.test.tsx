@@ -141,7 +141,7 @@ describe("DecksScreen extended behavior", () => {
   });
 
   it("reports skipped generated-JSON duplicates from the authoritative result", async () => {
-    const imported = makeDeck({ name: "Imported pharmacology", cardCount: 3 });
+    const imported = makeDeck({ name: "Imported pharmacology", sourceNoteCount: 2, generatedCardCount: 3 });
     vi.mocked(openDialog).mockResolvedValue("/tmp/cards.ostudy.json");
     vi.mocked(generatedImport.importGeneratedFlashcards).mockResolvedValue({
       deckId: imported.id,
@@ -150,9 +150,13 @@ describe("DecksScreen extended behavior", () => {
       skippedDuplicateCount: 4,
     });
     vi.mocked(ipc.getDeck).mockResolvedValue(imported);
-    vi.mocked(ipc.listCards).mockResolvedValue([
-      makeFlashcard({ deckId: imported.id }),
-    ]);
+    const importedCard = makeFlashcard({ deckId: imported.id });
+    vi.mocked(ipc.listDeckCards).mockResolvedValue({
+      cards: [{ noteId: importedCard.noteId, primaryCardId: importedCard.id,
+        questionExcerpt: importedCard.frontText, answerExcerpt: importedCard.backText,
+        generatedCardCount: 1, imageCount: 0, updatedAt: importedCard.updatedAt }],
+      totalCount: 1,
+    });
     const { showToast } = renderDeckLibrary();
 
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
@@ -167,14 +171,14 @@ describe("DecksScreen extended behavior", () => {
   });
 
   it("does not reclassify a committed studydeck import when detail refresh fails", async () => {
-    const imported = makeDeck({ name: "Imported deck", cardCount: 2 });
+    const imported = makeDeck({ name: "Imported deck", sourceNoteCount: 2, generatedCardCount: 2 });
     vi.mocked(openDialog).mockResolvedValue("/tmp/imported.studydeck");
     vi.mocked(ipc.importDeck).mockResolvedValue({
       deck: imported,
       cardCount: 2,
       assetCount: 0,
     });
-    vi.mocked(ipc.listCards).mockRejectedValue(new Error("Card list unavailable."));
+    vi.mocked(ipc.listDeckCards).mockRejectedValue(new Error("Card list unavailable."));
     const refreshDecks = vi.fn().mockResolvedValue([imported]);
     const { showToast } = renderDeckLibrary(undefined, { refreshDecks });
 
@@ -222,7 +226,7 @@ describe("DecksScreen extended behavior", () => {
   });
 
   it("reuses one import operation identity after an ambiguous transport result", async () => {
-    const imported = makeDeck({ name: "Recovered import", cardCount: 1 });
+    const imported = makeDeck({ name: "Recovered import", sourceNoteCount: 1, generatedCardCount: 1 });
     vi.mocked(openDialog).mockResolvedValue("/tmp/retry.studydeck");
     vi.mocked(ipc.importDeck)
       .mockRejectedValueOnce(new Error("Native response was interrupted."))
@@ -262,7 +266,7 @@ describe("DecksScreen extended behavior", () => {
     vi.mocked(saveDialog).mockResolvedValue("/tmp/cardiology.studydeck");
     vi.mocked(ipc.exportDeck).mockResolvedValue({
       destinationPath: "/tmp/cardiology.studydeck",
-      cardCount: 3,
+      generatedCardCount: 3,
       assetCount: 1,
     });
     const { deck, showToast } = renderDeckLibrary();

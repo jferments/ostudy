@@ -138,7 +138,7 @@ pub struct ImportDeckInput {
 #[serde(rename_all = "camelCase")]
 pub struct ExportResultDto {
     pub destination_path: String,
-    pub card_count: i64,
+    pub generated_card_count: i64,
     pub asset_count: i64,
 }
 

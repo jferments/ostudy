@@ -209,7 +209,7 @@ pub(super) fn export_deck_from_connection(
 
     Ok(ExportResultDto {
         destination_path: destination.to_string_lossy().into_owned(),
-        card_count: i64::try_from(package_data.cards.len()).unwrap_or(i64::MAX),
+        generated_card_count: i64::try_from(package_data.cards.len()).unwrap_or(i64::MAX),
         asset_count: i64::try_from(package_data.assets.len()).unwrap_or(i64::MAX),
     })
 }
