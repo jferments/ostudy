@@ -10,6 +10,7 @@ import {
   listMatchingCards,
   listTags,
   searchCards,
+  type AvailabilityFilter,
   type CardBrowserRow,
   type CardSearchInput,
   type CardSearchPage,
@@ -17,7 +18,6 @@ import {
   type CardStatusFilter,
   type CardTemplate,
   type Deck,
-  type DueFilter,
   type GenerateTemplateCardsResult,
   type OrganizedCard,
   type ReviewedFilter,
@@ -93,303 +93,208 @@ export function CardsScreen({
   const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
   const [moveCopyCards, setMoveCopyCards] = useState<SelectionCard[]>([]);
   const [practiceCards, setPracticeCards] = useState<SelectionCard[] | null>(null);
-  const [practiceSourceLabel, setPracticeSourceLabel] = useState(
-    "the current results",
-  );
-  const requestSequence = useRef(0);
+  const [practiceLoading, setPracticeLoading] = useState(false);
+  const [scheduleActionCards, setScheduleActionCards] = useState<SelectionCard[]>([]);
+  const [scheduleAction, setScheduleAction] = useState<"reset" | "reschedule" | null>(null);
   const pendingScheduleMutationRef = useRef<PendingScheduleMutation | null>(null);
 
-  const normalizedSort: CardSort =
-    query.trim() === "" && sort === "relevance" ? "updated_desc" : sort;
-  const searchInput = useMemo<CardSearchInput>(
+  const loadRequest = useMemo<CardSearchInput>(
     () => ({
-      deckIds: [...deckIds],
+      deckIds: [...deckIds].sort(),
       query,
-      tagIds: [...tagIds],
+      tagIds: [...tagIds].sort(),
       availabilityFilter,
       statusFilter,
       reviewedFilter,
-      sort: normalizedSort,
+      sort,
       limit: PAGE_SIZE,
       offset: 0,
     }),
-    [deckIds, availabilityFilter, normalizedSort, query, reviewedFilter, statusFilter, tagIds],
-  );
-  const selected = useMemo(() => [...selectedCards.values()], [selectedCards]);
-  const selectedNotes = useMemo(() => uniqueNotes(selected), [selected]);
-  const selectedDeck =
-    deckIds.size === 1
-      ? (decks.find((deck) => deck.id === [...deckIds][0]) ?? null)
-      : null;
-
-  const loadTags = useCallback(async (): Promise<void> => {
-    try {
-      const loaded = await listTags([...deckIds]);
-      setTags(loaded);
-      setTagIds((current) => {
-        const valid = new Set(loaded.map((tag) => tag.id));
-        return new Set([...current].filter((id) => valid.has(id)));
-      });
-    } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
-    }
-  }, [deckIds]);
-
-  const loadCards = useCallback(
-    async (offset = 0, append = false): Promise<void> => {
-      const requestId = requestSequence.current + 1;
-      requestSequence.current = requestId;
-      if (append) setIsLoadingMore(true);
-      else {
-        setIsLoading(true);
-        setPage({ cards: [], totalCount: 0 });
-      }
-      setErrorMessage(null);
-      try {
-        const result = await searchCards({ ...searchInput, offset });
-        if (requestSequence.current !== requestId) return;
-        setPage((current) => ({
-          totalCount: result.totalCount,
-          cards: append ? [...current.cards, ...result.cards] : result.cards,
-        }));
-      } catch (error: unknown) {
-        if (requestSequence.current === requestId) {
-          setErrorMessage(getErrorMessage(error));
-        }
-      } finally {
-        if (requestSequence.current === requestId) {
-          setIsLoading(false);
-          setIsLoadingMore(false);
-        }
-      }
-    },
-    [searchInput],
+    [availabilityFilter, deckIds, query, reviewedFilter, sort, statusFilter, tagIds],
   );
 
-  useEffect(() => {
-    void loadTags();
-  }, [loadTags]);
-
-  useEffect(() => {
-    if (query.trim() === "" && sort === "relevance") setSort("updated_desc");
-  }, [query, sort]);
-
-  useEffect(() => {
-    setSelectedCards(new Map());
-    const timeout = window.setTimeout(() => void loadCards(), 180);
-    return () => window.clearTimeout(timeout);
-  }, [loadCards]);
-
-  async function refreshAfterMutation(): Promise<void> {
-    await Promise.all([loadCards(), loadTags(), refreshDecks()]);
-    setSelectedCards(new Map());
-  }
-
-  async function reconcileAfterCommit(subject: string): Promise<void> {
-    try {
-      await refreshAfterMutation();
-    } catch (error: unknown) {
-      showToast(
-        "info",
-        `${subject} was saved, but the current view could not refresh: ${getErrorMessage(error)}`,
-      );
-    }
-  }
-
-  async function completeSelectionMutation(): Promise<void> {
-    if (editingCard || creatingDeckId) {
-      onDirtyChange(false);
-      setEditingCard(null);
-      setCreatingDeckId(null);
-    }
-    await refreshAfterMutation();
-  }
-
-  async function openCard(noteId: string): Promise<void> {
-    if (isOpeningCard) return;
-    setIsOpeningCard(true);
+  const load = useCallback(async () => {
+    setIsLoading(true);
     setErrorMessage(null);
     try {
-      setEditingCard(await getOrganizedCard(noteId));
+      setPage(await searchCards(loadRequest));
+      setSelectedCards(new Map());
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
-      setIsOpeningCard(false);
+      setIsLoading(false);
+    }
+  }, [loadRequest]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    let current = true;
+    void listTags([...deckIds])
+      .then((loaded) => {
+        if (!current) return;
+        setTags(loaded);
+        const available = new Set(loaded.map((tag) => tag.id));
+        setTagIds((selected) => {
+          const next = new Set([...selected].filter((id) => available.has(id)));
+          return sameSet(selected, next) ? selected : next;
+        });
+      })
+      .catch((error: unknown) => {
+        if (current) showToast("error", getErrorMessage(error));
+      });
+    return () => {
+      current = false;
+    };
+  }, [deckIds, showToast]);
+
+  async function loadMore(): Promise<void> {
+    if (isLoadingMore || page.cards.length >= page.totalCount) return;
+    setIsLoadingMore(true);
+    try {
+      const next = await searchCards({ ...loadRequest, offset: page.cards.length });
+      setPage((current) => ({
+        cards: [...current.cards, ...next.cards],
+        totalCount: next.totalCount,
+      }));
+    } catch (error: unknown) {
+      showToast("error", getErrorMessage(error));
+    } finally {
+      setIsLoadingMore(false);
     }
   }
 
-  function toggleSelected(card: SelectionCard): void {
-    setSelectedCards((current) => {
-      const next = new Map(current);
-      if (next.has(card.cardId)) next.delete(card.cardId);
-      else next.set(card.cardId, card);
-      return next;
-    });
-  }
-
-  function selectVisible(): void {
-    setSelectedCards((current) => {
-      const next = new Map(current);
-      for (const card of page.cards) next.set(card.cardId, selectionFromRow(card));
-      return next;
-    });
-  }
-
   async function selectAllMatching(): Promise<void> {
-    if (page.totalCount === 0 || isSelectingAll) return;
+    if (isSelectingAll) return;
     setIsSelectingAll(true);
-    setErrorMessage(null);
     try {
-      const matches = await listMatchingCards(searchInput);
-      setSelectedCards(new Map(matches.map((card) => [card.cardId, card])));
+      const matching = await listMatchingCards({
+        ...loadRequest,
+        limit: PAGE_SIZE,
+        offset: 0,
+      });
+      setSelectedCards(
+        new Map(matching.map((card) => [card.cardId, card])),
+      );
     } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
+      showToast("error", getErrorMessage(error));
     } finally {
       setIsSelectingAll(false);
     }
   }
 
-  function beginMoveCopy(cards: SelectionCard[]): void {
-    const notes = uniqueNotes(cards);
-    if (notes.length === 0) return;
-    setMoveCopyCards(notes);
-    setSelectionAction("move_copy");
+  function toggleVisible(): void {
+    setSelectedCards((current) => {
+      const next = new Map(current);
+      const allVisibleSelected = page.cards.every((card) => next.has(card.cardId));
+      for (const card of page.cards) {
+        if (allVisibleSelected) next.delete(card.cardId);
+        else next.set(card.cardId, selectionFromRow(card));
+      }
+      return next;
+    });
   }
 
-  async function practiceAllResults(): Promise<void> {
-    if (page.totalCount === 0 || isResolvingPractice) return;
-    setIsResolvingPractice(true);
-    setErrorMessage(null);
+  async function openCard(noteId: string): Promise<void> {
+    if (isOpeningCard) return;
+    setIsOpeningCard(true);
     try {
-      const matches = await listMatchingCards(searchInput);
-      setPracticeSourceLabel("the current filtered results");
-      setPracticeCards(matches);
+      setEditingCard(await getOrganizedCard(noteId));
     } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
+      showToast("error", getErrorMessage(error));
+    } finally {
+      setIsOpeningCard(false);
+    }
+  }
+
+  function beginCreate(): void {
+    if (deckIds.size !== 1) return;
+    setCreatingDeckId([...deckIds][0] ?? null);
+  }
+
+  async function resolveSelectedPractice(): Promise<void> {
+    if (selectedCards.size === 0 || isResolvingPractice) return;
+    setIsResolvingPractice(true);
+    try {
+      const selected = [...selectedCards.values()];
+      setPracticeCards(selected);
     } finally {
       setIsResolvingPractice(false);
     }
   }
 
-  async function applySimpleScheduleAction(
+  function closePracticeResults(): void {
+    setPracticeCards(null);
+    setPracticeLoading(false);
+  }
+
+  function runSelectionAction(action: SelectionAction): void {
+    const cards = [...selectedCards.values()];
+    if (cards.length === 0) return;
+    if (action === "suspend" || action === "resume" || action === "bury" || action === "unbury") {
+      void applySelectedScheduleAction(cards, action);
+      return;
+    }
+    if (action === "reset" || action === "reschedule") {
+      setScheduleActionCards(cards);
+      setScheduleAction(action);
+      return;
+    }
+    if (action === "move_copy") {
+      setMoveCopyCards(cards);
+      return;
+    }
+    setSelectionAction(action);
+  }
+
+  async function applySelectedScheduleAction(
     cards: SelectionCard[],
-    action: Exclude<ScheduleAction, "reset" | "reschedule">,
+    action: Extract<ScheduleAction, "suspend" | "resume" | "bury" | "unbury">,
   ): Promise<void> {
-    if (cards.length === 0 || isApplyingSchedule) return;
+    if (isApplyingSchedule) return;
     const cardIds = [...new Set(cards.map((card) => card.cardId))].sort();
     const key = JSON.stringify({ action, cardIds });
-    const mutationId = mutationIdForSchedule(pendingScheduleMutationRef, key);
+    const mutationId = mutationIdForScheduleRequest(pendingScheduleMutationRef, key);
     setIsApplyingSchedule(true);
-    setErrorMessage(null);
-
     let result;
     try {
       result = await applyScheduleAction({ mutationId, cardIds, action });
       pendingScheduleMutationRef.current = null;
     } catch (error: unknown) {
-      if (getErrorCode(error) !== null) {
-        pendingScheduleMutationRef.current = null;
-        setErrorMessage(getErrorMessage(error));
-      } else {
-        setErrorMessage(
-          `${getErrorMessage(error)} Choose the same schedule action again to safely retry the complete selection.`,
-        );
-      }
+      if (getErrorCode(error) !== null) pendingScheduleMutationRef.current = null;
+      showToast(
+        "error",
+        getErrorCode(error) === null
+          ? `${getErrorMessage(error)} Choose the same action again to safely retry the complete selection.`
+          : getErrorMessage(error),
+      );
       setIsApplyingSchedule(false);
       return;
     }
-
     const notice = scheduleActionNotice(result, cardIds.length);
     showToast(notice.kind, notice.text);
-    await reconcileAfterCommit("The schedule change");
-    setIsApplyingSchedule(false);
+    try {
+      await refreshAfterMutation();
+    } finally {
+      setIsApplyingSchedule(false);
+    }
   }
 
-  function chooseSelectionAction(action: SelectionAction): void {
-    if (action === "move_copy") beginMoveCopy(selected);
-    else if (["suspend", "resume", "bury", "unbury"].includes(action)) {
-      void applySimpleScheduleAction(
-        selected,
-        action as "suspend" | "resume" | "bury" | "unbury",
-      );
-    } else setSelectionAction(action);
-  }
-
-  function renderSelectionModal() {
-    if (selectionAction === "move_copy") {
-      return (
-        <MoveCopyModal
-          cards={moveCopyCards}
-          decks={decks}
-          onClose={() => {
-            setSelectionAction(null);
-            setMoveCopyCards([]);
-          }}
-          onComplete={completeSelectionMutation}
-          showToast={showToast}
-        />
-      );
+  async function refreshAfterMutation(): Promise<void> {
+    try {
+      await Promise.all([load(), refreshDecks()]);
+    } catch (error: unknown) {
+      showToast("info", `The change was saved, but the current view could not refresh: ${getErrorMessage(error)}`);
     }
-    if (selectionAction === "add_tags" || selectionAction === "remove_tags") {
-      return (
-        <BulkTagModal
-          cards={selectedNotes}
-          mode={selectionAction === "add_tags" ? "add" : "remove"}
-          suggestions={tags}
-          onClose={() => setSelectionAction(null)}
-          onComplete={completeSelectionMutation}
-          showToast={showToast}
-        />
-      );
-    }
-    if (selectionAction === "delete") {
-      return (
-        <DeleteCardsModal
-          cards={selectedNotes}
-          onClose={() => setSelectionAction(null)}
-          onComplete={completeSelectionMutation}
-          showToast={showToast}
-        />
-      );
-    }
-    if (selectionAction === "reset" || selectionAction === "reschedule") {
-      return (
-        <ScheduleActionModal
-          cards={selected}
-          action={selectionAction}
-          onClose={() => setSelectionAction(null)}
-          onComplete={refreshAfterMutation}
-          showToast={showToast}
-        />
-      );
-    }
-    return null;
   }
 
   if (editingCard || creatingDeckId) {
-    const editorDeckId = editingCard?.deckId ?? creatingDeckId;
-    const deck = decks.find((candidate) => candidate.id === editorDeckId);
-    if (!deck) {
+    const cardDeckId = editingCard?.deckId ?? creatingDeckId;
+    const deck = decks.find((item) => item.id === cardDeckId);
+    if (deck) {
       return (
-        <div className="screen cards-screen">
-          <div className="inline-alert error-alert">
-            The card’s deck could not be found. Return to Search/Filter and refresh.
-          </div>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => {
-              setEditingCard(null);
-              setCreatingDeckId(null);
-            }}
-          >
-            Back to Search/Filter
-          </button>
-        </div>
-      );
-    }
-    return (
-      <>
         <CardEditorScreen
           deck={deck}
           decks={decks}
@@ -400,30 +305,12 @@ export function CardsScreen({
             setEditingCard(null);
             setCreatingDeckId(null);
           }}
-          onMoveCopy={
-            editingCard
-              ? () =>
-                  beginMoveCopy([
-                    {
-                      cardId: editingCard.id,
-                      noteId: editingCard.noteId,
-                      deckId: editingCard.deckId,
-                    },
-                  ])
-              : undefined
-          }
-          onSaved={async (saved, continueAdding) => {
+          onSaved={async () => {
             onDirtyChange(false);
-            const wasEditing = editingCard !== null;
-            if (!continueAdding) {
-              setEditingCard(null);
-              setCreatingDeckId(null);
-            }
-            showToast("success", wasEditing ? "Flashcard updated." : "Flashcard saved.");
-            if (saved.deckId !== deck.id) {
-              showToast("info", "The card is now in a different deck.");
-            }
-            await reconcileAfterCommit("The flashcard");
+            setEditingCard(null);
+            setCreatingDeckId(null);
+            showToast("success", editingCard ? "Flashcard updated." : "Flashcard saved.");
+            await refreshAfterMutation();
           }}
           onTemplateGenerated={async (
             result: GenerateTemplateCardsResult,
@@ -435,474 +322,77 @@ export function CardsScreen({
               setEditingCard(null);
               setCreatingDeckId(null);
             }
-            const duplicateMessage =
-              result.skippedDuplicates > 0
-                ? ` ${result.skippedDuplicates} exact ${
-                    result.skippedDuplicates === 1 ? "duplicate was" : "duplicates were"
-                  } skipped.`
-                : "";
             showToast(
               result.createdCount > 0 ? "success" : "info",
-              `Generated ${result.createdCount} ${
-                result.createdCount === 1 ? "card" : "cards"
-              } from “${template.name}”.${duplicateMessage}`,
+              `Generated ${result.createdCount} ${result.createdCount === 1 ? "card" : "cards"} from “${template.name}”.`,
             );
-            await reconcileAfterCommit("The generated cards");
+            await refreshAfterMutation();
           }}
         />
-        {renderSelectionModal()}
-      </>
-    );
+      );
+    }
   }
 
   return (
     <div className="screen cards-screen">
       <header className="screen-header compact-screen-header">
         <div>
-          <h1>Search/Filter</h1>
-          <p>
-            Find independently scheduled cards and manage exact card schedules without
-            changing sibling presentations.
-          </p>
+          <h1>Search / Filter</h1>
+          <p>Find exact scheduled card presentations and manage them in bounded pages.</p>
         </div>
-        <div className="header-actions wrap-actions">
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={decks.length === 0}
-            onClick={() => setBulkOpen(true)}
-          >
-            Bulk add
+        <div className="header-actions">
+          <button type="button" className="secondary-button" onClick={() => setBulkOpen(true)}>
+            Bulk entry
           </button>
-          <button
-            type="button"
-            className="primary-button"
-            disabled={!selectedDeck}
-            title={
-              selectedDeck
-                ? undefined
-                : "Select exactly one deck before adding an individual card"
-            }
-            onClick={() => {
-              if (!selectedDeck) return;
-              setEditingCard(null);
-              setCreatingDeckId(selectedDeck.id);
-            }}
-          >
+          <button type="button" className="primary-button" disabled={deckIds.size !== 1} onClick={beginCreate}>
             Add card
           </button>
         </div>
       </header>
 
-      <section className="card-library-toolbar" aria-label="Card filters">
-        <details className="filter-menu deck-filter-menu">
-          <summary>{deckFilterSummary(deckIds, decks)}</summary>
-          <div className="filter-checklist">
-            <label>
-              <input
-                type="checkbox"
-                checked={deckIds.size === 0}
-                onChange={() => setDeckIds(new Set())}
-              />
-              <span>All decks</span>
-              <small>{decks.reduce((sum, deck) => sum + deck.generatedCardCount, 0)}</small>
-            </label>
-            {decks.map((deck) => (
-              <label key={deck.id}>
-                <input
-                  type="checkbox"
-                  checked={deckIds.has(deck.id)}
-                  onChange={(event) => {
-                    const next = new Set(deckIds);
-                    if (event.currentTarget.checked) next.add(deck.id);
-                    else next.delete(deck.id);
-                    setDeckIds(next);
-                  }}
-                />
-                <span>{deck.name}</span>
-                <small>{deck.generatedCardCount}</small>
-              </label>
-            ))}
+      <section className="card-search-layout">
+        <aside className="card-filter-sidebar">
+          <label className="search-field">
+            <span>Search</span>
+            <input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Question, answer, deck, or tag" />
+          </label>
+          <FilterChecklist label="Decks" options={decks.map((deck) => ({ id: deck.id, name: deck.name, detail: `${deck.generatedCardCount} cards` }))} selected={deckIds} onChange={setDeckIds} />
+          <label><span>Availability</span><select value={availabilityFilter} onChange={(event) => setAvailabilityFilter(event.currentTarget.value as AvailabilityFilter)}><option value="all">All cards</option><option value="ready_now">Ready now</option><option value="scheduled_later">Scheduled later</option></select></label>
+          <label><span>Status</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as CardStatusFilter)}><option value="all">All statuses</option><option value="active">Active</option><option value="suspended">Suspended</option><option value="buried">Buried</option><option value="needs_more_practice">Needs more practice</option></select></label>
+          <label><span>Studied</span><select value={reviewedFilter} onChange={(event) => setReviewedFilter(event.currentTarget.value as ReviewedFilter)}><option value="all">Any time</option><option value="never">Never</option><option value="today">Today</option><option value="past_7_dates">Past 7 local dates</option><option value="past_30_dates">Past 30 local dates</option><option value="before_30_dates">Before the past 30 local dates</option></select></label>
+          <FilterChecklist label="Tags" options={tags.map((tag) => ({ id: tag.id, name: tag.name, detail: `${tag.sourceNoteCount} notes` }))} selected={tagIds} onChange={setTagIds} />
+        </aside>
+
+        <section className="card-results-panel">
+          <div className="card-results-toolbar">
+            <span>{page.totalCount} matching scheduled cards</span>
+            <select aria-label="Sort cards" value={sort} onChange={(event) => setSort(event.currentTarget.value as CardSort)}><option value="updated_desc">Recently updated</option><option value="question_asc">Question A-Z</option><option value="due_asc">Next due</option><option value="last_reviewed_desc">Recently studied</option><option value="relevance">Relevance</option></select>
           </div>
-        </details>
-        <label className="card-library-search">
-          <span>Search cards</span>
-          <input
-            type="search"
-            value={query}
-            placeholder="Question, answer, or tag"
-            onChange={(event) => {
-              const value = event.currentTarget.value;
-              setQuery(value);
-              if (value.trim() !== "" && sort === "updated_desc") {
-                setSort("relevance");
-              }
-            }}
-          />
-        </label>
-        <label>
-          <span>Availability</span>
-          <select
-            value={availabilityFilter}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              setAvailabilityFilter(event.currentTarget.value as DueFilter)
-            }
-          >
-            <option value="all">Any due date</option>
-            <option value="due">Due now</option>
-            <option value="not_due">Not due</option>
-          </select>
-        </label>
-        <label>
-          <span>Status</span>
-          <select
-            value={statusFilter}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              setStatusFilter(event.currentTarget.value as CardStatusFilter)
-            }
-          >
-            <option value="active">Active</option>
-            <option value="all">Any status</option>
-            <option value="suspended">Suspended</option>
-            <option value="buried">Buried</option>
-            <option value="needs_more_practice">Needs more practice</option>
-          </select>
-        </label>
-        <label>
-          <span>Last studied</span>
-          <select
-            value={reviewedFilter}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              setReviewedFilter(event.currentTarget.value as ReviewedFilter)
-            }
-          >
-            <option value="all">Any time</option>
-            <option value="never">Never studied</option>
-            <option value="last_1_day">Within 24 hours</option>
-            <option value="last_7_days">Within 7 days</option>
-            <option value="last_30_days">Within 30 days</option>
-            <option value="older_30_days">More than 30 days ago</option>
-          </select>
-        </label>
-        <label>
-          <span>Sort</span>
-          <select
-            value={sort}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              setSort(event.currentTarget.value as CardSort)
-            }
-          >
-            <option value="relevance" disabled={query.trim() === ""}>
-              Relevance
-            </option>
-            <option value="updated_desc">Recently updated</option>
-            <option value="last_reviewed_desc">Recently studied</option>
-            <option value="question_asc">Question A–Z</option>
-            <option value="due_asc">Next due</option>
-          </select>
-        </label>
-        <details className="filter-menu tag-filter-menu">
-          <summary>Tags{tagIds.size > 0 ? ` (${tagIds.size})` : ""}</summary>
-          <div className="filter-checklist">
-            {tags.length === 0 ? (
-              <p>No tags in the selected decks.</p>
-            ) : (
-              tags.map((tag) => (
-                <label key={tag.id}>
-                  <input
-                    type="checkbox"
-                    checked={tagIds.has(tag.id)}
-                    onChange={(event) => {
-                      const next = new Set(tagIds);
-                      if (event.currentTarget.checked) next.add(tag.id);
-                      else next.delete(tag.id);
-                      setTagIds(next);
-                    }}
-                  />
-                  <span>{tag.name}</span>
-                  <small>{tag.sourceNoteCount}</small>
-                </label>
-              ))
-            )}
-            {tagIds.size > 0 ? (
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => setTagIds(new Set())}
-              >
-                Clear tag filters
-              </button>
-            ) : null}
-          </div>
-        </details>
+          {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+          {isLoading ? <div className="inline-progress">Searching cards…</div> : null}
+          {!isLoading && page.cards.length === 0 ? <div className="compact-empty-state"><h2>No cards match</h2></div> : null}
+          {page.cards.length > 0 ? <CardResultsTable cards={page.cards} selectedCards={selectedCards} onSelectedCardsChange={setSelectedCards} onOpenCard={openCard} /> : null}
+          {page.cards.length < page.totalCount ? <button type="button" className="secondary-button" disabled={isLoadingMore} onClick={() => void loadMore()}>{isLoadingMore ? "Loading…" : "Load more"}</button> : null}
+        </section>
       </section>
 
-      {selectedCards.size > 0 ? (
-        <section className="card-selection-bar" aria-live="polite">
-          <strong>{selectedCards.size} selected</strong>
-          <select
-            aria-label="Actions for selected cards"
-            value=""
-            disabled={isApplyingSchedule}
-            onChange={(event) => {
-              const action = event.currentTarget.value as SelectionAction | "";
-              if (action !== "") chooseSelectionAction(action);
-            }}
-          >
-            <option value="">Actions…</option>
-            <option value="move_copy">Move / copy source notes</option>
-            <option value="add_tags">Add tags</option>
-            <option value="remove_tags">Remove tags</option>
-            <option value="suspend">Suspend cards</option>
-            <option value="resume">Resume cards</option>
-            <option value="bury">Bury until tomorrow</option>
-            <option value="unbury">Unbury cards</option>
-            <option value="reschedule">Reschedule cards</option>
-            <option value="reset">Reset schedules</option>
-            <option value="delete">Delete source notes</option>
-          </select>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => {
-              setPracticeSourceLabel("the selected cards");
-              setPracticeCards(selected);
-            }}
-          >
-            Practice selected
-          </button>
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => setSelectedCards(new Map())}
-          >
-            Deselect all
-          </button>
-        </section>
-      ) : null}
+      {selectedCards.size > 0 ? <section className="selection-action-bar"><strong>{selectedCards.size} selected</strong><button type="button" onClick={toggleVisible}>Toggle visible</button><button type="button" disabled={isSelectingAll} onClick={() => void selectAllMatching()}>{isSelectingAll ? "Selecting…" : "Select all matching"}</button><select aria-label="Selection action" defaultValue="" onChange={(event) => { const action=event.currentTarget.value as SelectionAction;if(action)runSelectionAction(action);event.currentTarget.value=""; }}><option value="">Choose action</option><option value="move_copy">Move / copy</option><option value="add_tags">Add tags</option><option value="remove_tags">Remove tags</option><option value="suspend">Suspend</option><option value="resume">Resume</option><option value="bury">Bury until tomorrow</option><option value="unbury">Unbury</option><option value="reschedule">Reschedule</option><option value="reset">Reset schedule</option><option value="delete">Delete</option></select><button type="button" className="primary-button" disabled={isResolvingPractice} onClick={() => void resolveSelectedPractice()}>{isResolvingPractice ? "Preparing…" : "Practice selected"}</button></section> : null}
 
-      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
-      {isLoading ? <div className="inline-progress">Searching cards…</div> : null}
-      {!isLoading && page.totalCount === 0 ? (
-        <section className="compact-empty-state large-empty-state">
-          <h2>No matching cards</h2>
-          <p>Try removing a filter, changing the search, or adding cards.</p>
-        </section>
-      ) : null}
-
-      {page.totalCount > 0 ? (
-        <section className="card-library-panel">
-          <div className="card-library-summary">
-            <div className="result-count">
-              <strong>
-                {page.cards.length} of {page.totalCount}
-              </strong>
-              <span> cards shown</span>
-            </div>
-            <div className="selection-buttons" aria-label="Selection controls">
-              <button type="button" className="secondary-button" onClick={selectVisible}>
-                Select visible
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={isSelectingAll}
-                onClick={() => void selectAllMatching()}
-              >
-                {isSelectingAll ? "Selecting…" : `Select all (${page.totalCount})`}
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={selectedCards.size === 0}
-                onClick={() => setSelectedCards(new Map())}
-              >
-                Deselect all
-              </button>
-            </div>
-            <button
-              type="button"
-              className="primary-button"
-              disabled={
-                isResolvingPractice ||
-                statusFilter === "suspended" ||
-                statusFilter === "buried"
-              }
-              onClick={() => void practiceAllResults()}
-            >
-              {isResolvingPractice ? "Preparing…" : "Practice results"}
-            </button>
-          </div>
-          <div className="organized-card-list" role="table" aria-label="Matching cards">
-            {page.cards.map((card) => {
-              const selectedRow = selectedCards.has(card.cardId);
-              return (
-                <article
-                  key={card.cardId}
-                  className={
-                    selectedRow
-                      ? "organized-card-row selected"
-                      : "organized-card-row"
-                  }
-                  role="row"
-                >
-                  <label
-                    className="card-row-selector"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedRow}
-                      aria-label={`Select ${summarize(card.frontText)}`}
-                      onChange={() => toggleSelected(selectionFromRow(card))}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="organized-card-main"
-                    onClick={() => void openCard(card.noteId)}
-                  >
-                    <span className="organized-card-deck">
-                      {card.deckName}
-                      <span className="card-type-badge">{card.cardLabel}</span>
-                    </span>
-                    <span className="organized-card-statuses">
-                      {card.suspendedAt ? (
-                        <span className="schedule-status-badge suspended">Suspended</span>
-                      ) : null}
-                      {card.buriedUntil && card.buriedUntil > Date.now() ? (
-                        <span className="schedule-status-badge buried">Buried</span>
-                      ) : null}
-                      {card.needsMorePractice ? (
-                        <span className="schedule-status-badge needs-practice">
-                          Needs more practice
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="organized-card-sides">
-                      <span>
-                        <small>Question</small>
-                        <strong>{summarize(card.frontText)}</strong>
-                      </span>
-                      <span aria-hidden="true">→</span>
-                      <span>
-                        <small>Answer</small>
-                        <strong>{summarize(card.backText)}</strong>
-                      </span>
-                    </span>
-                    <span className="organized-card-tags">
-                      {card.tags.length === 0 ? (
-                        <small>No tags</small>
-                      ) : (
-                        card.tags.map((tag) => (
-                          <span className="tag-chip static" key={tag}>
-                            {tag}
-                          </span>
-                        ))
-                      )}
-                    </span>
-                  </button>
-                  <div className="organized-card-meta">
-                    <span>{formatDue(card.dueAt)}</span>
-                    <small>{formatLastStudied(card.lastReviewedAt)}</small>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-          {page.cards.length < page.totalCount ? (
-            <button
-              type="button"
-              className="secondary-button load-more-cards"
-              disabled={isLoadingMore}
-              onClick={() => void loadCards(page.cards.length, true)}
-            >
-              {isLoadingMore ? "Loading…" : "Load more"}
-            </button>
-          ) : null}
-        </section>
-      ) : null}
-
-      {bulkOpen ? (
-        <BulkEntryModal
-          decks={decks}
-          defaultDeckId={selectedDeck?.id}
-          onClose={() => setBulkOpen(false)}
-          onSaved={refreshAfterMutation}
-          showToast={showToast}
-        />
-      ) : null}
-      {renderSelectionModal()}
-      {practiceCards ? (
-        <PracticeResultsModal
-          cards={practiceCards}
-          sourceLabel={practiceSourceLabel}
-          refreshDecks={refreshDecks}
-          onPracticeCards={onPracticeCards}
-          onClose={() => setPracticeCards(null)}
-          showToast={showToast}
-        />
-      ) : null}
+      {bulkOpen ? <BulkEntryModal decks={decks} initialDeckId={deckIds.size===1?[...deckIds][0]:undefined} onClose={()=>setBulkOpen(false)} onComplete={async()=>{setBulkOpen(false);await refreshAfterMutation();}} /> : null}
+      {moveCopyCards.length>0 ? <MoveCopyModal cards={moveCopyCards} decks={decks} onClose={()=>setMoveCopyCards([])} onComplete={async()=>{setMoveCopyCards([]);await refreshAfterMutation();}} /> : null}
+      {selectionAction==="add_tags"||selectionAction==="remove_tags" ? <BulkTagModal cards={[...selectedCards.values()]} mode={selectionAction==="add_tags"?"add":"remove"} onClose={()=>setSelectionAction(null)} onComplete={async()=>{setSelectionAction(null);await refreshAfterMutation();}} /> : null}
+      {selectionAction==="delete" ? <DeleteCardsModal cards={[...selectedCards.values()]} onClose={()=>setSelectionAction(null)} onComplete={refreshAfterMutation} showToast={showToast} /> : null}
+      {scheduleAction ? <ScheduleActionModal cards={scheduleActionCards} action={scheduleAction} onClose={()=>{setScheduleAction(null);setScheduleActionCards([]);}} onComplete={refreshAfterMutation} showToast={showToast} /> : null}
+      {practiceCards ? <PracticeResultsModal cards={practiceCards} onClose={closePracticeResults} onStart={(ids)=>{setPracticeLoading(true);onPracticeCards(ids);}} isStarting={practiceLoading} /> : null}
     </div>
   );
 }
 
-function mutationIdForSchedule(
-  pendingRef: MutableRefObject<PendingScheduleMutation | null>,
-  key: string,
-): string {
-  if (pendingRef.current?.key === key) return pendingRef.current.mutationId;
-  const mutationId = createMutationId();
-  pendingRef.current = { key, mutationId };
-  return mutationId;
-}
-
-function uniqueNotes(cards: SelectionCard[]): SelectionCard[] {
-  const byNoteId = new Map<string, SelectionCard>();
-  for (const card of cards) {
-    if (!byNoteId.has(card.noteId)) byNoteId.set(card.noteId, card);
-  }
-  return [...byNoteId.values()];
-}
-
-function selectionFromRow(card: CardBrowserRow): SelectionCard {
-  return { cardId: card.cardId, noteId: card.noteId, deckId: card.deckId };
-}
-
-function deckFilterSummary(deckIds: Set<string>, decks: Deck[]): string {
-  if (deckIds.size === 0) return "All decks";
-  const selectedNames = decks
-    .filter((deck) => deckIds.has(deck.id))
-    .map((deck) => deck.name);
-  return selectedNames.length === 1
-    ? (selectedNames[0] ?? "1 deck")
-    : `${selectedNames.length} decks`;
-}
-
-function summarize(value: string): string {
-  const normalized = value.replace(/\s+/gu, " ").trim();
-  if (normalized === "") return "Image card";
-  return normalized.length > 150 ? `${normalized.slice(0, 147)}…` : normalized;
-}
-
-function formatDue(value: number): string {
-  const now = Date.now();
-  if (value <= now) return "Due now";
-  const days = Math.ceil((value - now) / 86_400_000);
-  if (days <= 1) return "Due tomorrow";
-  if (days < 14) return `Due in ${days} days`;
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
-    new Date(value),
-  );
-}
-
-function formatLastStudied(value: number | null): string {
-  if (value === null) return "Never studied";
-  const days = Math.floor(Math.max(0, Date.now() - value) / 86_400_000);
-  if (days === 0) return "Studied within 24 hours";
-  if (days === 1) return "Studied 1 day ago";
-  if (days < 30) return `Studied ${days} days ago`;
-  return `Studied ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
-    new Date(value),
-  )}`;
-}
+interface CardResultsTableProps { cards:CardBrowserRow[]; selectedCards:Map<string,SelectionCard>; onSelectedCardsChange:(cards:Map<string,SelectionCard>)=>void; onOpenCard:(noteId:string)=>void }
+function CardResultsTable({cards,selectedCards,onSelectedCardsChange,onOpenCard}:CardResultsTableProps){return <div className="card-results-table">{cards.map((card)=><article key={card.cardId} className="search-card-row"><input type="checkbox" aria-label={`Select ${card.frontText||"card"}`} checked={selectedCards.has(card.cardId)} onChange={(event)=>{const next=new Map(selectedCards);if(event.currentTarget.checked)next.set(card.cardId,selectionFromRow(card));else next.delete(card.cardId);onSelectedCardsChange(next);}}/><button type="button" className="search-card-main" onClick={()=>onOpenCard(card.noteId)}><span><strong>{card.frontText||"Image card"}</strong><small>{card.cardLabel} · {card.deckName}</small></span><span>{card.backText}</span></button><span>{card.needsMorePractice?"Needs practice":formatDue(card.dueAt)}</span></article>)}</div>}
+interface FilterChecklistProps{label:string;options:{id:string;name:string;detail:string}[];selected:Set<string>;onChange:(selected:Set<string>)=>void}
+function FilterChecklist({label,options,selected,onChange}:FilterChecklistProps){return <fieldset className="filter-checklist"><legend>{label}</legend>{options.map((option)=><label key={option.id}><input type="checkbox" checked={selected.has(option.id)} onChange={(event)=>{const next=new Set(selected);if(event.currentTarget.checked)next.add(option.id);else next.delete(option.id);onChange(next);}}/><span>{option.name}<small>{option.detail}</small></span></label>)}</fieldset>}
+function selectionFromRow(card:CardBrowserRow):SelectionCard{return{cardId:card.cardId,noteId:card.noteId,deckId:card.deckId}}
+function sameSet(left:Set<string>,right:Set<string>):boolean{return left.size===right.size&&[...left].every((value)=>right.has(value))}
+function formatDue(value:number):string{const delta=value-Date.now();if(delta<=0)return"Ready now";const days=Math.max(1,Math.round(delta/86_400_000));return `Due in ${days}d`}
+function mutationIdForScheduleRequest(ref:MutableRefObject<PendingScheduleMutation|null>,key:string):string{if(ref.current?.key===key)return ref.current.mutationId;const mutationId=createMutationId();ref.current={key,mutationId};return mutationId}
