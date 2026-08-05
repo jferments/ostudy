@@ -1,0 +1,40 @@
+name: Fix Stage 3.6-3.8 native compile
+
+on:
+  push:
+    branches:
+      - agent/stage-3-6-3-8-scheduling-analytics-clean
+    paths:
+      - scripts/fix-stage36-38-native-compile.py
+      - .github/workflows/fix-stage36-38-native-compile.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/stage-3-6-3-8-scheduling-analytics-clean
+      - name: Expose user-local tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Apply native compile fixes
+        run: python3 scripts/fix-stage36-38-native-compile.py
+      - name: Format Rust
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+      - name: Commit compile fixes
+        run: |
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: restore shared native authoring helpers"
+          git push origin HEAD:agent/stage-3-6-3-8-scheduling-analytics-clean
+      - name: Compile native slice
+        run: cargo check --manifest-path src-tauri/Cargo.toml
