@@ -43,6 +43,8 @@ function makeSession(): PracticeSession {
         needsMorePractice: true,
       },
     ],
+    cardCount: 1,
+    hasMore: false,
     shuffle: false,
     mode: "scheduled",
     startedAt: 1,
@@ -82,10 +84,8 @@ describe("ActivePractice", () => {
 
   it("reveals with Space or Enter when focus is not in an interactive control", () => {
     const props = renderActive();
-
     fireEvent.keyDown(window, { key: " " });
     fireEvent.keyDown(window, { key: "Enter" });
-
     expect(props.onReveal).toHaveBeenCalledTimes(2);
   });
 
@@ -93,27 +93,19 @@ describe("ActivePractice", () => {
     const props = renderActive();
     const input = document.createElement("input");
     document.body.append(input);
-
     fireEvent.keyDown(input, { key: "Enter" });
-    fireEvent.keyDown(screen.getByRole("button", { name: "Show answer" }), {
-      key: " ",
-    });
-
+    fireEvent.keyDown(screen.getByRole("button", { name: "Show answer" }), { key: " " });
     expect(props.onReveal).not.toHaveBeenCalled();
     input.remove();
   });
 
   it("shows all FSRS previews and submits 0-3 keyboard scores after reveal", () => {
     const props = renderActive({ revealed: true, previewSet: previews });
-
     expect(screen.getByRole("button", { name: /0 Wrong, About 1 min/u })).toBeTruthy();
     expect(screen.getByRole("button", { name: /1 Hard, About 1 hr/u })).toBeTruthy();
     expect(screen.getByRole("button", { name: /2 Medium, About 1 day/u })).toBeTruthy();
     expect(screen.getByRole("button", { name: /3 Easy, About 1 month/u })).toBeTruthy();
-
-    for (const key of ["0", "1", "2", "3"]) {
-      fireEvent.keyDown(window, { key });
-    }
+    for (const key of ["0", "1", "2", "3"]) fireEvent.keyDown(window, { key });
     expect(props.onScore).toHaveBeenNthCalledWith(1, 0);
     expect(props.onScore).toHaveBeenNthCalledWith(2, 1);
     expect(props.onScore).toHaveBeenNthCalledWith(3, 2);
@@ -121,42 +113,29 @@ describe("ActivePractice", () => {
   });
 
   it("blocks shortcuts and buttons while any review mutation is pending", () => {
-    const props = renderActive({
-      revealed: true,
-      previewSet: previews,
-      isRating: true,
-    });
-
+    const props = renderActive({ revealed: true, previewSet: previews, isRating: true });
     fireEvent.keyDown(window, { key: "2" });
     expect(props.onScore).not.toHaveBeenCalled();
-    expect(
-      (screen.getByRole("button", { name: /2 Medium/u }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    expect(
-      (screen.getByRole("button", { name: "End session" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    expect((screen.getByRole("button", { name: /2 Medium/u }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "End session" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("routes compact schedule controls to the exact-card action callback", () => {
+  it("routes compact schedule controls to exact-card actions and date intents", () => {
     const props = renderActive();
     const onScheduleAction = vi.mocked(props.onScheduleAction);
-
     fireEvent.click(screen.getByText("More"));
     fireEvent.click(screen.getByRole("button", { name: "Bury until tomorrow" }));
     fireEvent.click(screen.getByRole("button", { name: "Suspend card" }));
     fireEvent.click(screen.getByRole("button", { name: "Reschedule for tomorrow" }));
     fireEvent.click(screen.getByRole("button", { name: "Reset schedule" }));
-
     expect(onScheduleAction).toHaveBeenNthCalledWith(1, "bury");
     expect(onScheduleAction).toHaveBeenNthCalledWith(2, "suspend");
-    expect(onScheduleAction.mock.calls[2]?.[0]).toBe("reschedule");
-    expect(typeof onScheduleAction.mock.calls[2]?.[1]).toBe("number");
+    expect(onScheduleAction).toHaveBeenNthCalledWith(3, "reschedule", { kind: "tomorrow" });
     expect(onScheduleAction).toHaveBeenNthCalledWith(4, "reset");
   });
 
   it("renders the authoritative session mode, deck, and weak-card signal", () => {
     renderActive({ session: { ...makeSession(), mode: "extra" } });
-
     expect(screen.getByText("EXTRA PRACTICE")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Cardiology" })).toBeTruthy();
     expect(screen.getByText("Needs more practice")).toBeTruthy();
