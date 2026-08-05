@@ -177,7 +177,12 @@ describe("CardsScreen", () => {
     });
     const { showToast } = renderScreen();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Select visible" }));
+    fireEvent.click(
+      await screen.findByRole("checkbox", {
+        name: "Select What reverses warfarin?",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Select visible" }));
     fireEvent.change(
       screen.getByRole("combobox", { name: "Actions for selected cards" }),
       { target: { value: "suspend" } },
@@ -212,7 +217,9 @@ describe("CardsScreen", () => {
     });
 
     fireEvent.change(actions, { target: { value: "suspend" } });
-    expect(await screen.findByText(/safely retry the complete selection/u)).toBeTruthy();
+    expect(
+      await screen.findByText(/safely retry the complete selection/u),
+    ).toBeTruthy();
     fireEvent.change(actions, { target: { value: "suspend" } });
 
     await waitFor(() => {
@@ -230,7 +237,9 @@ describe("CardsScreen", () => {
       totalCount: 2,
     });
     renderScreen();
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Vitamin K" }));
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "Select Vitamin K" }),
+    );
     expect(screen.getByText("1 selected")).toBeTruthy();
     expect(
       (
@@ -247,7 +256,12 @@ describe("CardsScreen", () => {
       totalCount: 12,
     });
     renderScreen();
-    fireEvent.click(await screen.findByRole("button", { name: "Select all (12)" }));
+    fireEvent.click(
+      await screen.findByRole("checkbox", {
+        name: "Select What reverses warfarin?",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Select all (12)" }));
     await waitFor(() => expect(ipc.listMatchingCards).toHaveBeenCalled());
   });
 
