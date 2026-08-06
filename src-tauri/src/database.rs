@@ -384,6 +384,18 @@ fn apply_foreign_key_disabled_migration(
 mod tests {
     use super::*;
 
+    struct ReleasedSchemaFixture {
+        release: &'static str,
+        schema_version: i64,
+        sql: &'static str,
+    }
+
+    const RELEASED_SCHEMA_FIXTURES: &[ReleasedSchemaFixture] = &[ReleasedSchemaFixture {
+        release: "0.1.0",
+        schema_version: 3,
+        sql: include_str!("../tests/fixtures/v0.1.0.sql"),
+    }];
+
     #[test]
     fn bundled_sqlite_version_is_the_audited_release() {
         assert_eq!(rusqlite::version(), "3.53.2");
@@ -451,15 +463,19 @@ mod tests {
 
     #[test]
     fn released_schema_fixture_upgrades_without_losing_decks() {
+        let fixture = &RELEASED_SCHEMA_FIXTURES[0];
+        assert_eq!(fixture.release, "0.1.0");
+        assert_eq!(fixture.schema_version, 3);
+
         let mut connection = Connection::open_in_memory().expect("database should open");
         connection
-            .execute_batch(include_str!("../tests/fixtures/v0.1.0.sql"))
+            .execute_batch(fixture.sql)
             .expect("release fixture should load");
         initialize_connection(&mut connection).expect("fixture should upgrade");
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .expect("version should load");
-        assert_eq!(version, 14);
+        assert_eq!(version, LATEST_SCHEMA_VERSION);
         let foreign_key_errors: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM pragma_foreign_key_check",
