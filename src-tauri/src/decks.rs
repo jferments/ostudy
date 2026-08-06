@@ -52,12 +52,6 @@ pub struct DeckSummaryDto {
     pub revision: i64,
 }
 
-// The package importer is compiled in the same release as the IPC cutover and
-// returns the new summary shape. This alias avoids duplicating the package graph
-// while all user-facing and serialized field names remain the explicit summary
-// contract above.
-pub type DeckDto = DeckSummaryDto;
-
 #[tauri::command]
 pub fn list_decks(database: State<'_, Database>) -> Result<Vec<DeckSummaryDto>, CommandError> {
     database.with_connection(list_decks_from_connection)
