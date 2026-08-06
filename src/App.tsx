@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { AnalyticsRange } from "./analytics-ipc";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
@@ -112,7 +112,10 @@ function App() {
     };
   }, []);
 
-  useEffect(() => {
+  // Theme variables affect the entire document, so apply them before the browser
+  // paints the commit that reveals navigation. This avoids a one-frame fallback
+  // theme after local settings finish loading and keeps bootstrap deterministic.
+  useLayoutEffect(() => {
     applyThemeSettings(activeSettings);
   }, [activeSettings]);
 
