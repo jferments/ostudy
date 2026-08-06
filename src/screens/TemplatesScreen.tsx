@@ -7,14 +7,16 @@ import {
   cancelAssetDraft,
   createCardTemplate,
   deleteCardTemplate,
+  getCardTemplate,
   getErrorMessage,
-  listCardTemplates,
+  listCardTemplateSummaries,
   syncAssetDraft,
   updateCardTemplate,
   type Asset,
   type CardTemplate,
   type CardTemplateFieldInput,
   type CardTemplateRuleInput,
+  type CardTemplateSummary,
   type RichDocument,
 } from "../ipc";
 import { TemplateLayoutEditor } from "./templates/TemplateLayoutEditor";
@@ -46,12 +48,11 @@ interface TemplateDraft {
   assets: Asset[];
 }
 
-export function TemplatesScreen({
-  onDirtyChange,
-  showToast,
-}: TemplatesScreenProps) {
-  const [templates, setTemplates] = useState<CardTemplate[]>([]);
+export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenProps) {
+  const [templates, setTemplates] = useState<CardTemplateSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOpening, setIsOpening] = useState(false);
+  const openRequestSequence = useRef(0);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [draft, setDraft] = useState<TemplateDraft | null>(null);
@@ -84,6 +85,7 @@ export function TemplatesScreen({
 
   useEffect(() => {
     return () => {
+      openRequestSequence.current += 1;
       const draftId = assetDraftRef.current;
       assetDraftRef.current = null;
       if (draftId) {
@@ -111,7 +113,7 @@ export function TemplatesScreen({
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      setTemplates(await listCardTemplates());
+      setTemplates(await listCardTemplateSummaries());
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -134,11 +136,25 @@ export function TemplatesScreen({
   }
 
   function beginCreate(): void {
+    openRequestSequence.current += 1;
     void openDraft(newTemplateDraft());
   }
 
-  function beginEdit(template: CardTemplate): void {
-    void openDraft(draftFromTemplate(template));
+  async function beginEdit(summary: CardTemplateSummary): Promise<void> {
+    if (isOpening) return;
+    const requestId = openRequestSequence.current + 1;
+    openRequestSequence.current = requestId;
+    setIsOpening(true);
+    setErrorMessage(null);
+    try {
+      const template = await getCardTemplate(summary.id);
+      if (openRequestSequence.current !== requestId) return;
+      await openDraft(draftFromTemplate(template));
+    } catch (error: unknown) {
+      if (openRequestSequence.current === requestId) setErrorMessage(getErrorMessage(error));
+    } finally {
+      if (openRequestSequence.current === requestId) setIsOpening(false);
+    }
   }
 
   async function cancelEdit(): Promise<void> {
@@ -176,11 +192,7 @@ export function TemplatesScreen({
       const input = {
         name: draft.name,
         description: draft.description,
-        fields: draft.fields.map(({ id, name, description }) => ({
-          id,
-          name,
-          description,
-        })),
+        fields: draft.fields.map(({ id, name, description }) => ({ id, name, description })),
         rules: draft.rules.map(({ id, name, frontDoc, backDoc }) => ({
           id,
           name,
@@ -189,24 +201,21 @@ export function TemplatesScreen({
         })),
         assetDraftId: assetDraftId ?? undefined,
       };
-      const saved = draft.id
-        ? await updateCardTemplate({
-            ...input,
-            templateId: draft.id,
-            revision: draft.revision ?? 1,
-          })
-        : await createCardTemplate(input);
+      if (draft.id) {
+        await updateCardTemplate({
+          ...input,
+          templateId: draft.id,
+          revision: draft.revision ?? 1,
+        });
+      } else {
+        await createCardTemplate(input);
+      }
       assetDraftRef.current = null;
       setAssetDraftId(null);
-      setTemplates((current) => {
-        const withoutSaved = current.filter((template) => template.id !== saved.id);
-        return [...withoutSaved, saved].sort((left, right) =>
-          left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
-        );
-      });
       setDraft(null);
       setBaseline(null);
       onDirtyChange(false);
+      await loadTemplates();
       showToast("success", draft.id ? "Card template updated." : "Card template created.");
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -216,7 +225,7 @@ export function TemplatesScreen({
     }
   }
 
-  async function removeTemplate(template: CardTemplate): Promise<void> {
+  async function removeTemplate(template: CardTemplateSummary): Promise<void> {
     if (
       !window.confirm(
         `Delete “${template.name}”?\n\nCards already generated from this template will remain in their decks.`,
@@ -260,8 +269,8 @@ export function TemplatesScreen({
             </button>
             <h1>{draft.id ? "Edit card template" : "New card template"}</h1>
             <p>
-              Define reusable rich fields and design the question and answer sides of
-              every card this form generates.
+              Define reusable rich fields and design the question and answer sides of every card
+              this form generates.
             </p>
           </div>
           <div className="header-actions">
@@ -304,12 +313,14 @@ export function TemplatesScreen({
                   placeholder="Template name"
                   onChange={(event) => {
                     const value = event.currentTarget.value;
-                    setDraft((current) => current ? { ...current, name: value } : current);
+                    setDraft((current) => (current ? { ...current, name: value } : current));
                   }}
                 />
               </label>
               <label>
-                <span>Description <small>optional</small></span>
+                <span>
+                  Description <small>optional</small>
+                </span>
                 <textarea
                   value={draft.description}
                   maxLength={2000}
@@ -318,7 +329,9 @@ export function TemplatesScreen({
                   placeholder="Describe what this template helps you enter."
                   onChange={(event) => {
                     const value = event.currentTarget.value;
-                    setDraft((current) => current ? { ...current, description: value } : current);
+                    setDraft((current) =>
+                      current ? { ...current, description: value } : current,
+                    );
                   }}
                 />
               </label>
@@ -340,10 +353,7 @@ export function TemplatesScreen({
                     current
                       ? {
                           ...current,
-                          fields: [
-                            ...current.fields,
-                            createFieldDraft(current.fields.length),
-                          ],
+                          fields: [...current.fields, createFieldDraft(current.fields.length)],
                         }
                       : current,
                   )
@@ -369,7 +379,9 @@ export function TemplatesScreen({
                     />
                   </label>
                   <label>
-                    <span>Field description <small>optional</small></span>
+                    <span>
+                      Field description <small>optional</small>
+                    </span>
                     <input
                       value={field.description}
                       maxLength={500}
@@ -409,10 +421,9 @@ export function TemplatesScreen({
               <div>
                 <h2>Cards generated</h2>
                 <p>
-                  Type field names in double braces, such as {"{{Subject}}"}. The
-                  renderer keeps simple values inline and automatically promotes
-                  structured values such as lists, images, headings, block quotes,
-                  code blocks, and multiple paragraphs to blocks.
+                  Type field names in double braces, such as {"{{Subject}}"}. The renderer keeps
+                  simple values inline and automatically promotes structured values such as lists,
+                  images, headings, block quotes, code blocks, and multiple paragraphs to blocks.
                 </p>
               </div>
               <button
@@ -510,14 +521,17 @@ export function TemplatesScreen({
 
       {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
       {isLoading ? <div className="inline-progress">Loading templates…</div> : null}
+      {isOpening ? <div className="inline-progress">Opening template…</div> : null}
 
       {!isLoading && templates.length === 0 ? (
         <section className="compact-empty-state large-empty-state">
-          <div className="empty-icon" aria-hidden="true">▧</div>
+          <div className="empty-icon" aria-hidden="true">
+            ▧
+          </div>
           <h2>Create a reusable card template</h2>
           <p>
-            Define the facts you enter once, then design one or more cards that use
-            those fields as rich text, lists, or images.
+            Define the facts you enter once, then design one or more cards that use those fields as
+            rich text, lists, or images.
           </p>
           <button type="button" className="primary-button" onClick={beginCreate}>
             Create template
@@ -532,20 +546,26 @@ export function TemplatesScreen({
               <button
                 type="button"
                 className="template-library-main"
-                onClick={() => beginEdit(template)}
+                disabled={isOpening}
+                onClick={() => void beginEdit(template)}
               >
-                <span className="template-library-mark" aria-hidden="true">▧</span>
+                <span className="template-library-mark" aria-hidden="true">
+                  ▧
+                </span>
                 <span>
                   <strong>{template.name}</strong>
                   {template.description ? <small>{template.description}</small> : null}
                 </span>
                 <span className="template-library-counts">
-                  <b>{template.fields.length}</b> fields
-                  <b>{template.rules.length}</b> cards
+                  <b>{template.fieldCount}</b> fields
+                  <b>{template.generatedCardRuleCount}</b> cards
+                  {template.imageCount > 0 ? <small>{template.imageCount} images</small> : null}
                 </span>
               </button>
               <div className="template-library-actions">
-                <button type="button" onClick={() => beginEdit(template)}>Edit</button>
+                <button type="button" disabled={isOpening} onClick={() => void beginEdit(template)}>
+                  Edit
+                </button>
                 <button
                   type="button"
                   className="danger-text"
@@ -609,14 +629,8 @@ function documentWithInlineField(
 ): RichDocument {
   const content: Array<Record<string, unknown>> = [];
   if (prefix !== "") content.push({ type: "text", text: prefix });
-  content.push({
-    type: "templateFieldInline",
-    attrs: { fieldId, label },
-  });
-  return {
-    type: "doc",
-    content: [{ type: "paragraph", content }],
-  };
+  content.push({ type: "templateFieldInline", attrs: { fieldId, label } });
+  return { type: "doc", content: [{ type: "paragraph", content }] };
 }
 
 function draftFromTemplate(template: CardTemplate): TemplateDraft {
@@ -646,9 +660,7 @@ function draftFromTemplate(template: CardTemplate): TemplateDraft {
 
 function validateDraft(draft: TemplateDraft): string | null {
   if (draft.name.trim() === "") return "Enter a template name.";
-  if (draft.fields.some((field) => field.name.trim() === "")) {
-    return "Give every field a name.";
-  }
+  if (draft.fields.some((field) => field.name.trim() === "")) return "Give every field a name.";
   const normalizedFields = draft.fields.map((field) =>
     field.name.trim().replace(/\s+/gu, " ").toLocaleLowerCase(),
   );
