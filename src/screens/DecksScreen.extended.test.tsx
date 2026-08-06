@@ -228,8 +228,8 @@ describe("DecksScreen extended behavior", () => {
       expect(refreshDecks).toHaveBeenCalledOnce();
     });
     expect(screen.getByRole("heading", { name: imported.name })).toBeTruthy();
-    await waitFor(() => expect(ipc.listDeckCardSummaries).toHaveBeenCalled());
-    expect(screen.getByRole("heading", { name: imported.name })).toBeTruthy();
+    expect(await screen.findByText("Card page unavailable.")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "No matching flashcards" })).toBeNull();
   });
 
   it("keeps the library usable when a studydeck import fails", async () => {
