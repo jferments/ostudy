@@ -20,7 +20,6 @@ use crate::{
     paths::AppPaths,
     practice::{PracticeCardWindowDto, PracticeSessionDto},
     projections::{
-        learning_signals as signal_projection,
         practice::{
             insert_session_snapshot, load_practice_window, prepare_new_session_cards,
             PreparedPracticeCard, PRACTICE_WINDOW_MAX,
@@ -491,17 +490,11 @@ fn load_exact_planned_cards(
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
-            "WITH {signals}
-             SELECT c.deck_id, c.id, c.note_id, s.due_at, s.state, {signal_value}
+            "SELECT c.deck_id, c.id
              FROM cards c
              JOIN notes n ON n.id = c.note_id
              JOIN decks d ON d.id = c.deck_id
-             JOIN card_schedules s ON s.card_id = c.id
-             {signal_join}
              WHERE c.id IN ({placeholders}) AND {studyable}",
-            signals = signal_projection::LEARNING_SIGNAL_CTES,
-            signal_value = signal_projection::value_sql(),
-            signal_join = signal_projection::join_sql(),
             studyable = studyability::studyable_card_sql("?1"),
         );
         let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
@@ -510,10 +503,6 @@ fn load_exact_planned_cards(
                 Ok(PlannedCard {
                     deck_id: row.get(0)?,
                     card_id: row.get(1)?,
-                    note_id: row.get(2)?,
-                    due_at: row.get(3)?,
-                    state: row.get(4)?,
-                    needs_more_practice: row.get::<_, i64>(5)? != 0,
                 })
             })
             .map_err(CommandError::database)?
