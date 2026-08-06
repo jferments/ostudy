@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as analyticsIpc from "../analytics-ipc";
 import * as ipc from "../ipc";
+import { deferred } from "../test/factories";
 import { PracticeScreen } from "./PracticeScreen";
 
 vi.mock("../editor/RichTextView", () => ({
@@ -48,6 +49,11 @@ const deck: ipc.DeckSummary = {
   createdAt: 1,
   updatedAt: 1,
   revision: 1,
+};
+const secondDeck: ipc.DeckSummary = {
+  ...deck,
+  id: "8".repeat(32),
+  name: "Cat facts",
 };
 const noDueDeck: ipc.DeckSummary = {
   ...deck,
@@ -219,6 +225,31 @@ describe("PracticeScreen", () => {
         mode: "scheduled",
       }),
     );
+  });
+
+  it("discards a slower workload response for an obsolete deck scope", async () => {
+    const first = deferred<ipc.PracticeWorkloadOverview>();
+    const second = deferred<ipc.PracticeWorkloadOverview>();
+    vi.mocked(ipc.getPracticeWorkload)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    renderPractice({ decks: [deck, secondDeck] });
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+    await waitFor(() => expect(ipc.getPracticeWorkload).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Cat facts/u }));
+    await waitFor(() => expect(ipc.getPracticeWorkload).toHaveBeenCalledTimes(2));
+
+    second.resolve({
+      ...workload,
+      studyableDueReviews: 9,
+      scheduledReviews: 9,
+    });
+    expect(await screen.findByText("9 cards in the scheduled session")).toBeTruthy();
+    first.resolve(workload);
+    await Promise.resolve();
+    expect(screen.getByText("9 cards in the scheduled session")).toBeTruthy();
+    expect(screen.queryByText("1 cards in the scheduled session")).toBeNull();
   });
 
   it("offers explicit extra practice when nothing fits the scheduled workload", async () => {
