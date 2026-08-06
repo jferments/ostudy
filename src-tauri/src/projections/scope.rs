@@ -59,12 +59,8 @@ mod tests {
     fn normalization_deduplicates_and_sorts_ids() {
         let first = "1".repeat(32);
         let second = "2".repeat(32);
-        let values = normalize_entity_ids(
-            vec![second.clone(), first.clone(), second],
-            "card",
-            10,
-        )
-        .expect("ids should validate");
+        let values = normalize_entity_ids(vec![second.clone(), first.clone(), second], "card", 10)
+            .expect("ids should validate");
         assert_eq!(values, vec![first, "2".repeat(32)]);
     }
 

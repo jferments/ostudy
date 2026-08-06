@@ -196,10 +196,7 @@ pub(crate) fn record_practice_event(
            )"
     };
     let changed = transaction
-        .execute(
-            sql,
-            params![time.now_utc_millis, session_id, card_id],
-        )
+        .execute(sql, params![time.now_utc_millis, session_id, card_id])
         .map_err(CommandError::database)?;
     if changed == 0 {
         return Err(practice_card_state_error(&transaction, session_id)?);
@@ -303,12 +300,7 @@ pub(crate) fn submit_review_in_connection(
             "This card's schedule changed after the interval preview. Reveal it again and choose a rating.",
         ));
     }
-    let transition = apply_review(
-        current,
-        outcome,
-        time.now_utc_millis,
-        desired_retention,
-    )?;
+    let transition = apply_review(current, outcome, time.now_utc_millis, desired_retention)?;
     update_schedule(&transaction, &transition.after)?;
 
     let updated = transaction
@@ -347,10 +339,7 @@ pub(crate) fn submit_review_in_connection(
         rating: outcome.rating_number(),
         outcome: outcome.as_str().to_string(),
         due_at: transition.after.due_at,
-        interval_ms: transition
-            .after
-            .due_at
-            .saturating_sub(time.now_utc_millis),
+        interval_ms: transition.after.due_at.saturating_sub(time.now_utc_millis),
         completed: completed_at.is_some(),
         rated_count,
         correct_count,

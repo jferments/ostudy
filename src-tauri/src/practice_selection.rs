@@ -350,13 +350,7 @@ fn load_practice_session_start(
                 "That practice session no longer exists.",
             )
         })?;
-    let first_window = load_practice_window(
-        connection,
-        paths,
-        session_id,
-        0,
-        PRACTICE_WINDOW_MAX,
-    )?;
+    let first_window = load_practice_window(connection, paths, session_id, 0, PRACTICE_WINDOW_MAX)?;
     Ok(PracticeSessionDto {
         id: session_id.to_string(),
         card_count: metadata.0,

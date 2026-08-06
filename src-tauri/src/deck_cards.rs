@@ -3,9 +3,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    database::Database,
-    error::CommandError,
-    projections::scope::push_value,
+    database::Database, error::CommandError, projections::scope::push_value,
     util::validate_entity_id,
 };
 

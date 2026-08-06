@@ -18,9 +18,7 @@ use crate::{
     error::CommandError,
     practice::refresh_session_counters,
     projections::scope::{chunks, push_value},
-    scheduler::{
-        new_schedule, update_schedule, ScheduleRecord, SCHEDULER_NAME, SCHEDULER_VERSION,
-    },
+    scheduler::{new_schedule, update_schedule, ScheduleRecord, SCHEDULER_NAME, SCHEDULER_VERSION},
     study_calendar::{parse_local_date, StudyTimeContext},
     util::{generate_id, validate_entity_id},
 };
@@ -207,11 +205,13 @@ fn apply_in_connection(
         input.action,
     )?;
 
-    let bury_until = (input.action == ScheduleActionKind::Bury)
-        .then_some(time.tomorrow_start_utc_millis);
+    let bury_until =
+        (input.action == ScheduleActionKind::Bury).then_some(time.tomorrow_start_utc_millis);
     let mut plans = Vec::with_capacity(input.card_ids.len());
     for card_id in &input.card_ids {
-        let stored = stored_cards.get(card_id).ok_or_else(schedule_card_not_found)?;
+        let stored = stored_cards
+            .get(card_id)
+            .ok_or_else(schedule_card_not_found)?;
         if stored.archive_suspended_at.is_some() {
             return Err(CommandError::new(
                 "deck_archived",
@@ -358,10 +358,7 @@ fn load_active_card_states(
     Ok(result)
 }
 
-fn validate_session(
-    connection: &Connection,
-    session_id: Option<&str>,
-) -> Result<(), CommandError> {
+fn validate_session(connection: &Connection, session_id: Option<&str>) -> Result<(), CommandError> {
     let Some(session_id) = session_id else {
         return Ok(());
     };
@@ -416,9 +413,7 @@ fn load_session_dismissals(
                 let dismissed_at: Option<i64> = row.get(2)?;
                 Ok((
                     card_id,
-                    action.dismisses_from_session()
-                        && rated_at.is_none()
-                        && dismissed_at.is_none(),
+                    action.dismisses_from_session() && rated_at.is_none() && dismissed_at.is_none(),
                 ))
             })
             .map_err(CommandError::database)?
@@ -594,12 +589,7 @@ fn apply_schedule_plan(
                 "UPDATE cards
                  SET suspended_at = ?1, buried_until = ?2, updated_at = ?3
                  WHERE id = ?4 AND deleted_at IS NULL",
-                params![
-                    plan.suspended_after,
-                    plan.buried_after,
-                    now,
-                    plan.card_id,
-                ],
+                params![plan.suspended_after, plan.buried_after, now, plan.card_id,],
             )
             .map_err(CommandError::database)?;
         if updated != 1 {
@@ -741,8 +731,7 @@ fn ensure_equivalent_retry(
             existing.result.action == input.action.as_str()
                 && existing.session_id == input.session_id
                 && card_ids == input.card_ids
-                && (input.action != ScheduleActionKind::Reschedule
-                    || existing.due_at.is_some())
+                && (input.action != ScheduleActionKind::Reschedule || existing.due_at.is_some())
         }
     };
     if equivalent {

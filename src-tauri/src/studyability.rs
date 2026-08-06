@@ -53,9 +53,7 @@ pub const fn current_card_including_archived_sql(
     deck: &str,
 ) -> &'static str {
     match (card, note, deck) {
-        ("c", "n", "d") => {
-            "c.deleted_at IS NULL AND n.deleted_at IS NULL AND d.deleted_at IS NULL"
-        }
+        ("c", "n", "d") => "c.deleted_at IS NULL AND n.deleted_at IS NULL AND d.deleted_at IS NULL",
         _ => panic!("studyability aliases must be c, n, and d"),
     }
 }

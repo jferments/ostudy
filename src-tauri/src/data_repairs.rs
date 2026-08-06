@@ -386,38 +386,37 @@ struct LegacyPresentation {
 }
 
 fn legacy_presentation(row: &LegacyPresentationRow) -> LegacyPresentation {
-    let (front_doc, back_doc, front_text, back_text, card_label) = if row.note_type == "basic"
-        && row.direction == "reverse"
-    {
-        (
-            row.back_doc.clone(),
-            row.front_doc.clone(),
-            row.back_text.clone(),
-            row.front_text.clone(),
-            "Reverse".to_string(),
-        )
-    } else if row.note_type == "cloze" {
-        let question = if row.cloze_source.is_empty() {
-            row.front_text.clone()
+    let (front_doc, back_doc, front_text, back_text, card_label) =
+        if row.note_type == "basic" && row.direction == "reverse" {
+            (
+                row.back_doc.clone(),
+                row.front_doc.clone(),
+                row.back_text.clone(),
+                row.front_text.clone(),
+                "Reverse".to_string(),
+            )
+        } else if row.note_type == "cloze" {
+            let question = if row.cloze_source.is_empty() {
+                row.front_text.clone()
+            } else {
+                row.cloze_source.clone()
+            };
+            (
+                row.front_doc.clone(),
+                row.back_doc.clone(),
+                question,
+                row.back_text.clone(),
+                "Fill in the blank · reconstructed".to_string(),
+            )
         } else {
-            row.cloze_source.clone()
+            (
+                row.front_doc.clone(),
+                row.back_doc.clone(),
+                row.front_text.clone(),
+                row.back_text.clone(),
+                "Basic".to_string(),
+            )
         };
-        (
-            row.front_doc.clone(),
-            row.back_doc.clone(),
-            question,
-            row.back_text.clone(),
-            "Fill in the blank · reconstructed".to_string(),
-        )
-    } else {
-        (
-            row.front_doc.clone(),
-            row.back_doc.clone(),
-            row.front_text.clone(),
-            row.back_text.clone(),
-            "Basic".to_string(),
-        )
-    };
     let (excerpt, truncated) = bounded_excerpt(&front_text);
     let hash = format!("{:x}", Sha256::digest(front_text.as_bytes()));
     LegacyPresentation {
@@ -438,7 +437,10 @@ fn legacy_presentation(row: &LegacyPresentationRow) -> LegacyPresentation {
 }
 
 fn bounded_excerpt(value: &str) -> (String, bool) {
-    let excerpt = value.chars().take(QUESTION_EXCERPT_CHARS).collect::<String>();
+    let excerpt = value
+        .chars()
+        .take(QUESTION_EXCERPT_CHARS)
+        .collect::<String>();
     let truncated = value.chars().count() > QUESTION_EXCERPT_CHARS;
     (excerpt, truncated)
 }

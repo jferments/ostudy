@@ -271,9 +271,9 @@ fn apply_transactional_migration(
         .execute_batch(migration.sql)
         .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
     record_migration(&transaction, migration, applied_at)?;
-    transaction.commit().map_err(|error| {
-        format!("Could not commit migration {}: {error}", migration.version)
-    })
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not commit migration {}: {error}", migration.version))
 }
 
 fn record_migration(
@@ -329,14 +329,15 @@ fn apply_foreign_key_disabled_migration(
             .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
 
         let has_violation = {
-            let mut statement = transaction
-                .prepare("PRAGMA foreign_key_check")
-                .map_err(|error| {
-                    format!(
-                        "Could not prepare migration {} foreign-key validation: {error}",
-                        migration.version
-                    )
-                })?;
+            let mut statement =
+                transaction
+                    .prepare("PRAGMA foreign_key_check")
+                    .map_err(|error| {
+                        format!(
+                            "Could not prepare migration {} foreign-key validation: {error}",
+                            migration.version
+                        )
+                    })?;
             let mut rows = statement.query([]).map_err(|error| {
                 format!(
                     "Could not run migration {} foreign-key validation: {error}",
@@ -477,11 +478,9 @@ mod tests {
             .expect("version should load");
         assert_eq!(version, LATEST_SCHEMA_VERSION);
         let foreign_key_errors: i64 = connection
-            .query_row(
-                "SELECT COUNT(*) FROM pragma_foreign_key_check",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })
             .expect("foreign key check should run");
         assert_eq!(foreign_key_errors, 0);
     }

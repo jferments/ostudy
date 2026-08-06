@@ -120,7 +120,10 @@ pub fn workload_overview_for_scope(
             })
             .map_err(CommandError::database)?;
 
-    let new_remaining = settings.daily_new_limit.saturating_sub(new_completed).max(0);
+    let new_remaining = settings
+        .daily_new_limit
+        .saturating_sub(new_completed)
+        .max(0);
     let reviews_remaining = settings
         .daily_review_limit
         .saturating_sub(reviews_completed)
@@ -215,14 +218,7 @@ pub fn planned_extra_cards_for_scope(
     scope: StudyScope<'_>,
     time: &StudyTimeContext,
 ) -> Result<Vec<PlannedCard>, CommandError> {
-    load_ranked_cards(
-        connection,
-        scope,
-        time,
-        None,
-        false,
-        MAX_PLANNED_CARDS,
-    )
+    load_ranked_cards(connection, scope, time, None, false, MAX_PLANNED_CARDS)
 }
 
 fn load_ranked_cards(
@@ -307,10 +303,7 @@ fn load_ranked_cards(
         .map_err(CommandError::database)
 }
 
-fn scoped_studyable_conditions(
-    scope: StudyScope<'_>,
-    values: &mut Vec<SqlValue>,
-) -> Vec<String> {
+fn scoped_studyable_conditions(scope: StudyScope<'_>, values: &mut Vec<SqlValue>) -> Vec<String> {
     let mut conditions = vec![studyability::studyable_card_sql("?1")];
     append_in_filter(&mut conditions, values, "c.deck_id", scope.deck_ids);
     for tag_id in scope.tag_ids {

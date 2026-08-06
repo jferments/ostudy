@@ -1,15 +1,13 @@
 use std::collections::{BTreeMap, HashMap};
 
-use rusqlite::{
-    params, params_from_iter, types::Value as SqlValue, Connection, OptionalExtension,
-};
+use rusqlite::{params, params_from_iter, types::Value as SqlValue, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 
 use crate::{
     assets::load_assets_for_notes,
     authoring::{
-        projected_presentation_variant, render_projected_presentation,
-        ProjectedPresentationInput, RenderedCardPresentation,
+        projected_presentation_variant, render_projected_presentation, ProjectedPresentationInput,
+        RenderedCardPresentation,
     },
     cards::CardDto,
     error::CommandError,
@@ -60,7 +58,10 @@ pub struct PreparedPracticeCard {
 }
 
 impl PreparedPracticeCard {
-    pub fn to_dto(&self, assets: Vec<crate::assets::AssetDto>) -> Result<PracticeCardDto, CommandError> {
+    pub fn to_dto(
+        &self,
+        assets: Vec<crate::assets::AssetDto>,
+    ) -> Result<PracticeCardDto, CommandError> {
         Ok(PracticeCardDto {
             card: CardDto {
                 id: self.card_id.clone(),
@@ -624,7 +625,11 @@ fn insert_current_fallback_attribution(
                 current.3,
                 current.4,
                 current.5,
-                if current.4 == "reverse" { "Reverse" } else { "Basic" },
+                if current.4 == "reverse" {
+                    "Reverse"
+                } else {
+                    "Basic"
+                },
                 excerpt,
                 hash,
                 i64::from(truncated),

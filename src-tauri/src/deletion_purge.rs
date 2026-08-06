@@ -265,7 +265,9 @@ fn load_session_ids(
         );
         let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
         let rows = statement
-            .query_map(params_from_iter(values.iter()), |row| row.get::<_, String>(0))
+            .query_map(params_from_iter(values.iter()), |row| {
+                row.get::<_, String>(0)
+            })
             .map_err(CommandError::database)?;
         for row in rows {
             result.insert(row.map_err(CommandError::database)?);

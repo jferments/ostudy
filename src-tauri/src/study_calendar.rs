@@ -8,8 +8,7 @@
 use std::{env, path::Path};
 
 use chrono::{
-    DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, NaiveDateTime, Offset,
-    TimeZone,
+    DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, NaiveDateTime, Offset, TimeZone,
 };
 
 use crate::{error::CommandError, util::unix_time_millis};
@@ -63,10 +62,7 @@ impl StudyTimeContext {
         first_valid_instant_of_local_date(date)
     }
 
-    pub fn local_date_for_timestamp(
-        &self,
-        utc_millis: i64,
-    ) -> Result<NaiveDate, CommandError> {
+    pub fn local_date_for_timestamp(&self, utc_millis: i64) -> Result<NaiveDate, CommandError> {
         Local
             .timestamp_millis_opt(utc_millis)
             .earliest()
@@ -74,10 +70,7 @@ impl StudyTimeContext {
             .ok_or_else(invalid_calendar_date)
     }
 
-    pub fn local_date_string_for_timestamp(
-        &self,
-        utc_millis: i64,
-    ) -> Result<String, CommandError> {
+    pub fn local_date_string_for_timestamp(&self, utc_millis: i64) -> Result<String, CommandError> {
         Ok(self.local_date_for_timestamp(utc_millis)?.to_string())
     }
 
@@ -154,7 +147,9 @@ impl StudyTimeContext {
     pub fn next_month_start(&self, date: NaiveDate) -> Result<NaiveDate, CommandError> {
         let (year, month) = if date.month() == 12 {
             (
-                date.year().checked_add(1).ok_or_else(invalid_calendar_date)?,
+                date.year()
+                    .checked_add(1)
+                    .ok_or_else(invalid_calendar_date)?,
                 1,
             )
         } else {
@@ -258,7 +253,10 @@ fn checked_add_days(date: NaiveDate, days: i64) -> Result<NaiveDate, CommandErro
 }
 
 fn previous_year_clamped(date: NaiveDate) -> Result<NaiveDate, CommandError> {
-    let year = date.year().checked_sub(1).ok_or_else(invalid_calendar_date)?;
+    let year = date
+        .year()
+        .checked_sub(1)
+        .ok_or_else(invalid_calendar_date)?;
     let mut day = date.day();
     loop {
         if let Some(value) = NaiveDate::from_ymd_opt(year, date.month(), day) {
