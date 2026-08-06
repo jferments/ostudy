@@ -155,7 +155,13 @@ describe("typed Tauri IPC wrappers", () => {
         },
       },
     );
-    const page = { deckId, query: "warfarin", limit: 50, offset: 0 };
+    const page = {
+      deckId,
+      query: "warfarin",
+      sort: "updated_desc" as const,
+      limit: 50,
+      offset: 0,
+    };
     await expectInvocation(
       () => listDeckCardSummaries(page),
       "list_deck_card_summaries",
