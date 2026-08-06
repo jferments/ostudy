@@ -7,12 +7,15 @@
 
 use std::{env, path::Path};
 
-use chrono::{DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, Offset, TimeZone};
+use chrono::{
+    DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, Offset, TimeZone, Utc,
+};
 
 use crate::{error::CommandError, util::unix_time_millis};
 
 const SECONDS_PER_LOCAL_DATE: i64 = 86_400;
 const MAX_CALENDAR_DAY_SPAN: i64 = 3_660;
+const MILLIS_PER_MINUTE: i64 = 60_000;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StudyTimeContext {
@@ -22,6 +25,7 @@ pub struct StudyTimeContext {
     pub local_date: NaiveDate,
     pub today_start_utc_millis: i64,
     pub tomorrow_start_utc_millis: i64,
+    zone: StudyZoneResolver,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -32,40 +36,89 @@ pub struct CalendarWindow {
     pub end_utc_millis: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum StudyZoneResolver {
+    System,
+    #[cfg(test)]
+    Pacific2026,
+}
+
+impl StudyZoneResolver {
+    fn identifier(&self) -> String {
+        match self {
+            Self::System => discover_system_time_zone_id(),
+            #[cfg(test)]
+            Self::Pacific2026 => "America/Los_Angeles".to_string(),
+        }
+    }
+
+    fn local_date_at(&self, utc_millis: i64) -> Result<NaiveDate, CommandError> {
+        match self {
+            Self::System => Local
+                .timestamp_millis_opt(utc_millis)
+                .earliest()
+                .map(|value| value.date_naive())
+                .ok_or_else(invalid_calendar_date),
+            #[cfg(test)]
+            Self::Pacific2026 => synthetic_pacific_local_date(utc_millis),
+        }
+    }
+
+    fn offset_minutes_at(&self, utc_millis: i64) -> Result<i32, CommandError> {
+        match self {
+            Self::System => Local
+                .timestamp_millis_opt(utc_millis)
+                .earliest()
+                .map(|value| value.offset().fix().local_minus_utc().div_euclid(60))
+                .ok_or_else(invalid_calendar_date),
+            #[cfg(test)]
+            Self::Pacific2026 => Ok(synthetic_pacific_offset_at_utc(utc_millis)),
+        }
+    }
+
+    fn first_valid_instant(&self, date: NaiveDate) -> Result<i64, CommandError> {
+        match self {
+            Self::System => first_valid_system_instant(date),
+            #[cfg(test)]
+            Self::Pacific2026 => synthetic_pacific_first_instant(date),
+        }
+    }
+}
+
 impl StudyTimeContext {
     pub fn capture() -> Result<Self, CommandError> {
         Self::capture_at(unix_time_millis()?)
     }
 
     pub fn capture_at(now_utc_millis: i64) -> Result<Self, CommandError> {
-        let local = Local
-            .timestamp_millis_opt(now_utc_millis)
-            .earliest()
-            .ok_or_else(invalid_calendar_date)?;
-        let local_date = local.date_naive();
-        let today_start_utc_millis = first_valid_instant_of_local_date(local_date)?;
+        Self::from_zone(now_utc_millis, StudyZoneResolver::System)
+    }
+
+    fn from_zone(
+        now_utc_millis: i64,
+        zone: StudyZoneResolver,
+    ) -> Result<Self, CommandError> {
+        let local_date = zone.local_date_at(now_utc_millis)?;
+        let today_start_utc_millis = zone.first_valid_instant(local_date)?;
         let tomorrow = checked_add_days(local_date, 1)?;
-        let tomorrow_start_utc_millis = first_valid_instant_of_local_date(tomorrow)?;
+        let tomorrow_start_utc_millis = zone.first_valid_instant(tomorrow)?;
         Ok(Self {
             now_utc_millis,
-            time_zone_id: discover_system_time_zone_id(),
-            utc_offset_minutes: local.offset().fix().local_minus_utc().div_euclid(60),
+            time_zone_id: zone.identifier(),
+            utc_offset_minutes: zone.offset_minutes_at(now_utc_millis)?,
             local_date,
             today_start_utc_millis,
             tomorrow_start_utc_millis,
+            zone,
         })
     }
 
     pub fn first_valid_instant(&self, date: NaiveDate) -> Result<i64, CommandError> {
-        first_valid_instant_of_local_date(date)
+        self.zone.first_valid_instant(date)
     }
 
     pub fn local_date_for_timestamp(&self, utc_millis: i64) -> Result<NaiveDate, CommandError> {
-        Local
-            .timestamp_millis_opt(utc_millis)
-            .earliest()
-            .map(|value| value.date_naive())
-            .ok_or_else(invalid_calendar_date)
+        self.zone.local_date_at(utc_millis)
     }
 
     pub fn local_date_string_for_timestamp(&self, utc_millis: i64) -> Result<String, CommandError> {
@@ -157,12 +210,13 @@ impl StudyTimeContext {
     }
 }
 
-/// Resolve the first real instant that belongs to a local calendar date.
-///
-/// Midnight is normally unique. Historical time zones can make midnight
-/// ambiguous or skip it completely, so the resolver chooses the earlier
-/// ambiguous instant and otherwise advances to the first valid local second.
+/// Resolve the first real instant that belongs to a local calendar date using
+/// the host operating system's timezone rules.
 pub fn first_valid_instant_of_local_date(date: NaiveDate) -> Result<i64, CommandError> {
+    first_valid_system_instant(date)
+}
+
+fn first_valid_system_instant(date: NaiveDate) -> Result<i64, CommandError> {
     let midnight = date
         .and_hms_opt(0, 0, 0)
         .ok_or_else(invalid_calendar_date)?;
@@ -272,13 +326,66 @@ fn invalid_calendar_date() -> CommandError {
 }
 
 #[cfg(test)]
+fn synthetic_pacific_offset_at_utc(utc_millis: i64) -> i32 {
+    let spring = test_timestamp("2026-03-08T10:00:00Z");
+    let autumn = test_timestamp("2026-11-01T09:00:00Z");
+    if (spring..autumn).contains(&utc_millis) {
+        -7 * 60
+    } else {
+        -8 * 60
+    }
+}
+
+#[cfg(test)]
+fn synthetic_pacific_local_date(utc_millis: i64) -> Result<NaiveDate, CommandError> {
+    let utc = DateTime::<Utc>::from_timestamp_millis(utc_millis)
+        .ok_or_else(invalid_calendar_date)?;
+    let offset = synthetic_pacific_offset_at_utc(utc_millis);
+    utc.naive_utc()
+        .checked_add_signed(Duration::minutes(i64::from(offset)))
+        .map(|value| value.date())
+        .ok_or_else(invalid_calendar_date)
+}
+
+#[cfg(test)]
+fn synthetic_pacific_first_instant(date: NaiveDate) -> Result<i64, CommandError> {
+    let spring_dst_date = NaiveDate::from_ymd_opt(2026, 3, 9).expect("valid test date");
+    let autumn_standard_date = NaiveDate::from_ymd_opt(2026, 11, 2).expect("valid test date");
+    let offset_minutes = if (spring_dst_date..autumn_standard_date).contains(&date) {
+        -7 * 60
+    } else {
+        -8 * 60
+    };
+    let local_midnight_as_utc = date
+        .and_hms_opt(0, 0, 0)
+        .ok_or_else(invalid_calendar_date)?
+        .and_utc()
+        .timestamp_millis();
+    Ok(local_midnight_as_utc.saturating_sub(i64::from(offset_minutes) * MILLIS_PER_MINUTE))
+}
+
+#[cfg(test)]
+fn test_timestamp(value: &str) -> i64 {
+    DateTime::parse_from_rfc3339(value)
+        .expect("test timestamp should parse")
+        .timestamp_millis()
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
+    fn pacific_context(value: &str) -> StudyTimeContext {
+        StudyTimeContext::from_zone(
+            test_timestamp(value),
+            StudyZoneResolver::Pacific2026,
+        )
+        .expect("synthetic timezone should resolve")
+    }
+
     #[test]
     fn seven_day_window_contains_today_and_six_preceding_dates() {
-        let now = unix_time_millis().expect("clock should resolve");
-        let context = StudyTimeContext::capture_at(now).expect("context should resolve");
+        let context = pacific_context("2026-08-06T20:00:00Z");
         let window = context
             .trailing_local_dates(7)
             .expect("window should resolve");
@@ -293,14 +400,50 @@ mod tests {
     }
 
     #[test]
+    fn spring_transition_has_a_twenty_three_hour_local_date() {
+        let context = pacific_context("2026-03-08T18:00:00Z");
+        assert_eq!(context.time_zone_id, "America/Los_Angeles");
+        assert_eq!(context.utc_offset_minutes, -7 * 60);
+        assert_eq!(
+            context
+                .tomorrow_start_utc_millis
+                .saturating_sub(context.today_start_utc_millis),
+            23 * 60 * 60 * 1_000
+        );
+    }
+
+    #[test]
+    fn autumn_transition_has_a_twenty_five_hour_local_date() {
+        let context = pacific_context("2026-11-01T18:00:00Z");
+        assert_eq!(context.utc_offset_minutes, -8 * 60);
+        assert_eq!(
+            context
+                .tomorrow_start_utc_millis
+                .saturating_sub(context.today_start_utc_millis),
+            25 * 60 * 60 * 1_000
+        );
+    }
+
+    #[test]
     fn current_custom_date_resolves_to_now_not_elapsed_midnight() {
-        let now = unix_time_millis().expect("clock should resolve");
-        let context = StudyTimeContext::capture_at(now).expect("context should resolve");
+        let context = pacific_context("2026-08-06T20:00:00Z");
         assert_eq!(
             context
                 .resolve_calendar_date(context.local_date)
                 .expect("today should resolve"),
-            now
+            context.now_utc_millis
+        );
+    }
+
+    #[test]
+    fn calendar_addition_crosses_dst_without_fixed_duration_arithmetic() {
+        let context = pacific_context("2026-03-07T20:00:00Z");
+        let two_dates_later = context
+            .start_after_local_days(2)
+            .expect("future date should resolve");
+        assert_eq!(
+            two_dates_later.saturating_sub(context.today_start_utc_millis),
+            47 * 60 * 60 * 1_000
         );
     }
 
