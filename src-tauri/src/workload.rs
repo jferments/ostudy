@@ -287,7 +287,7 @@ fn load_ranked_cards(
         conditions = conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    statement
+    let planned = statement
         .query_map(params_from_iter(values.iter()), |row| {
             Ok(PlannedCard {
                 deck_id: row.get(0)?,
@@ -300,7 +300,8 @@ fn load_ranked_cards(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(planned)
 }
 
 fn scoped_studyable_conditions(scope: StudyScope<'_>, values: &mut Vec<SqlValue>) -> Vec<String> {

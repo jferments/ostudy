@@ -173,13 +173,14 @@ fn copy_generated_note_to_deck(
                           template_ordinal, direction",
             )
             .map_err(CommandError::database)?;
-        statement
+        let cards = statement
             .query_map([source.id.as_str()], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        cards
     };
     if source_cards.is_empty() {
         return Err(CommandError::new(

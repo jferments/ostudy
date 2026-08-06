@@ -22,11 +22,12 @@ pub fn list(
 ) -> Result<Vec<DeckSummaryRow>, CommandError> {
     let sql = summary_sql(None);
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    statement
+    let summaries = statement
         .query_map([now_utc_millis], row)
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(summaries)
 }
 
 pub fn get(

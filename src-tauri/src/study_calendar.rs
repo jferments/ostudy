@@ -7,9 +7,7 @@
 
 use std::{env, path::Path};
 
-use chrono::{
-    DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, NaiveDateTime, Offset, TimeZone,
-};
+use chrono::{DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, Offset, TimeZone};
 
 use crate::{error::CommandError, util::unix_time_millis};
 
