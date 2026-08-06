@@ -14,7 +14,6 @@ use crate::{
     database::Database,
     error::CommandError,
     projections::scope::{chunks, push_value},
-    util::unix_time_millis,
 };
 
 struct FinalizedDeletion {
@@ -38,7 +37,7 @@ pub(crate) fn purge_finalized_in_connection(
             .prepare(
                 "SELECT id, entity_kind, deck_id, note_ids_json, card_ids_json, deleted_at
                  FROM deletion_operations
-                 WHERE finalized_at IS NOT NULL AND purged_at IS NULL
+                 WHERE finalized_at IS NOT NULL
                  ORDER BY finalized_at, id",
             )
             .map_err(CommandError::database)?;
@@ -65,7 +64,6 @@ pub(crate) fn purge_finalized_in_connection(
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
-    let purged_at = unix_time_millis()?;
     for stored in operations {
         let operation = FinalizedDeletion {
             id: stored.0,
@@ -75,7 +73,7 @@ pub(crate) fn purge_finalized_in_connection(
             card_ids: serde_json::from_str(&stored.4).map_err(CommandError::serialization)?,
             deleted_at: stored.5,
         };
-        purge_operation(&transaction, &operation, purged_at)?;
+        purge_operation(&transaction, &operation)?;
     }
     transaction
         .execute(
@@ -94,7 +92,6 @@ pub(crate) fn purge_finalized_in_connection(
 fn purge_operation(
     connection: &Connection,
     operation: &FinalizedDeletion,
-    purged_at: i64,
 ) -> Result<(), CommandError> {
     let (note_ids, card_ids) = match operation.entity_kind.as_str() {
         "deck" => {
@@ -149,22 +146,8 @@ fn purge_operation(
         _ => unreachable!(),
     }
 
-    let generic_label = if operation.entity_kind == "deck" {
-        "Deleted deck"
-    } else {
-        "Deleted flashcards"
-    };
     connection
-        .execute(
-            "UPDATE deletion_operations
-             SET subject_label = ?1,
-                 deck_id = NULL,
-                 note_ids_json = '[]',
-                 card_ids_json = '[]',
-                 purged_at = ?2
-             WHERE id = ?3 AND purged_at IS NULL",
-            params![generic_label, purged_at, operation.id],
-        )
+        .execute("DELETE FROM deletion_operations WHERE id = ?1", [&operation.id])
         .map_err(CommandError::database)?;
     Ok(())
 }
