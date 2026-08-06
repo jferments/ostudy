@@ -256,13 +256,7 @@ fn deleting_old_owner_preserves_moved_history_and_deleting_new_owner_purges_it()
                     params![deleted_at, deck_a],
                 )
                 .expect("old deck should tombstone");
-            insert_finalized_deck_deletion(
-                connection,
-                &"7".repeat(32),
-                &deck_a,
-                &card,
-                deleted_at,
-            );
+            insert_finalized_deck_deletion(connection, &"7".repeat(32), &deck_a, &card, deleted_at);
             purge_finalized_in_connection(connection)?;
 
             let review_count: i64 = connection
@@ -288,13 +282,7 @@ fn deleting_old_owner_preserves_moved_history_and_deleting_new_owner_purges_it()
                     params![deleted_at, deck_b],
                 )
                 .expect("new deck should tombstone");
-            insert_finalized_deck_deletion(
-                connection,
-                &"8".repeat(32),
-                &deck_b,
-                &card,
-                deleted_at,
-            );
+            insert_finalized_deck_deletion(connection, &"8".repeat(32), &deck_b, &card, deleted_at);
             purge_finalized_in_connection(connection)?;
 
             let remaining_reviews: i64 = connection
