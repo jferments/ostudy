@@ -34,35 +34,31 @@ vi.mock("./CardEditorScreen", () => ({
     deck,
     onSaved,
   }: {
-    deck: ipc.Deck;
-    onSaved: (
-      card: { deckId: string },
-      continueAdding: boolean,
-    ) => Promise<void>;
+    deck: ipc.DeckSummary;
+    onSaved: (card: { deckId: string }, continueAdding: boolean) => Promise<void>;
   }) => (
     <div>
       <span>Card editor</span>
-      <button
-        type="button"
-        onClick={() => void onSaved({ deckId: deck.id }, true)}
-      >
+      <button type="button" onClick={() => void onSaved({ deckId: deck.id }, true)}>
         Mock save + another
       </button>
     </div>
   ),
 }));
 
-const deck: ipc.Deck = {
+const deck: ipc.DeckSummary = {
   id: "a".repeat(32),
   name: "Pharmacology",
   description: "",
-  cardCount: 2,
-  dueCount: 1,
+  sourceNoteCount: 2,
+  generatedCardCount: 2,
+  studyableDueCount: 1,
+  archivedAt: null,
   createdAt: 1,
   updatedAt: 1,
   revision: 1,
 };
-const secondDeck: ipc.Deck = {
+const secondDeck: ipc.DeckSummary = {
   ...deck,
   id: "e".repeat(32),
   name: "Pathophysiology",
@@ -100,7 +96,22 @@ const selection: ipc.SelectionCard = {
   deckId: browserCard.deckId,
 };
 
-function renderScreen(decks: ipc.Deck[] = [deck, secondDeck]) {
+function actionResult(
+  affectedCount = 1,
+  requestedCount = 1,
+): ipc.ScheduleActionResult {
+  return {
+    affectedCount,
+    requestedCount,
+    changedCount: affectedCount,
+    unchangedCount: Math.max(0, requestedCount - affectedCount),
+    rejectedCount: 0,
+    action: "suspend",
+    resolvedDueAt: null,
+  };
+}
+
+function renderScreen(decks: ipc.DeckSummary[] = [deck, secondDeck]) {
   const showToast = vi.fn();
   const view = render(
     <CardsScreen
@@ -125,10 +136,7 @@ describe("CardsScreen", () => {
       totalCount: 1,
     });
     vi.mocked(ipc.listMatchingCards).mockResolvedValue([selection]);
-    vi.mocked(ipc.applyScheduleAction).mockResolvedValue({
-      affectedCount: 1,
-      action: "suspend",
-    });
+    vi.mocked(ipc.applyScheduleAction).mockResolvedValue(actionResult());
   });
 
   it("sends status filters and displays Needs more practice", async () => {
@@ -169,10 +177,7 @@ describe("CardsScreen", () => {
       cards: [browserCard, reverseCard],
       totalCount: 2,
     });
-    vi.mocked(ipc.applyScheduleAction).mockResolvedValue({
-      affectedCount: 1,
-      action: "suspend",
-    });
+    vi.mocked(ipc.applyScheduleAction).mockResolvedValue(actionResult(1, 2));
     const { showToast } = renderScreen();
 
     fireEvent.click(await screen.findByRole("button", { name: "Select visible" }));
@@ -198,7 +203,7 @@ describe("CardsScreen", () => {
   it("reuses one mutation ID after an ambiguous selection response", async () => {
     vi.mocked(ipc.applyScheduleAction)
       .mockRejectedValueOnce(new Error("Native response was lost."))
-      .mockResolvedValueOnce({ affectedCount: 1, action: "suspend" });
+      .mockResolvedValueOnce(actionResult());
     renderScreen();
     fireEvent.click(
       await screen.findByRole("checkbox", {
