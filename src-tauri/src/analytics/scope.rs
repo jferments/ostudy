@@ -205,7 +205,12 @@ impl AnalyticsContext {
                 }
             }
             HistoryPeriod::CurrentAndPrevious => {
-                if let Some(window) = self.window.previous.as_ref().or(self.window.current.as_ref()) {
+                if let Some(window) = self
+                    .window
+                    .previous
+                    .as_ref()
+                    .or(self.window.current.as_ref())
+                {
                     let start = push_value(values, window.start_local_date.to_string());
                     conditions.push(format!("a.review_local_date >= ?{start}"));
                 }
