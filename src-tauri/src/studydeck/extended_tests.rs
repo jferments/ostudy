@@ -214,7 +214,9 @@ fn imported_studydeck_gets_fresh_schedules_and_no_learner_history() {
                 "schedule_action_events",
             ] {
                 let count: i64 = connection
-                    .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))
+                    .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                        row.get(0)
+                    })
                     .map_err(CommandError::database)?;
                 assert_eq!(count, 0, "studydeck imported learner history into {table}");
             }
