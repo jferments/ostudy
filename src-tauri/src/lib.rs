@@ -1,10 +1,10 @@
 //! Tauri composition root for the native application.
 //!
 //! Startup resolves the managed application paths, opens and migrates SQLite,
-//! finalizes expired deletion recovery windows, and reconciles the asset ledger
-//! with the managed filesystem before publishing any Tauri state. A failed
-//! durable initialization therefore stops startup instead of exposing commands
-//! to a partially reconciled library.
+//! finalizes expired deletion recovery windows, purges finalized card-owned
+//! history, and reconciles the asset ledger with the managed filesystem before
+//! publishing any Tauri state. A failed durable initialization therefore stops
+//! startup instead of exposing commands to a partially reconciled library.
 
 mod analytics;
 mod asset_lifecycle;
@@ -13,9 +13,11 @@ mod authoring;
 mod cards;
 mod data_repairs;
 mod database;
+mod deck_cards;
 mod decks;
 mod deletion;
 mod deletion_commands;
+mod deletion_purge;
 mod error;
 mod learning_signals;
 mod library_backup;
@@ -62,6 +64,8 @@ pub fn run() {
 
             deletion::finalize_expired_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
+            deletion_purge::purge_finalized_deletions(&database)
+                .map_err(|error| io::Error::other(error.message))?;
             asset_lifecycle::reconcile_startup(&database, &paths)
                 .map_err(|error| io::Error::other(error.message))?;
             if let Some(restore) = pending_restore {
@@ -92,6 +96,7 @@ pub fn run() {
             decks::update_deck,
             decks::set_deck_archived,
             deletion_commands::delete_deck_with_undo,
+            deck_cards::list_deck_card_summaries,
             cards::list_cards,
             deletion_commands::delete_card_with_undo,
             authoring::list_tags,
@@ -110,6 +115,7 @@ pub fn run() {
             authoring::create_generated_card,
             authoring::update_generated_card,
             authoring::list_card_templates,
+            authoring::list_card_template_summaries,
             authoring::get_card_template,
             authoring::create_card_template,
             authoring::update_card_template,
