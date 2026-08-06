@@ -52,6 +52,7 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
   const [templates, setTemplates] = useState<CardTemplateSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOpening, setIsOpening] = useState(false);
+  const [isOpeningAssetDraft, setIsOpeningAssetDraft] = useState(false);
   const openRequestSequence = useRef(0);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -122,16 +123,28 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
   }
 
   async function openDraft(next: TemplateDraft): Promise<void> {
+    const requestId = openRequestSequence.current;
     setDraft(next);
     setBaseline(next);
     setAssetDraftId(null);
+    setIsOpeningAssetDraft(true);
     setErrorMessage(null);
     try {
       const assetDraft = await beginAssetDraft("template", next.id);
+      if (openRequestSequence.current !== requestId) {
+        await cancelAssetDraft(assetDraft.id).catch((error: unknown) => {
+          console.error("Unable to cancel stale template image draft:", getErrorMessage(error));
+        });
+        return;
+      }
       assetDraftRef.current = assetDraft.id;
       setAssetDraftId(assetDraft.id);
     } catch (error: unknown) {
-      setErrorMessage(`The managed image draft could not open: ${getErrorMessage(error)}`);
+      if (openRequestSequence.current === requestId) {
+        setErrorMessage(`The managed image draft could not open: ${getErrorMessage(error)}`);
+      }
+    } finally {
+      if (openRequestSequence.current === requestId) setIsOpeningAssetDraft(false);
     }
   }
 
@@ -160,6 +173,8 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
   async function cancelEdit(): Promise<void> {
     if (isSaving) return;
     if (dirty && !window.confirm("Discard the changes to this card template?")) return;
+    openRequestSequence.current += 1;
+    setIsOpeningAssetDraft(false);
     const draftId = assetDraftRef.current;
     assetDraftRef.current = null;
     setAssetDraftId(null);
@@ -180,6 +195,10 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
 
   async function saveTemplate(): Promise<void> {
     if (!draft || savingRef.current) return;
+    if (!assetDraftId) {
+      setErrorMessage("The managed image draft is not ready yet. Try saving again after it opens.");
+      return;
+    }
     const validation = validateDraft(draft);
     if (validation) {
       setErrorMessage(validation);
@@ -199,7 +218,7 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
           frontDoc,
           backDoc,
         })),
-        assetDraftId: assetDraftId ?? undefined,
+        assetDraftId,
       };
       if (draft.id) {
         await updateCardTemplate({
@@ -210,6 +229,7 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
       } else {
         await createCardTemplate(input);
       }
+      openRequestSequence.current += 1;
       assetDraftRef.current = null;
       setAssetDraftId(null);
       setDraft(null);
@@ -261,7 +281,7 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
 
   if (draft) {
     return (
-      <div className="screen templates-screen" aria-busy={isSaving}>
+      <div className="screen templates-screen" aria-busy={isSaving || isOpeningAssetDraft}>
         <header className="screen-header compact-screen-header">
           <div>
             <button type="button" className="back-button" onClick={() => void cancelEdit()}>
@@ -285,10 +305,10 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
             <button
               type="button"
               className="primary-button"
-              disabled={isSaving || !dirty}
+              disabled={isSaving || isOpeningAssetDraft || !assetDraftId || !dirty}
               onClick={() => void saveTemplate()}
             >
-              {isSaving ? "Saving…" : "Save template"}
+              {isSaving ? "Saving…" : isOpeningAssetDraft ? "Preparing…" : "Save template"}
             </button>
           </div>
         </header>
@@ -485,7 +505,7 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
                     document={rule.frontDoc}
                     assets={draft.assets}
                     assetDraftId={assetDraftId}
-                    disabled={isSaving}
+                    disabled={isSaving || isOpeningAssetDraft}
                     onAssetImported={addAsset}
                     onChange={(frontDoc) => updateRule(setDraft, rule.key, { frontDoc })}
                   />
@@ -494,7 +514,7 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
                     document={rule.backDoc}
                     assets={draft.assets}
                     assetDraftId={assetDraftId}
-                    disabled={isSaving}
+                    disabled={isSaving || isOpeningAssetDraft}
                     onAssetImported={addAsset}
                     onChange={(backDoc) => updateRule(setDraft, rule.key, { backDoc })}
                   />
