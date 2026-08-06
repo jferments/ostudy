@@ -7,9 +7,9 @@
 
 use std::{env, path::Path};
 
-use chrono::{DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, Offset, TimeZone};
 #[cfg(test)]
 use chrono::Utc;
+use chrono::{DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, Offset, TimeZone};
 
 use crate::{error::CommandError, util::unix_time_millis};
 
@@ -95,10 +95,7 @@ impl StudyTimeContext {
         Self::from_zone(now_utc_millis, StudyZoneResolver::System)
     }
 
-    fn from_zone(
-        now_utc_millis: i64,
-        zone: StudyZoneResolver,
-    ) -> Result<Self, CommandError> {
+    fn from_zone(now_utc_millis: i64, zone: StudyZoneResolver) -> Result<Self, CommandError> {
         let local_date = zone.local_date_at(now_utc_millis)?;
         let today_start_utc_millis = zone.first_valid_instant(local_date)?;
         let tomorrow = checked_add_days(local_date, 1)?;
@@ -339,8 +336,8 @@ fn synthetic_pacific_offset_at_utc(utc_millis: i64) -> i32 {
 
 #[cfg(test)]
 fn synthetic_pacific_local_date(utc_millis: i64) -> Result<NaiveDate, CommandError> {
-    let utc = DateTime::<Utc>::from_timestamp_millis(utc_millis)
-        .ok_or_else(invalid_calendar_date)?;
+    let utc =
+        DateTime::<Utc>::from_timestamp_millis(utc_millis).ok_or_else(invalid_calendar_date)?;
     let offset = synthetic_pacific_offset_at_utc(utc_millis);
     utc.naive_utc()
         .checked_add_signed(Duration::minutes(i64::from(offset)))
