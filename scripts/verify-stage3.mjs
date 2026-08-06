@@ -45,7 +45,11 @@ const [
   read("src-tauri", "src", "authoring", "stage3_v2", "templates.rs"),
   read("src-tauri", "src", "authoring", "stage3_v2", "auto_template_layout.rs"),
   read("src-tauri", "src", "authoring", "stage3_v2", "normalization.rs"),
-  read("src-tauri", "src", "practice_selection.rs"),
+  readJoined(
+    ["src-tauri", "src", "practice_selection.rs"],
+    ["src-tauri", "src", "projections", "practice.rs"],
+    ["src-tauri", "src", "authoring", "stage3_v2", "projected_render.rs"],
+  ),
   read("src", "ipc.ts"),
   read("src", "App.tsx"),
   read("src", "screens", "CardEditorScreen.tsx"),
@@ -155,9 +159,8 @@ if (authoringGenerated.includes('direction: "cloze"')) {
   failures.push("active cloze creation still generates sibling card identities");
 }
 
-// Stage 3.8 moved practice hydration to projected rows. Verify that the new
-// pipeline preserves a stable presentation variant and renders without a
-// per-card database helper.
+// Stage 3.8 moved practice hydration to projected rows. Verify the complete
+// boundary: session selection, the typed projection, and pure rendering.
 for (const fragment of [
   "projected_presentation_variant",
   "presentation_variant",
