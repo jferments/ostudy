@@ -28,7 +28,7 @@ const cards: ipc.SelectionCard[] = [
 ];
 
 function result(
-  action: ipc.ScheduleActionKind,
+  action: ipc.ScheduleAction,
   changedCount = 2,
 ): ipc.ScheduleActionResult {
   return {
