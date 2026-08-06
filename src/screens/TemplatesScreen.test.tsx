@@ -19,6 +19,7 @@ vi.mock("../ipc", () => ({
 }));
 
 const FIELD_ID = "b".repeat(32);
+const ASSET_DRAFT_ID = "e".repeat(32);
 const inlineDoc: ipc.RichDocument = {
   type: "doc",
   content: [
@@ -90,7 +91,7 @@ describe("TemplatesScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(ipc.beginAssetDraft).mockResolvedValue({
-      id: "e".repeat(32),
+      id: ASSET_DRAFT_ID,
       purpose: "template",
       expiresAt: Date.now() + 60_000,
     });
@@ -119,12 +120,13 @@ describe("TemplatesScreen", () => {
     expect(screen.queryByRole("button", { name: "Insert as block" })).toBeNull();
     expect(screen.queryByText("Insert field")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Save template" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save template" }));
 
     await waitFor(() => {
       expect(ipc.createCardTemplate).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Concept review",
+          assetDraftId: ASSET_DRAFT_ID,
           fields: [expect.objectContaining({ name: "Field" })],
           rules: [
             expect.objectContaining({
