@@ -222,7 +222,9 @@ mod tests {
 
     #[test]
     fn deck_card_page_uses_two_selects_for_one_hundred_and_one_thousand_notes() {
-        let _guard = TRACE_LOCK.lock().expect("trace test lock should be available");
+        let _guard = TRACE_LOCK
+            .lock()
+            .expect("trace test lock should be available");
         for note_count in [1_usize, 100, 1_000] {
             let database = Database::open_in_memory().expect("database should open");
             database
@@ -299,7 +301,10 @@ mod tests {
                         2,
                         "deck page statement count grew for {note_count} notes"
                     );
-                    assert_eq!(page.total_count, i64::try_from(note_count).unwrap_or(i64::MAX));
+                    assert_eq!(
+                        page.total_count,
+                        i64::try_from(note_count).unwrap_or(i64::MAX)
+                    );
                     assert_eq!(page.cards.len(), note_count.min(50));
                     Ok(())
                 })
