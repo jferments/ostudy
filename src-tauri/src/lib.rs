@@ -39,6 +39,8 @@ mod workload;
 mod regression_tests;
 #[cfg(test)]
 mod stage34_35_regression_tests;
+#[cfg(test)]
+mod stage36_38_regression_tests;
 
 use std::io;
 
@@ -97,7 +99,6 @@ pub fn run() {
             decks::set_deck_archived,
             deletion_commands::delete_deck_with_undo,
             deck_cards::list_deck_card_summaries,
-            cards::list_cards,
             deletion_commands::delete_card_with_undo,
             authoring::list_tags,
             authoring::search_cards,
@@ -114,7 +115,6 @@ pub fn run() {
             authoring::get_card_type_info,
             authoring::create_generated_card,
             authoring::update_generated_card,
-            authoring::list_card_templates,
             authoring::list_card_template_summaries,
             authoring::get_card_template,
             authoring::create_card_template,
