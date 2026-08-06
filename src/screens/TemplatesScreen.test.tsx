@@ -132,7 +132,6 @@ describe("TemplatesScreen", () => {
               backDoc: expect.objectContaining({ type: "doc" }),
             }),
           ],
-          assetDraftId: "e".repeat(32),
         }),
       );
       expect(showToast).toHaveBeenCalledWith("success", "Card template created.");
