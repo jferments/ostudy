@@ -1,0 +1,398 @@
+name: Fix Stage 3.6-3.8 Rust Compile
+
+on:
+  push:
+    branches:
+      - agent/stage-3-6-3-8-study-semantics
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Check out development branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/stage-3-6-3-8-study-semantics
+          fetch-depth: 0
+
+      - name: Expose Rust tools
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Apply exact compiler fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, count: int = 1) -> None:
+              file = Path(path)
+              text = file.read_text()
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f"{path}: expected {count} matches, found {actual}")
+              file.write_text(text.replace(old, new, count))
+
+          replace(
+              "src-tauri/src/studyability.rs",
+              "pub const fn current_card_sql",
+              "pub fn current_card_sql",
+          )
+          replace(
+              "src-tauri/src/studyability.rs",
+              "pub const fn current_card_including_archived_sql",
+              "pub fn current_card_including_archived_sql",
+          )
+          replace(
+              "src-tauri/src/study_calendar.rs",
+              "LocalResult, NaiveDate, NaiveDateTime, Offset, TimeZone,",
+              "LocalResult, NaiveDate, Offset, TimeZone,",
+          )
+
+          replace(
+              "src-tauri/src/data_repairs.rs",
+              '''        statement
+            .query_map([], |row| {
+                Ok(LegacyPresentationRow {
+                    review_event_id: Some(row.get(0)?),
+                    session_id: row.get(1)?,
+                    card_id: row.get(2)?,
+                    note_id: row.get(3)?,
+                    note_revision: row.get(4)?,
+                    deck_id: row.get(5)?,
+                    deck_name: row.get(6)?,
+                    direction: row.get(7)?,
+                    note_type: row.get(8)?,
+                    front_doc: row.get(9)?,
+                    back_doc: row.get(10)?,
+                    front_text: row.get(11)?,
+                    back_text: row.get(12)?,
+                    cloze_source: row.get(13)?,
+                    presentation_variant: row.get(14)?,
+                    occurred_at: row.get(15)?,
+                })
+            })
+            .map_err(|error| format!("Could not read reviews for attribution repair: {error}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("Could not collect attribution repair rows: {error}"))?
+''',
+              '''        let rows = statement
+            .query_map([], |row| {
+                Ok(LegacyPresentationRow {
+                    review_event_id: Some(row.get(0)?),
+                    session_id: row.get(1)?,
+                    card_id: row.get(2)?,
+                    note_id: row.get(3)?,
+                    note_revision: row.get(4)?,
+                    deck_id: row.get(5)?,
+                    deck_name: row.get(6)?,
+                    direction: row.get(7)?,
+                    note_type: row.get(8)?,
+                    front_doc: row.get(9)?,
+                    back_doc: row.get(10)?,
+                    front_text: row.get(11)?,
+                    back_text: row.get(12)?,
+                    cloze_source: row.get(13)?,
+                    presentation_variant: row.get(14)?,
+                    occurred_at: row.get(15)?,
+                })
+            })
+            .map_err(|error| format!("Could not read reviews for attribution repair: {error}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("Could not collect attribution repair rows: {error}"))?;
+        rows
+''',
+          )
+          replace(
+              "src-tauri/src/data_repairs.rs",
+              '''        statement
+            .query_map([], |row| {
+                Ok(LegacyPresentationRow {
+                    review_event_id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    card_id: row.get(2)?,
+                    note_id: row.get(3)?,
+                    note_revision: row.get(4)?,
+                    deck_id: row.get(5)?,
+                    deck_name: row.get(6)?,
+                    direction: row.get(7)?,
+                    note_type: row.get(8)?,
+                    front_doc: row.get(9)?,
+                    back_doc: row.get(10)?,
+                    front_text: row.get(11)?,
+                    back_text: row.get(12)?,
+                    cloze_source: row.get(13)?,
+                    presentation_variant: row.get(14)?,
+                    occurred_at: row.get(15)?,
+                })
+            })
+            .map_err(|error| format!("Could not read sessions for attribution repair: {error}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("Could not collect session repair rows: {error}"))?
+''',
+              '''        let rows = statement
+            .query_map([], |row| {
+                Ok(LegacyPresentationRow {
+                    review_event_id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    card_id: row.get(2)?,
+                    note_id: row.get(3)?,
+                    note_revision: row.get(4)?,
+                    deck_id: row.get(5)?,
+                    deck_name: row.get(6)?,
+                    direction: row.get(7)?,
+                    note_type: row.get(8)?,
+                    front_doc: row.get(9)?,
+                    back_doc: row.get(10)?,
+                    front_text: row.get(11)?,
+                    back_text: row.get(12)?,
+                    cloze_source: row.get(13)?,
+                    presentation_variant: row.get(14)?,
+                    occurred_at: row.get(15)?,
+                })
+            })
+            .map_err(|error| format!("Could not read sessions for attribution repair: {error}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("Could not collect session repair rows: {error}"))?;
+        rows
+''',
+          )
+          replace(
+              "src-tauri/src/data_repairs.rs",
+              '''    copy_current_tags_to_session(transaction, session_id, row)?
+}
+''',
+              '''    copy_current_tags_to_session(transaction, session_id, row)?;
+    Ok(())
+}
+''',
+          )
+
+          replace(
+              "src-tauri/src/stage34_35_regression_tests.rs",
+              "data_repairs::{apply_required_repairs, verify_repair_ledger},",
+              "data_repairs::{apply_required_repairs, verify_repair_ledger, RepairPhase},",
+          )
+          replace(
+              "src-tauri/src/stage34_35_regression_tests.rs",
+              "apply_required_repairs(&mut connection)",
+              "apply_required_repairs(&mut connection, RepairPhase::BeforeMigration(13))",
+              2,
+          )
+
+          replace(
+              "src-tauri/src/analytics/aggregates.rs",
+              '''    statement
+        .query_map(params_from_iter(values.iter()), |row| {
+''',
+              '''    let decks = statement
+        .query_map(params_from_iter(values.iter()), |row| {
+''',
+          )
+          replace(
+              "src-tauri/src/analytics/aggregates.rs",
+              '''        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
+}
+
+pub fn load_tags''',
+              '''        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    Ok(decks)
+}
+
+pub fn load_tags''',
+          )
+
+          replace(
+              "src-tauri/src/analytics/recent.rs",
+              '''    statement
+        .query_map(params_from_iter(values.iter()), |row| {
+''',
+              '''    let reviews = statement
+        .query_map(params_from_iter(values.iter()), |row| {
+''',
+          )
+          replace(
+              "src-tauri/src/analytics/recent.rs",
+              '''        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
+}
+
+pub fn load_sessions''',
+              '''        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    Ok(reviews)
+}
+
+pub fn load_sessions''',
+          )
+          replace(
+              "src-tauri/src/analytics/recent.rs",
+              '''    statement
+        .query_map(params_from_iter(values.iter()), |row| {
+''',
+              '''    let sessions = statement
+        .query_map(params_from_iter(values.iter()), |row| {
+''',
+          )
+          replace(
+              "src-tauri/src/analytics/recent.rs",
+              '''        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
+}
+
+pub fn load_dimension_options''',
+              '''        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    Ok(sessions)
+}
+
+pub fn load_dimension_options''',
+          )
+          replace(
+              "src-tauri/src/analytics/recent.rs",
+              '''        statement
+            .query_map([], |row| {
+                Ok(AnalyticsDeckOptionDto {''',
+              '''        let options = statement
+            .query_map([], |row| {
+                Ok(AnalyticsDeckOptionDto {''',
+          )
+          replace(
+              "src-tauri/src/analytics/recent.rs",
+              '''            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    };
+    let tags''',
+              '''            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        options
+    };
+    let tags''',
+          )
+          replace(
+              "src-tauri/src/analytics/recent.rs",
+              '''        statement
+            .query_map([], |row| {
+                Ok(AnalyticsTagOptionDto {''',
+              '''        let options = statement
+            .query_map([], |row| {
+                Ok(AnalyticsTagOptionDto {''',
+          )
+          replace(
+              "src-tauri/src/analytics/recent.rs",
+              '''            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    };
+    Ok(AnalyticsDimensionOptionsDto { decks, tags })''',
+              '''            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        options
+    };
+    Ok(AnalyticsDimensionOptionsDto { decks, tags })''',
+          )
+
+          replace(
+              "src-tauri/src/authoring/stage3_v2/template_summaries.rs",
+              '''    statement
+        .query_map([], |row| {''',
+              '''    let summaries = statement
+        .query_map([], |row| {''',
+          )
+          replace(
+              "src-tauri/src/authoring/stage3_v2/template_summaries.rs",
+              '''        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
+}''',
+              '''        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    Ok(summaries)
+}''',
+          )
+
+          replace(
+              "src-tauri/src/authoring/stage3/transfer.rs",
+              '''        statement
+            .query_map([source.id.as_str()], |row| {''',
+              '''        let cards = statement
+            .query_map([source.id.as_str()], |row| {''',
+          )
+          replace(
+              "src-tauri/src/authoring/stage3/transfer.rs",
+              '''            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    };''',
+              '''            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        cards
+    };''',
+          )
+
+          replace(
+              "src-tauri/src/deletion_purge.rs",
+              '''        statement
+            .query_map([], |row| {''',
+              '''        let operations = statement
+            .query_map([], |row| {''',
+          )
+          replace(
+              "src-tauri/src/deletion_purge.rs",
+              '''            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    };''',
+              '''            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        operations
+    };''',
+          )
+
+          replace(
+              "src-tauri/src/projections/decks.rs",
+              '''    statement
+        .query_map([now_utc_millis], row)''',
+              '''    let summaries = statement
+        .query_map([now_utc_millis], row)''',
+          )
+          replace(
+              "src-tauri/src/projections/decks.rs",
+              '''        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
+}''',
+              '''        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    Ok(summaries)
+}''',
+          )
+
+          replace(
+              "src-tauri/src/workload.rs",
+              '''    statement
+        .query_map(params_from_iter(values.iter()), |row| {''',
+              '''    let planned = statement
+        .query_map(params_from_iter(values.iter()), |row| {''',
+          )
+          replace(
+              "src-tauri/src/workload.rs",
+              '''        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
+}''',
+              '''        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    Ok(planned)
+}''',
+          )
+          PY
+
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri
+          git commit -m "fix: clear Stage 3.6-3.8 Rust compiler blockers"
+          git push origin HEAD:agent/stage-3-6-3-8-study-semantics
