@@ -30,8 +30,11 @@ vi.mock("../ipc", () => ({
       : null,
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
+  getOrganizedCard: vi.fn(),
   importDeck: vi.fn(),
-  listCards: vi.fn(),
+  listDeckCardSummaries: vi.fn(),
+  setDeckArchived: vi.fn(),
+  undoDeletion: vi.fn(),
   updateDeck: vi.fn(),
 }));
 
@@ -39,30 +42,27 @@ vi.mock("./CardEditorScreen", () => ({
   CardEditorScreen: () => <div>Card editor</div>,
 }));
 
-const deck: ipc.Deck = {
+const deck: ipc.DeckSummary = {
   id: "a".repeat(32),
   name: "Dog facts",
   description: "Dogs are cool animals",
-  cardCount: 2,
-  dueCount: 0,
+  sourceNoteCount: 2,
+  generatedCardCount: 2,
+  studyableDueCount: 0,
+  archivedAt: null,
   createdAt: 1,
   updatedAt: 1,
   revision: 1,
 };
 
-const card: ipc.Flashcard = {
-  id: "b".repeat(32),
+const card: ipc.DeckCardSummary = {
   noteId: "c".repeat(32),
-  deckId: deck.id,
-  direction: "forward",
-  frontDoc: { type: "doc", content: [] },
-  backDoc: { type: "doc", content: [] },
-  frontText: "Do dogs have fur?",
-  backText: "Yes",
-  assets: [],
-  createdAt: 1,
+  primaryCardId: "b".repeat(32),
+  questionExcerpt: "Do dogs have fur?",
+  answerExcerpt: "Yes",
+  generatedCardCount: 1,
+  imageCount: 0,
   updatedAt: 1,
-  revision: 1,
 };
 
 const settings: ipc.AppSettings = {
@@ -97,7 +97,12 @@ describe("DecksScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(ipc.getDeck).mockResolvedValue(deck);
-    vi.mocked(ipc.listCards).mockResolvedValue([card]);
+    vi.mocked(ipc.listDeckCardSummaries).mockResolvedValue({
+      cards: [card],
+      totalCount: 1,
+      offset: 0,
+      hasMore: false,
+    });
   });
 
   it("keeps Practice enabled for a non-empty deck with no cards due", async () => {
@@ -151,9 +156,7 @@ describe("DecksScreen", () => {
     expect(ipc.importDeck).not.toHaveBeenCalled();
     expect(openDialog).toHaveBeenCalledWith(
       expect.objectContaining({
-        filters: [
-          expect.objectContaining({ extensions: ["studydeck", "json"] }),
-        ],
+        filters: [expect.objectContaining({ extensions: ["studydeck", "json"] })],
       }),
     );
     await waitFor(() => {
