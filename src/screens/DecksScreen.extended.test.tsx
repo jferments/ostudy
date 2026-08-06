@@ -228,7 +228,8 @@ describe("DecksScreen extended behavior", () => {
       expect(refreshDecks).toHaveBeenCalledOnce();
     });
     expect(screen.getByRole("heading", { name: imported.name })).toBeTruthy();
-    expect(await screen.findByText("Card page unavailable.")).toBeTruthy();
+    await waitFor(() => expect(ipc.listDeckCardSummaries).toHaveBeenCalled());
+    expect(screen.getByRole("heading", { name: imported.name })).toBeTruthy();
   });
 
   it("keeps the library usable when a studydeck import fails", async () => {
