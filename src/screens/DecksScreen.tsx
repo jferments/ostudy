@@ -726,6 +726,8 @@ export function DecksScreen({
             </div>
           </header>
 
+          {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+
           <section className="card-browser-panel">
             <div className="card-browser-toolbar">
               <label className="search-field">
@@ -763,7 +765,7 @@ export function DecksScreen({
             {isLoadingCards && cards.length === 0 ? (
               <div className="inline-progress">Loading cards…</div>
             ) : null}
-            {!isLoadingCards && selectedDeck.sourceNoteCount === 0 ? (
+            {!isLoadingCards && !errorMessage && selectedDeck.sourceNoteCount === 0 ? (
               <section className="compact-empty-state large-empty-state">
                 <div className="empty-icon" aria-hidden="true">
                   +
@@ -781,7 +783,10 @@ export function DecksScreen({
                 </button>
               </section>
             ) : null}
-            {!isLoadingCards && selectedDeck.sourceNoteCount > 0 && cards.length === 0 ? (
+            {!isLoadingCards &&
+            !errorMessage &&
+            selectedDeck.sourceNoteCount > 0 &&
+            cards.length === 0 ? (
               <div className="compact-empty-state">
                 <h3>No matching flashcards</h3>
                 <p>Try a different word or phrase.</p>
