@@ -266,7 +266,7 @@ pub fn get_recent_practice_reviews(
     })
 }
 
-fn load_analytics(
+pub(crate) fn load_analytics(
     connection: &mut rusqlite::Connection,
     input: AnalyticsQueryDto,
 ) -> Result<AnalyticsDto, CommandError> {
