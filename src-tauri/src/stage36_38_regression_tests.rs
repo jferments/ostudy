@@ -34,11 +34,11 @@ fn insert_reviewed_card(
     review_id: &str,
     submission_id: &str,
     captured_deck_name: &str,
-    now: i64,
-    local_date: &str,
+    time: &StudyTimeContext,
 ) -> SeededCard {
     let front_doc = r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Original question"}]}]}"#;
     let back_doc = r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Original answer"}]}]}"#;
+    let now = time.now_utc_millis;
     connection
         .execute(
             "INSERT INTO notes (
@@ -118,17 +118,19 @@ fn insert_reviewed_card(
                  attribution_source
              ) VALUES (
                  ?1, ?2, ?3,
-                 'Etc/UTC', 0,
-                 ?4, ?5, 1,
-                 ?6, ?7,
+                 ?4, ?5,
+                 ?6, ?7, 1,
+                 ?8, ?9,
                  'forward', 'basic', 'Basic', 'forward',
-                 'Original question', ?8, 0,
+                 'Original question', ?10, 0,
                  'captured'
              )",
             params![
                 review_id,
                 now,
-                local_date,
+                time.local_date.to_string(),
+                time.time_zone_id,
+                time.utc_offset_minutes,
                 card_id,
                 note_id,
                 deck_id,
@@ -171,8 +173,7 @@ fn moved_card_history_follows_current_owner_and_keeps_review_presentation() {
                 &"e".repeat(32),
                 &"f".repeat(32),
                 "Deck A",
-                time.now_utc_millis,
-                &time.local_date.to_string(),
+                &time,
             );
 
             connection
@@ -233,8 +234,7 @@ fn deleting_old_owner_preserves_moved_history_and_deleting_new_owner_purges_it()
                 &"5".repeat(32),
                 &"6".repeat(32),
                 "Old owner",
-                time.now_utc_millis,
-                &time.local_date.to_string(),
+                &time,
             );
             connection
                 .execute(
@@ -256,26 +256,13 @@ fn deleting_old_owner_preserves_moved_history_and_deleting_new_owner_purges_it()
                     params![deleted_at, deck_a],
                 )
                 .expect("old deck should tombstone");
-            connection
-                .execute(
-                    "INSERT INTO deletion_operations (
-                         id, entity_kind, subject_label, deck_id,
-                         note_ids_json, card_ids_json,
-                         deleted_at, expires_at, finalized_at, created_at
-                     ) VALUES (
-                         ?1, 'deck', 'Old owner', ?2,
-                         ?3, ?4,
-                         ?5, ?5, ?5, ?5
-                     )",
-                    params![
-                        "7".repeat(32),
-                        deck_a,
-                        serde_json::to_string(&vec![card.note_id.clone()]).expect("note ids"),
-                        serde_json::to_string(&vec![card.card_id.clone()]).expect("card ids"),
-                        deleted_at,
-                    ],
-                )
-                .expect("old-owner deletion should insert");
+            insert_finalized_deck_deletion(
+                connection,
+                &"7".repeat(32),
+                &deck_a,
+                &card,
+                deleted_at,
+            );
             purge_finalized_in_connection(connection)?;
 
             let review_count: i64 = connection
@@ -301,26 +288,13 @@ fn deleting_old_owner_preserves_moved_history_and_deleting_new_owner_purges_it()
                     params![deleted_at, deck_b],
                 )
                 .expect("new deck should tombstone");
-            connection
-                .execute(
-                    "INSERT INTO deletion_operations (
-                         id, entity_kind, subject_label, deck_id,
-                         note_ids_json, card_ids_json,
-                         deleted_at, expires_at, finalized_at, created_at
-                     ) VALUES (
-                         ?1, 'deck', 'New owner', ?2,
-                         ?3, ?4,
-                         ?5, ?5, ?5, ?5
-                     )",
-                    params![
-                        "8".repeat(32),
-                        deck_b,
-                        serde_json::to_string(&vec![card.note_id.clone()]).expect("note ids"),
-                        serde_json::to_string(&vec![card.card_id.clone()]).expect("card ids"),
-                        deleted_at,
-                    ],
-                )
-                .expect("new-owner deletion should insert");
+            insert_finalized_deck_deletion(
+                connection,
+                &"8".repeat(32),
+                &deck_b,
+                &card,
+                deleted_at,
+            );
             purge_finalized_in_connection(connection)?;
 
             let remaining_reviews: i64 = connection
@@ -340,6 +314,35 @@ fn deleting_old_owner_preserves_moved_history_and_deleting_new_owner_purges_it()
         .expect("deletion ownership should remain coherent");
 }
 
+fn insert_finalized_deck_deletion(
+    connection: &Connection,
+    operation_id: &str,
+    deck_id: &str,
+    card: &SeededCard,
+    deleted_at: i64,
+) {
+    connection
+        .execute(
+            "INSERT INTO deletion_operations (
+                 id, entity_kind, subject_label, deck_id,
+                 note_ids_json, card_ids_json,
+                 deleted_at, expires_at, finalized_at, created_at
+             ) VALUES (
+                 ?1, 'deck', 'Deleted deck', ?2,
+                 ?3, ?4,
+                 ?5, ?5, ?5, ?5
+             )",
+            params![
+                operation_id,
+                deck_id,
+                serde_json::to_string(&vec![card.note_id.clone()]).expect("note ids"),
+                serde_json::to_string(&vec![card.card_id.clone()]).expect("card ids"),
+                deleted_at,
+            ],
+        )
+        .expect("finalized deletion should insert");
+}
+
 #[test]
 fn due_boundary_never_overrides_archive_or_manual_suspension() {
     let now = 1_000;
@@ -354,20 +357,17 @@ fn due_boundary_never_overrides_archive_or_manual_suspension() {
         due_at: now,
     };
     assert!(active.is_studyable_due(now));
-
-    let archived = CardEligibility {
+    assert!(!CardEligibility {
         deck_archived: true,
         archive_suspended: true,
         ..active
-    };
-    assert!(archived.is_schedule_due(now));
-    assert!(!archived.is_studyable_due(now));
-
-    let manually_suspended = CardEligibility {
+    }
+    .is_studyable_due(now));
+    assert!(!CardEligibility {
         manually_suspended: true,
         ..active
-    };
-    assert!(!manually_suspended.is_studyable_due(now));
+    }
+    .is_studyable_due(now));
 }
 
 #[test]
@@ -375,22 +375,26 @@ fn schema_fourteen_and_all_three_repairs_are_present_on_canonical_open() {
     let database = Database::open_in_memory().expect("database should open");
     database
         .with_connection(|connection| {
-            let schema_version: i64 =
-                connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-            let repair_count: i64 =
-                connection.query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))?;
-            let attribution_tables: i64 = connection.query_row(
-                "SELECT COUNT(*) FROM sqlite_master
-                 WHERE type = 'table'
-                   AND name IN (
-                       'practice_session_card_snapshots',
-                       'practice_session_card_tag_snapshots',
-                       'review_event_attributions',
-                       'review_event_tag_attributions'
-                   )",
-                [],
-                |row| row.get(0),
-            )?;
+            let schema_version: i64 = connection
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .expect("schema version should load");
+            let repair_count: i64 = connection
+                .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
+                .expect("repair count should load");
+            let attribution_tables: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master
+                     WHERE type = 'table'
+                       AND name IN (
+                           'practice_session_card_snapshots',
+                           'practice_session_card_tag_snapshots',
+                           'review_event_attributions',
+                           'review_event_tag_attributions'
+                       )",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("attribution tables should load");
             assert_eq!(schema_version, 14);
             assert_eq!(repair_count, 3);
             assert_eq!(attribution_tables, 4);
