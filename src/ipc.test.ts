@@ -27,12 +27,13 @@ import {
   getErrorCode,
   getErrorMessage,
   getOrganizedCard,
+  getPracticeCardWindow,
   getPracticeWorkload,
   getSettings,
   importDeck,
   importImage,
-  listCardTemplates,
-  listCards,
+  listCardTemplateSummaries,
+  listDeckCardSummaries,
   listDecks,
   listMatchingCards,
   listTags,
@@ -73,7 +74,7 @@ const searchInput: CardSearchInput = {
   deckIds: [deckId],
   query: "warfarin",
   tagIds: [],
-  dueFilter: "due",
+  availabilityFilter: "ready_now",
   statusFilter: "active",
   reviewedFilter: "all",
   sort: "relevance",
@@ -128,7 +129,7 @@ describe("typed Tauri IPC wrappers", () => {
     vi.mocked(invoke).mockReset();
   });
 
-  it("wires deck and card-library commands with their exact payload shapes", async () => {
+  it("wires deck summaries and bounded card-library commands", async () => {
     await expectInvocation(listDecks, "list_decks");
     await expectInvocation(() => getDeck(deckId), "get_deck", { deckId });
     await expectInvocation(
@@ -154,7 +155,12 @@ describe("typed Tauri IPC wrappers", () => {
         },
       },
     );
-    await expectInvocation(() => listCards(deckId), "list_cards", { deckId });
+    const page = { deckId, query: "warfarin", limit: 50, offset: 0 };
+    await expectInvocation(
+      () => listDeckCardSummaries(page),
+      "list_deck_card_summaries",
+      { input: page },
+    );
     await expectInvocation(() => listTags(), "list_tags", {
       input: { deckIds: [] },
     });
@@ -173,7 +179,7 @@ describe("typed Tauri IPC wrappers", () => {
     );
   });
 
-  it("wires generated-card, template, duplicate, and bulk commands", async () => {
+  it("wires generated-card, template-summary, duplicate, and bulk commands", async () => {
     await expectInvocation(
       () => createGeneratedCard(generatedInput),
       "create_generated_card",
@@ -192,7 +198,10 @@ describe("typed Tauri IPC wrappers", () => {
     await expectInvocation(() => getCardTypeInfo(noteId), "get_card_type_info", {
       noteId,
     });
-    await expectInvocation(listCardTemplates, "list_card_templates");
+    await expectInvocation(
+      listCardTemplateSummaries,
+      "list_card_template_summaries",
+    );
     await expectInvocation(
       () => getCardTemplate(templateId),
       "get_card_template",
@@ -310,7 +319,7 @@ describe("typed Tauri IPC wrappers", () => {
     });
   });
 
-  it("wires settings, practice, scheduling, asset drafts, transfer, and backup commands", async () => {
+  it("wires settings, windowed practice, scheduling, assets, and backups", async () => {
     const settings: AppSettings = makeSettings({ dailyNewLimit: 12 });
     await expectInvocation(getSettings, "get_settings");
     await expectInvocation(() => saveSettings(settings), "save_settings", {
@@ -332,13 +341,14 @@ describe("typed Tauri IPC wrappers", () => {
       draftId,
     });
     await expectInvocation(
-      () => getPracticeWorkload([deckId]),
+      () => getPracticeWorkload([deckId], ["8".repeat(32)]),
       "get_practice_workload",
-      { input: { deckIds: [deckId] } },
+      { input: { deckIds: [deckId], tagIds: ["8".repeat(32)] } },
     );
     const selectedStart = {
       operationId: "5".repeat(32),
       deckIds: [deckId],
+      tagIds: ["8".repeat(32)],
       shuffle: true,
       mode: "scheduled" as const,
     };
@@ -355,6 +365,16 @@ describe("typed Tauri IPC wrappers", () => {
     await expectInvocation(() => startCardPractice(cardStart), "start_card_practice", {
       input: cardStart,
     });
+    const windowInput = {
+      sessionId: "2".repeat(32),
+      startPosition: 50,
+      limit: 50,
+    };
+    await expectInvocation(
+      () => getPracticeCardWindow(windowInput),
+      "get_practice_card_window",
+      { input: windowInput },
+    );
     await expectInvocation(
       () => markPracticeCardViewed("2".repeat(32), cardId),
       "mark_practice_card_viewed",
@@ -384,7 +404,8 @@ describe("typed Tauri IPC wrappers", () => {
     const mutation = {
       mutationId: "4".repeat(32),
       cardIds: [cardId],
-      action: "bury" as const,
+      action: "reschedule" as const,
+      rescheduleIntent: { kind: "tomorrow" as const },
     };
     await expectInvocation(() => applyScheduleAction(mutation), "apply_schedule_action", {
       input: mutation,
