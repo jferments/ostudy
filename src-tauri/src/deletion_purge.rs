@@ -42,7 +42,7 @@ pub(crate) fn purge_finalized_in_connection(
                  ORDER BY finalized_at, id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -55,7 +55,8 @@ pub(crate) fn purge_finalized_in_connection(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     if operations.is_empty() {
         return Ok(());
