@@ -115,8 +115,8 @@ pub fn load_sessions(
         .query_map(params_from_iter(values.iter()), |row| {
             let id: String = row.get(0)?;
             let deck_names_json: String = row.get(2)?;
-            let deck_names = serde_json::from_str::<Vec<String>>(&deck_names_json)
-                .unwrap_or_default();
+            let deck_names =
+                serde_json::from_str::<Vec<String>>(&deck_names_json).unwrap_or_default();
             let started_at: i64 = row.get(3)?;
             let completed_at: Option<i64> = row.get(4)?;
             let rated_count: i64 = row.get(6)?;
