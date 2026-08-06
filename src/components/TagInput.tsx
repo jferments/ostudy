@@ -64,9 +64,7 @@ export function TagInput({
           maxLength={64}
           placeholder={tags.length === 0 ? "Add tags" : "Add another"}
           aria-label={label}
-          onChange={(event: ChangeEvent<HTMLInputElement>) =>
-            setDraft(event.currentTarget.value)
-          }
+          onChange={(event: ChangeEvent<HTMLInputElement>) => setDraft(event.currentTarget.value)}
           onKeyDown={onKeyDown}
           onBlur={addDraft}
         />
@@ -75,13 +73,12 @@ export function TagInput({
             .filter(
               (suggestion) =>
                 !tags.some(
-                  (tag) =>
-                    tag.toLocaleLowerCase() === suggestion.name.toLocaleLowerCase(),
+                  (tag) => tag.toLocaleLowerCase() === suggestion.name.toLocaleLowerCase(),
                 ),
             )
             .map((suggestion) => (
               <option key={suggestion.id} value={suggestion.name}>
-                {suggestion.cardCount} cards
+                {suggestion.generatedCardCount} generated cards
               </option>
             ))}
         </datalist>
