@@ -147,7 +147,10 @@ fn purge_operation(
     }
 
     connection
-        .execute("DELETE FROM deletion_operations WHERE id = ?1", [&operation.id])
+        .execute(
+            "DELETE FROM deletion_operations WHERE id = ?1",
+            [&operation.id],
+        )
         .map_err(CommandError::database)?;
     Ok(())
 }
