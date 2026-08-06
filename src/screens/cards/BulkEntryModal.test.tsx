@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as ipc from "../../ipc";
+import { makeDeck, resetTestEntityIds } from "../../test/factories";
 import { BulkEntryModal } from "./BulkEntryModal";
 
 vi.mock("../../ipc", () => ({
@@ -11,16 +12,7 @@ vi.mock("../../ipc", () => ({
     error instanceof Error ? error.message : "Unexpected error",
 }));
 
-const deck: ipc.Deck = {
-  id: "a".repeat(32),
-  name: "Biology",
-  description: "",
-  cardCount: 0,
-  dueCount: 0,
-  createdAt: 1,
-  updatedAt: 1,
-  revision: 1,
-};
+let deck: ipc.DeckSummary;
 
 function fillFirstRow(): void {
   fireEvent.change(screen.getByLabelText("Question 1"), {
@@ -36,6 +28,13 @@ function fillFirstRow(): void {
 
 describe("BulkEntryModal", () => {
   beforeEach(() => {
+    resetTestEntityIds();
+    deck = makeDeck({
+      name: "Biology",
+      sourceNoteCount: 0,
+      generatedCardCount: 0,
+      studyableDueCount: 0,
+    });
     vi.mocked(ipc.analyzeBulkCards).mockResolvedValue({
       uniqueCount: 1,
       duplicateCount: 0,
@@ -99,7 +98,9 @@ describe("BulkEntryModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add 1 card" }));
 
     expect(await screen.findByText("Remove 1 exact duplicate?")).toBeTruthy();
-    expect(screen.getByText("Every populated row is already present.", { exact: false })).toBeTruthy();
+    expect(
+      screen.getByText("Every populated row is already present.", { exact: false }),
+    ).toBeTruthy();
     expect(ipc.bulkCreateCards).not.toHaveBeenCalled();
   });
 });
