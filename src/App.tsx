@@ -14,7 +14,7 @@ import {
   getSettings,
   listDecks,
   type AppSettings,
-  type Deck,
+  type DeckSummary,
 } from "./ipc";
 
 export type AppSection =
@@ -28,6 +28,7 @@ export type AppSection =
 export interface PracticeLaunchRequest {
   requestId: number;
   deckIds: string[];
+  tagIds: string[];
   cardIds: string[];
   autoStart: boolean;
 }
@@ -56,7 +57,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 function App() {
   const [section, setSection] = useState<AppSection>("decks");
-  const [decks, setDecks] = useState<Deck[]>([]);
+  const [decks, setDecks] = useState<DeckSummary[]>([]);
   const [savedSettings, setSavedSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [activeSettings, setActiveSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
@@ -157,7 +158,13 @@ function App() {
     if (next === "practice") {
       const requestId = practiceRequestSequence.current;
       practiceRequestSequence.current += 1;
-      setPracticeLaunch({ requestId, deckIds: [], cardIds: [], autoStart: false });
+      setPracticeLaunch({
+        requestId,
+        deckIds: [],
+        tagIds: [],
+        cardIds: [],
+        autoStart: false,
+      });
     }
     if (next === "analytics") {
       const requestId = analyticsRequestSequence.current;
@@ -173,10 +180,20 @@ function App() {
   }
 
   function practiceDeck(deckId: string): void {
+    practiceScope([deckId], []);
+  }
+
+  function practiceScope(deckIds: string[], tagIds: string[]): void {
     if (!canLeaveCurrentSection()) return;
     const requestId = practiceRequestSequence.current;
     practiceRequestSequence.current += 1;
-    setPracticeLaunch({ requestId, deckIds: [deckId], cardIds: [], autoStart: true });
+    setPracticeLaunch({
+      requestId,
+      deckIds,
+      tagIds,
+      cardIds: [],
+      autoStart: true,
+    });
     setSection("practice");
   }
 
@@ -184,7 +201,13 @@ function App() {
     if (cardIds.length === 0 || !canLeaveCurrentSection()) return;
     const requestId = practiceRequestSequence.current;
     practiceRequestSequence.current += 1;
-    setPracticeLaunch({ requestId, deckIds: [], cardIds, autoStart: true });
+    setPracticeLaunch({
+      requestId,
+      deckIds: [],
+      tagIds: [],
+      cardIds,
+      autoStart: true,
+    });
     setSection("practice");
   }
 
@@ -226,14 +249,46 @@ function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand-block"><strong>ostudy</strong></div>
+        <div className="brand-block">
+          <strong>ostudy</strong>
+        </div>
         <nav className="sidebar-nav" aria-label="Main navigation">
-          <NavButton active={section === "decks"} icon="▤" label="Decks" onClick={() => navigate("decks")} />
-          <NavButton active={section === "cards"} icon="⌕" label="Search/Filter" onClick={() => navigate("cards")} />
-          <NavButton active={section === "templates"} icon="▧" label="Templates" onClick={() => navigate("templates")} />
-          <NavButton active={section === "practice"} icon="▶" label="Practice" onClick={() => navigate("practice")} />
-          <NavButton active={section === "analytics"} icon="▥" label="Analytics" onClick={() => navigate("analytics")} />
-          <NavButton active={section === "settings"} icon="⚙" label="Settings" onClick={() => navigate("settings")} />
+          <NavButton
+            active={section === "decks"}
+            icon="▤"
+            label="Decks"
+            onClick={() => navigate("decks")}
+          />
+          <NavButton
+            active={section === "cards"}
+            icon="⌕"
+            label="Search/Filter"
+            onClick={() => navigate("cards")}
+          />
+          <NavButton
+            active={section === "templates"}
+            icon="▧"
+            label="Templates"
+            onClick={() => navigate("templates")}
+          />
+          <NavButton
+            active={section === "practice"}
+            icon="▶"
+            label="Practice"
+            onClick={() => navigate("practice")}
+          />
+          <NavButton
+            active={section === "analytics"}
+            icon="▥"
+            label="Analytics"
+            onClick={() => navigate("analytics")}
+          />
+          <NavButton
+            active={section === "settings"}
+            icon="⚙"
+            label="Settings"
+            onClick={() => navigate("settings")}
+          />
         </nav>
       </aside>
 
@@ -277,7 +332,7 @@ function App() {
               settings={activeSettings}
               launchRequest={analyticsLaunch}
               onLaunchConsumed={consumeAnalyticsLaunch}
-              onPracticeCards={practiceCards}
+              onPracticeScope={practiceScope}
               showToast={showToast}
             />
           ) : null}
@@ -329,8 +384,10 @@ function applyThemeSettings(settings: AppSettings): void {
   root.dataset.reduceMotion = settings.reduceMotion ? "true" : "false";
   root.style.setProperty("--ui-scale", String(settings.uiScale / 100));
   root.style.setProperty("--card-base-size", `${settings.cardBaseSize}px`);
-  const uiFont = settings.theme === "console" && settings.uiFont === "system" ? "mono" : settings.uiFont;
-  const cardFont = settings.theme === "console" && settings.cardFont === "system" ? "mono" : settings.cardFont;
+  const uiFont =
+    settings.theme === "console" && settings.uiFont === "system" ? "mono" : settings.uiFont;
+  const cardFont =
+    settings.theme === "console" && settings.cardFont === "system" ? "mono" : settings.cardFont;
   root.style.setProperty("--ui-font-family", resolveFont(uiFont));
   root.style.setProperty("--card-font-family", resolveFont(cardFont));
   root.style.colorScheme = settings.theme === "light" ? "light" : "dark";
@@ -338,7 +395,8 @@ function applyThemeSettings(settings: AppSettings): void {
 
 function resolveFont(value: string): string {
   const presets: Record<string, string> = {
-    system: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    system:
+      "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     humanist: "'Trebuchet MS', 'Segoe UI', ui-sans-serif, sans-serif",
     serif: "Georgia, 'Times New Roman', serif",
     mono: "'JetBrains Mono', 'Cascadia Code', 'Liberation Mono', monospace",
