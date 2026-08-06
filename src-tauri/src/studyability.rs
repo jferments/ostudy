@@ -3,6 +3,7 @@
 //! Every list, workload, search, and current-inventory query uses these helpers
 //! instead of recreating subtly different eligibility predicates.
 
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CardEligibility {
     pub card_deleted: bool,
@@ -15,6 +16,7 @@ pub struct CardEligibility {
     pub due_at: i64,
 }
 
+#[cfg(test)]
 impl CardEligibility {
     pub fn is_current_generated(self) -> bool {
         !self.card_deleted && !self.note_deleted && !self.deck_deleted && !self.deck_archived
@@ -47,13 +49,6 @@ pub fn current_card_sql(card: &str, note: &str, deck: &str) -> &'static str {
     }
 }
 
-pub fn current_card_including_archived_sql(card: &str, note: &str, deck: &str) -> &'static str {
-    match (card, note, deck) {
-        ("c", "n", "d") => "c.deleted_at IS NULL AND n.deleted_at IS NULL AND d.deleted_at IS NULL",
-        _ => panic!("studyability aliases must be c, n, and d"),
-    }
-}
-
 pub fn studyable_card_sql(now_placeholder: &str) -> String {
     format!(
         "{} AND c.suspended_at IS NULL AND c.archive_suspended_at IS NULL AND (c.buried_until IS NULL OR c.buried_until <= {now_placeholder})",
@@ -65,14 +60,6 @@ pub fn studyable_due_sql(now_placeholder: &str) -> String {
     format!(
         "{} AND s.due_at <= {now_placeholder}",
         studyable_card_sql(now_placeholder)
-    )
-}
-
-pub fn studyability_projection_sql(now_placeholder: &str) -> String {
-    format!(
-        "CASE WHEN {} THEN 1 ELSE 0 END AS is_studyable, CASE WHEN {} THEN 1 ELSE 0 END AS is_studyable_due",
-        studyable_card_sql(now_placeholder),
-        studyable_due_sql(now_placeholder)
     )
 }
 
