@@ -8,11 +8,11 @@ import {
   getErrorMessage,
   type BulkAnalyzeResult,
   type BulkCardRowInput,
-  type Deck,
+  type DeckSummary,
 } from "../../ipc";
 
 interface BulkEntryModalProps {
-  decks: Deck[];
+  decks: DeckSummary[];
   defaultDeckId?: string;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
@@ -35,17 +35,14 @@ export function BulkEntryModal({
   onSaved,
   showToast,
 }: BulkEntryModalProps) {
+  const activeDecks = decks.filter((deck) => deck.archivedAt === null);
   const sequence = useRef(4);
   const [deckId, setDeckId] = useState(
-    defaultDeckId && decks.some((deck) => deck.id === defaultDeckId)
+    defaultDeckId && activeDecks.some((deck) => deck.id === defaultDeckId)
       ? defaultDeckId
-      : (decks[0]?.id ?? ""),
+      : (activeDecks[0]?.id ?? ""),
   );
-  const [rows, setRows] = useState<DraftRow[]>([
-    emptyRow(1),
-    emptyRow(2),
-    emptyRow(3),
-  ]);
+  const [rows, setRows] = useState<DraftRow[]>([emptyRow(1), emptyRow(2), emptyRow(3)]);
   const [analysis, setAnalysis] = useState<BulkAnalyzeResult | null>(null);
   const [duplicateRowIds, setDuplicateRowIds] = useState<Set<number>>(new Set());
   const [isSaving, setIsSaving] = useState(false);
@@ -73,9 +70,7 @@ export function BulkEntryModal({
   }
 
   function updateRow(id: number, patch: Partial<DraftRow>): void {
-    setRows((current) =>
-      current.map((row) => (row.id === id ? { ...row, ...patch } : row)),
-    );
+    setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
     setErrorMessage(null);
     clearAnalysis();
   }
@@ -190,17 +185,14 @@ export function BulkEntryModal({
                 clearAnalysis();
               }}
             >
-              {decks.map((deck) => (
+              {activeDecks.map((deck) => (
                 <option key={deck.id} value={deck.id}>
                   {deck.name}
                 </option>
               ))}
             </select>
           </label>
-          <p>
-            Exact duplicate question-and-answer pairs are detected automatically
-            before anything is saved.
-          </p>
+          <p>Exact duplicate question-and-answer pairs are detected before anything is saved.</p>
         </div>
 
         <div className="bulk-entry-table" role="table" aria-label="Bulk cards">
@@ -261,9 +253,7 @@ export function BulkEntryModal({
                 aria-label={`Remove row ${index + 1}`}
                 disabled={isSaving || rows.length === 1}
                 onClick={() => {
-                  setRows((current) =>
-                    current.filter((candidate) => candidate.id !== row.id),
-                  );
+                  setRows((current) => current.filter((candidate) => candidate.id !== row.id));
                   clearAnalysis();
                 }}
               >
@@ -293,9 +283,8 @@ export function BulkEntryModal({
                 {analysis.duplicateCount === 1 ? "" : "s"}?
               </h3>
               <p>
-                Duplicate rows are highlighted above. They will be omitted; the
-                remaining {uniqueCount} unique {uniqueCount === 1 ? "card" : "cards"}
-                will be saved.
+                Duplicate rows are highlighted above. They will be omitted; the remaining {uniqueCount}
+                unique {uniqueCount === 1 ? "card" : "cards"} will be saved.
               </p>
             </div>
             <button
@@ -311,13 +300,10 @@ export function BulkEntryModal({
 
         {analysis && uniqueCount === 0 ? (
           <div className="inline-alert info-alert">
-            Every populated row is already present. Change or remove the highlighted
-            rows before saving.
+            Every populated row is already present. Change or remove the highlighted rows before saving.
           </div>
         ) : null}
-        {errorMessage ? (
-          <div className="inline-alert error-alert">{errorMessage}</div>
-        ) : null}
+        {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
 
         <div className="modal-actions bulk-entry-actions">
           <button
