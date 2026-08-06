@@ -114,7 +114,7 @@ for (const command of [
   "get_card_type_info",
   "create_generated_card",
   "update_generated_card",
-  "list_card_templates",
+  "list_card_template_summaries",
   "get_card_template",
   "create_card_template",
   "update_card_template",
@@ -124,6 +124,9 @@ for (const command of [
 ]) {
   if (!rustCommands.includes(command)) failures.push(`Rust command not registered: ${command}`);
   if (!ipc.includes(`"${command}"`)) failures.push(`frontend command missing: ${command}`);
+}
+if (rustCommands.includes("list_card_templates") || ipc.includes('"list_card_templates"')) {
+  failures.push("obsolete unbounded list_card_templates command is still present");
 }
 
 for (const fragment of [
@@ -199,7 +202,7 @@ for (const fragment of [
   "Question layout",
   "Answer layout",
   "TemplateLayoutEditor",
-  "renderer keeps simple values inline",
+  "listCardTemplateSummaries",
 ]) {
   if (!templatesScreen.includes(fragment)) failures.push(`Templates screen missing: ${fragment}`);
 }
