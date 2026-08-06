@@ -155,10 +155,13 @@ if (authoringGenerated.includes('direction: "cloze"')) {
   failures.push("active cloze creation still generates sibling card identities");
 }
 
+// Stage 3.8 moved practice hydration to projected rows. Verify that the new
+// pipeline preserves a stable presentation variant and renders without a
+// per-card database helper.
 for (const fragment of [
-  "presentation_variant_for_card",
+  "projected_presentation_variant",
   "presentation_variant",
-  "get_generated_card_for_practice",
+  "render_projected_presentation",
 ]) {
   if (!practiceSelection.includes(fragment)) failures.push(`practice snapshot behavior missing: ${fragment}`);
 }
