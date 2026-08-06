@@ -19,7 +19,7 @@ vi.mock("./screens/DecksScreen", () => ({
     onPracticeDeck,
     onDirtyChange,
   }: {
-    decks: ipc.Deck[];
+    decks: ipc.DeckSummary[];
     onPracticeDeck: (deckId: string) => void;
     onDirtyChange: (dirty: boolean) => void;
   }) => (
@@ -116,9 +116,7 @@ describe("App shell", () => {
     expect(screen.getByText("Cardiology")).toBeTruthy();
     expect(document.documentElement.dataset.theme).toBe("console");
     expect(document.documentElement.dataset.reduceMotion).toBe("true");
-    expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe(
-      "1.1",
-    );
+    expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe("1.1");
   });
 
   it("guards navigation while a card has unsaved changes", async () => {
@@ -131,16 +129,12 @@ describe("App shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mark card dirty" }));
     fireEvent.click(screen.getByRole("button", { name: /Analytics/u }));
 
-    expect(confirm).toHaveBeenCalledWith(
-      "Discard the unsaved changes to this flashcard?",
-    );
+    expect(confirm).toHaveBeenCalledWith("Discard the unsaved changes to this flashcard?");
     expect(screen.queryByRole("heading", { name: "Analytics mock" })).toBeNull();
 
     confirm.mockReturnValue(true);
     fireEvent.click(screen.getByRole("button", { name: /Analytics/u }));
-    expect(
-      await screen.findByRole("heading", { name: "Analytics mock" }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Analytics mock" })).toBeTruthy();
     expect(screen.getByLabelText("Analytics launch").textContent).toBe("7d||");
   });
 
@@ -153,12 +147,8 @@ describe("App shell", () => {
     await screen.findByRole("heading", { name: "Decks mock" });
     fireEvent.click(screen.getByRole("button", { name: "Practice deck mock" }));
 
-    expect(
-      await screen.findByRole("heading", { name: "Practice mock" }),
-    ).toBeTruthy();
-    expect(screen.getByLabelText("Practice launch").textContent).toBe(
-      `${deck.id}||true`,
-    );
+    expect(await screen.findByRole("heading", { name: "Practice mock" })).toBeTruthy();
+    expect(screen.getByLabelText("Practice launch").textContent).toBe(`${deck.id}||true`);
   });
 
   it("carries a completed practice session into week-scoped analytics", async () => {
@@ -169,13 +159,9 @@ describe("App shell", () => {
     await screen.findByRole("heading", { name: "Decks mock" });
     const navigation = screen.getByRole("navigation", { name: "Main navigation" });
     fireEvent.click(within(navigation).getByRole("button", { name: "Practice" }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open session analytics" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Open session analytics" }));
 
-    expect(
-      await screen.findByRole("heading", { name: "Analytics mock" }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Analytics mock" })).toBeTruthy();
     expect(screen.getByLabelText("Analytics launch").textContent).toBe(
       "7d|deck-from-practice|session-1",
     );
