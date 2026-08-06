@@ -5,6 +5,7 @@ use rusqlite::types::Value as SqlValue;
 use crate::{error::CommandError, util::validate_entity_id};
 
 pub const ID_CHUNK_SIZE: usize = 250;
+const _: () = assert!(ID_CHUNK_SIZE <= 500);
 
 pub fn normalize_entity_ids(
     values: Vec<String>,
@@ -62,10 +63,5 @@ mod tests {
         let values = normalize_entity_ids(vec![second.clone(), first.clone(), second], "card", 10)
             .expect("ids should validate");
         assert_eq!(values, vec![first, "2".repeat(32)]);
-    }
-
-    #[test]
-    fn chunk_size_is_below_common_sqlite_variable_limits() {
-        assert!(ID_CHUNK_SIZE <= 500);
     }
 }
