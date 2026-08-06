@@ -6,14 +6,14 @@ import {
   deleteDeck,
   getErrorMessage,
   transferCards,
-  type Deck,
+  type DeckSummary,
   type SelectionCard,
 } from "../../ipc";
 
 interface PracticeResultsModalProps {
   cards: SelectionCard[];
   sourceLabel: string;
-  refreshDecks: () => Promise<Deck[]>;
+  refreshDecks: () => Promise<DeckSummary[]>;
   onPracticeCards: (cardIds: string[]) => void;
   onClose: () => void;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
@@ -42,7 +42,7 @@ export function PracticeResultsModal({
     if (name === "" || cards.length === 0 || isSaving) return;
     setIsSaving(true);
     setErrorMessage(null);
-    let createdDeck: Deck | null = null;
+    let createdDeck: DeckSummary | null = null;
     try {
       createdDeck = await createDeck({
         name,
@@ -102,8 +102,8 @@ export function PracticeResultsModal({
           <div>
             <h3>Temporary practice set</h3>
             <p>
-              Start practicing these cards now without changing their current decks
-              or creating a permanent deck.
+              Start practicing these cards now without changing their current decks or creating a
+              permanent deck.
             </p>
           </div>
           <button
@@ -120,9 +120,8 @@ export function PracticeResultsModal({
           <div>
             <h3>Save as a permanent deck</h3>
             <p>
-              Copies the matching cards into a new deck. The originals and their
-              review histories remain in their current decks; copied cards start with
-              fresh schedules.
+              Copies the matching cards into a new deck. The originals and their review histories
+              remain in their current decks; copied cards start with fresh schedules.
             </p>
           </div>
           <label>
@@ -147,9 +146,7 @@ export function PracticeResultsModal({
           </button>
         </section>
 
-        {errorMessage ? (
-          <div className="inline-alert error-alert">{errorMessage}</div>
-        ) : null}
+        {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
         <div className="modal-actions">
           <button
             type="button"
