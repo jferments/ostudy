@@ -60,7 +60,7 @@ export function ScheduleActionModal({
         mutationId,
         cardIds,
         action,
-        rescheduleIntent,
+        rescheduleIntent: rescheduleIntent ?? undefined,
       });
       pendingMutationRef.current = null;
     } catch (error: unknown) {
