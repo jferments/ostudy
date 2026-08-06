@@ -183,7 +183,29 @@ const fn default_limit() -> i64 {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Mutex,
+    };
+
+    use rusqlite::{
+        params,
+        trace::{TraceEvent, TraceEventCodes},
+        TransactionBehavior,
+    };
+
     use super::*;
+
+    static TRACE_LOCK: Mutex<()> = Mutex::new(());
+    static SELECT_STATEMENT_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    fn count_select_statements(event: TraceEvent<'_>) {
+        if let TraceEvent::Stmt(_, sql) = event {
+            if sql.trim_start().to_ascii_uppercase().starts_with("SELECT") {
+                SELECT_STATEMENT_COUNT.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    }
 
     #[test]
     fn page_limits_are_bounded() {
@@ -196,5 +218,92 @@ mod tests {
         })
         .expect_err("oversized pages should fail");
         assert_eq!(error.code, "invalid_deck_card_page");
+    }
+
+    #[test]
+    fn deck_card_page_uses_two_selects_for_one_hundred_and_one_thousand_notes() {
+        let _guard = TRACE_LOCK.lock().expect("trace test lock should be available");
+        for note_count in [1_usize, 100, 1_000] {
+            let database = Database::open_in_memory().expect("database should open");
+            database
+                .with_connection(|connection| {
+                    let deck_id = "1".repeat(32);
+                    connection
+                        .execute(
+                            "INSERT INTO decks (
+                                 id, name, description, sort_order,
+                                 created_at, updated_at, revision
+                             ) VALUES (?1, 'Large deck', '', 0, 1, 1, 1)",
+                            [deck_id.as_str()],
+                        )
+                        .map_err(CommandError::database)?;
+                    let transaction = connection
+                        .transaction_with_behavior(TransactionBehavior::Immediate)
+                        .map_err(CommandError::database)?;
+                    for index in 0..note_count {
+                        let note_id = format!("{:032x}", index + 2);
+                        let card_id = format!("{:032x}", index + note_count + 2);
+                        transaction
+                            .execute(
+                                "INSERT INTO notes (
+                                     id, deck_id, note_type, content_format,
+                                     content_schema_version, front_doc, back_doc,
+                                     front_text, back_text, created_at, updated_at,
+                                     revision, duplicate_hash, reverse_enabled,
+                                     cloze_source, cloze_mode
+                                 ) VALUES (
+                                     ?1, ?2, 'basic', 'tiptap-json', 1,
+                                     '{}', '{}', ?3, 'Answer', ?4, ?4, 1,
+                                     ?5, 0, '', 'one_at_a_time'
+                                 )",
+                                params![
+                                    note_id,
+                                    deck_id,
+                                    format!("Question {index}"),
+                                    i64::try_from(index).unwrap_or(i64::MAX) + 2,
+                                    format!("{:064x}", index + 1),
+                                ],
+                            )
+                            .map_err(CommandError::database)?;
+                        transaction
+                            .execute(
+                                "INSERT INTO cards (
+                                     id, note_id, deck_id, direction,
+                                     template_ordinal, created_at, updated_at
+                                 ) VALUES (?1, ?2, ?3, 'forward', 0, 1, 1)",
+                                params![card_id, note_id, deck_id],
+                            )
+                            .map_err(CommandError::database)?;
+                    }
+                    transaction.commit().map_err(CommandError::database)?;
+
+                    SELECT_STATEMENT_COUNT.store(0, Ordering::SeqCst);
+                    connection.trace_v2(
+                        TraceEventCodes::SQLITE_TRACE_STMT,
+                        Some(count_select_statements),
+                    );
+                    let page = list_from_connection(
+                        connection,
+                        DeckCardSummaryQuery {
+                            deck_id,
+                            query: String::new(),
+                            sort: default_sort(),
+                            limit: 50,
+                            offset: 0,
+                        },
+                    )?;
+                    connection.trace_v2(TraceEventCodes::SQLITE_TRACE_STMT, None);
+
+                    assert_eq!(
+                        SELECT_STATEMENT_COUNT.load(Ordering::SeqCst),
+                        2,
+                        "deck page statement count grew for {note_count} notes"
+                    );
+                    assert_eq!(page.total_count, i64::try_from(note_count).unwrap_or(i64::MAX));
+                    assert_eq!(page.cards.len(), note_count.min(50));
+                    Ok(())
+                })
+                .expect("bounded deck page should load");
+        }
     }
 }
