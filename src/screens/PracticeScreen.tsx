@@ -10,6 +10,7 @@ import {
   createSubmissionId,
   getErrorCode,
   getErrorMessage,
+  getPracticeCardWindow,
   getPracticeWorkload,
   markPracticeCardRevealed,
   markPracticeCardViewed,
@@ -17,9 +18,11 @@ import {
   startSelectedPractice,
   submitPracticeReview,
   type AppSettings,
-  type Deck,
+  type DeckSummary,
+  type PracticeCard,
   type PracticeSession,
   type PracticeWorkloadOverview,
+  type RescheduleIntent,
   type ReviewPreviewSet,
   type ScheduleAction,
   type SubmitReviewInput,
@@ -36,7 +39,7 @@ import { PracticeComplete } from "./practice/PracticeComplete";
 import { PracticeSetup } from "./practice/PracticeSetup";
 
 interface PracticeScreenProps {
-  decks: Deck[];
+  decks: DeckSummary[];
   settings: AppSettings;
   launchRequest: PracticeLaunchRequest | null;
   onLaunchConsumed: () => void;
@@ -57,6 +60,7 @@ interface PendingReviewOperation {
 }
 
 const COMMITTED_START_RETRY_CODE = "committed_practice_session_unavailable";
+const PRACTICE_WINDOW_SIZE = 50;
 
 export function PracticeScreen({
   decks,
@@ -66,15 +70,19 @@ export function PracticeScreen({
   onViewAnalytics,
   showToast,
 }: PracticeScreenProps) {
+  const activeDecks = decks.filter((deck) => deck.archivedAt === null);
   const [selectedDeckIds, setSelectedDeckIds] = useState<Set<string>>(new Set());
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [temporaryCardIds, setTemporaryCardIds] = useState<string[]>([]);
   const [shuffle, setShuffle] = useState(settings.practiceShuffle);
   const [session, setSession] = useState<PracticeSession | null>(null);
+  const [sessionCards, setSessionCards] = useState<PracticeCard[]>([]);
   const [position, setPosition] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [previewSet, setPreviewSet] = useState<ReviewPreviewSet | null>(null);
   const [workload, setWorkload] = useState<PracticeWorkloadOverview | null>(null);
   const [isLoadingWorkload, setIsLoadingWorkload] = useState(false);
+  const [isLoadingWindow, setIsLoadingWindow] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false);
   const [isRating, setIsRating] = useState(false);
@@ -87,6 +95,8 @@ export function PracticeScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const startingRef = useRef(false);
+  const loadingWindowRef = useRef(false);
+  const windowRequestSequence = useRef(0);
   const revealingRef = useRef(false);
   const ratingRef = useRef(false);
   const endingRef = useRef(false);
@@ -95,7 +105,7 @@ export function PracticeScreen({
   const handledLaunchRequestRef = useRef<number | null>(null);
   const pendingStartRef = useRef<PendingStartOperation | null>(null);
   const pendingReviewRef = useRef<PendingReviewOperation | null>(null);
-  const current = session?.cards[position] ?? null;
+  const current = sessionCards[position] ?? null;
 
   const loadRecentPractice = useCallback(async (): Promise<void> => {
     try {
@@ -106,14 +116,14 @@ export function PracticeScreen({
     }
   }, []);
 
-  const loadWorkload = useCallback(async (deckIds: string[]): Promise<void> => {
+  const loadWorkload = useCallback(async (deckIds: string[], tagIds: string[]): Promise<void> => {
     if (deckIds.length === 0) {
       setWorkload(null);
       return;
     }
     setIsLoadingWorkload(true);
     try {
-      setWorkload(await getPracticeWorkload(deckIds));
+      setWorkload(await getPracticeWorkload(deckIds, tagIds));
     } catch (error: unknown) {
       setWorkload(null);
       setErrorMessage(getErrorMessage(error));
@@ -125,11 +135,12 @@ export function PracticeScreen({
   const beginSession = useCallback(
     async (
       deckIds: string[],
+      tagIds: string[],
       requestedShuffle: boolean,
       mode: "scheduled" | "extra",
     ): Promise<void> => {
       if (startingRef.current || deckIds.length === 0) return;
-      const key = selectedStartKey(deckIds, requestedShuffle, mode);
+      const key = selectedStartKey(deckIds, tagIds, requestedShuffle, mode);
       const operationId = operationIdForStart(pendingStartRef, key);
       startingRef.current = true;
       setIsStarting(true);
@@ -140,12 +151,14 @@ export function PracticeScreen({
           await startSelectedPractice({
             operationId,
             deckIds,
+            tagIds,
             shuffle: requestedShuffle,
             mode,
           }),
         );
       } catch (error: unknown) {
         setSession(null);
+        setSessionCards([]);
         handleStartFailure(error, key);
       } finally {
         startingRef.current = false;
@@ -170,6 +183,7 @@ export function PracticeScreen({
         );
       } catch (error: unknown) {
         setSession(null);
+        setSessionCards([]);
         handleStartFailure(error, key);
       } finally {
         startingRef.current = false;
@@ -194,7 +208,9 @@ export function PracticeScreen({
   function initializeSession(started: PracticeSession): void {
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
+    windowRequestSequence.current += 1;
     setSession(started);
+    setSessionCards(started.firstWindow.cards);
     setPosition(0);
     setRevealed(false);
     setPreviewSet(null);
@@ -204,24 +220,61 @@ export function PracticeScreen({
     questionShownAtRef.current = Date.now();
   }
 
+  const loadNextWindow = useCallback(async (): Promise<number> => {
+    if (!session || loadingWindowRef.current || sessionCards.length >= session.cardCount) {
+      return sessionCards.length;
+    }
+    loadingWindowRef.current = true;
+    setIsLoadingWindow(true);
+    const requestId = windowRequestSequence.current + 1;
+    windowRequestSequence.current = requestId;
+    try {
+      const window = await getPracticeCardWindow({
+        sessionId: session.id,
+        startPosition: sessionCards.length,
+        limit: PRACTICE_WINDOW_SIZE,
+      });
+      if (windowRequestSequence.current !== requestId) return sessionCards.length;
+      setSessionCards((currentCards) => [...currentCards, ...window.cards]);
+      setErrorMessage(null);
+      return sessionCards.length + window.cards.length;
+    } catch (error: unknown) {
+      if (windowRequestSequence.current === requestId) setErrorMessage(getErrorMessage(error));
+      return sessionCards.length;
+    } finally {
+      if (windowRequestSequence.current === requestId) {
+        loadingWindowRef.current = false;
+        setIsLoadingWindow(false);
+      }
+    }
+  }, [session, sessionCards.length]);
+
   useEffect(() => {
     void loadRecentPractice();
   }, [loadRecentPractice]);
 
   useEffect(() => {
-    void loadWorkload([...selectedDeckIds]);
-  }, [loadWorkload, selectedDeckIds]);
+    void loadWorkload([...selectedDeckIds], [...selectedTagIds]);
+  }, [loadWorkload, selectedDeckIds, selectedTagIds]);
+
+  useEffect(() => {
+    if (!session || sessionCards.length >= session.cardCount) return;
+    if (position + 5 >= sessionCards.length) void loadNextWindow();
+  }, [loadNextWindow, position, session, sessionCards.length]);
 
   useEffect(() => {
     if (!launchRequest || handledLaunchRequestRef.current === launchRequest.requestId) return;
     handledLaunchRequestRef.current = launchRequest.requestId;
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
+    windowRequestSequence.current += 1;
     setSession(null);
+    setSessionCards([]);
     setCompleted(false);
     setErrorMessage(null);
     if (launchRequest.cardIds.length > 0) {
       setSelectedDeckIds(new Set());
+      setSelectedTagIds(new Set());
       setTemporaryCardIds(launchRequest.cardIds);
       onLaunchConsumed();
       if (launchRequest.autoStart) {
@@ -230,18 +283,24 @@ export function PracticeScreen({
       return;
     }
     const eligible = launchRequest.deckIds.filter((deckId) =>
-      decks.some((deck) => deck.id === deckId && deck.cardCount > 0),
+      activeDecks.some((deck) => deck.id === deckId && deck.generatedCardCount > 0),
     );
     setTemporaryCardIds([]);
     setSelectedDeckIds(new Set(eligible));
+    setSelectedTagIds(new Set(launchRequest.tagIds));
     onLaunchConsumed();
     if (launchRequest.autoStart && eligible.length > 0) {
-      void beginSession(eligible, settings.practiceShuffle, "scheduled");
+      void beginSession(
+        eligible,
+        launchRequest.tagIds,
+        settings.practiceShuffle,
+        "scheduled",
+      );
     }
   }, [
+    activeDecks,
     beginCardSession,
     beginSession,
-    decks,
     launchRequest,
     onLaunchConsumed,
     settings.practiceShuffle,
@@ -290,19 +349,17 @@ export function PracticeScreen({
       return;
     }
 
-    const input: SubmitReviewInput =
-      pending?.input ??
-      {
-        sessionId: session.id,
-        cardId: current.card.id,
-        submissionId: createSubmissionId(),
-        outcome: outcomeForScore(score),
-        responseTimeMs: Math.max(
-          0,
-          Math.min(86_400_000, Date.now() - questionShownAtRef.current),
-        ),
-        scheduleRevision: previewSet.scheduleRevision,
-      };
+    const input: SubmitReviewInput = pending?.input ?? {
+      sessionId: session.id,
+      cardId: current.card.id,
+      submissionId: createSubmissionId(),
+      outcome: outcomeForScore(score),
+      responseTimeMs: Math.max(
+        0,
+        Math.min(86_400_000, Date.now() - questionShownAtRef.current),
+      ),
+      scheduleRevision: previewSet.scheduleRevision,
+    };
     if (!pending) {
       pendingReviewRef.current = {
         sessionId: session.id,
@@ -324,7 +381,7 @@ export function PracticeScreen({
         next[score] += 1;
         return next;
       });
-      advanceOrComplete(result.completed);
+      await advanceOrComplete(result.completed);
     } catch (error: unknown) {
       const code = getErrorCode(error);
       if (code === null) {
@@ -345,7 +402,10 @@ export function PracticeScreen({
     }
   }
 
-  async function manageCurrent(action: ScheduleAction, dueAt?: number): Promise<void> {
+  async function manageCurrent(
+    action: ScheduleAction,
+    rescheduleIntent?: RescheduleIntent,
+  ): Promise<void> {
     if (!session || !current || managingRef.current) return;
     if (pendingReviewRef.current) {
       setErrorMessage("Retry the pending rating before changing this card's schedule.");
@@ -367,7 +427,7 @@ export function PracticeScreen({
         mutationId: createMutationId(),
         cardIds: [current.card.id],
         action,
-        dueAt,
+        rescheduleIntent,
         sessionId: session.id,
       });
       if (action === "bury" || action === "suspend") {
@@ -375,7 +435,7 @@ export function PracticeScreen({
           "info",
           action === "bury" ? "Card buried until tomorrow." : "Card suspended.",
         );
-        advanceOrComplete(position + 1 >= session.cards.length);
+        await advanceOrComplete(position + 1 >= session.cardCount);
       } else {
         showToast(
           "success",
@@ -393,14 +453,19 @@ export function PracticeScreen({
     }
   }
 
-  function advanceOrComplete(backendCompleted: boolean): void {
+  async function advanceOrComplete(backendCompleted: boolean): Promise<void> {
     pendingReviewRef.current = null;
-    if (!session || backendCompleted || position + 1 >= session.cards.length) {
+    if (!session || backendCompleted || position + 1 >= session.cardCount) {
       setCompleted(true);
       void loadRecentPractice();
       return;
     }
-    setPosition((value) => value + 1);
+    const nextPosition = position + 1;
+    if (nextPosition >= sessionCards.length) {
+      const loadedCount = await loadNextWindow();
+      if (loadedCount <= nextPosition) return;
+    }
+    setPosition(nextPosition);
     setRevealed(false);
     setPreviewSet(null);
   }
@@ -428,7 +493,9 @@ export function PracticeScreen({
   function resetToSetup(): void {
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
+    windowRequestSequence.current += 1;
     setSession(null);
+    setSessionCards([]);
     setPosition(0);
     setRevealed(false);
     setPreviewSet(null);
@@ -436,13 +503,14 @@ export function PracticeScreen({
     setRatedCount(0);
     setConfidenceCounts([0, 0, 0, 0]);
     setTemporaryCardIds([]);
+    setSelectedTagIds(new Set());
     setErrorMessage(null);
     void loadRecentPractice();
-    void loadWorkload([...selectedDeckIds]);
+    void loadWorkload([...selectedDeckIds], []);
   }
 
   if (session && completed) {
-    const sessionDeckIds = [...new Set(session.cards.map((card) => card.card.deckId))];
+    const sessionDeckIds = [...new Set(sessionCards.map((card) => card.card.deckId))];
     return (
       <PracticeComplete
         ratedCount={ratedCount}
@@ -457,6 +525,7 @@ export function PracticeScreen({
           } else {
             void beginSession(
               [...selectedDeckIds],
+              [...selectedTagIds],
               shuffle,
               session.mode === "extra" ? "extra" : "scheduled",
             );
@@ -470,6 +539,7 @@ export function PracticeScreen({
     return (
       <ActivePractice
         session={session}
+        current={current}
         position={position}
         revealed={revealed}
         ratedCount={ratedCount}
@@ -477,11 +547,11 @@ export function PracticeScreen({
         isRevealing={isRevealing}
         isRating={isRating}
         isEnding={isEnding}
-        isManaging={isManaging}
+        isManaging={isManaging || isLoadingWindow}
         errorMessage={errorMessage}
         onReveal={() => void revealAnswer()}
         onScore={(score) => void submitScore(score)}
-        onScheduleAction={(action, dueAt) => void manageCurrent(action, dueAt)}
+        onScheduleAction={(action, intent) => void manageCurrent(action, intent)}
         onEnd={() => void endSession()}
         onLinkError={setErrorMessage}
       />
@@ -494,24 +564,33 @@ export function PracticeScreen({
         <div>
           <h1>Practice</h1>
           <p>
-            Scheduled sessions protect due reviews and daily workload limits. Extra study
-            is always an explicit choice.
+            Scheduled sessions protect ready reviews and daily workload limits. Extra study is
+            always an explicit choice.
           </p>
         </div>
       </header>
       {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+      {selectedTagIds.size > 0 ? (
+        <div className="inline-alert info-alert">
+          This launch is scoped to {selectedTagIds.size} selected tag
+          {selectedTagIds.size === 1 ? "" : "s"}.
+        </div>
+      ) : null}
       <PracticeSetup
-        decks={decks}
+        decks={activeDecks}
         selectedDeckIds={selectedDeckIds}
         shuffle={shuffle}
         isStarting={isStarting}
         isLoadingWorkload={isLoadingWorkload}
         workload={workload}
         recentDecks={recentDecks}
-        onSelectedDeckIdsChange={setSelectedDeckIds}
+        onSelectedDeckIdsChange={(next) => {
+          setSelectedDeckIds(next);
+          setSelectedTagIds(new Set());
+        }}
         onShuffleChange={setShuffle}
         onStart={(deckIds, requestedShuffle, mode) =>
-          void beginSession(deckIds, requestedShuffle, mode)
+          void beginSession(deckIds, [...selectedTagIds], requestedShuffle, mode)
         }
       />
     </div>
@@ -530,11 +609,19 @@ function operationIdForStart(
 
 function selectedStartKey(
   deckIds: string[],
+  tagIds: string[],
   shuffle: boolean,
   mode: "scheduled" | "extra",
 ): string {
   const canonicalDeckIds = [...new Set(deckIds)].sort();
-  return JSON.stringify({ kind: "selected", deckIds: canonicalDeckIds, shuffle, mode });
+  const canonicalTagIds = [...new Set(tagIds)].sort();
+  return JSON.stringify({
+    kind: "selected",
+    deckIds: canonicalDeckIds,
+    tagIds: canonicalTagIds,
+    shuffle,
+    mode,
+  });
 }
 
 function cardStartKey(cardIds: string[], shuffle: boolean): string {
