@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::{
     asset_lifecycle,
-    data_repairs::{apply_required_repairs, verify_repair_ledger},
+    data_repairs::{apply_required_repairs, verify_repair_ledger, RepairPhase},
     error::CommandError,
     paths::AppPaths,
 };
@@ -148,7 +148,8 @@ fn versioned_repairs_migrate_legacy_rows_before_the_schema_is_narrowed() {
         )
         .expect("legacy template rule should insert");
 
-    apply_required_repairs(&mut connection).expect("repairs should succeed");
+    apply_required_repairs(&mut connection, RepairPhase::BeforeMigration(13))
+        .expect("repairs should succeed");
     connection
         .execute_batch("PRAGMA foreign_keys = OFF;")
         .expect("foreign keys should disable for the physical rebuild");
@@ -252,7 +253,8 @@ fn versioned_repairs_migrate_legacy_rows_before_the_schema_is_narrowed() {
     assert!(invalid_rule.is_err());
 
     let before = connection.total_changes();
-    apply_required_repairs(&mut connection).expect("second repair pass should succeed");
+    apply_required_repairs(&mut connection, RepairPhase::BeforeMigration(13))
+        .expect("second repair pass should succeed");
     verify_repair_ledger(&connection).expect("ledger should still verify");
     assert_eq!(before, connection.total_changes());
     let repair_count: i64 = connection
