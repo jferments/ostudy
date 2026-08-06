@@ -96,6 +96,7 @@ export function PracticeScreen({
 
   const startingRef = useRef(false);
   const loadingWindowRef = useRef(false);
+  const workloadRequestSequence = useRef(0);
   const windowRequestSequence = useRef(0);
   const revealingRef = useRef(false);
   const ratingRef = useRef(false);
@@ -117,18 +118,27 @@ export function PracticeScreen({
   }, []);
 
   const loadWorkload = useCallback(async (deckIds: string[], tagIds: string[]): Promise<void> => {
+    const requestId = workloadRequestSequence.current + 1;
+    workloadRequestSequence.current = requestId;
     if (deckIds.length === 0) {
       setWorkload(null);
+      setIsLoadingWorkload(false);
       return;
     }
     setIsLoadingWorkload(true);
     try {
-      setWorkload(await getPracticeWorkload(deckIds, tagIds));
+      const loaded = await getPracticeWorkload(deckIds, tagIds);
+      if (workloadRequestSequence.current !== requestId) return;
+      setWorkload(loaded);
+      setErrorMessage(null);
     } catch (error: unknown) {
+      if (workloadRequestSequence.current !== requestId) return;
       setWorkload(null);
       setErrorMessage(getErrorMessage(error));
     } finally {
-      setIsLoadingWorkload(false);
+      if (workloadRequestSequence.current === requestId) {
+        setIsLoadingWorkload(false);
+      }
     }
   }, []);
 
