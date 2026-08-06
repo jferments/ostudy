@@ -260,10 +260,10 @@ describe("CardsScreen", () => {
     await waitFor(() => expect(ipc.listMatchingCards).toHaveBeenCalled());
   });
 
-  it("enables Add card only for one selected deck", async () => {
+  it("enables Add card only for one selected active deck", async () => {
     renderScreen();
     await screen.findByText("What reverses warfarin?");
-    fireEvent.click(screen.getByText("All decks", { selector: "summary" }));
+    fireEvent.click(screen.getByText("All active decks", { selector: "summary" }));
     fireEvent.click(screen.getByRole("checkbox", { name: /Pharmacology/u }));
     await waitFor(() =>
       expect(ipc.searchCards).toHaveBeenLastCalledWith(
