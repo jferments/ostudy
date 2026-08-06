@@ -9,9 +9,10 @@ vi.mock("../ipc", () => ({
   cancelAssetDraft: vi.fn(),
   createCardTemplate: vi.fn(),
   deleteCardTemplate: vi.fn(),
+  getCardTemplate: vi.fn(),
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
-  listCardTemplates: vi.fn(),
+  listCardTemplateSummaries: vi.fn(),
   syncAssetDraft: vi.fn(),
   updateCardTemplate: vi.fn(),
 }));
@@ -54,7 +55,7 @@ function savedTemplate(): ipc.CardTemplate {
 describe("TemplatesScreen managed assets", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.listCardTemplates).mockResolvedValue([]);
+    vi.mocked(ipc.listCardTemplateSummaries).mockResolvedValue([]);
     vi.mocked(ipc.beginAssetDraft).mockResolvedValue({
       id: draftId,
       purpose: "template",
@@ -66,9 +67,7 @@ describe("TemplatesScreen managed assets", () => {
   });
 
   it("opens one template draft and commits its identity with the template", async () => {
-    render(
-      <TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />,
-    );
+    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />);
 
     await screen.findByRole("heading", { name: "Create a reusable card template" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
@@ -93,9 +92,7 @@ describe("TemplatesScreen managed assets", () => {
   });
 
   it("cancels the uncommitted draft when the editor is canceled", async () => {
-    render(
-      <TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />,
-    );
+    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />);
 
     await screen.findByRole("heading", { name: "Create a reusable card template" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
