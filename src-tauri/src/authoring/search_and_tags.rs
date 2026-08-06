@@ -629,7 +629,11 @@ fn cleanup_unused_tags(connection: &Connection) -> Result<(), CommandError> {
             "DELETE FROM tags
              WHERE NOT EXISTS (
                  SELECT 1 FROM note_tags nt WHERE nt.tag_id = tags.id
-             )",
+             )
+               AND NOT EXISTS (
+                   SELECT 1 FROM review_event_tag_attributions rta
+                   WHERE rta.tag_id = tags.id
+               )",
             [],
         )
         .map_err(CommandError::database)?;
