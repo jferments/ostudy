@@ -462,7 +462,7 @@ mod tests {
     }
 
     #[test]
-    fn released_schema_fixture_upgrades_without_losing_decks() {
+    fn schema_four_upgrades_forward_without_rewriting_history_or_losing_cards() {
         let fixture = &RELEASED_SCHEMA_FIXTURES[0];
         assert_eq!(fixture.release, "0.1.0");
         assert_eq!(fixture.schema_version, 3);
