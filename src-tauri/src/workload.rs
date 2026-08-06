@@ -26,10 +26,6 @@ pub struct StudyScope<'a> {
 pub struct PlannedCard {
     pub deck_id: String,
     pub card_id: String,
-    pub note_id: String,
-    pub due_at: i64,
-    pub state: i64,
-    pub needs_more_practice: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -51,26 +47,6 @@ pub struct WorkloadOverviewDto {
     pub omitted_due_new: i64,
     pub needs_more_practice: i64,
     pub extra_available: i64,
-}
-
-/// Deck-only helper retained for native unit fixtures. Product commands use
-/// [`workload_overview_for_scope`] so one captured time context is shared with
-/// selection and response assembly.
-pub fn workload_overview(
-    connection: &Connection,
-    deck_ids: &[String],
-    settings: &AppSettingsDto,
-) -> Result<WorkloadOverviewDto, CommandError> {
-    let time = StudyTimeContext::capture()?;
-    workload_overview_for_scope(
-        connection,
-        StudyScope {
-            deck_ids,
-            tag_ids: &[],
-        },
-        settings,
-        &time,
-    )
 }
 
 pub fn workload_overview_for_scope(
@@ -153,23 +129,6 @@ pub fn workload_overview_for_scope(
     })
 }
 
-pub fn planned_scheduled_cards(
-    connection: &Connection,
-    deck_ids: &[String],
-    settings: &AppSettingsDto,
-) -> Result<(Vec<PlannedCard>, WorkloadOverviewDto), CommandError> {
-    let time = StudyTimeContext::capture()?;
-    planned_scheduled_cards_for_scope(
-        connection,
-        StudyScope {
-            deck_ids,
-            tag_ids: &[],
-        },
-        settings,
-        &time,
-    )
-}
-
 pub fn planned_scheduled_cards_for_scope(
     connection: &Connection,
     scope: StudyScope<'_>,
@@ -196,21 +155,6 @@ pub fn planned_scheduled_cards_for_scope(
         )?);
     }
     Ok((selected, overview))
-}
-
-pub fn planned_extra_cards(
-    connection: &Connection,
-    deck_ids: &[String],
-) -> Result<Vec<PlannedCard>, CommandError> {
-    let time = StudyTimeContext::capture()?;
-    planned_extra_cards_for_scope(
-        connection,
-        StudyScope {
-            deck_ids,
-            tag_ids: &[],
-        },
-        &time,
-    )
 }
 
 pub fn planned_extra_cards_for_scope(
@@ -249,9 +193,7 @@ fn load_ranked_cards(
              SELECT
                  c.deck_id,
                  c.id AS card_id,
-                 c.note_id,
                  s.due_at,
-                 s.state,
                  {signal_value} AS needs_more_practice,
                  date(s.due_at / 1000, 'unixepoch', 'localtime') AS due_local_date
              FROM cards c
@@ -272,7 +214,7 @@ fn load_ranked_cards(
                     ) AS deck_rank
              FROM eligible
          )
-         SELECT deck_id, card_id, note_id, due_at, state, needs_more_practice
+         SELECT deck_id, card_id
          FROM ranked
          ORDER BY due_local_date ASC,
                   deck_rank ASC,
@@ -292,10 +234,6 @@ fn load_ranked_cards(
             Ok(PlannedCard {
                 deck_id: row.get(0)?,
                 card_id: row.get(1)?,
-                note_id: row.get(2)?,
-                due_at: row.get(3)?,
-                state: row.get(4)?,
-                needs_more_practice: row.get::<_, i64>(5)? != 0,
             })
         })
         .map_err(CommandError::database)?
