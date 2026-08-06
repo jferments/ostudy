@@ -192,7 +192,7 @@ fn repair_review_attribution(transaction: &Transaction<'_>) -> Result<i64, Strin
                  ORDER BY r.reviewed_at, r.created_at, r.id",
             )
             .map_err(|error| format!("Could not prepare review attribution repair: {error}"))?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok(LegacyPresentationRow {
                     review_event_id: Some(row.get(0)?),
@@ -215,7 +215,8 @@ fn repair_review_attribution(transaction: &Transaction<'_>) -> Result<i64, Strin
             })
             .map_err(|error| format!("Could not read reviews for attribution repair: {error}"))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Could not collect attribution repair rows: {error}"))?
+            .map_err(|error| format!("Could not collect attribution repair rows: {error}"))?;
+        rows
     };
 
     let sessions = {
@@ -237,7 +238,7 @@ fn repair_review_attribution(transaction: &Transaction<'_>) -> Result<i64, Strin
                  ORDER BY psc.session_id, psc.position",
             )
             .map_err(|error| format!("Could not prepare session attribution repair: {error}"))?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok(LegacyPresentationRow {
                     review_event_id: row.get(0)?,
@@ -260,7 +261,8 @@ fn repair_review_attribution(transaction: &Transaction<'_>) -> Result<i64, Strin
             })
             .map_err(|error| format!("Could not read sessions for attribution repair: {error}"))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Could not collect session repair rows: {error}"))?
+            .map_err(|error| format!("Could not collect session repair rows: {error}"))?;
+        rows
     };
 
     let mut changed = 0_i64;
@@ -318,7 +320,8 @@ fn insert_legacy_session_snapshot(
             ],
         )
         .map_err(|error| format!("Could not insert a repaired session snapshot: {error}"))?;
-    copy_current_tags_to_session(transaction, session_id, row)?
+    copy_current_tags_to_session(transaction, session_id, row)?;
+    Ok(())
 }
 
 fn insert_legacy_review_attribution(
