@@ -266,6 +266,7 @@ describe("PracticeScreen", () => {
       launchRequest: {
         requestId: 8,
         deckIds: [],
+        tagIds: [],
         cardIds: [card.id],
         autoStart: true,
       },
