@@ -11,7 +11,6 @@
 ALTER TABLE cards ADD COLUMN archive_suspended_at INTEGER;
 ALTER TABLE schedule_action_operations ADD COLUMN reschedule_intent_json TEXT;
 ALTER TABLE practice_sessions ADD COLUMN selected_tag_ids_json TEXT NOT NULL DEFAULT '[]';
-ALTER TABLE deletion_operations ADD COLUMN purged_at INTEGER;
 
 CREATE TABLE practice_session_card_snapshots (
     session_id                TEXT NOT NULL
@@ -101,6 +100,3 @@ CREATE INDEX cards_studyability_idx
     WHERE deleted_at IS NULL;
 CREATE INDEX review_events_card_reviewed_created_idx
     ON review_events(card_id, reviewed_at DESC, created_at DESC, id DESC);
-CREATE INDEX deletion_operations_purge_idx
-    ON deletion_operations(finalized_at, purged_at, id)
-    WHERE finalized_at IS NOT NULL AND purged_at IS NULL;
