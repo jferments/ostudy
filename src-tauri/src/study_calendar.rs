@@ -7,14 +7,15 @@
 
 use std::{env, path::Path};
 
-use chrono::{
-    DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, Offset, TimeZone, Utc,
-};
+use chrono::{DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, Offset, TimeZone};
+#[cfg(test)]
+use chrono::Utc;
 
 use crate::{error::CommandError, util::unix_time_millis};
 
 const SECONDS_PER_LOCAL_DATE: i64 = 86_400;
 const MAX_CALENDAR_DAY_SPAN: i64 = 3_660;
+#[cfg(test)]
 const MILLIS_PER_MINUTE: i64 = 60_000;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -376,11 +377,8 @@ mod tests {
     use super::*;
 
     fn pacific_context(value: &str) -> StudyTimeContext {
-        StudyTimeContext::from_zone(
-            test_timestamp(value),
-            StudyZoneResolver::Pacific2026,
-        )
-        .expect("synthetic timezone should resolve")
+        StudyTimeContext::from_zone(test_timestamp(value), StudyZoneResolver::Pacific2026)
+            .expect("synthetic timezone should resolve")
     }
 
     #[test]
