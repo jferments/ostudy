@@ -120,7 +120,7 @@ export function PracticeScreen({
   const loadWorkload = useCallback(async (deckIds: string[], tagIds: string[]): Promise<void> => {
     const requestId = workloadRequestSequence.current + 1;
     workloadRequestSequence.current = requestId;
-    if (deckIds.length === 0) {
+    if (deckIds.length === 0 && tagIds.length === 0) {
       setWorkload(null);
       setIsLoadingWorkload(false);
       return;
@@ -149,7 +149,7 @@ export function PracticeScreen({
       requestedShuffle: boolean,
       mode: "scheduled" | "extra",
     ): Promise<void> => {
-      if (startingRef.current || deckIds.length === 0) return;
+      if (startingRef.current || (deckIds.length === 0 && tagIds.length === 0)) return;
       const key = selectedStartKey(deckIds, tagIds, requestedShuffle, mode);
       const operationId = operationIdForStart(pendingStartRef, key);
       startingRef.current = true;
@@ -299,7 +299,7 @@ export function PracticeScreen({
     setSelectedDeckIds(new Set(eligible));
     setSelectedTagIds(new Set(launchRequest.tagIds));
     onLaunchConsumed();
-    if (launchRequest.autoStart && eligible.length > 0) {
+    if (launchRequest.autoStart && (eligible.length > 0 || launchRequest.tagIds.length > 0)) {
       void beginSession(
         eligible,
         launchRequest.tagIds,
