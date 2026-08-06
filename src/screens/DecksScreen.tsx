@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
@@ -7,36 +7,40 @@ import type { ShowToast } from "../components/Toast";
 import { importGeneratedFlashcards } from "../generatedImport";
 import {
   createDeck,
+  createOperationId,
   deleteCard,
   deleteDeck,
-  createOperationId,
   exportDeck,
   getDeck,
   getErrorCode,
   getErrorMessage,
+  getOrganizedCard,
   importDeck,
-  listCards,
+  listDeckCardSummaries,
+  setDeckArchived,
   undoDeletion,
   updateDeck,
   type AppSettings,
   type CardTemplate,
   type CreateDeckInput,
-  type Deck,
-  type Flashcard,
+  type DeckCardSummary,
+  type DeckSummary,
   type GenerateTemplateCardsResult,
+  type OrganizedCard,
 } from "../ipc";
 import { CardEditorScreen } from "./CardEditorScreen";
 
 interface DecksScreenProps {
-  decks: Deck[];
+  decks: DeckSummary[];
   settings: AppSettings;
-  refreshDecks: () => Promise<Deck[]>;
+  refreshDecks: () => Promise<DeckSummary[]>;
   onPracticeDeck: (deckId: string) => void;
   onDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
 }
 
 type DeckView = "library" | "detail" | "editor";
+const DECK_CARD_PAGE_SIZE = 50;
 
 export function DecksScreen({
   decks,
@@ -47,17 +51,22 @@ export function DecksScreen({
   showToast,
 }: DecksScreenProps) {
   const [view, setView] = useState<DeckView>("library");
-  const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null);
-  const [cards, setCards] = useState<Flashcard[]>([]);
-  const [editingCard, setEditingCard] = useState<Flashcard | null>(null);
+  const [selectedDeck, setSelectedDeck] = useState<DeckSummary | null>(null);
+  const [cards, setCards] = useState<DeckCardSummary[]>([]);
+  const [cardTotalCount, setCardTotalCount] = useState(0);
+  const [hasMoreCards, setHasMoreCards] = useState(false);
+  const [editingCard, setEditingCard] = useState<OrganizedCard | null>(null);
   const [deckDialog, setDeckDialog] = useState<"create" | "edit" | null>(null);
   const [isLoadingDeck, setIsLoadingDeck] = useState(false);
+  const [isLoadingCards, setIsLoadingCards] = useState(false);
   const loadingDeckRef = useRef(false);
+  const cardRequestSequence = useRef(0);
   const [isTransferring, setIsTransferring] = useState(false);
   const transferringRef = useRef(false);
   const pendingImportRef = useRef<{ sourcePath: string; operationId: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [cardSort, setCardSort] = useState<"updated_desc" | "question_asc">("updated_desc");
 
   const selectedDeckId = selectedDeck?.id ?? null;
 
@@ -70,8 +79,10 @@ export function DecksScreen({
       if (
         current.name === updated.name &&
         current.description === updated.description &&
-        current.cardCount === updated.cardCount &&
-        current.dueCount === updated.dueCount &&
+        current.sourceNoteCount === updated.sourceNoteCount &&
+        current.generatedCardCount === updated.generatedCardCount &&
+        current.studyableDueCount === updated.studyableDueCount &&
+        current.archivedAt === updated.archivedAt &&
         current.updatedAt === updated.updatedAt &&
         current.revision === updated.revision
       ) {
@@ -81,13 +92,39 @@ export function DecksScreen({
     });
   }, [decks, selectedDeckId]);
 
-  const visibleCards = useMemo(() => {
-    const normalized = search.trim().toLocaleLowerCase();
-    if (normalized === "") return cards;
-    return cards.filter((card) =>
-      `${card.frontText} ${card.backText}`.toLocaleLowerCase().includes(normalized),
-    );
-  }, [cards, search]);
+  useEffect(() => {
+    if (view !== "detail" || !selectedDeckId) return;
+    const requestId = cardRequestSequence.current + 1;
+    cardRequestSequence.current = requestId;
+    const timer = window.setTimeout(() => {
+      setIsLoadingCards(true);
+      void listDeckCardSummaries({
+        deckId: selectedDeckId,
+        query: search,
+        sort: cardSort,
+        limit: DECK_CARD_PAGE_SIZE,
+        offset: 0,
+      })
+        .then((page) => {
+          if (cardRequestSequence.current !== requestId) return;
+          setCards(page.cards);
+          setCardTotalCount(page.totalCount);
+          setHasMoreCards(page.hasMore);
+          setErrorMessage(null);
+        })
+        .catch((error: unknown) => {
+          if (cardRequestSequence.current !== requestId) return;
+          setCards([]);
+          setCardTotalCount(0);
+          setHasMoreCards(false);
+          setErrorMessage(getErrorMessage(error));
+        })
+        .finally(() => {
+          if (cardRequestSequence.current === requestId) setIsLoadingCards(false);
+        });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [cardSort, search, selectedDeckId, view]);
 
   async function openDeck(deckId: string): Promise<void> {
     if (loadingDeckRef.current) return;
@@ -95,11 +132,14 @@ export function DecksScreen({
     setIsLoadingDeck(true);
     setErrorMessage(null);
     try {
-      const [deck, loadedCards] = await Promise.all([getDeck(deckId), listCards(deckId)]);
+      const deck = await getDeck(deckId);
       setSelectedDeck(deck);
-      setCards(loadedCards);
+      setCards([]);
+      setCardTotalCount(0);
+      setHasMoreCards(false);
       setEditingCard(null);
       setSearch("");
+      setCardSort("updated_desc");
       setView("detail");
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -122,9 +162,22 @@ export function DecksScreen({
 
   async function refreshSelectedDeckAfterMutation(deckId: string): Promise<void> {
     try {
-      const [deck, loadedCards] = await Promise.all([getDeck(deckId), listCards(deckId)]);
+      const deck = await getDeck(deckId);
       setSelectedDeck(deck);
-      setCards(loadedCards);
+      const requestId = cardRequestSequence.current + 1;
+      cardRequestSequence.current = requestId;
+      const page = await listDeckCardSummaries({
+        deckId,
+        query: search,
+        sort: cardSort,
+        limit: DECK_CARD_PAGE_SIZE,
+        offset: 0,
+      });
+      if (cardRequestSequence.current === requestId) {
+        setCards(page.cards);
+        setCardTotalCount(page.totalCount);
+        setHasMoreCards(page.hasMore);
+      }
     } catch (error: unknown) {
       showToast(
         "info",
@@ -132,6 +185,40 @@ export function DecksScreen({
       );
     }
     await refreshDeckListAfterMutation();
+  }
+
+  async function loadMoreCards(): Promise<void> {
+    if (!selectedDeck || isLoadingCards || !hasMoreCards) return;
+    const requestId = cardRequestSequence.current + 1;
+    cardRequestSequence.current = requestId;
+    setIsLoadingCards(true);
+    try {
+      const page = await listDeckCardSummaries({
+        deckId: selectedDeck.id,
+        query: search,
+        sort: cardSort,
+        limit: DECK_CARD_PAGE_SIZE,
+        offset: cards.length,
+      });
+      if (cardRequestSequence.current !== requestId) return;
+      setCards((current) => [...current, ...page.cards]);
+      setCardTotalCount(page.totalCount);
+      setHasMoreCards(page.hasMore);
+    } catch (error: unknown) {
+      if (cardRequestSequence.current === requestId) showToast("error", getErrorMessage(error));
+    } finally {
+      if (cardRequestSequence.current === requestId) setIsLoadingCards(false);
+    }
+  }
+
+  async function openCardEditor(summary: DeckCardSummary): Promise<void> {
+    try {
+      const card = await getOrganizedCard(summary.noteId);
+      setEditingCard(card);
+      setView("editor");
+    } catch (error: unknown) {
+      showToast("error", getErrorMessage(error));
+    }
   }
 
   async function handleDeckSaved(input: CreateDeckInput): Promise<void> {
@@ -152,6 +239,8 @@ export function DecksScreen({
     const created = await createDeck(input);
     setSelectedDeck(created);
     setCards([]);
+    setCardTotalCount(0);
+    setHasMoreCards(false);
     setEditingCard(null);
     setSearch("");
     setView("detail");
@@ -160,13 +249,41 @@ export function DecksScreen({
     void refreshDeckListAfterMutation();
   }
 
-  async function handleDeleteDeck(deck: Deck): Promise<void> {
+  async function handleArchiveDeck(deck: DeckSummary, archived: boolean): Promise<void> {
+    try {
+      const updated = await setDeckArchived({
+        deckId: deck.id,
+        revision: deck.revision,
+        archived,
+      });
+      showToast(
+        "success",
+        archived
+          ? `Archived “${deck.name}”; all generated cards are suspended.`
+          : `Restored “${deck.name}” to the active library.`,
+      );
+      if (selectedDeck?.id === deck.id) {
+        setSelectedDeck(updated);
+        if (archived) {
+          setCards([]);
+          setCardTotalCount(0);
+          setHasMoreCards(false);
+          setView("library");
+        }
+      }
+      await refreshDeckListAfterMutation();
+    } catch (error: unknown) {
+      showToast("error", getErrorMessage(error));
+    }
+  }
+
+  async function handleDeleteDeck(deck: DeckSummary): Promise<void> {
     if (
       settings.confirmDeletions &&
       !window.confirm(
-        `Delete “${deck.name}” and its ${deck.cardCount} ${
-          deck.cardCount === 1 ? "card" : "cards"
-        }?`,
+        `Delete “${deck.name}” and its ${deck.sourceNoteCount} ${
+          deck.sourceNoteCount === 1 ? "source note" : "source notes"
+        }? Its review history will also be permanently removed after the Undo period.`,
       )
     ) {
       return;
@@ -198,12 +315,14 @@ export function DecksScreen({
     }
   }
 
-  async function handleDeleteCard(card: Flashcard): Promise<void> {
+  async function handleDeleteCard(card: DeckCardSummary): Promise<void> {
     if (
       settings.confirmDeletions &&
       !window.confirm(
-        `Delete this flashcard and every generated direction?\n\n${
-          card.frontText || "Image card"
+        `Delete this source note and its ${card.generatedCardCount} generated ${
+          card.generatedCardCount === 1 ? "card" : "cards"
+        }? Its review history will also be removed after the Undo period.\n\n${
+          card.questionExcerpt || "Image card"
         }`,
       )
     ) {
@@ -232,7 +351,7 @@ export function DecksScreen({
     }
   }
 
-  async function handleExport(deck: Deck): Promise<void> {
+  async function handleExport(deck: DeckSummary): Promise<void> {
     if (transferringRef.current) return;
     transferringRef.current = true;
     setIsTransferring(true);
@@ -246,9 +365,7 @@ export function DecksScreen({
       const result = await exportDeck(deck.id, destination);
       showToast(
         "success",
-        `Exported ${result.cardCount} ${
-          result.cardCount === 1 ? "card" : "cards"
-        }.`,
+        `Exported ${result.cardCount} ${result.cardCount === 1 ? "card" : "cards"}.`,
       );
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
@@ -261,10 +378,12 @@ export function DecksScreen({
   async function showImportedDeck(
     deckId: string,
     successMessage: string,
-    committedDeck?: Deck,
+    committedDeck?: DeckSummary,
   ): Promise<void> {
     showToast("success", successMessage);
     setCards([]);
+    setCardTotalCount(0);
+    setHasMoreCards(false);
     setEditingCard(null);
     setSearch("");
     if (committedDeck) {
@@ -273,12 +392,8 @@ export function DecksScreen({
     }
 
     try {
-      const [deck, loadedCards] = await Promise.all([
-        committedDeck ? Promise.resolve(committedDeck) : getDeck(deckId),
-        listCards(deckId),
-      ]);
+      const deck = committedDeck ?? (await getDeck(deckId));
       setSelectedDeck(deck);
-      setCards(loadedCards);
       setView("detail");
     } catch (error: unknown) {
       if (!committedDeck) {
@@ -473,51 +588,78 @@ export function DecksScreen({
             </section>
           ) : (
             <section className="deck-grid" aria-label="Deck library">
-              {decks.map((deck) => (
-                <article key={deck.id} className="deck-card">
-                  <button
-                    type="button"
-                    className="deck-card-main"
-                    onClick={() => void openDeck(deck.id)}
-                  >
-                    <span className="deck-card-mark" aria-hidden="true">
-                      ▤
-                    </span>
-                    <span className="deck-card-copy">
-                      <strong>{deck.name}</strong>
-                      {deck.description ? <span>{deck.description}</span> : null}
-                    </span>
-                    <span className="deck-card-count">
-                      <strong>{deck.cardCount}</strong>
-                      <small>{deck.cardCount === 1 ? "card" : "cards"}</small>
-                    </span>
-                  </button>
-                  <div className="deck-card-actions">
+              {decks.map((deck) => {
+                const archived = deck.archivedAt !== null;
+                return (
+                  <article key={deck.id} className={archived ? "deck-card archived" : "deck-card"}>
                     <button
                       type="button"
-                      onClick={() => onPracticeDeck(deck.id)}
-                      disabled={deck.cardCount === 0}
-                      title={practiceTitle(deck)}
+                      className="deck-card-main"
+                      onClick={() => void openDeck(deck.id)}
+                      disabled={archived}
                     >
-                      Practice
+                      <span className="deck-card-mark" aria-hidden="true">
+                        ▤
+                      </span>
+                      <span className="deck-card-copy">
+                        <strong>{deck.name}</strong>
+                        {archived ? <span>Archived · cards suspended</span> : null}
+                        {!archived && deck.description ? <span>{deck.description}</span> : null}
+                      </span>
+                      <span className="deck-card-count">
+                        <strong>{deck.generatedCardCount}</strong>
+                        <small>
+                          {deck.generatedCardCount === 1 ? "generated card" : "generated cards"}
+                        </small>
+                        {!archived && deck.studyableDueCount > 0 ? (
+                          <small>{deck.studyableDueCount} ready now</small>
+                        ) : null}
+                      </span>
                     </button>
-                    <button
-                      type="button"
-                      disabled={isTransferring}
-                      onClick={() => void handleExport(deck)}
-                    >
-                      Export
-                    </button>
-                    <button
-                      type="button"
-                      className="danger-text"
-                      onClick={() => void handleDeleteDeck(deck)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </article>
-              ))}
+                    <div className="deck-card-actions">
+                      {!archived ? (
+                        <button
+                          type="button"
+                          onClick={() => onPracticeDeck(deck.id)}
+                          disabled={deck.generatedCardCount === 0}
+                          title={practiceTitle(deck)}
+                        >
+                          Practice
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void handleArchiveDeck(deck, false)}
+                        >
+                          Unarchive
+                        </button>
+                      )}
+                      {!archived ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleArchiveDeck(deck, true)}
+                        >
+                          Archive
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={isTransferring}
+                        onClick={() => void handleExport(deck)}
+                      >
+                        Export
+                      </button>
+                      <button
+                        type="button"
+                        className="danger-text"
+                        onClick={() => void handleDeleteDeck(deck)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
             </section>
           )}
         </>
@@ -527,11 +669,7 @@ export function DecksScreen({
         <>
           <header className="screen-header deck-detail-header">
             <div>
-              <button
-                type="button"
-                className="back-button"
-                onClick={() => setView("library")}
-              >
+              <button type="button" className="back-button" onClick={() => setView("library")}>
                 ← All decks
               </button>
               <div className="deck-title-row">
@@ -555,7 +693,7 @@ export function DecksScreen({
                 type="button"
                 className="secondary-button"
                 onClick={() => onPracticeDeck(selectedDeck.id)}
-                disabled={selectedDeck.cardCount === 0}
+                disabled={selectedDeck.generatedCardCount === 0}
                 title={practiceTitle(selectedDeck)}
               >
                 Practice
@@ -570,6 +708,13 @@ export function DecksScreen({
               </button>
               <button
                 type="button"
+                className="secondary-button"
+                onClick={() => void handleArchiveDeck(selectedDeck, true)}
+              >
+                Archive
+              </button>
+              <button
+                type="button"
                 className="primary-button"
                 onClick={() => {
                   setEditingCard(null);
@@ -581,109 +726,121 @@ export function DecksScreen({
             </div>
           </header>
 
-          {cards.length === 0 ? (
-            <section className="compact-empty-state large-empty-state">
-              <div className="empty-icon" aria-hidden="true">
-                +
-              </div>
-              <h2>This deck is empty</h2>
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => {
-                  setEditingCard(null);
-                  setView("editor");
-                }}
-              >
-                Add the first flashcard
-              </button>
-            </section>
-          ) : (
-            <section className="card-browser-panel">
-              <div className="card-browser-toolbar">
-                <label className="search-field">
-                  <span>Search this deck</span>
-                  <input
-                    type="search"
-                    value={search}
-                    onChange={(event) => setSearch(event.currentTarget.value)}
-                    placeholder="Search questions and answers"
-                  />
-                </label>
-                <span className="card-count-summary">
-                  {visibleCards.length === cards.length
-                    ? `${cards.length} ${
-                        cards.length === 1 ? "source note" : "source notes"
-                      }`
-                    : `${visibleCards.length} of ${cards.length} source notes`}
-                  {` · ${selectedDeck.cardCount} generated ${
-                    selectedDeck.cardCount === 1 ? "card" : "cards"
-                  }`}
-                  {selectedDeck.dueCount > 0 ? ` · ${selectedDeck.dueCount} due` : ""}
-                </span>
-              </div>
+          <section className="card-browser-panel">
+            <div className="card-browser-toolbar">
+              <label className="search-field">
+                <span>Search this deck</span>
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.currentTarget.value)}
+                  placeholder="Search questions and answers"
+                />
+              </label>
+              <label>
+                <span>Sort</span>
+                <select
+                  value={cardSort}
+                  onChange={(event) =>
+                    setCardSort(event.currentTarget.value as "updated_desc" | "question_asc")
+                  }
+                >
+                  <option value="updated_desc">Recently updated</option>
+                  <option value="question_asc">Question A–Z</option>
+                </select>
+              </label>
+              <span className="card-count-summary">
+                {cardTotalCount} {cardTotalCount === 1 ? "source note" : "source notes"}
+                {` · ${selectedDeck.generatedCardCount} generated ${
+                  selectedDeck.generatedCardCount === 1 ? "card" : "cards"
+                }`}
+                {selectedDeck.studyableDueCount > 0
+                  ? ` · ${selectedDeck.studyableDueCount} ready now`
+                  : ""}
+              </span>
+            </div>
 
-              {visibleCards.length === 0 ? (
-                <div className="compact-empty-state">
-                  <h3>No matching flashcards</h3>
-                  <p>Try a different word or phrase.</p>
+            {isLoadingCards && cards.length === 0 ? (
+              <div className="inline-progress">Loading cards…</div>
+            ) : null}
+            {!isLoadingCards && selectedDeck.sourceNoteCount === 0 ? (
+              <section className="compact-empty-state large-empty-state">
+                <div className="empty-icon" aria-hidden="true">
+                  +
                 </div>
-              ) : (
-                <div className="card-list">
-                  {visibleCards.map((card, index) => (
-                    <article key={card.noteId} className="card-row">
+                <h2>This deck is empty</h2>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => {
+                    setEditingCard(null);
+                    setView("editor");
+                  }}
+                >
+                  Add the first flashcard
+                </button>
+              </section>
+            ) : null}
+            {!isLoadingCards && selectedDeck.sourceNoteCount > 0 && cards.length === 0 ? (
+              <div className="compact-empty-state">
+                <h3>No matching flashcards</h3>
+                <p>Try a different word or phrase.</p>
+              </div>
+            ) : null}
+            {cards.length > 0 ? (
+              <div className="card-list">
+                {cards.map((card, index) => (
+                  <article key={card.noteId} className="card-row">
+                    <button
+                      type="button"
+                      className="card-row-main"
+                      onClick={() => void openCardEditor(card)}
+                    >
+                      <span className="card-number">{index + 1}</span>
+                      <span className="card-row-side">
+                        <small>Question / source</small>
+                        <strong>{summarize(card.questionExcerpt, card.imageCount > 0)}</strong>
+                      </span>
+                      <span className="card-row-divider" aria-hidden="true">
+                        →
+                      </span>
+                      <span className="card-row-side">
+                        <small>Answer</small>
+                        <strong>{summarize(card.answerExcerpt, card.imageCount > 0)}</strong>
+                      </span>
+                    </button>
+                    <div className="card-row-actions">
+                      <span>
+                        {card.generatedCardCount} generated · {card.imageCount > 0
+                          ? `${card.imageCount} image${card.imageCount === 1 ? "" : "s"}`
+                          : "Text"}
+                      </span>
+                      <button type="button" onClick={() => void openCardEditor(card)}>
+                        Edit
+                      </button>
                       <button
                         type="button"
-                        className="card-row-main"
-                        onClick={() => {
-                          setEditingCard(card);
-                          setView("editor");
-                        }}
+                        className="danger-text"
+                        onClick={() => void handleDeleteCard(card)}
                       >
-                        <span className="card-number">{index + 1}</span>
-                        <span className="card-row-side">
-                          <small>Question / source</small>
-                          <strong>{summarize(card.frontText, card.assets.length > 0)}</strong>
-                        </span>
-                        <span className="card-row-divider" aria-hidden="true">
-                          →
-                        </span>
-                        <span className="card-row-side">
-                          <small>Answer</small>
-                          <strong>{summarize(card.backText, card.assets.length > 0)}</strong>
-                        </span>
+                        Delete
                       </button>
-                      <div className="card-row-actions">
-                        <span>
-                          {card.assets.length > 0
-                            ? `${card.assets.length} image${
-                                card.assets.length === 1 ? "" : "s"
-                              }`
-                            : "Text"}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingCard(card);
-                            setView("editor");
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="danger-text"
-                          onClick={() => void handleDeleteCard(card)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
+                    </div>
+                  </article>
+                ))}
+                {hasMoreCards ? (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={isLoadingCards}
+                    onClick={() => void loadMoreCards()}
+                  >
+                    {isLoadingCards ? "Loading…" : "Load more"}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
         </>
       ) : null}
 
@@ -701,7 +858,7 @@ export function DecksScreen({
 
 interface DeckFormModalProps {
   mode: "create" | "edit";
-  deck: Deck | null;
+  deck: DeckSummary | null;
   onClose: () => void;
   onSave: (input: CreateDeckInput) => Promise<void>;
 }
@@ -790,12 +947,13 @@ function DeckFormModal({ mode, deck, onClose, onSave }: DeckFormModalProps) {
   );
 }
 
-function practiceTitle(deck: Deck): string {
-  if (deck.cardCount === 0) return "Add a flashcard before practicing this deck";
-  if (deck.dueCount === 0) return "Practice all cards; none are currently due";
-  return `${deck.dueCount} ${
-    deck.dueCount === 1 ? "card is" : "cards are"
-  } due`;
+function practiceTitle(deck: DeckSummary): string {
+  if (deck.archivedAt !== null) return "Unarchive this deck before practicing";
+  if (deck.generatedCardCount === 0) return "Add a flashcard before practicing this deck";
+  if (deck.studyableDueCount === 0) return "Start an extra session; no cards are ready now";
+  return `${deck.studyableDueCount} ${
+    deck.studyableDueCount === 1 ? "card is" : "cards are"
+  } ready now`;
 }
 
 function safeFilename(name: string): string {
