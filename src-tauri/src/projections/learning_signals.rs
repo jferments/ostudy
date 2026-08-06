@@ -51,7 +51,7 @@ pub const fn value_sql() -> &'static str {
 }
 
 #[cfg(test)]
-pub fn needs_more_practice_from_recent(recent_descending: &[i64]) -> bool {
+fn needs_more_practice_from_recent(recent_descending: &[i64]) -> bool {
     if recent_descending.len() >= 2 && recent_descending[0] == 1 && recent_descending[1] == 1 {
         return false;
     }
@@ -64,4 +64,21 @@ pub fn needs_more_practice_from_recent(recent_descending: &[i64]) -> bool {
         .filter(|value| **value == 0)
         .count()
         >= 3
+}
+
+#[cfg(test)]
+mod tests {
+    use super::needs_more_practice_from_recent;
+
+    #[test]
+    fn repeated_wrong_answers_require_more_practice() {
+        assert!(needs_more_practice_from_recent(&[0, 0]));
+        assert!(needs_more_practice_from_recent(&[0, 1, 0, 1, 0]));
+    }
+
+    #[test]
+    fn two_remembered_answers_clear_the_signal() {
+        assert!(!needs_more_practice_from_recent(&[1, 1, 0, 0]));
+        assert!(!needs_more_practice_from_recent(&[1, 0]));
+    }
 }
