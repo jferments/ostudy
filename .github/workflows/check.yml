@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -47,31 +47,6 @@ jobs:
         run: |
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.cache/ostudy/cargo-target"
-
-      - name: Apply generated import conformance wiring
-        if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
-        env:
-          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: |
-          git fetch origin "$HEAD_BRANCH"
-          git checkout -B "$HEAD_BRANCH" "origin/$HEAD_BRANCH"
-          python3 ./scripts/apply-stage312-import-conformance.py
-          python3 - <<'PY'
-          from pathlib import Path
-          workflow = Path('.github/workflows/check.yml')
-          source = workflow.read_text(encoding='utf-8')
-          source = source.replace('permissions:\n  contents: write\n', 'permissions:\n  contents: read\n', 1)
-          start = source.index('      - name: Apply generated import conformance wiring\n')
-          end = source.index('      - name: Select qualification gate\n', start)
-          workflow.write_text(source[:start] + source[end:], encoding='utf-8')
-          Path('scripts/apply-stage312-import-conformance.py').unlink()
-          PY
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "test: wire generated import conformance corpus"
-          git push origin "HEAD:$HEAD_BRANCH"
 
       - name: Select qualification gate
         id: gate

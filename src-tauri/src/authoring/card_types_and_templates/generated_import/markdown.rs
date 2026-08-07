@@ -9,25 +9,6 @@ pub(super) fn markdown_document(source: &str, path: &str) -> Result<Value, Comma
             format!("{path}: add text to this card side."),
         ));
     }
-    if source.contains("![") {
-        return Err(unsupported_markdown(
-            path,
-            "images are not supported in version 1",
-        ));
-    }
-    if contains_raw_html(source) {
-        return Err(unsupported_markdown(path, "raw HTML is not supported"));
-    }
-    if source.lines().any(|line| {
-        let trimmed = line.trim();
-        trimmed.starts_with('|') && trimmed.ends_with('|')
-    }) {
-        return Err(unsupported_markdown(
-            path,
-            "Markdown tables are not supported in version 1",
-        ));
-    }
-
     let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
     let lines = normalized.lines().collect::<Vec<_>>();
     let mut nodes = Vec::new();
@@ -59,6 +40,12 @@ pub(super) fn markdown_document(source: &str, path: &str) -> Result<Value, Comma
                 "content": [{"type": "text", "text": code.join("\n")}]
             }));
             continue;
+        }
+        if is_markdown_table_line(line) {
+            return Err(unsupported_markdown(
+                path,
+                "Markdown tables are not supported in version 1",
+            ));
         }
         if let Some(level) = heading_level(line) {
             let text = line.trim_start()[level + 1..].trim();
@@ -180,6 +167,7 @@ fn is_block_start(line: &str) -> bool {
 }
 
 fn inline_nodes(text: &str, path: &str) -> Result<Vec<Value>, CommandError> {
+    validate_inline_source(text, path)?;
     let mut nodes = Vec::new();
     let mut cursor = 0_usize;
     while cursor < text.len() {
@@ -261,6 +249,44 @@ fn next_inline_marker(value: &str) -> Option<usize> {
         .filter_map(|marker| value.find(marker))
         .filter(|position| *position > 0)
         .min()
+}
+
+fn is_markdown_table_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with('|') && trimmed.ends_with('|')
+}
+
+/// Reject unsupported inline syntax only outside supported backtick code spans.
+/// Code spans deliberately preserve source-looking text such as `<tag>`, image
+/// markers, or pipe-delimited examples as literal code.
+fn validate_inline_source(text: &str, path: &str) -> Result<(), CommandError> {
+    let mut cursor = 0_usize;
+    while cursor < text.len() {
+        let remainder = &text[cursor..];
+        if let Some(code) = remainder.strip_prefix('`') {
+            if let Some(close) = code.find('`') {
+                cursor += 1 + close + 1;
+                continue;
+            }
+            // An unmatched backtick is not a valid code span. Treat it as
+            // ordinary source and continue validating what follows.
+            cursor += 1;
+            continue;
+        }
+        let take = remainder.find('`').unwrap_or(remainder.len());
+        let segment = &remainder[..take];
+        if segment.contains("![") {
+            return Err(unsupported_markdown(
+                path,
+                "images are not supported in version 1",
+            ));
+        }
+        if contains_raw_html(segment) {
+            return Err(unsupported_markdown(path, "raw HTML is not supported"));
+        }
+        cursor += take.max(1);
+    }
+    Ok(())
 }
 
 fn contains_raw_html(source: &str) -> bool {

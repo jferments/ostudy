@@ -9,12 +9,10 @@ use std::{
 };
 
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
-const VALID_FIXTURE: &str = include_str!(
-    "../../../../../tests/fixtures/generated-import/valid-conformance.ostudy.json"
-);
-const INVALID_CORPUS: &str = include_str!(
-    "../../../../../tests/fixtures/generated-import/conformance-corpus.json"
-);
+const VALID_FIXTURE: &str =
+    include_str!("../../../../../tests/fixtures/generated-import/valid-conformance.ostudy.json");
+const INVALID_CORPUS: &str =
+    include_str!("../../../../../tests/fixtures/generated-import/conformance-corpus.json");
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,10 +69,7 @@ fn path_text(path: &Path) -> &str {
     path.to_str().expect("temporary paths should be UTF-8")
 }
 
-fn import_path(
-    database: &Database,
-    path: &Path,
-) -> Result<FlashcardImportResultDto, CommandError> {
+fn import_path(database: &Database, path: &Path) -> Result<FlashcardImportResultDto, CommandError> {
     let prepared = prepare_flashcard_import(path_text(path))?;
     database.with_connection(|connection| import_prepared_flashcards(connection, prepared))
 }
@@ -186,7 +181,8 @@ fn valid_conformance_file_imports_every_supported_card_shape_and_cleans_up() {
     let valid_path = root.write("valid-conformance.ostudy.json", VALID_FIXTURE.as_bytes());
     let database = Database::open_in_memory().expect("database should open");
 
-    let created = import_path(&database, &valid_path).expect("valid conformance file should import");
+    let created =
+        import_path(&database, &valid_path).expect("valid conformance file should import");
     assert_eq!(created.created_note_count, 41);
     assert_eq!(created.created_card_count, 42);
     assert_eq!(created.skipped_duplicate_count, 0);
@@ -275,7 +271,8 @@ fn valid_conformance_file_imports_every_supported_card_shape_and_cleans_up() {
             .as_slice(),
     );
     let before = active_counts(&database, &created.deck_id);
-    let error = import_path(&database, &invalid_path).expect_err("mixed invalid file must fail atomically");
+    let error =
+        import_path(&database, &invalid_path).expect_err("mixed invalid file must fail atomically");
     assert_eq!(error.code, "invalid_flashcard_import_cards");
     assert_eq!(active_counts(&database, &created.deck_id), before);
 
@@ -289,21 +286,34 @@ fn rejection_corpus_rejects_every_named_invalid_document_and_card() {
     let root = TemporaryImportRoot::new();
 
     for (index, case) in corpus.invalid_documents.into_iter().enumerate() {
-        let bytes = serde_json::to_vec_pretty(&case.document).expect("invalid document should serialize");
+        let bytes =
+            serde_json::to_vec_pretty(&case.document).expect("invalid document should serialize");
         let path = root.write(&format!("invalid-document-{index}.ostudy.json"), &bytes);
         let result = prepare_flashcard_import(path_text(&path));
-        assert!(result.is_err(), "invalid document unexpectedly accepted: {}", case.name);
+        assert!(
+            result.is_err(),
+            "invalid document unexpectedly accepted: {}",
+            case.name
+        );
     }
 
     for (index, case) in corpus.invalid_cards.into_iter().enumerate() {
         let document = wrapped_card(&case.name, case.card);
-        let bytes = serde_json::to_vec_pretty(&document).expect("invalid card fixture should serialize");
+        let bytes =
+            serde_json::to_vec_pretty(&document).expect("invalid card fixture should serialize");
         let path = root.write(&format!("invalid-card-{index}.ostudy.json"), &bytes);
         let result = prepare_flashcard_import(path_text(&path));
-        assert!(result.is_err(), "invalid card unexpectedly accepted: {}", case.name);
+        assert!(
+            result.is_err(),
+            "invalid card unexpectedly accepted: {}",
+            case.name
+        );
     }
 
-    let malformed = root.write("malformed.ostudy.json", br#"{"format":"ostudy-flashcards","#);
+    let malformed = root.write(
+        "malformed.ostudy.json",
+        br#"{"format":"ostudy-flashcards","#,
+    );
     assert!(prepare_flashcard_import(path_text(&malformed)).is_err());
 
     let invalid_utf8 = root.write("invalid-utf8.ostudy.json", &[0xff, 0xfe, 0xfd]);
