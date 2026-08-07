@@ -137,8 +137,8 @@
   .segmented button:first-child { border-radius: var(--radius-small) 0 0 var(--radius-small); }
   .segmented button:last-child { border-radius: 0 var(--radius-small) var(--radius-small) 0; }
   .segmented button + button { margin-left: -1px; }
-  .segmented button[aria-checked="true"] { z-index: 1; border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-  .segmented button:focus-visible { z-index: 2; outline: none; box-shadow: var(--focus); }
+  .segmented button[aria-checked="true"] { z-index: var(--layer-control-selected); border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .segmented button:focus-visible { z-index: var(--layer-control-focus); outline: none; box-shadow: var(--focus); }
 
   @keyframes spin { to { transform: rotate(1turn); } }
 
