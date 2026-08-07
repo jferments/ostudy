@@ -10,7 +10,6 @@ use std::collections::BTreeSet;
 
 #[cfg(test)]
 use rusqlite::params;
-use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -1149,14 +1148,4 @@ mod tests {
         });
         validate_document(&document).expect("supported rich document should validate");
     }
-
-    fn tempfile_path() -> std::path::PathBuf {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos();
-        std::env::temp_dir().join(format!("ostudy-card-test-{suffix}"))
-    }
-
-    use std::time::{SystemTime, UNIX_EPOCH};
 }
