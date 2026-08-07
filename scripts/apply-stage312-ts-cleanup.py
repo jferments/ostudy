@@ -166,8 +166,12 @@ def practice_screen(text: str) -> str:
     old_line = "  getRecentPracticeReviews,\n"
     if old_line in text:
         return text.replace(old_line, "", 1)
-    raise SystemExit("PracticeScreen.tsx: stale recent-review import not found")
+    return text
 
-update("src/screens/PracticeScreen.tsx", practice_screen)
+practice_path = ROOT / "src/screens/PracticeScreen.tsx"
+practice_text = practice_path.read_text(encoding="utf-8")
+practice_next = practice_screen(practice_text)
+if practice_next != practice_text:
+    practice_path.write_text(practice_next, encoding="utf-8")
 
 print("Applied Stage 3.12 TypeScript cleanup.")
