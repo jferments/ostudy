@@ -30,13 +30,11 @@ export function Toast({ toast, onDismiss }: ToastProps) {
   const [isRunningAction, setIsRunningAction] = useState(false);
   const [paused, setPaused] = useState(false);
   const toastRef = useRef<HTMLDivElement | null>(null);
-  const activeToastIdRef = useRef<number | null>(null);
   const deadlineRef = useRef(0);
 
   useEffect(() => {
     setIsRunningAction(false);
     setPaused(false);
-    activeToastIdRef.current = toast?.id ?? null;
     if (!toast) {
       deadlineRef.current = 0;
       return;
