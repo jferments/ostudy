@@ -74,7 +74,7 @@ Use exact markers in the form `{{c1::hidden text}}`. Reuse the same number when 
 
 Basic sides support paragraphs, headings, bold, italic, strikethrough, inline code, fenced code blocks, block quotes, ordered lists, bullet lists, absolute links, hard line breaks, and horizontal rules.
 
-Do not use raw HTML, images, local file paths, executable content, or Markdown tables in version 1. Represent table material as a concise list or code block.
+Do not use raw HTML, images, local file paths, executable content, or Markdown tables in version 1. Represent table material as a concise list or code block. Ordinary comparison text may contain literal `<` or `>` characters; do not wrap it in HTML tags.
 
 Tags are human-readable topic labels without `#`. After combining default and card tags, use no more than 32 unique tags per card, with no tag longer than 64 characters.
 

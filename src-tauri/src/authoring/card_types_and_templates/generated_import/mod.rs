@@ -54,6 +54,7 @@ pub fn import_generated_flashcards(
 }
 
 mod markdown;
+#[cfg(test)]
 use markdown::markdown_document;
 
 #[cfg(test)]

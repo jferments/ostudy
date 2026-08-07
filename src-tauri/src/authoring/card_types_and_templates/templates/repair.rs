@@ -1,6 +1,8 @@
 use super::*;
 
-pub(crate) fn apply_stage3_data_repairs(connection: &Connection) -> Result<i64, CommandError> {
+pub(crate) fn apply_card_type_template_repairs(
+    connection: &Connection,
+) -> Result<i64, CommandError> {
     let before = connection.total_changes();
     normalize_abandoned_image_occlusion(connection)?;
     normalize_legacy_template_documents(connection)?;

@@ -108,7 +108,7 @@ Basic sides accept:
 - absolute `http`, `https`, `mailto`, and `tel` links;
 - hard line breaks and horizontal rules.
 
-Raw HTML, embedded or remote images, local file paths, tables, executable content, and unknown syntax are rejected. Rust converts accepted Markdown into canonical Tiptap JSON, derives authoritative plain text, and runs the normal card-content validator.
+Raw HTML, embedded or remote images, local file paths, tables, executable content, and unknown syntax are rejected. Literal comparison characters such as `2 < 3` or `5 > 4` are ordinary text and are not treated as HTML. The restricted parser decides which Markdown syntax is supported; Rust then converts accepted syntax into canonical Tiptap JSON and runs the ordinary card-content validator, which remains authoritative for safe rich-document structure, links, sizes, and derived plain text.
 
 ## Validation and commit
 

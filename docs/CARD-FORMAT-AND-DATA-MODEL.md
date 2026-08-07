@@ -12,7 +12,7 @@ Each note stores:
 - `front_doc` and `back_doc`: validated structured source documents
 - `front_text` and `back_text`: plain text derived by Rust
 - `duplicate_hash`: a stable candidate fingerprint of normalized source text
-- `note_type`: `basic` or `cloze` for active Stage 3 authoring
+- `note_type`: `basic` or `cloze` for active authoring
 - `reverse_enabled`: whether a Basic note currently exposes a reverse card
 - `cloze_source`: the complete source statement and numbered blank markers
 - `cloze_mode`: `one_at_a_time` or `all_together`
@@ -23,6 +23,19 @@ complete `http`, `https`, `mailto`, and `tel` addresses. Images must use
 `study-asset://<id>` and refer to an asset already copied into the managed image
 directory. Arbitrary HTML, JavaScript URLs, remote images, local file paths,
 unknown nodes, unknown marks, and unknown attributes are rejected.
+
+## Authoring command contract
+
+The bundled editor submits a strict Basic-or-Cloze tagged request. Basic writes
+carry canonical rich question/answer documents plus reverse configuration;
+Cloze writes carry the bounded cloze source and mode. Type-inappropriate and
+unknown properties are rejected. Browser plain-text snapshots are not part of
+the write contract: Rust derives `front_text` and `back_text` from the validated
+documents and enforces the authoritative text limits there.
+
+The older Basic-only `create_organized_card` and `update_organized_card` IPC
+commands are removed rather than retained as compatibility shims because bundled
+Tauri IPC is an internal application contract.
 
 ## Notes, generated cards, and tags
 
@@ -112,8 +125,9 @@ field names are rejected.
 
 Saved rule documents use one neutral inert placeholder node. The older
 `templateFieldBlock` node remains readable only for compatibility with templates
-created by the first schema-7 build. Startup normalization rewrites those nodes
-to the neutral representation without requiring a new migration.
+created by the first schema-7 build. A checksummed one-time data repair rewrites
+those nodes to the neutral representation; normal canonical startup does not
+repeat that write.
 
 ## Automatic field placement
 

@@ -1,4 +1,4 @@
-# Ostudy Git and Coding Workflow — Corrected Publication-First Version
+# Ostudy Git and Coding Workflow — Publication-First, Tool-Neutral Version
 
 This document defines the required delivery workflow for changes to **ostudy**.
 It applies to human contributors, Codex CLI, ChatGPT-assisted implementation,
@@ -17,44 +17,43 @@ The agent must not stop after writing a plan, producing an uncommitted patch,
 creating files in temporary storage, or describing code that has not been
 published.
 
-## 1. Establish the exact base without editing the primary checkout
+## 1. Establish and publish the exact base
 
-The primary checkout at `~/code/ostudy` is for the human's normal use and must
-not be used as the agent's feature workspace. Before making any change:
+Use the authenticated repository mechanism available in the current environment.
+Resolve the exact current `main` commit, create one short-lived
+`agent/<description>` branch from that commit, and publish that branch before
+substantial implementation begins. Do not develop directly on `main`.
 
-1. inspect the primary checkout without modifying it;
-2. require a clean understanding of any existing human changes;
-3. fetch and identify the exact current `origin/main` commit;
-4. create an isolated Git worktree dedicated to the task;
-5. create a short-lived `agent/<description>` branch from that exact commit.
+A local coding agent should normally protect the human's primary checkout by
+using an isolated Git worktree. A connector-backed environment may create and
+update the remote task branch directly. The invariant is the same in either
+case: exact base, one focused branch, one recoverable remote history.
 
-Example:
+For private repositories, use the authenticated connector/credential path that
+the environment provides. Do not substitute anonymous raw GitHub URLs, scraping,
+temporary transfer repositories, opaque/base64 payload branches, or similar
+workarounds for authenticated repository access.
+
+Local-worktree example:
 
 ```bash
 cd ~/code/ostudy
 git status --short
 git fetch origin --prune
 BASE_SHA="$(git rev-parse origin/main)"
-BRANCH="agent/phase-2-stage-3-card-types-safe-templates"
-WORKTREE="../ostudy-stage-3"
+BRANCH="agent/<description>"
+WORKTREE="../ostudy-<description>"
 git worktree add -b "$BRANCH" "$WORKTREE" "$BASE_SHA"
 cd "$WORKTREE"
-```
-
-Never edit the primary checkout directly. Never use destructive synchronization
-to hide unrelated local work.
-
-## 2. Publication-first rule
-
-Immediately after creating the branch, push it to GitHub **before editing files
-or running tests**:
-
-```bash
 git push -u origin HEAD
 ```
 
-This establishes a remote recovery point and makes the task branch visible from
-the beginning. Local-only branches are not acceptable delivery state.
+## 2. Publication-first rule
+
+The remote branch and draft pull request are the durable task record. Publish
+early, then push coherent implementation increments to that same branch. Never
+leave the user with only an agent-local patch, temporary archive, or description
+of code that was not published.
 
 ## 3. Publish the first meaningful commit immediately
 

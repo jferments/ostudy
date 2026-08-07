@@ -523,6 +523,16 @@ fn display_card_type(note_type: &str) -> &str {
     }
 }
 
+fn validate_cloze_mode(value: &str) -> Result<(), CommandError> {
+    match value {
+        "one_at_a_time" | "all_together" => Ok(()),
+        _ => Err(CommandError::new(
+            "invalid_cloze_mode",
+            "Choose one-at-a-time or all-blanks-together Fill in the blank mode.",
+        )),
+    }
+}
+
 fn load_card_type_info(
     connection: &Connection,
     note_id: &str,
@@ -1332,7 +1342,7 @@ pub(crate) fn render_projected_presentation(
 }
 
 pub(crate) mod templates;
-pub(crate) use templates::apply_stage3_data_repairs;
+pub(crate) use templates::apply_card_type_template_repairs;
 use templates::{
     create_card_template_in_connection, delete_card_template_in_connection,
     ensure_template_revision, generate_automatic_template_cards_in_connection,

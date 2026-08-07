@@ -134,41 +134,26 @@ fn prepare_import_card(
             let front_doc = markdown_document(&front, &format!("{path}.front"))?;
             let back_doc = markdown_document(&back, &format!("{path}.back"))?;
             (
-                GeneratedNoteDraft {
-                    card_type: "basic".to_string(),
+                CardNoteDraft::Basic {
                     reverse_enabled,
-                    cloze_source: String::new(),
-                    cloze_mode: "one_at_a_time".to_string(),
                     front_doc,
                     back_doc,
-                    front_text: String::new(),
-                    back_text: String::new(),
                 },
                 tags,
             )
         }
-        GeneratedImportCard::Cloze { text, mode, tags } => (
-            GeneratedNoteDraft {
-                card_type: "cloze".to_string(),
-                reverse_enabled: false,
-                cloze_source: text,
-                cloze_mode: mode,
-                front_doc: json!({"type": "doc", "content": []}),
-                back_doc: json!({"type": "doc", "content": []}),
-                front_text: String::new(),
-                back_text: String::new(),
-            },
-            tags,
-        ),
+        GeneratedImportCard::Cloze { text, mode, tags } => {
+            (CardNoteDraft::Cloze { source: text, mode }, tags)
+        }
     };
 
     validate_import_tag_syntax(&card_tags, &format!("{path}.tags"))?;
     let mut combined = default_tags.to_vec();
-    combined.extend(card_tags);
+    combined.extend(card_tags.iter().cloned());
     let tags = validate_tags(combined).map_err(|error| {
         CommandError::new(error.code, format!("{path}.tags: {}", error.message))
     })?;
-    let prepared = prepare_generated_note(draft)
+    let prepared = prepare_card_note(draft)
         .map_err(|error| CommandError::new(error.code, format!("{path}: {}", error.message)))?;
     let normalized = normalized_pair(&prepared.content.front_text, &prepared.content.back_text);
     let duplicate_hash = duplicate_hash(&normalized.0, &normalized.1);

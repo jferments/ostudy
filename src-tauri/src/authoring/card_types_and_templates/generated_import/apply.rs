@@ -17,6 +17,7 @@ pub(super) fn import_prepared_flashcards(
         now,
     )?;
 
+    let destination_duplicates = load_destination_duplicate_pairs(&transaction, &deck_id)?;
     let mut seen = HashSet::new();
     let mut created_notes = 0_i64;
     let mut created_cards = 0_i64;
@@ -30,14 +31,7 @@ pub(super) fn import_prepared_flashcards(
             duplicate_hash,
         } = note;
         let duplicate_in_batch = !seen.insert(normalized.clone());
-        let duplicate_in_deck = has_exact_duplicate(
-            &transaction,
-            &deck_id,
-            &duplicate_hash,
-            &normalized.0,
-            &normalized.1,
-            None,
-        )?;
+        let duplicate_in_deck = destination_duplicates.contains(&normalized);
         if duplicate_in_batch || duplicate_in_deck {
             skipped += 1;
             continue;
@@ -104,6 +98,28 @@ pub(super) fn import_prepared_flashcards(
         created_card_count: created_cards,
         skipped_duplicate_count: skipped,
     })
+}
+
+fn load_destination_duplicate_pairs(
+    connection: &Connection,
+    deck_id: &str,
+) -> Result<HashSet<(String, String)>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT front_text, back_text FROM notes WHERE deck_id = ?1 AND deleted_at IS NULL",
+        )
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map([deck_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(CommandError::database)?;
+    let mut duplicates = HashSet::new();
+    for row in rows {
+        let (front, back) = row.map_err(CommandError::database)?;
+        duplicates.insert(normalized_pair(&front, &back));
+    }
+    Ok(duplicates)
 }
 
 fn resolve_generated_import_deck(

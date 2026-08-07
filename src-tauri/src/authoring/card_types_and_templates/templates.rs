@@ -18,6 +18,7 @@ pub(super) fn create_card_template_in_connection(
         .map_err(CommandError::database)?;
     ensure_template_name_available(&transaction, &normalized_name, None)?;
     let template_id = generate_id(&transaction)?;
+    ensure_template_child_ids_available(&transaction, None, &input.fields, &input.rules)?;
     let fields = validate_template_fields(&transaction, &template_id, input.fields, false)?;
     let rules = validate_template_rules(&transaction, &template_id, input.rules, &fields, false)?;
     let asset_ids = template_rule_asset_ids(&rules)?;
@@ -82,6 +83,12 @@ pub(super) fn update_card_template_in_connection(
         ));
     }
     ensure_template_name_available(&transaction, &normalized_name, Some(&input.template_id))?;
+    ensure_template_child_ids_available(
+        &transaction,
+        Some(&input.template_id),
+        &input.fields,
+        &input.rules,
+    )?;
     let fields = validate_template_fields(&transaction, &input.template_id, input.fields, true)?;
     let rules =
         validate_template_rules(&transaction, &input.template_id, input.rules, &fields, true)?;
@@ -435,21 +442,49 @@ fn validate_stored_template(
     Ok(())
 }
 
-fn resolve_template_child_id(
+fn ensure_template_child_ids_available(
+    connection: &Connection,
+    template_id: Option<&str>,
+    fields: &[CardTemplateFieldInput],
+    rules: &[CardTemplateRuleInput],
+) -> Result<(), CommandError> {
+    let field_ids = fields
+        .iter()
+        .filter_map(|field| field.id.as_deref())
+        .collect::<Vec<_>>();
+    let rule_ids = rules
+        .iter()
+        .filter_map(|rule| rule.id.as_deref())
+        .collect::<Vec<_>>();
+    ensure_template_child_table_ids_available(
+        connection,
+        "card_template_fields",
+        template_id,
+        &field_ids,
+    )?;
+    ensure_template_child_table_ids_available(
+        connection,
+        "card_template_rules",
+        template_id,
+        &rule_ids,
+    )
+}
+
+fn ensure_template_child_table_ids_available(
     connection: &Connection,
     table: &str,
-    template_id: &str,
-    supplied: Option<String>,
-    updating: bool,
-    label: &str,
-) -> Result<String, CommandError> {
-    let Some(id) = supplied else {
-        return generate_id(connection);
-    };
-    validate_entity_id(&id, label)?;
-    let sql = match table {
-        "card_template_fields" => "SELECT template_id FROM card_template_fields WHERE id = ?1",
-        "card_template_rules" => "SELECT template_id FROM card_template_rules WHERE id = ?1",
+    template_id: Option<&str>,
+    ids: &[&str],
+) -> Result<(), CommandError> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    for id in ids {
+        validate_entity_id(id, "template child")?;
+    }
+    let table = match table {
+        "card_template_fields" => "card_template_fields",
+        "card_template_rules" => "card_template_rules",
         _ => {
             return Err(CommandError::new(
                 "invalid_template_child",
@@ -457,19 +492,45 @@ fn resolve_template_child_id(
             ));
         }
     };
-    let owner: Option<String> = connection
-        .query_row(sql, [id.as_str()], |row| row.get(0))
-        .optional()
+    let placeholders = (0..ids.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!("SELECT id, template_id FROM {table} WHERE id IN ({placeholders})");
+    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
+    let rows = statement
+        .query_map(params_from_iter(ids.iter()), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
         .map_err(CommandError::database)?;
-    match (updating, owner) {
-        (true, Some(owner)) if owner == template_id => Ok(id),
-        (true, Some(_)) | (false, Some(_)) => Err(CommandError::new(
-            "invalid_template_child",
-            "A template field or rule identifier is already in use.",
-        )),
-        (true, None) => Ok(id),
-        (false, None) => Ok(id),
+    for row in rows {
+        let (_, owner) = row.map_err(CommandError::database)?;
+        if template_id != Some(owner.as_str()) {
+            return Err(CommandError::new(
+                "invalid_template_child",
+                "A template field or rule identifier is already in use.",
+            ));
+        }
     }
+    Ok(())
+}
+
+fn resolve_template_child_id(
+    connection: &Connection,
+    table: &str,
+    _template_id: &str,
+    supplied: Option<String>,
+    _updating: bool,
+    label: &str,
+) -> Result<String, CommandError> {
+    if !matches!(table, "card_template_fields" | "card_template_rules") {
+        return Err(CommandError::new(
+            "invalid_template_child",
+            "The template contains an unsupported child record.",
+        ));
+    }
+    let Some(id) = supplied else {
+        return generate_id(connection);
+    };
+    validate_entity_id(&id, label)?;
+    Ok(id)
 }
 
 fn insert_template_children(
@@ -1342,6 +1403,44 @@ mod template_summary_tests {
             })
             .expect("unused IDs should validate without persistence");
     }
+
+    #[test]
+    fn update_rejects_child_id_owned_by_another_template() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                let now = unix_time_millis()?;
+                let owner = "11111111111111111111111111111111";
+                let target = "22222222222222222222222222222222";
+                let child = "33333333333333333333333333333333";
+                connection
+                    .execute(
+                        "INSERT INTO card_templates (id, name, normalized_name, description, created_at, updated_at, revision) VALUES (?1, 'Owner', 'owner', '', ?2, ?2, 1)",
+                        params![owner, now],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO card_template_fields (id, template_id, name, normalized_name, description, position) VALUES (?1, ?2, 'Field', 'field', '', 0)",
+                        params![child, owner],
+                    )
+                    .map_err(CommandError::database)?;
+                let error = ensure_template_child_ids_available(
+                    connection,
+                    Some(target),
+                    &[CardTemplateFieldInput {
+                        id: Some(child.to_string()),
+                        name: "Field".to_string(),
+                        description: String::new(),
+                    }],
+                    &[],
+                )
+                .expect_err("foreign child IDs must be rejected");
+                assert_eq!(error.code, "invalid_template_child");
+                Ok(())
+            })
+            .expect("ownership check should run");
+    }
 }
 
 mod automatic_layout;
@@ -1358,7 +1457,7 @@ pub(super) use automatic_layout::{
     prepare_automatic_create_template_input, prepare_automatic_update_template_input,
     render_automatic_template_previews,
 };
-pub(crate) use repair::apply_stage3_data_repairs;
+pub(crate) use repair::apply_card_type_template_repairs;
 
 #[cfg(test)]
 mod asset_tests;
