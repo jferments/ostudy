@@ -911,7 +911,7 @@ function DeckFormModal({ mode, deck, onClose, onSave }: DeckFormModalProps) {
         <label>
           <span>Deck name</span>
           <input
-            autoFocus
+            data-autofocus="true"
             disabled={isSaving}
             value={name}
             maxLength={200}
