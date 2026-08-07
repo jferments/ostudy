@@ -433,25 +433,20 @@ fn finalize_assets_after_committed_write(
             return;
         }
     };
-    let finalization = match finalize_assets_for_owner(
-        &transaction,
-        paths,
-        asset_ids,
-        draft_id,
-        Some(owner_id),
-    ) {
-        Ok(finalization) => finalization,
-        Err(error) => {
-            crate::logging::error(
-                "committed_asset_finalization_failed",
-                format!(
-                    "operation={operation} owner_id={owner_id} error={}",
-                    error.message
-                ),
-            );
-            return;
-        }
-    };
+    let finalization =
+        match finalize_assets_for_owner(&transaction, paths, asset_ids, draft_id, Some(owner_id)) {
+            Ok(finalization) => finalization,
+            Err(error) => {
+                crate::logging::error(
+                    "committed_asset_finalization_failed",
+                    format!(
+                        "operation={operation} owner_id={owner_id} error={}",
+                        error.message
+                    ),
+                );
+                return;
+            }
+        };
     if let Err(error) = transaction.commit() {
         crate::logging::error(
             "committed_asset_finalization_commit_failed",
@@ -580,12 +575,7 @@ fn create_generated_card_in_database(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         ensure_active_deck(&transaction, &deck_id)?;
-        ensure_assets_available(
-            &transaction,
-            &paths,
-            &asset_ids,
-            asset_draft_id.as_deref(),
-        )?;
+        ensure_assets_available(&transaction, &paths, &asset_ids, asset_draft_id.as_deref())?;
         if !allow_duplicate
             && duplicate_checkable(&prepared.content.front_text, &prepared.content.back_text)
             && has_exact_duplicate(
@@ -629,13 +619,7 @@ fn create_generated_card_in_database(
                 ],
             )
             .map_err(CommandError::database)?;
-        sync_generated_cards(
-            &transaction,
-            &note_id,
-            &deck_id,
-            &prepared.cards,
-            now,
-        )?;
+        sync_generated_cards(&transaction, &note_id, &deck_id, &prepared.cards, now)?;
         replace_note_assets(&transaction, &note_id, &prepared.content)?;
         replace_note_tags(&transaction, &note_id, &tags, now)?;
         let finalization = finalize_assets_for_owner(
@@ -705,12 +689,7 @@ fn update_generated_card_in_database(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         ensure_active_deck(&transaction, &deck_id)?;
-        ensure_assets_available(
-            &transaction,
-            &paths,
-            &asset_ids,
-            asset_draft_id.as_deref(),
-        )?;
+        ensure_assets_available(&transaction, &paths, &asset_ids, asset_draft_id.as_deref())?;
         let existing_type: Option<String> = transaction
             .query_row(
                 "SELECT note_type FROM notes WHERE id = ?1 AND deleted_at IS NULL",
@@ -778,13 +757,7 @@ fn update_generated_card_in_database(
                 "This card changed in another window. Reload it and try again.",
             ));
         }
-        sync_generated_cards(
-            &transaction,
-            &note_id,
-            &deck_id,
-            &prepared.cards,
-            now,
-        )?;
+        sync_generated_cards(&transaction, &note_id, &deck_id, &prepared.cards, now)?;
         replace_note_assets(&transaction, &note_id, &prepared.content)?;
         replace_note_tags(&transaction, &note_id, &tags, now)?;
         let finalization = finalize_assets_for_owner(
@@ -1186,10 +1159,10 @@ pub(crate) fn render_projected_presentation(
     input: ProjectedPresentationInput<'_>,
 ) -> Result<RenderedCardPresentation, CommandError> {
     if input.note_type == "basic" {
-        let front_doc = serde_json::from_str(input.front_doc_json)
-            .map_err(CommandError::serialization)?;
-        let back_doc = serde_json::from_str(input.back_doc_json)
-            .map_err(CommandError::serialization)?;
+        let front_doc =
+            serde_json::from_str(input.front_doc_json).map_err(CommandError::serialization)?;
+        let back_doc =
+            serde_json::from_str(input.back_doc_json).map_err(CommandError::serialization)?;
         return match input.direction {
             "forward" => Ok(RenderedCardPresentation {
                 card_type: "basic".to_string(),
@@ -1214,10 +1187,7 @@ pub(crate) fn render_projected_presentation(
         };
     }
 
-    if input.note_type != "cloze"
-        || input.direction != "forward"
-        || input.template_ordinal != 0
-    {
+    if input.note_type != "cloze" || input.direction != "forward" || input.template_ordinal != 0 {
         return Err(CommandError::new(
             "invalid_generated_card",
             "The Fill in the blank note contains an unsupported active card identity.",
@@ -1257,8 +1227,21 @@ pub(crate) fn render_projected_presentation(
 }
 
 mod templates;
-pub(super) use templates::*;
+use templates::{
+    create_card_template_in_connection, delete_card_template_in_connection,
+    ensure_template_revision, generate_automatic_template_cards_in_connection,
+    load_stored_template, normalize_card_template_dto_for_editing,
+    prepare_automatic_create_template_input, prepare_automatic_update_template_input,
+    render_automatic_template_previews, template_update_contains_new_children,
+    update_card_template_in_connection, update_card_template_with_stable_children_in_connection,
+};
+pub(super) use templates::{
+    apply_stage3_data_repairs, list_card_template_summaries, CardTemplateSummaryDto,
+    __cmd__list_card_template_summaries,
+};
 
-#[path = "generated_import.rs"]
+#[path = "generated_import_module.rs"]
 mod generated_import;
-pub(super) use generated_import::import_generated_flashcards;
+pub(super) use generated_import::{
+    import_generated_flashcards, FlashcardImportResultDto, __cmd__import_generated_flashcards,
+};
