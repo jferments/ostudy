@@ -1,4 +1,5 @@
 import {
+  type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
   type RefObject,
@@ -60,12 +61,12 @@ export function Dialog({
   const openerRef = useRef<HTMLElement | null>(null);
   const propsRef = useRef({ onClose, dismissible, busy });
   propsRef.current = { onClose, dismissible, busy };
-  const overlay = useOverlayContext();
-  const topmost = overlay.topId === null || overlay.topId === id;
+  const { register, topId } = useOverlayContext();
+  const topmost = topId === null || topId === id;
 
   useEffect(
     () =>
-      overlay.register({
+      register({
         id,
         modal: true,
         requestClose(reason) {
@@ -75,7 +76,7 @@ export function Dialog({
           return true;
         },
       }),
-    [id, overlay],
+    [id, register],
   );
 
   useLayoutEffect(() => {
@@ -112,7 +113,7 @@ export function Dialog({
     if (event.target === event.currentTarget) requestClose("backdrop");
   }
 
-  function onKeyDown(event: React.KeyboardEvent<HTMLDialogElement>): void {
+  function onKeyDown(event: KeyboardEvent<HTMLDialogElement>): void {
     if (!topmost) return;
     if (event.key === "Escape") {
       event.preventDefault();
@@ -122,9 +123,7 @@ export function Dialog({
     if (event.key !== "Tab") return;
     const dialog = dialogRef.current;
     if (!dialog) return;
-    const focusable = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-      (element) => element.offsetParent !== null || element === document.activeElement,
-    );
+    const focusable = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)];
     if (focusable.length === 0) {
       event.preventDefault();
       dialog.focus();
@@ -149,6 +148,8 @@ export function Dialog({
       className={styles.dialog}
       data-presentation={presentation}
       data-overlay-id={id}
+      role={role}
+      aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={description ? descriptionId : undefined}
       aria-busy={busy || undefined}
@@ -161,8 +162,6 @@ export function Dialog({
     >
       <section
         className={`${styles.card} ${styles[width]} modal-card modal-${width} ${className}`.trim()}
-        role={role}
-        aria-modal="true"
       >
         <header className={`${styles.header} modal-header`}>
           <div>
