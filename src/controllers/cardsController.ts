@@ -9,6 +9,11 @@ import {
   type SelectionCard,
   type TagSummary,
 } from "../ipc/cards";
+import {
+  applyScheduleAction,
+  type ScheduleActionInput,
+  type ScheduleActionResult,
+} from "../ipc/scheduling";
 import { latestResult, RequestLane } from "./requestLane";
 
 export class CardsController {
@@ -31,6 +36,11 @@ export class CardsController {
 
   matching(input: CardSearchInput): Promise<SelectionCard[] | undefined> {
     return latestResult(this.#matching, () => listMatchingCards(input));
+  }
+
+  /** Mutations are never stale-cancelled; the caller reconciles after committed success. */
+  schedule(input: ScheduleActionInput): Promise<ScheduleActionResult> {
+    return applyScheduleAction(input);
   }
 
   invalidateSearch(): void {
