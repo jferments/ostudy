@@ -12,7 +12,9 @@ import { createPortal } from "react-dom";
 
 import {
   type OverlayCloseReason,
+  OverlayParentContext,
   useOverlayContext,
+  useOverlayParentId,
 } from "./overlayContext";
 import styles from "./overlays.module.css";
 
@@ -57,6 +59,7 @@ export function Dialog({
   const id = `overlay-${reactId}`;
   const titleId = `${id}-title`;
   const descriptionId = `${id}-description`;
+  const parentId = useOverlayParentId();
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const propsRef = useRef({ onClose, dismissible, busy });
@@ -67,6 +70,7 @@ export function Dialog({
     () =>
       register({
         id,
+        parentId,
         modal: true,
         requestClose(reason) {
           const current = propsRef.current;
@@ -75,7 +79,7 @@ export function Dialog({
           return true;
         },
       }),
-    [id, register],
+    [id, parentId, register],
   );
 
   useLayoutEffect(() => {
@@ -177,7 +181,9 @@ export function Dialog({
             ×
           </button>
         </header>
-        <div className={styles.body}>{children}</div>
+        <OverlayParentContext.Provider value={id}>
+          <div className={styles.body}>{children}</div>
+        </OverlayParentContext.Provider>
       </section>
     </dialog>,
     document.body,
