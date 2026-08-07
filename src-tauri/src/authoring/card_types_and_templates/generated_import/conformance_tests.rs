@@ -397,8 +397,10 @@ fn generated_import_enforces_file_card_tag_and_cloze_boundaries() {
     parse_cloze(&max_source).expect("exact maximum Cloze source should pass marker parsing");
 
     let over_source = format!("{}{{{{c1::x}}}}", "a".repeat(max_source_padding + 1));
-    let over_error =
-        parse_cloze(&over_source).expect_err("maximum plus one Cloze source should fail");
+    let over_error = match parse_cloze(&over_source) {
+        Ok(_) => panic!("maximum plus one Cloze source should fail"),
+        Err(error) => error,
+    };
     assert_eq!(over_error.code, "invalid_cloze_text");
 
     let large_renderable_source = format!("{}{{{{c1::x}}}}", "a".repeat(150_000));
