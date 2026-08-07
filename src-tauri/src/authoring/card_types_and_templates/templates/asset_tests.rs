@@ -1,5 +1,5 @@
-use super::*;
 use super::super::finalize_assets_after_committed_write;
+use super::*;
 
 #[test]
 fn post_commit_asset_failure_does_not_erase_durable_template() {
