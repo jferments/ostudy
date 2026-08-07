@@ -1,0 +1,88 @@
+{
+  "invalidDocuments": [
+    {
+      "name": "wrong format identity",
+      "document": {"format":"other","formatVersion":1,"deck":{"mode":"create","name":"Invalid"},"cards":[{"type":"basic","front":"Q","back":"A"}]}
+    },
+    {
+      "name": "unsupported format version",
+      "document": {"format":"ostudy-flashcards","formatVersion":2,"deck":{"mode":"create","name":"Invalid"},"cards":[{"type":"basic","front":"Q","back":"A"}]}
+    },
+    {
+      "name": "missing deck",
+      "document": {"format":"ostudy-flashcards","formatVersion":1,"cards":[{"type":"basic","front":"Q","back":"A"}]}
+    },
+    {
+      "name": "missing cards",
+      "document": {"format":"ostudy-flashcards","formatVersion":1,"deck":{"mode":"create","name":"Invalid"}}
+    },
+    {
+      "name": "unknown top-level property",
+      "document": {"format":"ostudy-flashcards","formatVersion":1,"deck":{"mode":"create","name":"Invalid"},"cards":[{"type":"basic","front":"Q","back":"A"}],"schedule":"forbidden"}
+    },
+    {
+      "name": "empty cards array",
+      "document": {"format":"ostudy-flashcards","formatVersion":1,"deck":{"mode":"create","name":"Invalid"},"cards":[]}
+    },
+    {
+      "name": "missing deck mode",
+      "document": {"format":"ostudy-flashcards","formatVersion":1,"deck":{"name":"Invalid"},"cards":[{"type":"basic","front":"Q","back":"A"}]}
+    },
+    {
+      "name": "unknown deck property",
+      "document": {"format":"ostudy-flashcards","formatVersion":1,"deck":{"mode":"create","name":"Invalid","id":"forbidden"},"cards":[{"type":"basic","front":"Q","back":"A"}]}
+    },
+    {
+      "name": "append description is not allowed",
+      "document": {"format":"ostudy-flashcards","formatVersion":1,"deck":{"mode":"append","name":"Destination","description":"not allowed"},"cards":[{"type":"basic","front":"Q","back":"A"}]}
+    }
+  ],
+  "invalidCards": [
+    {"name":"unknown card type","card":{"type":"image_occlusion","front":"Q","back":"A"}},
+    {"name":"missing basic front","card":{"type":"basic","back":"A"}},
+    {"name":"missing basic back","card":{"type":"basic","front":"Q"}},
+    {"name":"null basic front","card":{"type":"basic","front":null,"back":"A"}},
+    {"name":"numeric basic back","card":{"type":"basic","front":"Q","back":7}},
+    {"name":"empty basic front","card":{"type":"basic","front":"","back":"A"}},
+    {"name":"whitespace basic back","card":{"type":"basic","front":"Q","back":"   "}},
+    {"name":"wrong reverse flag type","card":{"type":"basic","front":"Q","back":"A","reverseEnabled":"yes"}},
+    {"name":"wrong tags type","card":{"type":"basic","front":"Q","back":"A","tags":"one"}},
+    {"name":"null tags","card":{"type":"basic","front":"Q","back":"A","tags":null}},
+    {"name":"unknown basic property","card":{"type":"basic","front":"Q","back":"A","overwrite":true}},
+    {"name":"basic cannot carry cloze source","card":{"type":"basic","front":"Q","back":"A","text":"{{c1::x}}"}},
+    {"name":"basic cannot carry internal id","card":{"type":"basic","front":"Q","back":"A","id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+    {"name":"basic cannot carry due date","card":{"type":"basic","front":"Q","back":"A","dueAt":123}},
+    {"name":"raw script html","card":{"type":"basic","front":"<script>alert(1)</script>","back":"A"}},
+    {"name":"ordinary html element","card":{"type":"basic","front":"<strong>bold</strong>","back":"A"}},
+    {"name":"html comment","card":{"type":"basic","front":"<!-- comment -->","back":"A"}},
+    {"name":"html doctype","card":{"type":"basic","front":"<!DOCTYPE html>","back":"A"}},
+    {"name":"html processing instruction","card":{"type":"basic","front":"<?xml version='1.0'?>","back":"A"}},
+    {"name":"markdown image","card":{"type":"basic","front":"![alt](https://example.com/image.png)","back":"A"}},
+    {"name":"markdown table","card":{"type":"basic","front":"| A | B |\n|---|---|\n| 1 | 2 |","back":"A"}},
+    {"name":"unclosed fenced code","card":{"type":"basic","front":"```rust\nfn main() {}","back":"A"}},
+    {"name":"malformed markdown link","card":{"type":"basic","front":"[broken](https://example.com","back":"A"}},
+    {"name":"relative markdown link","card":{"type":"basic","front":"[relative](/local/path)","back":"A"}},
+    {"name":"javascript markdown link","card":{"type":"basic","front":"[unsafe](javascript:alert(1))","back":"A"}},
+    {"name":"data markdown link","card":{"type":"basic","front":"[unsafe](data:text/plain,x)","back":"A"}},
+    {"name":"file markdown link","card":{"type":"basic","front":"[unsafe](file:///tmp/x)","back":"A"}},
+    {"name":"leading hash tag","card":{"type":"basic","front":"Q","back":"A","tags":["#bad"]}},
+    {"name":"overlong tag","card":{"type":"basic","front":"Q","back":"A","tags":["xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"]}},
+    {"name":"too many tags","card":{"type":"basic","front":"Q","back":"A","tags":["t01","t02","t03","t04","t05","t06","t07","t08","t09","t10","t11","t12","t13","t14","t15","t16","t17","t18","t19","t20","t21","t22","t23","t24","t25","t26","t27","t28","t29","t30","t31","t32","t33"]}},
+    {"name":"empty cloze text","card":{"type":"cloze","text":""}},
+    {"name":"cloze without marker","card":{"type":"cloze","text":"Nothing hidden here."}},
+    {"name":"cloze group zero","card":{"type":"cloze","text":"{{c0::invalid}}"}},
+    {"name":"cloze group above maximum","card":{"type":"cloze","text":"{{c10001::invalid}}"}},
+    {"name":"cloze nonnumeric group","card":{"type":"cloze","text":"{{cx::invalid}}"}},
+    {"name":"cloze empty blank","card":{"type":"cloze","text":"{{c1::}}"}},
+    {"name":"cloze whitespace blank","card":{"type":"cloze","text":"{{c1::   }}"}},
+    {"name":"cloze missing separator","card":{"type":"cloze","text":"{{c1 hidden}}"}},
+    {"name":"cloze missing closing braces","card":{"type":"cloze","text":"{{c1::hidden"}},
+    {"name":"cloze stray closing braces","card":{"type":"cloze","text":"{{c1::hidden}} stray }}"}},
+    {"name":"cloze nested marker","card":{"type":"cloze","text":"{{c1::outer {{c2::inner}}}}"}},
+    {"name":"cloze invalid mode","card":{"type":"cloze","text":"{{c1::hidden}}","mode":"random"}},
+    {"name":"cloze null mode","card":{"type":"cloze","text":"{{c1::hidden}}","mode":null}},
+    {"name":"cloze wrong mode type","card":{"type":"cloze","text":"{{c1::hidden}}","mode":1}},
+    {"name":"unknown cloze property","card":{"type":"cloze","text":"{{c1::hidden}}","reverseEnabled":true}},
+    {"name":"cloze cannot carry basic front","card":{"type":"cloze","text":"{{c1::hidden}}","front":"Q"}}
+  ]
+}
