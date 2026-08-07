@@ -14,7 +14,13 @@ ostudy_check_fingerprint() {
     {
       git ls-files -z
       git ls-files --others --exclude-standard -z
-    } | sort -zu | xargs -0 -r sha256sum
+    } | sort -zu | while IFS= read -r -d '' path; do
+      if [[ -f "$path" ]]; then
+        sha256sum "$path"
+      else
+        printf 'missing  %s\n' "$path"
+      fi
+    done
 
     printf 'node='; command -v node >/dev/null 2>&1 && node --version || printf 'missing\n'
     printf 'pnpm='; command -v pnpm >/dev/null 2>&1 && pnpm --version || printf 'missing\n'
