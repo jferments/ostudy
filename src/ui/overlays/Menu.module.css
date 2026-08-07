@@ -1,0 +1,80 @@
+@layer components {
+  .root {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .trigger {
+    min-height: var(--control-height);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-small);
+    padding: 0 var(--space-4);
+    background: var(--surface-raised);
+    color: var(--text);
+    font: inherit;
+    font-weight: 720;
+  }
+
+  .trigger:hover:not(:disabled),
+  .trigger[aria-expanded="true"] {
+    border-color: var(--accent);
+    background: var(--surface-soft);
+  }
+
+  .trigger:focus-visible {
+    outline: none;
+    box-shadow: var(--focus);
+  }
+
+  .menu {
+    position: absolute;
+    z-index: var(--layer-popover);
+    top: calc(100% + var(--space-2));
+    right: 0;
+    display: grid;
+    min-width: 240px;
+    gap: var(--space-1);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-medium);
+    padding: var(--space-2);
+    background: var(--surface);
+    box-shadow: var(--elevation-overlay);
+  }
+
+  .menu button,
+  .sheetList button {
+    min-height: var(--touch-target-min);
+    border: 0;
+    border-radius: var(--radius-small);
+    padding: var(--space-3);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-weight: 680;
+    text-align: left;
+  }
+
+  .menu button:hover:not(:disabled),
+  .menu button:focus-visible,
+  .sheetList button:hover:not(:disabled),
+  .sheetList button:focus-visible {
+    outline: none;
+    background: var(--surface-raised);
+    box-shadow: var(--focus);
+  }
+
+  .destructive {
+    color: var(--danger) !important;
+  }
+
+  .sheetList {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-4);
+  }
+
+  .sheetList button {
+    border: 1px solid var(--border);
+    background: var(--surface-raised);
+  }
+}
