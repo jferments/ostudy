@@ -77,6 +77,20 @@ def wait_for_absent(
     raise TimeoutError(f"Element remained present: {using}={value}")
 
 
+def wait_for_focus(session_id: str, element_id: str, deadline: float) -> None:
+    """Wait for React's queued post-showModal initial-focus step to settle."""
+    while time.monotonic() < deadline:
+        focused = execute(
+            session_id,
+            "return document.activeElement === arguments[0];",
+            [{webdriver.ELEMENT_KEY: element_id}],
+        )
+        if focused is True:
+            return
+        time.sleep(0.05)
+    raise AssertionError("Create-deck dialog did not place initial focus in the name input")
+
+
 def assert_no_horizontal_overflow(session_id: str, label: str) -> None:
     measurements = execute(
         session_id,
@@ -159,13 +173,7 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
         "input[placeholder='NCLEX Pharmacology']",
         deadline,
     )
-    focused = execute(
-        session_id,
-        "return document.activeElement === arguments[0];",
-        [{webdriver.ELEMENT_KEY: name_input}],
-    )
-    if focused is not True:
-        raise AssertionError("Create-deck dialog did not place initial focus in the name input")
+    wait_for_focus(session_id, name_input, deadline)
 
     send_key(session_id, TAB_KEY)
     inside_dialog = execute(
