@@ -91,6 +91,24 @@ def wait_for_focus(session_id: str, element_id: str, deadline: float) -> None:
     raise AssertionError("Create-deck dialog did not place initial focus in the name input")
 
 
+def wait_for_active_label(session_id: str, expected: str, deadline: float) -> None:
+    """Wait for the queued overlay-unmount focus restoration to complete."""
+    last_label = ""
+    while time.monotonic() < deadline:
+        last_label = str(
+            execute(
+                session_id,
+                "return document.activeElement ? (document.activeElement.getAttribute('aria-label') || document.activeElement.textContent || '').trim() : '';",
+            )
+        )
+        if expected in last_label:
+            return
+        time.sleep(0.05)
+    raise AssertionError(
+        f"Dialog focus was not restored to {expected}: {last_label!r}"
+    )
+
+
 def assert_no_horizontal_overflow(session_id: str, label: str) -> None:
     measurements = execute(
         session_id,
@@ -185,14 +203,7 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
 
     send_key(session_id, ESCAPE_KEY)
     wait_for_absent(session_id, "css selector", "[role='dialog']", deadline)
-    restored_label = str(
-        execute(
-            session_id,
-            "return document.activeElement ? (document.activeElement.getAttribute('aria-label') || document.activeElement.textContent || '').trim() : '';",
-        )
-    )
-    if "New deck" not in restored_label:
-        raise AssertionError(f"Dialog focus was not restored to New deck: {restored_label!r}")
+    wait_for_active_label(session_id, "New deck", deadline)
 
 
 def verify_wide_navigation(session_id: str, deadline: float) -> None:
