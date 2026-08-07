@@ -24,12 +24,14 @@ export interface ConfirmOptions {
 
 export interface OverlayContextValue {
   topId: string | null;
+  isTop(id: string): boolean;
   register(entry: OverlayEntry): () => void;
   confirm(options: ConfirmOptions): Promise<boolean>;
 }
 
 const fallback: OverlayContextValue = {
   topId: null,
+  isTop: () => true,
   register: () => () => undefined,
   confirm: async () => false,
 };
