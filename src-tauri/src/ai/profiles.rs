@@ -64,6 +64,7 @@ pub struct DeleteAiProviderProfileInput {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SetAiProviderCredentialInput {
+    pub operation_id: String,
     pub profile_id: String,
     pub revision: i64,
     pub credential: String,
@@ -73,6 +74,7 @@ pub struct SetAiProviderCredentialInput {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClearAiProviderCredentialInput {
+    pub operation_id: String,
     pub profile_id: String,
     pub revision: i64,
 }
@@ -193,7 +195,6 @@ impl ProfileSnapshot {
 struct StoredProfile {
     id: String,
     display_name: String,
-    normalized_name: String,
     provider_kind: ProviderKind,
     base_url: String,
     model_id: String,
@@ -211,7 +212,6 @@ struct StoredProfile {
 struct RawProfileRow {
     id: String,
     display_name: String,
-    normalized_name: String,
     provider_kind: String,
     base_url: String,
     model_id: String,
@@ -232,7 +232,6 @@ impl TryFrom<RawProfileRow> for StoredProfile {
         Ok(Self {
             id: row.id,
             display_name: row.display_name,
-            normalized_name: row.normalized_name,
             provider_kind: ProviderKind::from_db(&row.provider_kind)?,
             base_url: row.base_url,
             model_id: row.model_id,
@@ -299,7 +298,8 @@ pub fn create_ai_provider_profile(
     runtime: State<'_, AiRuntimeState>,
     input: CreateAiProviderProfileInput,
 ) -> Result<AiProviderProfileDetailDto, CommandError> {
-    validate_entity_id(&input.operation_id, "operation")?;
+    validate_operation_id(&input.operation_id)?;
+    let _guard = lock_profile_mutations(runtime.inner())?;
     let profile_id = database.with_connection(|connection| create_profile(connection, input))?;
     let profile = database.with_connection(|connection| load_profile(connection, &profile_id))?;
     build_detail(&profile, runtime.inner())
@@ -311,11 +311,23 @@ pub fn update_ai_provider_profile(
     runtime: State<'_, AiRuntimeState>,
     input: UpdateAiProviderProfileInput,
 ) -> Result<AiProviderProfileDetailDto, CommandError> {
-    validate_entity_id(&input.operation_id, "operation")?;
-    validate_entity_id(&input.profile_id, "AI provider profile")?;
-    validate_revision(input.revision)?;
+    validate_operation_id(&input.operation_id)?;
+    validate_profile_reference(&input.profile_id, input.revision)?;
+    let _guard = lock_profile_mutations(runtime.inner())?;
 
-    let current = database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
+    if operation_was_replayed(
+        database.inner(),
+        &input.operation_id,
+        "update_profile",
+        Some(&input.profile_id),
+    )? {
+        let profile =
+            database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
+        return build_detail(&profile, runtime.inner());
+    }
+
+    let current =
+        database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
     if current.revision != input.revision {
         return Err(profile_changed());
     }
@@ -324,22 +336,7 @@ pub fn update_ai_provider_profile(
         &input.base_url,
         input.allow_insecure_http,
     )?;
-    let current_origin = endpoint_origin_from_str(&current.base_url)?;
-    if current_origin != next_endpoint.origin {
-        let status = runtime
-            .secrets
-            .status(&current.id, current.auth_mode)?
-            .status;
-        if matches!(
-            status,
-            CredentialStatus::SavedSecurely | CredentialStatus::SessionOnly
-        ) {
-            return Err(CommandError::new(
-                "ai_endpoint_has_credential",
-                "Remove this profile's saved credential before changing its server origin.",
-            ));
-        }
-    }
+    ensure_trust_boundary_can_change(&current, &next_endpoint, input.auth_mode, runtime.inner())?;
 
     let profile_id = database.with_connection(|connection| {
         update_profile(connection, current.provider_kind, next_endpoint, input)
@@ -354,25 +351,30 @@ pub fn delete_ai_provider_profile(
     runtime: State<'_, AiRuntimeState>,
     input: DeleteAiProviderProfileInput,
 ) -> Result<DeleteAiProviderProfileResultDto, CommandError> {
-    validate_entity_id(&input.operation_id, "operation")?;
-    validate_entity_id(&input.profile_id, "AI provider profile")?;
-    validate_revision(input.revision)?;
+    validate_operation_id(&input.operation_id)?;
+    validate_profile_reference(&input.profile_id, input.revision)?;
+    let _guard = lock_profile_mutations(runtime.inner())?;
 
-    if database.with_connection(|connection| {
-        operation_replay(connection, &input.operation_id, "delete_profile", Some(&input.profile_id))
-    })?.is_some()
-    {
+    if operation_was_replayed(
+        database.inner(),
+        &input.operation_id,
+        "delete_profile",
+        Some(&input.profile_id),
+    )? {
         return Ok(DeleteAiProviderProfileResultDto {
             profile_id: input.profile_id,
             deleted: true,
         });
     }
 
-    let current = database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
+    let current =
+        database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
     if current.revision != input.revision {
         return Err(profile_changed());
     }
-    runtime.secrets.clear(&input.profile_id)?;
+    if current.auth_mode.requires_credential() {
+        runtime.secrets.clear(&input.profile_id)?;
+    }
     database.with_connection(|connection| delete_profile(connection, &input))?;
     Ok(DeleteAiProviderProfileResultDto {
         profile_id: input.profile_id,
@@ -386,9 +388,23 @@ pub fn set_ai_provider_credential(
     runtime: State<'_, AiRuntimeState>,
     input: SetAiProviderCredentialInput,
 ) -> Result<AiProviderProfileDetailDto, CommandError> {
-    validate_entity_id(&input.profile_id, "AI provider profile")?;
-    validate_revision(input.revision)?;
-    let current = database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
+    validate_operation_id(&input.operation_id)?;
+    validate_profile_reference(&input.profile_id, input.revision)?;
+    let _guard = lock_profile_mutations(runtime.inner())?;
+
+    if operation_was_replayed(
+        database.inner(),
+        &input.operation_id,
+        "set_credential",
+        Some(&input.profile_id),
+    )? {
+        let profile =
+            database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
+        return build_detail(&profile, runtime.inner());
+    }
+
+    let current =
+        database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
     if current.revision != input.revision {
         return Err(profile_changed());
     }
@@ -399,13 +415,20 @@ pub fn set_ai_provider_credential(
         ));
     }
 
-    database.with_connection(|connection| {
-        increment_credential_epoch(connection, &input.profile_id, input.revision)
-    })?;
     runtime
         .secrets
         .set(&input.profile_id, input.credential, input.persistence)?;
-    let profile = database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
+    database.with_connection(|connection| {
+        commit_credential_epoch(
+            connection,
+            &input.profile_id,
+            input.revision,
+            &input.operation_id,
+            "set_credential",
+        )
+    })?;
+    let profile =
+        database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
     build_detail(&profile, runtime.inner())
 }
 
@@ -415,18 +438,39 @@ pub fn clear_ai_provider_credential(
     runtime: State<'_, AiRuntimeState>,
     input: ClearAiProviderCredentialInput,
 ) -> Result<AiProviderProfileDetailDto, CommandError> {
-    validate_entity_id(&input.profile_id, "AI provider profile")?;
-    validate_revision(input.revision)?;
-    let current = database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
+    validate_operation_id(&input.operation_id)?;
+    validate_profile_reference(&input.profile_id, input.revision)?;
+    let _guard = lock_profile_mutations(runtime.inner())?;
+
+    if operation_was_replayed(
+        database.inner(),
+        &input.operation_id,
+        "clear_credential",
+        Some(&input.profile_id),
+    )? {
+        let profile =
+            database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
+        return build_detail(&profile, runtime.inner());
+    }
+
+    let current =
+        database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
     if current.revision != input.revision {
         return Err(profile_changed());
     }
 
-    database.with_connection(|connection| {
-        increment_credential_epoch(connection, &input.profile_id, input.revision)
-    })?;
     runtime.secrets.clear(&input.profile_id)?;
-    let profile = database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
+    database.with_connection(|connection| {
+        commit_credential_epoch(
+            connection,
+            &input.profile_id,
+            input.revision,
+            &input.operation_id,
+            "clear_credential",
+        )
+    })?;
+    let profile =
+        database.with_connection(|connection| load_profile(connection, &input.profile_id))?;
     build_detail(&profile, runtime.inner())
 }
 
@@ -440,12 +484,14 @@ pub fn get_ai_task_defaults(
 #[tauri::command]
 pub fn set_ai_task_default(
     database: State<'_, Database>,
+    runtime: State<'_, AiRuntimeState>,
     input: SetAiTaskDefaultInput,
 ) -> Result<AiTaskDefaultsDto, CommandError> {
-    validate_entity_id(&input.operation_id, "operation")?;
+    validate_operation_id(&input.operation_id)?;
     if let Some(profile_id) = &input.profile_id {
         validate_entity_id(profile_id, "AI provider profile")?;
     }
+    let _guard = lock_profile_mutations(runtime.inner())?;
     database.with_connection(|connection| set_task_default(connection, input))?;
     database.with_connection(load_task_defaults)
 }
@@ -461,12 +507,9 @@ fn create_profile(
     connection: &mut Connection,
     input: CreateAiProviderProfileInput,
 ) -> Result<String, CommandError> {
-    if let Some(profile_id) = operation_replay(
-        connection,
-        &input.operation_id,
-        "create_profile",
-        None,
-    )? {
+    if let Some(profile_id) =
+        operation_replay(connection, &input.operation_id, "create_profile", None)?
+    {
         return profile_id.ok_or_else(|| {
             CommandError::new(
                 "ai_operation_invalid",
@@ -538,15 +581,6 @@ fn update_profile(
     endpoint: ValidatedEndpoint,
     input: UpdateAiProviderProfileInput,
 ) -> Result<String, CommandError> {
-    if let Some(profile_id) = operation_replay(
-        connection,
-        &input.operation_id,
-        "update_profile",
-        Some(&input.profile_id),
-    )? {
-        return Ok(profile_id.unwrap_or(input.profile_id));
-    }
-
     validate_provider_configuration(provider_kind, input.auth_mode)?;
     let display_name = validate_display_name(input.display_name)?;
     let normalized_name = normalize_name(&display_name);
@@ -644,10 +678,12 @@ fn delete_profile(
     transaction.commit().map_err(CommandError::database)
 }
 
-fn increment_credential_epoch(
+fn commit_credential_epoch(
     connection: &mut Connection,
     profile_id: &str,
     revision: i64,
+    operation_id: &str,
+    operation_kind: &str,
 ) -> Result<(), CommandError> {
     let now = unix_time_millis()?;
     let transaction = connection
@@ -672,6 +708,13 @@ fn increment_credential_epoch(
             [profile_id],
         )
         .map_err(CommandError::database)?;
+    record_operation(
+        &transaction,
+        operation_id,
+        operation_kind,
+        Some(profile_id),
+        now,
+    )?;
     transaction.commit().map_err(CommandError::database)
 }
 
@@ -727,7 +770,7 @@ fn set_task_default(
 fn list_profiles(connection: &mut Connection) -> Result<Vec<StoredProfile>, CommandError> {
     let mut statement = connection
         .prepare(
-            "SELECT id, display_name, normalized_name, provider_kind, base_url,
+            "SELECT id, display_name, provider_kind, base_url,
                     model_id, auth_mode, enabled, allow_insecure_http,
                     request_timeout_ms, credential_epoch, revision,
                     created_at, updated_at
@@ -755,7 +798,7 @@ fn list_profiles(connection: &mut Connection) -> Result<Vec<StoredProfile>, Comm
 fn load_profile(connection: &Connection, profile_id: &str) -> Result<StoredProfile, CommandError> {
     let raw = connection
         .query_row(
-            "SELECT id, display_name, normalized_name, provider_kind, base_url,
+            "SELECT id, display_name, provider_kind, base_url,
                     model_id, auth_mode, enabled, allow_insecure_http,
                     request_timeout_ms, credential_epoch, revision,
                     created_at, updated_at
@@ -780,33 +823,31 @@ fn raw_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawProfileRow> {
     Ok(RawProfileRow {
         id: row.get(0)?,
         display_name: row.get(1)?,
-        normalized_name: row.get(2)?,
-        provider_kind: row.get(3)?,
-        base_url: row.get(4)?,
-        model_id: row.get(5)?,
-        auth_mode: row.get(6)?,
-        enabled: row.get(7)?,
-        allow_insecure_http: row.get(8)?,
-        request_timeout_ms: row.get(9)?,
-        credential_epoch: row.get(10)?,
-        revision: row.get(11)?,
-        created_at: row.get(12)?,
-        updated_at: row.get(13)?,
+        provider_kind: row.get(2)?,
+        base_url: row.get(3)?,
+        model_id: row.get(4)?,
+        auth_mode: row.get(5)?,
+        enabled: row.get(6)?,
+        allow_insecure_http: row.get(7)?,
+        request_timeout_ms: row.get(8)?,
+        credential_epoch: row.get(9)?,
+        revision: row.get(10)?,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
     })
 }
 
 fn load_task_defaults(connection: &mut Connection) -> Result<AiTaskDefaultsDto, CommandError> {
-    let profile_id = connection
+    let row: Option<Option<String>> = connection
         .query_row(
             "SELECT profile_id FROM ai_task_defaults WHERE task_kind = ?1",
             [AiTaskKind::FlashcardGeneration.as_str()],
-            |row| row.get(0),
+            |row| row.get::<_, Option<String>>(0),
         )
         .optional()
-        .map_err(CommandError::database)?
-        .flatten();
+        .map_err(CommandError::database)?;
     Ok(AiTaskDefaultsDto {
-        flashcard_generation_profile_id: profile_id,
+        flashcard_generation_profile_id: row.flatten(),
     })
 }
 
@@ -886,6 +927,44 @@ fn configuration_status(
     }
 }
 
+fn ensure_trust_boundary_can_change(
+    current: &StoredProfile,
+    next_endpoint: &ValidatedEndpoint,
+    next_auth_mode: AuthMode,
+    runtime: &AiRuntimeState,
+) -> Result<(), CommandError> {
+    let current_origin = endpoint_origin_from_str(&current.base_url)?;
+    let origin_changes = current_origin != next_endpoint.origin;
+    let authentication_is_removed =
+        current.auth_mode.requires_credential() && !next_auth_mode.requires_credential();
+    if !origin_changes && !authentication_is_removed {
+        return Ok(());
+    }
+
+    let status = runtime
+        .secrets
+        .status(&current.id, current.auth_mode)?
+        .status;
+    if matches!(
+        status,
+        CredentialStatus::SavedSecurely | CredentialStatus::SessionOnly
+    ) {
+        return Err(CommandError::new(
+            if origin_changes {
+                "ai_endpoint_has_credential"
+            } else {
+                "ai_auth_mode_has_credential"
+            },
+            if origin_changes {
+                "Remove this profile's credential before changing its server origin."
+            } else {
+                "Remove this profile's credential before disabling authentication."
+            },
+        ));
+    }
+    Ok(())
+}
+
 fn validate_provider_configuration(
     provider_kind: ProviderKind,
     auth_mode: AuthMode,
@@ -952,7 +1031,8 @@ fn validate_timeout(value: i64) -> Result<(), CommandError> {
     Ok(())
 }
 
-fn validate_revision(revision: i64) -> Result<(), CommandError> {
+fn validate_profile_reference(profile_id: &str, revision: i64) -> Result<(), CommandError> {
+    validate_entity_id(profile_id, "AI provider profile")?;
     if revision < 1 {
         return Err(CommandError::new(
             "invalid_revision",
@@ -960,6 +1040,34 @@ fn validate_revision(revision: i64) -> Result<(), CommandError> {
         ));
     }
     Ok(())
+}
+
+fn validate_operation_id(operation_id: &str) -> Result<(), CommandError> {
+    validate_entity_id(operation_id, "operation")
+}
+
+fn lock_profile_mutations(
+    runtime: &AiRuntimeState,
+) -> Result<std::sync::MutexGuard<'_, ()>, CommandError> {
+    runtime.profile_mutations.lock().map_err(|_| {
+        CommandError::new(
+            "ai_profile_mutation_lock_poisoned",
+            "AI provider profile mutations are unavailable. Restart ostudy.",
+        )
+    })
+}
+
+fn operation_was_replayed(
+    database: &Database,
+    operation_id: &str,
+    operation_kind: &str,
+    profile_id: Option<&str>,
+) -> Result<bool, CommandError> {
+    Ok(database
+        .with_connection(|connection| {
+            operation_replay(connection, operation_id, operation_kind, profile_id)
+        })?
+        .is_some())
 }
 
 fn ensure_profile_capacity(connection: &Connection) -> Result<(), CommandError> {
@@ -1024,10 +1132,11 @@ fn operation_replay(
     let Some((operation_kind, profile_id)) = existing else {
         return Ok(None);
     };
+
+    if operation_kind == "create_profile" && expected_kind == "create_profile" {
+        return Ok(Some(profile_id));
+    }
     if operation_kind != expected_kind || profile_id.as_deref() != expected_profile_id {
-        if expected_kind == "create_profile" && operation_kind == expected_kind {
-            return Ok(Some(profile_id));
-        }
         return Err(CommandError::new(
             "ai_operation_conflict",
             "That operation identity was already used for a different AI profile mutation.",
@@ -1061,7 +1170,8 @@ fn profile_changed() -> CommandError {
     )
 }
 
-pub(crate) fn default_profile_input(provider_kind: ProviderKind) -> CreateAiProviderProfileInput {
+#[cfg(test)]
+fn default_profile_input(provider_kind: ProviderKind) -> CreateAiProviderProfileInput {
     CreateAiProviderProfileInput {
         operation_id: String::new(),
         display_name: provider_kind.display_name().to_string(),
@@ -1134,6 +1244,45 @@ mod tests {
     }
 
     #[test]
+    fn credential_epoch_operations_are_idempotent_and_redacted() {
+        let database = Database::open_in_memory().expect("database should open");
+        let profile_id = create_test_profile(&database, ProviderKind::LlamaCpp);
+        database
+            .with_connection(|connection| {
+                commit_credential_epoch(
+                    connection,
+                    &profile_id,
+                    1,
+                    "44444444444444444444444444444444",
+                    "set_credential",
+                )
+            })
+            .expect("credential epoch should commit");
+        assert!(operation_was_replayed(
+            &database,
+            "44444444444444444444444444444444",
+            "set_credential",
+            Some(&profile_id),
+        )
+        .expect("operation replay should load"));
+        database
+            .with_connection(|connection| {
+                let operation_columns: Vec<String> = connection
+                    .prepare("SELECT name FROM pragma_table_info('ai_profile_operations')")
+                    .map_err(CommandError::database)?
+                    .query_map([], |row| row.get(0))
+                    .map_err(CommandError::database)?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(CommandError::database)?;
+                assert!(!operation_columns
+                    .iter()
+                    .any(|column| column.contains("credential_value") || column.contains("secret")));
+                Ok(())
+            })
+            .expect("operation schema should inspect");
+    }
+
+    #[test]
     fn rejects_planned_provider_profiles() {
         let database = Database::open_in_memory().expect("database should open");
         let mut input = default_profile_input(ProviderKind::Openai);
@@ -1151,5 +1300,14 @@ mod tests {
         );
         assert!(validate_timeout(MIN_TIMEOUT_MS - 1).is_err());
         assert!(validate_timeout(MAX_TIMEOUT_MS + 1).is_err());
+    }
+
+    #[test]
+    fn task_defaults_decode_nullable_profile_ids() {
+        let database = Database::open_in_memory().expect("database should open");
+        let defaults = database
+            .with_connection(load_task_defaults)
+            .expect("defaults should load");
+        assert_eq!(defaults.flashcard_generation_profile_id, None);
     }
 }
