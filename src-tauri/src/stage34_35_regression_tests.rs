@@ -98,7 +98,7 @@ fn versioned_repairs_migrate_legacy_rows_before_the_schema_is_narrowed() {
                  reverse_enabled, cloze_source, cloze_mode,
                  created_at, updated_at, revision
              ) VALUES (
-                 ?1, ?2, 'cloze', 'tipt-json', 1,
+                 ?1, ?2, 'cloze', 'tiptap-json', 1,
                  ?3, ?4, 'The heart pumps blood.', 'heart · blood', '',
                  0, 'The {{c1::heart}} pumps {{c2::blood}}.', 'one_at_a_time',
                  10, 10, 1
