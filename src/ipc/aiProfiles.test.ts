@@ -40,7 +40,7 @@ describe("AI provider IPC", () => {
     });
   });
 
-  it("submits credentials only to the write-only credential command", async () => {
+  it("submits credentials only to operation-identified write commands", async () => {
     await setAiProviderCredential(profileId, 3, "sentinel-secret", "session");
     expect(invoke).toHaveBeenCalledWith("set_ai_provider_credential", {
       input: {
@@ -48,12 +48,17 @@ describe("AI provider IPC", () => {
         revision: 3,
         credential: "sentinel-secret",
         persistence: "session",
+        operationId: "f".repeat(32),
       },
     });
     vi.mocked(invoke).mockClear();
     await clearAiProviderCredential(profileId, 4);
     expect(invoke).toHaveBeenCalledWith("clear_ai_provider_credential", {
-      input: { profileId, revision: 4 },
+      input: {
+        profileId,
+        revision: 4,
+        operationId: "f".repeat(32),
+      },
     });
   });
 
