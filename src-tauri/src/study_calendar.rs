@@ -208,12 +208,6 @@ impl StudyTimeContext {
     }
 }
 
-/// Resolve the first real instant that belongs to a local calendar date using
-/// the host operating system's timezone rules.
-pub fn first_valid_instant_of_local_date(date: NaiveDate) -> Result<i64, CommandError> {
-    first_valid_system_instant(date)
-}
-
 fn first_valid_system_instant(date: NaiveDate) -> Result<i64, CommandError> {
     let midnight = date
         .and_hms_opt(0, 0, 0)
