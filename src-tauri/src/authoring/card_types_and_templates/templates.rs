@@ -467,7 +467,7 @@ fn resolve_template_child_id(
             "invalid_template_child",
             "A template field or rule identifier is already in use.",
         )),
-        (true, None) => generate_id(connection),
+        (true, None) => Ok(id),
         (false, None) => Ok(id),
     }
 }
@@ -1314,11 +1314,38 @@ mod template_summary_tests {
             .expect("summaries should load");
         assert!(summaries.is_empty());
     }
+
+    #[test]
+    fn unused_update_child_id_is_preserved_without_pending_rows() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                let child_id = "22222222222222222222222222222222".to_string();
+                let resolved = resolve_template_child_id(
+                    connection,
+                    "card_template_fields",
+                    "11111111111111111111111111111111",
+                    Some(child_id.clone()),
+                    true,
+                    "template field",
+                )?;
+                assert_eq!(resolved, child_id);
+                let count: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM card_template_fields WHERE id = ?1",
+                        [resolved],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(count, 0);
+                Ok(())
+            })
+            .expect("unused IDs should validate without persistence");
+    }
 }
 
 mod automatic_layout;
 mod repair;
-mod stable_update;
 
 #[cfg(test)]
 use automatic_layout::materialize_automatic_template_document;
@@ -1329,10 +1356,9 @@ use automatic_layout::{
 pub(super) use automatic_layout::{
     generate_automatic_template_cards_in_connection, normalize_card_template_dto_for_editing,
     prepare_automatic_create_template_input, prepare_automatic_update_template_input,
-    render_automatic_template_previews, template_update_contains_new_children,
+    render_automatic_template_previews,
 };
 pub(crate) use repair::apply_stage3_data_repairs;
-pub(super) use stable_update::update_card_template_with_stable_children_in_connection;
 
 #[cfg(test)]
 mod asset_tests;

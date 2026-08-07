@@ -108,30 +108,6 @@ export interface OrganizedCard extends Flashcard {
   dueAt: number;
 }
 
-export interface CreateOrganizedCardInput {
-  deckId: string;
-  frontDoc: RichDocument;
-  backDoc: RichDocument;
-  frontText: string;
-  backText: string;
-  tags: string[];
-  allowDuplicate: boolean;
-  assetDraftId?: string;
-}
-
-export interface UpdateOrganizedCardInput {
-  noteId: string;
-  deckId: string;
-  revision: number;
-  frontDoc: RichDocument;
-  backDoc: RichDocument;
-  frontText: string;
-  backText: string;
-  tags: string[];
-  allowDuplicate: boolean;
-  assetDraftId?: string;
-}
-
 export interface CardTypeInfo {
   cardType: BuiltInCardType;
   reverseEnabled: boolean;
@@ -140,25 +116,30 @@ export interface CardTypeInfo {
   generatedCardCount: number;
 }
 
-export interface CreateGeneratedCardInput {
+interface GeneratedCardWriteCommon {
   deckId: string;
-  cardType: BuiltInCardType;
-  reverseEnabled: boolean;
-  clozeSource: string;
-  clozeMode: ClozeMode;
-  frontDoc: RichDocument;
-  backDoc: RichDocument;
-  frontText: string;
-  backText: string;
   tags: string[];
   allowDuplicate: boolean;
   assetDraftId?: string;
 }
 
-export interface UpdateGeneratedCardInput extends CreateGeneratedCardInput {
+export type CreateGeneratedCardInput =
+  | (GeneratedCardWriteCommon & {
+      cardType: "basic";
+      reverseEnabled: boolean;
+      frontDoc: RichDocument;
+      backDoc: RichDocument;
+    })
+  | (GeneratedCardWriteCommon & {
+      cardType: "cloze";
+      clozeSource: string;
+      clozeMode: ClozeMode;
+    });
+
+export type UpdateGeneratedCardInput = CreateGeneratedCardInput & {
   noteId: string;
   revision: number;
-}
+};
 
 export interface CardTemplateField {
   id: string;
@@ -651,14 +632,6 @@ export async function listMatchingCards(input: CardSearchInput): Promise<Selecti
 
 export async function getOrganizedCard(noteId: string): Promise<OrganizedCard> {
   return invoke<OrganizedCard>("get_organized_card", { noteId });
-}
-
-export async function createOrganizedCard(input: CreateOrganizedCardInput): Promise<OrganizedCard> {
-  return invoke<OrganizedCard>("create_organized_card", { input });
-}
-
-export async function updateOrganizedCard(input: UpdateOrganizedCardInput): Promise<OrganizedCard> {
-  return invoke<OrganizedCard>("update_organized_card", { input });
 }
 
 export async function getCardTypeInfo(noteId: string): Promise<CardTypeInfo> {

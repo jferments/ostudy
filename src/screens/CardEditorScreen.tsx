@@ -426,28 +426,45 @@ export function CardEditorScreen({
         }
       }
 
-      const common = {
-        deckId: selectedDeckId,
-        cardType: builtInCardType,
-        reverseEnabled: builtInCardType === "basic" && reverseEnabled,
-        clozeSource: builtInCardType === "cloze" ? clozeSource : "",
-        clozeMode,
-        frontDoc,
-        backDoc,
-        frontText,
-        backText,
-        tags,
-        allowDuplicate,
-        assetDraftId: assetDraftId ?? undefined,
-      };
-      const saved =
-        existing && card
-          ? await updateGeneratedCard({
-              ...common,
-              noteId: card.noteId,
-              revision: card.revision,
-            })
-          : await createGeneratedCard(common);
+      let saved: OrganizedCard;
+      if (builtInCardType === "cloze") {
+        const input = {
+          deckId: selectedDeckId,
+          cardType: "cloze" as const,
+          clozeSource,
+          clozeMode,
+          tags,
+          allowDuplicate,
+          assetDraftId: assetDraftId ?? undefined,
+        };
+        saved =
+          existing && card
+            ? await updateGeneratedCard({
+                ...input,
+                noteId: card.noteId,
+                revision: card.revision,
+              })
+            : await createGeneratedCard(input);
+      } else {
+        const input = {
+          deckId: selectedDeckId,
+          cardType: "basic" as const,
+          reverseEnabled,
+          frontDoc,
+          backDoc,
+          tags,
+          allowDuplicate,
+          assetDraftId: assetDraftId ?? undefined,
+        };
+        saved =
+          existing && card
+            ? await updateGeneratedCard({
+                ...input,
+                noteId: card.noteId,
+                revision: card.revision,
+              })
+            : await createGeneratedCard(input);
+      }
 
       markAssetDraftCommitted();
       setDirty(false);
