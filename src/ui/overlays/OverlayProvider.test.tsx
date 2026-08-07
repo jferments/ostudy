@@ -84,20 +84,21 @@ describe("OverlayProvider", () => {
 
     const first = await screen.findByRole("button", { name: "First action" });
     const last = screen.getByRole("button", { name: "Last action" });
+    const close = screen.getByRole("button", { name: "Close dialog" });
     await waitFor(() => expect(document.activeElement).toBe(first));
 
     last.focus();
     fireEvent.keyDown(screen.getByRole("dialog", { name: "Focus dialog" }), { key: "Tab" });
-    expect(document.activeElement).toBe(first);
+    expect(document.activeElement).toBe(close);
 
-    first.focus();
+    close.focus();
     fireEvent.keyDown(screen.getByRole("dialog", { name: "Focus dialog" }), {
       key: "Tab",
       shiftKey: true,
     });
     expect(document.activeElement).toBe(last);
 
-    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    fireEvent.click(close);
     await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 
