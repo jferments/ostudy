@@ -6,19 +6,28 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/versions.env"
 # shellcheck disable=SC1091
+source "$SCRIPT_DIR/check-state.sh"
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/cargo-target.sh"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/build-state.sh"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
 cd "$ROOT_DIR"
+prepare_cargo_target "$ROOT_DIR"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/build-state.sh"
 
 CURRENT_STEP="initialization"
 step() { CURRENT_STEP="$*"; printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"; }
 trap 'status=$?; printf "\n\033[1;31mFULL CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; exit "$status"' ERR
 
-if [[ "${OSTUDY_FAST_CHECK_PASSED:-0}" != "1" ]]; then
+if [[ "${OSTUDY_FAST_CHECK_PASSED:-0}" == "1" ]]; then
+  printf '\n\033[1;32mREUSE Fast qualification passed earlier in this workflow.\033[0m\n'
+elif [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
+  && ostudy_javascript_dependencies_present \
+  && ostudy_check_stamp_is_current fast; then
+  printf '\n\033[1;32mREUSE Fast qualification already passed for this exact source tree.\033[0m\n'
+else
   bash "$SCRIPT_DIR/check-fast.sh"
 fi
 
@@ -28,7 +37,7 @@ if [[ "${OSTUDY_SKIP_NATIVE_SMOKE:-0}" == "1" ]]; then
 else
   "$SCRIPT_DIR/doctor.sh" --native-smoke
 fi
-prepare_cargo_target "$ROOT_DIR"
+printf 'Cargo target: %s\n' "$CARGO_TARGET_DIR"
 printf 'Cargo parallel jobs: %s\n' "$CARGO_BUILD_JOBS"
 
 step "Frontend production build"
@@ -53,6 +62,7 @@ else
   "$SCRIPT_DIR/smoke-native.sh"
 fi
 
+ostudy_write_check_stamp full
 trap - ERR
 printf '\n\033[1;32mAll ostudy checks passed.\033[0m\n'
 printf 'The current standalone build is ready for ./run-app.sh.\n'
