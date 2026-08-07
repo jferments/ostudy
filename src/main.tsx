@@ -4,14 +4,9 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { recordWebviewDiagnostic } from "./ipc/diagnostics";
-import "./styles.css";
-import "./practice-confidence.css";
-import "./card-organization.css";
-import "./card-types.css";
-import "./rich-templates.css";
-import "./scheduling-controls.css";
-import "./analytics.css";
-import "./managed-assets.css";
+import { ExperienceProvider } from "./ui/feedback/ExperienceProvider";
+import "./ui/foundations/index.css";
+import { OverlayProvider } from "./ui/overlays/OverlayProvider";
 
 window.addEventListener("error", (event) => {
   void recordWebviewDiagnostic(
@@ -31,8 +26,12 @@ if (rootElement === null) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <AppErrorBoundary>
-      <App />
-    </AppErrorBoundary>
+    <OverlayProvider>
+      <ExperienceProvider>
+        <AppErrorBoundary>
+          <App />
+        </AppErrorBoundary>
+      </ExperienceProvider>
+    </OverlayProvider>
   </StrictMode>,
 );

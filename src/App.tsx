@@ -21,9 +21,6 @@ export type {
 function App() {
   const controller = useAppController();
 
-  // Theme variables affect the entire document, so apply them before the browser
-  // paints the commit that reveals navigation. This avoids a one-frame fallback
-  // theme after local settings finish loading and keeps bootstrap deterministic.
   useLayoutEffect(() => {
     applyThemeSettings(controller.activeSettings);
   }, [controller.activeSettings]);
@@ -51,7 +48,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-ui-root="true">
       <NavigationSidebar section={controller.section} onNavigate={controller.navigate} />
 
       <main className="main-area">

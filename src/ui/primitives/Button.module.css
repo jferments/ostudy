@@ -1,0 +1,44 @@
+@layer components {
+  .button {
+    position: relative;
+    display: inline-flex;
+    min-height: var(--control-height);
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    border: 1px solid transparent;
+    border-radius: var(--radius-small);
+    padding: 0 var(--space-4);
+    font: inherit;
+    font-weight: 760;
+    cursor: pointer;
+    transition:
+      transform var(--motion-fast) var(--ease-standard),
+      background var(--motion-fast) var(--ease-standard),
+      border-color var(--motion-fast) var(--ease-standard);
+  }
+
+  .button:disabled { cursor: not-allowed; opacity: 0.55; }
+  .button:hover:not(:disabled) { transform: translateY(-1px); }
+  .button:focus-visible { outline: none; box-shadow: var(--focus); }
+
+  .primary { border-color: var(--accent-strong); background: var(--accent-strong); color: var(--on-accent); }
+  .primary:hover:not(:disabled) { background: var(--accent); }
+  .secondary { border-color: var(--border-strong); background: var(--surface-raised); color: var(--text); }
+  .secondary:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-soft); }
+  .ghost { background: transparent; color: var(--accent); }
+  .ghost:hover:not(:disabled) { background: var(--accent-soft); }
+  .danger { border-color: var(--danger); background: var(--danger); color: var(--on-danger); }
+
+  .small { min-height: 34px; padding-inline: var(--space-3); font-size: 0.82rem; }
+  .medium { min-height: var(--control-height); }
+  .large { min-height: 52px; padding-inline: var(--space-6); font-size: 1rem; }
+  .icon { width: var(--touch-target-min); min-width: var(--touch-target-min); padding: 0; }
+
+  .hiddenLabel { visibility: hidden; }
+  .loadingLabel { position: absolute; inset: 0; display: grid; place-items: center; }
+
+  @media (pointer: coarse) {
+    .button { min-height: var(--touch-target-min); }
+  }
+}
