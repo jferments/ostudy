@@ -37,6 +37,7 @@ import {
   type TemplateCardPreview,
   type TemplateValueInput,
 } from "../ipc/templates";
+import { useConfirm } from "../ui/overlays/overlayContext";
 import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
 import { distinctClozeGroups } from "./card-editor/cloze";
@@ -125,6 +126,7 @@ export function CardEditorScreen({
   const controllerRef = useRef<CardEditorController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new CardEditorController();
   const controller = controllerRef.current;
+  const confirm = useConfirm();
 
   const title = existing ? "Edit flashcard" : "Add flashcard";
   const hasFront = !isDocumentEmpty(frontText, frontDoc);
@@ -271,7 +273,6 @@ export function CardEditorScreen({
         console.error("Unable to load tag suggestions:", getErrorMessage(error));
       });
   }, []);
-
 
   useEffect(() => {
     if (!selectedCustomTemplate) {
@@ -513,7 +514,15 @@ export function CardEditorScreen({
 
   async function cancel(): Promise<void> {
     if (isSaving) return;
-    if (dirty && !window.confirm("Discard the changes to this flashcard?")) return;
+    if (dirty) {
+      const accepted = await confirm({
+        title: "Discard flashcard changes?",
+        description: "The unsaved changes to this flashcard will be lost.",
+        confirmLabel: "Discard changes",
+        destructive: true,
+      });
+      if (!accepted) return;
+    }
     const draftId = assetDraftRef.current;
     assetDraftRef.current = null;
     setAssetDraftId(null);
