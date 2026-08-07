@@ -327,7 +327,7 @@ export function CardEditorScreen({
   }
 
   async function openFreshAssetDraft(): Promise<void> {
-    const draft = await beginAssetDraft("card");
+    const draft = await controller.beginDraft();
     assetDraftRef.current = draft.id;
     setAssetDraftId(draft.id);
   }
