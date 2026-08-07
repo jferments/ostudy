@@ -7,6 +7,16 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      gate:
+        description: Qualification tier to run
+        required: true
+        default: full
+        type: choice
+        options:
+          - static
+          - fast
+          - full
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -33,18 +43,56 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
+      - name: Configure persistent self-hosted build cache
+        run: |
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/.cache/ostudy/cargo-target"
+
+      - name: Select qualification gate
+        id: gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_GATE: ${{ inputs.gate || 'full' }}
+          PR_DRAFT: ${{ github.event.pull_request.draft || false }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            gate="$DISPATCH_GATE"
+          elif [[ "$EVENT_NAME" == "pull_request" && "$PR_DRAFT" == "true" ]]; then
+            gate="fast"
+          else
+            gate="full"
+          fi
+          echo "gate=$gate" >> "$GITHUB_OUTPUT"
+          echo "Selected qualification gate: $gate"
+
+      - name: Run static checks
+        if: steps.gate.outputs.gate == 'static'
+        run: |
+          set -o pipefail
+          bash ./scripts/check-static.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"
+
       - name: Run fast high-return checks
+        if: steps.gate.outputs.gate != 'static'
         run: |
           set -o pipefail
           bash ./scripts/check-fast.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-fast-check.log"
 
       - name: Run full qualification gate
-        if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+        if: steps.gate.outputs.gate == 'full'
         env:
           OSTUDY_FAST_CHECK_PASSED: "1"
         run: |
           set -o pipefail
           ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-full-check.log"
+
+      - name: Summarize qualification failure
+        if: failure()
+        run: |
+          node ./scripts/summarize-check-failure.mjs \
+            "$RUNNER_TEMP/ostudy-static-check.log" \
+            "$RUNNER_TEMP/ostudy-fast-check.log" \
+            "$RUNNER_TEMP/ostudy-full-check.log" \
+            >> "$GITHUB_STEP_SUMMARY"
 
       - name: Export diagnostics after a failure
         if: failure()
@@ -57,6 +105,7 @@ jobs:
           name: ostudy-check-diagnostics
           path: |
             ${{ runner.temp }}/ostudy-diagnostics.tar.gz
+            ${{ runner.temp }}/ostudy-static-check.log
             ${{ runner.temp }}/ostudy-fast-check.log
             ${{ runner.temp }}/ostudy-full-check.log
           if-no-files-found: ignore
