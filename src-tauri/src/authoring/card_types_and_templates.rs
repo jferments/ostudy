@@ -1226,11 +1226,8 @@ pub(crate) fn render_projected_presentation(
     })
 }
 
-mod templates;
-pub(super) use templates::{
-    __cmd__list_card_template_summaries, apply_stage3_data_repairs, list_card_template_summaries,
-    CardTemplateSummaryDto,
-};
+pub(crate) mod templates;
+pub(crate) use templates::apply_stage3_data_repairs;
 use templates::{
     create_card_template_in_connection, delete_card_template_in_connection,
     ensure_template_revision, generate_automatic_template_cards_in_connection,
@@ -1241,7 +1238,4 @@ use templates::{
 };
 
 #[path = "generated_import_module.rs"]
-mod generated_import;
-pub(super) use generated_import::{
-    __cmd__import_generated_flashcards, import_generated_flashcards, FlashcardImportResultDto,
-};
+pub(crate) mod generated_import;

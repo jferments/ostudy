@@ -1331,7 +1331,7 @@ pub(super) use automatic_layout::{
     prepare_automatic_create_template_input, prepare_automatic_update_template_input,
     render_automatic_template_previews, template_update_contains_new_children,
 };
-pub(super) use repair::apply_stage3_data_repairs;
+pub(crate) use repair::apply_stage3_data_repairs;
 pub(super) use stable_update::update_card_template_with_stable_children_in_connection;
 
 #[cfg(test)]

@@ -908,8 +908,10 @@ mod generated_import_tests {
             {"type":"basic","front":"Question","back":"![image](https://example.com/image.png)"}
           ]
         }"#;
-        let error = prepare_flashcard_import_bytes(invalid)
-            .expect_err("invalid cards should be reported together");
+        let error = match prepare_flashcard_import_bytes(invalid) {
+            Ok(_) => panic!("invalid cards should be reported together"),
+            Err(error) => error,
+        };
         assert_eq!(error.code, "invalid_flashcard_import_cards");
         assert!(error.message.contains("cards[0].front"));
         assert!(error.message.contains("cards[1].back"));
@@ -924,8 +926,10 @@ mod generated_import_tests {
         let invalid = format!(
             r#"{{"format":"ostudy-flashcards","formatVersion":1,"deck":{{"mode":"create","name":"Invalid cards"}},"cards":[{cards}]}}"#
         );
-        let error = prepare_flashcard_import_bytes(invalid.as_bytes())
-            .expect_err("invalid cards should be summarized");
+        let error = match prepare_flashcard_import_bytes(invalid.as_bytes()) {
+            Ok(_) => panic!("invalid cards should be summarized"),
+            Err(error) => error,
+        };
         assert!(error.message.starts_with("50 cards could not be imported:"));
         assert!(error.message.contains("30 additional errors were omitted"));
         assert!(!error.message.contains("cards[20].front"));

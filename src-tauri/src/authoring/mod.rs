@@ -1391,25 +1391,17 @@ const fn default_true() -> bool {
     true
 }
 
-mod card_commands;
-mod card_types_and_templates;
-mod transfer;
+pub(crate) mod card_commands;
+pub(crate) mod card_types_and_templates;
+pub(crate) mod transfer;
 
 #[cfg(test)]
 mod history_tests;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use card_commands::{
-    analyze_bulk_cards, backfill_duplicate_hashes_in_connection, bulk_create_cards, bulk_tag_cards,
-    create_organized_card, find_duplicate_cards, get_organized_card, list_matching_cards,
-    list_tags, search_cards, update_organized_card,
-};
+pub(crate) use card_commands::backfill_duplicate_hashes_in_connection;
 pub(crate) use card_types_and_templates::{
-    apply_stage3_data_repairs, create_card_template, create_generated_card, delete_card_template,
-    generate_cards_from_template, get_card_template, get_card_type_info,
-    import_generated_flashcards, list_card_template_summaries, preview_template_cards,
-    projected_presentation_variant, render_projected_presentation, update_card_template,
-    update_generated_card, ProjectedPresentationInput, RenderedCardPresentation,
+    apply_stage3_data_repairs, projected_presentation_variant, render_projected_presentation,
+    ProjectedPresentationInput,
 };
-pub(crate) use transfer::transfer_cards;
