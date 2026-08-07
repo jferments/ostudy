@@ -38,6 +38,11 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
     setModalDepth(entries.filter((entry) => entry.modal).length);
   }, []);
 
+  const isTop = useCallback(
+    (id: string) => entriesRef.current.at(-1)?.id === id,
+    [],
+  );
+
   const register = useCallback(
     (entry: OverlayEntry) => {
       entriesRef.current = entriesRef.current.filter((current) => current.id !== entry.id);
@@ -105,7 +110,10 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
     };
   }, [modalDepth]);
 
-  const value = useMemo(() => ({ topId, register, confirm }), [confirm, register, topId]);
+  const value = useMemo(
+    () => ({ topId, isTop, register, confirm }),
+    [confirm, isTop, register, topId],
+  );
   const pending = confirmations[0];
 
   return (
