@@ -10,6 +10,7 @@ export type OverlayCloseReason =
 
 export interface OverlayEntry {
   id: string;
+  parentId: string | null;
   modal: boolean;
   requestClose: (reason: OverlayCloseReason) => boolean;
 }
@@ -37,9 +38,14 @@ const fallback: OverlayContextValue = {
 };
 
 export const OverlayContext = createContext<OverlayContextValue>(fallback);
+export const OverlayParentContext = createContext<string | null>(null);
 
 export function useOverlayContext(): OverlayContextValue {
   return useContext(OverlayContext);
+}
+
+export function useOverlayParentId(): string | null {
+  return useContext(OverlayParentContext);
 }
 
 export function useConfirm(): OverlayContextValue["confirm"] {
