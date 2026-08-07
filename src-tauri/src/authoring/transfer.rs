@@ -6,11 +6,8 @@ pub fn transfer_cards(
     input: TransferCardsInput,
 ) -> Result<TransferCardsResultDto, CommandError> {
     validate_entity_id(&input.target_deck_id, "destination deck")?;
-    let note_ids = validate_note_ids_for_action(
-        input.note_ids,
-        MAX_TRANSFER_NOTES,
-        "Move or copy",
-    )?;
+    let note_ids =
+        validate_note_ids_for_action(input.note_ids, MAX_TRANSFER_NOTES, "Move or copy")?;
     let mode = TransferMode::parse(&input.mode)?;
 
     database.with_connection(|connection| {
@@ -89,7 +86,7 @@ pub fn transfer_cards(
     })
 }
 
-fn copy_generated_note_to_deck(
+pub(super) fn copy_generated_note_to_deck(
     transaction: &Transaction<'_>,
     source: &SourceNote,
     target_deck_id: &str,
@@ -175,13 +172,14 @@ fn copy_generated_note_to_deck(
                           template_ordinal, direction",
             )
             .map_err(CommandError::database)?;
-        statement
+        let cards = statement
             .query_map([source.id.as_str()], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        cards
     };
     if source_cards.is_empty() {
         return Err(CommandError::new(
