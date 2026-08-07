@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Mutex};
 
-use keyring::{Entry, Error as KeyringError};
+use keyring::v1::{Entry, Error as KeyringError};
 use serde::{Deserialize, Serialize};
 
 use crate::{error::CommandError, logging};
@@ -8,6 +8,7 @@ use crate::{error::CommandError, logging};
 use super::catalog::AuthMode;
 
 const KEYRING_SERVICE: &str = "io.github.jferments.ostudy.ai";
+const KEYRING_AVAILABILITY_ACCOUNT: &str = "availability-probe";
 const MAX_CREDENTIAL_BYTES: usize = 8192;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -223,7 +224,7 @@ enum SecretStoreError {
 }
 
 fn secure_store_available() -> bool {
-    Entry::store_status().is_ok()
+    Entry::new(KEYRING_SERVICE, KEYRING_AVAILABILITY_ACCOUNT).is_ok()
 }
 
 fn account_name(profile_id: &str) -> String {
