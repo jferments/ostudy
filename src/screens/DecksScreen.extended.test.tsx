@@ -135,7 +135,9 @@ describe("DecksScreen extended behavior", () => {
     const { refreshDecks, showToast } = renderDeckLibrary(existing);
 
     fireEvent.click(screen.getByRole("button", { name: "New deck" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Deck name" }), {
+    const nameInput = screen.getByRole("textbox", { name: "Deck name" });
+    await waitFor(() => expect(document.activeElement).toBe(nameInput));
+    fireEvent.change(nameInput, {
       target: { value: "  Neurology  " },
     });
     fireEvent.change(screen.getByRole("textbox", { name: /Description/u }), {
