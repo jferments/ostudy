@@ -7,7 +7,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBe
 use sha2::{Digest, Sha256};
 
 use crate::{
-    authoring::{apply_stage3_data_repairs, backfill_duplicate_hashes_in_connection},
+    authoring::{apply_card_type_template_repairs, backfill_duplicate_hashes_in_connection},
     study_calendar::StudyTimeContext,
     util::unix_time_millis,
 };
@@ -149,7 +149,7 @@ fn repair_duplicate_fingerprints(transaction: &Transaction<'_>) -> Result<i64, S
 }
 
 fn repair_stage3_data(transaction: &Transaction<'_>) -> Result<i64, String> {
-    apply_stage3_data_repairs(transaction).map_err(|error| error.message)
+    apply_card_type_template_repairs(transaction).map_err(|error| error.message)
 }
 
 #[derive(Clone)]

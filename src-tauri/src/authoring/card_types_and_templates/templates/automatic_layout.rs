@@ -350,40 +350,6 @@ fn invalid_typed_template_placeholder() -> CommandError {
     )
 }
 
-pub(in super::super) fn template_update_contains_new_children(
-    connection: &Connection,
-    input: &UpdateCardTemplateInput,
-) -> Result<bool, CommandError> {
-    for (table, id) in input
-        .fields
-        .iter()
-        .filter_map(|field| field.id.as_deref().map(|id| ("card_template_fields", id)))
-        .chain(
-            input
-                .rules
-                .iter()
-                .filter_map(|rule| rule.id.as_deref().map(|id| ("card_template_rules", id))),
-        )
-    {
-        let sql = match table {
-            "card_template_fields" => {
-                "SELECT EXISTS(SELECT 1 FROM card_template_fields WHERE id = ?1)"
-            }
-            "card_template_rules" => {
-                "SELECT EXISTS(SELECT 1 FROM card_template_rules WHERE id = ?1)"
-            }
-            _ => unreachable!("static table name"),
-        };
-        let exists: i64 = connection
-            .query_row(sql, [id], |row| row.get(0))
-            .map_err(CommandError::database)?;
-        if exists == 0 {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
 fn template_value_placement(value: &ValidatedTemplateValue) -> TemplateValuePlacement {
     if template_document_is_inline(&value.doc, &value.asset_ids) {
         TemplateValuePlacement::Inline

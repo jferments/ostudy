@@ -67,6 +67,8 @@ for (const obsolete of [
   "get_card",
   "create_card",
   "update_card",
+  "create_organized_card",
+  "update_organized_card",
   "start_practice",
 ]) {
   if (registered.has(obsolete) || invoked.has(obsolete)) {

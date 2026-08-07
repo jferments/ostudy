@@ -25,52 +25,95 @@ pub struct CardTypeInfoDto {
     pub generated_card_count: i64,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CreateGeneratedCardInput {
-    pub deck_id: String,
-    pub card_type: String,
-    #[serde(default)]
-    pub reverse_enabled: bool,
-    #[serde(default)]
-    pub cloze_source: String,
-    #[serde(default = "default_stage3_cloze_mode")]
-    pub cloze_mode: String,
-    pub front_doc: Value,
-    pub back_doc: Value,
-    pub front_text: String,
-    pub back_text: String,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub allow_duplicate: bool,
-    #[serde(default)]
-    pub asset_draft_id: Option<String>,
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ClozeMode {
+    #[default]
+    OneAtATime,
+    AllTogether,
+}
+
+impl ClozeMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::OneAtATime => "one_at_a_time",
+            Self::AllTogether => "all_together",
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct UpdateGeneratedCardInput {
-    pub note_id: String,
-    pub deck_id: String,
-    pub revision: i64,
-    pub card_type: String,
-    #[serde(default)]
-    pub reverse_enabled: bool,
-    #[serde(default)]
-    pub cloze_source: String,
-    #[serde(default = "default_stage3_cloze_mode")]
-    pub cloze_mode: String,
-    pub front_doc: Value,
-    pub back_doc: Value,
-    pub front_text: String,
-    pub back_text: String,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub allow_duplicate: bool,
-    #[serde(default)]
-    pub asset_draft_id: Option<String>,
+#[serde(
+    tag = "cardType",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum CreateGeneratedCardInput {
+    Basic {
+        deck_id: String,
+        #[serde(default)]
+        reverse_enabled: bool,
+        front_doc: Value,
+        back_doc: Value,
+        #[serde(default)]
+        tags: Vec<String>,
+        #[serde(default)]
+        allow_duplicate: bool,
+        #[serde(default)]
+        asset_draft_id: Option<String>,
+    },
+    Cloze {
+        deck_id: String,
+        cloze_source: String,
+        #[serde(default)]
+        cloze_mode: ClozeMode,
+        #[serde(default)]
+        tags: Vec<String>,
+        #[serde(default)]
+        allow_duplicate: bool,
+        #[serde(default)]
+        asset_draft_id: Option<String>,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(
+    tag = "cardType",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum UpdateGeneratedCardInput {
+    Basic {
+        note_id: String,
+        deck_id: String,
+        revision: i64,
+        #[serde(default)]
+        reverse_enabled: bool,
+        front_doc: Value,
+        back_doc: Value,
+        #[serde(default)]
+        tags: Vec<String>,
+        #[serde(default)]
+        allow_duplicate: bool,
+        #[serde(default)]
+        asset_draft_id: Option<String>,
+    },
+    Cloze {
+        note_id: String,
+        deck_id: String,
+        revision: i64,
+        cloze_source: String,
+        #[serde(default)]
+        cloze_mode: ClozeMode,
+        #[serde(default)]
+        tags: Vec<String>,
+        #[serde(default)]
+        allow_duplicate: bool,
+        #[serde(default)]
+        asset_draft_id: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -337,12 +380,7 @@ pub fn update_card_template(
         let input = prepare_automatic_update_template_input(connection, input)?;
         let draft_id = input.asset_draft_id.clone();
         let asset_ids = collect_template_input_asset_ids(&input.rules)?;
-        let has_new_children = template_update_contains_new_children(connection, &input)?;
-        let updated = if has_new_children {
-            update_card_template_with_stable_children_in_connection(connection, &paths, input)?
-        } else {
-            update_card_template_in_connection(connection, &paths, input)?
-        };
+        let updated = update_card_template_in_connection(connection, &paths, input)?;
         finalize_assets_after_committed_write(
             connection,
             &paths,
@@ -477,15 +515,21 @@ fn collect_template_value_asset_ids(
     Ok(ids.into_iter().collect())
 }
 
-fn default_stage3_cloze_mode() -> String {
-    "one_at_a_time".to_string()
-}
-
 fn display_card_type(note_type: &str) -> &str {
     if note_type == "cloze" {
         "cloze"
     } else {
         "basic"
+    }
+}
+
+fn validate_cloze_mode(value: &str) -> Result<(), CommandError> {
+    match value {
+        "one_at_a_time" | "all_together" => Ok(()),
+        _ => Err(CommandError::new(
+            "invalid_cloze_mode",
+            "Choose one-at-a-time or all-blanks-together Fill in the blank mode.",
+        )),
     }
 }
 
@@ -520,15 +564,26 @@ fn load_card_type_info(
         .ok_or_else(|| CommandError::new("card_not_found", "That flashcard no longer exists."))
 }
 
-struct GeneratedNoteDraft {
-    card_type: String,
-    reverse_enabled: bool,
-    cloze_source: String,
-    cloze_mode: String,
-    front_doc: Value,
-    back_doc: Value,
-    front_text: String,
-    back_text: String,
+enum CardNoteDraft {
+    Basic {
+        reverse_enabled: bool,
+        front_doc: Value,
+        back_doc: Value,
+    },
+    Cloze {
+        source: String,
+        mode: ClozeMode,
+    },
+}
+
+struct GeneratedCardWrite {
+    note_id: Option<String>,
+    deck_id: String,
+    revision: Option<i64>,
+    draft: CardNoteDraft,
+    tags: Vec<String>,
+    allow_duplicate: bool,
+    asset_draft_id: Option<String>,
 }
 
 fn create_generated_card_in_database(
@@ -536,34 +591,70 @@ fn create_generated_card_in_database(
     paths: State<'_, AppPaths>,
     input: CreateGeneratedCardInput,
 ) -> Result<OrganizedCardDto, CommandError> {
-    let CreateGeneratedCardInput {
+    let write = match input {
+        CreateGeneratedCardInput::Basic {
+            deck_id,
+            reverse_enabled,
+            front_doc,
+            back_doc,
+            tags,
+            allow_duplicate,
+            asset_draft_id,
+        } => GeneratedCardWrite {
+            note_id: None,
+            deck_id,
+            revision: None,
+            draft: CardNoteDraft::Basic {
+                reverse_enabled,
+                front_doc,
+                back_doc,
+            },
+            tags,
+            allow_duplicate,
+            asset_draft_id,
+        },
+        CreateGeneratedCardInput::Cloze {
+            deck_id,
+            cloze_source,
+            cloze_mode,
+            tags,
+            allow_duplicate,
+            asset_draft_id,
+        } => GeneratedCardWrite {
+            note_id: None,
+            deck_id,
+            revision: None,
+            draft: CardNoteDraft::Cloze {
+                source: cloze_source,
+                mode: cloze_mode,
+            },
+            tags,
+            allow_duplicate,
+            asset_draft_id,
+        },
+    };
+    create_prepared_card_note(database, paths, write)
+}
+
+fn create_prepared_card_note(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    write: GeneratedCardWrite,
+) -> Result<OrganizedCardDto, CommandError> {
+    let GeneratedCardWrite {
+        note_id: _,
         deck_id,
-        card_type,
-        reverse_enabled,
-        cloze_source,
-        cloze_mode,
-        front_doc,
-        back_doc,
-        front_text,
-        back_text,
+        revision: _,
+        draft,
         tags,
         allow_duplicate,
         asset_draft_id,
-    } = input;
+    } = write;
     validate_entity_id(&deck_id, "deck")?;
     if let Some(draft_id) = asset_draft_id.as_deref() {
         validate_entity_id(draft_id, "asset draft")?;
     }
-    let prepared = prepare_generated_note(GeneratedNoteDraft {
-        card_type,
-        reverse_enabled,
-        cloze_source,
-        cloze_mode,
-        front_doc,
-        back_doc,
-        front_text,
-        back_text,
-    })?;
+    let prepared = prepare_card_note(draft)?;
     let asset_ids = content_asset_ids(&prepared.content);
     let tags = validate_tags(tags)?;
     let normalized = normalized_pair(&prepared.content.front_text, &prepared.content.back_text);
@@ -641,22 +732,72 @@ fn update_generated_card_in_database(
     paths: State<'_, AppPaths>,
     input: UpdateGeneratedCardInput,
 ) -> Result<OrganizedCardDto, CommandError> {
-    let UpdateGeneratedCardInput {
+    let write = match input {
+        UpdateGeneratedCardInput::Basic {
+            note_id,
+            deck_id,
+            revision,
+            reverse_enabled,
+            front_doc,
+            back_doc,
+            tags,
+            allow_duplicate,
+            asset_draft_id,
+        } => GeneratedCardWrite {
+            note_id: Some(note_id),
+            deck_id,
+            revision: Some(revision),
+            draft: CardNoteDraft::Basic {
+                reverse_enabled,
+                front_doc,
+                back_doc,
+            },
+            tags,
+            allow_duplicate,
+            asset_draft_id,
+        },
+        UpdateGeneratedCardInput::Cloze {
+            note_id,
+            deck_id,
+            revision,
+            cloze_source,
+            cloze_mode,
+            tags,
+            allow_duplicate,
+            asset_draft_id,
+        } => GeneratedCardWrite {
+            note_id: Some(note_id),
+            deck_id,
+            revision: Some(revision),
+            draft: CardNoteDraft::Cloze {
+                source: cloze_source,
+                mode: cloze_mode,
+            },
+            tags,
+            allow_duplicate,
+            asset_draft_id,
+        },
+    };
+    update_prepared_card_note(database, paths, write)
+}
+
+fn update_prepared_card_note(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    write: GeneratedCardWrite,
+) -> Result<OrganizedCardDto, CommandError> {
+    let GeneratedCardWrite {
         note_id,
         deck_id,
         revision,
-        card_type,
-        reverse_enabled,
-        cloze_source,
-        cloze_mode,
-        front_doc,
-        back_doc,
-        front_text,
-        back_text,
+        draft,
         tags,
         allow_duplicate,
         asset_draft_id,
-    } = input;
+    } = write;
+    let note_id = note_id
+        .ok_or_else(|| CommandError::new("card_not_found", "That flashcard no longer exists."))?;
+    let revision = revision.unwrap_or_default();
     validate_entity_id(&note_id, "note")?;
     validate_entity_id(&deck_id, "deck")?;
     if let Some(draft_id) = asset_draft_id.as_deref() {
@@ -668,16 +809,7 @@ fn update_generated_card_in_database(
             "The card revision is invalid.",
         ));
     }
-    let prepared = prepare_generated_note(GeneratedNoteDraft {
-        card_type,
-        reverse_enabled,
-        cloze_source,
-        cloze_mode,
-        front_doc,
-        back_doc,
-        front_text,
-        back_text,
-    })?;
+    let prepared = prepare_card_note(draft)?;
     let asset_ids = content_asset_ids(&prepared.content);
     let tags = validate_tags(tags)?;
     let normalized = normalized_pair(&prepared.content.front_text, &prepared.content.back_text);
@@ -703,7 +835,7 @@ fn update_generated_card_in_database(
                 "That flashcard no longer exists.",
             ));
         };
-        if display_card_type(&existing_type) != display_card_type(prepared.note_type) {
+        if display_card_type(&existing_type) != prepared.note_type {
             return Err(CommandError::new(
                 "card_type_locked",
                 "A saved card cannot be converted between Basic and Fill in the blank. Create a new card instead.",
@@ -774,22 +906,21 @@ fn update_generated_card_in_database(
     database.with_connection(|connection| hydrate_organized_card(connection, &paths, &note_id))
 }
 
-fn prepare_generated_note(
-    input: GeneratedNoteDraft,
-) -> Result<PreparedGeneratedNote, CommandError> {
-    let GeneratedNoteDraft {
-        card_type,
-        reverse_enabled,
-        cloze_source,
-        cloze_mode,
-        front_doc,
-        back_doc,
-        front_text,
-        back_text,
-    } = input;
-    match card_type.as_str() {
-        "basic" => {
-            let content = validate_content(front_doc, back_doc, front_text, back_text)?;
+fn prepare_basic_card_content(
+    front_doc: Value,
+    back_doc: Value,
+) -> Result<ValidatedContent, CommandError> {
+    validate_content(front_doc, back_doc, String::new(), String::new())
+}
+
+fn prepare_card_note(input: CardNoteDraft) -> Result<PreparedGeneratedNote, CommandError> {
+    match input {
+        CardNoteDraft::Basic {
+            reverse_enabled,
+            front_doc,
+            back_doc,
+        } => {
+            let content = prepare_basic_card_content(front_doc, back_doc)?;
             let mut cards = vec![GeneratedCardSpec {
                 direction: "forward",
                 template_ordinal: 0,
@@ -804,15 +935,14 @@ fn prepare_generated_note(
                 note_type: "basic",
                 reverse_enabled,
                 cloze_source: String::new(),
-                cloze_mode: "one_at_a_time".to_string(),
+                cloze_mode: ClozeMode::OneAtATime.as_str().to_string(),
                 content,
                 cards,
             })
         }
-        "cloze" => {
-            validate_cloze_mode(&cloze_mode)?;
-            let parsed = parse_cloze(&cloze_source)?;
-            let target = if cloze_mode == "all_together" {
+        CardNoteDraft::Cloze { source, mode } => {
+            let parsed = parse_cloze(&source)?;
+            let target = if mode == ClozeMode::AllTogether {
                 None
             } else {
                 parsed.groups.first().copied()
@@ -822,14 +952,14 @@ fn prepare_generated_note(
             let content = validate_content(
                 plain_text_document(&question),
                 plain_text_document(&answer),
-                question,
-                answer,
+                String::new(),
+                String::new(),
             )?;
             Ok(PreparedGeneratedNote {
                 note_type: "cloze",
                 reverse_enabled: false,
-                cloze_source,
-                cloze_mode,
+                cloze_source: source,
+                cloze_mode: mode.as_str().to_string(),
                 content,
                 cards: vec![GeneratedCardSpec {
                     direction: "forward",
@@ -837,10 +967,6 @@ fn prepare_generated_note(
                 }],
             })
         }
-        _ => Err(CommandError::new(
-            "invalid_card_type",
-            "Choose Basic or Fill in the blank as the card type.",
-        )),
     }
 }
 
@@ -944,17 +1070,6 @@ fn sync_generated_cards(
         }
     }
     Ok(())
-}
-
-fn validate_cloze_mode(value: &str) -> Result<(), CommandError> {
-    if matches!(value, "one_at_a_time" | "all_together") {
-        Ok(())
-    } else {
-        Err(CommandError::new(
-            "invalid_cloze_mode",
-            "Choose whether to hide one blank at a time or all blanks together.",
-        ))
-    }
 }
 
 fn parse_cloze(value: &str) -> Result<ParsedCloze, CommandError> {
@@ -1227,15 +1342,56 @@ pub(crate) fn render_projected_presentation(
 }
 
 pub(crate) mod templates;
-pub(crate) use templates::apply_stage3_data_repairs;
+pub(crate) use templates::apply_card_type_template_repairs;
 use templates::{
     create_card_template_in_connection, delete_card_template_in_connection,
     ensure_template_revision, generate_automatic_template_cards_in_connection,
     load_stored_template, normalize_card_template_dto_for_editing,
     prepare_automatic_create_template_input, prepare_automatic_update_template_input,
-    render_automatic_template_previews, template_update_contains_new_children,
-    update_card_template_in_connection, update_card_template_with_stable_children_in_connection,
+    render_automatic_template_previews, update_card_template_in_connection,
 };
 
-#[path = "generated_import_module.rs"]
 pub(crate) mod generated_import;
+
+#[cfg(test)]
+mod authoring_contract_tests {
+    use super::*;
+
+    fn paragraph(text: &str) -> Value {
+        json!({
+            "type": "doc",
+            "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}]
+        })
+    }
+
+    #[test]
+    fn generated_card_contracts_reject_type_inappropriate_fields() {
+        let basic = serde_json::json!({
+            "cardType": "basic",
+            "deckId": "11111111111111111111111111111111",
+            "frontDoc": paragraph("Question"),
+            "backDoc": paragraph("Answer"),
+            "clozeSource": "should not be accepted"
+        });
+        assert!(serde_json::from_value::<CreateGeneratedCardInput>(basic).is_err());
+
+        let cloze = serde_json::json!({
+            "cardType": "cloze",
+            "deckId": "11111111111111111111111111111111",
+            "clozeSource": "The {{c1::heart}} pumps blood.",
+            "frontDoc": paragraph("should not be accepted")
+        });
+        assert!(serde_json::from_value::<CreateGeneratedCardInput>(cloze).is_err());
+    }
+
+    #[test]
+    fn basic_contract_does_not_require_browser_plain_text_snapshots() {
+        let input = serde_json::json!({
+            "cardType": "basic",
+            "deckId": "11111111111111111111111111111111",
+            "frontDoc": paragraph("Question"),
+            "backDoc": paragraph("Answer")
+        });
+        assert!(serde_json::from_value::<CreateGeneratedCardInput>(input).is_ok());
+    }
+}

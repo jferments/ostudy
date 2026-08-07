@@ -101,22 +101,24 @@ that exact operation.
 
 ## Required validation
 
-Run the narrowest relevant tests while developing, then run the repository gate
-before proposing a merge:
+Use the repository's tiered validation model instead of repeatedly running the
+most expensive gate while editing:
 
 ```bash
-./scripts/check.sh
+./scripts/check-changed.sh  # iteration aid based on the current diff
+./scripts/check-static.sh   # repository/IPC/type/format contracts
+./scripts/check-fast.sh     # static + complete frontend tests + Rust compile
+./scripts/check.sh          # authoritative full merge qualification
 ```
 
-For release qualification:
-
-```bash
-./scripts/release-check.sh
-```
+Draft pull requests run the fast tier; ready pull requests run the full tier on
+the self-hosted runner. A green result qualifies only the exact commit SHA it
+ran against. Use `OSTUDY_FORCE_CHECK=1` when an exact-tree cache must be bypassed.
+For release qualification, also run `./scripts/release-check.sh`.
 
 Manually exercise every affected UI workflow. Static inspection, parsing, or a
 successful frontend build must never be reported as a successful native Tauri
-test.
+test. See `docs/development/testing-and-ci.md` for the authoritative tier details.
 
 ## Required handoff
 

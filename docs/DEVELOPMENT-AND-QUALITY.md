@@ -2,11 +2,12 @@
 
 The process is intentionally small:
 
-1. publish a focused branch and draft pull request from an exact base commit;
+1. publish one focused branch and draft pull request from an exact base commit;
 2. implement and push reviewable vertical commits to that branch;
-3. run `./scripts/check.sh` locally and through GitHub Actions;
-4. launch `./run-app.sh` and manually test the changed UI path;
-5. merge only after automated and manual acceptance are satisfactory.
+3. iterate with changed/static/fast checks and consume exact-head CI failures;
+4. run `./scripts/check.sh`, launch `./run-app.sh`, and manually test the affected workflow;
+5. mark the PR ready so the self-hosted runner qualifies the exact head with the full gate;
+6. merge only after automated and human acceptance are satisfactory.
 
 The corrected publication-first workflow is documented in
 [`OSTUDY-GIT-AND-CODING-WORKFLOW.md`](OSTUDY-GIT-AND-CODING-WORKFLOW.md).
@@ -17,7 +18,10 @@ The corrected publication-first workflow is documented in
 ./scripts/setup-ubuntu.sh        # one-time tools, dependencies, and initial build
 ./scripts/build.sh               # rebuild after source changes
 ./run-app.sh                     # start the existing build without compiling
-./scripts/check.sh               # the complete automated development gate
+./scripts/check-changed.sh       # diff-aware iteration aid
+./scripts/check-static.sh        # cheap repository/IPC/type contracts
+./scripts/check-fast.sh          # frontend tests + Rust compile
+./scripts/check.sh               # complete merge qualification
 ./scripts/export-diagnostics.sh  # create a privacy-conscious support archive
 ./scripts/release-check.sh       # repeat the complete gate from a clean source copy
 ```
@@ -27,21 +31,22 @@ Cargo's incremental cache is preserved across builds. The build scripts set
 a value. A target marker records the absolute repository location; moving the
 checkout clears the old target once.
 
-## What the one-command gate checks
+## Qualification tiers
 
-`./scripts/check.sh` performs, in order:
+`check-static.sh` verifies durable environment/repository contracts: exact tool and
+dependency versions, migration checksums, IPC registry/wrapper parity, repository
+policy, test policy, script syntax, TypeScript, and canonical Rust formatting.
 
-1. pinned environment and repository-manifest diagnostics;
-2. Stage 2 migration, FTS5, tag, bulk, duplicate, and move/copy wiring checks;
-3. Stage 3 migration, generated-card identity, cloze, template-safety,
-   Search/Filter, Practice, responsive UI, and `.studydeck` wiring checks;
-4. frozen pnpm installation and exact dependency verification;
-5. Vitest/Testing Library React tests;
-6. Rust formatting and warning-free Clippy;
-7. Rust unit/integration tests, including every release-schema fixture;
-8. a standalone Tauri build suitable for `run-app.sh`;
-9. resolved Rust dependency verification;
-10. a native Linux Tauri/WebDriver smoke test under an isolated data directory.
+`check-fast.sh` reuses an exact-tree static result when possible and adds the full
+frontend suite plus locked Rust compile checking. Draft pull requests use this
+tier.
+
+`check.sh` reuses an exact-tree fast result when possible and adds native
+environment qualification, production frontend build, warning-free Clippy, all
+Rust/unit/integration/migration tests, standalone Tauri build, exact dependency
+verification, and the native create → review → restart → persistence smoke test.
+Ready pull requests use this tier. See `docs/development/testing-and-ci.md` for
+the authoritative mechanics.
 
 The native smoke test may be skipped temporarily with
 `OSTUDY_SKIP_NATIVE_SMOKE=1`, but a pull request must state that it was skipped
@@ -49,9 +54,10 @@ and why. CI runs it normally.
 
 ## Testing layers
 
-- **Repository verifiers:** inspect durable migration checksums, command
-  registration, typed IPC, stale API removal, template safety constraints,
-  generated-card rendering, and required UI/documentation wiring.
+- **Repository contracts:** verify durable migration checksums, exact command
+  registry/frontend-wrapper parity, stale API removal, self-hosted immutable
+  workflow policy, dependency manifests, and test-policy invariants. Feature
+  behavior is protected by executable tests rather than private source shapes.
 - **React component and helper tests:** important interaction and error-rendering
   behavior with mocked typed IPC, including independent reverse-card selection,
   cloze text marking and modes, template management, and generated-card saves.

@@ -51,21 +51,26 @@ data crossing the IPC boundary and owns multi-step transactions.
 - `src/screens/SettingsScreen.tsx` edits appearance and review preferences.
 - `src/editor/` contains the Tiptap configuration, canonicalization, display,
   and link handling.
-- `src/ipc.ts` is the only frontend module that invokes Rust commands.
+- Typed IPC gateway modules (`src/ipc.ts`, `src/analytics-ipc.ts`, `src/generatedImport.ts`, and `src/diagnostics.ts`) are the only frontend modules that invoke Rust commands; screens and components call those wrappers.
 
 ### Rust
 
-- `database.rs` opens SQLite, applies checksummed migrations, backfills stable
-  duplicate fingerprints, runs idempotent forward normalization, and exposes one
-  mutex-protected connection.
+- `database.rs` opens SQLite, applies immutable checksummed migrations, invokes
+  required versioned data repairs at their declared migration boundaries, and
+  exposes one mutex-protected connection. Once the repair ledger is complete,
+  canonical startup verifies it without rewriting application data.
+- `data_repairs.rs` owns one-time checksummed data repairs; historical repair
+  names and checksums are durable compatibility records.
 - `decks.rs` owns deck validation and persistence.
-- `cards.rs` owns source-note hydration, per-deck list/delete behavior, and the
-  canonical Tiptap validator.
-- `authoring.rs` remains the card-authoring boundary. Its Stage 2 modules own
-  tags, FTS5, duplicates, bulk entry, assets, and note-level actions. Its
-  `authoring/stage3_v2/` modules own card-type validation, cloze parsing,
-  generated-card lifecycle, template CRUD, typed-placeholder resolution,
-  automatic rich-value placement, and generated-card rendering.
+- `cards.rs` owns source-note hydration and the canonical Tiptap validator; Rust
+  derives authoritative searchable plain text from validated documents.
+- `authoring/mod.rs` owns shared authoring contracts and persistence primitives.
+  `authoring/card_commands.rs` owns search/tags/bulk/read commands,
+  `authoring/card_types_and_templates.rs` owns canonical Basic/Cloze note
+  preparation and presentation rendering, its `templates/` subtree owns reusable
+  template validation/rendering/persistence, `generated_import/` owns the
+  external version-1 JSON schema/restricted Markdown/preparation/apply pipeline,
+  and `authoring/transfer.rs` owns note move/copy behavior.
 - `assets.rs` imports supported local image files into the managed library.
 - `scheduler.rs` is the sole adapter to `rs-fsrs`.
 - `practice.rs` records graded reviews atomically.
@@ -128,8 +133,7 @@ into valid before/value/after blocks and removes empty wrappers. It never
 flattens rich content or infers placement from whitespace or field names.
 
 The old explicit block placeholder remains readable only for compatibility with
-initial schema-7 templates. Startup normalization converts it to the neutral
-representation without a new database migration.
+initial schema-7 templates. A versioned data repair converts it to the neutral representation. Canonical startup only verifies that the required repair was recorded.
 
 Every final document passes through the ordinary Basic-card validator and write
 transaction. Generated notes do not store a template ID. Editing or deleting a
@@ -197,10 +201,18 @@ assets, and optional data-only card-type metadata. The importer validates the
 complete card graph and creates fresh local schedules. Personal review events,
 application settings, and reusable authoring templates are excluded.
 
-Older Basic packages without optional Stage 2 or Stage 3 tables remain
-importable. Older Stage 3 packages with several cloze rows are normalized to one
-active card immediately after import. Older readers can ignore additional
-optional tables in new exports.
+Older Basic packages without optional tag/card-type tables remain importable.
+Older packages with several cloze rows are normalized to one active card
+immediately after import. Older readers can ignore additional optional tables in
+new exports.
+
+Generated `.ostudy.json` is a separate content-only external format. Version 1
+contains one deck destination (`create` or exact-name `append`) plus Basic/Cloze
+source notes. Rust validates the entire file, parses only the documented
+restricted Markdown subset, maps entries through the canonical card-note
+preparation path, skips exact duplicates, and applies accepted notes in one
+transaction with fresh local schedules. There is deliberately no generated-import
+preview or inspect/commit protocol.
 
 ## Untrusted content and template safety
 

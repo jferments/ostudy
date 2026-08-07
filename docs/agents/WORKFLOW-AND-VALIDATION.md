@@ -50,21 +50,21 @@ git diff
 
 ## 4. Validate in layers
 
-Run narrow tests during implementation. Before proposing a merge, run:
+Use the cheapest gate that answers the current question, then escalate as the
+change stabilizes:
 
 ```bash
-./scripts/check.sh
+./scripts/check-changed.sh  # diff-aware iteration helper
+./scripts/check-static.sh   # manifests, IPC, policy, typecheck, rustfmt
+./scripts/check-fast.sh     # static + all frontend tests + locked Rust compile
+./scripts/check.sh          # full merge qualification and native smoke
 ```
 
-This is the single repository gate: it runs frontend tests, Rust checks, release
-schema fixtures, the standalone build, and the native smoke test. Do not require
-contributors to invoke each underlying command separately.
-
-For a release candidate, also run:
-
-```bash
-./scripts/release-check.sh
-```
+Draft pull requests are expected to pass the fast tier. Marking a pull request
+ready triggers full qualification. Always inspect the result for the exact head
+SHA; an older green run does not qualify a newer commit. `OSTUDY_FORCE_CHECK=1`
+forces re-execution when exact-tree cache reuse should be bypassed. For a release
+candidate, also run `./scripts/release-check.sh`.
 
 Manually exercise the affected UI path with `./run-app.sh`. For UI work, include
 keyboard behavior, pending/error states, and all relevant themes. For persistence

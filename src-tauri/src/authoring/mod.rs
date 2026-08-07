@@ -143,40 +143,6 @@ pub struct SearchCardsInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CreateOrganizedCardInput {
-    pub deck_id: String,
-    pub front_doc: Value,
-    pub back_doc: Value,
-    pub front_text: String,
-    pub back_text: String,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub allow_duplicate: bool,
-    #[serde(default)]
-    pub asset_draft_id: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct UpdateOrganizedCardInput {
-    pub note_id: String,
-    pub deck_id: String,
-    pub revision: i64,
-    pub front_doc: Value,
-    pub back_doc: Value,
-    pub front_text: String,
-    pub back_text: String,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    #[serde(default)]
-    pub allow_duplicate: bool,
-    #[serde(default)]
-    pub asset_draft_id: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DuplicateCheckInput {
     pub deck_id: String,
     pub front_text: String,
@@ -1402,6 +1368,6 @@ mod tests;
 
 pub(crate) use card_commands::backfill_duplicate_hashes_in_connection;
 pub(crate) use card_types_and_templates::{
-    apply_stage3_data_repairs, projected_presentation_variant, render_projected_presentation,
-    ProjectedPresentationInput, RenderedCardPresentation,
+    apply_card_type_template_repairs, projected_presentation_variant,
+    render_projected_presentation, ProjectedPresentationInput, RenderedCardPresentation,
 };

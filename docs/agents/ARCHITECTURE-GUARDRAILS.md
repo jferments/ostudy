@@ -13,8 +13,12 @@ of user intent. It may derive view-only values, but it must not become the
 authoritative implementation of persistence, scheduling, validation, or
 analytics.
 
-All frontend-to-Rust invocation belongs in `src/ipc.ts`. Screens and components
-should call typed wrapper functions rather than invoke arbitrary command names.
+Frontend-to-Rust invocation belongs only in explicitly designated typed IPC
+gateway modules (currently `src/ipc.ts`, `src/analytics-ipc.ts`,
+`src/generatedImport.ts`, and `src/diagnostics.ts`). Screens and components must
+call typed wrappers rather than `invoke()` directly. The repository IPC contract
+check verifies exact parity between every wrapper command name and the Rust
+registry.
 
 ### Rust
 
