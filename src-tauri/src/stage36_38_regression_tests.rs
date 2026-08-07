@@ -15,6 +15,15 @@ struct SeededCard {
     review_id: String,
 }
 
+struct ReviewSeed {
+    deck_id: String,
+    note_id: String,
+    card_id: String,
+    review_id: String,
+    submission_id: String,
+    captured_deck_name: String,
+}
+
 fn insert_deck(connection: &Connection, id: &str, name: &str, sort_order: i64, now: i64) {
     connection
         .execute(
@@ -28,12 +37,7 @@ fn insert_deck(connection: &Connection, id: &str, name: &str, sort_order: i64, n
 
 fn insert_reviewed_card(
     connection: &Connection,
-    deck_id: &str,
-    note_id: &str,
-    card_id: &str,
-    review_id: &str,
-    submission_id: &str,
-    captured_deck_name: &str,
+    seed: &ReviewSeed,
     time: &StudyTimeContext,
 ) -> SeededCard {
     let front_doc = r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Original question"}]}]}"#;
@@ -51,7 +55,7 @@ fn insert_reviewed_card(
                  ?3, ?4, 'Original question', 'Original answer',
                  ?5, ?5, 1, ?6, 0, '', 'one_at_a_time'
              )",
-            params![note_id, deck_id, front_doc, back_doc, now, "d".repeat(64)],
+            params![seed.note_id, seed.deck_id, front_doc, back_doc, now, "d".repeat(64)],
         )
         .expect("note should insert");
     connection
@@ -60,7 +64,7 @@ fn insert_reviewed_card(
                  id, note_id, deck_id, direction, template_ordinal,
                  created_at, updated_at
              ) VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)",
-            params![card_id, note_id, deck_id, now],
+            params![seed.card_id, seed.note_id, seed.deck_id, now],
         )
         .expect("card should insert");
     connection
@@ -74,7 +78,7 @@ fn insert_reviewed_card(
                  1, 1, 1, 0, ?3,
                  'fsrs', 'rs-fsrs-1.2.1', ?3
              )",
-            params![card_id, now.saturating_add(86_400_000), now],
+            params![seed.card_id, now.saturating_add(86_400_000), now],
         )
         .expect("schedule should insert");
     connection
@@ -97,9 +101,9 @@ fn insert_reviewed_card(
                  'fsrs', 'rs-fsrs-1.2.1', ?4
              )",
             params![
-                review_id,
-                submission_id,
-                card_id,
+                seed.review_id,
+                seed.submission_id,
+                seed.card_id,
                 now,
                 now.saturating_sub(1_000),
                 now.saturating_add(86_400_000),
@@ -126,23 +130,23 @@ fn insert_reviewed_card(
                  'captured'
              )",
             params![
-                review_id,
+                seed.review_id,
                 now,
                 time.local_date.to_string(),
                 time.time_zone_id,
                 time.utc_offset_minutes,
-                card_id,
-                note_id,
-                deck_id,
-                captured_deck_name,
+                seed.card_id,
+                seed.note_id,
+                seed.deck_id,
+                seed.captured_deck_name,
                 "f".repeat(64),
             ],
         )
         .expect("review attribution should insert");
     SeededCard {
-        note_id: note_id.to_string(),
-        card_id: card_id.to_string(),
-        review_id: review_id.to_string(),
+        note_id: seed.note_id.clone(),
+        card_id: seed.card_id.clone(),
+        review_id: seed.review_id.clone(),
     }
 }
 
@@ -167,12 +171,14 @@ fn moved_card_history_follows_current_owner_and_keeps_review_presentation() {
             insert_deck(connection, &deck_b, "Deck B", 1, time.now_utc_millis);
             let card = insert_reviewed_card(
                 connection,
-                &deck_a,
-                &"c".repeat(32),
-                &"d".repeat(32),
-                &"e".repeat(32),
-                &"f".repeat(32),
-                "Deck A",
+                &ReviewSeed {
+                    deck_id: deck_a.clone(),
+                    note_id: "c".repeat(32),
+                    card_id: "d".repeat(32),
+                    review_id: "e".repeat(32),
+                    submission_id: "f".repeat(32),
+                    captured_deck_name: "Deck A".to_string(),
+                },
                 &time,
             );
 
@@ -228,12 +234,14 @@ fn deleting_old_owner_preserves_moved_history_and_deleting_new_owner_purges_it()
             insert_deck(connection, &deck_b, "New owner", 1, time.now_utc_millis);
             let card = insert_reviewed_card(
                 connection,
-                &deck_a,
-                &"3".repeat(32),
-                &"4".repeat(32),
-                &"5".repeat(32),
-                &"6".repeat(32),
-                "Old owner",
+                &ReviewSeed {
+                    deck_id: deck_a.clone(),
+                    note_id: "3".repeat(32),
+                    card_id: "4".repeat(32),
+                    review_id: "5".repeat(32),
+                    submission_id: "6".repeat(32),
+                    captured_deck_name: "Old owner".to_string(),
+                },
                 &time,
             );
             connection
