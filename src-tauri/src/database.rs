@@ -30,7 +30,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration { version: 12, name: "versioned_data_repairs", checksum: "6776fd4d70ed8bac79dd01774d27d7dca97ece65742dabd69a55077dc6a721a3", sql: include_str!("../migrations/0012_versioned_data_repairs.sql") },
     Migration { version: 13, name: "canonical_data_model", checksum: "2e56fa0b68049f8a4d2e937b1dbdb18ec45d9c9041b06f5994b3c847f1d2f049", sql: include_str!("../migrations/0013_canonical_data_model.sql") },
     Migration { version: 14, name: "review_attribution_and_projection_indexes", checksum: "ed5b4f510d014b34f7c6b83c3fcf7914baaa3942e51345a74fb8a7179cc1e11a", sql: include_str!("../migrations/0014_review_attribution_and_projection_indexes.sql") },
-    Migration { version: 15, name: "ai_provider_profiles", checksum: "6d92ff137e4029755fec9b5880d9bc9cc8fd4be6f9f30bf2b935b258fb04614a", sql: include_str!("../migrations/0015_ai_provider_profiles.sql") },
+    Migration { version: 15, name: "ai_provider_profiles", checksum: "37644935f9d44e92c28f1ec50d1a4ec61f1171e7055a9d6d644df9dc6624d6ee", sql: include_str!("../migrations/0015_ai_provider_profiles.sql") },
     Migration { version: 16, name: "ai_provider_probe_capabilities", checksum: "12b4ec2518478a9798a19e87577f440a89943d06abfe7cb725f56727a854b75a", sql: include_str!("../migrations/0016_ai_provider_probe_capabilities.sql") },
 ];
 
