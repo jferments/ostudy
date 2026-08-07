@@ -36,3 +36,4 @@ export XDG_STATE_HOME="$TEMP_HOME/state"
 mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_STATE_HOME"
 
 python3 "$ROOT_DIR/tests/webdriver/smoke.py" --application "$OSTUDY_BINARY"
+python3 "$ROOT_DIR/tests/webdriver/ui_platform_smoke.py" --application "$OSTUDY_BINARY"
