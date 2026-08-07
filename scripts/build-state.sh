@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 
 OSTUDY_ROOT_DIR="${OSTUDY_ROOT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
-OSTUDY_BINARY="$OSTUDY_ROOT_DIR/src-tauri/target/debug/ostudy"
+if ! declare -F ostudy_default_cargo_target_dir >/dev/null 2>&1; then
+  # shellcheck disable=SC1091
+  source "$OSTUDY_ROOT_DIR/scripts/cargo-target.sh"
+fi
+OSTUDY_BUILD_TARGET_DIR="${CARGO_TARGET_DIR:-$(ostudy_default_cargo_target_dir "$OSTUDY_ROOT_DIR")}"
+if [[ "$OSTUDY_BUILD_TARGET_DIR" != /* ]]; then
+  OSTUDY_BUILD_TARGET_DIR="$OSTUDY_ROOT_DIR/$OSTUDY_BUILD_TARGET_DIR"
+fi
+OSTUDY_BINARY="$OSTUDY_BUILD_TARGET_DIR/debug/ostudy"
 OSTUDY_BUILD_STAMP="$OSTUDY_ROOT_DIR/.ostudy-build-stamp"
 
 ostudy_source_fingerprint() {
@@ -55,6 +63,10 @@ ostudy_require_current_build() {
   fi
   if [[ "$(ostudy_stamp_value root)" != "$OSTUDY_ROOT_DIR" ]]; then
     printf 'ERROR: This checkout moved after it was built. Run ./scripts/build.sh; stale Cargo artifacts will be cleared automatically.\n' >&2
+    return 1
+  fi
+  if [[ "$(ostudy_stamp_value binary)" != "$OSTUDY_BINARY" ]]; then
+    printf 'ERROR: The configured Cargo target changed after the last build. Run ./scripts/build.sh again.\n' >&2
     return 1
   fi
 
