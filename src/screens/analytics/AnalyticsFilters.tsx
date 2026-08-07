@@ -4,6 +4,7 @@ import type {
   AnalyticsTagOption,
 } from "../../ipc/analytics";
 import type { DeckSummary } from "../../ipc/decks";
+import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 
 interface AnalyticsFiltersProps {
   range: AnalyticsRange;
@@ -19,6 +20,14 @@ interface AnalyticsFiltersProps {
   onClearHighlightedSession: () => void;
   onClearScope: () => void;
 }
+
+const RANGE_OPTIONS: ReadonlyArray<{ value: AnalyticsRange; label: string }> = [
+  { value: "7d", label: "7 days" },
+  { value: "30d", label: "30 days" },
+  { value: "90d", label: "90 days" },
+  { value: "1y", label: "1 year" },
+  { value: "all", label: "All time" },
+];
 
 /** Pure analytics range/scope controls. Native reads and stale-response policy live in the controller. */
 export function AnalyticsFilters({
@@ -50,28 +59,15 @@ export function AnalyticsFilters({
 
   return (
     <section className="analytics-filter-panel" aria-label="Analytics filters">
-      <div className="analytics-range-control" role="group" aria-label="Time range">
-        {([
-          ["7d", "7 days"],
-          ["30d", "30 days"],
-          ["90d", "90 days"],
-          ["1y", "1 year"],
-          ["all", "All time"],
-        ] as const).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            className={range === value ? "analytics-filter-button active" : "analytics-filter-button"}
-            aria-pressed={range === value}
-            onClick={() => {
-              onRangeChange(value);
-              onClearHighlightedSession();
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        label="Time range"
+        value={range}
+        options={RANGE_OPTIONS}
+        onChange={(value) => {
+          onRangeChange(value);
+          onClearHighlightedSession();
+        }}
+      />
 
       <details className="analytics-scope-details">
         <summary>
