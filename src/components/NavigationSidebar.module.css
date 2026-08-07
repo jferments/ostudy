@@ -1,0 +1,68 @@
+@layer components {
+  .sidebar {
+    padding-top: max(30px, var(--safe-top));
+  }
+
+  .compactNav {
+    position: fixed;
+    z-index: var(--layer-sticky);
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    border-top: 1px solid var(--border);
+    padding: 6px max(8px, var(--safe-right)) max(6px, var(--safe-bottom)) max(8px, var(--safe-left));
+    background: color-mix(in srgb, var(--sidebar) 94%, transparent);
+    backdrop-filter: blur(14px);
+  }
+
+  .compactButton {
+    display: grid;
+    min-width: 0;
+    min-height: 52px;
+    place-items: center;
+    gap: 2px;
+    border: 0;
+    border-radius: 10px;
+    padding: 5px 3px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.66rem;
+    font-weight: 720;
+  }
+
+  .compactButton span:first-child { font-size: 1.05rem; }
+  .compactButton[data-active="true"] { background: var(--accent-soft); color: var(--accent); }
+
+  .moreList {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-4);
+  }
+
+  .moreList button {
+    display: flex;
+    min-height: var(--touch-target-min);
+    align-items: center;
+    gap: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    padding: var(--space-3);
+    background: var(--surface-raised);
+    color: var(--text);
+    text-align: left;
+  }
+
+  @media (min-width: 761px) {
+    .compactNav { display: none; }
+  }
+
+  @media (max-width: 760px) {
+    .sidebar { display: none; }
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .compactNav { backdrop-filter: none; background: var(--sidebar); }
+  }
+}

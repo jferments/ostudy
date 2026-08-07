@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as assetsIpc from "../ipc/assets";
 import * as templatesIpc from "../ipc/templates";
 import { deferred } from "../test/factories";
+import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { TemplatesScreen } from "./TemplatesScreen";
 
 vi.mock("../ipc/assets", () => ({
@@ -58,6 +59,14 @@ function savedTemplate(): templatesIpc.CardTemplate {
   };
 }
 
+function renderTemplates() {
+  return render(
+    <OverlayProvider>
+      <TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />
+    </OverlayProvider>,
+  );
+}
+
 describe("TemplatesScreen managed assets", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,7 +82,7 @@ describe("TemplatesScreen managed assets", () => {
   });
 
   it("opens one template draft and commits its identity with the template", async () => {
-    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />);
+    renderTemplates();
 
     await screen.findByRole("heading", { name: "Create a reusable card template" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
@@ -98,7 +107,7 @@ describe("TemplatesScreen managed assets", () => {
   });
 
   it("cancels the uncommitted draft when the editor is canceled", async () => {
-    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />);
+    renderTemplates();
 
     await screen.findByRole("heading", { name: "Create a reusable card template" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
@@ -108,11 +117,10 @@ describe("TemplatesScreen managed assets", () => {
     await waitFor(() => expect(assetsIpc.cancelAssetDraft).toHaveBeenCalledWith(draftId));
   });
 
-  it("blocks save and cancels a managed draft that resolves after cancellation", async () => {
+  it("blocks save and cancels a managed draft that resolves after confirmed cancellation", async () => {
     const opening = deferred<Awaited<ReturnType<typeof assetsIpc.beginAssetDraft>>>();
     vi.mocked(assetsIpc.beginAssetDraft).mockReturnValueOnce(opening.promise);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />);
+    renderTemplates();
 
     await screen.findByRole("heading", { name: "Create a reusable card template" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
@@ -126,6 +134,10 @@ describe("TemplatesScreen managed assets", () => {
     expect(templatesIpc.createCardTemplate).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(
+      await screen.findByRole("alertdialog", { name: "Discard template changes?" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     opening.resolve({
       id: draftId,
       purpose: "template",

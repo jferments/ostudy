@@ -1,5 +1,6 @@
-import { useEffect } from "react";
-import type { MouseEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
+
+import { Dialog, type DialogProps } from "../ui/overlays/Dialog";
 
 interface ModalProps {
   title: string;
@@ -7,50 +8,36 @@ interface ModalProps {
   children: ReactNode;
   onClose: () => void;
   width?: "small" | "medium" | "large";
+  busy?: boolean;
+  dismissible?: boolean;
 }
 
+/**
+ * Backwards-compatible feature wrapper around the Stage 3.13 dialog lifecycle.
+ * New UI infrastructure should import Dialog directly; existing feature dialogs
+ * inherit focus, stacking, Back, inertness, and responsive presentation here.
+ */
 export function Modal({
   title,
   description,
   children,
   onClose,
   width = "medium",
+  busy = false,
+  dismissible = true,
 }: ModalProps) {
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  function onBackdropClick(event: MouseEvent<HTMLDivElement>) {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  }
-
   return (
-    <div className="modal-backdrop" onMouseDown={onBackdropClick}>
-      <section
-        className={`modal-card modal-${width}`}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-title"
-      >
-        <header className="modal-header">
-          <div>
-            <h2 id="modal-title">{title}</h2>
-            {description ? <p>{description}</p> : null}
-          </div>
-          <button type="button" className="icon-button" aria-label="Close dialog" onClick={onClose}>
-            ×
-          </button>
-        </header>
-        {children}
-      </section>
-    </div>
+    <Dialog
+      title={title}
+      description={description}
+      width={width}
+      busy={busy}
+      dismissible={dismissible}
+      onClose={() => onClose()}
+    >
+      {children}
+    </Dialog>
   );
 }
+
+export type { DialogProps };

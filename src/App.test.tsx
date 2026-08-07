@@ -6,6 +6,7 @@ import App from "./App";
 import * as decksIpc from "./ipc/decks";
 import * as settingsIpc from "./ipc/settings";
 import { makeDeck, makeSettings, resetTestEntityIds } from "./test/factories";
+import { OverlayProvider } from "./ui/overlays/OverlayProvider";
 
 vi.mock("./ipc/common", () => ({
   getErrorMessage: (error: unknown) =>
@@ -99,6 +100,14 @@ vi.mock("./screens/SettingsScreen", () => ({
   SettingsScreen: () => <h1>Settings mock</h1>,
 }));
 
+function renderApp() {
+  return render(
+    <OverlayProvider>
+      <App />
+    </OverlayProvider>,
+  );
+}
+
 describe("App shell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -114,7 +123,7 @@ describe("App shell", () => {
     );
     vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
 
-    render(<App />);
+    renderApp();
 
     expect(screen.getByRole("heading", { name: "Opening ostudy" })).toBeTruthy();
     expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
@@ -124,21 +133,25 @@ describe("App shell", () => {
     expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe("1.1");
   });
 
-  it("guards navigation while a card has unsaved changes", async () => {
+  it("guards navigation with the shared unsaved-change dialog", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
-    render(<App />);
+    renderApp();
     await screen.findByRole("heading", { name: "Decks mock" });
     fireEvent.click(screen.getByRole("button", { name: "Mark card dirty" }));
     fireEvent.click(screen.getByRole("button", { name: /Analytics/u }));
 
-    expect(confirm).toHaveBeenCalledWith("Discard the unsaved changes to this flashcard?");
+    expect(
+      await screen.findByRole("alertdialog", { name: "Discard flashcard changes?" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("heading", { name: "Analytics mock" })).toBeNull();
 
-    confirm.mockReturnValue(true);
     fireEvent.click(screen.getByRole("button", { name: /Analytics/u }));
+    await screen.findByRole("alertdialog", { name: "Discard flashcard changes?" });
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
     expect(await screen.findByRole("heading", { name: "Analytics mock" })).toBeTruthy();
     expect(screen.getByLabelText("Analytics launch").textContent).toBe("7d||");
   });
@@ -148,7 +161,7 @@ describe("App shell", () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
 
-    render(<App />);
+    renderApp();
     await screen.findByRole("heading", { name: "Decks mock" });
     fireEvent.click(screen.getByRole("button", { name: "Practice deck mock" }));
 
@@ -160,7 +173,7 @@ describe("App shell", () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
 
-    render(<App />);
+    renderApp();
     await screen.findByRole("heading", { name: "Decks mock" });
     const navigation = screen.getByRole("navigation", { name: "Main navigation" });
     fireEvent.click(within(navigation).getByRole("button", { name: "Practice" }));
@@ -176,7 +189,7 @@ describe("App shell", () => {
     vi.mocked(settingsIpc.getSettings).mockRejectedValue(new Error("Database unavailable"));
     vi.mocked(decksIpc.listDecks).mockResolvedValue([]);
 
-    render(<App />);
+    renderApp();
 
     expect(
       await screen.findByRole("heading", {

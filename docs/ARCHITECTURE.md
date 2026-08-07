@@ -1,262 +1,230 @@
 # ostudy architecture
 
-ostudy is a local-first Tauri desktop application. React and TypeScript render
-the interface; Rust owns durable behavior and validation; SQLite stores
-structured state and full-text indexes; the native filesystem stores managed
-image files.
+## System summary
 
-## Architectural boundary
-
-```text
-React presentational components
-        │ events / transient UI state
-        ▼
-Frontend domain controllers
-        │ typed domain IPC gateways
-        ▼
-Rust command handlers
-        │ validation and use-case orchestration
-        ▼
-Rust domain modules and SQLite transactions
-        │
-        ├── library.sqlite3
-        └── managed image directory
-```
-
-The frontend displays state and communicates user intent. It never issues SQL,
-opens arbitrary files, evaluates template expressions, selects authoritative
-template placement, or calculates the authoritative schedule. Rust validates all
-data crossing the IPC boundary and owns multi-step transactions.
-
-## Main modules
-
-### Frontend
-
-- `src/App.tsx` renders the application shell. `src/controllers/useAppController.ts`
-  owns navigation, deck bootstrap/refresh, settings preview state, dirty-state
-  guards, notifications, and cross-screen launch intents.
-- `src/controllers/` owns workflow orchestration for Decks, Search/Filter, Card
-  Editor, Templates, Practice, and Analytics. Shared request lanes suppress
-  obsolete asynchronous read completions; mutations are never treated as
-  cancellable reads.
-- `src/ipc/` is the complete typed Tauri gateway, split by domain. Direct
-  `invoke()` calls outside this directory are forbidden and mechanically checked.
-- `src/screens/DecksScreen.tsx` renders the deck library/detail/editor workflow;
-  `DecksController` owns deck/card-note reads plus deck/import/export mutations.
-- `src/screens/CardsScreen.tsx` is the whole-library Search/Filter workspace. It
-  displays exact generated-card presentations, manages card-level selection,
-  deduplicates note-level actions, and launches temporary practice sessions.
-  `src/screens/cards/CardFilters.tsx` is the independent filter-control surface.
-- `src/screens/CardEditorScreen.tsx` selects a built-in or reusable card
-  template, edits Basic rich content, configures reverse cards, authors cloze
-  notes, and fills reusable template forms. `CardEditorController` owns card-note
-  reads/writes, duplicate checks, template reads/previews/generation, and asset
-  draft operations.
-- `src/screens/card-editor/ClozeEditor.tsx` owns selection-based blank marking
-  and transient cloze preview state.
-- `src/screens/card-editor/TemplateEntryForm.tsx` renders reusable template
-  fields and generated-card previews.
-- `src/screens/TemplatesScreen.tsx` manages reusable data-only field and rule
-  definitions through `TemplatesController`. Rule authors type placeholders such
-  as `{{Subject}}`; the UI does not expose inline/block placement controls.
-- `src/screens/PracticeScreen.tsx` owns the practice interaction state machine;
-  its controller owns workload/window reads and durable session/review/schedule
-  operations. `PracticeSetup`, `ActivePractice`, and `PracticeComplete` are
-  separate presentational phases.
-- `src/screens/AnalyticsScreen.tsx` presents deterministic confidence,
-  response-time, and workload aggregates through `AnalyticsController`.
-  `src/screens/analytics/AnalyticsFilters.tsx` owns the range/scope controls.
-- `src/screens/SettingsScreen.tsx` edits appearance and review preferences.
-- `src/editor/` contains the Tiptap configuration, canonicalization, display,
-  and link handling.
-
-A successful durable mutation and a successful display refresh are deliberately
-separate outcomes. Controllers/screens may update committed local state and then
-attempt reconciliation. If reconciliation fails, the UI reports that the write
-was saved but the current view could not refresh; it must not invite a duplicate
-write retry.
-
-### Rust
-
-- `database.rs` opens SQLite, applies immutable checksummed migrations, invokes
-  required versioned data repairs at their declared migration boundaries, and
-  exposes one mutex-protected connection. Once the repair ledger is complete,
-  canonical startup verifies it without rewriting application data.
-- `data_repairs.rs` owns one-time checksummed data repairs; historical repair
-  names and checksums are durable compatibility records.
-- `decks.rs` owns deck validation and persistence.
-- `cards.rs` owns rendered card-presentation hydration and the canonical Tiptap
-  validator; Rust derives authoritative searchable plain text from validated
-  documents.
-- `authoring/card_note.rs` owns the discriminated editable `CardNote` DTO and
-  source-note hydration. `CardNote` is not the same contract as a rendered
-  `CardPresentation`.
-- `authoring/mod.rs` owns shared authoring contracts and persistence primitives.
-  `authoring/card_commands.rs` owns search/tags/bulk/read commands,
-  `authoring/card_types_and_templates.rs` owns canonical Basic/Cloze note
-  preparation and presentation rendering, its `templates/` subtree owns reusable
-  template validation/rendering/persistence, `generated_import/` owns the
-  external version-1 JSON schema/restricted Markdown/preparation/apply pipeline,
-  and `authoring/transfer.rs` owns note move/copy behavior.
-- `assets.rs` imports supported local image files into the managed library.
-- `scheduler.rs` is the sole adapter to `rs-fsrs`.
-- `practice.rs` records graded reviews atomically.
-- `practice_selection.rs` selects exact generated-card IDs and hydrates the
-  corresponding forward, reverse, or session-stable cloze presentation.
-- `analytics.rs` calculates deterministic review facts using ordinary SQL.
-- `transfer.rs` validates the core `.studydeck` content and images.
-- `tagged_transfer.rs` preserves optional package tag metadata.
-- `stage3_transfer.rs` preserves optional reverse/cloze metadata and generated
-  card identities while keeping old Basic packages importable.
-- `settings.rs` validates and persists graphical configuration.
-
-## Notes, generated cards, and frontend transport
-
-A **note** stores editable source content. A **card** is one independently
-scheduled study presentation generated from that note. Tags attach to the note
-so every generated presentation shares the same classification.
-
-The frontend transport mirrors this distinction:
-
-- `CardNote` is the editable Basic/Cloze source model keyed by `noteId` and note
-  revision. Basic notes carry rich front/back content and reverse configuration;
-  Cloze notes carry source text and cloze mode.
-- `CardPresentation` is a rendered study/search identity keyed by `cardId` and
-  `noteId`, with rendered question/answer documents and presentation direction.
-
-Generated card identity is the durable tuple:
+ostudy is a local-first Tauri 2 desktop/mobile application. React and TypeScript
+render the interface; Rust owns durable domain behavior; SQLite stores structured
+state; and the application-managed filesystem stores image bytes.
 
 ```text
-(note_id, direction, template_ordinal)
+React feature views
+        ↓
+frontend controllers
+        ↓
+typed domain IPC gateways
+        ↓
+Tauri command boundary
+        ↓
+Rust domain/services
+        ↓
+SQLite + managed assets
 ```
 
-Basic forward and reverse cards use `forward/0` and `reverse/0`. Every active
-Fill in the blank note uses one canonical `forward/0` card, regardless of how
-many marked blanks its source contains or which cloze mode is selected.
+Platform capabilities such as file selection, external URL opening, hardware
+Back, future audio, and future haptics are isolated under `src/platform/` rather
+than being mixed into IPC or feature screens.
 
-Disabling a reverse presentation soft-deletes its `cards` row. Its schedule and
-append-only review events remain attached to the same card ID. Re-enabling the
-same tuple reactivates that row rather than creating a replacement.
+## Frontend layers
 
-For one-at-a-time cloze, Rust chooses the next blank group from the canonical
-card's accepted review count and stores that choice in the practice-session
-snapshot. Viewing, revealing, leaving, or resuming the session cannot advance or
-change the selected blank.
+### Typed IPC gateways
 
-`tags.normalized_name` provides case-insensitive identity while preserving the
-first human-readable spelling. `note_tags` is the many-to-many relationship.
-Tag writes are bounded, deduplicated, and transactional with source-note
-content.
+All direct `invoke()` calls live under `src/ipc/`, split by domain. Command-name
+parity with the Rust `generate_handler!` registry is mechanically verified.
+Screens and controllers import only the IPC domains they use.
 
-## Reusable data-only templates
+### Controllers
 
-Reusable templates are authoring shortcuts, not note types and not ownership
-parents. A template contains ordered fields and ordered rich question/answer
-rules. Authors type complete placeholders such as `{{Subject}}` or
-`{{Important findings}}` directly in a layout.
+Workflow-heavy features use controllers under `src/controllers/` for:
 
-When a template is saved, Rust assigns stable child IDs, resolves each typed
-field name to its stable ID, and stores a neutral inert placeholder. At preview
-or generation time, Rust chooses placement from the validated field document:
+- native reads and mutations;
+- stale-read request lanes;
+- mutation operation/retry identity;
+- committed-success versus failed-reconciliation handling;
+- feature transitions and launch requests.
 
-- one text-only paragraph is inserted inline;
-- lists, images, headings, block quotes, code blocks, horizontal rules, and
-  multi-paragraph values are inserted as blocks.
+Obsolete read results may finish natively but may not overwrite newer UI state.
+Durable mutations are not treated as cancellable reads: if a write committed,
+subsequent view-refresh failure is reported separately rather than inviting a
+second write.
 
-If a block value occurs inside a paragraph or heading, Rust splits the layout
-into valid before/value/after blocks and removes empty wrappers. It never
-flattens rich content or infers placement from whitespace or field names.
+### Source notes and study presentations
 
-The old explicit block placeholder remains readable only for compatibility with
-initial schema-7 templates. A versioned data repair converts it to the neutral
-representation. Canonical startup only verifies that the required repair was
-recorded.
+Editable source transport is `CardNote`. Search, scheduling, and Practice use
+rendered `CardPresentation` identities. A Basic note may own forward and reverse
+presentations; a Cloze note owns one stable scheduled presentation whose hidden
+group rotates according to review history.
 
-Every final document passes through the ordinary Basic-card validator and write
-transaction. Generated notes do not store a template ID. Editing or deleting a
-reusable template cannot modify or delete cards already generated from it.
-Templates are local authoring preferences and are not included in deck exports.
+### UI platform
 
-## FTS5 search and exact presentation rendering
+Shared interaction and visual infrastructure lives under `src/ui/`; detailed
+rules are in `docs/UI-ARCHITECTURE.md` and ADR 0014.
 
-`card_search_fts` indexes active note source text, deck IDs, and tag text. Its
-rowid mirrors `notes.rowid`; SQLite triggers keep it synchronized after supported
-writes.
+- `OverlayProvider` owns the dialog/sheet/menu stack, topmost Escape/platform
+  Back behavior, focus entry/containment/restoration, background inertness, and
+  scroll locking.
+- Feature code uses shared overlay primitives or asynchronous confirmation. It
+  does not hand-write dialog semantics or ordinary `window.confirm()` calls.
+- Only `src/ui/foundations/index.css` is imported globally. New UI styling uses
+  CSS Modules and semantic tokens.
+- Wide, medium, and compact layout modes share the same controllers. Compact
+  layouts use bottom navigation, safe-area-aware overlays, dynamic viewport
+  units, and coarse-pointer touch targets.
+- Shared UI is independent of IPC, controllers, and Tauri APIs.
+- Semantic feedback events provide a future seam for visual effects, local audio,
+  and haptics without coupling them to durable study operations.
 
-Search filtering happens over notes and schedules, but each matching active
-`cards` row is returned separately. Rust renders the exact presentation by card
-ID before sending it to the frontend. Basic reverse cards display swapped sides;
-a multi-blank cloze note appears once and displays the session-selected blank.
+### Platform adapters
 
-The interface never forwards raw FTS5 syntax. Rust extracts bounded
-alphanumeric tokens, quotes them, binds the resulting expression as a
-parameter, and applies deck, tag, due-state, sort, limit, and offset constraints
-as separate bound values.
+`src/platform/` owns operating-system/WebView capability differences:
 
-## Duplicate detection
+- file open/save selection;
+- external links;
+- platform Back dispatch;
+- pointer/hover/capability detection;
+- optional audio and haptic feedback adapters.
 
-Each note stores a stable FNV-1a fingerprint of normalized source question and
-answer text. The hash is only a candidate index: Rust compares complete
-normalized strings before declaring a duplicate.
+A future Android adapter may stage content URIs into application cache without
+changing Decks, Settings, Card Editor, or import workflows.
 
-The Basic editor warns before an exact duplicate is saved, and Rust repeats the
-check inside an immediate transaction. Bulk entry and reusable-template
-generation skip exact duplicates within the submitted batch and destination
-deck. Image-only cards are not considered duplicates merely because searchable
-text is empty.
+## Native composition root
 
-## Move and copy semantics
+`src-tauri/src/lib.rs` is the Tauri composition root. Startup:
 
-- **Move** changes the note and every generated card's deck ID in one
-  transaction. Card IDs, schedules, and review history remain intact.
-- **Copy** creates a new note and new IDs for every active generated
-  presentation, copies tags and asset relationships, and creates fresh schedules
-  without personal review history.
-- Search/Filter deduplicates selected presentations by note ID before invoking a
-  note-level move, copy, tag, or delete operation.
+1. resolves application paths;
+2. applies a validated pending whole-library restore if present;
+3. opens/migrates SQLite;
+4. runs any missing versioned data repair exactly once;
+5. finalizes expired deletion recovery windows;
+6. purges finalized deletion-owned history;
+7. reconciles managed assets;
+8. publishes application paths and database state;
+9. registers the typed command surface.
 
-## Practice confidence and scheduling
+A durable startup failure stops application initialization rather than exposing a
+partially reconciled library.
 
-The learner gives one score after revealing an answer:
+## Rust domain modules
 
-| Score | Learner wording | FSRS rating |
-| --- | --- | --- |
-| 0 | Wrong | Again |
-| 1 | Hard | Hard |
-| 2 | Medium | Good |
-| 3 | Easy | Easy |
+### Authoring
 
-`card_schedules` is the fast mutable view of current FSRS state.
-`review_events` is the immutable historical ledger. Review submission is one
-idempotent SQLite transaction. Basic forward/reverse presentations own separate
-card IDs; every cloze blank shares the note's one canonical cloze card ID.
+`src-tauri/src/authoring/` uses ordinary Rust modules with explicit visibility.
+It owns:
 
-## Deck interchange
+- source-note/card presentation creation and update;
+- tags, duplicate candidates, and Search/Filter authoring projections;
+- Basic, Reverse, and Cloze preparation;
+- reusable template graph validation/persistence/rendering;
+- generated JSON import schema, restricted Markdown, whole-file preparation, and
+  transactional apply;
+- move/copy transfer operations.
 
-`.studydeck` packages contain notes, active generated cards, tags, managed
-assets, and optional data-only card-type metadata. The importer validates the
-complete card graph and creates fresh local schedules. Personal review events,
-application settings, and reusable authoring templates are excluded.
+Command/service orchestrators own logical transactions. Subordinate helpers take
+`&Connection` or `&Transaction` and do not commit secretly.
 
-Older Basic packages without optional tag/card-type tables remain importable.
-Older packages with several cloze rows are normalized to one active card
-immediately after import. Older readers can ignore additional optional tables in
-new exports.
+### Studyability and local calendar
 
-Generated `.ostudy.json` is a separate content-only external format. Version 1
-contains one deck destination (`create` or exact-name `append`) plus Basic/Cloze
-source notes. Rust validates the entire file, parses only the documented
-restricted Markdown subset, maps entries through the canonical card-note
-preparation path, skips exact duplicates, and applies accepted notes in one
-transaction with fresh local schedules. There is deliberately no generated-import
-preview or inspect/commit protocol.
+`studyability` is the single authority for archive, manual suspension, burial,
+and due readiness. Due timestamps never override archive/suspension state.
 
-The full Rust test suite owns a generated-import conformance corpus. It
-materializes real temporary `.ostudy.json` files, validates every supported
-Markdown/card shape and a broad rejection matrix, exercises create/append and
-duplicate behavior, checks fresh schedules and whole-file atomicity, explicitly
-removes its temporary deck graph, and removes its temporary directory through
-RAII cleanup. It never targets the user's application-data directory.
+`study_calendar` owns local-date windows, DST transitions, leap-day clamping,
+custom local-date resolution, and time-zone identifier validation. Product
+language that says “day”, “tomorrow”, “week”, or “year” uses local-calendar
+semantics rather than fixed-duration browser arithmetic.
+
+### Projections
+
+Bounded read paths live in projection-oriented modules. Summary/detail/window
+DTOs are separate contracts. List operations do not hydrate complete rich
+content or issue one asset query per row when a bounded projection is available.
+
+### Scheduling and Practice
+
+`src-tauri/src/scheduler.rs` is the adapter around `rs-fsrs`.
+
+- `card_schedules` stores mutable current schedule state.
+- `review_events` is the append-only historical review ledger.
+- review submission validates the previewed schedule revision and commits the
+  review event plus schedule update transactionally;
+- submission and operation IDs make ambiguous retries idempotent;
+- bulk schedule actions validate and commit all requested cards atomically;
+- Practice sessions persist a bounded identity snapshot and return bounded card
+  windows rather than hydrating the whole session.
+
+### Analytics
+
+Analytics are deterministic projections of stored practice/review data. Current
+inventory and historical evidence remain separate domains.
+
+Historical attribution follows stable entity identities:
+
+- moving a card changes current ownership but retained review evidence follows
+  the current card owner while preserving the reviewed presentation;
+- renamed decks/tags display their current names;
+- archived decks remain in historical analytics;
+- finalized deleted-deck history is purged according to the deletion contract.
+
+### Imports, exports, and backup
+
+`.studydeck` is the content-sharing format. Imported decks receive fresh local
+schedules and do not import another learner's personal review history. Legacy
+released package layouts are adapted before canonical persistence.
+
+Generated `.ostudy.json` files are strict, versioned, data-only external input.
+The importer validates the entire file before one transaction and automatically
+skips exact duplicates. Its executable conformance corpus covers supported and
+rejected syntax, declared limits, duplicates, create/append resolution,
+atomicity, fresh schedules, and cleanup in isolated temporary storage.
+
+`.ostudybackup` is the complete personal-library backup format and includes
+content, templates, managed images, schedules, review events, sessions,
+analytics-source records, repairs, and settings.
+
+## Data model
+
+The major ownership relationships are:
+
+```text
+deck
+  └── note (editable source)
+       ├── card presentation(s)
+       │    └── card schedule
+       ├── tags
+       └── managed asset references
+
+practice session
+  └── stable session-card snapshot
+
+review event
+  └── immutable reviewed card/presentation identity
+```
+
+Cards are scheduled, buried, suspended, reviewed, and selected. Notes own
+editable content and tags. This distinction must remain visible in DTO names and
+frontend workflows.
+
+## Migrations and repairs
+
+Released SQL migrations and release fixtures are immutable evidence. New schema
+changes append a migration and checksum registration.
+
+Versioned data repairs are separate from schema migrations. A repair:
+
+- has a stable ID, version, and checksum;
+- runs once inside a transaction;
+- is recorded in the repair ledger;
+- makes normal startup read-only with respect to already-canonical application
+  data.
+
+Historical compatibility names/checksums remain stable even after active source
+modules receive semantic names.
+
+## Managed assets
+
+SQLite owns asset metadata and references; the managed filesystem owns bytes.
+Draft IDs make image selection safe before the owning note/template commits.
+Startup reconciliation handles interrupted rename/copy/delete windows and
+protects shared references. Diagnostic export excludes managed image bytes and
+the SQLite library.
 
 ## Untrusted content and template safety
 
@@ -264,8 +232,8 @@ All card, template, and imported-deck content is untrusted until Rust validates
 it.
 
 - Cards are structured JSON, never executable HTML or script source.
-- Node types, marks, attributes, nesting, sizes, colors, and image references
-  use explicit allowlists and bounds.
+- Node types, marks, attributes, nesting, sizes, colors, and image references use
+  explicit allowlists and bounds.
 - Links are limited to complete `http`, `https`, `mailto`, and `tel` addresses.
 - Images must reference managed local assets.
 - Cloze marker grammar, group numbers, nesting, and source size are validated.
@@ -277,3 +245,20 @@ it.
 - Search text is derived by Rust and SQLite statements use bound parameters.
 - Unknown structured content, unknown fields, or malformed placeholders fail
   visibly.
+
+## Quality boundaries
+
+The static gate enforces durable contracts rather than historical source shape:
+
+- exact dependency/toolchain pins and lockfiles;
+- migration registration/checksums;
+- frontend/Rust IPC parity;
+- explicit Rust module policy;
+- no skipped/focused/ignored tests;
+- immutable self-hosted workflows;
+- UI/platform dependency direction;
+- shared overlay ownership;
+- one global style entry point and removal of historical stage-named CSS paths.
+
+Feature behavior belongs in Rust tests, Vitest/controller/component tests,
+migration/package/conformance fixtures, and native WebDriver workflows.

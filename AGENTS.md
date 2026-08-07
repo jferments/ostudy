@@ -11,7 +11,7 @@ When instructions conflict, follow this order:
 
 1. the current human request and its explicit acceptance criteria;
 2. accepted Architecture Decision Records in `docs/decisions/`;
-3. `docs/ARCHITECTURE.md` and
+3. `docs/ARCHITECTURE.md`, `docs/UI-ARCHITECTURE.md`, and
    `docs/CARD-FORMAT-AND-DATA-MODEL.md`;
 4. `docs/DEVELOPMENT-AND-QUALITY.md` and `docs/GIT-WORKFLOW.md`;
 5. the guidance in `docs/agents/`;
@@ -50,9 +50,25 @@ Before editing code, read:
 - Typed Tauri gateways live under `src/ipc/`, split by domain. Direct
   `@tauri-apps/api/core` `invoke()` calls outside that directory are forbidden
   and mechanically checked.
+- Desktop/mobile capability adapters live under `src/platform/`. Feature screens
+  and shared UI must not import Tauri dialog/opener plugins directly.
 - Workflow-heavy screens delegate native reads/mutations and stale-read policy to
   focused controllers under `src/controllers/`; presentational components do not
   own persistence orchestration.
+- Shared interaction and accessibility primitives live under `src/ui/`. They may
+  not import IPC domains, feature controllers, or Tauri APIs.
+- Feature code must use the shared Dialog, ConfirmDialog/confirmation service,
+  Sheet, Menu, and other overlay primitives. Do not hand-write backdrops, focus
+  traps, `role="dialog"`, or ordinary `window.confirm()` calls.
+- Only `src/ui/foundations/index.css` is imported globally by `src/main.tsx`.
+  New component and feature styling uses CSS Modules and semantic design tokens;
+  do not add another feature-global or stage-named stylesheet.
+- Every UI workflow must remain usable with keyboard, touch/coarse pointers,
+  reduced motion, and compact layouts around 360–430 CSS pixels. Respect dynamic
+  viewport height and safe-area insets for fixed/sticky UI.
+- Optional animations, sounds, and haptics subscribe to semantic feedback events.
+  Durable controllers must not call a specific visual/audio effect or wait for
+  an effect to complete.
 - Obsolete async reads may finish in Rust but must not overwrite newer frontend
   state. Use independent request lanes for independent read concerns; do not use
   stale-read cancellation semantics for durable mutations.
@@ -90,10 +106,17 @@ Before editing code, read:
 - Do not mix feature work, dependency upgrades, broad refactors, and formatting
   churn.
 - Inspect existing implementations and tests before adding a new abstraction.
+- Prefer an existing UI primitive or platform adapter before adding feature-local
+  interaction behavior. Extend a primitive with direct tests when the behavior is
+  genuinely reusable.
 - Prefer straightforward code over clever compression or premature
   generalization.
 - Preserve existing accessibility, keyboard behavior, theme behavior, and
   import/export compatibility unless the task explicitly changes them.
+- A new or changed overlay must test initial focus, topmost dismissal, focus
+  containment/restoration, and busy/non-dismissible behavior where applicable.
+- A new or materially changed layout must be checked at compact phone, tablet,
+  and desktop widths and must not introduce document-level horizontal overflow.
 - Add a regression test for every defect when a practical test layer exists.
 - Update affected documentation and add an ADR for durable cross-module
   decisions.

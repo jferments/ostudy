@@ -1,0 +1,128 @@
+@layer reset, tokens, base, legacy, features, components, utilities;
+
+/*
+ * Global style entry point. Existing application/feature selectors are grouped
+ * under semantic cascade layers while Stage 3.13 primitives and all new UI use
+ * scoped CSS Modules. No feature imports a global stylesheet directly.
+ */
+@import "../../styles/base/application.css" layer(legacy);
+@import "../../styles/features/practice.css" layer(features);
+@import "../../styles/features/cards.css" layer(features);
+@import "../../styles/features/authoring.css" layer(features);
+@import "../../styles/features/templates.css" layer(features);
+@import "../../styles/features/scheduling.css" layer(features);
+@import "../../styles/features/analytics.css" layer(features);
+@import "../../styles/features/assets.css" layer(features);
+
+@layer tokens {
+  :root {
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-7: 2rem;
+    --space-8: 2.5rem;
+    --control-height: 42px;
+    --touch-target-min: 44px;
+    --radius-medium: var(--radius);
+    --radius-large: 18px;
+    --on-accent: #ffffff;
+    --on-danger: #ffffff;
+    --overlay-scrim: rgb(0 0 0 / 64%);
+    --elevation-panel: var(--card-shadow);
+    --elevation-overlay: var(--shadow);
+    --motion-fast: 120ms;
+    --motion-normal: 180ms;
+    --motion-slow: 320ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(0.2, 0, 0, 1.2);
+    --layer-base: 0;
+    --layer-control-selected: 1;
+    --layer-control-focus: 2;
+    --layer-sticky: 100;
+    --layer-popover: 500;
+    --layer-dialog: 1000;
+    --layer-toast: 1200;
+    --layer-effects: 1300;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+  }
+
+  :root[data-theme="console"] {
+    --on-accent: #001000;
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+
+  :root[data-reduce-motion="true"] *,
+  :root[data-reduce-motion="true"] *::before,
+  :root[data-reduce-motion="true"] *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root *,
+    :root *::before,
+    :root *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.001ms !important;
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .app-shell {
+      padding-bottom: calc(68px + var(--safe-bottom));
+    }
+
+    .main-area {
+      min-height: calc(100dvh - 68px - var(--safe-bottom));
+    }
+  }
+
+  @media (pointer: coarse) {
+    .icon-button,
+    .nav-button,
+    .text-button {
+      min-width: var(--touch-target-min);
+      min-height: var(--touch-target-min);
+    }
+  }
+}
+
+@layer utilities {
+  .sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    clip-path: inset(50%) !important;
+  }
+}

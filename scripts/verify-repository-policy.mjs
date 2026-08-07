@@ -83,15 +83,92 @@ for (const [label, pattern] of [
 ]) {
   if (pattern.test(authoringText)) failures.push(`Authoring/template subsystem contains forbidden ${label}.`);
 }
+
+const frontendFiles = allFiles.filter((path) => {
+  const displayPath = relative(root, path).replaceAll("\\", "/");
+  return /\.[cm]?[jt]sx?$/u.test(path) && displayPath.startsWith("src/");
+});
+const frontendProductionFiles = frontendFiles.filter((path) => {
+  const displayPath = relative(root, path).replaceAll("\\", "/");
+  return !/(?:^|\/)[^/]+\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(displayPath)
+    && !displayPath.startsWith("src/test/");
+});
 const frontendText = (
-  await Promise.all(
-    allFiles
-      .filter((path) => /\.[cm]?[jt]sx?$/u.test(path) && relative(root, path).startsWith("src"))
-      .map((path) => readFile(path, "utf8")),
-  )
+  await Promise.all(frontendFiles.map((path) => readFile(path, "utf8")))
 ).join("\n");
 for (const forbidden of ["eval(", "new Function"]) {
   if (frontendText.includes(forbidden)) failures.push(`Frontend contains executable dynamic-code primitive: ${forbidden}`);
+}
+
+for (const path of frontendProductionFiles) {
+  const displayPath = relative(root, path).replaceAll("\\", "/");
+  const text = await readFile(path, "utf8");
+
+  if (/\bwindow\.confirm\s*\(/u.test(text)) {
+    failures.push(`${displayPath}: ordinary browser confirmation is forbidden; use the shared asynchronous confirmation service`);
+  }
+
+  if (
+    /from\s+["']@tauri-apps\/(?:plugin-dialog|plugin-opener)["']/u.test(text)
+    && !displayPath.startsWith("src/platform/")
+  ) {
+    failures.push(`${displayPath}: platform-specific Tauri plugins may only be imported by src/platform adapters`);
+  }
+
+  if (
+    (/<dialog\b/u.test(text) || /role\s*=\s*["'](?:dialog|alertdialog)["']/u.test(text))
+    && !displayPath.startsWith("src/ui/overlays/")
+  ) {
+    failures.push(`${displayPath}: feature code may not hand-write dialog semantics; use shared overlay primitives`);
+  }
+
+  if (displayPath.startsWith("src/ui/")) {
+    if (/from\s+["'][^"']*(?:\/|^)ipc(?:\/|["'])/u.test(text)) {
+      failures.push(`${displayPath}: shared UI primitives may not depend on IPC domains`);
+    }
+    if (/from\s+["'][^"']*(?:\/|^)controllers(?:\/|["'])/u.test(text)) {
+      failures.push(`${displayPath}: shared UI primitives may not depend on feature controllers`);
+    }
+    if (/from\s+["']@tauri-apps\//u.test(text)) {
+      failures.push(`${displayPath}: shared UI primitives may not import Tauri APIs directly`);
+    }
+  }
+}
+
+const mainSource = await readFile(join(root, "src", "main.tsx"), "utf8");
+const globalCssImports = [...mainSource.matchAll(/import\s+["']([^"']+\.css)["'];?/gu)].map((match) => match[1]);
+if (globalCssImports.length !== 1 || globalCssImports[0] !== "./ui/foundations/index.css") {
+  failures.push(
+    `src/main.tsx must import exactly one global foundation stylesheet; found ${globalCssImports.join(", ") || "none"}`,
+  );
+}
+
+for (const forbiddenCss of [
+  "src/styles.css",
+  "src/practice-confidence.css",
+  "src/card-organization.css",
+  "src/card-types.css",
+  "src/rich-templates.css",
+  "src/scheduling-controls.css",
+  "src/analytics.css",
+  "src/managed-assets.css",
+]) {
+  if (await exists(join(root, forbiddenCss))) {
+    failures.push(`${forbiddenCss}: historical root/stage stylesheet must remain removed`);
+  }
+}
+
+const uiCssFiles = allFiles.filter((path) => {
+  const displayPath = relative(root, path).replaceAll("\\", "/");
+  return displayPath.startsWith("src/ui/") && path.endsWith(".css");
+});
+for (const path of uiCssFiles) {
+  const displayPath = relative(root, path).replaceAll("\\", "/");
+  if (displayPath === "src/ui/foundations/index.css") continue;
+  const text = await readFile(path, "utf8");
+  for (const match of text.matchAll(/\bz-index\s*:\s*(-?\d+)/gu)) {
+    failures.push(`${displayPath}:${lineNumber(text, match.index ?? 0)}: UI layers must use named z-index tokens`);
+  }
 }
 
 if (failures.length > 0) {
@@ -101,7 +178,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `OK   Repository policy: authoring uses explicit modules, workflows are immutable/self-hosted, and stale structural gates are absent.`,
+  "OK   Repository policy: explicit native modules, immutable self-hosted workflows, typed UI/platform boundaries, shared overlays, and semantic style entry points are enforced.",
 );
 
 async function collectFiles(directory) {

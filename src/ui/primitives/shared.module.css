@@ -1,0 +1,154 @@
+@layer components {
+  .field {
+    display: grid;
+    min-width: 0;
+    gap: var(--space-2);
+  }
+
+  .label {
+    color: var(--text-soft);
+    font-size: 0.8rem;
+    font-weight: 760;
+  }
+
+  .description {
+    color: var(--muted);
+    font-size: 0.74rem;
+  }
+
+  .error {
+    color: var(--danger);
+    font-size: 0.78rem;
+  }
+
+  .fieldGroup {
+    display: grid;
+    gap: var(--space-3);
+    margin: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-medium);
+    padding: var(--space-4);
+  }
+
+  .fieldGroup legend {
+    padding-inline: var(--space-2);
+    color: var(--text-soft);
+    font-weight: 760;
+  }
+
+  .fieldGroup p {
+    margin: 0;
+    color: var(--muted);
+  }
+
+  .panel {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-medium);
+    padding: var(--space-5);
+    background: var(--surface);
+    box-shadow: var(--elevation-panel);
+  }
+
+  .panelHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+  }
+
+  .panelHeader h2 { margin: 0 0 var(--space-1); }
+  .panelHeader p { margin: 0; color: var(--muted); }
+  .panelActions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+  .notice {
+    display: grid;
+    gap: var(--space-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface-raised);
+    color: var(--text-soft);
+  }
+
+  .notice strong { color: var(--text); }
+  .info { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--accent-soft); }
+  .success { border-color: color-mix(in srgb, var(--success) 55%, var(--border)); }
+  .warning { border-color: color-mix(in srgb, var(--warning) 55%, var(--border)); }
+  .error { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); color: var(--danger); }
+
+  .emptyState {
+    display: grid;
+    min-height: 300px;
+    place-items: center;
+    align-content: center;
+    gap: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-large);
+    padding: var(--space-7);
+    background: var(--surface);
+    box-shadow: var(--elevation-panel);
+    text-align: center;
+  }
+
+  .emptyState h2,
+  .emptyState p { margin: 0; }
+  .emptyState p { max-width: 620px; color: var(--text-soft); }
+  .compact { min-height: 190px; box-shadow: none; }
+  .emptyIcon { color: var(--accent); font-size: 2rem; }
+  .emptyActions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
+
+  .loadingState {
+    display: flex;
+    min-height: 120px;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    color: var(--muted);
+  }
+
+  .spinner {
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid var(--border-strong);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin var(--motion-slow) linear infinite;
+  }
+
+  .segmented {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0;
+  }
+
+  .segmented button {
+    min-height: var(--control-height);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    padding-inline: var(--space-3);
+    background: var(--surface-raised);
+    color: var(--text-soft);
+    font: inherit;
+    font-weight: 720;
+  }
+
+  .segmented button:first-child { border-radius: var(--radius-small) 0 0 var(--radius-small); }
+  .segmented button:last-child { border-radius: 0 var(--radius-small) var(--radius-small) 0; }
+  .segmented button + button { margin-left: -1px; }
+  .segmented button[aria-checked="true"] { z-index: var(--layer-control-selected); border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .segmented button:focus-visible { z-index: var(--layer-control-focus); outline: none; box-shadow: var(--focus); }
+
+  @keyframes spin { to { transform: rotate(1turn); } }
+
+  @media (max-width: 560px) {
+    .panelHeader { align-items: stretch; flex-direction: column; }
+    .panelActions > * { flex: 1 1 auto; }
+    .segmented { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); width: 100%; }
+    .segmented button,
+    .segmented button:first-child,
+    .segmented button:last-child { border-radius: var(--radius-small); }
+    .segmented button + button { margin: 0; }
+  }
+}

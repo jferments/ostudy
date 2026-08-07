@@ -10,6 +10,10 @@ import {
   type RescheduleIntent,
   type ScheduleAction,
 } from "../../ipc/scheduling";
+import { useExperience } from "../../ui/feedback/ExperienceProvider";
+import { Menu } from "../../ui/overlays/Menu";
+import { useOverlayContext } from "../../ui/overlays/overlayContext";
+import { Progress } from "../../ui/primitives/Progress";
 import type { ConfidenceScore } from "./confidence";
 
 interface ActivePracticeProps {
@@ -52,16 +56,20 @@ export function ActivePractice({
   onLinkError,
 }: ActivePracticeProps) {
   const ratingPanelRef = useRef<HTMLElement | null>(null);
+  const wasRevealed = useRef(revealed);
   const busy = isRevealing || isRating || isEnding || isManaging;
-  const progress = session.cardCount === 0 ? 0 : position / session.cardCount;
+  const { topId } = useOverlayContext();
+  const experience = useExperience();
 
   useEffect(() => {
     if (revealed) ratingPanelRef.current?.focus();
-  }, [revealed]);
+    if (revealed && !wasRevealed.current) experience.emit({ type: "answer_revealed" });
+    wasRevealed.current = revealed;
+  }, [experience, revealed]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (busy || event.repeat) return;
+      if (busy || event.repeat || topId !== null) return;
       const target = event.target;
       if (
         target instanceof HTMLElement &&
@@ -82,7 +90,7 @@ export function ActivePractice({
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [busy, onReveal, onScore, revealed]);
+  }, [busy, onReveal, onScore, revealed, topId]);
 
   const previewFor = (score: ConfidenceScore) =>
     previewSet?.previews.find((preview) => preview.outcome === outcomes[score]);
@@ -110,32 +118,29 @@ export function ActivePractice({
           <span>{ratedCount} reviewed</span>
         </div>
         <div className="practice-header-actions">
-          <details className="practice-more-menu">
-            <summary>More</summary>
-            <div>
-              <button type="button" disabled={busy} onClick={() => onScheduleAction("bury")}>
-                Bury until tomorrow
-              </button>
-              <button type="button" disabled={busy} onClick={() => onScheduleAction("suspend")}>
-                Suspend card
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onScheduleAction("reschedule", { kind: "tomorrow" })}
-              >
-                Reschedule for tomorrow
-              </button>
-              <button
-                type="button"
-                className="danger-text"
-                disabled={busy}
-                onClick={() => onScheduleAction("reset")}
-              >
-                Reset schedule
-              </button>
-            </div>
-          </details>
+          <Menu
+            label="More"
+            disabled={busy}
+            items={[
+              {
+                label: "Bury until tomorrow",
+                onSelect: () => onScheduleAction("bury"),
+              },
+              {
+                label: "Suspend card",
+                onSelect: () => onScheduleAction("suspend"),
+              },
+              {
+                label: "Reschedule for tomorrow",
+                onSelect: () => onScheduleAction("reschedule", { kind: "tomorrow" }),
+              },
+              {
+                label: "Reset schedule",
+                destructive: true,
+                onSelect: () => onScheduleAction("reset"),
+              },
+            ]}
+          />
           <button
             type="button"
             className="secondary-button"
@@ -147,16 +152,12 @@ export function ActivePractice({
         </div>
       </header>
 
-      <div
+      <Progress
         className="practice-progress-track"
-        role="progressbar"
-        aria-label="Practice session progress"
-        aria-valuemin={0}
-        aria-valuemax={session.cardCount}
-        aria-valuenow={position}
-      >
-        <span style={{ width: `${progress * 100}%` }} />
-      </div>
+        label="Practice session progress"
+        value={Math.min(position + 1, session.cardCount)}
+        max={session.cardCount}
+      />
 
       {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
 

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { open, save } from "@tauri-apps/plugin-dialog";
 
 import {
   exportLibraryBackup,
@@ -14,6 +13,8 @@ import {
   type AppInfo,
   type AppSettings,
 } from "../ipc/settings";
+import { openFile, saveFile } from "../platform/files";
+import { useConfirm } from "../ui/overlays/overlayContext";
 
 interface SettingsScreenProps {
   settings: AppSettings;
@@ -53,6 +54,7 @@ export function SettingsScreen({
   const savingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(savedBaseline);
+  const confirm = useConfirm();
 
   useEffect(() => {
     setDraft(settings);
@@ -81,7 +83,7 @@ export function SettingsScreen({
 
   async function backupLibrary(): Promise<void> {
     if (isTransferringLibrary) return;
-    const destination = await save({
+    const destination = await saveFile({
       title: "Back up the complete ostudy library",
       defaultPath: `ostudy-library-${new Date().toISOString().slice(0, 10)}.ostudybackup`,
       filters: [{ name: "ostudy library backup", extensions: ["ostudybackup"] }],
@@ -104,16 +106,21 @@ export function SettingsScreen({
 
   async function restoreLibrary(): Promise<void> {
     if (isTransferringLibrary) return;
-    const source = await open({
+    const source = await openFile({
       title: "Choose an ostudy library backup",
       multiple: false,
       directory: false,
       filters: [{ name: "ostudy library backup", extensions: ["ostudybackup"] }],
     });
     if (typeof source !== "string") return;
-    if (!window.confirm(
-      "Restore this complete library on the next ostudy launch? The current library will be replaced after validation.",
-    )) return;
+    const accepted = await confirm({
+      title: "Restore this complete library?",
+      description:
+        "The current library will be replaced after validation when ostudy next starts. This includes decks, templates, schedules, review history, managed images, analytics sources, and settings.",
+      confirmLabel: "Prepare restore",
+      destructive: true,
+    });
+    if (!accepted) return;
     setIsTransferringLibrary(true);
     setErrorMessage(null);
     try {
@@ -276,7 +283,6 @@ export function SettingsScreen({
 }
 
 interface ThemeOptionProps {
-
   name: string;
   value: AppSettings["theme"];
   selected: boolean;

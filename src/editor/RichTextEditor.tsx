@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, MouseEvent, ReactNode } from "react";
 import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { open } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 import {
@@ -13,6 +12,7 @@ import {
   getErrorMessage,
   type RichDocument,
 } from "../ipc/common";
+import { openFile } from "../platform/files";
 import { createEditorExtensions } from "./extensions";
 import { isAllowedExternalLink, normalizeExternalLink } from "./links";
 import { canonicalizeDocument, hydrateDocument } from "./richText";
@@ -90,7 +90,7 @@ export function RichTextEditor({
     setEditorError(null);
     setIsImportingImage(true);
     try {
-      const selected = await open({
+      const selected = await openFile({
         multiple: false,
         directory: false,
         filters: [

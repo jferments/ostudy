@@ -1,16 +1,30 @@
-import { useLayoutEffect } from "react";
+import { lazy, Suspense, useLayoutEffect } from "react";
 
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { NavigationSidebar } from "./components/NavigationSidebar";
 import { Toast } from "./components/Toast";
 import { useAppController } from "./controllers/useAppController";
 import type { AppSettings } from "./ipc/settings";
-import { AnalyticsScreen } from "./screens/AnalyticsScreen";
-import { CardsScreen } from "./screens/CardsScreen";
-import { DecksScreen } from "./screens/DecksScreen";
-import { PracticeScreen } from "./screens/PracticeScreen";
-import { SettingsScreen } from "./screens/SettingsScreen";
-import { TemplatesScreen } from "./screens/TemplatesScreen";
+import { LoadingState } from "./ui/primitives/EmptyState";
+
+const DecksScreen = lazy(() =>
+  import("./screens/DecksScreen").then((module) => ({ default: module.DecksScreen })),
+);
+const CardsScreen = lazy(() =>
+  import("./screens/CardsScreen").then((module) => ({ default: module.CardsScreen })),
+);
+const TemplatesScreen = lazy(() =>
+  import("./screens/TemplatesScreen").then((module) => ({ default: module.TemplatesScreen })),
+);
+const PracticeScreen = lazy(() =>
+  import("./screens/PracticeScreen").then((module) => ({ default: module.PracticeScreen })),
+);
+const AnalyticsScreen = lazy(() =>
+  import("./screens/AnalyticsScreen").then((module) => ({ default: module.AnalyticsScreen })),
+);
+const SettingsScreen = lazy(() =>
+  import("./screens/SettingsScreen").then((module) => ({ default: module.SettingsScreen })),
+);
 
 export type {
   AnalyticsLaunchRequest,
@@ -21,9 +35,6 @@ export type {
 function App() {
   const controller = useAppController();
 
-  // Theme variables affect the entire document, so apply them before the browser
-  // paints the commit that reveals navigation. This avoids a one-frame fallback
-  // theme after local settings finish loading and keeps bootstrap deterministic.
   useLayoutEffect(() => {
     applyThemeSettings(controller.activeSettings);
   }, [controller.activeSettings]);
@@ -51,65 +62,67 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-ui-root="true">
       <NavigationSidebar section={controller.section} onNavigate={controller.navigate} />
 
       <main className="main-area">
         <AppErrorBoundary>
-          {controller.section === "decks" ? (
-            <DecksScreen
-              decks={controller.decks}
-              settings={controller.activeSettings}
-              refreshDecks={controller.refreshDecks}
-              onPracticeDeck={controller.practiceDeck}
-              onDirtyChange={controller.setHasUnsavedCard}
-              showToast={controller.showToast}
-            />
-          ) : null}
-          {controller.section === "cards" ? (
-            <CardsScreen
-              decks={controller.decks}
-              refreshDecks={controller.refreshDecks}
-              onPracticeCards={controller.practiceCards}
-              onDirtyChange={controller.setHasUnsavedCard}
-              showToast={controller.showToast}
-            />
-          ) : null}
-          {controller.section === "templates" ? (
-            <TemplatesScreen
-              onDirtyChange={controller.setHasUnsavedTemplate}
-              showToast={controller.showToast}
-            />
-          ) : null}
-          {controller.section === "practice" ? (
-            <PracticeScreen
-              decks={controller.decks}
-              settings={controller.activeSettings}
-              launchRequest={controller.practiceLaunch}
-              onLaunchConsumed={controller.consumePracticeLaunch}
-              onViewAnalytics={controller.viewSessionAnalytics}
-              showToast={controller.showToast}
-            />
-          ) : null}
-          {controller.section === "analytics" ? (
-            <AnalyticsScreen
-              decks={controller.decks}
-              settings={controller.activeSettings}
-              launchRequest={controller.analyticsLaunch}
-              onLaunchConsumed={controller.consumeAnalyticsLaunch}
-              onPracticeScope={controller.practiceScope}
-              showToast={controller.showToast}
-            />
-          ) : null}
-          {controller.section === "settings" ? (
-            <SettingsScreen
-              settings={controller.savedSettings}
-              onPreviewSettings={controller.setActiveSettings}
-              onSavedSettings={controller.saveSettingsLocally}
-              onDirtyChange={controller.setHasUnsavedSettings}
-              showToast={controller.showToast}
-            />
-          ) : null}
+          <Suspense fallback={<LoadingState label="Opening section…" />}>
+            {controller.section === "decks" ? (
+              <DecksScreen
+                decks={controller.decks}
+                settings={controller.activeSettings}
+                refreshDecks={controller.refreshDecks}
+                onPracticeDeck={controller.practiceDeck}
+                onDirtyChange={controller.setHasUnsavedCard}
+                showToast={controller.showToast}
+              />
+            ) : null}
+            {controller.section === "cards" ? (
+              <CardsScreen
+                decks={controller.decks}
+                refreshDecks={controller.refreshDecks}
+                onPracticeCards={controller.practiceCards}
+                onDirtyChange={controller.setHasUnsavedCard}
+                showToast={controller.showToast}
+              />
+            ) : null}
+            {controller.section === "templates" ? (
+              <TemplatesScreen
+                onDirtyChange={controller.setHasUnsavedTemplate}
+                showToast={controller.showToast}
+              />
+            ) : null}
+            {controller.section === "practice" ? (
+              <PracticeScreen
+                decks={controller.decks}
+                settings={controller.activeSettings}
+                launchRequest={controller.practiceLaunch}
+                onLaunchConsumed={controller.consumePracticeLaunch}
+                onViewAnalytics={controller.viewSessionAnalytics}
+                showToast={controller.showToast}
+              />
+            ) : null}
+            {controller.section === "analytics" ? (
+              <AnalyticsScreen
+                decks={controller.decks}
+                settings={controller.activeSettings}
+                launchRequest={controller.analyticsLaunch}
+                onLaunchConsumed={controller.consumeAnalyticsLaunch}
+                onPracticeScope={controller.practiceScope}
+                showToast={controller.showToast}
+              />
+            ) : null}
+            {controller.section === "settings" ? (
+              <SettingsScreen
+                settings={controller.savedSettings}
+                onPreviewSettings={controller.setActiveSettings}
+                onSavedSettings={controller.saveSettingsLocally}
+                onDirtyChange={controller.setHasUnsavedSettings}
+                showToast={controller.showToast}
+              />
+            ) : null}
+          </Suspense>
         </AppErrorBoundary>
       </main>
 

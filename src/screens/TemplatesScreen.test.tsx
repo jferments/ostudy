@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as assetsIpc from "../ipc/assets";
 import * as commonIpc from "../ipc/common";
 import * as templatesIpc from "../ipc/templates";
+import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { TemplatesScreen } from "./TemplatesScreen";
 
 vi.mock("../ipc/assets", () => ({
@@ -93,6 +94,15 @@ const summary: templatesIpc.CardTemplateSummary = {
   revision: 1,
 };
 
+function renderTemplates(showToast = vi.fn()) {
+  render(
+    <OverlayProvider>
+      <TemplatesScreen onDirtyChange={vi.fn()} showToast={showToast} />
+    </OverlayProvider>,
+  );
+  return showToast;
+}
+
 describe("TemplatesScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -110,8 +120,7 @@ describe("TemplatesScreen", () => {
   });
 
   it("creates a template with typed placeholders and automatic placement", async () => {
-    const showToast = vi.fn();
-    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={showToast} />);
+    const showToast = renderTemplates();
 
     fireEvent.click(await screen.findByRole("button", { name: "New template" }));
     fireEvent.change(screen.getByLabelText("Name"), {
@@ -148,7 +157,7 @@ describe("TemplatesScreen", () => {
   });
 
   it("loads one full template graph only when editing", async () => {
-    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />);
+    renderTemplates();
 
     expect(await screen.findByText("Reusable concept cards")).toBeTruthy();
     expect(templatesIpc.getCardTemplate).not.toHaveBeenCalled();
@@ -159,13 +168,16 @@ describe("TemplatesScreen", () => {
     expect(assetsIpc.beginAssetDraft).toHaveBeenCalledWith("template", template.id);
   });
 
-  it("deletes only the authoring template and leaves generated cards intact", async () => {
-    const showToast = vi.fn();
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={showToast} />);
+  it("deletes only the authoring template after shared confirmation", async () => {
+    const showToast = renderTemplates();
 
     expect(await screen.findByText("Reusable concept cards")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(
+      await screen.findByRole("alertdialog", { name: "Delete “Concept review”?" }),
+    ).toBeTruthy();
+    expect(templatesIpc.deleteCardTemplate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Delete template" }));
 
     await waitFor(() => {
       expect(templatesIpc.deleteCardTemplate).toHaveBeenCalledWith(template.id);

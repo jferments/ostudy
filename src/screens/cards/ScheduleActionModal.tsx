@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 
+import { Modal } from "../../components/Modal";
 import {
   type SelectionCard,
 } from "../../ipc/cards";
@@ -112,109 +113,88 @@ export function ScheduleActionModal({
     onClose();
   }
 
+  const title = action === "reset" ? "Reset schedule" : "Reschedule cards";
+  const description = `${cards.length} ${cards.length === 1 ? "card" : "cards"} selected`;
+
   return (
-    <div
-      className="modal-backdrop schedule-action-dialog"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.currentTarget === event.target) close();
-      }}
+    <Modal
+      title={title}
+      description={description}
+      width="medium"
+      busy={isSaving}
+      dismissible={!isSaving}
+      onClose={close}
     >
-      <section
-        className="modal-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="schedule-action-heading"
-      >
-        <header className="modal-header">
-          <div>
-            <h2 id="schedule-action-heading">
-              {action === "reset" ? "Reset schedule" : "Reschedule cards"}
-            </h2>
-            <p>
-              {cards.length} {cards.length === 1 ? "card" : "cards"} selected
-            </p>
-          </div>
-          <button
-            type="button"
-            className="text-button"
-            disabled={isSaving}
-            onClick={close}
-          >
-            Close
-          </button>
-        </header>
-        {action === "reset" ? (
-          <div className="inline-alert warning-alert">
-            The selected cards will become New and ready now. Existing review history remains
-            available for analytics. The complete selection changes in one transaction or not at
-            all.
-          </div>
-        ) : (
-          <div className="schedule-action-options">
+      {action === "reset" ? (
+        <div className="inline-alert warning-alert">
+          The selected cards will become New and ready now. Existing review history remains
+          available for analytics. The complete selection changes in one transaction or not at
+          all.
+        </div>
+      ) : (
+        <div className="schedule-action-options">
+          <label>
+            <span>New schedule date</span>
+            <select
+              value={dueChoice}
+              disabled={isSaving}
+              onChange={(event) => {
+                pendingMutationRef.current = null;
+                setDueChoice(event.currentTarget.value);
+              }}
+            >
+              <option value="today">Ready now</option>
+              <option value="tomorrow">Tomorrow</option>
+              <option value="3_days">In 3 local calendar days</option>
+              <option value="1_week">In 7 local calendar days</option>
+              <option value="custom">Custom local date</option>
+            </select>
+          </label>
+          {dueChoice === "custom" ? (
             <label>
-              <span>New schedule date</span>
-              <select
-                value={dueChoice}
+              <span>Custom local date</span>
+              <input
+                type="date"
+                value={customDate}
                 disabled={isSaving}
                 onChange={(event) => {
                   pendingMutationRef.current = null;
-                  setDueChoice(event.currentTarget.value);
+                  setCustomDate(event.currentTarget.value);
                 }}
-              >
-                <option value="today">Ready now</option>
-                <option value="tomorrow">Tomorrow</option>
-                <option value="3_days">In 3 local calendar days</option>
-                <option value="1_week">In 7 local calendar days</option>
-                <option value="custom">Custom local date</option>
-              </select>
+              />
             </label>
-            {dueChoice === "custom" ? (
-              <label>
-                <span>Custom local date</span>
-                <input
-                  type="date"
-                  value={customDate}
-                  disabled={isSaving}
-                  onChange={(event) => {
-                    pendingMutationRef.current = null;
-                    setCustomDate(event.currentTarget.value);
-                  }}
-                />
-              </label>
-            ) : null}
-            <p className="muted-copy">
-              Rust resolves the selected local calendar date to the first valid instant in the
-              system time zone. Rescheduling does not record a successful review or change FSRS
-              difficulty and stability.
-            </p>
-          </div>
-        )}
-        {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
-        <footer className="modal-actions">
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={isSaving}
-            onClick={close}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className={action === "reset" ? "danger-button" : "primary-button"}
-            disabled={isSaving}
-            onClick={() => void submit()}
-          >
-            {isSaving
-              ? "Applying…"
-              : action === "reset"
-                ? "Reset schedule"
-                : "Reschedule"}
-          </button>
-        </footer>
-      </section>
-    </div>
+          ) : null}
+          <p className="muted-copy">
+            Rust resolves the selected local calendar date to the first valid instant in the
+            system time zone. Rescheduling does not record a successful review or change FSRS
+            difficulty and stability.
+          </p>
+        </div>
+      )}
+      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+      <footer className="modal-actions">
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={isSaving}
+          onClick={close}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className={action === "reset" ? "danger-button" : "primary-button"}
+          disabled={isSaving}
+          onClick={() => void submit()}
+        >
+          {isSaving
+            ? "Applying…"
+            : action === "reset"
+              ? "Reset schedule"
+              : "Reschedule"}
+        </button>
+      </footer>
+    </Modal>
   );
 }
 

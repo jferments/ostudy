@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import { DecksController } from "../controllers/decksController";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
 import { Modal } from "../components/Modal";
 import type { ShowToast } from "../components/Toast";
@@ -26,13 +25,15 @@ import {
   type CardTemplate,
   type GenerateTemplateCardsResult,
 } from "../ipc/templates";
+import { openFile, saveFile } from "../platform/files";
+import { useConfirm } from "../ui/overlays/overlayContext";
 import { CardEditorScreen } from "./CardEditorScreen";
 
 interface DecksScreenProps {
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
-  onPracticeDeck: (deckId: string) => void;
+  onPracticeDeck: (deckId: string) => void | Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
 }
@@ -67,6 +68,7 @@ export function DecksScreen({
   const controllerRef = useRef<DecksController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new DecksController();
   const controller = controllerRef.current;
+  const confirm = useConfirm();
 
   const selectedDeckId = selectedDeck?.id ?? null;
 
@@ -274,15 +276,16 @@ export function DecksScreen({
   }
 
   async function handleDeleteDeck(deck: DeckSummary): Promise<void> {
-    if (
-      settings.confirmDeletions &&
-      !window.confirm(
-        `Delete “${deck.name}” and its ${deck.sourceNoteCount} ${
+    if (settings.confirmDeletions) {
+      const accepted = await confirm({
+        title: `Delete “${deck.name}”?`,
+        description: `This will delete ${deck.sourceNoteCount} ${
           deck.sourceNoteCount === 1 ? "source note" : "source notes"
-        }? Its review history will also be permanently removed after the Undo period.`,
-      )
-    ) {
-      return;
+        } and every generated card. Review history will also be permanently removed after the Undo period.`,
+        confirmLabel: "Delete deck",
+        destructive: true,
+      });
+      if (!accepted) return;
     }
     try {
       const deletion = await controller.deleteDeck(deck.id);
@@ -312,22 +315,23 @@ export function DecksScreen({
   }
 
   async function handleDeleteCard(card: DeckCardSummary): Promise<void> {
-    if (
-      settings.confirmDeletions &&
-      !window.confirm(
-        `Delete this source note and its ${card.generatedCardCount} generated ${
+    if (settings.confirmDeletions) {
+      const accepted = await confirm({
+        title: "Delete this flashcard?",
+        description: `The source note and its ${card.generatedCardCount} generated ${
           card.generatedCardCount === 1 ? "card" : "cards"
-        }? Its review history will also be removed after the Undo period.\n\n${
+        } will be deleted. Review history will also be removed after the Undo period. ${
           card.questionExcerpt || "Image card"
         }`,
-      )
-    ) {
-      return;
+        confirmLabel: "Delete flashcard",
+        destructive: true,
+      });
+      if (!accepted) return;
     }
     try {
       const deletion = await controller.deleteNote(card.noteId);
       const deckId = selectedDeck?.id;
-      showToast("success", "CardPresentation deleted.", {
+      showToast("success", "Flashcard deleted.", {
         label: "Undo",
         expiresAt: deletion.undoExpiresAt,
         run: async () => {
@@ -352,7 +356,7 @@ export function DecksScreen({
     transferringRef.current = true;
     setIsTransferring(true);
     try {
-      const destination = await saveDialog({
+      const destination = await saveFile({
         title: "Export deck",
         defaultPath: `${safeFilename(deck.name)}.studydeck`,
         filters: [{ name: "ostudy deck", extensions: ["studydeck"] }],
@@ -410,7 +414,7 @@ export function DecksScreen({
     transferringRef.current = true;
     setIsTransferring(true);
     try {
-      const selected = await openDialog({
+      const selected = await openFile({
         title: "Import an ostudy deck",
         multiple: false,
         directory: false,
@@ -496,7 +500,7 @@ export function DecksScreen({
             setEditingCard(null);
             setView("detail");
           }
-          showToast("success", wasEditing ? "CardPresentation updated." : "CardPresentation saved.");
+          showToast("success", wasEditing ? "Flashcard updated." : "Flashcard saved.");
           await refreshSelectedDeckAfterMutation(selectedDeck.id);
         }}
         onTemplateGenerated={async (
@@ -617,7 +621,7 @@ export function DecksScreen({
                       {!archived ? (
                         <button
                           type="button"
-                          onClick={() => onPracticeDeck(deck.id)}
+                          onClick={() => void onPracticeDeck(deck.id)}
                           disabled={deck.generatedCardCount === 0}
                           title={practiceTitle(deck)}
                         >
@@ -689,7 +693,7 @@ export function DecksScreen({
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() => onPracticeDeck(selectedDeck.id)}
+                onClick={() => void onPracticeDeck(selectedDeck.id)}
                 disabled={selectedDeck.generatedCardCount === 0}
                 title={practiceTitle(selectedDeck)}
               >
@@ -900,12 +904,14 @@ function DeckFormModal({ mode, deck, onClose, onSave }: DeckFormModalProps) {
         if (!isSaving) onClose();
       }}
       width="small"
+      busy={isSaving}
+      dismissible={!isSaving}
     >
       <form className="form-stack" onSubmit={(event) => void submit(event)}>
         <label>
           <span>Deck name</span>
           <input
-            autoFocus
+            data-autofocus="true"
             disabled={isSaving}
             value={name}
             maxLength={200}

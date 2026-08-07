@@ -1,0 +1,24 @@
+@layer components {
+  .effectsLayer {
+    position: fixed;
+    z-index: var(--layer-effects);
+    inset: 0;
+    pointer-events: none;
+    contain: strict;
+  }
+
+  .effectsLayer[data-effect="session_completed"]::after {
+    position: absolute;
+    inset: 0;
+    content: "";
+    opacity: 0;
+    background: radial-gradient(circle at 50% 45%, var(--accent-soft), transparent 46%);
+    animation: completionPulse 420ms var(--ease-emphasized);
+  }
+
+  @keyframes completionPulse {
+    0% { opacity: 0; transform: scale(0.96); }
+    45% { opacity: 1; }
+    100% { opacity: 0; transform: scale(1.04); }
+  }
+}

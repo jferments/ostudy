@@ -26,6 +26,8 @@ import {
 import {
   type AppSettings,
 } from "../ipc/settings";
+import { useExperience } from "../ui/feedback/ExperienceProvider";
+import { useConfirm } from "../ui/overlays/overlayContext";
 import { ActivePractice } from "./practice/ActivePractice";
 import {
   outcomeForScore,
@@ -107,6 +109,8 @@ export function PracticeScreen({
   if (controllerRef.current === null) controllerRef.current = new PracticeController();
   const controller = controllerRef.current;
   const current = sessionCards[position] ?? null;
+  const confirm = useConfirm();
+  const experience = useExperience();
 
   useEffect(() => () => controller.invalidate(), [controller]);
 
@@ -384,6 +388,7 @@ export function PracticeScreen({
         next[score] += 1;
         return next;
       });
+      experience.emit({ type: "review_committed", score });
       await advanceOrComplete(result.completed);
     } catch (error: unknown) {
       const code = getErrorCode(error);
@@ -414,13 +419,15 @@ export function PracticeScreen({
       setErrorMessage("Retry the pending rating before changing this card's schedule.");
       return;
     }
-    if (
-      action === "reset" &&
-      !window.confirm(
-        "Reset this card to New? Its review history will remain, but its current FSRS schedule will restart.",
-      )
-    ) {
-      return;
+    if (action === "reset") {
+      const accepted = await confirm({
+        title: "Reset this card to New?",
+        description:
+          "Its review history will remain available for analytics, but the current FSRS schedule will restart.",
+        confirmLabel: "Reset schedule",
+        destructive: true,
+      });
+      if (!accepted) return;
     }
     managingRef.current = true;
     setIsManaging(true);
@@ -460,6 +467,7 @@ export function PracticeScreen({
     pendingReviewRef.current = null;
     if (!session || backendCompleted || position + 1 >= session.cardCount) {
       setCompleted(true);
+      experience.emit({ type: "session_completed" });
       void loadRecentPractice();
       return;
     }

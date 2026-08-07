@@ -150,15 +150,20 @@ describe("ActivePractice", () => {
     ).toBe(true);
   });
 
-  it("routes compact schedule controls to the exact-card action callback", () => {
+  it("routes shared menu schedule controls to the exact-card action callback", () => {
     const props = renderActive();
     const onScheduleAction = vi.mocked(props.onScheduleAction);
+    const actions = [
+      ["Bury until tomorrow", ["bury"]],
+      ["Suspend card", ["suspend"]],
+      ["Reschedule for tomorrow", ["reschedule", { kind: "tomorrow" }]],
+      ["Reset schedule", ["reset"]],
+    ] as const;
 
-    fireEvent.click(screen.getByText("More"));
-    fireEvent.click(screen.getByRole("button", { name: "Bury until tomorrow" }));
-    fireEvent.click(screen.getByRole("button", { name: "Suspend card" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reschedule for tomorrow" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reset schedule" }));
+    for (const [label] of actions) {
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: label }));
+    }
 
     expect(onScheduleAction).toHaveBeenNthCalledWith(1, "bury");
     expect(onScheduleAction).toHaveBeenNthCalledWith(2, "suspend");
@@ -166,6 +171,14 @@ describe("ActivePractice", () => {
       kind: "tomorrow",
     });
     expect(onScheduleAction).toHaveBeenNthCalledWith(4, "reset");
+  });
+
+  it("reports visible card progress with one-based semantics", () => {
+    renderActive();
+
+    const progress = screen.getByRole("progressbar", { name: "Practice session progress" });
+    expect(progress.getAttribute("aria-valuenow")).toBe("1");
+    expect(progress.getAttribute("aria-valuemax")).toBe("1");
   });
 
   it("renders the authoritative session mode, deck, and weak-card signal", () => {

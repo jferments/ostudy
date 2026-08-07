@@ -1,16 +1,16 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as generatedImport from "../ipc/generated-import";
 import * as commonIpc from "../ipc/common";
 import * as decksIpc from "../ipc/decks";
 import * as settingsIpc from "../ipc/settings";
+import * as platformFiles from "../platform/files";
 import { DecksScreen } from "./DecksScreen";
 
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  open: vi.fn(),
-  save: vi.fn(),
+vi.mock("../platform/files", () => ({
+  openFile: vi.fn(),
+  saveFile: vi.fn(),
 }));
 
 vi.mock("../ipc/generated-import", () => ({
@@ -102,6 +102,8 @@ function renderDecks(showToast = vi.fn()) {
 describe("DecksScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(platformFiles.openFile).mockResolvedValue(null);
+    vi.mocked(platformFiles.saveFile).mockResolvedValue(null);
     vi.mocked(decksIpc.getDeck).mockResolvedValue(deck);
     vi.mocked(decksIpc.listDeckCardSummaries).mockResolvedValue({
       cards: [card],
@@ -143,7 +145,7 @@ describe("DecksScreen", () => {
   });
 
   it("imports generated JSON through the ordinary Import deck button", async () => {
-    vi.mocked(openDialog).mockResolvedValue("/tmp/nclex.ostudy.json");
+    vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/nclex.ostudy.json");
     vi.mocked(generatedImport.importGeneratedFlashcards).mockResolvedValue({
       deckId: deck.id,
       createdNoteCount: 15,
@@ -160,7 +162,7 @@ describe("DecksScreen", () => {
       );
     });
     expect(decksIpc.importDeck).not.toHaveBeenCalled();
-    expect(openDialog).toHaveBeenCalledWith(
+    expect(platformFiles.openFile).toHaveBeenCalledWith(
       expect.objectContaining({
         filters: [expect.objectContaining({ extensions: ["studydeck", "json"] })],
       }),
@@ -175,7 +177,7 @@ describe("DecksScreen", () => {
   });
 
   it("continues to import studydeck packages through the same button", async () => {
-    vi.mocked(openDialog).mockResolvedValue("/tmp/dog-facts.studydeck");
+    vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/dog-facts.studydeck");
     vi.mocked(decksIpc.importDeck).mockResolvedValue({
       deck,
       cardCount: 2,

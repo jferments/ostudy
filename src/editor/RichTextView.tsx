@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from "react";
 import type { MouseEvent } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 
 import {
   type Asset,
@@ -10,6 +9,7 @@ import {
   getErrorMessage,
   type RichDocument,
 } from "../ipc/common";
+import { openExternalUrl } from "../platform/externalLinks";
 import { createEditorExtensions } from "./extensions";
 import { isAllowedExternalLink } from "./links";
 import { hydrateDocument } from "./richText";
@@ -61,7 +61,7 @@ export function RichTextView({
     if (!isAllowedExternalLink(href)) return;
 
     event.preventDefault();
-    void openUrl(href).catch((error: unknown) => {
+    void openExternalUrl(href).catch((error: unknown) => {
       const message = getErrorMessage(error);
       if (onLinkError) {
         onLinkError(message);

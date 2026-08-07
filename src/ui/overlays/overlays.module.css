@@ -1,0 +1,112 @@
+@layer components {
+  .dialog {
+    position: fixed;
+    z-index: var(--layer-dialog);
+    inset: 0;
+    display: grid;
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    place-items: center;
+    margin: 0;
+    border: 0;
+    padding:
+      max(var(--space-4), env(safe-area-inset-top))
+      max(var(--space-4), env(safe-area-inset-right))
+      max(var(--space-4), env(safe-area-inset-bottom))
+      max(var(--space-4), env(safe-area-inset-left));
+    overflow: hidden;
+    background: transparent;
+    color: var(--text);
+  }
+
+  .dialog::backdrop {
+    background: var(--overlay-scrim);
+    backdrop-filter: blur(6px);
+  }
+
+  .card {
+    display: flex;
+    width: min(100%, 680px);
+    max-height: min(88dvh, 900px);
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-large);
+    background: var(--surface);
+    box-shadow: var(--elevation-overlay);
+    color: var(--text);
+  }
+
+  .small { max-width: 520px; }
+  .medium { max-width: 680px; }
+  .large { max-width: 980px; }
+
+  .header {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+    border-bottom: 1px solid var(--border);
+    padding: var(--space-5) var(--space-6);
+  }
+
+  .header h2 { margin: 0 0 var(--space-1); }
+  .header p { margin: 0; color: var(--text-soft); }
+
+  .body {
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .confirmBody { padding: var(--space-6); }
+
+  .actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-3);
+  }
+
+  @media (max-width: 560px) {
+    .dialog {
+      align-items: end;
+      padding: 0;
+    }
+
+    .dialog[data-presentation="dialog"] .card,
+    .dialog[data-presentation="sheet"] .card {
+      width: 100%;
+      max-width: none;
+      max-height: min(92dvh, 900px);
+      border-right: 0;
+      border-bottom: 0;
+      border-left: 0;
+      border-radius: var(--radius-large) var(--radius-large) 0 0;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .dialog[data-presentation="fullscreen"] {
+      align-items: stretch;
+    }
+
+    .dialog[data-presentation="fullscreen"] .card {
+      width: 100%;
+      max-width: none;
+      max-height: 100dvh;
+      border: 0;
+      border-radius: 0;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .header { padding: var(--space-4); }
+    .actions { align-items: stretch; flex-direction: column-reverse; }
+    .actions button { width: 100%; }
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .dialog::backdrop { backdrop-filter: none; }
+  }
+}

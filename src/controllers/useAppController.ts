@@ -5,6 +5,7 @@ import type { AnalyticsRange } from "../ipc/analytics";
 import { getErrorMessage } from "../ipc/common";
 import { listDecks, type DeckSummary } from "../ipc/decks";
 import { getSettings, type AppSettings } from "../ipc/settings";
+import { useConfirm } from "../ui/overlays/overlayContext";
 import { useRequestLane } from "./requestLane";
 
 export type AppSection =
@@ -62,6 +63,7 @@ export function useAppController() {
   const [hasUnsavedTemplate, setHasUnsavedTemplate] = useState(false);
   const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
   const deckRefreshLane = useRequestLane();
+  const confirm = useConfirm();
 
   const showToast = useCallback<ShowToast>((kind, text, action) => {
     const id = toastSequence.current;
@@ -107,30 +109,50 @@ export function useAppController() {
     return () => window.removeEventListener("beforeunload", warnBeforeClose);
   }, [hasUnsavedCard, hasUnsavedSettings, hasUnsavedTemplate]);
 
-  function confirmDiscardCard(): boolean {
+  async function confirmDiscardCard(): Promise<boolean> {
     if (!hasUnsavedCard) return true;
-    if (!window.confirm("Discard the unsaved changes to this flashcard?")) return false;
+    const accepted = await confirm({
+      title: "Discard flashcard changes?",
+      description: "The unsaved changes to this flashcard will be lost.",
+      confirmLabel: "Discard changes",
+      destructive: true,
+    });
+    if (!accepted) return false;
     setHasUnsavedCard(false);
     return true;
   }
 
-  function confirmDiscardTemplate(): boolean {
+  async function confirmDiscardTemplate(): Promise<boolean> {
     if (section !== "templates" || !hasUnsavedTemplate) return true;
-    if (!window.confirm("Discard the unsaved changes to this card template?")) return false;
+    const accepted = await confirm({
+      title: "Discard template changes?",
+      description: "The unsaved changes to this card template will be lost.",
+      confirmLabel: "Discard changes",
+      destructive: true,
+    });
+    if (!accepted) return false;
     setHasUnsavedTemplate(false);
     return true;
   }
 
-  function confirmDiscardSettings(): boolean {
+  async function confirmDiscardSettings(): Promise<boolean> {
     if (section !== "settings" || !hasUnsavedSettings) return true;
-    if (!window.confirm("Discard the unsaved settings preview?")) return false;
+    const accepted = await confirm({
+      title: "Discard settings preview?",
+      description: "The unsaved appearance and study-setting changes will be reverted.",
+      confirmLabel: "Discard changes",
+      destructive: true,
+    });
+    if (!accepted) return false;
     setActiveSettings(savedSettings);
     setHasUnsavedSettings(false);
     return true;
   }
 
-  function canLeaveCurrentSection(): boolean {
-    return confirmDiscardCard() && confirmDiscardTemplate() && confirmDiscardSettings();
+  async function canLeaveCurrentSection(): Promise<boolean> {
+    if (!(await confirmDiscardCard())) return false;
+    if (!(await confirmDiscardTemplate())) return false;
+    return confirmDiscardSettings();
   }
 
   function nextPracticeRequest(
@@ -144,9 +166,9 @@ export function useAppController() {
     setPracticeLaunch({ requestId, deckIds, tagIds, cardIds, autoStart });
   }
 
-  function navigate(next: AppSection): void {
+  async function navigate(next: AppSection): Promise<void> {
     if (next === section && next !== "practice") return;
-    if (!canLeaveCurrentSection()) return;
+    if (!(await canLeaveCurrentSection())) return;
     if (next === "practice") nextPracticeRequest([], [], [], false);
     if (next === "analytics") {
       const requestId = analyticsRequestSequence.current;
@@ -159,18 +181,18 @@ export function useAppController() {
     setSection(next);
   }
 
-  function practiceDeck(deckId: string): void {
-    practiceScope([deckId], []);
+  async function practiceDeck(deckId: string): Promise<void> {
+    await practiceScope([deckId], []);
   }
 
-  function practiceScope(deckIds: string[], tagIds: string[]): void {
-    if (!canLeaveCurrentSection()) return;
+  async function practiceScope(deckIds: string[], tagIds: string[]): Promise<void> {
+    if (!(await canLeaveCurrentSection())) return;
     nextPracticeRequest(deckIds, tagIds, [], true);
     setSection("practice");
   }
 
-  function practiceCards(cardIds: string[]): void {
-    if (cardIds.length === 0 || !canLeaveCurrentSection()) return;
+  async function practiceCards(cardIds: string[]): Promise<void> {
+    if (cardIds.length === 0 || !(await canLeaveCurrentSection())) return;
     nextPracticeRequest([], [], cardIds, true);
     setSection("practice");
   }
