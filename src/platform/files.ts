@@ -35,8 +35,3 @@ export async function openFile(
 export async function saveFile(options: SaveFileOptions): Promise<string | null> {
   return saveNativeDialog(options);
 }
-
-// Transitional names keep call sites compact while ownership moves out of
-// feature code. They are platform adapters, not direct Tauri plugin exports.
-export const open = openFile;
-export const save = saveFile;
