@@ -94,6 +94,14 @@ jobs:
             "$RUNNER_TEMP/ostudy-full-check.log" \
             >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Capture canonical Rust formatting
+        if: failure()
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          tar -czf "$RUNNER_TEMP/ostudy-rustfmt.tar.gz" \
+            src-tauri/src/authoring \
+            src-tauri/src/diagnostics.rs
+
       - name: Export diagnostics after a failure
         if: failure()
         run: ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-diagnostics.tar.gz"
@@ -105,6 +113,7 @@ jobs:
           name: ostudy-check-diagnostics
           path: |
             ${{ runner.temp }}/ostudy-diagnostics.tar.gz
+            ${{ runner.temp }}/ostudy-rustfmt.tar.gz
             ${{ runner.temp }}/ostudy-static-check.log
             ${{ runner.temp }}/ostudy-fast-check.log
             ${{ runner.temp }}/ostudy-full-check.log
