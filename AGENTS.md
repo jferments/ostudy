@@ -47,7 +47,20 @@ Before editing code, read:
 ## Non-negotiable architecture
 
 - React displays state and communicates user intent.
-- `src/ipc.ts` is the frontend gateway to typed Tauri commands.
+- Typed Tauri gateways live under `src/ipc/`, split by domain. Direct
+  `@tauri-apps/api/core` `invoke()` calls outside that directory are forbidden
+  and mechanically checked.
+- Workflow-heavy screens delegate native reads/mutations and stale-read policy to
+  focused controllers under `src/controllers/`; presentational components do not
+  own persistence orchestration.
+- Obsolete async reads may finish in Rust but must not overwrite newer frontend
+  state. Use independent request lanes for independent read concerns; do not use
+  stale-read cancellation semantics for durable mutations.
+- A committed mutation remains successful even if later view reconciliation
+  fails. Surface reconciliation failure separately rather than inviting a retry
+  of an already committed write.
+- Editable source-note transport is `CardNote`; rendered scheduled/search study
+  transport is `CardPresentation`. Do not collapse them into one generic card DTO.
 - Rust validates all data crossing the IPC boundary and owns durable behavior,
   domain rules, and multi-step transactions.
 - The frontend must not execute SQL or calculate the authoritative FSRS schedule.
@@ -84,6 +97,8 @@ Before editing code, read:
 - Add a regression test for every defect when a practical test layer exists.
 - Update affected documentation and add an ADR for durable cross-module
   decisions.
+- Generated-import conformance tests must use isolated temporary storage and
+  must never point at the user's live ostudy data directory.
 
 ## Repository safety
 
@@ -115,6 +130,11 @@ Draft pull requests run the fast tier; ready pull requests run the full tier on
 the self-hosted runner. A green result qualifies only the exact commit SHA it
 ran against. Use `OSTUDY_FORCE_CHECK=1` when an exact-tree cache must be bypassed.
 For release qualification, also run `./scripts/release-check.sh`.
+
+The full Rust tier includes the generated `.ostudy.json` conformance corpus:
+supported syntax, rejection cases, declared boundaries, duplicate/create/append
+behavior, fresh schedules, whole-file atomicity, and cleanup of its disposable
+test graph and temporary files.
 
 Manually exercise every affected UI workflow. Static inspection, parsing, or a
 successful frontend build must never be reported as a successful native Tauri
