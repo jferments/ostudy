@@ -16,6 +16,7 @@ import {
   type CardTemplateRuleInput,
   type CardTemplateSummary,
 } from "../ipc/templates";
+import { useConfirm } from "../ui/overlays/overlayContext";
 import { TemplateLayoutEditor } from "./templates/TemplateLayoutEditor";
 
 interface TemplatesScreenProps {
@@ -61,6 +62,7 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
   const controllerRef = useRef<TemplatesController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new TemplatesController();
   const controller = controllerRef.current;
+  const confirm = useConfirm();
   const dirty = useMemo(
     () => draft !== null && JSON.stringify(draft) !== JSON.stringify(baseline),
     [baseline, draft],
@@ -175,7 +177,15 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
 
   async function cancelEdit(): Promise<void> {
     if (isSaving) return;
-    if (dirty && !window.confirm("Discard the changes to this card template?")) return;
+    if (dirty) {
+      const accepted = await confirm({
+        title: "Discard template changes?",
+        description: "The unsaved fields, card rules, and layout changes will be lost.",
+        confirmLabel: "Discard changes",
+        destructive: true,
+      });
+      if (!accepted) return;
+    }
     openRequestSequence.current += 1;
     setIsOpeningAssetDraft(false);
     const draftId = assetDraftRef.current;
@@ -249,13 +259,13 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
   }
 
   async function removeTemplate(template: CardTemplateSummary): Promise<void> {
-    if (
-      !window.confirm(
-        `Delete “${template.name}”?\n\nCards already generated from this template will remain in their decks.`,
-      )
-    ) {
-      return;
-    }
+    const accepted = await confirm({
+      title: `Delete “${template.name}”?`,
+      description: "Cards already generated from this template will remain in their decks.",
+      confirmLabel: "Delete template",
+      destructive: true,
+    });
+    if (!accepted) return;
     setErrorMessage(null);
     try {
       await controller.delete(template.id);
