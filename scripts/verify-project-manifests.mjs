@@ -34,11 +34,7 @@ async function collectOwnedText(directory = root) {
       continue;
     }
     const rel = relative(root, path);
-    if ([
-      "pnpm-lock.yaml",
-      "src-tauri/Cargo.lock",
-      "scripts/verify-project-manifests.mjs",
-    ].includes(rel)) continue;
+    if (["pnpm-lock.yaml", "src-tauri/Cargo.lock", "scripts/verify-project-manifests.mjs"].includes(rel)) continue;
     if (!/\.(?:json|mjs|js|ts|tsx|toml|yaml|yml|md|sql|sh|py|html|env)$/u.test(rel)) continue;
     output.push([rel, await readFile(path, "utf8")]);
   }
@@ -61,14 +57,19 @@ const [
   app,
   ipc,
   analyticsIpc,
-  cards,
   authoringWrites,
   scheduler,
   transfer,
   launcher,
   buildScript,
+  buildStateScript,
+  cargoTargetScript,
+  checkStateScript,
+  checkStaticScript,
   checkFastScript,
   checkScript,
+  checkChangedScript,
+  failureSummaryScript,
   setupScript,
   checkWorkflow,
   releaseWorkflow,
@@ -89,14 +90,19 @@ const [
   read("src", "App.tsx"),
   read("src", "ipc.ts"),
   read("src", "analytics-ipc.ts"),
-  read("src-tauri", "src", "cards.rs"),
   read("src-tauri", "src", "authoring", "writes_and_transfer.rs"),
   read("src-tauri", "src", "scheduler.rs"),
   read("src-tauri", "src", "studydeck.rs"),
   read("run-app.sh"),
   read("scripts", "build.sh"),
+  read("scripts", "build-state.sh"),
+  read("scripts", "cargo-target.sh"),
+  read("scripts", "check-state.sh"),
+  read("scripts", "check-static.sh"),
   read("scripts", "check-fast.sh"),
   read("scripts", "check.sh"),
+  read("scripts", "check-changed.sh"),
+  read("scripts", "summarize-check-failure.mjs"),
   read("scripts", "setup-ubuntu.sh"),
   read(".github", "workflows", "check.yml"),
   read(".github", "workflows", "release.yml"),
@@ -111,6 +117,12 @@ const failures = [];
 
 function equal(label, actual, expected) {
   if (actual !== expected) failures.push(`${label}: expected ${expected}, found ${String(actual)}`);
+}
+
+function requireText(label, text, needles) {
+  for (const needle of needles) {
+    if (!text.includes(needle)) failures.push(`${label} missing: ${needle}`);
+  }
 }
 
 const versions = {
@@ -166,9 +178,7 @@ for (const required of [
   if (!workspace.includes(required)) failures.push(`pnpm-workspace.yaml missing ${required}`);
 }
 const allowSection = workspace.split("allowBuilds:")[1]?.split(/\n(?=\S)/u)[0] ?? "";
-if ((allowSection.match(/:\s*true/gmu) ?? []).length !== 1) {
-  failures.push("allowBuilds must permit exactly one package");
-}
+if ((allowSection.match(/:\s*true/gmu) ?? []).length !== 1) failures.push("allowBuilds must permit exactly one package");
 
 for (const [label, needle] of [
   ["Rust toolchain", `channel = "${env.get("RUST_VERSION")}"`],
@@ -233,53 +243,49 @@ if (!authoringWrites.includes('const CONTENT_FORMAT: &str = "tiptap-json"') ||
 if (!scheduler.includes("FSRS::new(parameters).next")) failures.push("FSRS adapter is not wired to the scheduling crate");
 if (transfer.includes(" (Imported)") || transfer.includes("imported_deck_name")) failures.push("deck import rewrites display names");
 if (!app.includes("<strong>ostudy</strong>") || !app.includes("Opening ostudy")) failures.push("frontend branding is incomplete");
-
 if (/pnpm run build|cargo build|pnpm tauri dev/u.test(launcher)) {
   failures.push("run-app.sh must launch the existing binary without compiling or starting a dev server");
 }
-for (const required of [
-  "pnpm tauri build --debug --no-bundle --ci",
-  "ostudy_write_build_stamp",
-  "CARGO_BUILD_JOBS",
+
+requireText("build.sh", buildScript, ["pnpm tauri build --debug --no-bundle --ci", "ostudy_write_build_stamp", "CARGO_BUILD_JOBS"]);
+requireText("build-state.sh", buildStateScript, ["CARGO_TARGET_DIR", "OSTUDY_BINARY", "ostudy_source_fingerprint"]);
+requireText("cargo-target.sh", cargoTargetScript, ["CI:-false", ".cache", "CARGO_TARGET_DIR", "OSTUDY_CARGO_TARGET_DIR"]);
+requireText("check-state.sh", checkStateScript, ["git ls-files -z", "git ls-files --others --exclude-standard -z", "rustc -Vv", "ostudy_check_stamp_is_current"]);
+requireText("check-static.sh", checkStaticScript, ["verify-project-manifests.mjs", "verify-test-policy.mjs", "verify-script-syntax.sh", "pnpm install --frozen-lockfile", "pnpm exec tsc", "cargo fmt", "ostudy_write_check_stamp static"]);
+requireText("check-fast.sh", checkFastScript, ["check-static.sh", "pnpm test", "cargo check", "ostudy_write_check_stamp fast"]);
+requireText("check.sh", checkScript, ["ostudy_check_stamp_is_current fast", "pnpm run build", "cargo clippy", "cargo test", "pnpm tauri build --debug --no-bundle --ci", "smoke-native.sh", "ostudy_write_check_stamp full"]);
+requireText("check-changed.sh", checkChangedScript, ["vitest run --changed", "cargo test", "check-fast.sh", "iteration aid"]);
+requireText("failure summarizer", failureSummaryScript, ["STATIC|FAST|FULL", "GITHUB_SHA", "Diff in ", "error TS"]);
+
+for (const [name, expected] of [
+  ["check:static", "./scripts/check-static.sh"],
+  ["check:fast", "./scripts/check-fast.sh"],
+  ["check:changed", "./scripts/check-changed.sh"],
+  ["check", "./scripts/check.sh"],
 ]) {
-  if (!buildScript.includes(required)) failures.push(`build.sh missing: ${required}`);
+  equal(`package script ${name}`, pkg.scripts?.[name], expected);
 }
-for (const required of [
-  "pnpm test",
-  "pnpm exec tsc",
-  "cargo fmt",
-  "cargo check",
-]) {
-  if (!checkFastScript.includes(required)) failures.push(`check-fast.sh missing: ${required}`);
-}
-for (const required of [
-  "check-fast.sh",
-  "pnpm run build",
-  "cargo clippy",
-  "cargo test",
-  "pnpm tauri build --debug --no-bundle --ci",
-  "smoke-native.sh",
-]) {
-  if (!checkScript.includes(required)) failures.push(`check.sh missing: ${required}`);
-}
+
 if (!setupScript.includes('"$SCRIPT_DIR/build.sh"')) failures.push("setup does not create the initial build");
-for (const required of [
+requireText("GitHub check workflow", checkWorkflow, [
+  "runs-on: [self-hosted, linux, x64, ostudy]",
+  "type: choice",
+  "- static",
+  "- fast",
+  "- full",
+  "PR_DRAFT",
+  'gate="fast"',
+  'gate="full"',
+  "OSTUDY_CARGO_TARGET_DIR",
   "bash ./scripts/check-fast.sh",
   "./scripts/check.sh",
   "OSTUDY_FAST_CHECK_PASSED",
-  "github.event.pull_request.draft == false",
-]) {
-  if (!checkWorkflow.includes(required)) failures.push(`GitHub check workflow missing: ${required}`);
-}
+  "summarize-check-failure.mjs",
+]);
+if (/runs-on:\s*(?:ubuntu|windows|macos)-/u.test(checkWorkflow)) failures.push("check workflow still uses a GitHub-hosted runner");
 if (!releaseWorkflow.includes("./scripts/release.sh")) failures.push("release workflow does not use the release script");
-for (const [name, workflow] of [["check", checkWorkflow], ["release", releaseWorkflow]]) {
-  if (!workflow.includes("runs-on: [self-hosted, linux, x64, ostudy]")) {
-    failures.push(`${name} workflow is not pinned to the Multipass self-hosted runner labels`);
-  }
-  if (/runs-on:\s*(?:ubuntu|windows|macos)-/u.test(workflow)) {
-    failures.push(`${name} workflow still uses a GitHub-hosted runner`);
-  }
-}
+if (!releaseWorkflow.includes("runs-on: [self-hosted, linux, x64, ostudy]")) failures.push("release workflow is not pinned to the Multipass self-hosted runner labels");
+if (/runs-on:\s*(?:ubuntu|windows|macos)-/u.test(releaseWorkflow)) failures.push("release workflow still uses a GitHub-hosted runner");
 if (!pullRequestTemplate.includes("Acceptance criteria") || !pullRequestTemplate.includes("./scripts/check.sh")) {
   failures.push("pull request template is missing acceptance criteria or validation");
 }
@@ -288,8 +294,12 @@ for (const requiredPath of [
   "scripts/build.sh",
   "scripts/build-state.sh",
   "scripts/cargo-target.sh",
+  "scripts/check-state.sh",
+  "scripts/check-static.sh",
   "scripts/check-fast.sh",
   "scripts/check.sh",
+  "scripts/check-changed.sh",
+  "scripts/summarize-check-failure.mjs",
   "scripts/export-diagnostics.sh",
   "scripts/log-run.py",
   "scripts/smoke-native.sh",
@@ -308,7 +318,7 @@ for (const requiredPath of [
   try {
     await readFile(join(root, requiredPath), "utf8");
   } catch {
-    failures.push(`required Phase 1 file is missing: ${requiredPath}`);
+    failures.push(`required development file is missing: ${requiredPath}`);
   }
 }
 
@@ -330,4 +340,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("OK   ostudy identity, versions, migrations, tests, build scripts, tiered self-hosted CI, diagnostics, and release files are internally consistent.");
+console.log("OK   ostudy identity, versions, migrations, commands, tiered checks, self-hosted CI, diagnostics, and release files are internally consistent.");
