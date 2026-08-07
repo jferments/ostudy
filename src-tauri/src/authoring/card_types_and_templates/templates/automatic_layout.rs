@@ -17,7 +17,7 @@ pub(super) struct AutomaticTemplateFieldLookup {
     by_name: HashMap<String, AutomaticTemplateField>,
 }
 
-pub(super) fn prepare_automatic_create_template_input(
+pub(in super::super) fn prepare_automatic_create_template_input(
     connection: &Connection,
     mut input: CreateCardTemplateInput,
 ) -> Result<CreateCardTemplateInput, CommandError> {
@@ -27,7 +27,7 @@ pub(super) fn prepare_automatic_create_template_input(
     Ok(input)
 }
 
-pub(super) fn prepare_automatic_update_template_input(
+pub(in super::super) fn prepare_automatic_update_template_input(
     connection: &Connection,
     mut input: UpdateCardTemplateInput,
 ) -> Result<UpdateCardTemplateInput, CommandError> {
@@ -72,7 +72,7 @@ fn normalize_template_rule_inputs(
     Ok(())
 }
 
-pub(super) fn normalize_card_template_dto_for_editing(
+pub(in super::super) fn normalize_card_template_dto_for_editing(
     mut template: CardTemplateDto,
 ) -> Result<CardTemplateDto, CommandError> {
     let lookup = automatic_template_field_lookup_from_dtos(&template.fields)?;
@@ -141,10 +141,9 @@ pub(super) fn normalize_typed_template_layout(
     side: &str,
 ) -> Result<Value, CommandError> {
     let mut placeholder_count = 0_usize;
-    let normalized = normalize_template_layout_node(document, None, lookup, &mut placeholder_count)?;
-    if normalized.len() != 1
-        || normalized[0].get("type").and_then(Value::as_str) != Some("doc")
-    {
+    let normalized =
+        normalize_template_layout_node(document, None, lookup, &mut placeholder_count)?;
+    if normalized.len() != 1 || normalized[0].get("type").and_then(Value::as_str) != Some("doc") {
         return Err(CommandError::new(
             "invalid_template_layout",
             format!("The template {side} layout must have one document root."),
@@ -189,7 +188,10 @@ fn normalize_template_layout_node(
             }
             return Ok(vec![placeholder]);
         }
-        if !matches!(parent_type, Some("doc") | Some("blockquote") | Some("listItem")) {
+        if !matches!(
+            parent_type,
+            Some("doc") | Some("blockquote") | Some("listItem")
+        ) {
             return Err(CommandError::new(
                 "invalid_template_placeholder",
                 "A legacy block field placeholder is in an unsupported location.",
@@ -296,10 +298,7 @@ fn push_template_text_fragment(
     output.push(Value::Object(fragment));
 }
 
-fn automatic_inline_placeholder(
-    field: &AutomaticTemplateField,
-    marks: Option<&Value>,
-) -> Value {
+fn automatic_inline_placeholder(field: &AutomaticTemplateField, marks: Option<&Value>) -> Value {
     let mut placeholder = serde_json::Map::new();
     placeholder.insert(
         "type".to_string(),
@@ -351,7 +350,7 @@ fn invalid_typed_template_placeholder() -> CommandError {
     )
 }
 
-pub(super) fn template_update_contains_new_children(
+pub(in super::super) fn template_update_contains_new_children(
     connection: &Connection,
     input: &UpdateCardTemplateInput,
 ) -> Result<bool, CommandError> {
@@ -423,7 +422,7 @@ fn template_document_is_inline(document: &Value, asset_ids: &[String]) -> bool {
         })
 }
 
-pub(super) fn render_automatic_template_previews(
+pub(in super::super) fn render_automatic_template_previews(
     connection: &Connection,
     paths: &AppPaths,
     template: &StoredTemplate,
@@ -442,18 +441,10 @@ fn materialize_automatic_template(
     let lookup = automatic_template_field_lookup_from_dtos(&template.dto.fields)?;
     let mut dto = template.dto.clone();
     for rule in &mut dto.rules {
-        rule.front_doc = materialize_automatic_template_document(
-            &rule.front_doc,
-            &lookup,
-            values,
-            "question",
-        )?;
-        rule.back_doc = materialize_automatic_template_document(
-            &rule.back_doc,
-            &lookup,
-            values,
-            "answer",
-        )?;
+        rule.front_doc =
+            materialize_automatic_template_document(&rule.front_doc, &lookup, values, "question")?;
+        rule.back_doc =
+            materialize_automatic_template_document(&rule.back_doc, &lookup, values, "answer")?;
     }
     Ok(StoredTemplate { dto })
 }
@@ -497,7 +488,10 @@ fn materialize_template_block_children(
                 "Every template layout node must be a JSON object.",
             )
         })?;
-        let node_type = object.get("type").and_then(Value::as_str).unwrap_or_default();
+        let node_type = object
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         if matches!(node_type, "paragraph" | "heading") {
             rendered.extend(materialize_template_text_block(object, values)?);
             continue;
@@ -635,18 +629,20 @@ fn push_materialized_text_block(
 }
 
 fn inline_content_is_visible(content: &[Value]) -> bool {
-    content.iter().any(|node| match node.get("type").and_then(Value::as_str) {
-        Some("text") => node
-            .get("text")
-            .and_then(Value::as_str)
-            .is_some_and(|text| !text.trim().is_empty()),
-        Some("hardBreak") => true,
-        Some(_) => true,
-        None => false,
-    })
+    content
+        .iter()
+        .any(|node| match node.get("type").and_then(Value::as_str) {
+            Some("text") => node
+                .get("text")
+                .and_then(Value::as_str)
+                .is_some_and(|text| !text.trim().is_empty()),
+            Some("hardBreak") => true,
+            Some(_) => true,
+            None => false,
+        })
 }
 
-pub(super) fn generate_automatic_template_cards_in_connection(
+pub(in super::super) fn generate_automatic_template_cards_in_connection(
     connection: &mut Connection,
     paths: &AppPaths,
     input: GenerateTemplateCardsInput,
@@ -676,10 +672,7 @@ pub(super) fn generate_automatic_template_cards_in_connection(
     let mut seen = BTreeSet::new();
 
     for rendered in rendered_cards {
-        let normalized = normalized_pair(
-            &rendered.content.front_text,
-            &rendered.content.back_text,
-        );
+        let normalized = normalized_pair(&rendered.content.front_text, &rendered.content.back_text);
         let hash = duplicate_hash(&normalized.0, &normalized.1);
         if !seen.insert(normalized.clone())
             || has_exact_duplicate(
