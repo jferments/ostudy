@@ -36,15 +36,21 @@ checkout clears the old target once.
 `check-static.sh` verifies durable environment/repository contracts: exact tool and
 dependency versions, migration checksums, IPC registry/wrapper parity, repository
 policy, test policy, script syntax, TypeScript, and canonical Rust formatting.
+It also enforces the Stage 3.12 frontend transport boundary: direct Tauri
+`invoke()` calls must live under `src/ipc/` and every registered command must
+have exactly one frontend wrapper.
 
 `check-fast.sh` reuses an exact-tree static result when possible and adds the full
 frontend suite plus locked Rust compile checking. Draft pull requests use this
-tier.
+tier. Controller race tests deliberately resolve older/newer reads in reverse
+order to verify that obsolete Search, Analytics, Template, Practice, and Deck
+results cannot overwrite current state.
 
 `check.sh` reuses an exact-tree fast result when possible and adds native
 environment qualification, production frontend build, warning-free Clippy, all
 Rust/unit/integration/migration tests, standalone Tauri build, exact dependency
 verification, and the native create → review → restart → persistence smoke test.
+The complete Rust suite also runs the generated-import conformance corpus.
 Ready pull requests use this tier. See `docs/development/testing-and-ci.md` for
 the authoritative mechanics.
 
@@ -55,15 +61,29 @@ and why. CI runs it normally.
 ## Testing layers
 
 - **Repository contracts:** verify durable migration checksums, exact command
-  registry/frontend-wrapper parity, stale API removal, self-hosted immutable
-  workflow policy, dependency manifests, and test-policy invariants. Feature
-  behavior is protected by executable tests rather than private source shapes.
+  registry/frontend-wrapper parity, typed IPC-gateway ownership, stale API
+  removal, self-hosted immutable workflow policy, dependency manifests, and
+  test-policy invariants. Feature behavior is protected by executable tests
+  rather than private source shapes.
+- **Controller/read-race tests:** cover independent request lanes and resolve
+  competing requests in reverse order. Obsolete successes and errors must not
+  mutate newer screen state. Mutation tests preserve committed success even when
+  a later reconciliation step fails.
 - **React component and helper tests:** important interaction and error-rendering
   behavior with mocked typed IPC, including independent reverse-card selection,
-  cloze text marking and modes, template management, and generated-card saves.
+  cloze text marking and modes, template management, generated-card saves,
+  extracted Search/Filter controls, and extracted Analytics scope controls.
 - **Pure Rust tests:** rich-content validation, scheduling, tag normalization,
   duplicate matching, search-query construction, cloze parsing/rendering,
-  template placeholder validation, and literal substitution.
+  template placeholder validation, literal substitution, CardNote transport,
+  and restricted generated-import Markdown parsing.
+- **Generated-import conformance tests:** materialize real temporary
+  `.ostudy.json` files from the checked-in corpus; exercise supported Basic/
+  Reverse/Cloze/Markdown/Unicode forms, broad schema/content rejection cases,
+  declared boundaries, duplicate handling, exact-name create/append semantics,
+  fresh schedules, and whole-file atomicity. The test database is disposable,
+  the imported test graph is explicitly deleted, and RAII removes the temporary
+  filesystem root even when a test fails.
 - **SQLite integration tests:** migrations, FTS triggers, transactions, CRUD,
   bulk entry, generated-card lifecycle, schedule/history preservation,
   template deletion independence, move/copy, import/export, idempotency, and
@@ -74,7 +94,7 @@ and why. CI runs it normally.
 - **Native smoke test:** launch the built Linux Tauri binary through WebDriver
   and navigate through the real application shell.
 - **Manual test:** exercise the changed user workflow and assess visual,
-  keyboard, persistence, and theme behavior.
+  keyboard, persistence, stale-read behavior, and theme behavior.
 
 ## Stage 3 manual acceptance
 
@@ -91,6 +111,12 @@ After `./scripts/check.sh` passes, manually verify at least:
 - exact generated-card selection in Search/Filter;
 - note-level tags, move/copy, and deletion when several presentations are
   selected;
+- rapid Search/Filter, deck-card query, template-selection, Practice-scope, and
+  Analytics-scope changes without old responses replacing the current view;
+- successful mutations followed by refresh/reconciliation still reporting the
+  durable write as successful;
+- generated JSON import for representative Basic, reverse, Cloze, links, lists,
+  code, Unicode, duplicate append, and invalid atomic-rejection cases;
 - deck export/import for Basic, reverse, and both cloze modes;
 - application restart after each persistent authoring workflow;
 - Light, Dark, Console, and Synthwave themes at narrow and wide layouts.
