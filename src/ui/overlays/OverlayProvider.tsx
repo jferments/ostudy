@@ -34,12 +34,12 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
 
   const publishStack = useCallback(() => {
     const entries = entriesRef.current;
-    setTopId(entries.at(-1)?.id ?? null);
+    setTopId(resolveTopOverlay(entries)?.id ?? null);
     setModalDepth(entries.filter((entry) => entry.modal).length);
   }, []);
 
   const isTop = useCallback(
-    (id: string) => entriesRef.current.at(-1)?.id === id,
+    (id: string) => resolveTopOverlay(entriesRef.current)?.id === id,
     [],
   );
 
@@ -75,7 +75,7 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
   useEffect(
     () =>
       registerPlatformBackHandler(() => {
-        const top = entriesRef.current.at(-1);
+        const top = resolveTopOverlay(entriesRef.current);
         if (!top) return false;
         return top.requestClose("platform_back");
       }),
@@ -150,4 +150,35 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
       ) : null}
     </OverlayContext.Provider>
   );
+}
+
+function resolveTopOverlay(entries: OverlayEntry[]): OverlayEntry | undefined {
+  let top: OverlayEntry | undefined;
+  let topDepth = -1;
+  let topOrder = -1;
+
+  entries.forEach((entry, order) => {
+    const depth = overlayDepth(entry, entries);
+    if (depth > topDepth || (depth === topDepth && order > topOrder)) {
+      top = entry;
+      topDepth = depth;
+      topOrder = order;
+    }
+  });
+
+  return top;
+}
+
+function overlayDepth(entry: OverlayEntry, entries: OverlayEntry[]): number {
+  const byId = new Map(entries.map((candidate) => [candidate.id, candidate]));
+  const visited = new Set<string>([entry.id]);
+  let depth = 0;
+  let parentId = entry.parentId;
+
+  while (parentId && !visited.has(parentId)) {
+    depth += 1;
+    visited.add(parentId);
+    parentId = byId.get(parentId)?.parentId ?? null;
+  }
+  return depth;
 }
