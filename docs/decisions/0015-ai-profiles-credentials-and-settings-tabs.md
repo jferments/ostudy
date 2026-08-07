@@ -71,11 +71,21 @@ The frontend receives statuses such as `missing`, `saved_securely`,
 `session_only`, `not_required`, and `secure_store_unavailable`; it cannot read a
 saved credential. Credential inputs clear immediately after submission.
 
-SQLite and the operating-system keyring cannot share a transaction. Credential
-mutations therefore increment a nonsecret credential epoch before the native
-secret operation. A failed secret write leaves no plaintext data and merely
-invalidates older capability evidence. Profile deletion removes the secret first,
-then soft-deletes metadata and clears task assignments.
+SQLite and an operating-system keyring cannot share a transaction. Profile,
+endpoint, authentication, task-default, and credential mutations therefore share
+one native mutation lane. Credential set/clear commands have idempotent operation
+IDs. Under that lane, ostudy validates the saved profile revision and trust
+boundary, writes or removes the native secret first, then commits the credential
+epoch, profile revision, operation record, and probe invalidation in one SQLite
+transaction. No SQLite lock is held while accessing the operating-system store.
+
+If the native secret operation succeeds but the SQLite commit fails, the saved
+profile revision remains unchanged and the same operation can be retried safely.
+If SQLite commits but the caller loses the response, replaying the operation ID
+returns the already committed profile without repeating the logical mutation.
+Endpoint-origin or authentication changes cannot race a credential write because
+they use the same mutation lane. Profile deletion removes the secret first, then
+soft-deletes metadata and clears task assignments.
 
 ### Endpoint trust policy
 
@@ -94,6 +104,8 @@ credential first.
 - provider profiles can be referenced by later jobs without coupling them to
   ordinary visual or scheduling settings;
 - profile edits and credential replacements invalidate stale verification state;
+- cross-store retries remain idempotent without holding the database during
+  keyring access;
 - Android and other platform ports can replace the secret backend behind the
   same interface;
 - learners must explicitly choose a cloud profile rather than receiving a hidden
