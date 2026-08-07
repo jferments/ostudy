@@ -1,14 +1,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as backupIpc from "../ipc/backup";
 import * as settingsIpc from "../ipc/settings";
+import * as platformFiles from "../platform/files";
+import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { SettingsScreen } from "./SettingsScreen";
 
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  open: vi.fn(),
-  save: vi.fn(),
+vi.mock("../platform/files", () => ({
+  openFile: vi.fn(),
+  saveFile: vi.fn(),
 }));
 
 vi.mock("../ipc/backup", () => ({
@@ -43,13 +44,15 @@ function renderSettings(showToast = vi.fn()) {
   const onSavedSettings = vi.fn();
   const onDirtyChange = vi.fn();
   render(
-    <SettingsScreen
-      settings={settings}
-      onPreviewSettings={onPreviewSettings}
-      onSavedSettings={onSavedSettings}
-      onDirtyChange={onDirtyChange}
-      showToast={showToast}
-    />,
+    <OverlayProvider>
+      <SettingsScreen
+        settings={settings}
+        onPreviewSettings={onPreviewSettings}
+        onSavedSettings={onSavedSettings}
+        onDirtyChange={onDirtyChange}
+        showToast={showToast}
+      />
+    </OverlayProvider>,
   );
   return { onPreviewSettings, onSavedSettings, onDirtyChange, showToast };
 }
@@ -57,8 +60,8 @@ function renderSettings(showToast = vi.fn()) {
 describe("SettingsScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(openDialog).mockResolvedValue(null);
-    vi.mocked(saveDialog).mockResolvedValue(null);
+    vi.mocked(platformFiles.openFile).mockResolvedValue(null);
+    vi.mocked(platformFiles.saveFile).mockResolvedValue(null);
     vi.mocked(settingsIpc.getAppInfo).mockResolvedValue({
       appVersion: "0.1.0",
       dataDirectory: "/tmp/ostudy/data",
@@ -112,7 +115,7 @@ describe("SettingsScreen", () => {
   });
 
   it("exports one complete backup with deck, template, and review counts", async () => {
-    vi.mocked(saveDialog).mockResolvedValue("/tmp/library.ostudybackup");
+    vi.mocked(platformFiles.saveFile).mockResolvedValue("/tmp/library.ostudybackup");
     const { showToast } = renderSettings();
     await screen.findByText("/tmp/ostudy/data");
 
@@ -129,13 +132,17 @@ describe("SettingsScreen", () => {
     });
   });
 
-  it("prepares a validated restore and requires an application restart", async () => {
-    vi.mocked(openDialog).mockResolvedValue("/tmp/library.ostudybackup");
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("prepares a validated restore only after shared destructive confirmation", async () => {
+    vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/library.ostudybackup");
     const { showToast } = renderSettings();
     await screen.findByText("/tmp/ostudy/data");
 
     fireEvent.click(screen.getByRole("button", { name: "Restore backup" }));
+    expect(
+      await screen.findByRole("alertdialog", { name: "Restore this complete library?" }),
+    ).toBeTruthy();
+    expect(backupIpc.prepareLibraryRestore).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Prepare restore" }));
 
     await waitFor(() => {
       expect(backupIpc.prepareLibraryRestore).toHaveBeenCalledWith(
