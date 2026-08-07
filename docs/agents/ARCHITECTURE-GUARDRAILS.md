@@ -13,12 +13,37 @@ of user intent. It may derive view-only values, but it must not become the
 authoritative implementation of persistence, scheduling, validation, or
 analytics.
 
-Frontend-to-Rust invocation belongs only in explicitly designated typed IPC
-gateway modules (currently `src/ipc.ts`, `src/analytics-ipc.ts`,
-`src/generatedImport.ts`, and `src/diagnostics.ts`). Screens and components must
-call typed wrappers rather than `invoke()` directly. The repository IPC contract
-check verifies exact parity between every wrapper command name and the Rust
-registry.
+Frontend-to-Rust invocation belongs only in typed domain gateway modules under
+`src/ipc/`. Screens, controllers, components, and tests must not call Tauri
+`invoke()` directly. The repository IPC contract check verifies exact parity
+between every gateway command name and the Rust registry and rejects direct
+invocation outside the gateway directory.
+
+Editable source notes and rendered study presentations are different frontend
+contracts:
+
+- `CardNote` is the Basic/Cloze authoring model and owns note revision, tags, and
+  card-type-specific editable fields;
+- `CardPresentation` is the rendered card identity used by practice/search and
+  carries a card ID plus rendered question/answer content.
+
+Do not create another generic `Flashcard`/`OrganizedCard` DTO that mixes these
+responsibilities.
+
+Workflow-heavy screens use focused controllers under `src/controllers/` for
+native read/write orchestration. Independent asynchronous reads use independent
+latest-request lanes. Rust work does not need to be physically cancelled, but a
+completion that is no longer current must not overwrite newer screen state.
+Obsolete errors are ignored along with obsolete successes.
+
+Do **not** apply stale-read semantics to mutations. Once Rust reports a durable
+mutation as committed, later view refresh/reconciliation failure is a separate,
+recoverable display problem. Never tell the user the write failed or create a
+new operation/retry ID merely because reconciliation failed.
+
+Presentational components should represent independently meaningful views or
+controls. Do not split components solely to satisfy a line-count target or create
+prop-forwarding fragments with no semantic/test boundary.
 
 ### Rust
 
@@ -39,7 +64,6 @@ Released migration files and release-schema fixtures are immutable. Add a new
 numbered migration, checksum it through the existing mechanism, and test both a
 fresh database and upgrades from every released fixture.
 
-
 ### Application identity
 
 The product name is `ostudy`, release versioning begins at `0.1.0`, and the
@@ -54,7 +78,7 @@ or remote image URLs in card content.
 
 ## Durable data invariants
 
-- A note stores editable front/back content; a card stores a studyable
+- A note stores editable source content; a card stores a studyable
   presentation generated from a note.
 - Canonical rich content is versioned Tiptap/ProseMirror JSON.
 - The Rust validator uses an explicit node and mark allowlist.
@@ -70,7 +94,10 @@ or remote image URLs in card content.
   repeated clicks.
 - `.studydeck` packages contain shareable deck content and managed assets, not
   application settings or personal review history.
-- Imported cards receive fresh local schedules.
+- Generated `.ostudy.json` import is whole-file validated, transactional, strict
+  about unknown fields, and creates fresh local schedules. Its conformance tests
+  run only against disposable in-memory/temporary test storage and remove the
+  imported graph and temporary files when they finish.
 - Analytics are deterministic SQL aggregates over authoritative stored state.
 
 ## Local-first constraints
@@ -91,15 +118,16 @@ Durable user data and documented external formats are compatibility surfaces:
 - stable error codes for active durable operations;
 - Tiptap schema version and validation taxonomy;
 - `.studydeck` format and import behavior;
+- `.ostudy.json` format version and strict generated-import behavior;
 - FSRS rating mapping, review history, and review idempotency;
 - the Tauri application identifier and application-data location;
 - user-visible keyboard, accessibility, and theme behavior.
 
 The bundled React/Rust IPC layer is an internal contract unless an external API
 is explicitly documented. When an unreleased or internal feature is removed,
-delete its wrapper, command, request field, tests, and documentation together.
-Do not silently accept obsolete fields; revised request DTOs should reject them
-when acceptance would hide a caller defect.
+delete its gateway wrapper, command, request field, tests, and documentation
+together. Do not silently accept obsolete fields; revised request DTOs should
+reject them when acceptance would hide a caller defect.
 
 Changes to durable compatibility surfaces require explicit acceptance criteria,
 regression coverage, migration or compatibility analysis, and documentation.
@@ -115,7 +143,11 @@ Before implementation, answer:
 3. Does it alter a persistent format, stable identifier, command, or error code?
 4. Can a retry or double click duplicate data?
 5. Can a partial failure leave structured data and files inconsistent?
-6. Does it affect existing imported decks, schedules, reviews, themes, or
+6. Can an older async read finish after a newer scope and overwrite current UI
+   state?
+7. Does a successful mutation remain distinguishable from a failed follow-up
+   refresh?
+8. Does it affect existing imported decks, schedules, reviews, themes, or
    keyboard behavior?
-7. What is the narrowest test that proves the invariant, and what higher-level
+9. What is the narrowest test that proves the invariant, and what higher-level
    test proves the complete user workflow?
