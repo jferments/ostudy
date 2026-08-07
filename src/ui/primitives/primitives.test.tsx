@@ -44,7 +44,7 @@ describe("shared UI primitives", () => {
     expect(screen.getByRole("status").textContent).toContain("Loading decks");
   });
 
-  it("exposes a keyboard-accessible segmented choice", () => {
+  it("exposes radio semantics and roving arrow-key selection", () => {
     const onChange = vi.fn();
     render(
       <SegmentedControl
@@ -53,13 +53,32 @@ describe("shared UI primitives", () => {
         options={[
           { value: "7d", label: "Week" },
           { value: "30d", label: "Month" },
+          { value: "90d", label: "Quarter" },
         ]}
         onChange={onChange}
       />,
     );
 
-    expect(screen.getByRole("radio", { name: "Week" }).getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByRole("radio", { name: "Month" }));
-    expect(onChange).toHaveBeenCalledWith("30d");
+    const week = screen.getByRole("radio", { name: "Week" });
+    const month = screen.getByRole("radio", { name: "Month" });
+    const quarter = screen.getByRole("radio", { name: "Quarter" });
+    expect(screen.getByRole("radiogroup", { name: "Range" }).getAttribute("aria-orientation")).toBe(
+      "horizontal",
+    );
+    expect(week.getAttribute("aria-checked")).toBe("true");
+    expect(week.getAttribute("tabindex")).toBe("0");
+    expect(month.getAttribute("tabindex")).toBe("-1");
+
+    week.focus();
+    fireEvent.keyDown(week, { key: "ArrowRight" });
+    expect(document.activeElement).toBe(month);
+    expect(onChange).toHaveBeenLastCalledWith("30d");
+
+    fireEvent.keyDown(month, { key: "End" });
+    expect(document.activeElement).toBe(quarter);
+    expect(onChange).toHaveBeenLastCalledWith("90d");
+
+    fireEvent.click(month);
+    expect(onChange).toHaveBeenLastCalledWith("30d");
   });
 });
