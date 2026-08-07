@@ -279,17 +279,6 @@ pub fn update_generated_card(
 }
 
 #[tauri::command]
-pub fn list_card_templates(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-) -> Result<Vec<CardTemplateDto>, CommandError> {
-    database.with_connection(|connection| {
-        let templates = list_card_templates_in_connection(connection, &paths)?;
-        normalize_card_template_list_for_editing(templates)
-    })
-}
-
-#[tauri::command]
 pub fn get_card_template(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
