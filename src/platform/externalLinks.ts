@@ -4,5 +4,3 @@ import { openUrl as openNativeUrl } from "@tauri-apps/plugin-opener";
 export async function openExternalUrl(url: string): Promise<void> {
   await openNativeUrl(url);
 }
-
-export const openUrl = openExternalUrl;
