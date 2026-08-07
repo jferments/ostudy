@@ -61,8 +61,7 @@ export function Dialog({
   const openerRef = useRef<HTMLElement | null>(null);
   const propsRef = useRef({ onClose, dismissible, busy });
   propsRef.current = { onClose, dismissible, busy };
-  const { register, topId } = useOverlayContext();
-  const topmost = topId === null || topId === id;
+  const { register, isTop } = useOverlayContext();
 
   useEffect(
     () =>
@@ -105,7 +104,7 @@ export function Dialog({
   }, [initialFocusRef]);
 
   function requestClose(reason: OverlayCloseReason): void {
-    if (!topmost || !dismissible || busy) return;
+    if (!isTop(id) || !dismissible || busy) return;
     onClose(reason);
   }
 
@@ -114,7 +113,7 @@ export function Dialog({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDialogElement>): void {
-    if (!topmost) return;
+    if (!isTop(id)) return;
     if (event.key === "Escape") {
       event.preventDefault();
       requestClose("escape");
