@@ -13,12 +13,6 @@ import {
   type DeckSummary,
 } from "../ipc/decks";
 import {
-  completePracticeSession,
-  markPracticeCardRevealed,
-  markPracticeCardViewed,
-  startCardPractice,
-  startSelectedPractice,
-  submitPracticeReview,
   type PracticeCard,
   type PracticeSession,
   type PracticeWorkloadOverview,
@@ -26,7 +20,6 @@ import {
   type SubmitReviewInput,
 } from "../ipc/practice";
 import {
-  applyScheduleAction,
   type RescheduleIntent,
   type ScheduleAction,
 } from "../ipc/scheduling";
@@ -164,7 +157,7 @@ export function PracticeScreen({
       setErrorMessage(null);
       try {
         initializeSession(
-          await startSelectedPractice({
+          await controller.startSelected({
             operationId,
             deckIds,
             tagIds,
@@ -195,7 +188,7 @@ export function PracticeScreen({
       setErrorMessage(null);
       try {
         initializeSession(
-          await startCardPractice({ operationId, cardIds, shuffle: requestedShuffle }),
+          await controller.startCards({ operationId, cardIds, shuffle: requestedShuffle }),
         );
       } catch (error: unknown) {
         setSession(null);
@@ -319,7 +312,7 @@ export function PracticeScreen({
   useEffect(() => {
     if (!session || !current || completed) return;
     questionShownAtRef.current = Date.now();
-    void markPracticeCardViewed(session.id, current.presentation.cardId).catch((error: unknown) => {
+    void controller.markViewed(session.id, current.presentation.cardId).catch((error: unknown) => {
       showToast("error", getErrorMessage(error));
     });
   }, [completed, current, session, showToast]);
@@ -334,7 +327,7 @@ export function PracticeScreen({
     setIsRevealing(true);
     setErrorMessage(null);
     try {
-      setPreviewSet(await markPracticeCardRevealed(session.id, current.presentation.cardId));
+      setPreviewSet(await controller.reveal(session.id, current.presentation.cardId));
       setRevealed(true);
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -383,7 +376,7 @@ export function PracticeScreen({
     setIsRating(true);
     setErrorMessage(null);
     try {
-      const result = await submitPracticeReview(input);
+      const result = await controller.review(input);
       pendingReviewRef.current = null;
       setRatedCount(result.ratedCount);
       setConfidenceCounts((counts) => {
@@ -433,7 +426,7 @@ export function PracticeScreen({
     setIsManaging(true);
     setErrorMessage(null);
     try {
-      await applyScheduleAction({
+      await controller.schedule({
         mutationId: createMutationId(),
         cardIds: [current.presentation.cardId],
         action,
@@ -490,7 +483,7 @@ export function PracticeScreen({
     setIsEnding(true);
     setErrorMessage(null);
     try {
-      await completePracticeSession(session.id);
+      await controller.complete(session.id);
       resetToSetup();
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));

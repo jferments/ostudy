@@ -6,10 +6,7 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 
 import { Modal } from "../components/Modal";
 import type { ShowToast } from "../components/Toast";
-import { importGeneratedFlashcards } from "../ipc/generated-import";
 import {
-  deleteCard,
-  undoDeletion,
   type CardNote,
 } from "../ipc/cards";
 import {
@@ -18,12 +15,6 @@ import {
   getErrorMessage,
 } from "../ipc/common";
 import {
-  createDeck,
-  deleteDeck,
-  exportDeck,
-  importDeck,
-  setDeckArchived,
-  updateDeck,
   type CreateDeckInput,
   type DeckCardSummary,
   type DeckSummary,
@@ -228,7 +219,7 @@ export function DecksScreen({
 
   async function handleDeckSaved(input: CreateDeckInput): Promise<void> {
     if (deckDialog === "edit" && selectedDeck) {
-      const updated = await updateDeck({
+      const updated = await controller.update({
         deckId: selectedDeck.id,
         name: input.name,
         description: input.description,
@@ -241,7 +232,7 @@ export function DecksScreen({
       return;
     }
 
-    const created = await createDeck(input);
+    const created = await controller.create(input);
     setSelectedDeck(created);
     setCards([]);
     setCardTotalCount(0);
@@ -256,7 +247,7 @@ export function DecksScreen({
 
   async function handleArchiveDeck(deck: DeckSummary, archived: boolean): Promise<void> {
     try {
-      const updated = await setDeckArchived({
+      const updated = await controller.setArchived({
         deckId: deck.id,
         revision: deck.revision,
         archived,
@@ -294,7 +285,7 @@ export function DecksScreen({
       return;
     }
     try {
-      const deletion = await deleteDeck(deck.id);
+      const deletion = await controller.deleteDeck(deck.id);
       if (selectedDeck?.id === deck.id) {
         setSelectedDeck(null);
         setCards([]);
@@ -306,7 +297,7 @@ export function DecksScreen({
         expiresAt: deletion.undoExpiresAt,
         run: async () => {
           try {
-            await undoDeletion(deletion.undoToken);
+            await controller.undo(deletion.undoToken);
             await refreshDecks();
           } catch (error: unknown) {
             showToast("error", getErrorMessage(error));
@@ -334,14 +325,14 @@ export function DecksScreen({
       return;
     }
     try {
-      const deletion = await deleteCard(card.noteId);
+      const deletion = await controller.deleteNote(card.noteId);
       const deckId = selectedDeck?.id;
       showToast("success", "CardPresentation deleted.", {
         label: "Undo",
         expiresAt: deletion.undoExpiresAt,
         run: async () => {
           try {
-            await undoDeletion(deletion.undoToken);
+            await controller.undo(deletion.undoToken);
             if (deckId) await refreshSelectedDeckAfterMutation(deckId);
             else await refreshDecks();
           } catch (error: unknown) {
@@ -367,7 +358,7 @@ export function DecksScreen({
         filters: [{ name: "ostudy deck", extensions: ["studydeck"] }],
       });
       if (typeof destination !== "string") return;
-      const result = await exportDeck(deck.id, destination);
+      const result = await controller.export(deck.id, destination);
       showToast(
         "success",
         `Exported ${result.cardCount} ${result.cardCount === 1 ? "card" : "cards"}.`,
@@ -441,7 +432,7 @@ export function DecksScreen({
         pendingImportRef.current = pending;
         let result;
         try {
-          result = await importDeck(selected, pending.operationId);
+          result = await controller.importStudydeck(selected, pending.operationId);
           pendingImportRef.current = null;
         } catch (error: unknown) {
           if (getErrorCode(error) !== null) pendingImportRef.current = null;
@@ -458,7 +449,7 @@ export function DecksScreen({
       }
 
       if (normalizedPath.endsWith(".json")) {
-        const result = await importGeneratedFlashcards(selected);
+        const result = await controller.importGenerated(selected);
         const duplicateMessage =
           result.skippedDuplicateCount > 0
             ? ` ${result.skippedDuplicateCount} exact ${

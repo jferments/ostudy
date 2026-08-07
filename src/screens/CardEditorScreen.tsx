@@ -12,16 +12,10 @@ import {
   isDocumentEmpty,
 } from "../editor/richText";
 import {
-  beginAssetDraft,
-  cancelAssetDraft,
-  syncAssetDraft,
   type Asset,
 } from "../ipc/assets";
 import {
-  createCardNote,
-  findDuplicateCards,
   getCardNote,
-  updateCardNote,
   type BuiltInCardType,
   type ClozeMode,
   type DuplicateCard,
@@ -37,7 +31,6 @@ import {
   type DeckSummary,
 } from "../ipc/decks";
 import {
-  generateCardsFromTemplate,
   type CardTemplate,
   type CardTemplateSummary,
   type GenerateTemplateCardsResult,
@@ -173,10 +166,10 @@ export function CardEditorScreen({
   useEffect(() => {
     let current = true;
     setAssetDraftId(null);
-    void beginAssetDraft("card", card?.noteId)
+    void controller.beginDraft(card?.noteId)
       .then((draft) => {
         if (!current) {
-          void cancelAssetDraft(draft.id).catch(() => undefined);
+          void controller.cancelDraft(draft.id).catch(() => undefined);
           return;
         }
         assetDraftRef.current = draft.id;
@@ -192,7 +185,7 @@ export function CardEditorScreen({
       const draftId = assetDraftRef.current;
       assetDraftRef.current = null;
       if (draftId) {
-        void cancelAssetDraft(draftId).catch((error: unknown) => {
+        void controller.cancelDraft(draftId).catch((error: unknown) => {
           console.error("Unable to cancel the image draft:", getErrorMessage(error));
         });
       }
@@ -203,7 +196,7 @@ export function CardEditorScreen({
     if (!assetDraftId) return;
     const retained = usedAssetKey === "" ? [] : usedAssetKey.split(",");
     const timer = window.setTimeout(() => {
-      void syncAssetDraft(assetDraftId, retained).catch((error: unknown) => {
+      void controller.syncDraft(assetDraftId, retained).catch((error: unknown) => {
         if (assetDraftRef.current === assetDraftId) {
           setErrorMessage(`The image draft could not be synchronized: ${getErrorMessage(error)}`);
         }
@@ -376,7 +369,7 @@ export function CardEditorScreen({
 
     try {
       if (selectedCustomTemplate) {
-        const result = await generateCardsFromTemplate({
+        const result = await controller.generate({
           deckId: selectedDeckId,
           templateId: selectedCustomTemplate.id,
           templateRevision: selectedCustomTemplate.revision,
@@ -398,7 +391,7 @@ export function CardEditorScreen({
         frontText.trim() !== "" &&
         backText.trim() !== ""
       ) {
-        const duplicates = await findDuplicateCards({
+        const duplicates = await controller.duplicates({
           deckId: selectedDeckId,
           frontText,
           backText,
@@ -423,12 +416,12 @@ export function CardEditorScreen({
         };
         saved =
           existing && card
-            ? await updateCardNote({
+            ? await controller.update({
                 ...input,
                 noteId: card.noteId,
                 revision: card.revision,
               })
-            : await createCardNote(input);
+            : await controller.create(input);
       } else {
         const input = {
           deckId: selectedDeckId,
@@ -442,12 +435,12 @@ export function CardEditorScreen({
         };
         saved =
           existing && card
-            ? await updateCardNote({
+            ? await controller.update({
                 ...input,
                 noteId: card.noteId,
                 revision: card.revision,
               })
-            : await createCardNote(input);
+            : await controller.create(input);
       }
 
       markAssetDraftCommitted();
@@ -526,7 +519,7 @@ export function CardEditorScreen({
     setAssetDraftId(null);
     if (draftId) {
       try {
-        await cancelAssetDraft(draftId);
+        await controller.cancelDraft(draftId);
       } catch (error: unknown) {
         assetDraftRef.current = draftId;
         setAssetDraftId(draftId);

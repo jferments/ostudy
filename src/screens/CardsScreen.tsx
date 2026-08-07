@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, MutableRefObject } from "react";
+import type { MutableRefObject } from "react";
 
 import { CardsController } from "../controllers/cardsController";
 import { reconcileCommitted } from "../controllers/reconciliation";
@@ -25,7 +25,6 @@ import {
   type DeckSummary,
 } from "../ipc/decks";
 import {
-  applyScheduleAction,
   type ScheduleAction,
 } from "../ipc/scheduling";
 import {
@@ -34,6 +33,7 @@ import {
 } from "../ipc/templates";
 import { CardEditorScreen } from "./CardEditorScreen";
 import { BulkEntryModal } from "./cards/BulkEntryModal";
+import { CardFilters } from "./cards/CardFilters";
 import { BulkTagModal } from "./cards/BulkTagModal";
 import { DeleteCardsModal } from "./cards/DeleteCardsModal";
 import { MoveCopyModal, type TransferableCard } from "./cards/MoveCopyModal";
@@ -316,7 +316,7 @@ export function CardsScreen({
 
     let result;
     try {
-      result = await applyScheduleAction({ mutationId, cardIds, action });
+      result = await controller.schedule({ mutationId, cardIds, action });
       pendingScheduleMutationRef.current = null;
     } catch (error: unknown) {
       if (getErrorCode(error) !== null) {
@@ -521,145 +521,27 @@ export function CardsScreen({
         </div>
       </header>
 
-      <section className="card-library-toolbar" aria-label="Card filters">
-        <details className="filter-menu deck-filter-menu">
-          <summary>{deckFilterSummary(deckIds, activeDecks)}</summary>
-          <div className="filter-checklist">
-            <label>
-              <input
-                type="checkbox"
-                checked={deckIds.size === 0}
-                onChange={() => setDeckIds(new Set())}
-              />
-              <span>All active decks</span>
-              <small>{activeDecks.reduce((sum, deck) => sum + deck.generatedCardCount, 0)}</small>
-            </label>
-            {activeDecks.map((deck) => (
-              <label key={deck.id}>
-                <input
-                  type="checkbox"
-                  checked={deckIds.has(deck.id)}
-                  onChange={(event) => {
-                    const next = new Set(deckIds);
-                    if (event.currentTarget.checked) next.add(deck.id);
-                    else next.delete(deck.id);
-                    setDeckIds(next);
-                  }}
-                />
-                <span>{deck.name}</span>
-                <small>{deck.generatedCardCount}</small>
-              </label>
-            ))}
-          </div>
-        </details>
-        <label className="card-library-search">
-          <span>Search cards</span>
-          <input
-            type="search"
-            value={query}
-            placeholder="Question, answer, or tag"
-            onChange={(event) => {
-              const value = event.currentTarget.value;
-              setQuery(value);
-              if (value.trim() !== "" && sort === "updated_desc") setSort("relevance");
-            }}
-          />
-        </label>
-        <label>
-          <span>Availability</span>
-          <select
-            value={availabilityFilter}
-            disabled={statusFilter === "suspended" || statusFilter === "buried"}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              setAvailabilityFilter(event.currentTarget.value as AvailabilityFilter)
-            }
-          >
-            <option value="all">Any schedule</option>
-            <option value="ready_now">Ready now</option>
-            <option value="scheduled_later">Scheduled later</option>
-          </select>
-        </label>
-        <label>
-          <span>Status</span>
-          <select
-            value={statusFilter}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              setStatusFilter(event.currentTarget.value as CardStatusFilter)
-            }
-          >
-            <option value="active">Studyable</option>
-            <option value="all">Any current status</option>
-            <option value="suspended">Suspended</option>
-            <option value="buried">Buried</option>
-            <option value="needs_more_practice">Needs more practice</option>
-          </select>
-        </label>
-        <label>
-          <span>Last studied</span>
-          <select
-            value={reviewedFilter}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              setReviewedFilter(event.currentTarget.value as ReviewedFilter)
-            }
-          >
-            <option value="all">Any local date</option>
-            <option value="never">Never studied</option>
-            <option value="today">Today</option>
-            <option value="past_7_local_dates">Past 7 local dates</option>
-            <option value="past_30_local_dates">Past 30 local dates</option>
-            <option value="before_past_30_local_dates">Before the past 30 local dates</option>
-          </select>
-        </label>
-        <label>
-          <span>Sort</span>
-          <select
-            value={sort}
-            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              setSort(event.currentTarget.value as CardSort)
-            }
-          >
-            <option value="relevance" disabled={query.trim() === ""}>
-              Relevance
-            </option>
-            <option value="updated_desc">Recently updated</option>
-            <option value="last_reviewed_desc">Recently studied</option>
-            <option value="question_asc">Question A–Z</option>
-            <option value="due_asc">Next scheduled</option>
-          </select>
-        </label>
-        <details className="filter-menu tag-filter-menu">
-          <summary>Tags{tagIds.size > 0 ? ` (${tagIds.size})` : ""}</summary>
-          <div className="filter-checklist">
-            {tags.length === 0 ? (
-              <p>No tags in the selected active decks.</p>
-            ) : (
-              tags.map((tag) => (
-                <label key={tag.id}>
-                  <input
-                    type="checkbox"
-                    checked={tagIds.has(tag.id)}
-                    onChange={(event) => {
-                      const next = new Set(tagIds);
-                      if (event.currentTarget.checked) next.add(tag.id);
-                      else next.delete(tag.id);
-                      setTagIds(next);
-                    }}
-                  />
-                  <span>{tag.name}</span>
-                  <small>
-                    {tag.generatedCardCount} cards · {tag.studyableDueCount} ready
-                  </small>
-                </label>
-              ))
-            )}
-            {tagIds.size > 0 ? (
-              <button type="button" className="text-button" onClick={() => setTagIds(new Set())}>
-                Clear tag filters
-              </button>
-            ) : null}
-          </div>
-        </details>
-      </section>
+      <CardFilters
+        activeDecks={activeDecks}
+        deckIds={deckIds}
+        query={query}
+        availabilityFilter={availabilityFilter}
+        statusFilter={statusFilter}
+        reviewedFilter={reviewedFilter}
+        sort={sort}
+        tags={tags}
+        tagIds={tagIds}
+        onDeckIdsChange={setDeckIds}
+        onQueryChange={(value) => {
+          setQuery(value);
+          if (value.trim() !== "" && sort === "updated_desc") setSort("relevance");
+        }}
+        onAvailabilityFilterChange={setAvailabilityFilter}
+        onStatusFilterChange={setStatusFilter}
+        onReviewedFilterChange={setReviewedFilter}
+        onSortChange={setSort}
+        onTagIdsChange={setTagIds}
+      />
 
       {selectedCards.size > 0 ? (
         <section className="card-selection-bar" aria-live="polite">
@@ -881,14 +763,6 @@ function uniqueNotes(cards: SelectionCard[]): SelectionCard[] {
 
 function selectionFromRow(card: CardBrowserRow): SelectionCard {
   return { cardId: card.cardId, noteId: card.noteId, deckId: card.deckId };
-}
-
-function deckFilterSummary(deckIds: Set<string>, decks: DeckSummary[]): string {
-  if (deckIds.size === 0) return "All active decks";
-  const selectedNames = decks.filter((deck) => deckIds.has(deck.id)).map((deck) => deck.name);
-  return selectedNames.length === 1
-    ? (selectedNames[0] ?? "1 deck")
-    : `${selectedNames.length} decks`;
 }
 
 function summarize(value: string): string {
