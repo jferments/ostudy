@@ -4,11 +4,13 @@ import { Modal } from "../../components/Modal";
 import { TagInput } from "../../components/TagInput";
 import {
   bulkTagCards,
-  getErrorMessage,
   type SelectionCard,
   type TagChangeMode,
   type TagSummary,
-} from "../../ipc";
+} from "../../ipc/cards";
+import {
+  getErrorMessage,
+} from "../../ipc/common";
 
 interface BulkTagModalProps {
   cards: SelectionCard[];

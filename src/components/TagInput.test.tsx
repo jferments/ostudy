@@ -2,7 +2,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
-import type { TagSummary } from "../ipc";
+import {
+  type TagSummary,
+} from "../ipc/cards";
 import { TagInput } from "./TagInput";
 
 const suggestions: TagSummary[] = [

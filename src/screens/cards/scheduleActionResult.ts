@@ -1,4 +1,7 @@
-import type { ScheduleAction, ScheduleActionResult } from "../../ipc";
+import {
+  type ScheduleAction,
+  type ScheduleActionResult,
+} from "../../ipc/scheduling";
 
 interface ScheduleActionNotice {
   kind: "success" | "info";

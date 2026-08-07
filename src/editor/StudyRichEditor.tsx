@@ -8,7 +8,12 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo } from "react";
 
-import type { Asset, RichDocument } from "../ipc";
+import {
+  type Asset,
+} from "../ipc/assets";
+import {
+  type RichDocument,
+} from "../ipc/common";
 
 const ManagedImage = Image.extend({
   addAttributes() {

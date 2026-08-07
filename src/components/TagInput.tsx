@@ -1,7 +1,9 @@
 import { useId, useState } from "react";
 import type { ChangeEvent, KeyboardEvent } from "react";
 
-import type { TagSummary } from "../ipc";
+import {
+  type TagSummary,
+} from "../ipc/cards";
 
 interface TagInputProps {
   label?: string;

@@ -28,13 +28,13 @@ pub fn list_matching_cards(
 }
 
 #[tauri::command]
-pub fn get_organized_card(
+pub fn get_card_note(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     note_id: String,
-) -> Result<OrganizedCardDto, CommandError> {
+) -> Result<CardNoteDto, CommandError> {
     validate_entity_id(&note_id, "note")?;
-    database.with_connection(|connection| hydrate_organized_card(connection, &paths, &note_id))
+    database.with_connection(|connection| hydrate_card_note(connection, &paths, &note_id))
 }
 
 #[tauri::command]

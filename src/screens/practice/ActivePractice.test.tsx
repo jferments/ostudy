@@ -1,12 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type {
-  PracticeCard,
-  PracticeSession,
-  ReviewPreviewSet,
-} from "../../ipc";
-import { makeFlashcard, resetTestEntityIds } from "../../test/factories";
+import {
+  type PracticeCard,
+  type PracticeSession,
+  type ReviewPreviewSet,
+} from "../../ipc/practice";
+import { makeCardPresentation, resetTestEntityIds } from "../../test/factories";
 import { ActivePractice } from "./ActivePractice";
 
 vi.mock("../../editor/RichTextView", () => ({
@@ -36,7 +36,7 @@ const previews: ReviewPreviewSet = {
 
 function makeCurrent(): PracticeCard {
   return {
-    card: makeFlashcard(),
+    presentation: makeCardPresentation(),
     deckName: "Cardiology",
     dueAt: 1,
     scheduleState: 2,

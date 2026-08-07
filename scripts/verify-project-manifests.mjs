@@ -224,8 +224,8 @@ for (const requiredPath of [
   "scripts/verify-repository-policy.mjs",
   "scripts/log-run.py",
   "tests/scripts/test_log_run.py",
-  "src/diagnostics.ts",
-  "src/diagnostics.test.ts",
+  "src/ipc/diagnostics.ts",
+  "src/ipc/diagnostics.test.ts",
   "src-tauri/src/diagnostics.rs",
   "src-tauri/tests/fixtures/v0.1.0.sql",
 ]) {

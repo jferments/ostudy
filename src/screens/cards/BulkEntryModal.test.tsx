@@ -1,18 +1,21 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as ipc from "../../ipc";
+import * as cardsIpc from "../../ipc/cards";
+import * as decksIpc from "../../ipc/decks";
 import { makeDeck, resetTestEntityIds } from "../../test/factories";
 import { BulkEntryModal } from "./BulkEntryModal";
 
-vi.mock("../../ipc", () => ({
+vi.mock("../../ipc/cards", () => ({
   analyzeBulkCards: vi.fn(),
   bulkCreateCards: vi.fn(),
+}));
+vi.mock("../../ipc/common", () => ({
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
 }));
 
-let deck: ipc.DeckSummary;
+let deck: decksIpc.DeckSummary;
 
 function fillFirstRow(): void {
   fireEvent.change(screen.getByLabelText("Question 1"), {
@@ -35,12 +38,12 @@ describe("BulkEntryModal", () => {
       generatedCardCount: 0,
       studyableDueCount: 0,
     });
-    vi.mocked(ipc.analyzeBulkCards).mockResolvedValue({
+    vi.mocked(cardsIpc.analyzeBulkCards).mockResolvedValue({
       uniqueCount: 1,
       duplicateCount: 0,
       duplicateRowIndices: [],
     });
-    vi.mocked(ipc.bulkCreateCards).mockResolvedValue({
+    vi.mocked(cardsIpc.bulkCreateCards).mockResolvedValue({
       createdCount: 1,
       skippedDuplicates: 0,
     });
@@ -68,11 +71,11 @@ describe("BulkEntryModal", () => {
       },
     ];
     await waitFor(() => {
-      expect(ipc.analyzeBulkCards).toHaveBeenCalledWith({
+      expect(cardsIpc.analyzeBulkCards).toHaveBeenCalledWith({
         deckId: deck.id,
         rows: expectedRows,
       });
-      expect(ipc.bulkCreateCards).toHaveBeenCalledWith({
+      expect(cardsIpc.bulkCreateCards).toHaveBeenCalledWith({
         deckId: deck.id,
         rows: expectedRows,
       });
@@ -80,7 +83,7 @@ describe("BulkEntryModal", () => {
   });
 
   it("stops for confirmation and removes exact duplicates before saving", async () => {
-    vi.mocked(ipc.analyzeBulkCards).mockResolvedValue({
+    vi.mocked(cardsIpc.analyzeBulkCards).mockResolvedValue({
       uniqueCount: 0,
       duplicateCount: 1,
       duplicateRowIndices: [0],
@@ -101,6 +104,6 @@ describe("BulkEntryModal", () => {
     expect(
       screen.getByText("Every populated row is already present.", { exact: false }),
     ).toBeTruthy();
-    expect(ipc.bulkCreateCards).not.toHaveBeenCalled();
+    expect(cardsIpc.bulkCreateCards).not.toHaveBeenCalled();
   });
 });

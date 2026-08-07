@@ -46,6 +46,9 @@ for (const path of await collectFiles(join(root, "src"))) {
   const pattern = /\binvoke(?:\s*<[^>]+>)?\s*\(\s*["']([a-z][a-z0-9_]*)["']/gu;
   for (const match of text.matchAll(pattern)) {
     const command = match[1];
+    if (!displayPath.startsWith("src/ipc/")) {
+      failures.push(`Direct Tauri invoke is outside a typed IPC gateway: ${displayPath} (${command})`);
+    }
     const locations = invoked.get(command) ?? [];
     locations.push(displayPath);
     invoked.set(command, locations);
@@ -70,6 +73,10 @@ for (const obsolete of [
   "create_organized_card",
   "update_organized_card",
   "start_practice",
+  "get_organized_card",
+  "get_card_type_info",
+  "create_generated_card",
+  "update_generated_card",
 ]) {
   if (registered.has(obsolete) || invoked.has(obsolete)) {
     failures.push(`Obsolete unbounded or superseded IPC command remains: ${obsolete}`);

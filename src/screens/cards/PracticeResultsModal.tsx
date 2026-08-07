@@ -2,13 +2,17 @@ import { useState } from "react";
 
 import { Modal } from "../../components/Modal";
 import {
+  transferCards,
+  type SelectionCard,
+} from "../../ipc/cards";
+import {
+  getErrorMessage,
+} from "../../ipc/common";
+import {
   createDeck,
   deleteDeck,
-  getErrorMessage,
-  transferCards,
   type DeckSummary,
-  type SelectionCard,
-} from "../../ipc";
+} from "../../ipc/decks";
 
 interface PracticeResultsModalProps {
   cards: SelectionCard[];

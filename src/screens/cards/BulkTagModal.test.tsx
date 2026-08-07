@@ -1,20 +1,22 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as ipc from "../../ipc";
+import * as cardsIpc from "../../ipc/cards";
 import { BulkTagModal } from "./BulkTagModal";
 
-vi.mock("../../ipc", () => ({
+vi.mock("../../ipc/cards", () => ({
   bulkTagCards: vi.fn(),
+}));
+vi.mock("../../ipc/common", () => ({
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
 }));
 
-const cards: ipc.SelectionCard[] = [
+const cards: cardsIpc.SelectionCard[] = [
   { cardId: "a".repeat(32), noteId: "b".repeat(32), deckId: "c".repeat(32) },
   { cardId: "d".repeat(32), noteId: "e".repeat(32), deckId: "c".repeat(32) },
 ];
-const suggestions: ipc.TagSummary[] = [
+const suggestions: cardsIpc.TagSummary[] = [
   {
     id: "f".repeat(32),
     name: "Cardiology",
@@ -27,7 +29,7 @@ const suggestions: ipc.TagSummary[] = [
 describe("BulkTagModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.bulkTagCards).mockResolvedValue({ affectedCount: 2 });
+    vi.mocked(cardsIpc.bulkTagCards).mockResolvedValue({ affectedCount: 2 });
   });
 
   it("adds normalized tags to note-level selections", async () => {
@@ -51,7 +53,7 @@ describe("BulkTagModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add tags" }));
 
     await waitFor(() => {
-      expect(ipc.bulkTagCards).toHaveBeenCalledWith({
+      expect(cardsIpc.bulkTagCards).toHaveBeenCalledWith({
         noteIds: cards.map((card) => card.noteId),
         tags: ["Medication safety"],
         mode: "add",
@@ -68,7 +70,7 @@ describe("BulkTagModal", () => {
   it("uses remove semantics without changing unrelated tags", async () => {
     render(
       <BulkTagModal
-        cards={[cards[0] as ipc.SelectionCard]}
+        cards={[cards[0] as cardsIpc.SelectionCard]}
         mode="remove"
         suggestions={suggestions}
         onClose={vi.fn()}
@@ -83,7 +85,7 @@ describe("BulkTagModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove tags" }));
 
     await waitFor(() => {
-      expect(ipc.bulkTagCards).toHaveBeenCalledWith({
+      expect(cardsIpc.bulkTagCards).toHaveBeenCalledWith({
         noteIds: [cards[0]?.noteId],
         tags: ["Cardiology"],
         mode: "remove",
@@ -92,7 +94,7 @@ describe("BulkTagModal", () => {
   });
 
   it("keeps the modal open and reports a backend failure", async () => {
-    vi.mocked(ipc.bulkTagCards).mockRejectedValue(new Error("A card was deleted."));
+    vi.mocked(cardsIpc.bulkTagCards).mockRejectedValue(new Error("A card was deleted."));
     const onClose = vi.fn();
     render(
       <BulkTagModal
@@ -129,6 +131,6 @@ describe("BulkTagModal", () => {
     expect(
       (screen.getByRole("button", { name: "Add tags" }) as HTMLButtonElement).disabled,
     ).toBe(true);
-    expect(ipc.bulkTagCards).not.toHaveBeenCalled();
+    expect(cardsIpc.bulkTagCards).not.toHaveBeenCalled();
   });
 });

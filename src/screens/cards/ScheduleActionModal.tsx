@@ -1,13 +1,17 @@
 import { useRef, useState } from "react";
 
 import {
-  applyScheduleAction,
+  type SelectionCard,
+} from "../../ipc/cards";
+import {
   createMutationId,
   getErrorCode,
   getErrorMessage,
+} from "../../ipc/common";
+import {
+  applyScheduleAction,
   type RescheduleIntent,
-  type SelectionCard,
-} from "../../ipc";
+} from "../../ipc/scheduling";
 import { scheduleActionNotice } from "./scheduleActionResult";
 
 interface ScheduleActionModalProps {

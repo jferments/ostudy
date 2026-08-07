@@ -15,16 +15,6 @@ const MAX_TEMPLATE_VALUE_CHARS: usize = 200_000;
 const TEMPLATE_INLINE_NODE: &str = "templateFieldInline";
 const TEMPLATE_BLOCK_NODE: &str = "templateFieldBlock";
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CardTypeInfoDto {
-    pub card_type: String,
-    pub reverse_enabled: bool,
-    pub cloze_source: String,
-    pub cloze_mode: String,
-    pub generated_card_count: i64,
-}
-
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ClozeMode {
@@ -49,7 +39,7 @@ impl ClozeMode {
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
-pub enum CreateGeneratedCardInput {
+pub enum CreateCardNoteInput {
     Basic {
         deck_id: String,
         #[serde(default)]
@@ -84,7 +74,7 @@ pub enum CreateGeneratedCardInput {
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
-pub enum UpdateGeneratedCardInput {
+pub enum UpdateCardNoteInput {
     Basic {
         note_id: String,
         deck_id: String,
@@ -298,30 +288,21 @@ struct RenderedTemplateCard {
 }
 
 #[tauri::command]
-pub fn get_card_type_info(
+pub fn create_card_note(
     database: State<'_, Database>,
-    note_id: String,
-) -> Result<CardTypeInfoDto, CommandError> {
-    validate_entity_id(&note_id, "note")?;
-    database.with_connection(|connection| load_card_type_info(connection, &note_id))
+    paths: State<'_, AppPaths>,
+    input: CreateCardNoteInput,
+) -> Result<CardNoteDto, CommandError> {
+    create_card_note_in_database(database, paths, input)
 }
 
 #[tauri::command]
-pub fn create_generated_card(
+pub fn update_card_note(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
-    input: CreateGeneratedCardInput,
-) -> Result<OrganizedCardDto, CommandError> {
-    create_generated_card_in_database(database, paths, input)
-}
-
-#[tauri::command]
-pub fn update_generated_card(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    input: UpdateGeneratedCardInput,
-) -> Result<OrganizedCardDto, CommandError> {
-    update_generated_card_in_database(database, paths, input)
+    input: UpdateCardNoteInput,
+) -> Result<CardNoteDto, CommandError> {
+    update_card_note_in_database(database, paths, input)
 }
 
 #[tauri::command]
@@ -533,37 +514,6 @@ fn validate_cloze_mode(value: &str) -> Result<(), CommandError> {
     }
 }
 
-fn load_card_type_info(
-    connection: &Connection,
-    note_id: &str,
-) -> Result<CardTypeInfoDto, CommandError> {
-    connection
-        .query_row(
-            "SELECT n.note_type, n.reverse_enabled, n.cloze_source, n.cloze_mode,
-                    (SELECT COUNT(*) FROM cards c
-                     WHERE c.note_id = n.id AND c.deleted_at IS NULL)
-             FROM notes n
-             JOIN decks d ON d.id = n.deck_id
-             WHERE n.id = ?1
-               AND n.deleted_at IS NULL
-               AND d.deleted_at IS NULL
-               AND d.archived_at IS NULL",
-            [note_id],
-            |row| {
-                Ok(CardTypeInfoDto {
-                    card_type: display_card_type(row.get::<_, String>(0)?.as_str()).to_string(),
-                    reverse_enabled: row.get::<_, i64>(1)? == 1,
-                    cloze_source: row.get(2)?,
-                    cloze_mode: row.get(3)?,
-                    generated_card_count: row.get(4)?,
-                })
-            },
-        )
-        .optional()
-        .map_err(CommandError::database)?
-        .ok_or_else(|| CommandError::new("card_not_found", "That flashcard no longer exists."))
-}
-
 enum CardNoteDraft {
     Basic {
         reverse_enabled: bool,
@@ -586,13 +536,13 @@ struct GeneratedCardWrite {
     asset_draft_id: Option<String>,
 }
 
-fn create_generated_card_in_database(
+fn create_card_note_in_database(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
-    input: CreateGeneratedCardInput,
-) -> Result<OrganizedCardDto, CommandError> {
+    input: CreateCardNoteInput,
+) -> Result<CardNoteDto, CommandError> {
     let write = match input {
-        CreateGeneratedCardInput::Basic {
+        CreateCardNoteInput::Basic {
             deck_id,
             reverse_enabled,
             front_doc,
@@ -613,7 +563,7 @@ fn create_generated_card_in_database(
             allow_duplicate,
             asset_draft_id,
         },
-        CreateGeneratedCardInput::Cloze {
+        CreateCardNoteInput::Cloze {
             deck_id,
             cloze_source,
             cloze_mode,
@@ -640,7 +590,7 @@ fn create_prepared_card_note(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     write: GeneratedCardWrite,
-) -> Result<OrganizedCardDto, CommandError> {
+) -> Result<CardNoteDto, CommandError> {
     let GeneratedCardWrite {
         note_id: _,
         deck_id,
@@ -724,16 +674,16 @@ fn create_prepared_card_note(
         Ok(note_id)
     })?;
 
-    database.with_connection(|connection| hydrate_organized_card(connection, &paths, &note_id))
+    database.with_connection(|connection| hydrate_card_note(connection, &paths, &note_id))
 }
 
-fn update_generated_card_in_database(
+fn update_card_note_in_database(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
-    input: UpdateGeneratedCardInput,
-) -> Result<OrganizedCardDto, CommandError> {
+    input: UpdateCardNoteInput,
+) -> Result<CardNoteDto, CommandError> {
     let write = match input {
-        UpdateGeneratedCardInput::Basic {
+        UpdateCardNoteInput::Basic {
             note_id,
             deck_id,
             revision,
@@ -756,7 +706,7 @@ fn update_generated_card_in_database(
             allow_duplicate,
             asset_draft_id,
         },
-        UpdateGeneratedCardInput::Cloze {
+        UpdateCardNoteInput::Cloze {
             note_id,
             deck_id,
             revision,
@@ -785,7 +735,7 @@ fn update_prepared_card_note(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     write: GeneratedCardWrite,
-) -> Result<OrganizedCardDto, CommandError> {
+) -> Result<CardNoteDto, CommandError> {
     let GeneratedCardWrite {
         note_id,
         deck_id,
@@ -903,7 +853,7 @@ fn update_prepared_card_note(
         Ok(())
     })?;
 
-    database.with_connection(|connection| hydrate_organized_card(connection, &paths, &note_id))
+    database.with_connection(|connection| hydrate_card_note(connection, &paths, &note_id))
 }
 
 fn prepare_basic_card_content(
@@ -1373,7 +1323,7 @@ mod authoring_contract_tests {
             "backDoc": paragraph("Answer"),
             "clozeSource": "should not be accepted"
         });
-        assert!(serde_json::from_value::<CreateGeneratedCardInput>(basic).is_err());
+        assert!(serde_json::from_value::<CreateCardNoteInput>(basic).is_err());
 
         let cloze = serde_json::json!({
             "cardType": "cloze",
@@ -1381,7 +1331,7 @@ mod authoring_contract_tests {
             "clozeSource": "The {{c1::heart}} pumps blood.",
             "frontDoc": paragraph("should not be accepted")
         });
-        assert!(serde_json::from_value::<CreateGeneratedCardInput>(cloze).is_err());
+        assert!(serde_json::from_value::<CreateCardNoteInput>(cloze).is_err());
     }
 
     #[test]
@@ -1392,6 +1342,6 @@ mod authoring_contract_tests {
             "frontDoc": paragraph("Question"),
             "backDoc": paragraph("Answer")
         });
-        assert!(serde_json::from_value::<CreateGeneratedCardInput>(input).is_ok());
+        assert!(serde_json::from_value::<CreateCardNoteInput>(input).is_ok());
     }
 }

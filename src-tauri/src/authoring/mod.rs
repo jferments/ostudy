@@ -22,7 +22,7 @@ use tauri::State;
 use crate::{
     asset_lifecycle::{ensure_assets_available, finalize_assets_for_owner},
     assets::{ensure_assets_exist, AssetDto},
-    cards::{get_card_from_connection, validate_content, CardDto, ValidatedContent},
+    cards::{validate_content, ValidatedContent},
     database::Database,
     error::CommandError,
     paths::AppPaths,
@@ -53,25 +53,6 @@ pub struct TagDto {
     pub source_note_count: i64,
     pub generated_card_count: i64,
     pub studyable_due_count: i64,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OrganizedCardDto {
-    pub id: String,
-    pub note_id: String,
-    pub deck_id: String,
-    pub direction: String,
-    pub front_doc: Value,
-    pub back_doc: Value,
-    pub front_text: String,
-    pub back_text: String,
-    pub assets: Vec<AssetDto>,
-    pub tags: Vec<String>,
-    pub due_at: i64,
-    pub created_at: i64,
-    pub updated_at: i64,
-    pub revision: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -747,47 +728,6 @@ fn build_fts_query(value: &str) -> Option<String> {
     (!quoted.is_empty()).then(|| quoted.join(" AND "))
 }
 
-fn hydrate_organized_card(
-    connection: &Connection,
-    paths: &AppPaths,
-    note_id: &str,
-) -> Result<OrganizedCardDto, CommandError> {
-    let card = get_card_from_connection(connection, paths, note_id)?;
-    let tags = load_tag_names(connection, note_id)?;
-    let due_at = connection
-        .query_row(
-            "SELECT s.due_at
-             FROM card_schedules s
-             JOIN cards c ON c.id = s.card_id
-             WHERE c.note_id = ?1
-               AND c.deleted_at IS NULL
-               AND c.direction = 'forward'",
-            [note_id],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
-    Ok(organized_from_card(card, tags, due_at))
-}
-
-fn organized_from_card(card: CardDto, tags: Vec<String>, due_at: i64) -> OrganizedCardDto {
-    OrganizedCardDto {
-        id: card.id,
-        note_id: card.note_id,
-        deck_id: card.deck_id,
-        direction: card.direction,
-        front_doc: card.front_doc,
-        back_doc: card.back_doc,
-        front_text: card.front_text,
-        back_text: card.back_text,
-        assets: card.assets,
-        tags,
-        due_at,
-        created_at: card.created_at,
-        updated_at: card.updated_at,
-        revision: card.revision,
-    }
-}
-
 fn load_tag_names(connection: &Connection, note_id: &str) -> Result<Vec<String>, CommandError> {
     let mut statement = connection
         .prepare(
@@ -1358,6 +1298,7 @@ const fn default_true() -> bool {
 }
 
 pub(crate) mod card_commands;
+mod card_note;
 pub(crate) mod card_types_and_templates;
 pub(crate) mod transfer;
 
@@ -1367,6 +1308,8 @@ mod history_tests;
 mod tests;
 
 pub(crate) use card_commands::backfill_duplicate_hashes_in_connection;
+use card_note::hydrate_card_note;
+pub(crate) use card_note::CardNoteDto;
 pub(crate) use card_types_and_templates::{
     apply_card_type_template_repairs, projected_presentation_variant,
     render_projected_presentation, ProjectedPresentationInput, RenderedCardPresentation,

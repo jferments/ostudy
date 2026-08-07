@@ -5,11 +5,15 @@ import { Modal } from "../../components/Modal";
 import {
   analyzeBulkCards,
   bulkCreateCards,
-  getErrorMessage,
   type BulkAnalyzeResult,
   type BulkCardRowInput,
+} from "../../ipc/cards";
+import {
+  getErrorMessage,
+} from "../../ipc/common";
+import {
   type DeckSummary,
-} from "../../ipc";
+} from "../../ipc/decks";
 
 interface BulkEntryModalProps {
   decks: DeckSummary[];

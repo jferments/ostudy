@@ -18,13 +18,14 @@ Static verification protects durable repository boundaries rather than historica
 
 - identity, exact versions, lockfiles, and migration checksums;
 - frontend `invoke` names matching the Tauri command registry;
-- absence of obsolete unbounded IPC commands;
+- direct Tauri invocation limited to typed domain gateways under `src/ipc/`;
+- absence of obsolete unbounded or superseded IPC commands;
 - explicit Rust modules and narrow repository policies;
 - no skipped/focused/ignored tests;
 - script syntax and the bounded-log Python tests;
 - immutable self-hosted workflow dependencies.
 
-Feature behavior belongs in Vitest, Rust/SQLite/migration tests, package round trips, and the native WebDriver workflow. Renaming a private helper, CSS class, or heading must not fail a structural stage verifier.
+Feature behavior belongs in Vitest, controller race tests, Rust/SQLite/migration tests, generated-import conformance/package round trips, and the native WebDriver workflow. Renaming a private helper, CSS class, or heading must not fail a structural stage verifier.
 
 ## Development check tiers
 
@@ -42,7 +43,7 @@ This compares the branch and working tree with `origin/main` when available. Doc
 ./scripts/check-static.sh
 ```
 
-The static tier performs environment diagnostics, manifest/migration validation, IPC parity, repository policy, test policy, Bash/Node/Python syntax, Python behavior tests for diagnostic rotation, frozen JavaScript installation, exact dependency verification, TypeScript checking, and `cargo fmt --check`.
+The static tier performs environment diagnostics, manifest/migration validation, IPC parity and gateway ownership, repository policy, test policy, Bash/Node/Python syntax, Python behavior tests for diagnostic rotation, frozen JavaScript installation, exact dependency verification, TypeScript checking, and `cargo fmt --check`.
 
 ### Fast tier
 
@@ -50,7 +51,7 @@ The static tier performs environment diagnostics, manifest/migration validation,
 ./scripts/check-fast.sh
 ```
 
-The fast tier reuses an exact-tree static result when possible, then runs the complete frontend suite and locked Rust compile checking for every target and feature. Draft pull requests use this tier.
+The fast tier reuses an exact-tree static result when possible, then runs the complete frontend suite and locked Rust compile checking for every target and feature. Draft pull requests use this tier. Stage 3.12 controller tests deliberately resolve independent Search, Deck, Template, Practice, and Analytics reads out of order and assert that only the latest request may update current state.
 
 ### Full qualification tier
 
@@ -59,6 +60,8 @@ The fast tier reuses an exact-tree static result when possible, then runs the co
 ```
 
 The full tier reuses an exact-tree fast result when possible, then adds native environment qualification, production frontend build, Clippy with warnings denied, all Rust/unit/integration/migration tests, standalone Tauri build, dependency verification, and the native create → review → restart → persistence workflow. This is the local acceptance command before merging.
+
+The full Rust suite includes the generated `.ostudy.json` conformance corpus. The harness writes real input files under a unique temporary root, imports into a disposable test database, verifies supported/rejected syntax, boundaries, duplicates, create/append resolution, fresh schedules and atomicity, explicitly removes its imported test graph, and removes its temporary filesystem root through RAII cleanup. It never opens the user's live library.
 
 ## Exact-tree qualification and Cargo artifacts
 

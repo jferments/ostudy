@@ -8,8 +8,11 @@ image files.
 ## Architectural boundary
 
 ```text
-React screens and editors
-        │ typed Tauri commands
+React presentational components
+        │ events / transient UI state
+        ▼
+Frontend domain controllers
+        │ typed domain IPC gateways
         ▼
 Rust command handlers
         │ validation and use-case orchestration
@@ -29,29 +32,49 @@ data crossing the IPC boundary and owns multi-step transactions.
 
 ### Frontend
 
-- `src/App.tsx` owns top-level navigation, themes, dirty-state guards, and
-  cross-screen practice launch requests.
-- `src/screens/DecksScreen.tsx` manages decks and the per-deck source-note list.
+- `src/App.tsx` renders the application shell. `src/controllers/useAppController.ts`
+  owns navigation, deck bootstrap/refresh, settings preview state, dirty-state
+  guards, notifications, and cross-screen launch intents.
+- `src/controllers/` owns workflow orchestration for Decks, Search/Filter, Card
+  Editor, Templates, Practice, and Analytics. Shared request lanes suppress
+  obsolete asynchronous read completions; mutations are never treated as
+  cancellable reads.
+- `src/ipc/` is the complete typed Tauri gateway, split by domain. Direct
+  `invoke()` calls outside this directory are forbidden and mechanically checked.
+- `src/screens/DecksScreen.tsx` renders the deck library/detail/editor workflow;
+  `DecksController` owns deck/card-note reads plus deck/import/export mutations.
 - `src/screens/CardsScreen.tsx` is the whole-library Search/Filter workspace. It
   displays exact generated-card presentations, manages card-level selection,
   deduplicates note-level actions, and launches temporary practice sessions.
+  `src/screens/cards/CardFilters.tsx` is the independent filter-control surface.
 - `src/screens/CardEditorScreen.tsx` selects a built-in or reusable card
   template, edits Basic rich content, configures reverse cards, authors cloze
-  notes, and fills reusable template forms.
+  notes, and fills reusable template forms. `CardEditorController` owns card-note
+  reads/writes, duplicate checks, template reads/previews/generation, and asset
+  draft operations.
 - `src/screens/card-editor/ClozeEditor.tsx` owns selection-based blank marking
   and transient cloze preview state.
 - `src/screens/card-editor/TemplateEntryForm.tsx` renders reusable template
   fields and generated-card previews.
 - `src/screens/TemplatesScreen.tsx` manages reusable data-only field and rule
-  definitions. Rule authors type placeholders such as `{{Subject}}`; the UI does
-  not expose inline/block placement controls.
-- `src/screens/PracticeScreen.tsx` runs one-step 0–3 review sessions.
+  definitions through `TemplatesController`. Rule authors type placeholders such
+  as `{{Subject}}`; the UI does not expose inline/block placement controls.
+- `src/screens/PracticeScreen.tsx` owns the practice interaction state machine;
+  its controller owns workload/window reads and durable session/review/schedule
+  operations. `PracticeSetup`, `ActivePractice`, and `PracticeComplete` are
+  separate presentational phases.
 - `src/screens/AnalyticsScreen.tsx` presents deterministic confidence,
-  response-time, and workload aggregates.
+  response-time, and workload aggregates through `AnalyticsController`.
+  `src/screens/analytics/AnalyticsFilters.tsx` owns the range/scope controls.
 - `src/screens/SettingsScreen.tsx` edits appearance and review preferences.
 - `src/editor/` contains the Tiptap configuration, canonicalization, display,
   and link handling.
-- Typed IPC gateway modules (`src/ipc.ts`, `src/analytics-ipc.ts`, `src/generatedImport.ts`, and `src/diagnostics.ts`) are the only frontend modules that invoke Rust commands; screens and components call those wrappers.
+
+A successful durable mutation and a successful display refresh are deliberately
+separate outcomes. Controllers/screens may update committed local state and then
+attempt reconciliation. If reconciliation fails, the UI reports that the write
+was saved but the current view could not refresh; it must not invite a duplicate
+write retry.
 
 ### Rust
 
@@ -62,8 +85,12 @@ data crossing the IPC boundary and owns multi-step transactions.
 - `data_repairs.rs` owns one-time checksummed data repairs; historical repair
   names and checksums are durable compatibility records.
 - `decks.rs` owns deck validation and persistence.
-- `cards.rs` owns source-note hydration and the canonical Tiptap validator; Rust
-  derives authoritative searchable plain text from validated documents.
+- `cards.rs` owns rendered card-presentation hydration and the canonical Tiptap
+  validator; Rust derives authoritative searchable plain text from validated
+  documents.
+- `authoring/card_note.rs` owns the discriminated editable `CardNote` DTO and
+  source-note hydration. `CardNote` is not the same contract as a rendered
+  `CardPresentation`.
 - `authoring/mod.rs` owns shared authoring contracts and persistence primitives.
   `authoring/card_commands.rs` owns search/tags/bulk/read commands,
   `authoring/card_types_and_templates.rs` owns canonical Basic/Cloze note
@@ -83,11 +110,19 @@ data crossing the IPC boundary and owns multi-step transactions.
   card identities while keeping old Basic packages importable.
 - `settings.rs` validates and persists graphical configuration.
 
-## Notes, generated cards, and tags
+## Notes, generated cards, and frontend transport
 
 A **note** stores editable source content. A **card** is one independently
 scheduled study presentation generated from that note. Tags attach to the note
 so every generated presentation shares the same classification.
+
+The frontend transport mirrors this distinction:
+
+- `CardNote` is the editable Basic/Cloze source model keyed by `noteId` and note
+  revision. Basic notes carry rich front/back content and reverse configuration;
+  Cloze notes carry source text and cloze mode.
+- `CardPresentation` is a rendered study/search identity keyed by `cardId` and
+  `noteId`, with rendered question/answer documents and presentation direction.
 
 Generated card identity is the durable tuple:
 
@@ -133,7 +168,9 @@ into valid before/value/after blocks and removes empty wrappers. It never
 flattens rich content or infers placement from whitespace or field names.
 
 The old explicit block placeholder remains readable only for compatibility with
-initial schema-7 templates. A versioned data repair converts it to the neutral representation. Canonical startup only verifies that the required repair was recorded.
+initial schema-7 templates. A versioned data repair converts it to the neutral
+representation. Canonical startup only verifies that the required repair was
+recorded.
 
 Every final document passes through the ordinary Basic-card validator and write
 transaction. Generated notes do not store a template ID. Editing or deleting a
@@ -213,6 +250,13 @@ restricted Markdown subset, maps entries through the canonical card-note
 preparation path, skips exact duplicates, and applies accepted notes in one
 transaction with fresh local schedules. There is deliberately no generated-import
 preview or inspect/commit protocol.
+
+The full Rust test suite owns a generated-import conformance corpus. It
+materializes real temporary `.ostudy.json` files, validates every supported
+Markdown/card shape and a broad rejection matrix, exercises create/append and
+duplicate behavior, checks fresh schedules and whole-file atomicity, explicitly
+removes its temporary deck graph, and removes its temporary directory through
+RAII cleanup. It never targets the user's application-data directory.
 
 ## Untrusted content and template safety
 

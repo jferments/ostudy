@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
-import { recordWebviewDiagnostic } from "../diagnostics";
+import { recordWebviewDiagnostic } from "../ipc/diagnostics";
 
 interface AppErrorBoundaryProps {
   children: ReactNode;

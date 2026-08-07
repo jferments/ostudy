@@ -1,13 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AnalyticsLaunchRequest } from "../App";
+import { AnalyticsController } from "../controllers/analyticsController";
 import {
-  getAnalytics,
   type Analytics,
   type AnalyticsRange,
   type TagAnalytics,
-} from "../analytics-ipc";
-import { getErrorMessage, type AppSettings, type DeckSummary, type ReviewOutcome } from "../ipc";
+} from "../ipc/analytics";
+import {
+  getErrorMessage,
+} from "../ipc/common";
+import {
+  type DeckSummary,
+} from "../ipc/decks";
+import {
+  type ReviewOutcome,
+} from "../ipc/practice";
+import {
+  type AppSettings,
+} from "../ipc/settings";
+import { AnalyticsFilters } from "./analytics/AnalyticsFilters";
 import { ProgressChart } from "./analytics/ProgressChart";
 
 interface AnalyticsScreenProps {
@@ -49,42 +61,42 @@ export function AnalyticsScreen({
   const [practicingTagId, setPracticingTagId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const handledLaunchRef = useRef<number | null>(null);
-  const requestSequence = useRef(0);
+  const controllerRef = useRef<AnalyticsController | null>(null);
+  if (controllerRef.current === null) controllerRef.current = new AnalyticsController();
+  const controller = controllerRef.current;
 
   const deckIds = useMemo(() => [...selectedDeckIds].sort(), [selectedDeckIds]);
   const tagIds = useMemo(() => [...selectedTagIds].sort(), [selectedTagIds]);
 
   const load = useCallback(async (): Promise<void> => {
-    const requestId = requestSequence.current + 1;
-    requestSequence.current = requestId;
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const result = await getAnalytics({
+      const result = await controller.load({
         range,
         deckIds,
         tagIds,
         highlightedSessionId,
       });
-      if (requestSequence.current !== requestId) return;
+      if (!result) return;
       setAnalytics(result);
       const availableDeckIds = new Set(result.dimensionOptions.decks.map((deck) => deck.id));
       const availableTagIds = new Set(result.dimensionOptions.tags.map((tag) => tag.id));
       setSelectedDeckIds((current) => filteredSet(current, availableDeckIds));
       setSelectedTagIds((current) => filteredSet(current, availableTagIds));
+      setIsLoading(false);
     } catch (error: unknown) {
-      if (requestSequence.current !== requestId) return;
       const message = getErrorMessage(error);
       setErrorMessage(message);
       showToast("error", message);
-    } finally {
-      if (requestSequence.current === requestId) setIsLoading(false);
+      setIsLoading(false);
     }
-  }, [deckIds, highlightedSessionId, range, showToast, tagIds]);
+  }, [controller, deckIds, highlightedSessionId, range, showToast, tagIds]);
 
   useEffect(() => {
     void load();
-  }, [load]);
+    return () => controller.invalidate();
+  }, [controller, load]);
 
   useEffect(() => {
     if (!launchRequest || handledLaunchRef.current === launchRequest.requestId) return;
@@ -105,12 +117,6 @@ export function AnalyticsScreen({
 
   const deckOptions = analytics?.dimensionOptions.decks ?? [];
   const tagOptions = analytics?.dimensionOptions.tags ?? [];
-  const selectedDeckNames = deckIds
-    .map((id) => deckOptions.find((deck) => deck.id === id)?.name ?? decks.find((deck) => deck.id === id)?.name)
-    .filter((name): name is string => Boolean(name));
-  const selectedTagNames = tagIds
-    .map((id) => tagOptions.find((tag) => tag.id === id)?.name)
-    .filter((name): name is string => Boolean(name));
 
   return (
     <div className="screen analytics-screen">
@@ -133,102 +139,24 @@ export function AnalyticsScreen({
         </button>
       </header>
 
-      <section className="analytics-filter-panel" aria-label="Analytics filters">
-        <div className="analytics-range-control" role="group" aria-label="Time range">
-          {([
-            ["7d", "7 days"],
-            ["30d", "30 days"],
-            ["90d", "90 days"],
-            ["1y", "1 year"],
-            ["all", "All time"],
-          ] as const).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={
-                range === value ? "analytics-filter-button active" : "analytics-filter-button"
-              }
-              aria-pressed={range === value}
-              onClick={() => {
-                setRange(value);
-                setHighlightedSessionId(undefined);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <details className="analytics-scope-details">
-          <summary>
-            Scope: {selectedDeckNames.length === 0 ? "All decks" : `${selectedDeckNames.length} deck${selectedDeckNames.length === 1 ? "" : "s"}`}
-            {selectedTagNames.length > 0
-              ? ` · ${selectedTagNames.length} tag${selectedTagNames.length === 1 ? "" : "s"}`
-              : ""}
-          </summary>
-          <div className="analytics-scope-grid">
-            <FilterChecklist
-              label="Decks"
-              emptyLabel="No decks available"
-              options={deckOptions.map((deck) => ({
-                id: deck.id,
-                name: deck.name,
-                detail: deck.isArchived
-                  ? `Archived · ${deck.hasHistory ? "history retained" : "no reviews"}`
-                  : deck.hasCurrentCards
-                    ? "Active inventory"
-                    : deck.hasHistory
-                      ? "Historical evidence"
-                      : "Empty",
-              }))}
-              selected={selectedDeckIds}
-              onChange={(next) => {
-                setSelectedDeckIds(next);
-                setHighlightedSessionId(undefined);
-              }}
-            />
-            <FilterChecklist
-              label="Tags"
-              emptyLabel="No current or historical tags"
-              options={tagOptions.map((tag) => ({
-                id: tag.id,
-                name: tag.name,
-                detail: tag.isCurrent
-                  ? tag.hasHistory
-                    ? "Current · reviewed"
-                    : "Current"
-                  : "Historical evidence",
-              }))}
-              selected={selectedTagIds}
-              onChange={(next) => {
-                setSelectedTagIds(next);
-                setHighlightedSessionId(undefined);
-              }}
-            />
-          </div>
-        </details>
-        {selectedDeckNames.length > 0 || selectedTagNames.length > 0 || highlightedSessionId ? (
-          <div className="analytics-filter-chips" aria-label="Active analytics filters">
-            {selectedDeckNames.map((name) => (
-              <span key={`deck-${name}`}>Deck: {name}</span>
-            ))}
-            {selectedTagNames.map((name) => (
-              <span key={`tag-${name}`}>Tag: {name}</span>
-            ))}
-            {highlightedSessionId ? <span>Completed session highlighted</span> : null}
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => {
-                setSelectedDeckIds(new Set());
-                setSelectedTagIds(new Set());
-                setHighlightedSessionId(undefined);
-              }}
-            >
-              Clear scope
-            </button>
-          </div>
-        ) : null}
-      </section>
+      <AnalyticsFilters
+        range={range}
+        selectedDeckIds={selectedDeckIds}
+        selectedTagIds={selectedTagIds}
+        highlightedSessionId={highlightedSessionId}
+        deckOptions={deckOptions}
+        tagOptions={tagOptions}
+        decks={decks}
+        onRangeChange={setRange}
+        onDeckIdsChange={setSelectedDeckIds}
+        onTagIdsChange={setSelectedTagIds}
+        onClearHighlightedSession={() => setHighlightedSessionId(undefined)}
+        onClearScope={() => {
+          setSelectedDeckIds(new Set());
+          setSelectedTagIds(new Set());
+          setHighlightedSessionId(undefined);
+        }}
+      />
 
       {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
       {isLoading && analytics === null ? (
@@ -540,56 +468,6 @@ export function AnalyticsScreen({
         </>
       ) : null}
     </div>
-  );
-}
-
-interface FilterOption {
-  id: string;
-  name: string;
-  detail: string;
-}
-interface FilterChecklistProps {
-  label: string;
-  emptyLabel: string;
-  options: FilterOption[];
-  selected: Set<string>;
-  onChange: (next: Set<string>) => void;
-}
-function FilterChecklist({
-  label,
-  emptyLabel,
-  options,
-  selected,
-  onChange,
-}: FilterChecklistProps) {
-  return (
-    <fieldset className="analytics-filter-checklist">
-      <legend>{label}</legend>
-      {options.length === 0 ? (
-        <p>{emptyLabel}</p>
-      ) : (
-        <div>
-          {options.map((option) => (
-            <label key={option.id}>
-              <input
-                type="checkbox"
-                checked={selected.has(option.id)}
-                onChange={(event) => {
-                  const next = new Set(selected);
-                  if (event.currentTarget.checked) next.add(option.id);
-                  else next.delete(option.id);
-                  onChange(next);
-                }}
-              />
-              <span>
-                <strong>{option.name}</strong>
-                <small>{option.detail}</small>
-              </span>
-            </label>
-          ))}
-        </div>
-      )}
-    </fieldset>
   );
 }
 

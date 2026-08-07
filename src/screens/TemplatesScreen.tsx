@@ -1,24 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ShowToast } from "../components/Toast";
+import { TemplatesController } from "../controllers/templatesController";
 import { collectAssetIds, EMPTY_RICH_DOCUMENT, cloneDocument } from "../editor/richText";
 import {
-  beginAssetDraft,
-  cancelAssetDraft,
-  createCardTemplate,
-  deleteCardTemplate,
-  getCardTemplate,
-  getErrorMessage,
-  listCardTemplateSummaries,
-  syncAssetDraft,
-  updateCardTemplate,
   type Asset,
+} from "../ipc/assets";
+import {
+  getErrorMessage,
+  type RichDocument,
+} from "../ipc/common";
+import {
   type CardTemplate,
   type CardTemplateFieldInput,
   type CardTemplateRuleInput,
   type CardTemplateSummary,
-  type RichDocument,
-} from "../ipc";
+} from "../ipc/templates";
 import { TemplateLayoutEditor } from "./templates/TemplateLayoutEditor";
 
 interface TemplatesScreenProps {
@@ -61,6 +58,9 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
   const [assetDraftId, setAssetDraftId] = useState<string | null>(null);
   const assetDraftRef = useRef<string | null>(null);
   const savingRef = useRef(false);
+  const controllerRef = useRef<TemplatesController | null>(null);
+  if (controllerRef.current === null) controllerRef.current = new TemplatesController();
+  const controller = controllerRef.current;
   const dirty = useMemo(
     () => draft !== null && JSON.stringify(draft) !== JSON.stringify(baseline),
     [baseline, draft],
@@ -77,7 +77,8 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
 
   useEffect(() => {
     void loadTemplates();
-  }, []);
+    return () => controller.invalidate();
+  }, [controller]);
 
   useEffect(() => {
     onDirtyChange(dirty);
@@ -90,7 +91,7 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
       const draftId = assetDraftRef.current;
       assetDraftRef.current = null;
       if (draftId) {
-        void cancelAssetDraft(draftId).catch((error: unknown) => {
+        void controller.cancelDraft(draftId).catch((error: unknown) => {
           console.error("Unable to cancel template image draft:", getErrorMessage(error));
         });
       }
@@ -101,7 +102,7 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
     if (!assetDraftId) return;
     const retained = usedAssetKey === "" ? [] : usedAssetKey.split(",");
     const timer = window.setTimeout(() => {
-      void syncAssetDraft(assetDraftId, retained).catch((error: unknown) => {
+      void controller.syncDraft(assetDraftId, retained).catch((error: unknown) => {
         if (assetDraftRef.current === assetDraftId) {
           setErrorMessage(`The image draft could not be synchronized: ${getErrorMessage(error)}`);
         }
@@ -114,7 +115,8 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      setTemplates(await listCardTemplateSummaries());
+      const loaded = await controller.list();
+      if (loaded) setTemplates(loaded);
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -130,9 +132,9 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
     setIsOpeningAssetDraft(true);
     setErrorMessage(null);
     try {
-      const assetDraft = await beginAssetDraft("template", next.id);
+      const assetDraft = await controller.beginDraft(next.id);
       if (openRequestSequence.current !== requestId) {
-        await cancelAssetDraft(assetDraft.id).catch((error: unknown) => {
+        await controller.cancelDraft(assetDraft.id).catch((error: unknown) => {
           console.error("Unable to cancel stale template image draft:", getErrorMessage(error));
         });
         return;
@@ -160,7 +162,8 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
     setIsOpening(true);
     setErrorMessage(null);
     try {
-      const template = await getCardTemplate(summary.id);
+      const template = await controller.template(summary.id);
+      if (!template) return;
       if (openRequestSequence.current !== requestId) return;
       await openDraft(draftFromTemplate(template));
     } catch (error: unknown) {
@@ -180,7 +183,7 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
     setAssetDraftId(null);
     if (draftId) {
       try {
-        await cancelAssetDraft(draftId);
+        await controller.cancelDraft(draftId);
       } catch (error: unknown) {
         assetDraftRef.current = draftId;
         setAssetDraftId(draftId);
@@ -221,13 +224,13 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
         assetDraftId,
       };
       if (draft.id) {
-        await updateCardTemplate({
+        await controller.update({
           ...input,
           templateId: draft.id,
           revision: draft.revision ?? 1,
         });
       } else {
-        await createCardTemplate(input);
+        await controller.create(input);
       }
       openRequestSequence.current += 1;
       assetDraftRef.current = null;
@@ -255,13 +258,13 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
     }
     setErrorMessage(null);
     try {
-      await deleteCardTemplate(template.id);
+      await controller.delete(template.id);
       setTemplates((current) => current.filter((item) => item.id !== template.id));
       if (draft?.id === template.id) {
         const imageDraft = assetDraftRef.current;
         assetDraftRef.current = null;
         setAssetDraftId(null);
-        if (imageDraft) await cancelAssetDraft(imageDraft);
+        if (imageDraft) await controller.cancelDraft(imageDraft);
         setDraft(null);
         setBaseline(null);
       }

@@ -1,4 +1,9 @@
-import type { DeckSummary, PracticeWorkloadOverview } from "../../ipc";
+import {
+  type DeckSummary,
+} from "../../ipc/decks";
+import {
+  type PracticeWorkloadOverview,
+} from "../../ipc/practice";
 import { formatConfidence, type RecentDeckSummary } from "./confidence";
 
 interface PracticeSetupProps {

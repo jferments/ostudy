@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { RecentReview } from "../../analytics-ipc";
+import type { RecentReview } from "../../ipc/analytics";
 import {
   confidenceAverage,
   formatConfidence,

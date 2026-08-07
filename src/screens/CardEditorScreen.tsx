@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { CardEditorController } from "../controllers/cardEditorController";
+
 import { TagInput } from "../components/TagInput";
 import { RichTextEditor } from "../editor/RichTextEditor";
 import { RichTextView } from "../editor/RichTextView";
@@ -10,36 +12,31 @@ import {
   isDocumentEmpty,
 } from "../editor/richText";
 import {
-  beginAssetDraft,
-  cancelAssetDraft,
-  createGeneratedCard,
-  findDuplicateCards,
-  generateCardsFromTemplate,
-  getCardTemplate,
-  getCardTypeInfo,
+  type Asset,
+} from "../ipc/assets";
+import {
+  getCardNote,
+  type BuiltInCardType,
+  type ClozeMode,
+  type DuplicateCard,
+  type CardNote,
+  type TagSummary,
+} from "../ipc/cards";
+import {
   getErrorCode,
   getErrorMessage,
-  getOrganizedCard,
-  listCardTemplateSummaries,
-  listDecks,
-  listTags,
-  previewTemplateCards,
-  syncAssetDraft,
-  updateGeneratedCard,
-  type Asset,
-  type BuiltInCardType,
+  type RichDocument,
+} from "../ipc/common";
+import {
+  type DeckSummary,
+} from "../ipc/decks";
+import {
   type CardTemplate,
   type CardTemplateSummary,
-  type ClozeMode,
-  type DeckSummary,
-  type DuplicateCard,
   type GenerateTemplateCardsResult,
-  type OrganizedCard,
-  type RichDocument,
-  type TagSummary,
   type TemplateCardPreview,
   type TemplateValueInput,
-} from "../ipc";
+} from "../ipc/templates";
 import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
 import { distinctClozeGroups } from "./card-editor/cloze";
@@ -48,9 +45,9 @@ import { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
 interface CardEditorScreenProps {
   deck: DeckSummary;
   decks?: DeckSummary[];
-  card: OrganizedCard | null;
+  card: CardNote | null;
   onCancel: () => void;
-  onSaved: (card: OrganizedCard, continueAdding: boolean) => void | Promise<void>;
+  onSaved: (card: CardNote, continueAdding: boolean) => void | Promise<void>;
   onTemplateGenerated: (
     result: GenerateTemplateCardsResult,
     continueAdding: boolean,
@@ -84,26 +81,30 @@ export function CardEditorScreen({
     availableDecks.find((candidate) => candidate.id === selectedDeckId) ?? deck;
 
   const [templateSummaries, setTemplateSummaries] = useState<CardTemplateSummary[]>([]);
-  const [selectedTemplateKey, setSelectedTemplateKey] = useState("basic");
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState<string>(card?.cardType ?? "basic");
   const [selectedCustomTemplate, setSelectedCustomTemplate] = useState<CardTemplate | null>(null);
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
-  const templateRequestSequence = useRef(0);
   const builtInCardType: BuiltInCardType =
     selectedTemplateKey === "cloze" ? "cloze" : "basic";
-  const [isLoadingType, setIsLoadingType] = useState(existing);
-  const [reverseEnabled, setReverseEnabled] = useState(false);
-  const [clozeSource, setClozeSource] = useState("");
-  const [clozeMode, setClozeMode] = useState<ClozeMode>("one_at_a_time");
+  const [reverseEnabled, setReverseEnabled] = useState(
+    card?.cardType === "basic" ? card.reverseEnabled : false,
+  );
+  const [clozeSource, setClozeSource] = useState(
+    card?.cardType === "cloze" ? card.clozeSource : "",
+  );
+  const [clozeMode, setClozeMode] = useState<ClozeMode>(
+    card?.cardType === "cloze" ? card.clozeMode : "one_at_a_time",
+  );
 
   const [frontDoc, setFrontDoc] = useState<RichDocument>(() =>
-    card ? cloneDocument(card.frontDoc) : cloneDocument(EMPTY_RICH_DOCUMENT),
+    card?.cardType === "basic" ? cloneDocument(card.frontDoc) : cloneDocument(EMPTY_RICH_DOCUMENT),
   );
   const [backDoc, setBackDoc] = useState<RichDocument>(() =>
-    card ? cloneDocument(card.backDoc) : cloneDocument(EMPTY_RICH_DOCUMENT),
+    card?.cardType === "basic" ? cloneDocument(card.backDoc) : cloneDocument(EMPTY_RICH_DOCUMENT),
   );
-  const [frontText, setFrontText] = useState(card?.frontText ?? "");
-  const [backText, setBackText] = useState(card?.backText ?? "");
-  const [assets, setAssets] = useState<Asset[]>(card?.assets ?? []);
+  const [frontText, setFrontText] = useState(card?.cardType === "basic" ? card.frontText : "");
+  const [backText, setBackText] = useState(card?.cardType === "basic" ? card.backText : "");
+  const [assets, setAssets] = useState<Asset[]>(card?.cardType === "basic" ? card.assets : []);
   const [assetDraftId, setAssetDraftId] = useState<string | null>(null);
   const assetDraftRef = useRef<string | null>(null);
   const [tags, setTags] = useState<string[]>(card?.tags ?? []);
@@ -121,6 +122,9 @@ export function CardEditorScreen({
   const [previewAnswer, setPreviewAnswer] = useState(false);
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const controllerRef = useRef<CardEditorController | null>(null);
+  if (controllerRef.current === null) controllerRef.current = new CardEditorController();
+  const controller = controllerRef.current;
 
   const title = existing ? "Edit flashcard" : "Add flashcard";
   const hasFront = !isDocumentEmpty(frontText, frontDoc);
@@ -139,7 +143,6 @@ export function CardEditorScreen({
     contentReady &&
     selectedDeckId !== "" &&
     !isSaving &&
-    !isLoadingType &&
     !isLoadingTemplate;
   const assetIds = useMemo(() => new Set(assets.map((asset) => asset.id)), [assets]);
   const usedAssetIds = useMemo(() => {
@@ -153,6 +156,8 @@ export function CardEditorScreen({
   }, [backDoc, frontDoc, templateValues]);
   const usedAssetKey = usedAssetIds.join(",");
 
+  useEffect(() => () => controller.invalidate(), [controller]);
+
   useEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
@@ -161,10 +166,10 @@ export function CardEditorScreen({
   useEffect(() => {
     let current = true;
     setAssetDraftId(null);
-    void beginAssetDraft("card", card?.noteId)
+    void controller.beginDraft(card?.noteId)
       .then((draft) => {
         if (!current) {
-          void cancelAssetDraft(draft.id).catch(() => undefined);
+          void controller.cancelDraft(draft.id).catch(() => undefined);
           return;
         }
         assetDraftRef.current = draft.id;
@@ -180,7 +185,7 @@ export function CardEditorScreen({
       const draftId = assetDraftRef.current;
       assetDraftRef.current = null;
       if (draftId) {
-        void cancelAssetDraft(draftId).catch((error: unknown) => {
+        void controller.cancelDraft(draftId).catch((error: unknown) => {
           console.error("Unable to cancel the image draft:", getErrorMessage(error));
         });
       }
@@ -191,7 +196,7 @@ export function CardEditorScreen({
     if (!assetDraftId) return;
     const retained = usedAssetKey === "" ? [] : usedAssetKey.split(",");
     const timer = window.setTimeout(() => {
-      void syncAssetDraft(assetDraftId, retained).catch((error: unknown) => {
+      void controller.syncDraft(assetDraftId, retained).catch((error: unknown) => {
         if (assetDraftRef.current === assetDraftId) {
           setErrorMessage(`The image draft could not be synchronized: ${getErrorMessage(error)}`);
         }
@@ -206,9 +211,9 @@ export function CardEditorScreen({
       return;
     }
     let current = true;
-    void listDecks()
+    void controller.decks()
       .then((decks) => {
-        if (current) setLoadedDecks(decks);
+        if (current && decks) setLoadedDecks(decks);
       })
       .catch((error: unknown) => {
         if (current) {
@@ -218,13 +223,13 @@ export function CardEditorScreen({
     return () => {
       current = false;
     };
-  }, [providedDecks]);
+  }, [controller, providedDecks]);
 
   useEffect(() => {
     let current = true;
-    void listCardTemplateSummaries()
+    void controller.templateSummaries()
       .then((loaded) => {
-        if (current) setTemplateSummaries(loaded);
+        if (current && loaded) setTemplateSummaries(loaded);
       })
       .catch((error: unknown) => {
         if (current) {
@@ -234,66 +239,39 @@ export function CardEditorScreen({
     return () => {
       current = false;
     };
-  }, []);
+  }, [controller]);
 
   useEffect(() => {
     if (selectedTemplateKey === "basic" || selectedTemplateKey === "cloze") {
-      templateRequestSequence.current += 1;
+      controller.invalidateTemplate();
       setSelectedCustomTemplate(null);
       setIsLoadingTemplate(false);
       return;
     }
-    const requestId = templateRequestSequence.current + 1;
-    templateRequestSequence.current = requestId;
     setSelectedCustomTemplate(null);
     setTemplateValues([]);
     setTemplatePreviews([]);
     setIsLoadingTemplate(true);
-    void getCardTemplate(selectedTemplateKey)
+    void controller
+      .template(selectedTemplateKey)
       .then((template) => {
-        if (templateRequestSequence.current === requestId) setSelectedCustomTemplate(template);
+        if (template) setSelectedCustomTemplate(template);
+        setIsLoadingTemplate(false);
       })
       .catch((error: unknown) => {
-        if (templateRequestSequence.current === requestId) setErrorMessage(getErrorMessage(error));
-      })
-      .finally(() => {
-        if (templateRequestSequence.current === requestId) setIsLoadingTemplate(false);
+        setErrorMessage(getErrorMessage(error));
+        setIsLoadingTemplate(false);
       });
-  }, [selectedTemplateKey]);
+  }, [controller, selectedTemplateKey]);
 
   useEffect(() => {
-    void listTags()
-      .then(setTagSuggestions)
+    void controller.tags()
+      .then((loaded) => { if (loaded) setTagSuggestions(loaded); })
       .catch((error: unknown) => {
         console.error("Unable to load tag suggestions:", getErrorMessage(error));
       });
   }, []);
 
-  useEffect(() => {
-    if (!existing || !card) {
-      setIsLoadingType(false);
-      return;
-    }
-    let current = true;
-    setIsLoadingType(true);
-    void getCardTypeInfo(card.noteId)
-      .then((info) => {
-        if (!current) return;
-        setSelectedTemplateKey(info.cardType);
-        setReverseEnabled(info.reverseEnabled);
-        setClozeSource(info.clozeSource);
-        setClozeMode(info.clozeMode);
-      })
-      .catch((error: unknown) => {
-        if (current) setErrorMessage(getErrorMessage(error));
-      })
-      .finally(() => {
-        if (current) setIsLoadingType(false);
-      });
-    return () => {
-      current = false;
-    };
-  }, [card, existing]);
 
   useEffect(() => {
     if (!selectedCustomTemplate) {
@@ -349,7 +327,7 @@ export function CardEditorScreen({
   }
 
   async function openFreshAssetDraft(): Promise<void> {
-    const draft = await beginAssetDraft("card");
+    const draft = await controller.beginDraft();
     assetDraftRef.current = draft.id;
     setAssetDraftId(draft.id);
   }
@@ -359,13 +337,12 @@ export function CardEditorScreen({
     setIsPreviewingTemplate(true);
     setErrorMessage(null);
     try {
-      setTemplatePreviews(
-        await previewTemplateCards({
-          templateId: selectedCustomTemplate.id,
-          templateRevision: selectedCustomTemplate.revision,
-          values: templateValues,
-        }),
-      );
+      const preview = await controller.preview({
+        templateId: selectedCustomTemplate.id,
+        templateRevision: selectedCustomTemplate.revision,
+        values: templateValues,
+      });
+      if (preview) setTemplatePreviews(preview);
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -392,7 +369,7 @@ export function CardEditorScreen({
 
     try {
       if (selectedCustomTemplate) {
-        const result = await generateCardsFromTemplate({
+        const result = await controller.generate({
           deckId: selectedDeckId,
           templateId: selectedCustomTemplate.id,
           templateRevision: selectedCustomTemplate.revision,
@@ -414,7 +391,7 @@ export function CardEditorScreen({
         frontText.trim() !== "" &&
         backText.trim() !== ""
       ) {
-        const duplicates = await findDuplicateCards({
+        const duplicates = await controller.duplicates({
           deckId: selectedDeckId,
           frontText,
           backText,
@@ -426,7 +403,7 @@ export function CardEditorScreen({
         }
       }
 
-      let saved: OrganizedCard;
+      let saved: CardNote;
       if (builtInCardType === "cloze") {
         const input = {
           deckId: selectedDeckId,
@@ -439,12 +416,12 @@ export function CardEditorScreen({
         };
         saved =
           existing && card
-            ? await updateGeneratedCard({
+            ? await controller.update({
                 ...input,
                 noteId: card.noteId,
                 revision: card.revision,
               })
-            : await createGeneratedCard(input);
+            : await controller.create(input);
       } else {
         const input = {
           deckId: selectedDeckId,
@@ -458,12 +435,12 @@ export function CardEditorScreen({
         };
         saved =
           existing && card
-            ? await updateGeneratedCard({
+            ? await controller.update({
                 ...input,
                 noteId: card.noteId,
                 revision: card.revision,
               })
-            : await createGeneratedCard(input);
+            : await controller.create(input);
       }
 
       markAssetDraftCommitted();
@@ -542,7 +519,7 @@ export function CardEditorScreen({
     setAssetDraftId(null);
     if (draftId) {
       try {
-        await cancelAssetDraft(draftId);
+        await controller.cancelDraft(draftId);
       } catch (error: unknown) {
         assetDraftRef.current = draftId;
         setAssetDraftId(draftId);
@@ -564,7 +541,7 @@ export function CardEditorScreen({
   return (
     <div
       className="card-editor-screen"
-      aria-busy={isSaving || isLoadingType || isLoadingTemplate}
+      aria-busy={isSaving || isLoadingTemplate}
     >
       <header className="screen-header card-editor-header">
         <div>
@@ -680,7 +657,7 @@ export function CardEditorScreen({
             <select
               aria-label="Card template"
               value={selectedTemplateKey}
-              disabled={isSaving || existing || isLoadingType}
+              disabled={isSaving || existing}
               onChange={(event) => {
                 setSelectedTemplateKey(event.currentTarget.value);
                 setPreviewOpen(false);
@@ -862,7 +839,7 @@ export function CardEditorScreen({
           onClose={() => setMoveCopyOpen(false)}
           onComplete={async () => {
             setMoveCopyOpen(false);
-            const refreshed = await getOrganizedCard(card.noteId);
+            const refreshed = await getCardNote(card.noteId);
             await onSaved(refreshed, false);
           }}
         />

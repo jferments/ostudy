@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as ipc from "../ipc";
+import * as backupIpc from "../ipc/backup";
+import * as settingsIpc from "../ipc/settings";
 import { SettingsScreen } from "./SettingsScreen";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -10,16 +11,20 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   save: vi.fn(),
 }));
 
-vi.mock("../ipc", () => ({
+vi.mock("../ipc/backup", () => ({
   exportLibraryBackup: vi.fn(),
-  getAppInfo: vi.fn(),
+  prepareLibraryRestore: vi.fn(),
+}));
+vi.mock("../ipc/common", () => ({
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
-  prepareLibraryRestore: vi.fn(),
+}));
+vi.mock("../ipc/settings", () => ({
+  getAppInfo: vi.fn(),
   saveSettings: vi.fn(),
 }));
 
-const settings: ipc.AppSettings = {
+const settings: settingsIpc.AppSettings = {
   theme: "dark",
   uiFont: "system",
   cardFont: "system",
@@ -54,22 +59,22 @@ describe("SettingsScreen", () => {
     vi.clearAllMocks();
     vi.mocked(openDialog).mockResolvedValue(null);
     vi.mocked(saveDialog).mockResolvedValue(null);
-    vi.mocked(ipc.getAppInfo).mockResolvedValue({
+    vi.mocked(settingsIpc.getAppInfo).mockResolvedValue({
       appVersion: "0.1.0",
       dataDirectory: "/tmp/ostudy/data",
       databasePath: "/tmp/ostudy/data/library.sqlite3",
       imageDirectory: "/tmp/ostudy/data/assets/images",
       databaseSchemaVersion: 14,
     });
-    vi.mocked(ipc.saveSettings).mockImplementation(async (input) => input);
-    vi.mocked(ipc.exportLibraryBackup).mockResolvedValue({
+    vi.mocked(settingsIpc.saveSettings).mockImplementation(async (input) => input);
+    vi.mocked(backupIpc.exportLibraryBackup).mockResolvedValue({
       destinationPath: "/tmp/library.ostudybackup",
       deckCount: 3,
       templateCount: 2,
       reviewCount: 41,
       assetCount: 4,
     });
-    vi.mocked(ipc.prepareLibraryRestore).mockResolvedValue({
+    vi.mocked(backupIpc.prepareLibraryRestore).mockResolvedValue({
       deckCount: 3,
       templateCount: 2,
       reviewCount: 41,
@@ -96,7 +101,7 @@ describe("SettingsScreen", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
     await waitFor(() => {
-      expect(ipc.saveSettings).toHaveBeenCalledWith(
+      expect(settingsIpc.saveSettings).toHaveBeenCalledWith(
         expect.objectContaining({ dailyNewLimit: 12, dailyReviewLimit: 80 }),
       );
       expect(onSavedSettings).toHaveBeenCalledWith(
@@ -114,7 +119,7 @@ describe("SettingsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back up library" }));
 
     await waitFor(() => {
-      expect(ipc.exportLibraryBackup).toHaveBeenCalledWith(
+      expect(backupIpc.exportLibraryBackup).toHaveBeenCalledWith(
         "/tmp/library.ostudybackup",
       );
       expect(showToast).toHaveBeenCalledWith(
@@ -133,7 +138,7 @@ describe("SettingsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Restore backup" }));
 
     await waitFor(() => {
-      expect(ipc.prepareLibraryRestore).toHaveBeenCalledWith(
+      expect(backupIpc.prepareLibraryRestore).toHaveBeenCalledWith(
         "/tmp/library.ostudybackup",
       );
       expect(showToast).toHaveBeenCalledWith(

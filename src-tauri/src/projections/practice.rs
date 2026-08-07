@@ -9,7 +9,7 @@ use crate::{
         projected_presentation_variant, render_projected_presentation, ProjectedPresentationInput,
         RenderedCardPresentation,
     },
-    cards::CardDto,
+    cards::CardPresentationDto,
     error::CommandError,
     paths::AppPaths,
     practice::{PracticeCardDto, PracticeCardWindowDto},
@@ -63,7 +63,7 @@ impl PreparedPracticeCard {
         assets: Vec<crate::assets::AssetDto>,
     ) -> Result<PracticeCardDto, CommandError> {
         Ok(PracticeCardDto {
-            card: CardDto {
+            presentation: CardPresentationDto {
                 id: self.card_id.clone(),
                 note_id: self.note_id.clone(),
                 deck_id: self.deck_id.clone(),
@@ -474,7 +474,7 @@ pub fn load_practice_window(
     {
         last_position = position;
         cards.push(PracticeCardDto {
-            card: CardDto {
+            presentation: CardPresentationDto {
                 id: card_id,
                 note_id: note_id.clone(),
                 deck_id,

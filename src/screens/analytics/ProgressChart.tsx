@@ -16,7 +16,7 @@ import {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 
-import type { AnalyticsRange, TimelineBucket } from "../../analytics-ipc";
+import type { AnalyticsRange, TimelineBucket } from "../../ipc/analytics";
 
 ChartJS.register(
   CategoryScale,

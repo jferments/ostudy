@@ -1,233 +1,34 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect } from "react";
 
-import type { AnalyticsRange } from "./analytics-ipc";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
-import { Toast, type ShowToast, type ToastMessage } from "./components/Toast";
+import { NavigationSidebar } from "./components/NavigationSidebar";
+import { Toast } from "./components/Toast";
+import { useAppController } from "./controllers/useAppController";
+import type { AppSettings } from "./ipc/settings";
 import { AnalyticsScreen } from "./screens/AnalyticsScreen";
 import { CardsScreen } from "./screens/CardsScreen";
 import { DecksScreen } from "./screens/DecksScreen";
 import { PracticeScreen } from "./screens/PracticeScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { TemplatesScreen } from "./screens/TemplatesScreen";
-import {
-  getErrorMessage,
-  getSettings,
-  listDecks,
-  type AppSettings,
-  type DeckSummary,
-} from "./ipc";
 
-export type AppSection =
-  | "decks"
-  | "cards"
-  | "templates"
-  | "practice"
-  | "analytics"
-  | "settings";
-
-export interface PracticeLaunchRequest {
-  requestId: number;
-  deckIds: string[];
-  tagIds: string[];
-  cardIds: string[];
-  autoStart: boolean;
-}
-
-export interface AnalyticsLaunchRequest {
-  requestId: number;
-  range: AnalyticsRange;
-  deckIds: string[];
-  tagIds: string[];
-  highlightedSessionId?: string;
-}
-
-const DEFAULT_SETTINGS: AppSettings = {
-  theme: "dark",
-  uiFont: "system",
-  cardFont: "system",
-  uiScale: 100,
-  cardBaseSize: 18,
-  reduceMotion: false,
-  confirmDeletions: true,
-  practiceShuffle: true,
-  desiredRetention: 0.9,
-  dailyNewLimit: 20,
-  dailyReviewLimit: 200,
-};
+export type {
+  AnalyticsLaunchRequest,
+  AppSection,
+  PracticeLaunchRequest,
+} from "./controllers/useAppController";
 
 function App() {
-  const [section, setSection] = useState<AppSection>("decks");
-  const [decks, setDecks] = useState<DeckSummary[]>([]);
-  const [savedSettings, setSavedSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [activeSettings, setActiveSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [isLoading, setIsLoading] = useState(true);
-  const [fatalError, setFatalError] = useState<string | null>(null);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
-  const toastSequence = useRef(1);
-  const [practiceLaunch, setPracticeLaunch] = useState<PracticeLaunchRequest | null>(null);
-  const practiceRequestSequence = useRef(1);
-  const [analyticsLaunch, setAnalyticsLaunch] = useState<AnalyticsLaunchRequest | null>(null);
-  const analyticsRequestSequence = useRef(1);
-  const [hasUnsavedCard, setHasUnsavedCard] = useState(false);
-  const [hasUnsavedTemplate, setHasUnsavedTemplate] = useState(false);
-  const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
-
-  const showToast = useCallback<ShowToast>((kind, text, action) => {
-    const id = toastSequence.current;
-    toastSequence.current += 1;
-    setToast(action ? { id, kind, text, action } : { id, kind, text });
-  }, []);
-
-  const refreshDecks = useCallback(async () => {
-    const loaded = await listDecks();
-    setDecks(loaded);
-    return loaded;
-  }, []);
-
-  const consumePracticeLaunch = useCallback(() => {
-    setPracticeLaunch(null);
-  }, []);
-  const consumeAnalyticsLaunch = useCallback(() => {
-    setAnalyticsLaunch(null);
-  }, []);
-
-  useEffect(() => {
-    let current = true;
-    void Promise.all([getSettings(), listDecks()])
-      .then(([loadedSettings, loadedDecks]) => {
-        if (!current) return;
-        setSavedSettings(loadedSettings);
-        setActiveSettings(loadedSettings);
-        setDecks(loadedDecks);
-        setFatalError(null);
-      })
-      .catch((error: unknown) => {
-        if (current) setFatalError(getErrorMessage(error));
-      })
-      .finally(() => {
-        if (current) setIsLoading(false);
-      });
-    return () => {
-      current = false;
-    };
-  }, []);
+  const controller = useAppController();
 
   // Theme variables affect the entire document, so apply them before the browser
   // paints the commit that reveals navigation. This avoids a one-frame fallback
   // theme after local settings finish loading and keeps bootstrap deterministic.
   useLayoutEffect(() => {
-    applyThemeSettings(activeSettings);
-  }, [activeSettings]);
+    applyThemeSettings(controller.activeSettings);
+  }, [controller.activeSettings]);
 
-  useEffect(() => {
-    if (!hasUnsavedCard && !hasUnsavedTemplate && !hasUnsavedSettings) return;
-    function warnBeforeClose(event: BeforeUnloadEvent): void {
-      event.preventDefault();
-      event.returnValue = "";
-    }
-    window.addEventListener("beforeunload", warnBeforeClose);
-    return () => window.removeEventListener("beforeunload", warnBeforeClose);
-  }, [hasUnsavedCard, hasUnsavedSettings, hasUnsavedTemplate]);
-
-  function confirmDiscardCard(): boolean {
-    if (!hasUnsavedCard) return true;
-    if (!window.confirm("Discard the unsaved changes to this flashcard?")) return false;
-    setHasUnsavedCard(false);
-    return true;
-  }
-
-  function confirmDiscardTemplate(): boolean {
-    if (section !== "templates" || !hasUnsavedTemplate) return true;
-    if (!window.confirm("Discard the unsaved changes to this card template?")) return false;
-    setHasUnsavedTemplate(false);
-    return true;
-  }
-
-  function confirmDiscardSettings(): boolean {
-    if (section !== "settings" || !hasUnsavedSettings) return true;
-    if (!window.confirm("Discard the unsaved settings preview?")) return false;
-    setActiveSettings(savedSettings);
-    setHasUnsavedSettings(false);
-    return true;
-  }
-
-  function canLeaveCurrentSection(): boolean {
-    return confirmDiscardCard() && confirmDiscardTemplate() && confirmDiscardSettings();
-  }
-
-  function navigate(next: AppSection): void {
-    if (next === section && next !== "practice") return;
-    if (!canLeaveCurrentSection()) return;
-    if (next === "practice") {
-      const requestId = practiceRequestSequence.current;
-      practiceRequestSequence.current += 1;
-      setPracticeLaunch({
-        requestId,
-        deckIds: [],
-        tagIds: [],
-        cardIds: [],
-        autoStart: false,
-      });
-    }
-    if (next === "analytics") {
-      const requestId = analyticsRequestSequence.current;
-      analyticsRequestSequence.current += 1;
-      setAnalyticsLaunch({ requestId, range: "7d", deckIds: [], tagIds: [] });
-    }
-    if (next === "decks" || next === "cards") {
-      void refreshDecks().catch((error: unknown) => {
-        showToast("error", getErrorMessage(error));
-      });
-    }
-    setSection(next);
-  }
-
-  function practiceDeck(deckId: string): void {
-    practiceScope([deckId], []);
-  }
-
-  function practiceScope(deckIds: string[], tagIds: string[]): void {
-    if (!canLeaveCurrentSection()) return;
-    const requestId = practiceRequestSequence.current;
-    practiceRequestSequence.current += 1;
-    setPracticeLaunch({
-      requestId,
-      deckIds,
-      tagIds,
-      cardIds: [],
-      autoStart: true,
-    });
-    setSection("practice");
-  }
-
-  function practiceCards(cardIds: string[]): void {
-    if (cardIds.length === 0 || !canLeaveCurrentSection()) return;
-    const requestId = practiceRequestSequence.current;
-    practiceRequestSequence.current += 1;
-    setPracticeLaunch({
-      requestId,
-      deckIds: [],
-      tagIds: [],
-      cardIds,
-      autoStart: true,
-    });
-    setSection("practice");
-  }
-
-  function viewSessionAnalytics(sessionId: string, deckIds: string[]): void {
-    const requestId = analyticsRequestSequence.current;
-    analyticsRequestSequence.current += 1;
-    setAnalyticsLaunch({
-      requestId,
-      range: "7d",
-      deckIds,
-      tagIds: [],
-      highlightedSessionId: sessionId,
-    });
-    setSection("analytics");
-  }
-
-  if (isLoading) {
+  if (controller.isLoading) {
     return (
       <div className="app-loading">
         <div className="loading-mark">O</div>
@@ -237,11 +38,11 @@ function App() {
     );
   }
 
-  if (fatalError) {
+  if (controller.fatalError) {
     return (
       <div className="fatal-screen">
         <h1>ostudy could not open the library</h1>
-        <p>{fatalError}</p>
+        <p>{controller.fatalError}</p>
         <button type="button" className="primary-button" onClick={() => window.location.reload()}>
           Try again
         </button>
@@ -251,133 +52,69 @@ function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand-block">
-          <strong>ostudy</strong>
-        </div>
-        <nav className="sidebar-nav" aria-label="Main navigation">
-          <NavButton
-            active={section === "decks"}
-            icon="▤"
-            label="Decks"
-            onClick={() => navigate("decks")}
-          />
-          <NavButton
-            active={section === "cards"}
-            icon="⌕"
-            label="Search/Filter"
-            onClick={() => navigate("cards")}
-          />
-          <NavButton
-            active={section === "templates"}
-            icon="▧"
-            label="Templates"
-            onClick={() => navigate("templates")}
-          />
-          <NavButton
-            active={section === "practice"}
-            icon="▶"
-            label="Practice"
-            onClick={() => navigate("practice")}
-          />
-          <NavButton
-            active={section === "analytics"}
-            icon="▥"
-            label="Analytics"
-            onClick={() => navigate("analytics")}
-          />
-          <NavButton
-            active={section === "settings"}
-            icon="⚙"
-            label="Settings"
-            onClick={() => navigate("settings")}
-          />
-        </nav>
-      </aside>
+      <NavigationSidebar section={controller.section} onNavigate={controller.navigate} />
 
       <main className="main-area">
         <AppErrorBoundary>
-          {section === "decks" ? (
+          {controller.section === "decks" ? (
             <DecksScreen
-              decks={decks}
-              settings={activeSettings}
-              refreshDecks={refreshDecks}
-              onPracticeDeck={practiceDeck}
-              onDirtyChange={setHasUnsavedCard}
-              showToast={showToast}
+              decks={controller.decks}
+              settings={controller.activeSettings}
+              refreshDecks={controller.refreshDecks}
+              onPracticeDeck={controller.practiceDeck}
+              onDirtyChange={controller.setHasUnsavedCard}
+              showToast={controller.showToast}
             />
           ) : null}
-          {section === "cards" ? (
+          {controller.section === "cards" ? (
             <CardsScreen
-              decks={decks}
-              refreshDecks={refreshDecks}
-              onPracticeCards={practiceCards}
-              onDirtyChange={setHasUnsavedCard}
-              showToast={showToast}
+              decks={controller.decks}
+              refreshDecks={controller.refreshDecks}
+              onPracticeCards={controller.practiceCards}
+              onDirtyChange={controller.setHasUnsavedCard}
+              showToast={controller.showToast}
             />
           ) : null}
-          {section === "templates" ? (
-            <TemplatesScreen onDirtyChange={setHasUnsavedTemplate} showToast={showToast} />
+          {controller.section === "templates" ? (
+            <TemplatesScreen
+              onDirtyChange={controller.setHasUnsavedTemplate}
+              showToast={controller.showToast}
+            />
           ) : null}
-          {section === "practice" ? (
+          {controller.section === "practice" ? (
             <PracticeScreen
-              decks={decks}
-              settings={activeSettings}
-              launchRequest={practiceLaunch}
-              onLaunchConsumed={consumePracticeLaunch}
-              onViewAnalytics={viewSessionAnalytics}
-              showToast={showToast}
+              decks={controller.decks}
+              settings={controller.activeSettings}
+              launchRequest={controller.practiceLaunch}
+              onLaunchConsumed={controller.consumePracticeLaunch}
+              onViewAnalytics={controller.viewSessionAnalytics}
+              showToast={controller.showToast}
             />
           ) : null}
-          {section === "analytics" ? (
+          {controller.section === "analytics" ? (
             <AnalyticsScreen
-              decks={decks}
-              settings={activeSettings}
-              launchRequest={analyticsLaunch}
-              onLaunchConsumed={consumeAnalyticsLaunch}
-              onPracticeScope={practiceScope}
-              showToast={showToast}
+              decks={controller.decks}
+              settings={controller.activeSettings}
+              launchRequest={controller.analyticsLaunch}
+              onLaunchConsumed={controller.consumeAnalyticsLaunch}
+              onPracticeScope={controller.practiceScope}
+              showToast={controller.showToast}
             />
           ) : null}
-          {section === "settings" ? (
+          {controller.section === "settings" ? (
             <SettingsScreen
-              settings={savedSettings}
-              onPreviewSettings={setActiveSettings}
-              onSavedSettings={(settings: AppSettings) => {
-                setSavedSettings(settings);
-                setActiveSettings(settings);
-                setHasUnsavedSettings(false);
-              }}
-              onDirtyChange={setHasUnsavedSettings}
-              showToast={showToast}
+              settings={controller.savedSettings}
+              onPreviewSettings={controller.setActiveSettings}
+              onSavedSettings={controller.saveSettingsLocally}
+              onDirtyChange={controller.setHasUnsavedSettings}
+              showToast={controller.showToast}
             />
           ) : null}
         </AppErrorBoundary>
       </main>
 
-      <Toast toast={toast} onDismiss={() => setToast(null)} />
+      <Toast toast={controller.toast} onDismiss={() => controller.setToast(null)} />
     </div>
-  );
-}
-
-interface NavButtonProps {
-  active: boolean;
-  icon: string;
-  label: string;
-  onClick: () => void;
-}
-
-function NavButton({ active, icon, label, onClick }: NavButtonProps) {
-  return (
-    <button
-      type="button"
-      className={active ? "nav-button active" : "nav-button"}
-      aria-current={active ? "page" : undefined}
-      onClick={onClick}
-    >
-      <span aria-hidden="true">{icon}</span>
-      {label}
-    </button>
   );
 }
 

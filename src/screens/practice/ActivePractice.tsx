@@ -1,13 +1,15 @@
 import { useEffect, useRef } from "react";
 
 import { RichTextView } from "../../editor/RichTextView";
-import type {
-  PracticeCard,
-  PracticeSession,
-  RescheduleIntent,
-  ReviewPreviewSet,
-  ScheduleAction,
-} from "../../ipc";
+import {
+  type PracticeCard,
+  type PracticeSession,
+  type ReviewPreviewSet,
+} from "../../ipc/practice";
+import {
+  type RescheduleIntent,
+  type ScheduleAction,
+} from "../../ipc/scheduling";
 import type { ConfidenceScore } from "./confidence";
 
 interface ActivePracticeProps {
@@ -161,8 +163,8 @@ export function ActivePractice({
       <section className="practice-card-surface">
         <span className="practice-side-label">Question</span>
         <RichTextView
-          document={current.card.frontDoc}
-          assets={current.card.assets}
+          document={current.presentation.frontDoc}
+          assets={current.presentation.assets}
           onLinkError={onLinkError}
         />
         {revealed ? (
@@ -170,8 +172,8 @@ export function ActivePractice({
             <div className="practice-answer-divider" />
             <span className="practice-side-label">Answer</span>
             <RichTextView
-              document={current.card.backDoc}
-              assets={current.card.assets}
+              document={current.presentation.backDoc}
+              assets={current.presentation.assets}
               onLinkError={onLinkError}
             />
           </>

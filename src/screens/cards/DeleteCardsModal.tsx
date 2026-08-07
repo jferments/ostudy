@@ -2,7 +2,14 @@ import { useState } from "react";
 
 import { Modal } from "../../components/Modal";
 import type { ShowToast } from "../../components/Toast";
-import { deleteCards, getErrorMessage, undoDeletion, type SelectionCard } from "../../ipc";
+import {
+  deleteCards,
+  undoDeletion,
+  type SelectionCard,
+} from "../../ipc/cards";
+import {
+  getErrorMessage,
+} from "../../ipc/common";
 
 interface DeleteCardsModalProps {
   cards: SelectionCard[];

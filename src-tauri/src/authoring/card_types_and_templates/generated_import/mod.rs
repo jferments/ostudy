@@ -58,6 +58,9 @@ mod markdown;
 use markdown::markdown_document;
 
 #[cfg(test)]
+mod conformance_tests;
+
+#[cfg(test)]
 mod generated_import_tests {
     use super::*;
 
@@ -89,6 +92,20 @@ mod generated_import_tests {
         let document = markdown_document("2 < 3 and 5 > 4", "front")
             .expect("comparison characters are ordinary text");
         crate::cards::validate_document(&document).expect("document should validate");
+    }
+
+    #[test]
+    fn markdown_allows_unsupported_looking_text_inside_code_contexts() {
+        let inline = markdown_document("`<script>x</script> ![not-image](x) | A | B |`", "front")
+            .expect("inline code should preserve literal syntax-looking text");
+        crate::cards::validate_document(&inline).expect("inline code should validate");
+
+        let fenced = markdown_document(
+            "```html\n<script>x</script>\n![not-image](x)\n| A | B |\n```",
+            "front",
+        )
+        .expect("fenced code should preserve literal syntax-looking text");
+        crate::cards::validate_document(&fenced).expect("fenced code should validate");
     }
 
     #[test]

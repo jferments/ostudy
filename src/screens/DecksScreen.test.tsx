@@ -2,8 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as generatedImport from "../generatedImport";
-import * as ipc from "../ipc";
+import * as generatedImport from "../ipc/generated-import";
+import * as commonIpc from "../ipc/common";
+import * as decksIpc from "../ipc/decks";
+import * as settingsIpc from "../ipc/settings";
 import { DecksScreen } from "./DecksScreen";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -11,30 +13,34 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   save: vi.fn(),
 }));
 
-vi.mock("../generatedImport", () => ({
+vi.mock("../ipc/generated-import", () => ({
   importGeneratedFlashcards: vi.fn(),
 }));
 
 const importOperationId = "9".repeat(32);
 
-vi.mock("../ipc", () => ({
-  createDeck: vi.fn(),
-  createOperationId: vi.fn(() => importOperationId),
+vi.mock("../ipc/cards", () => ({
   deleteCard: vi.fn(),
-  deleteDeck: vi.fn(),
-  exportDeck: vi.fn(),
-  getDeck: vi.fn(),
+  getCardNote: vi.fn(),
+  undoDeletion: vi.fn(),
+}));
+vi.mock("../ipc/common", () => ({
+  createOperationId: vi.fn(() => importOperationId),
   getErrorCode: (error: unknown) =>
     typeof error === "object" && error !== null && "code" in error
       ? String((error as { code: unknown }).code)
       : null,
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
-  getOrganizedCard: vi.fn(),
+}));
+vi.mock("../ipc/decks", () => ({
+  createDeck: vi.fn(),
+  deleteDeck: vi.fn(),
+  exportDeck: vi.fn(),
+  getDeck: vi.fn(),
   importDeck: vi.fn(),
   listDeckCardSummaries: vi.fn(),
   setDeckArchived: vi.fn(),
-  undoDeletion: vi.fn(),
   updateDeck: vi.fn(),
 }));
 
@@ -42,7 +48,7 @@ vi.mock("./CardEditorScreen", () => ({
   CardEditorScreen: () => <div>Card editor</div>,
 }));
 
-const deck: ipc.DeckSummary = {
+const deck: decksIpc.DeckSummary = {
   id: "a".repeat(32),
   name: "Dog facts",
   description: "Dogs are cool animals",
@@ -55,7 +61,7 @@ const deck: ipc.DeckSummary = {
   revision: 1,
 };
 
-const card: ipc.DeckCardSummary = {
+const card: decksIpc.DeckCardSummary = {
   noteId: "c".repeat(32),
   primaryCardId: "b".repeat(32),
   questionExcerpt: "Do dogs have fur?",
@@ -65,7 +71,7 @@ const card: ipc.DeckCardSummary = {
   updatedAt: 1,
 };
 
-const settings: ipc.AppSettings = {
+const settings: settingsIpc.AppSettings = {
   theme: "synthwave",
   uiFont: "system",
   cardFont: "system",
@@ -96,8 +102,8 @@ function renderDecks(showToast = vi.fn()) {
 describe("DecksScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.getDeck).mockResolvedValue(deck);
-    vi.mocked(ipc.listDeckCardSummaries).mockResolvedValue({
+    vi.mocked(decksIpc.getDeck).mockResolvedValue(deck);
+    vi.mocked(decksIpc.listDeckCardSummaries).mockResolvedValue({
       cards: [card],
       totalCount: 1,
       offset: 0,
@@ -153,7 +159,7 @@ describe("DecksScreen", () => {
         "/tmp/nclex.ostudy.json",
       );
     });
-    expect(ipc.importDeck).not.toHaveBeenCalled();
+    expect(decksIpc.importDeck).not.toHaveBeenCalled();
     expect(openDialog).toHaveBeenCalledWith(
       expect.objectContaining({
         filters: [expect.objectContaining({ extensions: ["studydeck", "json"] })],
@@ -170,7 +176,7 @@ describe("DecksScreen", () => {
 
   it("continues to import studydeck packages through the same button", async () => {
     vi.mocked(openDialog).mockResolvedValue("/tmp/dog-facts.studydeck");
-    vi.mocked(ipc.importDeck).mockResolvedValue({
+    vi.mocked(decksIpc.importDeck).mockResolvedValue({
       deck,
       cardCount: 2,
       assetCount: 0,
@@ -180,12 +186,12 @@ describe("DecksScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
 
     await waitFor(() => {
-      expect(ipc.importDeck).toHaveBeenCalledWith(
+      expect(decksIpc.importDeck).toHaveBeenCalledWith(
         "/tmp/dog-facts.studydeck",
         importOperationId,
       );
     });
-    expect(ipc.createOperationId).toHaveBeenCalledOnce();
+    expect(commonIpc.createOperationId).toHaveBeenCalledOnce();
     expect(generatedImport.importGeneratedFlashcards).not.toHaveBeenCalled();
   });
 });

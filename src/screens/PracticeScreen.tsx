@@ -1,32 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { PracticeLaunchRequest } from "../App";
-import { getRecentPracticeReviews } from "../analytics-ipc";
+import { PracticeController } from "../controllers/practiceController";
 import {
-  applyScheduleAction,
-  completePracticeSession,
   createMutationId,
   createOperationId,
   createSubmissionId,
   getErrorCode,
   getErrorMessage,
-  getPracticeCardWindow,
-  getPracticeWorkload,
-  markPracticeCardRevealed,
-  markPracticeCardViewed,
-  startCardPractice,
-  startSelectedPractice,
-  submitPracticeReview,
-  type AppSettings,
+} from "../ipc/common";
+import {
   type DeckSummary,
+} from "../ipc/decks";
+import {
   type PracticeCard,
   type PracticeSession,
   type PracticeWorkloadOverview,
-  type RescheduleIntent,
   type ReviewPreviewSet,
-  type ScheduleAction,
   type SubmitReviewInput,
-} from "../ipc";
+} from "../ipc/practice";
+import {
+  type RescheduleIntent,
+  type ScheduleAction,
+} from "../ipc/scheduling";
+import {
+  type AppSettings,
+} from "../ipc/settings";
 import { ActivePractice } from "./practice/ActivePractice";
 import {
   outcomeForScore,
@@ -96,8 +95,6 @@ export function PracticeScreen({
 
   const startingRef = useRef(false);
   const loadingWindowRef = useRef(false);
-  const workloadRequestSequence = useRef(0);
-  const windowRequestSequence = useRef(0);
   const revealingRef = useRef(false);
   const ratingRef = useRef(false);
   const endingRef = useRef(false);
@@ -106,41 +103,43 @@ export function PracticeScreen({
   const handledLaunchRequestRef = useRef<number | null>(null);
   const pendingStartRef = useRef<PendingStartOperation | null>(null);
   const pendingReviewRef = useRef<PendingReviewOperation | null>(null);
+  const controllerRef = useRef<PracticeController | null>(null);
+  if (controllerRef.current === null) controllerRef.current = new PracticeController();
+  const controller = controllerRef.current;
   const current = sessionCards[position] ?? null;
+
+  useEffect(() => () => controller.invalidate(), [controller]);
 
   const loadRecentPractice = useCallback(async (): Promise<void> => {
     try {
-      setRecentDecks(summarizeRecentDecks(await getRecentPracticeReviews()));
+      const reviews = await controller.recentReviews();
+      if (reviews) setRecentDecks(summarizeRecentDecks(reviews));
     } catch (error: unknown) {
       console.error("Unable to load recent practice results:", getErrorMessage(error));
       setRecentDecks([]);
     }
-  }, []);
+  }, [controller]);
 
   const loadWorkload = useCallback(async (deckIds: string[], tagIds: string[]): Promise<void> => {
-    const requestId = workloadRequestSequence.current + 1;
-    workloadRequestSequence.current = requestId;
     if (deckIds.length === 0 && tagIds.length === 0) {
+      controller.invalidateWorkload();
       setWorkload(null);
       setIsLoadingWorkload(false);
       return;
     }
     setIsLoadingWorkload(true);
     try {
-      const loaded = await getPracticeWorkload(deckIds, tagIds);
-      if (workloadRequestSequence.current !== requestId) return;
+      const loaded = await controller.workload(deckIds, tagIds);
+      if (!loaded) return;
       setWorkload(loaded);
       setErrorMessage(null);
+      setIsLoadingWorkload(false);
     } catch (error: unknown) {
-      if (workloadRequestSequence.current !== requestId) return;
       setWorkload(null);
       setErrorMessage(getErrorMessage(error));
-    } finally {
-      if (workloadRequestSequence.current === requestId) {
-        setIsLoadingWorkload(false);
-      }
+      setIsLoadingWorkload(false);
     }
-  }, []);
+  }, [controller]);
 
   const beginSession = useCallback(
     async (
@@ -158,7 +157,7 @@ export function PracticeScreen({
       setErrorMessage(null);
       try {
         initializeSession(
-          await startSelectedPractice({
+          await controller.startSelected({
             operationId,
             deckIds,
             tagIds,
@@ -189,7 +188,7 @@ export function PracticeScreen({
       setErrorMessage(null);
       try {
         initializeSession(
-          await startCardPractice({ operationId, cardIds, shuffle: requestedShuffle }),
+          await controller.startCards({ operationId, cardIds, shuffle: requestedShuffle }),
         );
       } catch (error: unknown) {
         setSession(null);
@@ -218,7 +217,6 @@ export function PracticeScreen({
   function initializeSession(started: PracticeSession): void {
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
-    windowRequestSequence.current += 1;
     setSession(started);
     setSessionCards(started.firstWindow.cards);
     setPosition(0);
@@ -236,28 +234,24 @@ export function PracticeScreen({
     }
     loadingWindowRef.current = true;
     setIsLoadingWindow(true);
-    const requestId = windowRequestSequence.current + 1;
-    windowRequestSequence.current = requestId;
     try {
-      const window = await getPracticeCardWindow({
+      const window = await controller.window({
         sessionId: session.id,
         startPosition: sessionCards.length,
         limit: PRACTICE_WINDOW_SIZE,
       });
-      if (windowRequestSequence.current !== requestId) return sessionCards.length;
+      if (!window) return sessionCards.length;
       setSessionCards((currentCards) => [...currentCards, ...window.cards]);
       setErrorMessage(null);
       return sessionCards.length + window.cards.length;
     } catch (error: unknown) {
-      if (windowRequestSequence.current === requestId) setErrorMessage(getErrorMessage(error));
+      setErrorMessage(getErrorMessage(error));
       return sessionCards.length;
     } finally {
-      if (windowRequestSequence.current === requestId) {
-        loadingWindowRef.current = false;
-        setIsLoadingWindow(false);
-      }
+      loadingWindowRef.current = false;
+      setIsLoadingWindow(false);
     }
-  }, [session, sessionCards.length]);
+  }, [controller, session, sessionCards.length]);
 
   useEffect(() => {
     void loadRecentPractice();
@@ -277,7 +271,6 @@ export function PracticeScreen({
     handledLaunchRequestRef.current = launchRequest.requestId;
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
-    windowRequestSequence.current += 1;
     setSession(null);
     setSessionCards([]);
     setCompleted(false);
@@ -319,7 +312,7 @@ export function PracticeScreen({
   useEffect(() => {
     if (!session || !current || completed) return;
     questionShownAtRef.current = Date.now();
-    void markPracticeCardViewed(session.id, current.card.id).catch((error: unknown) => {
+    void controller.markViewed(session.id, current.presentation.cardId).catch((error: unknown) => {
       showToast("error", getErrorMessage(error));
     });
   }, [completed, current, session, showToast]);
@@ -334,7 +327,7 @@ export function PracticeScreen({
     setIsRevealing(true);
     setErrorMessage(null);
     try {
-      setPreviewSet(await markPracticeCardRevealed(session.id, current.card.id));
+      setPreviewSet(await controller.reveal(session.id, current.presentation.cardId));
       setRevealed(true);
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -350,7 +343,7 @@ export function PracticeScreen({
     if (
       pending &&
       (pending.sessionId !== session.id ||
-        pending.cardId !== current.card.id ||
+        pending.cardId !== current.presentation.cardId ||
         pending.score !== score)
     ) {
       setErrorMessage(
@@ -361,7 +354,7 @@ export function PracticeScreen({
 
     const input: SubmitReviewInput = pending?.input ?? {
       sessionId: session.id,
-      cardId: current.card.id,
+      cardId: current.presentation.cardId,
       submissionId: createSubmissionId(),
       outcome: outcomeForScore(score),
       responseTimeMs: Math.max(
@@ -373,7 +366,7 @@ export function PracticeScreen({
     if (!pending) {
       pendingReviewRef.current = {
         sessionId: session.id,
-        cardId: current.card.id,
+        cardId: current.presentation.cardId,
         score,
         input,
       };
@@ -383,7 +376,7 @@ export function PracticeScreen({
     setIsRating(true);
     setErrorMessage(null);
     try {
-      const result = await submitPracticeReview(input);
+      const result = await controller.review(input);
       pendingReviewRef.current = null;
       setRatedCount(result.ratedCount);
       setConfidenceCounts((counts) => {
@@ -433,9 +426,9 @@ export function PracticeScreen({
     setIsManaging(true);
     setErrorMessage(null);
     try {
-      await applyScheduleAction({
+      await controller.schedule({
         mutationId: createMutationId(),
-        cardIds: [current.card.id],
+        cardIds: [current.presentation.cardId],
         action,
         rescheduleIntent,
         sessionId: session.id,
@@ -490,7 +483,7 @@ export function PracticeScreen({
     setIsEnding(true);
     setErrorMessage(null);
     try {
-      await completePracticeSession(session.id);
+      await controller.complete(session.id);
       resetToSetup();
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -503,7 +496,6 @@ export function PracticeScreen({
   function resetToSetup(): void {
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
-    windowRequestSequence.current += 1;
     setSession(null);
     setSessionCards([]);
     setPosition(0);
@@ -520,7 +512,7 @@ export function PracticeScreen({
   }
 
   if (session && completed) {
-    const sessionDeckIds = [...new Set(sessionCards.map((card) => card.card.deckId))];
+    const sessionDeckIds = [...new Set(sessionCards.map((card) => card.presentation.deckId))];
     return (
       <PracticeComplete
         ratedCount={ratedCount}

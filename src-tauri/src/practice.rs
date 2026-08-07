@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    cards::CardDto,
+    cards::CardPresentationDto,
     database::Database,
     error::CommandError,
     projections::practice as practice_projection,
@@ -24,7 +24,7 @@ type PracticeSessionState = (Option<i64>, Option<i64>, Option<i64>, Option<i64>)
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PracticeCardDto {
-    pub card: CardDto,
+    pub presentation: CardPresentationDto,
     pub deck_name: String,
     pub due_at: i64,
     pub schedule_state: i64,

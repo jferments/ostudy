@@ -1,16 +1,20 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as ipc from "../ipc";
+import * as settingsIpc from "../ipc/settings";
 import { makeSettings } from "../test/factories";
 import { SettingsScreen } from "./SettingsScreen";
 
-vi.mock("../ipc", () => ({
+vi.mock("../ipc/backup", () => ({
   exportLibraryBackup: vi.fn(),
-  getAppInfo: vi.fn(),
+  prepareLibraryRestore: vi.fn(),
+}));
+vi.mock("../ipc/common", () => ({
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
-  prepareLibraryRestore: vi.fn(),
+}));
+vi.mock("../ipc/settings", () => ({
+  getAppInfo: vi.fn(),
   saveSettings: vi.fn(),
 }));
 
@@ -33,14 +37,14 @@ function renderSettings(
 describe("SettingsScreen extended behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.getAppInfo).mockResolvedValue({
+    vi.mocked(settingsIpc.getAppInfo).mockResolvedValue({
       appVersion: "0.1.0",
       dataDirectory: "/tmp/ostudy/data",
       databasePath: "/tmp/ostudy/data/library.sqlite3",
       imageDirectory: "/tmp/ostudy/data/assets/images",
       databaseSchemaVersion: 14,
     });
-    vi.mocked(ipc.saveSettings).mockImplementation(async (settings) => settings);
+    vi.mocked(settingsIpc.saveSettings).mockImplementation(async (settings) => settings);
   });
 
   it("restores every product default as an unsaved preview", async () => {
@@ -106,7 +110,7 @@ describe("SettingsScreen extended behavior", () => {
   });
 
   it("keeps an unsaved draft visible when native persistence fails", async () => {
-    vi.mocked(ipc.saveSettings).mockRejectedValue(new Error("Settings database is busy."));
+    vi.mocked(settingsIpc.saveSettings).mockRejectedValue(new Error("Settings database is busy."));
     const props = renderSettings();
     await screen.findByText("/tmp/ostudy/data");
 
@@ -126,7 +130,7 @@ describe("SettingsScreen extended behavior", () => {
   });
 
   it("reports an app-info failure without preventing settings editing", async () => {
-    vi.mocked(ipc.getAppInfo).mockRejectedValue(new Error("Storage paths unavailable."));
+    vi.mocked(settingsIpc.getAppInfo).mockRejectedValue(new Error("Storage paths unavailable."));
     const props = renderSettings();
 
     expect(await screen.findByText("Storage paths unavailable.")).toBeTruthy();

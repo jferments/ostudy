@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { ReviewOutcome } from "./ipc";
+import type { ReviewOutcome } from "./practice";
 
 export type AnalyticsRange = "7d" | "30d" | "90d" | "1y" | "all";
 export type TagAnalyticsStatus =

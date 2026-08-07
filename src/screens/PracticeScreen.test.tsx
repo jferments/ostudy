@@ -1,18 +1,21 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as analyticsIpc from "../analytics-ipc";
-import * as ipc from "../ipc";
+import * as analyticsIpc from "../ipc/analytics";
+import * as cardsIpc from "../ipc/cards";
+import * as commonIpc from "../ipc/common";
+import * as decksIpc from "../ipc/decks";
+import * as practiceIpc from "../ipc/practice";
+import * as schedulingIpc from "../ipc/scheduling";
+import * as settingsIpc from "../ipc/settings";
 import { deferred } from "../test/factories";
 import { PracticeScreen } from "./PracticeScreen";
 
 vi.mock("../editor/RichTextView", () => ({
   RichTextView: () => <div>Card content</div>,
 }));
-vi.mock("../analytics-ipc", () => ({ getRecentPracticeReviews: vi.fn() }));
-vi.mock("../ipc", () => ({
-  applyScheduleAction: vi.fn(),
-  completePracticeSession: vi.fn(),
+vi.mock("../ipc/analytics", () => ({ getRecentPracticeReviews: vi.fn() }));
+vi.mock("../ipc/common", () => ({
   createMutationId: vi.fn(() => "e".repeat(32)),
   createOperationId: vi.fn(() => "0".repeat(32)),
   createSubmissionId: vi.fn(() => "f".repeat(32)),
@@ -29,6 +32,9 @@ vi.mock("../ipc", () => ({
     }
     return "Unexpected error";
   },
+}));
+vi.mock("../ipc/practice", () => ({
+  completePracticeSession: vi.fn(),
   getPracticeCardWindow: vi.fn(),
   getPracticeWorkload: vi.fn(),
   markPracticeCardRevealed: vi.fn(),
@@ -37,8 +43,11 @@ vi.mock("../ipc", () => ({
   startSelectedPractice: vi.fn(),
   submitPracticeReview: vi.fn(),
 }));
+vi.mock("../ipc/scheduling", () => ({
+  applyScheduleAction: vi.fn(),
+}));
 
-const deck: ipc.DeckSummary = {
+const deck: decksIpc.DeckSummary = {
   id: "a".repeat(32),
   name: "Dog facts",
   description: "",
@@ -50,18 +59,18 @@ const deck: ipc.DeckSummary = {
   updatedAt: 1,
   revision: 1,
 };
-const secondDeck: ipc.DeckSummary = {
+const secondDeck: decksIpc.DeckSummary = {
   ...deck,
   id: "8".repeat(32),
   name: "Cat facts",
 };
-const noDueDeck: ipc.DeckSummary = {
+const noDueDeck: decksIpc.DeckSummary = {
   ...deck,
   id: "9".repeat(32),
   name: "Reviewed dog facts",
   studyableDueCount: 0,
 };
-const settings: ipc.AppSettings = {
+const settings: settingsIpc.AppSettings = {
   theme: "synthwave",
   uiFont: "system",
   cardFont: "system",
@@ -74,8 +83,8 @@ const settings: ipc.AppSettings = {
   dailyNewLimit: 20,
   dailyReviewLimit: 200,
 };
-const card: ipc.Flashcard = {
-  id: "b".repeat(32),
+const card: cardsIpc.CardPresentation = {
+  cardId: "b".repeat(32),
   noteId: "c".repeat(32),
   deckId: deck.id,
   direction: "forward",
@@ -86,16 +95,16 @@ const card: ipc.Flashcard = {
   assets: [],
   createdAt: 1,
   updatedAt: 1,
-  revision: 1,
+  noteRevision: 1,
 };
-const practiceCard: ipc.PracticeCard = {
-  card,
+const practiceCard: practiceIpc.PracticeCard = {
+  presentation: card,
   deckName: deck.name,
   dueAt: Date.now(),
   scheduleState: 2,
   needsMorePractice: true,
 };
-const session: ipc.PracticeSession = {
+const session: practiceIpc.PracticeSession = {
   id: "d".repeat(32),
   cardCount: 1,
   firstWindow: {
@@ -107,7 +116,7 @@ const session: ipc.PracticeSession = {
   mode: "scheduled",
   startedAt: Date.now(),
 };
-const workload: ipc.PracticeWorkloadOverview = {
+const workload: practiceIpc.PracticeWorkloadOverview = {
   newLimit: 20,
   reviewLimit: 200,
   newCompleted: 0,
@@ -123,13 +132,13 @@ const workload: ipc.PracticeWorkloadOverview = {
   needsMorePractice: 1,
   extraAvailable: 2,
 };
-const noDueWorkload: ipc.PracticeWorkloadOverview = {
+const noDueWorkload: practiceIpc.PracticeWorkloadOverview = {
   ...workload,
   studyableDueReviews: 0,
   scheduledReviews: 0,
   needsMorePractice: 0,
 };
-const previews: ipc.ReviewPreviewSet = {
+const previews: practiceIpc.ReviewPreviewSet = {
   scheduleRevision: 4,
   previewedAt: Date.now(),
   previews: [
@@ -151,8 +160,8 @@ const previews: ipc.ReviewPreviewSet = {
     },
   ],
 };
-const completedReview: ipc.ReviewResult = {
-  cardId: card.id,
+const completedReview: practiceIpc.ReviewResult = {
+  cardId: card.cardId,
   rating: 2,
   outcome: "not_confident",
   dueAt: Date.now() + 86_400_000,
@@ -188,16 +197,16 @@ describe("PracticeScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(analyticsIpc.getRecentPracticeReviews).mockResolvedValue([]);
-    vi.mocked(ipc.getPracticeWorkload).mockResolvedValue(workload);
-    vi.mocked(ipc.getPracticeCardWindow).mockResolvedValue({
+    vi.mocked(practiceIpc.getPracticeWorkload).mockResolvedValue(workload);
+    vi.mocked(practiceIpc.getPracticeCardWindow).mockResolvedValue({
       startPosition: 0,
       cards: [practiceCard],
       hasMore: false,
     });
-    vi.mocked(ipc.markPracticeCardViewed).mockResolvedValue(undefined);
-    vi.mocked(ipc.markPracticeCardRevealed).mockResolvedValue(previews);
-    vi.mocked(ipc.completePracticeSession).mockResolvedValue(undefined);
-    vi.mocked(ipc.applyScheduleAction).mockResolvedValue({
+    vi.mocked(practiceIpc.markPracticeCardViewed).mockResolvedValue(undefined);
+    vi.mocked(practiceIpc.markPracticeCardRevealed).mockResolvedValue(previews);
+    vi.mocked(practiceIpc.completePracticeSession).mockResolvedValue(undefined);
+    vi.mocked(schedulingIpc.applyScheduleAction).mockResolvedValue({
       affectedCount: 1,
       requestedCount: 1,
       changedCount: 1,
@@ -206,9 +215,9 @@ describe("PracticeScreen", () => {
       action: "bury",
       resolvedDueAt: null,
     });
-    vi.mocked(ipc.startSelectedPractice).mockResolvedValue(session);
-    vi.mocked(ipc.startCardPractice).mockResolvedValue({ ...session, mode: "custom" });
-    vi.mocked(ipc.submitPracticeReview).mockResolvedValue(completedReview);
+    vi.mocked(practiceIpc.startSelectedPractice).mockResolvedValue(session);
+    vi.mocked(practiceIpc.startCardPractice).mockResolvedValue({ ...session, mode: "custom" });
+    vi.mocked(practiceIpc.submitPracticeReview).mockResolvedValue(completedReview);
   });
 
   it("shows authoritative daily workload and starts scheduled mode", async () => {
@@ -217,7 +226,7 @@ describe("PracticeScreen", () => {
     expect(await screen.findByText("1 cards in the scheduled session")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
     await waitFor(() =>
-      expect(ipc.startSelectedPractice).toHaveBeenCalledWith({
+      expect(practiceIpc.startSelectedPractice).toHaveBeenCalledWith({
         operationId: "0".repeat(32),
         deckIds: [deck.id],
         tagIds: [],
@@ -228,17 +237,17 @@ describe("PracticeScreen", () => {
   });
 
   it("discards a slower workload response for an obsolete deck scope", async () => {
-    const first = deferred<ipc.PracticeWorkloadOverview>();
-    const second = deferred<ipc.PracticeWorkloadOverview>();
-    vi.mocked(ipc.getPracticeWorkload)
+    const first = deferred<practiceIpc.PracticeWorkloadOverview>();
+    const second = deferred<practiceIpc.PracticeWorkloadOverview>();
+    vi.mocked(practiceIpc.getPracticeWorkload)
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
     renderPractice({ decks: [deck, secondDeck] });
 
     fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
-    await waitFor(() => expect(ipc.getPracticeWorkload).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("checkbox", { name: /Cat facts/u }));
-    await waitFor(() => expect(ipc.getPracticeWorkload).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledTimes(2));
 
     second.resolve({
       ...workload,
@@ -253,12 +262,12 @@ describe("PracticeScreen", () => {
   });
 
   it("offers explicit extra practice when nothing fits the scheduled workload", async () => {
-    vi.mocked(ipc.getPracticeWorkload).mockResolvedValue(noDueWorkload);
+    vi.mocked(practiceIpc.getPracticeWorkload).mockResolvedValue(noDueWorkload);
     renderPractice({ decks: [noDueDeck] });
     fireEvent.click(await screen.findByRole("checkbox", { name: /Reviewed dog facts/u }));
     fireEvent.click(await screen.findByRole("button", { name: "Study this selection anyway" }));
     await waitFor(() =>
-      expect(ipc.startSelectedPractice).toHaveBeenCalledWith({
+      expect(practiceIpc.startSelectedPractice).toHaveBeenCalledWith({
         operationId: "0".repeat(32),
         deckIds: [noDueDeck.id],
         tagIds: [],
@@ -273,7 +282,7 @@ describe("PracticeScreen", () => {
     await startAndReveal();
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
     await waitFor(() =>
-      expect(ipc.submitPracticeReview).toHaveBeenCalledWith(
+      expect(practiceIpc.submitPracticeReview).toHaveBeenCalledWith(
         expect.objectContaining({
           outcome: "not_confident",
           scheduleRevision: 4,
@@ -298,23 +307,23 @@ describe("PracticeScreen", () => {
         requestId: 8,
         deckIds: [],
         tagIds: [],
-        cardIds: [card.id],
+        cardIds: [card.cardId],
         autoStart: true,
       },
       onLaunchConsumed,
     });
     await waitFor(() => {
       expect(onLaunchConsumed).toHaveBeenCalledTimes(1);
-      expect(ipc.startCardPractice).toHaveBeenCalledWith({
+      expect(practiceIpc.startCardPractice).toHaveBeenCalledWith({
         operationId: "0".repeat(32),
-        cardIds: [card.id],
+        cardIds: [card.cardId],
         shuffle: true,
       });
     });
   });
 
   it("reuses one practice-start operation after an ambiguous transport failure", async () => {
-    vi.mocked(ipc.startSelectedPractice)
+    vi.mocked(practiceIpc.startSelectedPractice)
       .mockRejectedValueOnce(new Error("Native response was lost."))
       .mockResolvedValueOnce(session);
     renderPractice();
@@ -328,16 +337,16 @@ describe("PracticeScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
 
     await screen.findByRole("button", { name: "Show answer" });
-    expect(ipc.startSelectedPractice).toHaveBeenCalledTimes(2);
-    const first = vi.mocked(ipc.startSelectedPractice).mock.calls[0]?.[0];
-    const second = vi.mocked(ipc.startSelectedPractice).mock.calls[1]?.[0];
+    expect(practiceIpc.startSelectedPractice).toHaveBeenCalledTimes(2);
+    const first = vi.mocked(practiceIpc.startSelectedPractice).mock.calls[0]?.[0];
+    const second = vi.mocked(practiceIpc.startSelectedPractice).mock.calls[1]?.[0];
     expect(first?.operationId).toBe("0".repeat(32));
     expect(second).toEqual(first);
-    expect(ipc.createOperationId).toHaveBeenCalledTimes(1);
+    expect(commonIpc.createOperationId).toHaveBeenCalledTimes(1);
   });
 
   it("retries an ambiguous review with the same submission and payload", async () => {
-    vi.mocked(ipc.submitPracticeReview)
+    vi.mocked(practiceIpc.submitPracticeReview)
       .mockRejectedValueOnce(new Error("Native response was lost."))
       .mockResolvedValueOnce(completedReview);
     renderPractice();
@@ -350,16 +359,16 @@ describe("PracticeScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /2 Medium/u }));
     expect(await screen.findByText(/result of rating 1 is still unknown/u)).toBeTruthy();
-    expect(ipc.submitPracticeReview).toHaveBeenCalledTimes(1);
+    expect(practiceIpc.submitPracticeReview).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
     await screen.findByRole("button", { name: "View analytics" });
 
-    expect(ipc.submitPracticeReview).toHaveBeenCalledTimes(2);
-    const first = vi.mocked(ipc.submitPracticeReview).mock.calls[0]?.[0];
-    const second = vi.mocked(ipc.submitPracticeReview).mock.calls[1]?.[0];
+    expect(practiceIpc.submitPracticeReview).toHaveBeenCalledTimes(2);
+    const first = vi.mocked(practiceIpc.submitPracticeReview).mock.calls[0]?.[0];
+    const second = vi.mocked(practiceIpc.submitPracticeReview).mock.calls[1]?.[0];
     expect(second).toEqual(first);
     expect(first?.submissionId).toBe("f".repeat(32));
-    expect(ipc.createSubmissionId).toHaveBeenCalledTimes(1);
+    expect(commonIpc.createSubmissionId).toHaveBeenCalledTimes(1);
   });
 });

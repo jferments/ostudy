@@ -1,13 +1,23 @@
-import type { Analytics } from "../analytics-ipc";
-import type {
-  AppSettings,
-  Asset,
-  DeckSummary,
-  Flashcard,
-  OrganizedCard,
-  PracticeSession,
-  RichDocument,
-} from "../ipc";
+import type { Analytics } from "../ipc/analytics";
+import {
+  type Asset,
+} from "../ipc/assets";
+import {
+  type CardPresentation,
+  type CardNote,
+} from "../ipc/cards";
+import {
+  type RichDocument,
+} from "../ipc/common";
+import {
+  type DeckSummary,
+} from "../ipc/decks";
+import {
+  type PracticeSession,
+} from "../ipc/practice";
+import {
+  type AppSettings,
+} from "../ipc/settings";
 
 let nextIdentifier = 1;
 
@@ -81,10 +91,12 @@ export function makeAsset(overrides: Partial<Asset> = {}): Asset {
   };
 }
 
-export function makeFlashcard(overrides: Partial<Flashcard> = {}): Flashcard {
+export function makeCardPresentation(
+  overrides: Partial<CardPresentation> = {},
+): CardPresentation {
   const deckId = overrides.deckId ?? testEntityId();
   return {
-    id: testEntityId(),
+    cardId: testEntityId(),
     noteId: testEntityId(),
     deckId,
     direction: "forward",
@@ -95,18 +107,29 @@ export function makeFlashcard(overrides: Partial<Flashcard> = {}): Flashcard {
     assets: [],
     createdAt: 1,
     updatedAt: 1,
-    revision: 1,
+    noteRevision: 1,
     ...overrides,
   };
 }
 
-export function makeOrganizedCard(
-  overrides: Partial<OrganizedCard> = {},
-): OrganizedCard {
+export function makeCardNote(
+  overrides: Partial<Extract<CardNote, { cardType: "basic" }>> = {},
+): CardNote {
   return {
-    ...makeFlashcard(overrides),
+    cardType: "basic",
+    noteId: testEntityId(),
+    deckId: testEntityId(),
+    frontDoc: paragraphDocument("Question"),
+    backDoc: paragraphDocument("Answer"),
+    frontText: "Question",
+    backText: "Answer",
+    reverseEnabled: false,
+    assets: [],
     tags: [],
-    dueAt: Date.now(),
+    generatedCardCount: 1,
+    createdAt: 1,
+    updatedAt: 1,
+    revision: 1,
     ...overrides,
   };
 }
@@ -115,7 +138,7 @@ export function makePracticeSession(
   overrides: Partial<PracticeSession> = {},
 ): PracticeSession {
   const deck = makeDeck();
-  const card = makeFlashcard({ deckId: deck.id });
+  const card = makeCardPresentation({ deckId: deck.id });
   return {
     id: testEntityId(),
     cardCount: 1,
@@ -123,7 +146,7 @@ export function makePracticeSession(
       startPosition: 0,
       cards: [
         {
-          card,
+          presentation: card,
           deckName: deck.name,
           dueAt: Date.now(),
           scheduleState: 0,

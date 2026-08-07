@@ -1,12 +1,16 @@
 import { RichTextEditor } from "../../editor/RichTextEditor";
 import { RichTextView } from "../../editor/RichTextView";
-import type {
-  Asset,
-  CardTemplate,
-  RichDocument,
-  TemplateCardPreview,
-  TemplateValueInput,
-} from "../../ipc";
+import {
+  type Asset,
+} from "../../ipc/assets";
+import {
+  type RichDocument,
+} from "../../ipc/common";
+import {
+  type CardTemplate,
+  type TemplateCardPreview,
+  type TemplateValueInput,
+} from "../../ipc/templates";
 
 interface TemplateEntryFormProps {
   template: CardTemplate;
