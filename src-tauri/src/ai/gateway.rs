@@ -33,7 +33,6 @@ impl AiGateway {
             .redirect(Policy::none())
             .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECONDS))
             .user_agent(concat!("ostudy/", env!("CARGO_PKG_VERSION")))
-            .tls_backend_rustls()
             .build()
             .map_err(|error| format!("Could not initialize the AI HTTP client: {error}"))?;
         Ok(Self { client })
