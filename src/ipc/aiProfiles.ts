@@ -188,18 +188,20 @@ export async function setAiProviderCredential(
   revision: number,
   credential: string,
   persistence: AiCredentialPersistence,
+  operationId = createOperationId(),
 ): Promise<AiProviderProfileDetail> {
   return invoke<AiProviderProfileDetail>("set_ai_provider_credential", {
-    input: { profileId, revision, credential, persistence },
+    input: { profileId, revision, credential, persistence, operationId },
   });
 }
 
 export async function clearAiProviderCredential(
   profileId: string,
   revision: number,
+  operationId = createOperationId(),
 ): Promise<AiProviderProfileDetail> {
   return invoke<AiProviderProfileDetail>("clear_ai_provider_credential", {
-    input: { profileId, revision },
+    input: { profileId, revision, operationId },
   });
 }
 
