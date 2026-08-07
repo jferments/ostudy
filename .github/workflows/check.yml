@@ -13,7 +13,10 @@ on:
         required: true
         default: full
         type: choice
-        options: [static, fast, full]
+        options:
+          - static
+          - fast
+          - full
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -26,21 +29,26 @@ jobs:
   check:
     runs-on: [self-hosted, linux, x64, ostudy]
     timeout-minutes: 45
+
     env:
       CI: "true"
       CARGO_TERM_COLOR: always
+
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
       - name: Expose user-local tools
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
       - name: Configure persistent self-hosted build cache
         run: |
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.cache/ostudy/cargo-target"
-      - name: Apply Stage 3.12 Rust cleanup
+
+      - name: Publish Stage 3.12 Rust cleanup
         if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
         env:
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
@@ -48,22 +56,14 @@ jobs:
           git fetch origin "$HEAD_BRANCH"
           git checkout -B "$HEAD_BRANCH" "origin/$HEAD_BRANCH"
           python3 ./scripts/apply-stage312-rust-cleanup.py
-          python3 - <<'PY'
-          from pathlib import Path
-          workflow = Path('.github/workflows/check.yml')
-          source = workflow.read_text(encoding='utf-8')
-          source = source.replace('permissions:\n  contents: write\n', 'permissions:\n  contents: read\n', 1)
-          start = source.index('      - name: Apply Stage 3.12 Rust cleanup\n')
-          end = source.index('      - name: Select qualification gate\n', start)
-          workflow.write_text(source[:start] + source[end:], encoding='utf-8')
-          Path('scripts/apply-stage312-rust-cleanup.py').unlink()
-          PY
+          rm scripts/apply-stage312-rust-cleanup.py
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add src-tauri/src scripts/apply-stage312-rust-cleanup.py
           git commit -m "fix: finish Stage 3.12 Rust contract migration"
           git push origin "HEAD:$HEAD_BRANCH"
+
       - name: Select qualification gate
         id: gate
         env:
@@ -71,21 +71,28 @@ jobs:
           DISPATCH_GATE: ${{ inputs.gate || 'full' }}
           PR_DRAFT: ${{ github.event.pull_request.draft || false }}
         run: |
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then gate="$DISPATCH_GATE";
-          elif [[ "$EVENT_NAME" == "pull_request" && "$PR_DRAFT" == "true" ]]; then gate="fast";
-          else gate="full"; fi
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            gate="$DISPATCH_GATE"
+          elif [[ "$EVENT_NAME" == "pull_request" && "$PR_DRAFT" == "true" ]]; then
+            gate="fast"
+          else
+            gate="full"
+          fi
           echo "gate=$gate" >> "$GITHUB_OUTPUT"
           echo "Selected qualification gate: $gate"
+
       - name: Run static checks
         if: steps.gate.outputs.gate == 'static'
         run: |
           set -o pipefail
           bash ./scripts/check-static.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"
+
       - name: Run fast high-return checks
         if: steps.gate.outputs.gate != 'static'
         run: |
           set -o pipefail
           bash ./scripts/check-fast.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-fast-check.log"
+
       - name: Run full qualification gate
         if: steps.gate.outputs.gate == 'full'
         env:
@@ -93,13 +100,20 @@ jobs:
         run: |
           set -o pipefail
           ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-full-check.log"
+
       - name: Summarize qualification failure
         if: failure()
         run: |
-          node ./scripts/summarize-check-failure.mjs "$RUNNER_TEMP/ostudy-static-check.log" "$RUNNER_TEMP/ostudy-fast-check.log" "$RUNNER_TEMP/ostudy-full-check.log" >> "$GITHUB_STEP_SUMMARY"
+          node ./scripts/summarize-check-failure.mjs \
+            "$RUNNER_TEMP/ostudy-static-check.log" \
+            "$RUNNER_TEMP/ostudy-fast-check.log" \
+            "$RUNNER_TEMP/ostudy-full-check.log" \
+            >> "$GITHUB_STEP_SUMMARY"
+
       - name: Export diagnostics after a failure
         if: failure()
         run: ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-diagnostics.tar.gz"
+
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
