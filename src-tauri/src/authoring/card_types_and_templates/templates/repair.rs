@@ -1,3 +1,5 @@
+use super::*;
+
 pub(crate) fn apply_stage3_data_repairs(
     connection: &Connection,
 ) -> Result<i64, CommandError> {

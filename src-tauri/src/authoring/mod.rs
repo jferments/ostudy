@@ -1,3 +1,291 @@
+//! Card organization, generated card types, safe templates, search, and bulk actions.
+//!
+//! Rust owns validation, deterministic rendering, stable reverse card
+//! identities, single-schedule rotating cloze presentations, and transactional
+//! persistence. Saved templates are data-only bulk-entry forms; generated cards
+//! are ordinary Basic cards with no template ownership link.
+//!
+//! Shared contracts and persistence primitives live at this module root so the
+//! domain command modules can use narrow ordinary Rust module boundaries
+//! without duplicating card, tag, transaction, or projection semantics.
+
+use std::collections::{BTreeSet, HashSet};
+
+use rusqlite::{
+    params, params_from_iter,
+    types::Value as SqlValue,
+    Connection, OptionalExtension, Transaction, TransactionBehavior,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use tauri::State;
+
+use crate::{
+    asset_lifecycle::{ensure_assets_available, finalize_assets_for_owner},
+    assets::{ensure_assets_exist, AssetDto},
+    cards::{get_card_from_connection, validate_content, CardDto, ValidatedContent},
+    database::Database,
+    error::CommandError,
+    paths::AppPaths,
+    projections::learning_signals as signal_projection,
+    scheduler::insert_new_schedule,
+    study_calendar::StudyTimeContext,
+    studyability,
+    util::{generate_id, unix_time_millis, validate_entity_id},
+};
+
+const MAX_TAGS_PER_NOTE: usize = 32;
+const MAX_TAG_CHARS: usize = 64;
+const MAX_SEARCH_QUERY_CHARS: usize = 500;
+const MAX_SEARCH_TAGS: usize = 32;
+const MAX_SEARCH_DECKS: usize = 100;
+const MAX_SEARCH_LIMIT: i64 = 200;
+const MAX_SEARCH_SELECTION: usize = 10_000;
+const MAX_BULK_ROWS: usize = 500;
+const MAX_BULK_ACTION_NOTES: usize = 10_000;
+const MAX_TRANSFER_NOTES: usize = 10_000;
+const TAG_SEPARATOR: char = '\u{001f}';
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagDto {
+    pub id: String,
+    pub name: String,
+    pub source_note_count: i64,
+    pub generated_card_count: i64,
+    pub studyable_due_count: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizedCardDto {
+    pub id: String,
+    pub note_id: String,
+    pub deck_id: String,
+    pub direction: String,
+    pub front_doc: Value,
+    pub back_doc: Value,
+    pub front_text: String,
+    pub back_text: String,
+    pub assets: Vec<AssetDto>,
+    pub tags: Vec<String>,
+    pub due_at: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub revision: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardBrowserRowDto {
+    pub card_id: String,
+    pub note_id: String,
+    pub deck_id: String,
+    pub deck_name: String,
+    pub card_type: String,
+    pub card_label: String,
+    pub front_text: String,
+    pub back_text: String,
+    pub tags: Vec<String>,
+    pub due_at: i64,
+    pub last_reviewed_at: Option<i64>,
+    pub review_count: i64,
+    pub suspended_at: Option<i64>,
+    pub buried_until: Option<i64>,
+    pub needs_more_practice: bool,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardSearchPageDto {
+    pub cards: Vec<CardBrowserRowDto>,
+    pub total_count: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionCardDto {
+    pub card_id: String,
+    pub note_id: String,
+    pub deck_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListTagsInput {
+    #[serde(default)]
+    pub deck_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SearchCardsInput {
+    #[serde(default)]
+    pub deck_ids: Vec<String>,
+    #[serde(default)]
+    pub query: String,
+    #[serde(default)]
+    pub tag_ids: Vec<String>,
+    #[serde(default = "default_availability_filter")]
+    pub availability_filter: String,
+    #[serde(default = "default_status_filter")]
+    pub status_filter: String,
+    #[serde(default = "default_reviewed_filter")]
+    pub reviewed_filter: String,
+    #[serde(default = "default_sort")]
+    pub sort: String,
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateOrganizedCardInput {
+    pub deck_id: String,
+    pub front_doc: Value,
+    pub back_doc: Value,
+    pub front_text: String,
+    pub back_text: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub allow_duplicate: bool,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateOrganizedCardInput {
+    pub note_id: String,
+    pub deck_id: String,
+    pub revision: i64,
+    pub front_doc: Value,
+    pub back_doc: Value,
+    pub front_text: String,
+    pub back_text: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub allow_duplicate: bool,
+    #[serde(default)]
+    pub asset_draft_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DuplicateCheckInput {
+    pub deck_id: String,
+    pub front_text: String,
+    pub back_text: String,
+    pub exclude_note_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateCardDto {
+    pub note_id: String,
+    pub deck_id: String,
+    pub front_text: String,
+    pub back_text: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BulkCardRowInput {
+    pub question: String,
+    pub answer: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AnalyzeBulkCardsInput {
+    pub deck_id: String,
+    pub rows: Vec<BulkCardRowInput>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkAnalyzeResultDto {
+    pub unique_count: i64,
+    pub duplicate_count: i64,
+    pub duplicate_row_indices: Vec<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BulkCreateCardsInput {
+    pub deck_id: String,
+    pub rows: Vec<BulkCardRowInput>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkCreateResultDto {
+    pub created_count: i64,
+    pub skipped_duplicates: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransferCardsInput {
+    pub note_ids: Vec<String>,
+    pub target_deck_id: String,
+    pub mode: String,
+    #[serde(default = "default_true")]
+    pub skip_duplicates: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferCardsResultDto {
+    pub affected_count: i64,
+    pub skipped_duplicates: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BulkTagCardsInput {
+    pub note_ids: Vec<String>,
+    pub tags: Vec<String>,
+    pub mode: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkActionResultDto {
+    pub affected_count: i64,
+}
+
+#[derive(Clone)]
+struct ValidatedTag {
+    name: String,
+    normalized: String,
+}
+
+struct SourceNote {
+    id: String,
+    deck_id: String,
+    front_doc: String,
+    back_doc: String,
+    front_text: String,
+    back_text: String,
+    duplicate_hash: String,
+}
+
+type PreparedBulkRow = (
+    ValidatedContent,
+    Vec<ValidatedTag>,
+    (String, String),
+    String,
+);
+
 struct SearchSql {
     joins: String,
     where_sql: String,
@@ -639,3 +927,496 @@ fn cleanup_unused_tags(connection: &Connection) -> Result<(), CommandError> {
         .map_err(CommandError::database)?;
     Ok(())
 }
+
+const CONTENT_FORMAT: &str = "tiptap-json";
+const CONTENT_SCHEMA_VERSION: i64 = 1;
+
+fn insert_organized_card(
+    transaction: &Transaction<'_>,
+    deck_id: &str,
+    content: ValidatedContent,
+    tags: &[ValidatedTag],
+    duplicate_hash: &str,
+    now: i64,
+) -> Result<String, CommandError> {
+    ensure_assets_exist(transaction, &content_asset_ids(&content))?;
+    let note_id = generate_id(transaction)?;
+    let card_id = generate_id(transaction)?;
+
+    transaction
+        .execute(
+            "INSERT INTO notes (
+                 id, deck_id, note_type, content_format, content_schema_version,
+                 front_doc, back_doc, front_text, back_text, duplicate_hash,
+                 created_at, updated_at, revision
+             ) VALUES (
+                 ?1, ?2, 'basic', ?3, ?4,
+                 ?5, ?6, ?7, ?8, ?9, ?10, ?10, 1
+             )",
+            params![
+                note_id,
+                deck_id,
+                CONTENT_FORMAT,
+                CONTENT_SCHEMA_VERSION,
+                content.front_doc_json,
+                content.back_doc_json,
+                content.front_text,
+                content.back_text,
+                duplicate_hash,
+                now,
+            ],
+        )
+        .map_err(CommandError::database)?;
+    transaction
+        .execute(
+            "INSERT INTO cards (
+                 id, note_id, deck_id, direction, template_ordinal, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)",
+            params![card_id, note_id, deck_id, now],
+        )
+        .map_err(CommandError::database)?;
+    insert_new_schedule(transaction, &card_id, now)?;
+    replace_note_assets(transaction, &note_id, &content)?;
+    replace_note_tags(transaction, &note_id, tags, now)?;
+    Ok(note_id)
+}
+
+fn replace_note_assets(
+    transaction: &Transaction<'_>,
+    note_id: &str,
+    content: &ValidatedContent,
+) -> Result<(), CommandError> {
+    transaction
+        .execute("DELETE FROM note_assets WHERE note_id = ?1", [note_id])
+        .map_err(CommandError::database)?;
+    for asset_id in &content.front_asset_ids {
+        transaction
+            .execute(
+                "INSERT INTO note_assets (note_id, asset_id, side)
+                 VALUES (?1, ?2, 'front')",
+                params![note_id, asset_id],
+            )
+            .map_err(CommandError::database)?;
+    }
+    for asset_id in &content.back_asset_ids {
+        transaction
+            .execute(
+                "INSERT INTO note_assets (note_id, asset_id, side)
+                 VALUES (?1, ?2, 'back')",
+                params![note_id, asset_id],
+            )
+            .map_err(CommandError::database)?;
+    }
+    Ok(())
+}
+
+fn content_asset_ids(content: &ValidatedContent) -> Vec<String> {
+    content
+        .front_asset_ids
+        .iter()
+        .chain(&content.back_asset_ids)
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn ensure_active_deck(
+    connection: &Connection,
+    deck_id: &str,
+) -> Result<(), CommandError> {
+    let exists: i64 = connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM decks
+                 WHERE id = ?1 AND deleted_at IS NULL AND archived_at IS NULL
+             )",
+            [deck_id],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    if exists == 0 {
+        return Err(CommandError::new(
+            "deck_not_found",
+            "The destination deck no longer exists.",
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_active_note(connection: &Connection, note_id: &str) -> Result<(), CommandError> {
+    let exists: i64 = connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1
+                 FROM notes n
+                 JOIN decks d ON d.id = n.deck_id
+                 WHERE n.id = ?1
+                   AND n.deleted_at IS NULL
+                   AND d.deleted_at IS NULL
+                   AND d.archived_at IS NULL
+             )",
+            [note_id],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    if exists == 0 {
+        return Err(CommandError::new(
+            "card_not_found",
+            "A selected flashcard no longer exists.",
+        ));
+    }
+    Ok(())
+}
+
+fn exact_duplicates(
+    connection: &Connection,
+    deck_id: &str,
+    hash: &str,
+    normalized_front: &str,
+    normalized_back: &str,
+    exclude_note_id: Option<&str>,
+    limit: usize,
+) -> Result<Vec<DuplicateCardDto>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT id, deck_id, front_text, back_text
+             FROM notes
+             WHERE deck_id = ?1
+               AND (duplicate_hash = ?2 OR duplicate_hash = '')
+               AND deleted_at IS NULL
+               AND (?3 IS NULL OR id != ?3)
+             ORDER BY updated_at DESC",
+        )
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map(params![deck_id, hash, exclude_note_id], |row| {
+            Ok(DuplicateCardDto {
+                note_id: row.get(0)?,
+                deck_id: row.get(1)?,
+                front_text: row.get(2)?,
+                back_text: row.get(3)?,
+            })
+        })
+        .map_err(CommandError::database)?;
+
+    let mut matches = Vec::new();
+    for row in rows {
+        let candidate = row.map_err(CommandError::database)?;
+        let normalized = normalized_pair(&candidate.front_text, &candidate.back_text);
+        if normalized.0 == normalized_front && normalized.1 == normalized_back {
+            matches.push(candidate);
+            if matches.len() >= limit {
+                break;
+            }
+        }
+    }
+    Ok(matches)
+}
+
+fn has_exact_duplicate(
+    connection: &Connection,
+    deck_id: &str,
+    hash: &str,
+    normalized_front: &str,
+    normalized_back: &str,
+    exclude_note_id: Option<&str>,
+) -> Result<bool, CommandError> {
+    Ok(!exact_duplicates(
+        connection,
+        deck_id,
+        hash,
+        normalized_front,
+        normalized_back,
+        exclude_note_id,
+        20,
+    )?
+    .is_empty())
+}
+
+fn duplicate_error() -> CommandError {
+    CommandError::new(
+        "duplicate_card",
+        "An identical question and answer already exist in this deck.",
+    )
+}
+
+fn prepare_bulk_row(
+    index: usize,
+    row: BulkCardRowInput,
+) -> Result<PreparedBulkRow, CommandError> {
+    if row.question.trim().is_empty() || row.answer.trim().is_empty() {
+        return Err(CommandError::new(
+            "invalid_bulk_card",
+            format!("Bulk row {} needs both a question and an answer.", index + 1),
+        ));
+    }
+    let front_doc = plain_text_document(&row.question);
+    let back_doc = plain_text_document(&row.answer);
+    let content = validate_content(front_doc, back_doc, row.question, row.answer)?;
+    let tags = validate_tags(row.tags)?;
+    let normalized = normalized_pair(&content.front_text, &content.back_text);
+    let hash = duplicate_hash(&normalized.0, &normalized.1);
+    Ok((content, tags, normalized, hash))
+}
+
+fn plain_text_document(text: &str) -> Value {
+    let paragraphs = text
+        .lines()
+        .map(|line| {
+            if line.is_empty() {
+                json!({"type": "paragraph"})
+            } else {
+                json!({
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": line}]
+                })
+            }
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "type": "doc",
+        "content": if paragraphs.is_empty() {
+            vec![json!({"type": "paragraph"})]
+        } else {
+            paragraphs
+        }
+    })
+}
+
+fn validate_note_ids_for_action(
+    values: Vec<String>,
+    limit: usize,
+    action: &str,
+) -> Result<Vec<String>, CommandError> {
+    let mut unique = BTreeSet::new();
+    for value in values {
+        validate_entity_id(&value, "note")?;
+        unique.insert(value);
+    }
+    if unique.is_empty() {
+        return Err(CommandError::new(
+            "no_cards_selected",
+            "Select at least one card first.",
+        ));
+    }
+    if unique.len() > limit {
+        return Err(CommandError::new(
+            "too_many_cards_selected",
+            format!("{action} at most {limit} cards at one time."),
+        ));
+    }
+    Ok(unique.into_iter().collect())
+}
+
+fn resolve_tag_ids(
+    transaction: &Transaction<'_>,
+    tags: &[ValidatedTag],
+    now: i64,
+) -> Result<Vec<String>, CommandError> {
+    let mut tag_ids = Vec::with_capacity(tags.len());
+    for tag in tags {
+        let existing: Option<String> = transaction
+            .query_row(
+                "SELECT id FROM tags WHERE normalized_name = ?1",
+                [tag.normalized.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(CommandError::database)?;
+        let tag_id = match existing {
+            Some(id) => id,
+            None => {
+                let id = generate_id(transaction)?;
+                transaction
+                    .execute(
+                        "INSERT INTO tags (
+                             id, name, normalized_name, created_at, updated_at
+                         ) VALUES (?1, ?2, ?3, ?4, ?4)",
+                        params![id, tag.name, tag.normalized, now],
+                    )
+                    .map_err(CommandError::database)?;
+                id
+            }
+        };
+        tag_ids.push(tag_id);
+    }
+    Ok(tag_ids)
+}
+
+fn find_existing_tag_ids(
+    connection: &Connection,
+    tags: &[ValidatedTag],
+) -> Result<Vec<String>, CommandError> {
+    let mut tag_ids = Vec::new();
+    for tag in tags {
+        if let Some(tag_id) = connection
+            .query_row(
+                "SELECT id FROM tags WHERE normalized_name = ?1",
+                [tag.normalized.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(CommandError::database)?
+        {
+            tag_ids.push(tag_id);
+        }
+    }
+    Ok(tag_ids)
+}
+
+fn load_source_note(
+    connection: &Connection,
+    note_id: &str,
+) -> Result<SourceNote, CommandError> {
+    connection
+        .query_row(
+            "SELECT id, deck_id, front_doc, back_doc, front_text, back_text,
+                    duplicate_hash
+             FROM notes
+             WHERE id = ?1 AND deleted_at IS NULL",
+            [note_id],
+            |row| {
+                Ok(SourceNote {
+                    id: row.get(0)?,
+                    deck_id: row.get(1)?,
+                    front_doc: row.get(2)?,
+                    back_doc: row.get(3)?,
+                    front_text: row.get(4)?,
+                    back_text: row.get(5)?,
+                    duplicate_hash: row.get(6)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(CommandError::database)?
+        .ok_or_else(|| CommandError::new("card_not_found", "A selected card no longer exists."))
+}
+
+#[derive(Clone, Copy)]
+enum TransferMode {
+    Move,
+    Copy,
+}
+
+impl TransferMode {
+    fn parse(value: &str) -> Result<Self, CommandError> {
+        match value {
+            "move" => Ok(Self::Move),
+            "copy" => Ok(Self::Copy),
+            _ => Err(CommandError::new(
+                "invalid_transfer_mode",
+                "Choose whether to move or copy the selected cards.",
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum TagChangeMode {
+    Add,
+    Remove,
+}
+
+impl TagChangeMode {
+    fn parse(value: &str) -> Result<Self, CommandError> {
+        match value {
+            "add" => Ok(Self::Add),
+            "remove" => Ok(Self::Remove),
+            _ => Err(CommandError::new(
+                "invalid_tag_change_mode",
+                "Choose whether to add or remove the selected tags.",
+            )),
+        }
+    }
+}
+
+fn duplicate_checkable(front: &str, back: &str) -> bool {
+    !front.trim().is_empty() && !back.trim().is_empty()
+}
+
+fn normalized_pair(front: &str, back: &str) -> (String, String) {
+    (
+        collapse_whitespace(front).to_lowercase(),
+        collapse_whitespace(back).to_lowercase(),
+    )
+}
+
+fn collapse_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn duplicate_hash(front: &str, back: &str) -> String {
+    // This stable FNV-1a value is only a candidate index. Duplicate checks must
+    // still compare both complete normalized strings before reporting a match;
+    // the hash is deliberately not treated as a collision-resistant identity.
+    // The explicit separator prevents ambiguous concatenations such as
+    // (`ab`, `c`) and (`a`, `bc`) from sharing the same input byte stream.
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in front
+        .as_bytes()
+        .iter()
+        .copied()
+        .chain(std::iter::once(0xff))
+        .chain(back.as_bytes().iter().copied())
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn split_tags(value: &str) -> Vec<String> {
+    value
+        .split(TAG_SEPARATOR)
+        .filter(|tag| !tag.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn default_availability_filter() -> String {
+    "all".to_string()
+}
+
+fn default_status_filter() -> String {
+    "active".to_string()
+}
+
+fn default_reviewed_filter() -> String {
+    "all".to_string()
+}
+
+fn default_sort() -> String {
+    "updated_desc".to_string()
+}
+
+const fn default_limit() -> i64 {
+    100
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+mod card_commands;
+mod card_types_and_templates;
+mod transfer;
+
+#[cfg(test)]
+mod history_tests;
+#[cfg(test)]
+mod tests;
+
+pub(crate) use card_commands::{
+    analyze_bulk_cards, backfill_duplicate_hashes_in_connection, bulk_create_cards,
+    bulk_tag_cards, create_organized_card, find_duplicate_cards, get_organized_card,
+    list_matching_cards, list_tags, search_cards, update_organized_card,
+};
+pub(crate) use card_types_and_templates::{
+    apply_stage3_data_repairs, create_card_template, create_generated_card,
+    delete_card_template, generate_cards_from_template, get_card_template, get_card_type_info,
+    import_generated_flashcards, list_card_template_summaries, preview_template_cards,
+    projected_presentation_variant, render_projected_presentation, update_card_template,
+    update_generated_card, ProjectedPresentationInput, RenderedCardPresentation,
+};
+pub(crate) use transfer::transfer_cards;

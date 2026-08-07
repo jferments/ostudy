@@ -1,3 +1,5 @@
+use super::*;
+
 #[tauri::command]
 pub fn transfer_cards(
     database: State<'_, Database>,
@@ -173,14 +175,13 @@ fn copy_generated_note_to_deck(
                           template_ordinal, direction",
             )
             .map_err(CommandError::database)?;
-        let cards = statement
+        statement
             .query_map([source.id.as_str()], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        cards
+            .map_err(CommandError::database)?
     };
     if source_cards.is_empty() {
         return Err(CommandError::new(

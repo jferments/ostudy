@@ -1,3 +1,5 @@
+use super::*;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TemplateValuePlacement {
     Inline,
@@ -10,12 +12,12 @@ struct AutomaticTemplateField {
     name: String,
 }
 
-struct AutomaticTemplateFieldLookup {
+pub(super) struct AutomaticTemplateFieldLookup {
     by_id: HashMap<String, AutomaticTemplateField>,
     by_name: HashMap<String, AutomaticTemplateField>,
 }
 
-fn prepare_automatic_create_template_input(
+pub(super) fn prepare_automatic_create_template_input(
     connection: &Connection,
     mut input: CreateCardTemplateInput,
 ) -> Result<CreateCardTemplateInput, CommandError> {
@@ -25,7 +27,7 @@ fn prepare_automatic_create_template_input(
     Ok(input)
 }
 
-fn prepare_automatic_update_template_input(
+pub(super) fn prepare_automatic_update_template_input(
     connection: &Connection,
     mut input: UpdateCardTemplateInput,
 ) -> Result<UpdateCardTemplateInput, CommandError> {
@@ -70,7 +72,7 @@ fn normalize_template_rule_inputs(
     Ok(())
 }
 
-fn normalize_card_template_dto_for_editing(
+pub(super) fn normalize_card_template_dto_for_editing(
     mut template: CardTemplateDto,
 ) -> Result<CardTemplateDto, CommandError> {
     let lookup = automatic_template_field_lookup_from_dtos(&template.fields)?;
@@ -119,7 +121,7 @@ fn automatic_template_field_lookup_from_inputs(
     Ok(AutomaticTemplateFieldLookup { by_id, by_name })
 }
 
-fn automatic_template_field_lookup_from_dtos(
+pub(super) fn automatic_template_field_lookup_from_dtos(
     fields: &[CardTemplateFieldDto],
 ) -> Result<AutomaticTemplateFieldLookup, CommandError> {
     let inputs = fields
@@ -133,7 +135,7 @@ fn automatic_template_field_lookup_from_dtos(
     automatic_template_field_lookup_from_inputs(&inputs)
 }
 
-fn normalize_typed_template_layout(
+pub(super) fn normalize_typed_template_layout(
     document: &Value,
     lookup: &AutomaticTemplateFieldLookup,
     side: &str,
@@ -349,7 +351,7 @@ fn invalid_typed_template_placeholder() -> CommandError {
     )
 }
 
-fn template_update_contains_new_children(
+pub(super) fn template_update_contains_new_children(
     connection: &Connection,
     input: &UpdateCardTemplateInput,
 ) -> Result<bool, CommandError> {
@@ -421,7 +423,7 @@ fn template_document_is_inline(document: &Value, asset_ids: &[String]) -> bool {
         })
 }
 
-fn render_automatic_template_previews(
+pub(super) fn render_automatic_template_previews(
     connection: &Connection,
     paths: &AppPaths,
     template: &StoredTemplate,
@@ -456,7 +458,7 @@ fn materialize_automatic_template(
     Ok(StoredTemplate { dto })
 }
 
-fn materialize_automatic_template_document(
+pub(super) fn materialize_automatic_template_document(
     layout: &Value,
     lookup: &AutomaticTemplateFieldLookup,
     values: &HashMap<String, ValidatedTemplateValue>,
@@ -644,7 +646,7 @@ fn inline_content_is_visible(content: &[Value]) -> bool {
     })
 }
 
-fn generate_automatic_template_cards_in_connection(
+pub(super) fn generate_automatic_template_cards_in_connection(
     connection: &mut Connection,
     paths: &AppPaths,
     input: GenerateTemplateCardsInput,

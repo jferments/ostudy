@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,10 +13,32 @@ const rustFiles = allFiles.filter((path) => path.endsWith(".rs"));
 for (const path of rustFiles) {
   const text = await readFile(path, "utf8");
   const displayPath = relative(root, path).replaceAll("\\", "/");
+  if (/\binclude!\s*\(/u.test(text)) {
+    failures.push(`${displayPath}: lexical include! source composition is forbidden; use ordinary Rust modules`);
+  }
   const staleSuppression = /#\[(?:allow|expect)\s*\(\s*(?:dead_code|unused|unused_imports|unused_variables)\s*\)\]/gu;
   for (const match of text.matchAll(staleSuppression)) {
     failures.push(`${displayPath}:${lineNumber(text, match.index ?? 0)}: stale-code diagnostics are suppressed`);
   }
+}
+
+for (const path of allFiles) {
+  const displayPath = relative(root, path).replaceAll("\\", "/");
+  if (displayPath.startsWith("src-tauri/src/authoring/") && /(?:^|\/)stage\d/iu.test(displayPath)) {
+    failures.push(`${displayPath}: production modules must use domain names rather than implementation-stage names`);
+  }
+}
+for (const forbiddenPath of [
+  "src-tauri/src/authoring.rs",
+  "scripts/verify-stage2.mjs",
+  "scripts/verify-stage3.mjs",
+  "scripts/verify-stage33.mjs",
+  "scripts/verify-stage34-35.mjs",
+]) {
+  if (await exists(join(root, forbiddenPath))) failures.push(`Superseded structural artifact remains: ${forbiddenPath}`);
+}
+if (!(await exists(join(root, "src-tauri", "src", "authoring", "mod.rs")))) {
+  failures.push("Explicit authoring module root is missing: src-tauri/src/authoring/mod.rs");
 }
 
 const workflowDirectory = join(root, ".github", "workflows");
@@ -43,14 +65,20 @@ for (const entry of await readdir(workflowDirectory, { withFileTypes: true })) {
   }
 }
 
-const authoringFiles = allFiles.filter((path) =>
-  relative(root, path).replaceAll("\\", "/").startsWith("src-tauri/src/authoring"),
-);
+const productionAuthoringFiles = allFiles.filter((path) => {
+  const displayPath = relative(root, path).replaceAll("\\", "/");
+  return displayPath.startsWith("src-tauri/src/authoring/")
+    && path.endsWith(".rs")
+    && !/(?:^|\/)(?:tests|history_tests|asset_tests)\.rs$/u.test(displayPath);
+});
 const authoringText = (
-  await Promise.all(authoringFiles.filter((path) => path.endsWith(".rs")).map((path) => readFile(path, "utf8")))
+  await Promise.all(productionAuthoringFiles.map((path) => readFile(path, "utf8")))
 ).join("\n");
 for (const [label, pattern] of [
-  ["process execution", /\b(?:std::process|Command::new\s*\()/u],
+  [
+    "process execution",
+    /\b(?:std::process::Command|use\s+std::process\s*(?:::?\s*Command|::\s*\{[^}]*\bCommand\b))/u,
+  ],
   ["network client", /\b(?:reqwest|ureq|hyper::Client)\b/u],
 ]) {
   if (pattern.test(authoringText)) failures.push(`Authoring/template subsystem contains forbidden ${label}.`);
@@ -73,7 +101,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `OK   Repository policy: workflows are immutable/self-hosted, stale-code suppressions are absent, and authoring remains data-only.`,
+  `OK   Repository policy: ${rustFiles.length} Rust files use explicit modules, workflows are immutable/self-hosted, and stale structural gates are absent.`,
 );
 
 async function collectFiles(directory) {
@@ -86,6 +114,15 @@ async function collectFiles(directory) {
     else if (entry.isFile()) output.push(path);
   }
   return output;
+}
+
+async function exists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function lineNumber(text, index) {

@@ -1,4 +1,6 @@
-fn update_card_template_with_stable_children_in_connection(
+use super::*;
+
+pub(super) fn update_card_template_with_stable_children_in_connection(
     connection: &mut Connection,
     paths: &AppPaths,
     input: UpdateCardTemplateInput,
