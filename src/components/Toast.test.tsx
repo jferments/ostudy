@@ -1,7 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Toast } from "./Toast";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("Toast", () => {
   it("renders a status message and dismisses it", () => {
@@ -30,6 +34,27 @@ describe("Toast", () => {
     expect(screen.getByRole("alert").textContent).toContain("Could not save.");
   });
 
+  it("pauses automatic dismissal while the user is interacting", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const onDismiss = vi.fn();
+    render(
+      <Toast
+        toast={{ id: 5, kind: "info", text: "Import completed." }}
+        onDismiss={onDismiss}
+      />,
+    );
+
+    const toast = screen.getByRole("status");
+    fireEvent.pointerEnter(toast);
+    vi.advanceTimersByTime(10_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    fireEvent.pointerLeave(toast);
+    vi.runOnlyPendingTimers();
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
   it("runs an undo action once, shows progress, and dismisses after success", async () => {
     let resolveUndo!: () => void;
     const run = vi.fn(
@@ -44,7 +69,7 @@ describe("Toast", () => {
         toast={{
           id: 3,
           kind: "success",
-          text: "CardPresentation deleted.",
+          text: "Flashcard deleted.",
           action: { label: "Undo", run, expiresAt: Date.now() + 10_000 },
         }}
         onDismiss={onDismiss}
