@@ -11,7 +11,6 @@ import { registerPlatformBackHandler } from "../../platform/backNavigation";
 import { Dialog } from "./Dialog";
 import {
   type ConfirmOptions,
-  type OverlayCloseReason,
   type OverlayEntry,
   OverlayContext,
 } from "./overlayContext";
@@ -68,12 +67,15 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
     });
   }, []);
 
-  useEffect(() =>
-    registerPlatformBackHandler(() => {
-      const top = entriesRef.current.at(-1);
-      if (!top) return false;
-      return top.requestClose("platform_back");
-    }), []);
+  useEffect(
+    () =>
+      registerPlatformBackHandler(() => {
+        const top = entriesRef.current.at(-1);
+        if (!top) return false;
+        return top.requestClose("platform_back");
+      }),
+    [],
+  );
 
   useEffect(() => {
     if (modalDepth === 0) return;
