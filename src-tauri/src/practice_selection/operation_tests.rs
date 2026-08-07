@@ -131,7 +131,7 @@ fn equivalent_practice_start_retry_returns_one_committed_session() {
             assert_eq!(replay.id, first.id);
             assert_eq!(replay.card_count, 1);
             assert_eq!(replay.first_window.cards.len(), 1);
-            assert_eq!(replay.first_window.cards[0].card.id, card_id);
+            assert_eq!(replay.first_window.cards[0].presentation.id, card_id);
             let count: i64 = connection
                 .query_row(
                     "SELECT COUNT(*) FROM practice_sessions

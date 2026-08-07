@@ -131,10 +131,13 @@ fn creates_searches_and_detects_tagged_cards() {
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0].note_id, note_id);
 
-    let organized = database
-        .with_connection(|connection| hydrate_organized_card(connection, &paths, &note_id))
-        .expect("card should hydrate");
-    assert_eq!(organized.tags, vec!["Anticoagulants"]);
+    let note = database
+        .with_connection(|connection| hydrate_card_note(connection, &paths, &note_id))
+        .expect("card note should hydrate");
+    let tags = match note {
+        CardNoteDto::Basic { tags, .. } | CardNoteDto::Cloze { tags, .. } => tags,
+    };
+    assert_eq!(tags, vec!["Anticoagulants"]);
 
     let duplicates = database
         .with_connection(|connection| {

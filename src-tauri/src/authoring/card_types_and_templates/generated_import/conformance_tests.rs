@@ -317,8 +317,10 @@ fn rejection_corpus_rejects_every_named_invalid_document_and_card() {
     assert!(prepare_flashcard_import(path_text(&malformed)).is_err());
 
     let invalid_utf8 = root.write("invalid-utf8.ostudy.json", &[0xff, 0xfe, 0xfd]);
-    let utf8_error = prepare_flashcard_import(path_text(&invalid_utf8))
-        .expect_err("invalid UTF-8 should be rejected");
+    let utf8_error = match prepare_flashcard_import(path_text(&invalid_utf8)) {
+        Ok(_) => panic!("invalid UTF-8 should be rejected"),
+        Err(error) => error,
+    };
     assert_eq!(utf8_error.code, "invalid_flashcard_import_utf8");
 }
 
@@ -359,16 +361,20 @@ fn generated_import_enforces_file_card_tag_and_cloze_boundaries() {
             .expect("too-many fixture should serialize")
             .as_slice(),
     );
-    let too_many = prepare_flashcard_import(path_text(&too_many_path))
-        .expect_err("maximum plus one source note should fail");
+    let too_many = match prepare_flashcard_import(path_text(&too_many_path)) {
+        Ok(_) => panic!("maximum plus one source note should fail"),
+        Err(error) => error,
+    };
     assert_eq!(too_many.code, "too_many_flashcard_import_cards");
 
     let over_size = root.write(
         "too-large.ostudy.json",
         &vec![b' '; MAX_GENERATED_IMPORT_BYTES + 1],
     );
-    let too_large = prepare_flashcard_import(path_text(&over_size))
-        .expect_err("maximum file bytes plus one should fail");
+    let too_large = match prepare_flashcard_import(path_text(&over_size)) {
+        Ok(_) => panic!("maximum file bytes plus one should fail"),
+        Err(error) => error,
+    };
     assert_eq!(too_large.code, "invalid_flashcard_import_size");
 
     let max_tag = "x".repeat(MAX_TAG_CHARS);

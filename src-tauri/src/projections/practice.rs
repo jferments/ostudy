@@ -63,7 +63,7 @@ impl PreparedPracticeCard {
         assets: Vec<crate::assets::AssetDto>,
     ) -> Result<PracticeCardDto, CommandError> {
         Ok(PracticeCardDto {
-            card: CardPresentationDto {
+            presentation: CardPresentationDto {
                 id: self.card_id.clone(),
                 note_id: self.note_id.clone(),
                 deck_id: self.deck_id.clone(),
@@ -474,7 +474,7 @@ pub fn load_practice_window(
     {
         last_position = position;
         cards.push(PracticeCardDto {
-            card: CardPresentationDto {
+            presentation: CardPresentationDto {
                 id: card_id,
                 note_id: note_id.clone(),
                 deck_id,
