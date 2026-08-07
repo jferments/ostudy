@@ -64,6 +64,22 @@ jobs:
             echo "Rust dependency resolution changed Cargo.lock. The generated candidate will be uploaded."
           fi
 
+      - name: Format candidate Rust sources
+        id: rust_format
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          git diff -- '*.rs' > "$RUNNER_TEMP/ostudy-rustfmt.patch"
+          if [[ -s "$RUNNER_TEMP/ostudy-rustfmt.patch" ]]; then
+            git diff --name-only -- '*.rs' > "$RUNNER_TEMP/ostudy-rustfmt-files.txt"
+            tar -czf "$RUNNER_TEMP/ostudy-rustfmt-sources.tar.gz" \
+              -T "$RUNNER_TEMP/ostudy-rustfmt-files.txt"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Rust formatting changed tracked sources. The formatted candidate will be uploaded."
+          else
+            rm -f "$RUNNER_TEMP/ostudy-rustfmt.patch"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Select qualification gate
         id: gate
         env:
@@ -101,8 +117,14 @@ jobs:
           set -o pipefail
           ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-full-check.log"
 
+      - name: Require committed Rust formatting
+        if: always() && steps.rust_format.outputs.changed == 'true'
+        run: |
+          echo "Rust sources must be formatted and committed. See the uploaded rustfmt candidate." >&2
+          exit 1
+
       - name: Require committed Rust lockfile
-        if: steps.rust_lock.outputs.changed == 'true'
+        if: always() && steps.rust_lock.outputs.changed == 'true'
         run: |
           echo "src-tauri/Cargo.lock must be updated and committed for the exact dependency graph." >&2
           exit 1
@@ -131,4 +153,6 @@ jobs:
             ${{ runner.temp }}/ostudy-fast-check.log
             ${{ runner.temp }}/ostudy-full-check.log
             ${{ runner.temp }}/ostudy-Cargo.lock.generated
+            ${{ runner.temp }}/ostudy-rustfmt.patch
+            ${{ runner.temp }}/ostudy-rustfmt-sources.tar.gz
           if-no-files-found: ignore

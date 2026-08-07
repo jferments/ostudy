@@ -12,6 +12,9 @@ mod profiles;
 mod providers;
 mod secrets;
 
+#[cfg(test)]
+mod backup_tests;
+
 pub(crate) use probes::{
     get_ai_provider_probe_result, list_ai_provider_models, test_ai_provider_profile,
 };
