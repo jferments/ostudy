@@ -39,6 +39,8 @@
     --ease-standard: cubic-bezier(0.2, 0, 0, 1);
     --ease-emphasized: cubic-bezier(0.2, 0, 0, 1.2);
     --layer-base: 0;
+    --layer-control-selected: 1;
+    --layer-control-focus: 2;
     --layer-sticky: 100;
     --layer-popover: 500;
     --layer-dialog: 1000;
