@@ -81,20 +81,10 @@ pub(super) fn update_card_template_in_connection(
             "This template changed in another window. Reload it and try again.",
         ));
     }
-    ensure_template_name_available(
-        &transaction,
-        &normalized_name,
-        Some(&input.template_id),
-    )?;
-    let fields =
-        validate_template_fields(&transaction, &input.template_id, input.fields, true)?;
-    let rules = validate_template_rules(
-        &transaction,
-        &input.template_id,
-        input.rules,
-        &fields,
-        true,
-    )?;
+    ensure_template_name_available(&transaction, &normalized_name, Some(&input.template_id))?;
+    let fields = validate_template_fields(&transaction, &input.template_id, input.fields, true)?;
+    let rules =
+        validate_template_rules(&transaction, &input.template_id, input.rules, &fields, true)?;
     let asset_ids = template_rule_asset_ids(&rules)?;
     ensure_assets_exist(&transaction, &asset_ids)?;
     let now = unix_time_millis()?;
@@ -716,10 +706,8 @@ fn sanitize_template_node(
             }
         }
         match node_type {
-            TEMPLATE_INLINE_NODE
-                if matches!(parent_type, Some("paragraph") | Some("heading")) => {}
-            TEMPLATE_BLOCK_NODE
-                if matches!(parent_type, Some("doc") | Some("blockquote")) => {}
+            TEMPLATE_INLINE_NODE if matches!(parent_type, Some("paragraph") | Some("heading")) => {}
+            TEMPLATE_BLOCK_NODE if matches!(parent_type, Some("doc") | Some("blockquote")) => {}
             TEMPLATE_INLINE_NODE => {
                 return Err(CommandError::new(
                     "invalid_template_placeholder",
@@ -835,7 +823,10 @@ fn extract_template_plain_text(document: &Value) -> Result<String, CommandError>
                 "A template field contains an invalid document node.",
             )
         })?;
-        let node_type = object.get("type").and_then(Value::as_str).unwrap_or_default();
+        let node_type = object
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         if node_type == "text" {
             if let Some(text) = object.get("text").and_then(Value::as_str) {
                 output.push_str(text);
@@ -911,7 +902,10 @@ fn render_template_children(
 ) -> Result<Vec<Value>, CommandError> {
     let mut rendered = Vec::new();
     for child in children {
-        let child_type = child.get("type").and_then(Value::as_str).unwrap_or_default();
+        let child_type = child
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         if child_type == TEMPLATE_BLOCK_NODE {
             if !matches!(parent_type, "doc" | "blockquote") {
                 return Err(CommandError::new(
@@ -1102,10 +1096,7 @@ fn generate_template_cards_in_connection(
     let mut seen = BTreeSet::new();
 
     for rendered in rendered_cards {
-        let normalized = normalized_pair(
-            &rendered.content.front_text,
-            &rendered.content.back_text,
-        );
+        let normalized = normalized_pair(&rendered.content.front_text, &rendered.content.back_text);
         let hash = duplicate_hash(&normalized.0, &normalized.1);
         if !seen.insert(normalized.clone())
             || has_exact_duplicate(
@@ -1342,12 +1333,16 @@ mod automatic_layout;
 mod repair;
 mod stable_update;
 
+use automatic_layout::{
+    automatic_template_field_lookup_from_dtos, normalize_typed_template_layout,
+    AutomaticTemplateFieldLookup,
+};
+#[cfg(test)]
+use automatic_layout::materialize_automatic_template_document;
 pub(super) use automatic_layout::{
-    automatic_template_field_lookup_from_dtos, generate_automatic_template_cards_in_connection,
-    materialize_automatic_template_document, normalize_card_template_dto_for_editing,
-    normalize_typed_template_layout, prepare_automatic_create_template_input,
-    prepare_automatic_update_template_input, render_automatic_template_previews,
-    template_update_contains_new_children, AutomaticTemplateFieldLookup,
+    generate_automatic_template_cards_in_connection, normalize_card_template_dto_for_editing,
+    prepare_automatic_create_template_input, prepare_automatic_update_template_input,
+    render_automatic_template_previews, template_update_contains_new_children,
 };
 pub(super) use repair::apply_stage3_data_repairs;
 pub(super) use stable_update::update_card_template_with_stable_children_in_connection;
