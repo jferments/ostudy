@@ -48,6 +48,22 @@ jobs:
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.cache/ostudy/cargo-target"
 
+      - name: Resolve candidate Rust lockfile
+        id: rust_lock
+        run: |
+          cp src-tauri/Cargo.lock "$RUNNER_TEMP/ostudy-Cargo.lock.committed"
+          cargo metadata \
+            --manifest-path src-tauri/Cargo.toml \
+            --format-version 1 \
+            > /dev/null
+          if cmp -s src-tauri/Cargo.lock "$RUNNER_TEMP/ostudy-Cargo.lock.committed"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            cp src-tauri/Cargo.lock "$RUNNER_TEMP/ostudy-Cargo.lock.generated"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Rust dependency resolution changed Cargo.lock. The generated candidate will be uploaded."
+          fi
+
       - name: Select qualification gate
         id: gate
         env:
@@ -85,6 +101,12 @@ jobs:
           set -o pipefail
           ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-full-check.log"
 
+      - name: Require committed Rust lockfile
+        if: steps.rust_lock.outputs.changed == 'true'
+        run: |
+          echo "src-tauri/Cargo.lock must be updated and committed for the exact dependency graph." >&2
+          exit 1
+
       - name: Summarize qualification failure
         if: failure()
         run: |
@@ -108,4 +130,5 @@ jobs:
             ${{ runner.temp }}/ostudy-static-check.log
             ${{ runner.temp }}/ostudy-fast-check.log
             ${{ runner.temp }}/ostudy-full-check.log
+            ${{ runner.temp }}/ostudy-Cargo.lock.generated
           if-no-files-found: ignore

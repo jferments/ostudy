@@ -37,7 +37,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 4,
         name: "card_organization",
-        checksum: "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d",
+        checksum: "0e0e25b3de24b04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d",
         sql: include_str!("../migrations/0004_card_organization.sql"),
     },
     Migration {
@@ -100,9 +100,21 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "ed5b4f510d014b34f7c6b83c3fcf7914baaa3942e51345a74fb8a7179cc1e11a",
         sql: include_str!("../migrations/0014_review_attribution_and_projection_indexes.sql"),
     },
+    Migration {
+        version: 15,
+        name: "ai_provider_profiles",
+        checksum: "6d92ff137e4029755fec9b5880d9bc9cc8fd4be6f9f30bf2b935b258fb04614a",
+        sql: include_str!("../migrations/0015_ai_provider_profiles.sql"),
+    },
+    Migration {
+        version: 16,
+        name: "ai_provider_probe_capabilities",
+        checksum: "12b4ec2518478a9798a19e87577f440a89943d06abfe7cb725f56727a854b75a",
+        sql: include_str!("../migrations/0016_ai_provider_probe_capabilities.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 14;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 16;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -329,15 +341,14 @@ fn apply_foreign_key_disabled_migration(
             .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
 
         let has_violation = {
-            let mut statement =
-                transaction
-                    .prepare("PRAGMA foreign_key_check")
-                    .map_err(|error| {
-                        format!(
-                            "Could not prepare migration {} foreign-key validation: {error}",
-                            migration.version
-                        )
-                    })?;
+            let mut statement = transaction
+                .prepare("PRAGMA foreign_key_check")
+                .map_err(|error| {
+                    format!(
+                        "Could not prepare migration {} foreign-key validation: {error}",
+                        migration.version
+                    )
+                })?;
             let mut rows = statement.query([]).map_err(|error| {
                 format!(
                     "Could not run migration {} foreign-key validation: {error}",
@@ -403,7 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn migrations_and_repairs_are_idempotent_and_reach_schema_fourteen() {
+    fn migrations_and_repairs_are_idempotent_and_reach_latest_schema() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
@@ -430,6 +441,10 @@ mod tests {
                     "review_event_attributions",
                     "review_event_tag_attributions",
                     "data_repairs",
+                    "ai_provider_profiles",
+                    "ai_task_defaults",
+                    "ai_provider_probe_results",
+                    "ai_provider_capabilities",
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -445,6 +460,7 @@ mod tests {
                     ("schedule_action_operations", "reschedule_intent_json"),
                     ("practice_sessions", "selected_tag_ids_json"),
                     ("review_event_attributions", "review_local_date"),
+                    ("ai_provider_profiles", "credential_epoch"),
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -463,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_four_upgrades_forward_without_rewriting_history_or_losing_cards() {
+    fn released_schema_upgrades_forward_without_losing_integrity() {
         let fixture = &RELEASED_SCHEMA_FIXTURES[0];
         assert_eq!(fixture.release, "0.1.0");
         assert_eq!(fixture.schema_version, 3);
