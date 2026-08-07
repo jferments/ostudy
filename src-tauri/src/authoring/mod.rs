@@ -1403,5 +1403,5 @@ mod tests;
 pub(crate) use card_commands::backfill_duplicate_hashes_in_connection;
 pub(crate) use card_types_and_templates::{
     apply_stage3_data_repairs, projected_presentation_variant, render_projected_presentation,
-    ProjectedPresentationInput,
+    ProjectedPresentationInput, RenderedCardPresentation,
 };
