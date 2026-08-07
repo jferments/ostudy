@@ -174,7 +174,7 @@ pub async fn list_ai_provider_models(
         .await
         .map_err(gateway_to_command)?;
     Ok(AiProviderModelsDto {
-        profile_id: profile.id,
+        profile_id: profile.id.clone(),
         profile_revision: profile.revision,
         provider_kind: profile.provider_kind,
         models,
@@ -349,10 +349,13 @@ pub async fn test_ai_provider_profile(
     let text_start = Instant::now();
     let text_outcome = match providers::run_text_probe(&runtime.gateway, &profile, bearer).await {
         Ok(outcome) => {
+            let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
             phases.push(passed_phase(
                 "text_completion",
                 "Text completion",
-                "The selected model completed the minimal text probe.",
+                &format!(
+                    "The selected model completed the minimal text probe (finish: {finish})."
+                ),
                 Some(elapsed_ms(text_start)),
             ));
             outcome
@@ -395,10 +398,13 @@ pub async fn test_ai_provider_profile(
     .await
     {
         Ok(outcome) => {
+            let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
             phases.push(passed_phase(
                 "structured_output",
                 "Structured output",
-                "The provider returned structured output that passed local type and semantic validation.",
+                &format!(
+                    "The provider returned structured output that passed local type and semantic validation (finish: {finish})."
+                ),
                 Some(elapsed_ms(structured_start)),
             ));
             Some(outcome)
@@ -462,8 +468,8 @@ pub fn get_ai_provider_probe_result(
         let Some(serialized) = serialized else {
             return Ok(None);
         };
-        let mut result: AiProviderProbeResultDto = serde_json::from_str(&serialized)
-            .map_err(CommandError::serialization)?;
+        let mut result: AiProviderProbeResultDto =
+            serde_json::from_str(&serialized).map_err(CommandError::serialization)?;
         let current = load_profile_snapshot(connection, &profile_id)?;
         result.stale = !snapshot_matches_result(&current, &result);
         result.persisted = true;
@@ -556,8 +562,8 @@ fn persist_result(
         )
         .map_err(CommandError::database)?;
     for capability in &result.capabilities {
-        let value_json = serde_json::to_string(&capability.value)
-            .map_err(CommandError::serialization)?;
+        let value_json =
+            serde_json::to_string(&capability.value).map_err(CommandError::serialization)?;
         transaction
             .execute(
                 "INSERT INTO ai_provider_capabilities (
