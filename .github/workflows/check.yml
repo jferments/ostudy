@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -94,30 +94,6 @@ jobs:
             "$RUNNER_TEMP/ostudy-full-check.log" \
             >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Apply canonical Rust formatting to draft branch
-        if: failure() && github.event_name == 'pull_request' && github.event.pull_request.draft == true
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
-        run: |
-          git fetch origin "$HEAD_BRANCH"
-          git checkout -B "$HEAD_BRANCH" "origin/$HEAD_BRANCH"
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all
-          if ! git diff --quiet -- src-tauri/src; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src-tauri/src
-            git commit -m "style: apply canonical rustfmt"
-            git push origin "HEAD:$HEAD_BRANCH"
-          fi
-
-      - name: Capture canonical Rust formatting
-        if: failure()
-        run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all
-          tar -czf "$RUNNER_TEMP/ostudy-rustfmt.tar.gz" \
-            src-tauri/src/authoring \
-            src-tauri/src/diagnostics.rs
-
       - name: Export diagnostics after a failure
         if: failure()
         run: ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-diagnostics.tar.gz"
@@ -129,7 +105,6 @@ jobs:
           name: ostudy-check-diagnostics
           path: |
             ${{ runner.temp }}/ostudy-diagnostics.tar.gz
-            ${{ runner.temp }}/ostudy-rustfmt.tar.gz
             ${{ runner.temp }}/ostudy-static-check.log
             ${{ runner.temp }}/ostudy-fast-check.log
             ${{ runner.temp }}/ostudy-full-check.log
