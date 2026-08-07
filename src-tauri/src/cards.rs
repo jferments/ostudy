@@ -1,4 +1,4 @@
-//! Shared card hydration, deletion, and rich-text validation.
+//! Shared card-presentation transport and rich-text validation.
 //!
 //! The React/Tiptap editor sends JSON documents across the Tauri IPC boundary.
 //! This module treats those documents as untrusted input, validates the supported
@@ -10,16 +10,11 @@ use std::collections::BTreeSet;
 
 #[cfg(test)]
 use rusqlite::params;
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::{
-    assets::{get_assets_for_note, AssetDto},
-    error::CommandError,
-    paths::AppPaths,
-    util::validate_entity_id,
-};
+use crate::{assets::AssetDto, error::CommandError, util::validate_entity_id};
 
 #[cfg(test)]
 use crate::{database::Database, util::unix_time_millis};
@@ -53,90 +48,6 @@ pub(crate) struct ValidatedContent {
     pub(crate) back_text: String,
     pub(crate) front_asset_ids: Vec<String>,
     pub(crate) back_asset_ids: Vec<String>,
-}
-
-struct RawCard {
-    id: String,
-    note_id: String,
-    deck_id: String,
-    direction: String,
-    pub(crate) front_doc_json: String,
-    pub(crate) back_doc_json: String,
-    pub(crate) front_text: String,
-    pub(crate) back_text: String,
-    created_at: i64,
-    updated_at: i64,
-    revision: i64,
-}
-
-pub(crate) fn get_card_from_connection(
-    connection: &Connection,
-    paths: &AppPaths,
-    note_id: &str,
-) -> Result<CardPresentationDto, CommandError> {
-    let raw = connection
-        .query_row(
-            "SELECT c.id, n.id, c.deck_id, c.direction, n.front_doc, n.back_doc,\n\
-                    n.front_text, n.back_text, n.created_at, n.updated_at, n.revision\n\
-             FROM cards c\n\
-             JOIN notes n ON n.id = c.note_id\n\
-             JOIN decks d ON d.id = c.deck_id\n\
-             WHERE n.id = ?1\n\
-               AND c.deleted_at IS NULL\n\
-               AND n.deleted_at IS NULL\n\
-               AND d.deleted_at IS NULL\n\
-               AND d.archived_at IS NULL\n\
-               AND c.direction = 'forward'",
-            [note_id],
-            raw_card_from_row,
-        )
-        .optional()
-        .map_err(CommandError::database)?
-        .ok_or_else(|| CommandError::new("card_not_found", "That flashcard no longer exists."))?;
-
-    hydrate_card(connection, paths, raw)
-}
-
-fn hydrate_card(
-    connection: &Connection,
-    paths: &AppPaths,
-    raw: RawCard,
-) -> Result<CardPresentationDto, CommandError> {
-    let front_doc =
-        serde_json::from_str(&raw.front_doc_json).map_err(CommandError::serialization)?;
-    let back_doc = serde_json::from_str(&raw.back_doc_json).map_err(CommandError::serialization)?;
-    let assets = get_assets_for_note(connection, paths, &raw.note_id)?;
-
-    Ok(CardPresentationDto {
-        id: raw.id,
-        note_id: raw.note_id,
-        deck_id: raw.deck_id,
-        direction: raw.direction,
-        front_doc,
-        back_doc,
-        front_text: raw.front_text,
-        back_text: raw.back_text,
-        assets,
-        created_at: raw.created_at,
-        updated_at: raw.updated_at,
-        revision: raw.revision,
-    })
-}
-
-fn raw_card_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawCard> {
-    Ok(RawCard {
-        id: row.get(0)?,
-        note_id: row.get(1)?,
-        deck_id: row.get(2)?,
-        direction: row.get(3)?,
-        front_doc_json: row.get(4)?,
-        back_doc_json: row.get(5)?,
-        front_text: row.get(6)?,
-        back_text: row.get(7)?,
-        created_at: row.get(8)?,
-        updated_at: row.get(9)?,
-        revision: row.get(10)?,
-    })
 }
 
 pub(crate) fn validate_content(
@@ -1002,10 +913,8 @@ mod tests {
     }
 
     #[test]
-    fn hydrates_and_deletes_a_card() {
+    fn deletes_a_card_note_and_its_presentation() {
         let database = Database::open_in_memory().expect("database should open");
-        let temporary = tempfile_path();
-        let paths = AppPaths::new(temporary.clone()).expect("paths should initialize");
 
         let deck = database
             .with_connection(|connection| {
@@ -1065,12 +974,6 @@ mod tests {
             })
             .expect("card fixture should be created");
 
-        let loaded = database
-            .with_connection(|connection| get_card_from_connection(connection, &paths, &note_id))
-            .expect("card should hydrate");
-        assert_eq!(loaded.id, card_id);
-        assert_eq!(loaded.front_text, "What is ATP?");
-
         let deletion = database
             .with_connection(|connection| {
                 crate::deletion::delete_cards(
@@ -1081,11 +984,28 @@ mod tests {
             })
             .expect("card should delete");
         assert_eq!(deletion.affected_count, 1);
-        let missing = database
-            .with_connection(|connection| get_card_from_connection(connection, &paths, &note_id));
-        assert!(missing.is_err(), "deleted card should not hydrate");
 
-        let _ = std::fs::remove_dir_all(temporary);
+        database
+            .with_connection(|connection| {
+                let active_note: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM notes WHERE id = ?1 AND deleted_at IS NULL",
+                        [note_id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                let active_card: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM cards WHERE id = ?1 AND deleted_at IS NULL",
+                        [card_id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(active_note, 0);
+                assert_eq!(active_card, 0);
+                Ok(())
+            })
+            .expect("deletion tombstones should be readable");
     }
 
     #[test]
