@@ -75,10 +75,19 @@
     touch-action: manipulation;
   }
 
+  :root[data-reduce-motion="true"] *,
+  :root[data-reduce-motion="true"] *::before,
+  :root[data-reduce-motion="true"] *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    :root:not([data-reduce-motion="false"]) *,
-    :root:not([data-reduce-motion="false"]) *::before,
-    :root:not([data-reduce-motion="false"]) *::after {
+    :root *,
+    :root *::before,
+    :root *::after {
       scroll-behavior: auto !important;
       transition-duration: 0.001ms !important;
       animation-duration: 0.001ms !important;
