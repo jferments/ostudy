@@ -281,7 +281,7 @@ export function CardsScreen({
   }
 
   function beginMoveCopy(cards: TransferableCard[]): void {
-    const notes = uniqueNotes(cards);
+    const notes = [...new Map(cards.map((card) => [card.noteId, card])).values()];
     if (notes.length === 0) return;
     setMoveCopyCards(notes);
     setSelectionAction("move_copy");

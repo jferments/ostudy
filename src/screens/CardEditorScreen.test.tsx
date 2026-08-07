@@ -64,10 +64,9 @@ const secondDeck: decksIpc.DeckSummary = {
 };
 
 const card: cardsIpc.CardNote = {
-  id: "b".repeat(32),
+  cardType: "basic",
   noteId: "c".repeat(32),
   deckId: deck.id,
-  direction: "forward",
   frontDoc: {
     type: "doc",
     content: [
@@ -82,9 +81,10 @@ const card: cardsIpc.CardNote = {
   },
   frontText: "Question",
   backText: "Answer",
+  reverseEnabled: false,
   assets: [],
   tags: ["Medication"],
-  dueAt: Date.now(),
+  generatedCardCount: 1,
   createdAt: 1,
   updatedAt: 1,
   revision: 1,
@@ -105,13 +105,6 @@ describe("CardEditorScreen", () => {
     vi.mocked(decksIpc.listDecks).mockResolvedValue([deck, secondDeck]);
     vi.mocked(cardsIpc.listTags).mockResolvedValue([]);
     vi.mocked(templatesIpc.listCardTemplateSummaries).mockResolvedValue([]);
-    vi.mocked(ipc.getCardTypeInfo).mockResolvedValue({
-      cardType: "basic",
-      reverseEnabled: false,
-      clozeSource: "",
-      clozeMode: "one_at_a_time",
-      generatedCardCount: 1,
-    });
     vi.mocked(cardsIpc.findDuplicateCards).mockResolvedValue([
       {
         noteId: "d".repeat(32),
@@ -143,7 +136,6 @@ describe("CardEditorScreen", () => {
     expect(await screen.findByText("Medication")).toBeTruthy();
     await waitFor(() => {
       expect(assetsIpc.beginAssetDraft).toHaveBeenCalledWith("card", card.noteId);
-      expect(ipc.getCardTypeInfo).toHaveBeenCalledWith(card.noteId);
       expect(templatesIpc.listCardTemplateSummaries).toHaveBeenCalledOnce();
       expect(
         (screen.getByRole("combobox", { name: "Card template" }) as HTMLSelectElement)

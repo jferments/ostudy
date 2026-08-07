@@ -397,7 +397,8 @@ export function DecksScreen({
     }
 
     try {
-      const deck = committedDeck ?? (await getDeck(deckId));
+      const deck = committedDeck ?? (await controller.deck(deckId));
+      if (!deck) return;
       setSelectedDeck(deck);
       setView("detail");
     } catch (error: unknown) {

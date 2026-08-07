@@ -84,7 +84,7 @@ const settings: settingsIpc.AppSettings = {
   dailyReviewLimit: 200,
 };
 const card: cardsIpc.CardPresentation = {
-  id: "b".repeat(32),
+  cardId: "b".repeat(32),
   noteId: "c".repeat(32),
   deckId: deck.id,
   direction: "forward",
@@ -95,10 +95,10 @@ const card: cardsIpc.CardPresentation = {
   assets: [],
   createdAt: 1,
   updatedAt: 1,
-  revision: 1,
+  noteRevision: 1,
 };
 const practiceCard: practiceIpc.PracticeCard = {
-  card,
+  presentation: card,
   deckName: deck.name,
   dueAt: Date.now(),
   scheduleState: 2,
@@ -161,7 +161,7 @@ const previews: practiceIpc.ReviewPreviewSet = {
   ],
 };
 const completedReview: practiceIpc.ReviewResult = {
-  cardId: card.id,
+  cardId: card.cardId,
   rating: 2,
   outcome: "not_confident",
   dueAt: Date.now() + 86_400_000,
@@ -307,7 +307,7 @@ describe("PracticeScreen", () => {
         requestId: 8,
         deckIds: [],
         tagIds: [],
-        cardIds: [card.id],
+        cardIds: [card.cardId],
         autoStart: true,
       },
       onLaunchConsumed,
@@ -316,7 +316,7 @@ describe("PracticeScreen", () => {
       expect(onLaunchConsumed).toHaveBeenCalledTimes(1);
       expect(practiceIpc.startCardPractice).toHaveBeenCalledWith({
         operationId: "0".repeat(32),
-        cardIds: [card.id],
+        cardIds: [card.cardId],
         shuffle: true,
       });
     });

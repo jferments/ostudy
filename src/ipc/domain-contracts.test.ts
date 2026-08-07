@@ -67,7 +67,6 @@ import {
   createCardTemplate,
   generateCardsFromTemplate,
   getCardTemplate,
-  listCardTemplateSummaries,
   previewTemplateCards,
   updateCardTemplate,
   type CreateCardTemplateInput,
