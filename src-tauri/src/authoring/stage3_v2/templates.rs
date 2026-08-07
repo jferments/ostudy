@@ -1,60 +1,51 @@
-fn list_card_templates_in_connection(
-    connection: &mut Connection,
-    paths: &AppPaths,
-) -> Result<Vec<CardTemplateDto>, CommandError> {
-    let ids = {
-        let mut statement = connection
-            .prepare(
-                "SELECT id FROM card_templates
-                 WHERE deleted_at IS NULL
-                 ORDER BY name COLLATE NOCASE ASC, created_at ASC",
-            )
-            .map_err(CommandError::database)?;
-        let rows = statement
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(CommandError::database)?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
-    };
-    ids.into_iter()
-        .map(|id| Ok(load_stored_template(connection, paths, &id, true)?.dto))
-        .collect()
-}
-
 fn create_card_template_in_connection(
     connection: &mut Connection,
     paths: &AppPaths,
     input: CreateCardTemplateInput,
 ) -> Result<CardTemplateDto, CommandError> {
     let name = validate_template_name(input.name)?;
-    let normalized_name = normalize_template_name(&name);
-    let description = validate_bounded_visible_text(
-        input.description,
-        MAX_TEMPLATE_DESCRIPTION_CHARS,
-        "Template descriptions",
-        true,
+    let description = validate_template_description(input.description)?;
+    if let Some(draft_id) = input.asset_draft_id.as_deref() {
+        validate_entity_id(draft_id, "asset draft")?;
+    }
+    let fields = validate_template_fields(input.fields)?;
+    let field_ids = fields
+        .iter()
+        .filter_map(|field| field.id.clone())
+        .collect::<BTreeSet<_>>();
+    let rules = validate_template_rules(input.rules, &field_ids)?;
+    let template_asset_ids = template_asset_ids_from_rules(&rules)?;
+    ensure_assets_available(
+        connection,
+        paths,
+        &template_asset_ids,
+        input.asset_draft_id.as_deref(),
     )?;
+    let now = unix_time_millis()?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
-    ensure_template_name_available(&transaction, &normalized_name, None)?;
     let template_id = generate_id(&transaction)?;
-    let fields = validate_template_fields(&transaction, &template_id, input.fields, false)?;
-    let rules = validate_template_rules(&transaction, &template_id, input.rules, &fields, false)?;
-    let asset_ids = template_rule_asset_ids(&rules)?;
-    ensure_assets_exist(&transaction, &asset_ids)?;
-    let now = unix_time_millis()?;
     transaction
         .execute(
             "INSERT INTO card_templates (
-                 id, name, normalized_name, description, created_at, updated_at, revision
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?5, 1)",
-            params![template_id, name, normalized_name, description, now],
+                 id, name, description, created_at, updated_at, revision
+             ) VALUES (?1, ?2, ?3, ?4, ?4, 1)",
+            params![template_id, name, description, now],
         )
         .map_err(CommandError::database)?;
-    insert_template_children(&transaction, &template_id, &fields, &rules)?;
-    replace_template_assets(&transaction, &template_id, &asset_ids)?;
+    insert_template_fields(&transaction, &template_id, &fields, now)?;
+    insert_template_rules(&transaction, &template_id, &rules, now)?;
+    replace_template_assets(&transaction, &template_id, &template_asset_ids, now)?;
+    let finalization = finalize_assets_for_owner(
+        &transaction,
+        paths,
+        &template_asset_ids,
+        input.asset_draft_id.as_deref(),
+        Some(&template_id),
+    )?;
     transaction.commit().map_err(CommandError::database)?;
+    finalization.cleanup();
     load_stored_template(connection, paths, &template_id, true).map(|stored| stored.dto)
 }
 
@@ -67,110 +58,78 @@ fn update_card_template_in_connection(
     if input.revision < 1 {
         return Err(CommandError::new(
             "invalid_revision",
-            "The template revision is invalid.",
+            "The card-template revision is invalid.",
         ));
     }
     let name = validate_template_name(input.name)?;
-    let normalized_name = normalize_template_name(&name);
-    let description = validate_bounded_visible_text(
-        input.description,
-        MAX_TEMPLATE_DESCRIPTION_CHARS,
-        "Template descriptions",
-        true,
+    let description = validate_template_description(input.description)?;
+    if let Some(draft_id) = input.asset_draft_id.as_deref() {
+        validate_entity_id(draft_id, "asset draft")?;
+    }
+    let fields = validate_template_fields(input.fields)?;
+    let field_ids = fields
+        .iter()
+        .filter_map(|field| field.id.clone())
+        .collect::<BTreeSet<_>>();
+    let rules = validate_template_rules(input.rules, &field_ids)?;
+    let template_asset_ids = template_asset_ids_from_rules(&rules)?;
+    ensure_assets_available(
+        connection,
+        paths,
+        &template_asset_ids,
+        input.asset_draft_id.as_deref(),
     )?;
+    let now = unix_time_millis()?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
-    let current: Option<i64> = transaction
-        .query_row(
-            "SELECT revision FROM card_templates
-             WHERE id = ?1 AND deleted_at IS NULL",
-            [input.template_id.as_str()],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(CommandError::database)?;
-    let Some(current_revision) = current else {
-        return Err(CommandError::new(
-            "template_not_found",
-            "That card template no longer exists.",
-        ));
-    };
-    if current_revision != input.revision {
-        return Err(CommandError::new(
-            "template_changed",
-            "This template changed in another window. Reload it and try again.",
-        ));
-    }
-    ensure_template_name_available(
-        &transaction,
-        &normalized_name,
-        Some(&input.template_id),
-    )?;
-    let fields =
-        validate_template_fields(&transaction, &input.template_id, input.fields, true)?;
-    let rules = validate_template_rules(
-        &transaction,
-        &input.template_id,
-        input.rules,
-        &fields,
-        true,
-    )?;
-    let asset_ids = template_rule_asset_ids(&rules)?;
-    ensure_assets_exist(&transaction, &asset_ids)?;
-    let now = unix_time_millis()?;
     let changed = transaction
         .execute(
             "UPDATE card_templates
-             SET name = ?1, normalized_name = ?2, description = ?3,
-                 updated_at = ?4, revision = revision + 1
-             WHERE id = ?5 AND revision = ?6 AND deleted_at IS NULL",
-            params![
-                name,
-                normalized_name,
-                description,
-                now,
-                input.template_id,
-                input.revision,
-            ],
+             SET name = ?1, description = ?2, updated_at = ?3, revision = revision + 1
+             WHERE id = ?4 AND revision = ?5",
+            params![name, description, now, input.template_id, input.revision],
         )
         .map_err(CommandError::database)?;
     if changed != 1 {
         return Err(CommandError::new(
             "template_changed",
-            "This template changed in another window. Reload it and try again.",
+            "This card template changed in another window. Reload it and try again.",
         ));
     }
-    transaction
-        .execute(
-            "DELETE FROM card_template_rules WHERE template_id = ?1",
-            [input.template_id.as_str()],
-        )
-        .map_err(CommandError::database)?;
     transaction
         .execute(
             "DELETE FROM card_template_fields WHERE template_id = ?1",
             [input.template_id.as_str()],
         )
         .map_err(CommandError::database)?;
-    insert_template_children(&transaction, &input.template_id, &fields, &rules)?;
-    replace_template_assets(&transaction, &input.template_id, &asset_ids)?;
+    transaction
+        .execute(
+            "DELETE FROM card_template_rules WHERE template_id = ?1",
+            [input.template_id.as_str()],
+        )
+        .map_err(CommandError::database)?;
+    insert_template_fields(&transaction, &input.template_id, &fields, now)?;
+    insert_template_rules(&transaction, &input.template_id, &rules, now)?;
+    replace_template_assets(&transaction, &input.template_id, &template_asset_ids, now)?;
+    let finalization = finalize_assets_for_owner(
+        &transaction,
+        paths,
+        &template_asset_ids,
+        input.asset_draft_id.as_deref(),
+        Some(&input.template_id),
+    )?;
     transaction.commit().map_err(CommandError::database)?;
+    finalization.cleanup();
     load_stored_template(connection, paths, &input.template_id, true).map(|stored| stored.dto)
 }
 
 fn delete_card_template_in_connection(
-    connection: &mut Connection,
+    connection: &Connection,
     template_id: &str,
 ) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
     let changed = connection
-        .execute(
-            "UPDATE card_templates
-             SET deleted_at = ?1, updated_at = ?1, revision = revision + 1
-             WHERE id = ?2 AND deleted_at IS NULL",
-            params![now, template_id],
-        )
+        .execute("DELETE FROM card_templates WHERE id = ?1", [template_id])
         .map_err(CommandError::database)?;
     if changed == 0 {
         return Err(CommandError::new(
@@ -185,28 +144,24 @@ fn load_stored_template(
     connection: &Connection,
     paths: &AppPaths,
     template_id: &str,
-    require_active: bool,
+    include_assets: bool,
 ) -> Result<StoredTemplate, CommandError> {
-    let active_clause = if require_active {
-        "AND deleted_at IS NULL"
-    } else {
-        ""
-    };
-    let sql = format!(
-        "SELECT id, name, description, created_at, updated_at, revision
-         FROM card_templates WHERE id = ?1 {active_clause}"
-    );
     let base = connection
-        .query_row(&sql, [template_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, i64>(4)?,
-                row.get::<_, i64>(5)?,
-            ))
-        })
+        .query_row(
+            "SELECT id, name, description, created_at, updated_at, revision
+             FROM card_templates WHERE id = ?1",
+            [template_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, i64>(5)?,
+                ))
+            },
+        )
         .optional()
         .map_err(CommandError::database)?
         .ok_or_else(|| {
@@ -215,77 +170,13 @@ fn load_stored_template(
                 "That card template no longer exists.",
             )
         })?;
-    let fields = {
-        let mut statement = connection
-            .prepare(
-                "SELECT id, name, description, position
-                 FROM card_template_fields
-                 WHERE template_id = ?1 ORDER BY position ASC",
-            )
-            .map_err(CommandError::database)?;
-        let rows = statement
-            .query_map([template_id], |row| {
-                Ok(CardTemplateFieldDto {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    description: row.get(2)?,
-                    position: row.get(3)?,
-                })
-            })
-            .map_err(CommandError::database)?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+    let fields = load_template_fields(connection, template_id)?;
+    let rules = load_template_rules(connection, template_id)?;
+    let assets = if include_assets {
+        load_template_assets(connection, paths, template_id)?
+    } else {
+        Vec::new()
     };
-    let stored_rules = {
-        let mut statement = connection
-            .prepare(
-                "SELECT id, name, front_doc, back_doc, position
-                 FROM card_template_rules
-                 WHERE template_id = ?1 ORDER BY position ASC",
-            )
-            .map_err(CommandError::database)?;
-        let rows = statement
-            .query_map([template_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                    row.get::<_, i64>(4)?,
-                ))
-            })
-            .map_err(CommandError::database)?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
-    };
-    let rules = stored_rules
-        .into_iter()
-        .map(|(id, name, front_json, back_json, position)| {
-            let front_json = front_json.ok_or_else(|| {
-                CommandError::new(
-                    "invalid_stored_template",
-                    "A saved template question layout is missing.",
-                )
-            })?;
-            let back_json = back_json.ok_or_else(|| {
-                CommandError::new(
-                    "invalid_stored_template",
-                    "A saved template answer layout is missing.",
-                )
-            })?;
-            Ok(CardTemplateRuleDto {
-                id,
-                name,
-                front_doc: serde_json::from_str(&front_json)
-                    .map_err(CommandError::serialization)?,
-                back_doc: serde_json::from_str(&back_json)
-                    .map_err(CommandError::serialization)?,
-                position,
-            })
-        })
-        .collect::<Result<Vec<_>, CommandError>>()?;
-    validate_stored_template(&fields, &rules)?;
-    let assets = load_template_assets(connection, paths, template_id)?;
     Ok(StoredTemplate {
         dto: CardTemplateDto {
             id: base.0,
@@ -301,487 +192,417 @@ fn load_stored_template(
     })
 }
 
-fn validate_template_fields(
+fn load_template_fields(
     connection: &Connection,
     template_id: &str,
-    inputs: Vec<CardTemplateFieldInput>,
-    updating: bool,
 ) -> Result<Vec<CardTemplateFieldDto>, CommandError> {
-    if inputs.is_empty() || inputs.len() > MAX_TEMPLATE_FIELDS {
-        return Err(CommandError::new(
-            "invalid_template_fields",
-            format!("A template must define 1 to {MAX_TEMPLATE_FIELDS} fields."),
-        ));
-    }
-    let mut names = BTreeSet::new();
-    let mut ids = BTreeSet::new();
-    let mut fields = Vec::with_capacity(inputs.len());
-    for (position, input) in inputs.into_iter().enumerate() {
-        let name = validate_template_field_name(input.name)?;
-        let normalized = normalize_template_name(&name);
-        if !names.insert(normalized) {
-            return Err(CommandError::new(
-                "duplicate_template_field",
-                "Template field names must be unique, ignoring capitalization and spacing.",
-            ));
-        }
-        let id = resolve_template_child_id(
-            connection,
-            "card_template_fields",
-            template_id,
-            input.id,
-            updating,
-            "template field",
-        )?;
-        if !ids.insert(id.clone()) {
-            return Err(CommandError::new(
-                "invalid_template_fields",
-                "A template field appears more than once.",
-            ));
-        }
-        fields.push(CardTemplateFieldDto {
-            id,
-            name,
-            description: validate_bounded_visible_text(
-                input.description,
-                MAX_TEMPLATE_FIELD_DESCRIPTION_CHARS,
-                "Template field descriptions",
-                true,
-            )?,
-            position: i64::try_from(position).unwrap_or(i64::MAX),
-        });
-    }
-    Ok(fields)
-}
-
-fn validate_template_rules(
-    connection: &Connection,
-    template_id: &str,
-    inputs: Vec<CardTemplateRuleInput>,
-    fields: &[CardTemplateFieldDto],
-    updating: bool,
-) -> Result<Vec<CardTemplateRuleDto>, CommandError> {
-    if inputs.is_empty() || inputs.len() > MAX_TEMPLATE_RULES {
-        return Err(CommandError::new(
-            "invalid_template_rules",
-            format!("A template must define 1 to {MAX_TEMPLATE_RULES} card rules."),
-        ));
-    }
-    let mut names = BTreeSet::new();
-    let mut ids = BTreeSet::new();
-    let mut rules = Vec::with_capacity(inputs.len());
-    for (position, input) in inputs.into_iter().enumerate() {
-        let name = validate_bounded_visible_text(
-            input.name,
-            MAX_TEMPLATE_RULE_NAME_CHARS,
-            "Template rule names",
-            false,
-        )?;
-        if !names.insert(normalize_template_name(&name)) {
-            return Err(CommandError::new(
-                "duplicate_template_rule",
-                "Template rule names must be unique, ignoring capitalization and spacing.",
-            ));
-        }
-        let id = resolve_template_child_id(
-            connection,
-            "card_template_rules",
-            template_id,
-            input.id,
-            updating,
-            "template rule",
-        )?;
-        if !ids.insert(id.clone()) {
-            return Err(CommandError::new(
-                "invalid_template_rules",
-                "A template rule appears more than once.",
-            ));
-        }
-        let front_placeholders = validate_template_layout(&input.front_doc, fields, "question")?;
-        let back_placeholders = validate_template_layout(&input.back_doc, fields, "answer")?;
-        if front_placeholders + back_placeholders == 0 {
-            return Err(CommandError::new(
-                "template_rule_without_field",
-                "Each card rule must use at least one template field placeholder.",
-            ));
-        }
-        rules.push(CardTemplateRuleDto {
-            id,
-            name,
-            front_doc: input.front_doc,
-            back_doc: input.back_doc,
-            position: i64::try_from(position).unwrap_or(i64::MAX),
-        });
-    }
-    Ok(rules)
-}
-
-fn validate_stored_template(
-    fields: &[CardTemplateFieldDto],
-    rules: &[CardTemplateRuleDto],
-) -> Result<(), CommandError> {
-    if fields.is_empty()
-        || fields.len() > MAX_TEMPLATE_FIELDS
-        || rules.is_empty()
-        || rules.len() > MAX_TEMPLATE_RULES
-    {
-        return Err(CommandError::new(
-            "invalid_stored_template",
-            "A saved template contains an invalid number of fields or card rules.",
-        ));
-    }
-    let mut field_ids = BTreeSet::new();
-    let mut field_names = BTreeSet::new();
-    for (position, field) in fields.iter().enumerate() {
-        validate_entity_id(&field.id, "template field")?;
-        if field.position != i64::try_from(position).unwrap_or(i64::MAX)
-            || !field_ids.insert(field.id.clone())
-            || !field_names.insert(normalize_template_name(&field.name))
-        {
-            return Err(CommandError::new(
-                "invalid_stored_template",
-                "A saved template contains duplicate or out-of-order fields.",
-            ));
-        }
-        validate_template_field_name(field.name.clone())?;
-    }
-    let mut rule_ids = BTreeSet::new();
-    let mut rule_names = BTreeSet::new();
-    for (position, rule) in rules.iter().enumerate() {
-        validate_entity_id(&rule.id, "template rule")?;
-        if rule.position != i64::try_from(position).unwrap_or(i64::MAX)
-            || !rule_ids.insert(rule.id.clone())
-            || !rule_names.insert(normalize_template_name(&rule.name))
-        {
-            return Err(CommandError::new(
-                "invalid_stored_template",
-                "A saved template contains duplicate or out-of-order card rules.",
-            ));
-        }
-        let placeholders = validate_template_layout(&rule.front_doc, fields, "question")?
-            + validate_template_layout(&rule.back_doc, fields, "answer")?;
-        if placeholders == 0 {
-            return Err(CommandError::new(
-                "invalid_stored_template",
-                "A saved card rule does not use any fields.",
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn resolve_template_child_id(
-    connection: &Connection,
-    table: &str,
-    template_id: &str,
-    supplied: Option<String>,
-    updating: bool,
-    label: &str,
-) -> Result<String, CommandError> {
-    let Some(id) = supplied else {
-        return generate_id(connection);
-    };
-    validate_entity_id(&id, label)?;
-    let sql = match table {
-        "card_template_fields" => {
-            "SELECT template_id FROM card_template_fields WHERE id = ?1"
-        }
-        "card_template_rules" => {
-            "SELECT template_id FROM card_template_rules WHERE id = ?1"
-        }
-        _ => {
-            return Err(CommandError::new(
-                "invalid_template_child",
-                "The template contains an unsupported child record.",
-            ));
-        }
-    };
-    let owner: Option<String> = connection
-        .query_row(sql, [id.as_str()], |row| row.get(0))
-        .optional()
-        .map_err(CommandError::database)?;
-    match (updating, owner) {
-        (true, Some(owner)) if owner == template_id => Ok(id),
-        (true, Some(_)) | (false, Some(_)) => Err(CommandError::new(
-            "invalid_template_child",
-            "A template field or rule identifier is already in use.",
-        )),
-        (true, None) => generate_id(connection),
-        (false, None) => Ok(id),
-    }
-}
-
-fn insert_template_children(
-    connection: &Connection,
-    template_id: &str,
-    fields: &[CardTemplateFieldDto],
-    rules: &[CardTemplateRuleDto],
-) -> Result<(), CommandError> {
-    for field in fields {
-        connection
-            .execute(
-                "INSERT INTO card_template_fields (
-                     id, template_id, name, normalized_name, description, position
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    field.id,
-                    template_id,
-                    field.name,
-                    normalize_template_name(&field.name),
-                    field.description,
-                    field.position,
-                ],
-            )
-            .map_err(CommandError::database)?;
-    }
-    for rule in rules {
-        let front_json =
-            serde_json::to_string(&rule.front_doc).map_err(CommandError::serialization)?;
-        let back_json =
-            serde_json::to_string(&rule.back_doc).map_err(CommandError::serialization)?;
-        connection
-            .execute(
-                "INSERT INTO card_template_rules (
-                     id, template_id, name, front_doc, back_doc, position
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    rule.id,
-                    template_id,
-                    rule.name,
-                    front_json,
-                    back_json,
-                    rule.position,
-                ],
-            )
-            .map_err(CommandError::database)?;
-    }
-    Ok(())
-}
-
-fn ensure_template_name_available(
-    connection: &Connection,
-    normalized_name: &str,
-    excluded_id: Option<&str>,
-) -> Result<(), CommandError> {
-    let exists: i64 = connection
-        .query_row(
-            "SELECT EXISTS(
-                 SELECT 1 FROM card_templates
-                 WHERE normalized_name = ?1
-                   AND deleted_at IS NULL
-                   AND (?2 IS NULL OR id != ?2)
-             )",
-            params![normalized_name, excluded_id],
-            |row| row.get(0),
+    let mut statement = connection
+        .prepare(
+            "SELECT id, name, description, position
+             FROM card_template_fields
+             WHERE template_id = ?1
+             ORDER BY position, created_at, id",
         )
         .map_err(CommandError::database)?;
-    if exists == 1 {
-        return Err(CommandError::new(
-            "duplicate_template_name",
-            "A card template with that name already exists.",
-        ));
-    }
-    Ok(())
+    statement
+        .query_map([template_id], |row| {
+            Ok(CardTemplateFieldDto {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                position: row.get(3)?,
+            })
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
+}
+
+fn load_template_rules(
+    connection: &Connection,
+    template_id: &str,
+) -> Result<Vec<CardTemplateRuleDto>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT id, name, front_doc, back_doc, position
+             FROM card_template_rules
+             WHERE template_id = ?1
+             ORDER BY position, created_at, id",
+        )
+        .map_err(CommandError::database)?;
+    statement
+        .query_map([template_id], |row| {
+            let front_doc: String = row.get(2)?;
+            let back_doc: String = row.get(3)?;
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                front_doc,
+                back_doc,
+                row.get::<_, i64>(4)?,
+            ))
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?
+        .into_iter()
+        .map(|(id, name, front_doc, back_doc, position)| {
+            Ok(CardTemplateRuleDto {
+                id,
+                name,
+                front_doc: serde_json::from_str(&front_doc)
+                    .map_err(CommandError::serialization)?,
+                back_doc: serde_json::from_str(&back_doc)
+                    .map_err(CommandError::serialization)?,
+                position,
+            })
+        })
+        .collect()
+}
+
+fn load_template_assets(
+    connection: &Connection,
+    paths: &AppPaths,
+    template_id: &str,
+) -> Result<Vec<AssetDto>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT a.id, a.original_filename, a.mime_type, a.byte_size,
+                    a.relative_path, a.created_at
+             FROM card_template_assets cta
+             JOIN assets a ON a.id = cta.asset_id
+             WHERE cta.template_id = ?1
+               AND a.deleted_at IS NULL
+               AND a.lifecycle_state = 'ready'
+             ORDER BY cta.position, a.created_at, a.id",
+        )
+        .map_err(CommandError::database)?;
+    statement
+        .query_map([template_id], |row| {
+            let relative_path: String = row.get(4)?;
+            Ok(AssetDto {
+                id: row.get(0)?,
+                original_filename: row.get(1)?,
+                mime_type: row.get(2)?,
+                byte_size: row.get(3)?,
+                file_path: paths
+                    .resolve_relative(&relative_path)
+                    .to_string_lossy()
+                    .into_owned(),
+                created_at: row.get(5)?,
+            })
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
 }
 
 fn validate_template_name(value: String) -> Result<String, CommandError> {
-    validate_bounded_visible_text(
-        value,
-        MAX_TEMPLATE_NAME_CHARS,
-        "Template names",
-        false,
+    let value = collapse_whitespace(&value);
+    if value.is_empty() || value.chars().count() > MAX_TEMPLATE_NAME_CHARS {
+        return Err(CommandError::new(
+            "invalid_template_name",
+            format!("Template names must contain 1 to {MAX_TEMPLATE_NAME_CHARS} characters."),
+        ));
+    }
+    Ok(value)
+}
+
+fn validate_template_description(value: String) -> Result<String, CommandError> {
+    let value = value.trim().to_string();
+    if value.chars().count() > MAX_TEMPLATE_DESCRIPTION_CHARS {
+        return Err(CommandError::new(
+            "invalid_template_description",
+            format!("Template descriptions cannot exceed {MAX_TEMPLATE_DESCRIPTION_CHARS} characters."),
+        ));
+    }
+    Ok(value)
+}
+
+fn validate_template_fields(
+    fields: Vec<CardTemplateFieldInput>,
+) -> Result<Vec<CardTemplateFieldInput>, CommandError> {
+    if fields.is_empty() || fields.len() > MAX_TEMPLATE_FIELDS {
+        return Err(CommandError::new(
+            "invalid_template_fields",
+            format!("Templates must define 1 to {MAX_TEMPLATE_FIELDS} fields."),
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    let mut validated = Vec::with_capacity(fields.len());
+    for mut field in fields {
+        if let Some(field_id) = field.id.as_deref() {
+            validate_entity_id(field_id, "template field")?;
+        }
+        field.name = collapse_whitespace(&field.name);
+        field.description = field.description.trim().to_string();
+        if field.name.is_empty() || field.name.chars().count() > MAX_TEMPLATE_FIELD_NAME_CHARS {
+            return Err(CommandError::new(
+                "invalid_template_field_name",
+                format!(
+                    "Template field names must contain 1 to {MAX_TEMPLATE_FIELD_NAME_CHARS} characters."
+                ),
+            ));
+        }
+        if field.description.chars().count() > MAX_TEMPLATE_FIELD_DESCRIPTION_CHARS {
+            return Err(CommandError::new(
+                "invalid_template_field_description",
+                format!(
+                    "Template field descriptions cannot exceed {MAX_TEMPLATE_FIELD_DESCRIPTION_CHARS} characters."
+                ),
+            ));
+        }
+        let normalized = normalize_template_name(&field.name);
+        if !seen.insert(normalized) {
+            return Err(CommandError::new(
+                "duplicate_template_field",
+                "Template field names must be unique.",
+            ));
+        }
+        validated.push(field);
+    }
+    Ok(validated)
+}
+
+fn validate_template_rules(
+    rules: Vec<CardTemplateRuleInput>,
+    field_ids: &BTreeSet<String>,
+) -> Result<Vec<CardTemplateRuleInput>, CommandError> {
+    if rules.is_empty() || rules.len() > MAX_TEMPLATE_RULES {
+        return Err(CommandError::new(
+            "invalid_template_rules",
+            format!("Templates must define 1 to {MAX_TEMPLATE_RULES} generated-card rules."),
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    let mut validated = Vec::with_capacity(rules.len());
+    for mut rule in rules {
+        if let Some(rule_id) = rule.id.as_deref() {
+            validate_entity_id(rule_id, "template rule")?;
+        }
+        rule.name = collapse_whitespace(&rule.name);
+        if rule.name.is_empty() || rule.name.chars().count() > MAX_TEMPLATE_RULE_NAME_CHARS {
+            return Err(CommandError::new(
+                "invalid_template_rule_name",
+                format!(
+                    "Generated-card names must contain 1 to {MAX_TEMPLATE_RULE_NAME_CHARS} characters."
+                ),
+            ));
+        }
+        let normalized = normalize_template_name(&rule.name);
+        if !seen.insert(normalized) {
+            return Err(CommandError::new(
+                "duplicate_template_rule",
+                "Generated-card names must be unique within a template.",
+            ));
+        }
+        validate_template_document(&rule.front_doc, field_ids, "question")?;
+        validate_template_document(&rule.back_doc, field_ids, "answer")?;
+        validated.push(rule);
+    }
+    Ok(validated)
+}
+
+fn validate_template_document(
+    document: &Value,
+    field_ids: &BTreeSet<String>,
+    side: &str,
+) -> Result<(), CommandError> {
+    let json = serde_json::to_string(document).map_err(CommandError::serialization)?;
+    if json.len() > MAX_TEMPLATE_DOCUMENT_BYTES {
+        return Err(CommandError::new(
+            "template_document_too_large",
+            format!("Template {side} layouts cannot exceed {MAX_TEMPLATE_DOCUMENT_BYTES} bytes."),
+        ));
+    }
+    let root = document.as_object().ok_or_else(|| {
+        CommandError::new(
+            "invalid_template_layout",
+            format!("The template {side} layout must be a rich-text document."),
+        )
+    })?;
+    if root.get("type").and_then(Value::as_str) != Some("doc") {
+        return Err(CommandError::new(
+            "invalid_template_layout",
+            format!("The template {side} layout must use a document root."),
+        ));
+    }
+    let mut found = BTreeSet::new();
+    collect_template_placeholders(document, field_ids, &mut found)?;
+    if found.is_empty() {
+        return Err(CommandError::new(
+            "missing_template_placeholder",
+            format!("The template {side} layout must include at least one field placeholder."),
+        ));
+    }
+    Ok(())
+}
+
+fn collect_template_placeholders(
+    value: &Value,
+    field_ids: &BTreeSet<String>,
+    found: &mut BTreeSet<String>,
+) -> Result<(), CommandError> {
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                collect_template_placeholders(value, field_ids, found)?;
+            }
+        }
+        Value::Object(object) => {
+            if let Some(node_type) = object.get("type").and_then(Value::as_str) {
+                if matches!(node_type, TEMPLATE_INLINE_NODE | TEMPLATE_BLOCK_NODE) {
+                    let attrs = object
+                        .get("attrs")
+                        .and_then(Value::as_object)
+                        .ok_or_else(|| invalid_template_placeholder("missing attributes"))?;
+                    let field_id = attrs
+                        .get("fieldId")
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| invalid_template_placeholder("missing field identifier"))?;
+                    validate_entity_id(field_id, "template field")?;
+                    if !field_ids.contains(field_id) {
+                        return Err(CommandError::new(
+                            "unknown_template_field",
+                            "A card layout refers to a field that does not exist in this template.",
+                        ));
+                    }
+                    found.insert(field_id.to_string());
+                }
+            }
+            for value in object.values() {
+                collect_template_placeholders(value, field_ids, found)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn invalid_template_placeholder(reason: &str) -> CommandError {
+    CommandError::new(
+        "invalid_template_placeholder",
+        format!("A template field placeholder is invalid: {reason}."),
     )
 }
 
-fn validate_template_field_name(value: String) -> Result<String, CommandError> {
-    let name = validate_bounded_visible_text(
-        value,
-        MAX_TEMPLATE_FIELD_NAME_CHARS,
-        "Template field names",
-        false,
-    )?;
-    if name.contains("{{") || name.contains("}}") {
-        return Err(CommandError::new(
-            "invalid_template_field",
-            "Template field names cannot contain placeholder braces.",
-        ));
-    }
-    Ok(name)
-}
-
-fn validate_bounded_visible_text(
-    value: String,
-    maximum: usize,
-    label: &str,
-    allow_empty: bool,
-) -> Result<String, CommandError> {
-    let normalized = if allow_empty {
-        value.trim().to_string()
-    } else {
-        collapse_whitespace(&value)
-    };
-    if (!allow_empty && normalized.is_empty())
-        || normalized.chars().count() > maximum
-        || normalized
-            .chars()
-            .any(|character| character.is_control() && character != '\n' && character != '\t')
-    {
-        return Err(CommandError::new(
-            "invalid_template_text",
-            format!("{label} must contain at most {maximum} visible characters."),
-        ));
-    }
-    Ok(normalized)
-}
-
-fn normalize_template_name(value: &str) -> String {
-    collapse_whitespace(value).to_lowercase()
-}
-
-fn validate_template_layout(
-    document: &Value,
-    fields: &[CardTemplateFieldDto],
-    side: &str,
-) -> Result<usize, CommandError> {
-    let bytes = serde_json::to_vec(document).map_err(CommandError::serialization)?;
-    if bytes.len() > MAX_TEMPLATE_DOCUMENT_BYTES {
-        return Err(CommandError::new(
-            "template_layout_too_large",
-            format!("The template {side} layout must be smaller than 1 MB before images."),
-        ));
-    }
-    let field_ids = fields
-        .iter()
-        .map(|field| field.id.as_str())
-        .collect::<BTreeSet<_>>();
-    let mut count = 0;
-    let sanitized = sanitize_template_node(document, None, &field_ids, &mut count)?;
-    crate::cards::validate_document(&sanitized)?;
-    Ok(count)
-}
-
-fn sanitize_template_node(
-    value: &Value,
-    parent_type: Option<&str>,
-    field_ids: &BTreeSet<&str>,
-    placeholder_count: &mut usize,
-) -> Result<Value, CommandError> {
-    let object = value.as_object().ok_or_else(|| {
-        CommandError::new(
-            "invalid_template_layout",
-            "Every template layout node must be a JSON object.",
-        )
-    })?;
-    let node_type = object.get("type").and_then(Value::as_str).ok_or_else(|| {
-        CommandError::new(
-            "invalid_template_layout",
-            "A template layout node is missing its type.",
-        )
-    })?;
-    if matches!(node_type, TEMPLATE_INLINE_NODE | TEMPLATE_BLOCK_NODE) {
-        if object
-            .keys()
-            .any(|key| !matches!(key.as_str(), "type" | "attrs"))
-        {
-            return Err(CommandError::new(
-                "invalid_template_placeholder",
-                "A template field placeholder contains unsupported data.",
-            ));
-        }
-        let attrs = object
-            .get("attrs")
-            .and_then(Value::as_object)
-            .ok_or_else(|| {
-                CommandError::new(
-                    "invalid_template_placeholder",
-                    "A template field placeholder is missing its field identifier.",
-                )
-            })?;
-        if attrs
-            .keys()
-            .any(|key| !matches!(key.as_str(), "fieldId" | "label"))
-        {
-            return Err(CommandError::new(
-                "invalid_template_placeholder",
-                "A template field placeholder contains unsupported attributes.",
-            ));
-        }
-        let field_id = attrs
-            .get("fieldId")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                CommandError::new(
-                    "invalid_template_placeholder",
-                    "A template field placeholder is missing its field identifier.",
-                )
-            })?;
-        validate_entity_id(field_id, "template field")?;
-        if !field_ids.contains(field_id) {
-            return Err(CommandError::new(
-                "unknown_template_field",
-                "A card layout refers to a field that does not exist in this template.",
-            ));
-        }
-        if let Some(label) = attrs.get("label") {
-            let label = label.as_str().ok_or_else(|| {
-                CommandError::new(
-                    "invalid_template_placeholder",
-                    "A template field placeholder label is invalid.",
-                )
-            })?;
-            if label.chars().count() > MAX_TEMPLATE_FIELD_NAME_CHARS {
-                return Err(CommandError::new(
-                    "invalid_template_placeholder",
-                    "A template field placeholder label is too long.",
-                ));
-            }
-        }
-        match node_type {
-            TEMPLATE_INLINE_NODE
-                if matches!(parent_type, Some("paragraph") | Some("heading")) => {}
-            TEMPLATE_BLOCK_NODE
-                if matches!(parent_type, Some("doc") | Some("blockquote")) => {}
-            TEMPLATE_INLINE_NODE => {
-                return Err(CommandError::new(
-                    "invalid_template_placeholder",
-                    "Inline field placeholders must be placed inside a paragraph or heading.",
-                ));
-            }
-            _ => {
-                return Err(CommandError::new(
-                    "invalid_template_placeholder",
-                    "Block field placeholders must be placed on their own line.",
-                ));
-            }
-        }
-        *placeholder_count += 1;
-        return Ok(if node_type == TEMPLATE_INLINE_NODE {
-            json!({"type": "text", "text": "field"})
-        } else {
-            json!({
-                "type": "paragraph",
-                "content": [{"type": "text", "text": "field"}]
-            })
-        });
-    }
-
-    let mut sanitized = object.clone();
-    if let Some(content) = object.get("content") {
-        let children = content.as_array().ok_or_else(|| {
-            CommandError::new(
-                "invalid_template_layout",
-                "Template layout content must be represented as a list.",
+fn insert_template_fields(
+    connection: &Connection,
+    template_id: &str,
+    fields: &[CardTemplateFieldInput],
+    now: i64,
+) -> Result<(), CommandError> {
+    for (position, field) in fields.iter().enumerate() {
+        let field_id = match field.id.as_deref() {
+            Some(field_id) => field_id.to_string(),
+            None => generate_id(connection)?,
+        };
+        connection
+            .execute(
+                "INSERT INTO card_template_fields (
+                     id, template_id, name, description, position, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+                params![
+                    field_id,
+                    template_id,
+                    field.name,
+                    field.description,
+                    i64::try_from(position).unwrap_or(i64::MAX),
+                    now
+                ],
             )
-        })?;
-        let sanitized_children = children
-            .iter()
-            .map(|child| {
-                sanitize_template_node(child, Some(node_type), field_ids, placeholder_count)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        sanitized.insert("content".to_string(), Value::Array(sanitized_children));
+            .map_err(CommandError::database)?;
     }
-    Ok(Value::Object(sanitized))
+    Ok(())
+}
+
+fn insert_template_rules(
+    connection: &Connection,
+    template_id: &str,
+    rules: &[CardTemplateRuleInput],
+    now: i64,
+) -> Result<(), CommandError> {
+    for (position, rule) in rules.iter().enumerate() {
+        let rule_id = match rule.id.as_deref() {
+            Some(rule_id) => rule_id.to_string(),
+            None => generate_id(connection)?,
+        };
+        let front_doc =
+            serde_json::to_string(&rule.front_doc).map_err(CommandError::serialization)?;
+        let back_doc = serde_json::to_string(&rule.back_doc).map_err(CommandError::serialization)?;
+        connection
+            .execute(
+                "INSERT INTO card_template_rules (
+                     id, template_id, name, front_doc, back_doc,
+                     position, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+                params![
+                    rule_id,
+                    template_id,
+                    rule.name,
+                    front_doc,
+                    back_doc,
+                    i64::try_from(position).unwrap_or(i64::MAX),
+                    now
+                ],
+            )
+            .map_err(CommandError::database)?;
+    }
+    Ok(())
+}
+
+fn template_asset_ids_from_rules(
+    rules: &[CardTemplateRuleInput],
+) -> Result<Vec<String>, CommandError> {
+    let mut asset_ids = BTreeSet::new();
+    for rule in rules {
+        asset_ids.extend(collect_asset_ids(&rule.front_doc)?);
+        asset_ids.extend(collect_asset_ids(&rule.back_doc)?);
+    }
+    Ok(asset_ids.into_iter().collect())
+}
+
+fn replace_template_assets(
+    connection: &Connection,
+    template_id: &str,
+    asset_ids: &[String],
+    now: i64,
+) -> Result<(), CommandError> {
+    connection
+        .execute(
+            "DELETE FROM card_template_assets WHERE template_id = ?1",
+            [template_id],
+        )
+        .map_err(CommandError::database)?;
+    for (position, asset_id) in asset_ids.iter().enumerate() {
+        connection
+            .execute(
+                "INSERT INTO card_template_assets (
+                     template_id, asset_id, position, created_at
+                 ) VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    template_id,
+                    asset_id,
+                    i64::try_from(position).unwrap_or(i64::MAX),
+                    now
+                ],
+            )
+            .map_err(CommandError::database)?;
+    }
+    Ok(())
+}
+
+fn ensure_template_revision(
+    template: &StoredTemplate,
+    expected_revision: i64,
+) -> Result<(), CommandError> {
+    if expected_revision < 1 || template.dto.revision != expected_revision {
+        return Err(CommandError::new(
+            "template_changed",
+            "This card template changed. Reload it before previewing or generating cards.",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_template_values(
@@ -795,48 +616,28 @@ fn validate_template_values(
             "Fill in every template field before generating cards.",
         ));
     }
-    let field_ids = fields
+    let allowed_ids = fields
         .iter()
-        .map(|field| field.id.as_str())
+        .map(|field| field.id.clone())
         .collect::<BTreeSet<_>>();
-    let mut result = HashMap::new();
-    let mut all_assets = BTreeSet::new();
+    let mut validated = HashMap::new();
     for value in values {
         validate_entity_id(&value.field_id, "template field")?;
-        if !field_ids.contains(value.field_id.as_str()) || result.contains_key(&value.field_id) {
+        if !allowed_ids.contains(&value.field_id) || validated.contains_key(&value.field_id) {
             return Err(CommandError::new(
                 "invalid_template_value",
-                "A template value does not match one unique field.",
-            ));
-        }
-        crate::cards::validate_document(&value.doc)?;
-        let serialized = serde_json::to_vec(&value.doc).map_err(CommandError::serialization)?;
-        if serialized.len() > MAX_TEMPLATE_DOCUMENT_BYTES {
-            return Err(CommandError::new(
-                "template_value_too_large",
-                "Each template field must be smaller than 1 MB before images.",
+                "Template values must match the selected template exactly once.",
             ));
         }
         if value.text.chars().count() > MAX_TEMPLATE_VALUE_CHARS {
             return Err(CommandError::new(
-                "invalid_template_value",
-                format!(
-                    "Each template field can contain at most {MAX_TEMPLATE_VALUE_CHARS} text characters."
-                ),
+                "template_value_too_large",
+                format!("Template field text cannot exceed {MAX_TEMPLATE_VALUE_CHARS} characters."),
             ));
         }
-        let derived_text = extract_template_plain_text(&value.doc)?;
-        let asset_ids = crate::cards::collect_asset_ids(&value.doc)?;
-        if derived_text.is_empty() && asset_ids.is_empty() {
-            return Err(CommandError::new(
-                "missing_template_value",
-                "Fill in every template field before generating cards.",
-            ));
-        }
-        for asset_id in &asset_ids {
-            all_assets.insert(asset_id.clone());
-        }
-        result.insert(
+        let asset_ids = collect_asset_ids(&value.doc)?;
+        ensure_assets_exist(connection, &asset_ids)?;
+        validated.insert(
             value.field_id,
             ValidatedTemplateValue {
                 doc: value.doc,
@@ -844,213 +645,31 @@ fn validate_template_values(
             },
         );
     }
-    ensure_assets_exist(connection, &all_assets.into_iter().collect::<Vec<_>>())?;
-    Ok(result)
+    Ok(validated)
 }
 
-fn extract_template_plain_text(document: &Value) -> Result<String, CommandError> {
-    fn visit(value: &Value, output: &mut String) -> Result<(), CommandError> {
-        let object = value.as_object().ok_or_else(|| {
-            CommandError::new(
-                "invalid_template_value",
-                "A template field contains an invalid document node.",
-            )
-        })?;
-        let node_type = object.get("type").and_then(Value::as_str).unwrap_or_default();
-        if node_type == "text" {
-            if let Some(text) = object.get("text").and_then(Value::as_str) {
-                output.push_str(text);
-            }
-            return Ok(());
-        }
-        if node_type == "hardBreak" {
-            output.push('\n');
-            return Ok(());
-        }
-        let before = output.len();
-        if let Some(content) = object.get("content") {
-            let content = content.as_array().ok_or_else(|| {
-                CommandError::new(
-                    "invalid_template_value",
-                    "A template field contains invalid nested content.",
-                )
-            })?;
-            for child in content {
-                visit(child, output)?;
-            }
-        }
-        if matches!(
-            node_type,
-            "paragraph" | "heading" | "blockquote" | "listItem" | "codeBlock"
-        ) && output.len() > before
-            && !output.ends_with('\n')
-        {
-            output.push('\n');
-        }
-        Ok(())
-    }
-
-    let mut text = String::new();
-    visit(document, &mut text)?;
-    Ok(text.trim().to_string())
-}
-
-fn render_template_document(
-    layout: &Value,
-    values: &HashMap<String, ValidatedTemplateValue>,
-) -> Result<Value, CommandError> {
-    let root = layout.as_object().ok_or_else(|| {
-        CommandError::new("invalid_template_layout", "The template layout is invalid.")
-    })?;
-    if root.get("type").and_then(Value::as_str) != Some("doc") {
-        return Err(CommandError::new(
-            "invalid_template_layout",
-            "The template layout is missing its document root.",
-        ));
-    }
-    let mut rendered = root.clone();
-    let content = root
-        .get("content")
-        .and_then(Value::as_array)
-        .ok_or_else(|| {
-            CommandError::new(
-                "invalid_template_layout",
-                "The template layout must contain at least one block.",
-            )
-        })?;
-    rendered.insert(
-        "content".to_string(),
-        Value::Array(render_template_children("doc", content, values)?),
-    );
-    Ok(Value::Object(rendered))
-}
-
-fn render_template_children(
-    parent_type: &str,
-    children: &[Value],
-    values: &HashMap<String, ValidatedTemplateValue>,
-) -> Result<Vec<Value>, CommandError> {
-    let mut rendered = Vec::new();
-    for child in children {
-        let child_type = child.get("type").and_then(Value::as_str).unwrap_or_default();
-        if child_type == TEMPLATE_BLOCK_NODE {
-            if !matches!(parent_type, "doc" | "blockquote") {
-                return Err(CommandError::new(
-                    "invalid_template_placeholder",
-                    "Block field placeholders must be placed on their own line.",
-                ));
-            }
-            let field = template_value_for_placeholder(child, values)?;
-            let blocks = field
-                .doc
-                .get("content")
-                .and_then(Value::as_array)
-                .ok_or_else(|| {
-                    CommandError::new(
-                        "invalid_template_value",
-                        "A template field contains an invalid document.",
-                    )
-                })?;
-            rendered.extend(blocks.iter().cloned());
-            continue;
-        }
-        if child_type == TEMPLATE_INLINE_NODE {
-            if !matches!(parent_type, "paragraph" | "heading") {
-                return Err(CommandError::new(
-                    "invalid_template_placeholder",
-                    "Inline field placeholders must be placed inside a paragraph or heading.",
-                ));
-            }
-            let field = template_value_for_placeholder(child, values)?;
-            rendered.extend(inline_nodes_for_template_value(field)?);
-            continue;
-        }
-        let object = child.as_object().ok_or_else(|| {
-            CommandError::new(
-                "invalid_template_layout",
-                "Every template layout node must be a JSON object.",
-            )
-        })?;
-        let mut next = object.clone();
-        if let Some(content) = object.get("content") {
-            let content = content.as_array().ok_or_else(|| {
-                CommandError::new(
-                    "invalid_template_layout",
-                    "Template layout content must be represented as a list.",
-                )
-            })?;
-            next.insert(
-                "content".to_string(),
-                Value::Array(render_template_children(child_type, content, values)?),
-            );
-        }
-        rendered.push(Value::Object(next));
-    }
-    Ok(rendered)
-}
-
-fn template_value_for_placeholder<'a>(
-    placeholder: &Value,
-    values: &'a HashMap<String, ValidatedTemplateValue>,
-) -> Result<&'a ValidatedTemplateValue, CommandError> {
-    let field_id = placeholder
-        .get("attrs")
-        .and_then(Value::as_object)
-        .and_then(|attrs| attrs.get("fieldId"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            CommandError::new(
-                "invalid_template_placeholder",
-                "A template field placeholder is missing its field identifier.",
-            )
-        })?;
-    values.get(field_id).ok_or_else(|| {
-        CommandError::new(
-            "missing_template_value",
-            "Fill in every template field before generating cards.",
-        )
-    })
-}
-
-fn inline_nodes_for_template_value(
-    value: &ValidatedTemplateValue,
-) -> Result<Vec<Value>, CommandError> {
-    let blocks = value
-        .doc
-        .get("content")
-        .and_then(Value::as_array)
-        .ok_or_else(|| {
-            CommandError::new(
-                "invalid_template_value",
-                "A template field contains an invalid document.",
-            )
-        })?;
-    if blocks.len() != 1
-        || blocks[0].get("type").and_then(Value::as_str) != Some("paragraph")
-        || !value.asset_ids.is_empty()
-    {
-        return Err(CommandError::new(
-            "template_block_content_inline",
-            "A field containing a list, image, heading, or multiple paragraphs must be inserted as a block on its own line.",
-        ));
-    }
-    let content = blocks[0]
-        .get("content")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    if content.iter().any(|node| {
-        !matches!(
-            node.get("type").and_then(Value::as_str),
-            Some("text") | Some("hardBreak")
-        )
-    }) {
-        return Err(CommandError::new(
-            "template_block_content_inline",
-            "A field containing block content must be inserted as a block on its own line.",
-        ));
-    }
-    Ok(content)
+fn render_template_previews(
+    connection: &Connection,
+    paths: &AppPaths,
+    template: &StoredTemplate,
+    values: Vec<TemplateValueInput>,
+) -> Result<Vec<TemplateCardPreviewDto>, CommandError> {
+    let rendered = render_template_cards(connection, template, values)?;
+    rendered
+        .into_iter()
+        .map(|card| {
+            let asset_ids = content_asset_ids(&card.content);
+            Ok(TemplateCardPreviewDto {
+                rule_id: card.rule_id,
+                rule_name: card.rule_name,
+                question_doc: card.content.front_doc,
+                answer_doc: card.content.back_doc,
+                question_text: card.content.front_text,
+                answer_text: card.content.back_text,
+                assets: load_assets_by_ids(connection, paths, &asset_ids)?,
+            })
+        })
+        .collect()
 }
 
 fn render_template_cards(
@@ -1064,9 +683,14 @@ fn render_template_cards(
         .rules
         .iter()
         .map(|rule| {
-            let front_doc = render_template_document(&rule.front_doc, &values)?;
-            let back_doc = render_template_document(&rule.back_doc, &values)?;
-            let content = validate_content(front_doc, back_doc, String::new(), String::new())?;
+            let front_doc = substitute_template_document(&rule.front_doc, &values)?;
+            let back_doc = substitute_template_document(&rule.back_doc, &values)?;
+            let content = validate_content(
+                front_doc,
+                back_doc,
+                String::new(),
+                String::new(),
+            )?;
             Ok(RenderedTemplateCard {
                 rule_id: rule.id.clone(),
                 rule_name: rule.name.clone(),
@@ -1076,43 +700,15 @@ fn render_template_cards(
         .collect()
 }
 
-fn render_template_previews(
-    connection: &Connection,
-    paths: &AppPaths,
-    template: &StoredTemplate,
-    values: Vec<TemplateValueInput>,
-) -> Result<Vec<TemplateCardPreviewDto>, CommandError> {
-    render_template_cards(connection, template, values)?
-        .into_iter()
-        .map(|rendered| {
-            let front_doc: Value = serde_json::from_str(&rendered.content.front_doc_json)
-                .map_err(CommandError::serialization)?;
-            let back_doc: Value = serde_json::from_str(&rendered.content.back_doc_json)
-                .map_err(CommandError::serialization)?;
-            let asset_ids = content_asset_ids(&rendered.content);
-            let assets = load_assets_by_ids(connection, paths, &asset_ids)?;
-            Ok(TemplateCardPreviewDto {
-                rule_id: rendered.rule_id,
-                rule_name: rendered.rule_name,
-                question_doc: front_doc,
-                answer_doc: back_doc,
-                question_text: rendered.content.front_text,
-                answer_text: rendered.content.back_text,
-                assets,
-            })
-        })
-        .collect()
-}
-
 fn generate_template_cards_in_connection(
     connection: &mut Connection,
-    paths: &AppPaths,
+    _paths: &AppPaths,
     input: GenerateTemplateCardsInput,
 ) -> Result<GenerateTemplateCardsResultDto, CommandError> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
-    let template = load_stored_template(&transaction, paths, &input.template_id, true)?;
+    let template = load_stored_template(&transaction, _paths, &input.template_id, true)?;
     ensure_template_revision(&template, input.template_revision)?;
     let rendered_cards = render_template_cards(&transaction, &template, input.values)?;
     let tags = validate_tags(input.tags)?;
@@ -1121,7 +717,6 @@ fn generate_template_cards_in_connection(
     let mut created_note_ids = Vec::new();
     let mut skipped_duplicates = 0_i64;
     let mut seen = BTreeSet::new();
-
     for rendered in rendered_cards {
         let normalized = normalized_pair(
             &rendered.content.front_text,
@@ -1152,7 +747,6 @@ fn generate_template_cards_in_connection(
         )?;
         created_note_ids.push(note_id);
     }
-
     transaction.commit().map_err(CommandError::database)?;
     Ok(GenerateTemplateCardsResultDto {
         created_count: i64::try_from(created_note_ids.len()).unwrap_or(i64::MAX),
@@ -1161,67 +755,135 @@ fn generate_template_cards_in_connection(
     })
 }
 
-fn ensure_template_revision(
-    template: &StoredTemplate,
-    expected_revision: i64,
-) -> Result<(), CommandError> {
-    if expected_revision < 1 || template.dto.revision != expected_revision {
+fn substitute_template_document(
+    layout: &Value,
+    values: &HashMap<String, ValidatedTemplateValue>,
+) -> Result<Value, CommandError> {
+    let substituted = substitute_template_value(layout, values)?;
+    if substituted.len() != 1 {
         return Err(CommandError::new(
-            "template_changed",
-            "This template changed after the entry form was opened. Reload it and review the generated cards again.",
+            "invalid_template_layout",
+            "The template layout could not be rendered as one document.",
         ));
     }
-    Ok(())
+    Ok(substituted.into_iter().next().expect("length checked"))
 }
 
-fn template_rule_asset_ids(rules: &[CardTemplateRuleDto]) -> Result<Vec<String>, CommandError> {
-    let mut ids = BTreeSet::new();
-    for rule in rules {
-        ids.extend(crate::cards::collect_asset_ids(&rule.front_doc)?);
-        ids.extend(crate::cards::collect_asset_ids(&rule.back_doc)?);
-    }
-    Ok(ids.into_iter().collect())
-}
-
-fn replace_template_assets(
-    connection: &Connection,
-    template_id: &str,
-    asset_ids: &[String],
-) -> Result<(), CommandError> {
-    connection
-        .execute(
-            "DELETE FROM card_template_assets WHERE template_id = ?1",
-            [template_id],
-        )
-        .map_err(CommandError::database)?;
-    for asset_id in asset_ids {
-        connection
-            .execute(
-                "INSERT INTO card_template_assets (template_id, asset_id) VALUES (?1, ?2)",
-                params![template_id, asset_id],
+fn substitute_template_value(
+    value: &Value,
+    values: &HashMap<String, ValidatedTemplateValue>,
+) -> Result<Vec<Value>, CommandError> {
+    let Some(object) = value.as_object() else {
+        return Ok(vec![value.clone()]);
+    };
+    let node_type = object.get("type").and_then(Value::as_str);
+    if matches!(node_type, Some(TEMPLATE_INLINE_NODE | TEMPLATE_BLOCK_NODE)) {
+        let field_id = object
+            .get("attrs")
+            .and_then(Value::as_object)
+            .and_then(|attrs| attrs.get("fieldId"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| invalid_template_placeholder("missing field identifier"))?;
+        let value = values.get(field_id).ok_or_else(|| {
+            CommandError::new(
+                "missing_template_value",
+                "Fill in every template field before generating cards.",
             )
-            .map_err(CommandError::database)?;
+        })?;
+        return match node_type {
+            Some(TEMPLATE_INLINE_NODE) => inline_nodes_from_value(value),
+            Some(TEMPLATE_BLOCK_NODE) => block_nodes_from_value(value),
+            _ => unreachable!(),
+        };
     }
-    Ok(())
+    let mut cloned = object.clone();
+    if let Some(content) = object.get("content") {
+        let content = content.as_array().ok_or_else(|| {
+            CommandError::new(
+                "invalid_template_layout",
+                "Template content must be represented as a list.",
+            )
+        })?;
+        let mut rendered = Vec::new();
+        for child in content {
+            rendered.extend(substitute_template_value(child, values)?);
+        }
+        cloned.insert("content".to_string(), Value::Array(rendered));
+    }
+    Ok(vec![Value::Object(cloned)])
 }
 
-fn load_template_assets(
+fn inline_nodes_from_value(value: &ValidatedTemplateValue) -> Result<Vec<Value>, CommandError> {
+    let blocks = value
+        .doc
+        .get("content")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            CommandError::new(
+                "invalid_template_value",
+                "Inline template values must use a single paragraph.",
+            )
+        })?;
+    if blocks.len() != 1 || blocks[0].get("type").and_then(Value::as_str) != Some("paragraph") {
+        return Err(CommandError::new(
+            "invalid_template_value",
+            "Inline template values must use a single paragraph.",
+        ));
+    }
+    Ok(blocks[0]
+        .get("content")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default())
+}
+
+fn block_nodes_from_value(value: &ValidatedTemplateValue) -> Result<Vec<Value>, CommandError> {
+    value
+        .doc
+        .get("content")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| {
+            CommandError::new(
+                "invalid_template_value",
+                "Block template values must use a rich-text document.",
+            )
+        })
+}
+
+fn content_asset_ids(content: &ValidatedContent) -> Vec<String> {
+    let mut ids = content
+        .front_asset_ids
+        .iter()
+        .chain(&content.back_asset_ids)
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    ids.sort();
+    ids
+}
+
+fn load_assets_by_ids(
     connection: &Connection,
     paths: &AppPaths,
-    template_id: &str,
+    asset_ids: &[String],
 ) -> Result<Vec<AssetDto>, CommandError> {
+    if asset_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let wanted = asset_ids.iter().cloned().collect::<BTreeSet<_>>();
     let mut statement = connection
         .prepare(
-            "SELECT a.id, a.original_filename, a.mime_type, a.byte_size,
-                    a.relative_path, a.created_at
-             FROM assets a
-             JOIN card_template_assets cta ON cta.asset_id = a.id
-             WHERE cta.template_id = ?1 AND a.deleted_at IS NULL
-             ORDER BY a.created_at ASC, a.id ASC",
+            "SELECT id, original_filename, mime_type, byte_size,
+                    relative_path, created_at
+             FROM assets
+             WHERE deleted_at IS NULL AND lifecycle_state = 'ready'
+             ORDER BY created_at, id",
         )
         .map_err(CommandError::database)?;
-    let rows = statement
-        .query_map([template_id], |row| {
+    let assets = statement
+        .query_map([], |row| {
             let relative_path: String = row.get(4)?;
             Ok(AssetDto {
                 id: row.get(0)?,
@@ -1235,47 +897,11 @@ fn load_template_assets(
                 created_at: row.get(5)?,
             })
         })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
-}
-
-fn load_assets_by_ids(
-    connection: &Connection,
-    paths: &AppPaths,
-    asset_ids: &[String],
-) -> Result<Vec<AssetDto>, CommandError> {
-    let mut assets = Vec::new();
-    for asset_id in asset_ids {
-        let asset = connection
-            .query_row(
-                "SELECT id, original_filename, mime_type, byte_size, relative_path, created_at
-                 FROM assets WHERE id = ?1 AND deleted_at IS NULL",
-                [asset_id],
-                |row| {
-                    let relative_path: String = row.get(4)?;
-                    Ok(AssetDto {
-                        id: row.get(0)?,
-                        original_filename: row.get(1)?,
-                        mime_type: row.get(2)?,
-                        byte_size: row.get(3)?,
-                        file_path: paths
-                            .resolve_relative(&relative_path)
-                            .to_string_lossy()
-                            .into_owned(),
-                        created_at: row.get(5)?,
-                    })
-                },
-            )
-            .optional()
-            .map_err(CommandError::database)?
-            .ok_or_else(|| {
-                CommandError::new(
-                    "asset_not_found",
-                    "One of the images used by the generated card is no longer available.",
-                )
-            })?;
-        assets.push(asset);
-    }
-    Ok(assets)
+    Ok(assets
+        .into_iter()
+        .filter(|asset| wanted.contains(&asset.id))
+        .collect())
 }
