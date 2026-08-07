@@ -245,7 +245,7 @@ describe("AnalyticsScreen", () => {
       });
     });
     expect(
-      screen.getByRole("button", { name: "7 days" }).getAttribute("aria-pressed"),
+      screen.getByRole("radio", { name: "7 days" }).getAttribute("aria-checked"),
     ).toBe("true");
     expect(screen.getByText("8")).toBeTruthy();
     expect(screen.getAllByText("80%").length).toBeGreaterThan(0);
@@ -266,7 +266,7 @@ describe("AnalyticsScreen", () => {
     const onPracticeScope = renderAnalytics();
 
     await screen.findAllByText("Arrhythmias");
-    fireEvent.click(screen.getByRole("button", { name: "90 days" }));
+    fireEvent.click(screen.getByRole("radio", { name: "90 days" }));
     await waitFor(() => {
       expect(analyticsIpc.getAnalytics).toHaveBeenLastCalledWith(
         expect.objectContaining({ range: "90d" }),
@@ -285,7 +285,7 @@ describe("AnalyticsScreen", () => {
       .mockReturnValueOnce(second.promise);
     renderAnalytics();
 
-    fireEvent.click(screen.getByRole("button", { name: "90 days" }));
+    fireEvent.click(screen.getByRole("radio", { name: "90 days" }));
     await waitFor(() => expect(analyticsIpc.getAnalytics).toHaveBeenCalledTimes(2));
 
     second.resolve(analyticsForRange("90d", 90));
