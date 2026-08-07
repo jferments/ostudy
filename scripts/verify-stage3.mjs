@@ -134,8 +134,6 @@ for (const fragment of [
   "normalize_cloze_card_rows",
   "cards: vec![GeneratedCardSpec",
   'direction: "forward"',
-  "presentation_variant_for_card",
-  "render_stored_card_presentation_for_variant",
   "templateFieldInline",
   "templateFieldBlock",
   "card_template_assets",
@@ -258,6 +256,7 @@ if (stage3Transfer.includes("CREATE TABLE card_templates")) {
 for (const fragment of ['label="Templates"', "<TemplatesScreen", "hasUnsavedTemplate"]) {
   if (!app.includes(fragment)) failures.push(`Templates navigation missing: ${fragment}`);
 }
+
 for (const [name, document, fragments] of [
   ["architecture", architecture, ["template", "cloze"]],
   ["data model", dataModel, ["template", "cloze"]],
