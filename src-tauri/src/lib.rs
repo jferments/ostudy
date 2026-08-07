@@ -18,6 +18,7 @@ mod decks;
 mod deletion;
 mod deletion_commands;
 mod deletion_purge;
+mod diagnostics;
 mod error;
 mod library_backup;
 mod logging;
@@ -127,6 +128,7 @@ pub fn run() {
             asset_lifecycle::sync_asset_draft,
             assets::import_image,
             deletion::undo_deletion,
+            diagnostics::record_webview_diagnostic,
             settings::get_settings,
             settings::save_settings,
             settings::get_app_info,

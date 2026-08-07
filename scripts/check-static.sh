@@ -22,21 +22,20 @@ if [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
   exit 0
 fi
 
-step "Environment and repository diagnostics"
+step "Environment and repository contracts"
 "$SCRIPT_DIR/doctor.sh"
 node "$SCRIPT_DIR/verify-project-manifests.mjs"
-node "$SCRIPT_DIR/verify-stage2.mjs"
-node "$SCRIPT_DIR/verify-stage3.mjs"
-node "$SCRIPT_DIR/verify-stage33.mjs"
-node "$SCRIPT_DIR/verify-stage34-35.mjs"
+node "$SCRIPT_DIR/verify-ipc-contract.mjs"
+node "$SCRIPT_DIR/verify-repository-policy.mjs"
 [[ -f pnpm-lock.yaml && -f src-tauri/Cargo.lock ]] || {
   printf 'ERROR: committed pnpm and Cargo lockfiles are required.\n' >&2
   exit 1
 }
 
-step "Test policy and repository script syntax"
+step "Behavior-test policy and repository script validation"
 node "$SCRIPT_DIR/verify-test-policy.mjs"
 bash "$SCRIPT_DIR/verify-script-syntax.sh"
+python3 -m unittest discover -s tests/scripts -p 'test_*.py'
 
 step "Frozen JavaScript installation and dependency verification"
 pnpm install --frozen-lockfile

@@ -1,158 +1,84 @@
 # Testing and CI
 
-ostudy uses the Multipass-hosted Linux runner for pull-request, main-branch, and release validation. Repository workflow jobs do not use GitHub-hosted operating-system runners.
+ostudy uses the Multipass-hosted Linux runner for pull-request, main-branch, and release validation. Repository workflow jobs do not use GitHub-hosted operating-system runners. Third-party actions are pinned to immutable commit SHAs with a human-readable release comment.
 
 ## Required runner labels
 
-Every workflow job targets the labels already configured on the Multipass runner:
+Every workflow job targets:
 
 ```yaml
 runs-on: [self-hosted, linux, x64, ostudy]
 ```
 
-The runner must satisfy `scripts/doctor.sh --native-smoke`, including the pinned Node, pnpm, Rust, WebKit, SQLite, OpenSSL, Tauri-driver, and display dependencies.
+The runner must satisfy `scripts/doctor.sh --native-smoke`, including the pinned Node, pnpm, Rust, WebKit, SQLite, OpenSSL, Tauri-driver, and display dependencies. `versions.env` is authoritative; `.node-version`, `.nvmrc`, package engines, `rust-toolchain.toml`, JavaScript manifests, and Cargo manifests are verified mirrors.
+
+## What the gate treats as a contract
+
+Static verification protects durable repository boundaries rather than historical source layout:
+
+- identity, exact versions, lockfiles, and migration checksums;
+- frontend `invoke` names matching the Tauri command registry;
+- absence of obsolete unbounded IPC commands;
+- explicit Rust modules and narrow repository policies;
+- no skipped/focused/ignored tests;
+- script syntax and the bounded-log Python tests;
+- immutable self-hosted workflow dependencies.
+
+Feature behavior belongs in Vitest, Rust/SQLite/migration tests, package round trips, and the native WebDriver workflow. Renaming a private helper, CSS class, or heading must not fail a structural stage verifier.
 
 ## Development check tiers
 
-The repository deliberately separates fast iteration from merge qualification. A narrower tier may accelerate local development, but only the full tier qualifies a ready pull request for merge.
-
-### Changed-file developer check
-
-Run:
+### Changed-file iteration aid
 
 ```bash
 ./scripts/check-changed.sh
 ```
 
-This is an iteration aid, not a qualification gate. It compares the current branch and working tree with `origin/main` when available, then chooses a conservative path:
-
-- docs-only changes perform no executable checks;
-- frontend-only changes run the static tier plus Vitest's changed-test selection;
-- Rust-only source changes run the static tier, a locked all-target Rust compile check, and Rust library tests;
-- mixed, migration, manifest, workflow, or script changes escalate to the complete fast tier.
-
-Pass an explicit base ref when needed:
-
-```bash
-./scripts/check-changed.sh main
-```
+This compares the branch and working tree with `origin/main` when available. Documentation-only changes skip executable checks; frontend-only changes run static checks plus changed Vitest selection; Rust-only changes run static checks, compile checking, and Rust library tests; mixed, migration, workflow, manifest, or script changes escalate to the complete fast tier. It is not merge qualification.
 
 ### Static tier
-
-Run:
 
 ```bash
 ./scripts/check-static.sh
 ```
 
-The static tier is intended to fail quickly on structural mistakes before expensive compilation. It performs:
-
-1. environment and repository-manifest verification;
-2. Stage 2, Stage 3, managed-asset, backup, and repair structural verification;
-3. test-policy and repository-script syntax verification;
-4. frozen JavaScript installation and exact dependency verification;
-5. TypeScript checking; and
-6. `cargo fmt --check`.
+The static tier performs environment diagnostics, manifest/migration validation, IPC parity, repository policy, test policy, Bash/Node/Python syntax, Python behavior tests for diagnostic rotation, frozen JavaScript installation, exact dependency verification, TypeScript checking, and `cargo fmt --check`.
 
 ### Fast tier
 
-Run:
-
 ```bash
 ./scripts/check-fast.sh
 ```
 
-The fast tier reuses a current static result for the exact same source tree when possible, then adds:
-
-1. the complete frontend test suite; and
-2. locked Rust compile checking for every target and feature.
-
-Draft pull requests run this tier by default. This provides broad feedback while a branch is still receiving frequent commits.
+The fast tier reuses an exact-tree static result when possible, then runs the complete frontend suite and locked Rust compile checking for every target and feature. Draft pull requests use this tier.
 
 ### Full qualification tier
 
-Run:
-
 ```bash
 ./scripts/check.sh
 ```
 
-If the exact current source tree already passed the fast tier, `check.sh` reuses that result instead of running it again. Otherwise it runs `check-fast.sh` first. It then adds:
+The full tier reuses an exact-tree fast result when possible, then adds native environment qualification, production frontend build, Clippy with warnings denied, all Rust/unit/integration/migration tests, standalone Tauri build, dependency verification, and the native create → review → restart → persistence workflow. This is the local acceptance command before merging.
 
-1. native environment qualification;
-2. frontend production build;
-3. Clippy with warnings denied;
-4. Rust unit, integration, SQLite, and migration-fixture tests;
-5. standalone Tauri build;
-6. Rust dependency verification; and
-7. the native create → review → restart → persistence workflow.
+## Exact-tree qualification and Cargo artifacts
 
-The full tier is the local acceptance command before merging.
+`scripts/check-state.sh` fingerprints tracked files, non-ignored untracked files, deletions, active Node/pnpm/Rust versions, and platform. Static, fast, and full stamps live under the user cache directory. Editing the tree invalidates reuse; `OSTUDY_FORCE_CHECK=1` forces execution.
 
-## Exact-tree qualification stamps
+Local builds continue using `src-tauri/target`. CI uses `$HOME/.cache/ostudy/cargo-target`, so checkout cleanup does not discard compiled dependencies. Cargo remains responsible for normal source/toolchain invalidation.
 
-`scripts/check-state.sh` fingerprints tracked files, non-ignored untracked files, and the active Node/pnpm/Rust/platform toolchain. Successful static, fast, and full checks write stamps under the user's cache directory rather than into the repository checkout.
+## Diagnostics
 
-A stamp is reusable only when the fingerprint still matches. Editing, adding, or deleting source/test/configuration files invalidates it automatically. Missing JavaScript dependencies also prevent static/fast reuse. Set `OSTUDY_FORCE_CHECK=1` to force a tier to execute even when a current stamp exists.
+`log-run.py` bounds every JSONL record, rotates the active log while the application is still running, and retains one bounded predecessor. WebView render, uncaught-error, and unhandled-rejection reports cross a typed Tauri command with bounded event/message/stack fields. Diagnostic export includes only environment/version/git state and bounded log tails; it excludes the SQLite library, flashcard contents, and managed images.
 
-This allows the normal local sequence:
-
-```bash
-./scripts/check-fast.sh
-./scripts/check.sh
-```
-
-to avoid running the complete fast gate twice when nothing changed between the commands.
-
-## Persistent Cargo artifacts on the self-hosted runner
-
-Local development continues to use `src-tauri/target` by default. Under `CI=true`, `scripts/cargo-target.sh` instead uses a persistent Cargo target under the runner's cache directory. The GitHub checkout can therefore clean the workspace without deleting compiled dependency and build-script artifacts after every pull-request synchronization.
-
-Cargo remains responsible for invalidating artifacts when source, features, dependencies, or the compiler change. The persistent target is a build cache, not a qualification cache.
-
-Override the location explicitly with:
-
-```bash
-OSTUDY_CARGO_TARGET_DIR=/path/to/target ./scripts/check.sh
-```
+On CI failure, `summarize-check-failure.mjs` writes a bounded index of the failed phase and relevant excerpts to the job summary. Complete check logs and the privacy-conscious diagnostic archive remain available as failure artifacts.
 
 ## Pull-request workflow
 
-`.github/workflows/check.yml` retains one `check` job so existing branch protection can continue requiring the same status name.
+1. Create one branch from current `main` and open one draft PR.
+2. Use changed/static/fast checks while implementing.
+3. Freeze a meaningful SHA long enough to consume its complete failure batch.
+4. Run `./scripts/check.sh` locally when implementation is complete.
+5. Mark the PR ready; the self-hosted workflow runs full qualification.
+6. Review the exact-head green result and squash-merge.
 
-1. Open a pull request as a draft.
-2. Use `check-changed.sh`, `check-static.sh`, or `check-fast.sh` while implementing.
-3. Freeze a meaningful SHA while its CI run completes; do not invalidate useful diagnostics with speculative follow-up commits.
-4. Fix the complete failure batch from that exact run.
-5. Run `./scripts/check.sh` locally when the implementation is complete.
-6. Mark the pull request ready for review.
-7. The ready transition runs the full self-hosted qualification gate.
-8. Review the exact-head green result and squash-merge into `main`.
-
-Concurrency cancellation stops obsolete runs for the same pull request or ref.
-
-## Manual GitHub Actions gates
-
-The `Check` workflow supports `workflow_dispatch` with one of three gate choices:
-
-- `static` — structural/type/format checks only;
-- `fast` — static + frontend tests + Rust compile check;
-- `full` — complete merge qualification.
-
-Normal event behavior remains conservative:
-
-- draft pull request synchronization → fast;
-- ready pull request synchronization → full;
-- push to `main` → full.
-
-## Failure diagnostics
-
-On failure, `scripts/summarize-check-failure.mjs` extracts the failed phase and bounded highlights for TypeScript, Vitest, rustfmt, Rust/Clippy/test panics, verifier errors, and native smoke failures into the GitHub job summary.
-
-The workflow still uploads the complete fast/full logs and the repository diagnostics archive. The summary is a debugging index, not a replacement for the source logs.
-
-## Release workflow
-
-`.github/workflows/release.yml` also targets the Multipass self-hosted runner. A version tag invokes `scripts/release.sh`, which performs release qualification and writes the Linux artifacts uploaded by the workflow.
-
-The workflow does not install toolchains dynamically. The controlled runner image is the authoritative release environment and must be updated deliberately when pinned versions change.
+Concurrency cancellation stops obsolete runs for the same PR/ref. Manual workflow dispatch supports `static`, `fast`, and `full` gates.

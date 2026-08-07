@@ -22,7 +22,8 @@
     "check:fast": "./scripts/check-fast.sh",
     "check:changed": "./scripts/check-changed.sh",
     "verify:versions": "node ./scripts/verify-js-dependencies.mjs",
-    "verify:manifests": "node ./scripts/verify-project-manifests.mjs"
+    "verify:manifests": "node ./scripts/verify-project-manifests.mjs",
+    "verify:contracts": "node ./scripts/verify-ipc-contract.mjs && node ./scripts/verify-repository-policy.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",

@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
+import { recordWebviewDiagnostic } from "../diagnostics";
+
 interface AppErrorBoundaryProps {
   children: ReactNode;
 }
@@ -25,7 +27,11 @@ export class AppErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error("ostudy screen crashed", error, info.componentStack);
+    void recordWebviewDiagnostic(
+      "webview_render_error",
+      error,
+      info.componentStack ?? undefined,
+    );
   }
 
   render(): ReactNode {
