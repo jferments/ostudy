@@ -8,7 +8,10 @@ import {
 
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { Sheet } from "./Dialog";
-import { useOverlayContext } from "./overlayContext";
+import {
+  useOverlayContext,
+  useOverlayParentId,
+} from "./overlayContext";
 import styles from "./Menu.module.css";
 
 export interface MenuItem {
@@ -30,6 +33,7 @@ export function Menu({ label, items, disabled = false, className = "" }: MenuPro
   const compact = useMediaQuery("(max-width: 560px)");
   const reactId = useId().replaceAll(":", "");
   const id = `menu-${reactId}`;
+  const parentId = useOverlayParentId();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const { register, isTop } = useOverlayContext();
@@ -38,6 +42,7 @@ export function Menu({ label, items, disabled = false, className = "" }: MenuPro
     if (!open || compact) return;
     return register({
       id,
+      parentId,
       modal: false,
       requestClose() {
         setOpen(false);
@@ -45,7 +50,7 @@ export function Menu({ label, items, disabled = false, className = "" }: MenuPro
         return true;
       },
     });
-  }, [compact, id, open, register]);
+  }, [compact, id, open, parentId, register]);
 
   useEffect(() => {
     if (!open || compact) return;
