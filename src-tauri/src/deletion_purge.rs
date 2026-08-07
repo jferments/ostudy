@@ -6,9 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use rusqlite::{
-    params, params_from_iter, types::Value as SqlValue, Connection, TransactionBehavior,
-};
+use rusqlite::{params_from_iter, types::Value as SqlValue, Connection, TransactionBehavior};
 
 use crate::{
     database::Database,
