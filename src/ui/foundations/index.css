@@ -1,13 +1,18 @@
 @layer reset, tokens, base, legacy, features, components, utilities;
 
-@import "../../styles.css" layer(legacy);
-@import "../../practice-confidence.css" layer(features);
-@import "../../card-organization.css" layer(features);
-@import "../../card-types.css" layer(features);
-@import "../../rich-templates.css" layer(features);
-@import "../../scheduling-controls.css" layer(features);
-@import "../../analytics.css" layer(features);
-@import "../../managed-assets.css" layer(features);
+/*
+ * Global style entry point. Existing application/feature selectors are grouped
+ * under semantic cascade layers while Stage 3.13 primitives and all new UI use
+ * scoped CSS Modules. No feature imports a global stylesheet directly.
+ */
+@import "../../styles/base/application.css" layer(legacy);
+@import "../../styles/features/practice.css" layer(features);
+@import "../../styles/features/cards.css" layer(features);
+@import "../../styles/features/authoring.css" layer(features);
+@import "../../styles/features/templates.css" layer(features);
+@import "../../styles/features/scheduling.css" layer(features);
+@import "../../styles/features/analytics.css" layer(features);
+@import "../../styles/features/assets.css" layer(features);
 
 @layer tokens {
   :root {
