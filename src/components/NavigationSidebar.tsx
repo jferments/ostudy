@@ -7,7 +7,7 @@ import styles from "./NavigationSidebar.module.css";
 
 interface NavigationSidebarProps {
   section: AppSection;
-  onNavigate: (section: AppSection) => void;
+  onNavigate: (section: AppSection) => void | Promise<void>;
 }
 
 const ITEMS: ReadonlyArray<{ section: AppSection; icon: string; label: string }> = [
@@ -27,7 +27,7 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
 
   function navigate(next: AppSection): void {
     setMoreOpen(false);
-    onNavigate(next);
+    void onNavigate(next);
   }
 
   if (compact) {
