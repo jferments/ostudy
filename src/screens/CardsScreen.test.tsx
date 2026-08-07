@@ -1,18 +1,25 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as ipc from "../ipc";
+import * as cardsIpc from "../ipc/cards";
+import * as commonIpc from "../ipc/common";
+import * as decksIpc from "../ipc/decks";
+import * as schedulingIpc from "../ipc/scheduling";
 import { CardsScreen } from "./CardsScreen";
 
-vi.mock("../ipc", () => ({
+vi.mock("../ipc/cards", () => ({
   analyzeBulkCards: vi.fn(),
-  applyScheduleAction: vi.fn(),
   bulkCreateCards: vi.fn(),
   bulkTagCards: vi.fn(),
-  createDeck: vi.fn(),
-  createMutationId: vi.fn(() => "f".repeat(32)),
   deleteCards: vi.fn(),
-  deleteDeck: vi.fn(),
+  getCardNote: vi.fn(),
+  listMatchingCards: vi.fn(),
+  listTags: vi.fn(),
+  searchCards: vi.fn(),
+  transferCards: vi.fn(),
+}));
+vi.mock("../ipc/common", () => ({
+  createMutationId: vi.fn(() => "f".repeat(32)),
   getErrorCode: (error: unknown) => {
     if (typeof error !== "object" || error === null) return null;
     const code = (error as { code?: unknown }).code;
@@ -21,12 +28,16 @@ vi.mock("../ipc", () => ({
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
   ),
-  getCardNote: vi.fn(),
-  listMatchingCards: vi.fn(),
-  listTags: vi.fn(),
-  searchCards: vi.fn(),
+}));
+vi.mock("../ipc/decks", () => ({
+  createDeck: vi.fn(),
+  deleteDeck: vi.fn(),
+}));
+vi.mock("../ipc/practice", () => ({
   startCardPractice: vi.fn(),
-  transferCards: vi.fn(),
+}));
+vi.mock("../ipc/scheduling", () => ({
+  applyScheduleAction: vi.fn(),
 }));
 
 vi.mock("./CardEditorScreen", () => ({
@@ -34,7 +45,7 @@ vi.mock("./CardEditorScreen", () => ({
     deck,
     onSaved,
   }: {
-    deck: ipc.DeckSummary;
+    deck: decksIpc.DeckSummary;
     onSaved: (card: { deckId: string }, continueAdding: boolean) => Promise<void>;
   }) => (
     <div>
@@ -46,7 +57,7 @@ vi.mock("./CardEditorScreen", () => ({
   ),
 }));
 
-const deck: ipc.DeckSummary = {
+const deck: decksIpc.DeckSummary = {
   id: "a".repeat(32),
   name: "Pharmacology",
   description: "",
@@ -58,12 +69,12 @@ const deck: ipc.DeckSummary = {
   updatedAt: 1,
   revision: 1,
 };
-const secondDeck: ipc.DeckSummary = {
+const secondDeck: decksIpc.DeckSummary = {
   ...deck,
   id: "e".repeat(32),
   name: "Pathophysiology",
 };
-const browserCard: ipc.CardBrowserRow = {
+const browserCard: cardsIpc.CardBrowserRow = {
   cardId: "b".repeat(32),
   noteId: "c".repeat(32),
   deckId: deck.id,
@@ -82,7 +93,7 @@ const browserCard: ipc.CardBrowserRow = {
   createdAt: 1,
   updatedAt: 1,
 };
-const reverseCard: ipc.CardBrowserRow = {
+const reverseCard: cardsIpc.CardBrowserRow = {
   ...browserCard,
   cardId: "f".repeat(32),
   cardLabel: "Reverse",
@@ -90,7 +101,7 @@ const reverseCard: ipc.CardBrowserRow = {
   backText: "What reverses warfarin?",
   needsMorePractice: false,
 };
-const selection: ipc.SelectionCard = {
+const selection: cardsIpc.SelectionCard = {
   cardId: browserCard.cardId,
   noteId: browserCard.noteId,
   deckId: browserCard.deckId,
@@ -99,7 +110,7 @@ const selection: ipc.SelectionCard = {
 function actionResult(
   affectedCount = 1,
   requestedCount = 1,
-): ipc.ScheduleActionResult {
+): schedulingIpc.ScheduleActionResult {
   return {
     affectedCount,
     requestedCount,
@@ -111,7 +122,7 @@ function actionResult(
   };
 }
 
-function renderScreen(decks: ipc.DeckSummary[] = [deck, secondDeck]) {
+function renderScreen(decks: decksIpc.DeckSummary[] = [deck, secondDeck]) {
   const showToast = vi.fn();
   const view = render(
     <CardsScreen
@@ -128,7 +139,7 @@ function renderScreen(decks: ipc.DeckSummary[] = [deck, secondDeck]) {
 describe("CardsScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.listTags).mockResolvedValue([
+    vi.mocked(cardsIpc.listTags).mockResolvedValue([
       {
         id: "d".repeat(32),
         name: "Anticoagulants",
@@ -137,12 +148,12 @@ describe("CardsScreen", () => {
         studyableDueCount: 1,
       },
     ]);
-    vi.mocked(ipc.searchCards).mockResolvedValue({
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({
       cards: [browserCard],
       totalCount: 1,
     });
-    vi.mocked(ipc.listMatchingCards).mockResolvedValue([selection]);
-    vi.mocked(ipc.applyScheduleAction).mockResolvedValue(actionResult());
+    vi.mocked(cardsIpc.listMatchingCards).mockResolvedValue([selection]);
+    vi.mocked(schedulingIpc.applyScheduleAction).mockResolvedValue(actionResult());
   });
 
   it("sends status filters and displays Needs more practice", async () => {
@@ -152,7 +163,7 @@ describe("CardsScreen", () => {
       target: { value: "suspended" },
     });
     await waitFor(() =>
-      expect(ipc.searchCards).toHaveBeenLastCalledWith(
+      expect(cardsIpc.searchCards).toHaveBeenLastCalledWith(
         expect.objectContaining({ statusFilter: "suspended" }),
       ),
     );
@@ -170,7 +181,7 @@ describe("CardsScreen", () => {
       { target: { value: "suspend" } },
     );
     await waitFor(() =>
-      expect(ipc.applyScheduleAction).toHaveBeenCalledWith({
+      expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith({
         mutationId: "f".repeat(32),
         cardIds: [browserCard.cardId],
         action: "suspend",
@@ -179,11 +190,11 @@ describe("CardsScreen", () => {
   });
 
   it("submits every selected presentation in one transactional request", async () => {
-    vi.mocked(ipc.searchCards).mockResolvedValue({
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({
       cards: [browserCard, reverseCard],
       totalCount: 2,
     });
-    vi.mocked(ipc.applyScheduleAction).mockResolvedValue(actionResult(1, 2));
+    vi.mocked(schedulingIpc.applyScheduleAction).mockResolvedValue(actionResult(1, 2));
     const { showToast } = renderScreen();
 
     fireEvent.click(await screen.findByRole("button", { name: "Select visible" }));
@@ -193,8 +204,8 @@ describe("CardsScreen", () => {
     );
 
     await waitFor(() => {
-      expect(ipc.applyScheduleAction).toHaveBeenCalledOnce();
-      expect(ipc.applyScheduleAction).toHaveBeenCalledWith({
+      expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledOnce();
+      expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith({
         mutationId: "f".repeat(32),
         cardIds: [browserCard.cardId, reverseCard.cardId].sort(),
         action: "suspend",
@@ -207,7 +218,7 @@ describe("CardsScreen", () => {
   });
 
   it("reuses one mutation ID after an ambiguous selection response", async () => {
-    vi.mocked(ipc.applyScheduleAction)
+    vi.mocked(schedulingIpc.applyScheduleAction)
       .mockRejectedValueOnce(new Error("Native response was lost."))
       .mockResolvedValueOnce(actionResult());
     renderScreen();
@@ -225,16 +236,16 @@ describe("CardsScreen", () => {
     fireEvent.change(actions, { target: { value: "suspend" } });
 
     await waitFor(() => {
-      expect(ipc.applyScheduleAction).toHaveBeenCalledTimes(2);
-      expect(ipc.createMutationId).toHaveBeenCalledOnce();
-      expect(vi.mocked(ipc.applyScheduleAction).mock.calls[1]?.[0]).toEqual(
-        vi.mocked(ipc.applyScheduleAction).mock.calls[0]?.[0],
+      expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledTimes(2);
+      expect(commonIpc.createMutationId).toHaveBeenCalledOnce();
+      expect(vi.mocked(schedulingIpc.applyScheduleAction).mock.calls[1]?.[0]).toEqual(
+        vi.mocked(schedulingIpc.applyScheduleAction).mock.calls[0]?.[0],
       );
     });
   });
 
   it("selects reverse and forward presentations independently", async () => {
-    vi.mocked(ipc.searchCards).mockResolvedValue({
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({
       cards: [browserCard, reverseCard],
       totalCount: 2,
     });
@@ -251,13 +262,13 @@ describe("CardsScreen", () => {
   });
 
   it("selects all filtered results through the backend", async () => {
-    vi.mocked(ipc.searchCards).mockResolvedValue({
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({
       cards: [browserCard],
       totalCount: 12,
     });
     renderScreen();
     fireEvent.click(await screen.findByRole("button", { name: "Select all (12)" }));
-    await waitFor(() => expect(ipc.listMatchingCards).toHaveBeenCalled());
+    await waitFor(() => expect(cardsIpc.listMatchingCards).toHaveBeenCalled());
   });
 
   it("enables Add card only for one selected active deck", async () => {
@@ -266,7 +277,7 @@ describe("CardsScreen", () => {
     fireEvent.click(screen.getByText("All active decks", { selector: "summary" }));
     fireEvent.click(screen.getByRole("checkbox", { name: /Pharmacology/u }));
     await waitFor(() =>
-      expect(ipc.searchCards).toHaveBeenLastCalledWith(
+      expect(cardsIpc.searchCards).toHaveBeenLastCalledWith(
         expect.objectContaining({ deckIds: [deck.id] }),
       ),
     );

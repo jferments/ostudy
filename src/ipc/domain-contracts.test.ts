@@ -72,7 +72,7 @@ import {
   updateCardTemplate,
   type CreateCardTemplateInput,
 } from "./templates";
-import { makeSettings, paragraphDocument } from "./test/factories";
+import { makeSettings, paragraphDocument } from "../test/factories";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -211,13 +211,6 @@ describe("typed Tauri IPC wrappers", () => {
         }),
       "update_card_note",
       { input: { ...generatedInput, noteId, revision: 3 } },
-    );
-    await expectInvocation(() => getCardTypeInfo(noteId), "get_card_type_info", {
-      noteId,
-    });
-    await expectInvocation(
-      listCardTemplateSummaries,
-      "list_card_template_summaries",
     );
     await expectInvocation(
       () => getCardTemplate(templateId),

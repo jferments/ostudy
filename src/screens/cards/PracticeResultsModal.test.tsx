@@ -1,24 +1,30 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as ipc from "../../ipc";
+import * as cardsIpc from "../../ipc/cards";
+import * as commonIpc from "../../ipc/common";
+import * as decksIpc from "../../ipc/decks";
 import { makeDeck, resetTestEntityIds } from "../../test/factories";
 import { PracticeResultsModal } from "./PracticeResultsModal";
 
-vi.mock("../../ipc", () => ({
-  createDeck: vi.fn(),
-  deleteDeck: vi.fn(),
-  getErrorMessage: (error: unknown) =>
-    error instanceof Error ? error.message : "Unexpected error",
+vi.mock("../../ipc/cards", () => ({
   transferCards: vi.fn(),
 }));
+vi.mock("../../ipc/common", () => ({
+  getErrorMessage: (error: unknown) =>
+    error instanceof Error ? error.message : "Unexpected error",
+}));
+vi.mock("../../ipc/decks", () => ({
+  createDeck: vi.fn(),
+  deleteDeck: vi.fn(),
+}));
 
-const cards: ipc.SelectionCard[] = [
+const cards: cardsIpc.SelectionCard[] = [
   { cardId: "a".repeat(32), noteId: "b".repeat(32), deckId: "c".repeat(32) },
   { cardId: "d".repeat(32), noteId: "e".repeat(32), deckId: "c".repeat(32) },
 ];
 
-function cleanupDeletionResult(): ipc.DeletionResult {
+function cleanupDeletionResult(): commonIpc.DeletionResult {
   return {
     affectedCount: 0,
     undoToken: "f".repeat(32),
@@ -31,7 +37,7 @@ describe("PracticeResultsModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetTestEntityIds();
-    vi.mocked(ipc.deleteDeck).mockResolvedValue(cleanupDeletionResult());
+    vi.mocked(decksIpc.deleteDeck).mockResolvedValue(cleanupDeletionResult());
   });
 
   it("starts a temporary exact-card session without creating a deck", () => {
@@ -51,14 +57,14 @@ describe("PracticeResultsModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start practice" }));
 
     expect(onPracticeCards).toHaveBeenCalledWith(cards.map((card) => card.cardId));
-    expect(ipc.createDeck).not.toHaveBeenCalled();
+    expect(decksIpc.createDeck).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("creates a permanent deck by copying source notes with fresh schedules", async () => {
     const created = makeDeck({ name: "Weak topics" });
-    vi.mocked(ipc.createDeck).mockResolvedValue(created);
-    vi.mocked(ipc.transferCards).mockResolvedValue({
+    vi.mocked(decksIpc.createDeck).mockResolvedValue(created);
+    vi.mocked(cardsIpc.transferCards).mockResolvedValue({
       affectedCount: 2,
       skippedDuplicates: 0,
     });
@@ -82,11 +88,11 @@ describe("PracticeResultsModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save as new deck" }));
 
     await waitFor(() => {
-      expect(ipc.createDeck).toHaveBeenCalledWith({
+      expect(decksIpc.createDeck).toHaveBeenCalledWith({
         name: "Weak topics",
         description: "Created from the selected cards in Search/Filter.",
       });
-      expect(ipc.transferCards).toHaveBeenCalledWith({
+      expect(cardsIpc.transferCards).toHaveBeenCalledWith({
         noteIds: cards.map((card) => card.noteId),
         targetDeckId: created.id,
         mode: "copy",
@@ -99,13 +105,13 @@ describe("PracticeResultsModal", () => {
       );
       expect(onClose).toHaveBeenCalledOnce();
     });
-    expect(ipc.deleteDeck).not.toHaveBeenCalled();
+    expect(decksIpc.deleteDeck).not.toHaveBeenCalled();
   });
 
   it("removes the newly created empty deck when no cards can be copied", async () => {
     const created = makeDeck({ name: "Empty result" });
-    vi.mocked(ipc.createDeck).mockResolvedValue(created);
-    vi.mocked(ipc.transferCards).mockResolvedValue({
+    vi.mocked(decksIpc.createDeck).mockResolvedValue(created);
+    vi.mocked(cardsIpc.transferCards).mockResolvedValue({
       affectedCount: 0,
       skippedDuplicates: 2,
     });
@@ -128,13 +134,13 @@ describe("PracticeResultsModal", () => {
     expect(
       await screen.findByText("No cards could be copied into the new deck."),
     ).toBeTruthy();
-    expect(ipc.deleteDeck).toHaveBeenCalledWith(created.id);
+    expect(decksIpc.deleteDeck).toHaveBeenCalledWith(created.id);
   });
 
   it("compensates for a failed copy after deck creation", async () => {
     const created = makeDeck({ name: "Incomplete" });
-    vi.mocked(ipc.createDeck).mockResolvedValue(created);
-    vi.mocked(ipc.transferCards).mockRejectedValue(new Error("Copy failed."));
+    vi.mocked(decksIpc.createDeck).mockResolvedValue(created);
+    vi.mocked(cardsIpc.transferCards).mockRejectedValue(new Error("Copy failed."));
     const onClose = vi.fn();
     render(
       <PracticeResultsModal
@@ -153,7 +159,7 @@ describe("PracticeResultsModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save as new deck" }));
 
     expect(await screen.findByText("Copy failed.")).toBeTruthy();
-    expect(ipc.deleteDeck).toHaveBeenCalledWith(created.id);
+    expect(decksIpc.deleteDeck).toHaveBeenCalledWith(created.id);
     expect(onClose).not.toHaveBeenCalled();
   });
 });

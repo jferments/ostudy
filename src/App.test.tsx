@@ -3,14 +3,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AnalyticsLaunchRequest, PracticeLaunchRequest } from "./App";
 import App from "./App";
-import * as ipc from "./ipc";
+import * as decksIpc from "./ipc/decks";
+import * as settingsIpc from "./ipc/settings";
 import { makeDeck, makeSettings, resetTestEntityIds } from "./test/factories";
 
-vi.mock("./ipc", () => ({
+vi.mock("./ipc/common", () => ({
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected startup error",
-  getSettings: vi.fn(),
+}));
+vi.mock("./ipc/decks", () => ({
   listDecks: vi.fn(),
+}));
+vi.mock("./ipc/settings", () => ({
+  getSettings: vi.fn(),
 }));
 
 vi.mock("./screens/DecksScreen", () => ({
@@ -19,7 +24,7 @@ vi.mock("./screens/DecksScreen", () => ({
     onPracticeDeck,
     onDirtyChange,
   }: {
-    decks: ipc.DeckSummary[];
+    decks: decksIpc.DeckSummary[];
     onPracticeDeck: (deckId: string) => void;
     onDirtyChange: (dirty: boolean) => void;
   }) => (
@@ -104,10 +109,10 @@ describe("App shell", () => {
 
   it("loads the local settings and deck library before rendering navigation", async () => {
     const deck = makeDeck({ name: "Cardiology" });
-    vi.mocked(ipc.getSettings).mockResolvedValue(
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(
       makeSettings({ theme: "console", reduceMotion: true, uiScale: 110 }),
     );
-    vi.mocked(ipc.listDecks).mockResolvedValue([deck]);
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
 
     render(<App />);
 
@@ -120,8 +125,8 @@ describe("App shell", () => {
   });
 
   it("guards navigation while a card has unsaved changes", async () => {
-    vi.mocked(ipc.getSettings).mockResolvedValue(makeSettings());
-    vi.mocked(ipc.listDecks).mockResolvedValue([makeDeck()]);
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     render(<App />);
@@ -140,8 +145,8 @@ describe("App shell", () => {
 
   it("launches exact deck practice from the deck screen", async () => {
     const deck = makeDeck({ name: "Pharmacology" });
-    vi.mocked(ipc.getSettings).mockResolvedValue(makeSettings());
-    vi.mocked(ipc.listDecks).mockResolvedValue([deck]);
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
 
     render(<App />);
     await screen.findByRole("heading", { name: "Decks mock" });
@@ -152,8 +157,8 @@ describe("App shell", () => {
   });
 
   it("carries a completed practice session into week-scoped analytics", async () => {
-    vi.mocked(ipc.getSettings).mockResolvedValue(makeSettings());
-    vi.mocked(ipc.listDecks).mockResolvedValue([makeDeck()]);
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
 
     render(<App />);
     await screen.findByRole("heading", { name: "Decks mock" });
@@ -168,8 +173,8 @@ describe("App shell", () => {
   });
 
   it("shows a recoverable fatal screen when local bootstrap fails", async () => {
-    vi.mocked(ipc.getSettings).mockRejectedValue(new Error("Database unavailable"));
-    vi.mocked(ipc.listDecks).mockResolvedValue([]);
+    vi.mocked(settingsIpc.getSettings).mockRejectedValue(new Error("Database unavailable"));
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([]);
 
     render(<App />);
 
@@ -181,8 +186,8 @@ describe("App shell", () => {
     expect(screen.getByText("Database unavailable")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     await waitFor(() => {
-      expect(ipc.getSettings).toHaveBeenCalledOnce();
-      expect(ipc.listDecks).toHaveBeenCalledOnce();
+      expect(settingsIpc.getSettings).toHaveBeenCalledOnce();
+      expect(decksIpc.listDecks).toHaveBeenCalledOnce();
     });
   });
 });

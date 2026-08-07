@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { CardEditorController } from "../controllers/cardEditorController";
+
 import { TagInput } from "../components/TagInput";
 import { RichTextEditor } from "../editor/RichTextEditor";
 import { RichTextView } from "../editor/RichTextView";
@@ -19,7 +21,6 @@ import {
   createCardNote,
   findDuplicateCards,
   getCardNote,
-  listTags,
   updateCardNote,
   type BuiltInCardType,
   type ClozeMode,
@@ -33,14 +34,10 @@ import {
   type RichDocument,
 } from "../ipc/common";
 import {
-  listDecks,
   type DeckSummary,
 } from "../ipc/decks";
 import {
   generateCardsFromTemplate,
-  getCardTemplate,
-  listCardTemplateSummaries,
-  previewTemplateCards,
   type CardTemplate,
   type CardTemplateSummary,
   type GenerateTemplateCardsResult,
@@ -91,10 +88,9 @@ export function CardEditorScreen({
     availableDecks.find((candidate) => candidate.id === selectedDeckId) ?? deck;
 
   const [templateSummaries, setTemplateSummaries] = useState<CardTemplateSummary[]>([]);
-  const [selectedTemplateKey, setSelectedTemplateKey] = useState(card?.cardType ?? "basic");
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState<string>(card?.cardType ?? "basic");
   const [selectedCustomTemplate, setSelectedCustomTemplate] = useState<CardTemplate | null>(null);
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
-  const templateRequestSequence = useRef(0);
   const builtInCardType: BuiltInCardType =
     selectedTemplateKey === "cloze" ? "cloze" : "basic";
   const [reverseEnabled, setReverseEnabled] = useState(
@@ -133,6 +129,9 @@ export function CardEditorScreen({
   const [previewAnswer, setPreviewAnswer] = useState(false);
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const controllerRef = useRef<CardEditorController | null>(null);
+  if (controllerRef.current === null) controllerRef.current = new CardEditorController();
+  const controller = controllerRef.current;
 
   const title = existing ? "Edit flashcard" : "Add flashcard";
   const hasFront = !isDocumentEmpty(frontText, frontDoc);
@@ -163,6 +162,8 @@ export function CardEditorScreen({
     return [...ids].sort();
   }, [backDoc, frontDoc, templateValues]);
   const usedAssetKey = usedAssetIds.join(",");
+
+  useEffect(() => () => controller.invalidate(), [controller]);
 
   useEffect(() => {
     onDirtyChange(dirty);
@@ -217,9 +218,9 @@ export function CardEditorScreen({
       return;
     }
     let current = true;
-    void listDecks()
+    void controller.decks()
       .then((decks) => {
-        if (current) setLoadedDecks(decks);
+        if (current && decks) setLoadedDecks(decks);
       })
       .catch((error: unknown) => {
         if (current) {
@@ -229,13 +230,13 @@ export function CardEditorScreen({
     return () => {
       current = false;
     };
-  }, [providedDecks]);
+  }, [controller, providedDecks]);
 
   useEffect(() => {
     let current = true;
-    void listCardTemplateSummaries()
+    void controller.templateSummaries()
       .then((loaded) => {
-        if (current) setTemplateSummaries(loaded);
+        if (current && loaded) setTemplateSummaries(loaded);
       })
       .catch((error: unknown) => {
         if (current) {
@@ -245,36 +246,34 @@ export function CardEditorScreen({
     return () => {
       current = false;
     };
-  }, []);
+  }, [controller]);
 
   useEffect(() => {
     if (selectedTemplateKey === "basic" || selectedTemplateKey === "cloze") {
-      templateRequestSequence.current += 1;
+      controller.invalidateTemplate();
       setSelectedCustomTemplate(null);
       setIsLoadingTemplate(false);
       return;
     }
-    const requestId = templateRequestSequence.current + 1;
-    templateRequestSequence.current = requestId;
     setSelectedCustomTemplate(null);
     setTemplateValues([]);
     setTemplatePreviews([]);
     setIsLoadingTemplate(true);
-    void getCardTemplate(selectedTemplateKey)
+    void controller
+      .template(selectedTemplateKey)
       .then((template) => {
-        if (templateRequestSequence.current === requestId) setSelectedCustomTemplate(template);
+        if (template) setSelectedCustomTemplate(template);
+        setIsLoadingTemplate(false);
       })
       .catch((error: unknown) => {
-        if (templateRequestSequence.current === requestId) setErrorMessage(getErrorMessage(error));
-      })
-      .finally(() => {
-        if (templateRequestSequence.current === requestId) setIsLoadingTemplate(false);
+        setErrorMessage(getErrorMessage(error));
+        setIsLoadingTemplate(false);
       });
-  }, [selectedTemplateKey]);
+  }, [controller, selectedTemplateKey]);
 
   useEffect(() => {
-    void listTags()
-      .then(setTagSuggestions)
+    void controller.tags()
+      .then((loaded) => { if (loaded) setTagSuggestions(loaded); })
       .catch((error: unknown) => {
         console.error("Unable to load tag suggestions:", getErrorMessage(error));
       });
@@ -345,13 +344,12 @@ export function CardEditorScreen({
     setIsPreviewingTemplate(true);
     setErrorMessage(null);
     try {
-      setTemplatePreviews(
-        await previewTemplateCards({
-          templateId: selectedCustomTemplate.id,
-          templateRevision: selectedCustomTemplate.revision,
-          values: templateValues,
-        }),
-      );
+      const preview = await controller.preview({
+        templateId: selectedCustomTemplate.id,
+        templateRevision: selectedCustomTemplate.revision,
+        values: templateValues,
+      });
+      if (preview) setTemplatePreviews(preview);
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -550,7 +548,7 @@ export function CardEditorScreen({
   return (
     <div
       className="card-editor-screen"
-      aria-busy={isSaving || isLoadingType || isLoadingTemplate}
+      aria-busy={isSaving || isLoadingTemplate}
     >
       <header className="screen-header card-editor-header">
         <div>
@@ -666,7 +664,7 @@ export function CardEditorScreen({
             <select
               aria-label="Card template"
               value={selectedTemplateKey}
-              disabled={isSaving || existing || isLoadingType}
+              disabled={isSaving || existing}
               onChange={(event) => {
                 setSelectedTemplateKey(event.currentTarget.value);
                 setPreviewOpen(false);

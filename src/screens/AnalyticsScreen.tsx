@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AnalyticsLaunchRequest } from "../App";
+import { AnalyticsController } from "../controllers/analyticsController";
 import {
-  getAnalytics,
   type Analytics,
   type AnalyticsRange,
   type TagAnalytics,
@@ -60,42 +60,42 @@ export function AnalyticsScreen({
   const [practicingTagId, setPracticingTagId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const handledLaunchRef = useRef<number | null>(null);
-  const requestSequence = useRef(0);
+  const controllerRef = useRef<AnalyticsController | null>(null);
+  if (controllerRef.current === null) controllerRef.current = new AnalyticsController();
+  const controller = controllerRef.current;
 
   const deckIds = useMemo(() => [...selectedDeckIds].sort(), [selectedDeckIds]);
   const tagIds = useMemo(() => [...selectedTagIds].sort(), [selectedTagIds]);
 
   const load = useCallback(async (): Promise<void> => {
-    const requestId = requestSequence.current + 1;
-    requestSequence.current = requestId;
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const result = await getAnalytics({
+      const result = await controller.load({
         range,
         deckIds,
         tagIds,
         highlightedSessionId,
       });
-      if (requestSequence.current !== requestId) return;
+      if (!result) return;
       setAnalytics(result);
       const availableDeckIds = new Set(result.dimensionOptions.decks.map((deck) => deck.id));
       const availableTagIds = new Set(result.dimensionOptions.tags.map((tag) => tag.id));
       setSelectedDeckIds((current) => filteredSet(current, availableDeckIds));
       setSelectedTagIds((current) => filteredSet(current, availableTagIds));
+      setIsLoading(false);
     } catch (error: unknown) {
-      if (requestSequence.current !== requestId) return;
       const message = getErrorMessage(error);
       setErrorMessage(message);
       showToast("error", message);
-    } finally {
-      if (requestSequence.current === requestId) setIsLoading(false);
+      setIsLoading(false);
     }
-  }, [deckIds, highlightedSessionId, range, showToast, tagIds]);
+  }, [controller, deckIds, highlightedSessionId, range, showToast, tagIds]);
 
   useEffect(() => {
     void load();
-  }, [load]);
+    return () => controller.invalidate();
+  }, [controller, load]);
 
   useEffect(() => {
     if (!launchRequest || handledLaunchRef.current === launchRequest.requestId) return;

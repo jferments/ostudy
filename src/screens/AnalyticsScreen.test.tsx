@@ -1,16 +1,17 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as analyticsIpc from "../analytics-ipc";
-import * as ipc from "../ipc";
+import * as analyticsIpc from "../ipc/analytics";
+import * as decksIpc from "../ipc/decks";
+import * as settingsIpc from "../ipc/settings";
 import { deferred } from "../test/factories";
 import { AnalyticsScreen } from "./AnalyticsScreen";
 
-vi.mock("../analytics-ipc", () => ({
+vi.mock("../ipc/analytics", () => ({
   getAnalytics: vi.fn(),
 }));
 
-vi.mock("../ipc", () => ({
+vi.mock("../ipc/common", () => ({
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
 }));
@@ -19,7 +20,7 @@ vi.mock("./analytics/ProgressChart", () => ({
   ProgressChart: () => <div role="img" aria-label="Learning progress chart" />,
 }));
 
-const deck: ipc.DeckSummary = {
+const deck: decksIpc.DeckSummary = {
   id: "a".repeat(32),
   name: "Cardiology",
   description: "",
@@ -34,7 +35,7 @@ const deck: ipc.DeckSummary = {
 
 const tagId = "b".repeat(32);
 
-const settings: ipc.AppSettings = {
+const settings: settingsIpc.AppSettings = {
   theme: "dark",
   uiFont: "system",
   cardFont: "system",

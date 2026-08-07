@@ -1,26 +1,32 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as ipc from "../ipc";
+import * as assetsIpc from "../ipc/assets";
+import * as commonIpc from "../ipc/common";
+import * as templatesIpc from "../ipc/templates";
 import { TemplatesScreen } from "./TemplatesScreen";
 
-vi.mock("../ipc", () => ({
+vi.mock("../ipc/assets", () => ({
   beginAssetDraft: vi.fn(),
   cancelAssetDraft: vi.fn(),
-  createCardTemplate: vi.fn(),
-  deleteCardTemplate: vi.fn(),
-  getCardTemplate: vi.fn(),
+  syncAssetDraft: vi.fn(),
+}));
+vi.mock("../ipc/common", () => ({
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
   ),
+}));
+vi.mock("../ipc/templates", () => ({
+  createCardTemplate: vi.fn(),
+  deleteCardTemplate: vi.fn(),
+  getCardTemplate: vi.fn(),
   listCardTemplateSummaries: vi.fn(),
-  syncAssetDraft: vi.fn(),
   updateCardTemplate: vi.fn(),
 }));
 
 const FIELD_ID = "b".repeat(32);
 const ASSET_DRAFT_ID = "e".repeat(32);
-const inlineDoc: ipc.RichDocument = {
+const inlineDoc: commonIpc.RichDocument = {
   type: "doc",
   content: [
     {
@@ -36,7 +42,7 @@ const inlineDoc: ipc.RichDocument = {
   ],
 };
 
-const template: ipc.CardTemplate = {
+const template: templatesIpc.CardTemplate = {
   id: "a".repeat(32),
   name: "Concept review",
   description: "Reusable concept cards",
@@ -76,7 +82,7 @@ const template: ipc.CardTemplate = {
   revision: 1,
 };
 
-const summary: ipc.CardTemplateSummary = {
+const summary: templatesIpc.CardTemplateSummary = {
   id: template.id,
   name: template.name,
   description: template.description,
@@ -90,17 +96,17 @@ const summary: ipc.CardTemplateSummary = {
 describe("TemplatesScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.beginAssetDraft).mockResolvedValue({
+    vi.mocked(assetsIpc.beginAssetDraft).mockResolvedValue({
       id: ASSET_DRAFT_ID,
       purpose: "template",
       expiresAt: Date.now() + 60_000,
     });
-    vi.mocked(ipc.cancelAssetDraft).mockResolvedValue(undefined);
-    vi.mocked(ipc.syncAssetDraft).mockResolvedValue(undefined);
-    vi.mocked(ipc.listCardTemplateSummaries).mockResolvedValue([summary]);
-    vi.mocked(ipc.getCardTemplate).mockResolvedValue(template);
-    vi.mocked(ipc.createCardTemplate).mockResolvedValue(template);
-    vi.mocked(ipc.deleteCardTemplate).mockResolvedValue(undefined);
+    vi.mocked(assetsIpc.cancelAssetDraft).mockResolvedValue(undefined);
+    vi.mocked(assetsIpc.syncAssetDraft).mockResolvedValue(undefined);
+    vi.mocked(templatesIpc.listCardTemplateSummaries).mockResolvedValue([summary]);
+    vi.mocked(templatesIpc.getCardTemplate).mockResolvedValue(template);
+    vi.mocked(templatesIpc.createCardTemplate).mockResolvedValue(template);
+    vi.mocked(templatesIpc.deleteCardTemplate).mockResolvedValue(undefined);
   });
 
   it("creates a template with typed placeholders and automatic placement", async () => {
@@ -123,7 +129,7 @@ describe("TemplatesScreen", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Save template" }));
 
     await waitFor(() => {
-      expect(ipc.createCardTemplate).toHaveBeenCalledWith(
+      expect(templatesIpc.createCardTemplate).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Concept review",
           assetDraftId: ASSET_DRAFT_ID,
@@ -138,19 +144,19 @@ describe("TemplatesScreen", () => {
       );
       expect(showToast).toHaveBeenCalledWith("success", "Card template created.");
     });
-    expect(ipc.listCardTemplateSummaries).toHaveBeenCalledTimes(2);
+    expect(templatesIpc.listCardTemplateSummaries).toHaveBeenCalledTimes(2);
   });
 
   it("loads one full template graph only when editing", async () => {
     render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />);
 
     expect(await screen.findByText("Reusable concept cards")).toBeTruthy();
-    expect(ipc.getCardTemplate).not.toHaveBeenCalled();
+    expect(templatesIpc.getCardTemplate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
     expect(await screen.findByRole("heading", { name: "Edit card template" })).toBeTruthy();
-    expect(ipc.getCardTemplate).toHaveBeenCalledWith(template.id);
-    expect(ipc.beginAssetDraft).toHaveBeenCalledWith("template", template.id);
+    expect(templatesIpc.getCardTemplate).toHaveBeenCalledWith(template.id);
+    expect(assetsIpc.beginAssetDraft).toHaveBeenCalledWith("template", template.id);
   });
 
   it("deletes only the authoring template and leaves generated cards intact", async () => {
@@ -162,7 +168,7 @@ describe("TemplatesScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
-      expect(ipc.deleteCardTemplate).toHaveBeenCalledWith(template.id);
+      expect(templatesIpc.deleteCardTemplate).toHaveBeenCalledWith(template.id);
       expect(showToast).toHaveBeenCalledWith(
         "success",
         "Deleted “Concept review”. Existing cards were not changed.",

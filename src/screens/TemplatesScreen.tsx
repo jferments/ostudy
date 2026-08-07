@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ShowToast } from "../components/Toast";
+import { TemplatesController } from "../controllers/templatesController";
 import { collectAssetIds, EMPTY_RICH_DOCUMENT, cloneDocument } from "../editor/richText";
 import {
   beginAssetDraft,
@@ -15,8 +16,6 @@ import {
 import {
   createCardTemplate,
   deleteCardTemplate,
-  getCardTemplate,
-  listCardTemplateSummaries,
   updateCardTemplate,
   type CardTemplate,
   type CardTemplateFieldInput,
@@ -65,6 +64,9 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
   const [assetDraftId, setAssetDraftId] = useState<string | null>(null);
   const assetDraftRef = useRef<string | null>(null);
   const savingRef = useRef(false);
+  const controllerRef = useRef<TemplatesController | null>(null);
+  if (controllerRef.current === null) controllerRef.current = new TemplatesController();
+  const controller = controllerRef.current;
   const dirty = useMemo(
     () => draft !== null && JSON.stringify(draft) !== JSON.stringify(baseline),
     [baseline, draft],
@@ -81,7 +83,8 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
 
   useEffect(() => {
     void loadTemplates();
-  }, []);
+    return () => controller.invalidate();
+  }, [controller]);
 
   useEffect(() => {
     onDirtyChange(dirty);
@@ -118,7 +121,8 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      setTemplates(await listCardTemplateSummaries());
+      const loaded = await controller.list();
+      if (loaded) setTemplates(loaded);
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -164,7 +168,8 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
     setIsOpening(true);
     setErrorMessage(null);
     try {
-      const template = await getCardTemplate(summary.id);
+      const template = await controller.template(summary.id);
+      if (!template) return;
       if (openRequestSequence.current !== requestId) return;
       await openDraft(draftFromTemplate(template));
     } catch (error: unknown) {

@@ -1,20 +1,25 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as ipc from "../ipc";
+import * as assetsIpc from "../ipc/assets";
+import * as templatesIpc from "../ipc/templates";
 import { deferred } from "../test/factories";
 import { TemplatesScreen } from "./TemplatesScreen";
 
-vi.mock("../ipc", () => ({
+vi.mock("../ipc/assets", () => ({
   beginAssetDraft: vi.fn(),
   cancelAssetDraft: vi.fn(),
+  syncAssetDraft: vi.fn(),
+}));
+vi.mock("../ipc/common", () => ({
+  getErrorMessage: (error: unknown) =>
+    error instanceof Error ? error.message : "Unexpected error",
+}));
+vi.mock("../ipc/templates", () => ({
   createCardTemplate: vi.fn(),
   deleteCardTemplate: vi.fn(),
   getCardTemplate: vi.fn(),
-  getErrorMessage: (error: unknown) =>
-    error instanceof Error ? error.message : "Unexpected error",
   listCardTemplateSummaries: vi.fn(),
-  syncAssetDraft: vi.fn(),
   updateCardTemplate: vi.fn(),
 }));
 
@@ -24,7 +29,7 @@ vi.mock("./templates/TemplateLayoutEditor", () => ({
 
 const draftId = "a".repeat(32);
 
-function savedTemplate(): ipc.CardTemplate {
+function savedTemplate(): templatesIpc.CardTemplate {
   return {
     id: "b".repeat(32),
     name: "Medication",
@@ -56,15 +61,15 @@ function savedTemplate(): ipc.CardTemplate {
 describe("TemplatesScreen managed assets", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.listCardTemplateSummaries).mockResolvedValue([]);
-    vi.mocked(ipc.beginAssetDraft).mockResolvedValue({
+    vi.mocked(templatesIpc.listCardTemplateSummaries).mockResolvedValue([]);
+    vi.mocked(assetsIpc.beginAssetDraft).mockResolvedValue({
       id: draftId,
       purpose: "template",
       expiresAt: Date.now() + 10_000,
     });
-    vi.mocked(ipc.cancelAssetDraft).mockResolvedValue(undefined);
-    vi.mocked(ipc.syncAssetDraft).mockResolvedValue(undefined);
-    vi.mocked(ipc.createCardTemplate).mockResolvedValue(savedTemplate());
+    vi.mocked(assetsIpc.cancelAssetDraft).mockResolvedValue(undefined);
+    vi.mocked(assetsIpc.syncAssetDraft).mockResolvedValue(undefined);
+    vi.mocked(templatesIpc.createCardTemplate).mockResolvedValue(savedTemplate());
   });
 
   it("opens one template draft and commits its identity with the template", async () => {
@@ -74,7 +79,7 @@ describe("TemplatesScreen managed assets", () => {
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
 
     await waitFor(() => {
-      expect(ipc.beginAssetDraft).toHaveBeenCalledWith("template", undefined);
+      expect(assetsIpc.beginAssetDraft).toHaveBeenCalledWith("template", undefined);
     });
 
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
@@ -83,7 +88,7 @@ describe("TemplatesScreen managed assets", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Save template" }));
 
     await waitFor(() => {
-      expect(ipc.createCardTemplate).toHaveBeenCalledWith(
+      expect(templatesIpc.createCardTemplate).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Medication",
           assetDraftId: draftId,
@@ -97,15 +102,15 @@ describe("TemplatesScreen managed assets", () => {
 
     await screen.findByRole("heading", { name: "Create a reusable card template" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
-    await waitFor(() => expect(ipc.beginAssetDraft).toHaveBeenCalledOnce());
+    await waitFor(() => expect(assetsIpc.beginAssetDraft).toHaveBeenCalledOnce());
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(ipc.cancelAssetDraft).toHaveBeenCalledWith(draftId));
+    await waitFor(() => expect(assetsIpc.cancelAssetDraft).toHaveBeenCalledWith(draftId));
   });
 
   it("blocks save and cancels a managed draft that resolves after cancellation", async () => {
-    const opening = deferred<Awaited<ReturnType<typeof ipc.beginAssetDraft>>>();
-    vi.mocked(ipc.beginAssetDraft).mockReturnValueOnce(opening.promise);
+    const opening = deferred<Awaited<ReturnType<typeof assetsIpc.beginAssetDraft>>>();
+    vi.mocked(assetsIpc.beginAssetDraft).mockReturnValueOnce(opening.promise);
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />);
 
@@ -118,7 +123,7 @@ describe("TemplatesScreen managed assets", () => {
     const preparing = screen.getByRole("button", { name: "Preparing…" }) as HTMLButtonElement;
     expect(preparing.disabled).toBe(true);
     fireEvent.click(preparing);
-    expect(ipc.createCardTemplate).not.toHaveBeenCalled();
+    expect(templatesIpc.createCardTemplate).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     opening.resolve({
@@ -127,8 +132,8 @@ describe("TemplatesScreen managed assets", () => {
       expiresAt: Date.now() + 10_000,
     });
 
-    await waitFor(() => expect(ipc.cancelAssetDraft).toHaveBeenCalledWith(draftId));
-    expect(ipc.createCardTemplate).not.toHaveBeenCalled();
+    await waitFor(() => expect(assetsIpc.cancelAssetDraft).toHaveBeenCalledWith(draftId));
+    expect(templatesIpc.createCardTemplate).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "Create a reusable card template" })).toBeTruthy();
   });
 });

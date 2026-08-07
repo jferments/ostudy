@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as ipc from "../../ipc";
+import * as cardsIpc from "../../ipc/cards";
+import * as commonIpc from "../../ipc/common";
+import * as schedulingIpc from "../../ipc/scheduling";
 import { ScheduleActionModal } from "./ScheduleActionModal";
 
-vi.mock("../../ipc", () => ({
-  applyScheduleAction: vi.fn(),
+vi.mock("../../ipc/common", () => ({
   createMutationId: vi.fn(() => "1".repeat(32)),
   getErrorCode: (error: unknown) => {
     if (typeof error !== "object" || error === null) return null;
@@ -21,16 +22,19 @@ vi.mock("../../ipc", () => ({
     return "Unexpected error";
   },
 }));
+vi.mock("../../ipc/scheduling", () => ({
+  applyScheduleAction: vi.fn(),
+}));
 
-const cards: ipc.SelectionCard[] = [
+const cards: cardsIpc.SelectionCard[] = [
   { cardId: "a".repeat(32), noteId: "b".repeat(32), deckId: "c".repeat(32) },
   { cardId: "d".repeat(32), noteId: "e".repeat(32), deckId: "c".repeat(32) },
 ];
 
 function result(
-  action: ipc.ScheduleAction,
+  action: schedulingIpc.ScheduleAction,
   changedCount = 2,
-): ipc.ScheduleActionResult {
+): schedulingIpc.ScheduleActionResult {
   return {
     affectedCount: changedCount,
     requestedCount: 2,
@@ -45,7 +49,7 @@ function result(
 describe("ScheduleActionModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.applyScheduleAction).mockResolvedValue(result("reset"));
+    vi.mocked(schedulingIpc.applyScheduleAction).mockResolvedValue(result("reset"));
   });
 
   it("applies the complete reset selection in one transaction", async () => {
@@ -67,8 +71,8 @@ describe("ScheduleActionModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reset schedule" }));
 
     await waitFor(() => {
-      expect(ipc.applyScheduleAction).toHaveBeenCalledOnce();
-      expect(ipc.applyScheduleAction).toHaveBeenCalledWith({
+      expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledOnce();
+      expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith({
         mutationId: "1".repeat(32),
         cardIds: cards.map((card) => card.cardId).sort(),
         action: "reset",
@@ -81,7 +85,7 @@ describe("ScheduleActionModal", () => {
   });
 
   it("reports changed and already-satisfied cards from one batch result", async () => {
-    vi.mocked(ipc.applyScheduleAction).mockResolvedValue(result("reset", 1));
+    vi.mocked(schedulingIpc.applyScheduleAction).mockResolvedValue(result("reset", 1));
     const showToast = vi.fn();
     render(
       <ScheduleActionModal
@@ -104,14 +108,14 @@ describe("ScheduleActionModal", () => {
   });
 
   it("submits tomorrow as an authoritative backend calendar intent", async () => {
-    vi.mocked(ipc.applyScheduleAction).mockResolvedValue({
+    vi.mocked(schedulingIpc.applyScheduleAction).mockResolvedValue({
       ...result("reschedule", 1),
       requestedCount: 1,
       unchangedCount: 0,
     });
     render(
       <ScheduleActionModal
-        cards={[cards[0] as ipc.SelectionCard]}
+        cards={[cards[0] as cardsIpc.SelectionCard]}
         action="reschedule"
         onClose={vi.fn()}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -122,7 +126,7 @@ describe("ScheduleActionModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reschedule" }));
 
     await waitFor(() => {
-      expect(ipc.applyScheduleAction).toHaveBeenCalledWith({
+      expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith({
         mutationId: "1".repeat(32),
         cardIds: [cards[0]?.cardId],
         action: "reschedule",
@@ -132,14 +136,14 @@ describe("ScheduleActionModal", () => {
   });
 
   it("submits a custom date without constructing a browser timestamp", async () => {
-    vi.mocked(ipc.applyScheduleAction).mockResolvedValue({
+    vi.mocked(schedulingIpc.applyScheduleAction).mockResolvedValue({
       ...result("reschedule", 1),
       requestedCount: 1,
       unchangedCount: 0,
     });
     render(
       <ScheduleActionModal
-        cards={[cards[0] as ipc.SelectionCard]}
+        cards={[cards[0] as cardsIpc.SelectionCard]}
         action="reschedule"
         onClose={vi.fn()}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -156,7 +160,7 @@ describe("ScheduleActionModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reschedule" }));
 
     await waitFor(() => {
-      expect(ipc.applyScheduleAction).toHaveBeenCalledWith(
+      expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith(
         expect.objectContaining({
           action: "reschedule",
           rescheduleIntent: { kind: "calendar_date", date: "2026-08-12" },
@@ -168,7 +172,7 @@ describe("ScheduleActionModal", () => {
   it("rejects an empty custom date without issuing a mutation", () => {
     render(
       <ScheduleActionModal
-        cards={[cards[0] as ipc.SelectionCard]}
+        cards={[cards[0] as cardsIpc.SelectionCard]}
         action="reschedule"
         onClose={vi.fn()}
         onComplete={vi.fn().mockResolvedValue(undefined)}
@@ -182,11 +186,11 @@ describe("ScheduleActionModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reschedule" }));
 
     expect(screen.getByText("Choose a valid custom due date.")).toBeTruthy();
-    expect(ipc.applyScheduleAction).not.toHaveBeenCalled();
+    expect(schedulingIpc.applyScheduleAction).not.toHaveBeenCalled();
   });
 
   it("reuses one mutation ID after an ambiguous batch response", async () => {
-    vi.mocked(ipc.applyScheduleAction)
+    vi.mocked(schedulingIpc.applyScheduleAction)
       .mockRejectedValueOnce(new Error("Native response was lost."))
       .mockResolvedValueOnce(result("reset"));
     const showToast = vi.fn();
@@ -205,24 +209,24 @@ describe("ScheduleActionModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reset schedule" }));
 
     await waitFor(() => {
-      expect(ipc.applyScheduleAction).toHaveBeenCalledTimes(2);
-      expect(ipc.createMutationId).toHaveBeenCalledOnce();
-      expect(vi.mocked(ipc.applyScheduleAction).mock.calls[1]?.[0]).toEqual(
-        vi.mocked(ipc.applyScheduleAction).mock.calls[0]?.[0],
+      expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledTimes(2);
+      expect(commonIpc.createMutationId).toHaveBeenCalledOnce();
+      expect(vi.mocked(schedulingIpc.applyScheduleAction).mock.calls[1]?.[0]).toEqual(
+        vi.mocked(schedulingIpc.applyScheduleAction).mock.calls[0]?.[0],
       );
       expect(showToast).toHaveBeenCalledWith("success", "Reset 2 cards to New.");
     });
   });
 
   it("surfaces an authoritative native failure and keeps the dialog open", async () => {
-    vi.mocked(ipc.applyScheduleAction).mockRejectedValueOnce({
+    vi.mocked(schedulingIpc.applyScheduleAction).mockRejectedValueOnce({
       code: "schedule_card_not_found",
       message: "One selected card disappeared.",
     });
     const onClose = vi.fn();
     render(
       <ScheduleActionModal
-        cards={[cards[0] as ipc.SelectionCard]}
+        cards={[cards[0] as cardsIpc.SelectionCard]}
         action="reset"
         onClose={onClose}
         onComplete={vi.fn().mockResolvedValue(undefined)}

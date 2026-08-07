@@ -1,21 +1,23 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as ipc from "../../ipc";
+import * as cardsIpc from "../../ipc/cards";
 import { makeDeck, resetTestEntityIds } from "../../test/factories";
 import { MoveCopyModal, type TransferableCard } from "./MoveCopyModal";
 
-vi.mock("../../ipc", () => ({
+vi.mock("../../ipc/cards", () => ({
+  transferCards: vi.fn(),
+}));
+vi.mock("../../ipc/common", () => ({
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
-  transferCards: vi.fn(),
 }));
 
 describe("MoveCopyModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetTestEntityIds();
-    vi.mocked(ipc.transferCards).mockResolvedValue({
+    vi.mocked(cardsIpc.transferCards).mockResolvedValue({
       affectedCount: 2,
       skippedDuplicates: 0,
     });
@@ -77,7 +79,7 @@ describe("MoveCopyModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy 2 cards" }));
 
     await waitFor(() => {
-      expect(ipc.transferCards).toHaveBeenCalledWith({
+      expect(cardsIpc.transferCards).toHaveBeenCalledWith({
         noteIds: cards.map((card) => card.noteId),
         targetDeckId: target.id,
         mode: "copy",
@@ -90,7 +92,7 @@ describe("MoveCopyModal", () => {
   });
 
   it("reports duplicate omissions from the authoritative result", async () => {
-    vi.mocked(ipc.transferCards).mockResolvedValue({
+    vi.mocked(cardsIpc.transferCards).mockResolvedValue({
       affectedCount: 1,
       skippedDuplicates: 1,
     });
@@ -121,7 +123,7 @@ describe("MoveCopyModal", () => {
   });
 
   it("treats a failed refresh as committed transfer success", async () => {
-    vi.mocked(ipc.transferCards).mockResolvedValue({
+    vi.mocked(cardsIpc.transferCards).mockResolvedValue({
       affectedCount: 1,
       skippedDuplicates: 0,
     });
@@ -144,7 +146,7 @@ describe("MoveCopyModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move 1 card" }));
 
     await waitFor(() => {
-      expect(ipc.transferCards).toHaveBeenCalledOnce();
+      expect(cardsIpc.transferCards).toHaveBeenCalledOnce();
       expect(onComplete).toHaveBeenCalledOnce();
       expect(showToast).toHaveBeenNthCalledWith(1, "success", "Moved 1 card.");
       expect(showToast).toHaveBeenNthCalledWith(
@@ -174,7 +176,7 @@ describe("MoveCopyModal", () => {
   });
 
   it("keeps the modal open and displays a transfer failure", async () => {
-    vi.mocked(ipc.transferCards).mockRejectedValue(new Error("Destination changed."));
+    vi.mocked(cardsIpc.transferCards).mockRejectedValue(new Error("Destination changed."));
     const source = makeDeck({ name: "Source" });
     const target = makeDeck({ name: "Target" });
     const onClose = vi.fn();

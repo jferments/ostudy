@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, MutableRefObject } from "react";
 
+import { CardsController } from "../controllers/cardsController";
+import { reconcileCommitted } from "../controllers/reconciliation";
+
 import {
-  getCardNote,
-  listMatchingCards,
-  listTags,
-  searchCards,
   type AvailabilityFilter,
   type CardBrowserRow,
   type CardSearchInput,
@@ -37,7 +36,7 @@ import { CardEditorScreen } from "./CardEditorScreen";
 import { BulkEntryModal } from "./cards/BulkEntryModal";
 import { BulkTagModal } from "./cards/BulkTagModal";
 import { DeleteCardsModal } from "./cards/DeleteCardsModal";
-import { MoveCopyModal } from "./cards/MoveCopyModal";
+import { MoveCopyModal, type TransferableCard } from "./cards/MoveCopyModal";
 import { PracticeResultsModal } from "./cards/PracticeResultsModal";
 import { ScheduleActionModal } from "./cards/ScheduleActionModal";
 import { scheduleActionNotice } from "./cards/scheduleActionResult";
@@ -100,14 +99,15 @@ export function CardsScreen({
   const [editingCard, setEditingCard] = useState<CardNote | null>(null);
   const [creatingDeckId, setCreatingDeckId] = useState<string | null>(null);
   const [isOpeningCard, setIsOpeningCard] = useState(false);
-  const openCardRequestSequence = useRef(0);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
-  const [moveCopyCards, setMoveCopyCards] = useState<SelectionCard[]>([]);
+  const [moveCopyCards, setMoveCopyCards] = useState<TransferableCard[]>([]);
   const [practiceCards, setPracticeCards] = useState<SelectionCard[] | null>(null);
   const [practiceSourceLabel, setPracticeSourceLabel] = useState("the current results");
-  const requestSequence = useRef(0);
   const pendingScheduleMutationRef = useRef<PendingScheduleMutation | null>(null);
+  const controllerRef = useRef<CardsController | null>(null);
+  if (controllerRef.current === null) controllerRef.current = new CardsController();
+  const controller = controllerRef.current;
 
   const normalizedSort: CardSort =
     query.trim() === "" && sort === "relevance" ? "updated_desc" : sort;
@@ -142,7 +142,8 @@ export function CardsScreen({
 
   const loadTags = useCallback(async (): Promise<void> => {
     try {
-      const loaded = await listTags([...deckIds]);
+      const loaded = await controller.tags([...deckIds]);
+      if (!loaded) return;
       setTags(loaded);
       setTagIds((current) => {
         const valid = new Set(loaded.map((tag) => tag.id));
@@ -151,36 +152,36 @@ export function CardsScreen({
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     }
-  }, [deckIds]);
+  }, [controller, deckIds]);
 
   const loadCards = useCallback(
     async (offset = 0, append = false): Promise<void> => {
-      const requestId = requestSequence.current + 1;
-      requestSequence.current = requestId;
       if (append) setIsLoadingMore(true);
       else {
         setIsLoading(true);
+        setIsLoadingMore(false);
         setPage({ cards: [], totalCount: 0 });
       }
       setErrorMessage(null);
       try {
-        const result = await searchCards({ ...searchInput, offset });
-        if (requestSequence.current !== requestId) return;
+        const result = await controller.search({ ...searchInput, offset });
+        if (!result) return;
         setPage((current) => ({
           totalCount: result.totalCount,
           cards: append ? [...current.cards, ...result.cards] : result.cards,
         }));
+        setIsLoading(false);
+        setIsLoadingMore(false);
       } catch (error: unknown) {
-        if (requestSequence.current === requestId) setErrorMessage(getErrorMessage(error));
-      } finally {
-        if (requestSequence.current === requestId) {
-          setIsLoading(false);
-          setIsLoadingMore(false);
-        }
+        setErrorMessage(getErrorMessage(error));
+        setIsLoading(false);
+        setIsLoadingMore(false);
       }
     },
-    [searchInput],
+    [controller, searchInput],
   );
+
+  useEffect(() => () => controller.invalidate(), [controller]);
 
   useEffect(() => {
     setDeckIds((current) => {
@@ -215,12 +216,11 @@ export function CardsScreen({
   }
 
   async function reconcileAfterCommit(subject: string): Promise<void> {
-    try {
-      await refreshAfterMutation();
-    } catch (error: unknown) {
+    const outcome = await reconcileCommitted(undefined, refreshAfterMutation);
+    if (outcome.reconciliationError) {
       showToast(
         "info",
-        `${subject} was saved, but the current view could not refresh: ${getErrorMessage(error)}`,
+        `${subject} was saved, but the current view could not refresh: ${outcome.reconciliationError}`,
       );
     }
   }
@@ -235,17 +235,16 @@ export function CardsScreen({
   }
 
   async function openCard(noteId: string): Promise<void> {
-    const requestId = openCardRequestSequence.current + 1;
-    openCardRequestSequence.current = requestId;
     setIsOpeningCard(true);
     setErrorMessage(null);
     try {
-      const card = await getCardNote(noteId);
-      if (openCardRequestSequence.current === requestId) setEditingCard(card);
+      const card = await controller.note(noteId);
+      if (!card) return;
+      setEditingCard(card);
+      setIsOpeningCard(false);
     } catch (error: unknown) {
-      if (openCardRequestSequence.current === requestId) setErrorMessage(getErrorMessage(error));
-    } finally {
-      if (openCardRequestSequence.current === requestId) setIsOpeningCard(false);
+      setErrorMessage(getErrorMessage(error));
+      setIsOpeningCard(false);
     }
   }
 
@@ -271,7 +270,8 @@ export function CardsScreen({
     setIsSelectingAll(true);
     setErrorMessage(null);
     try {
-      const matches = await listMatchingCards(searchInput);
+      const matches = await controller.matching(searchInput);
+      if (!matches) return;
       setSelectedCards(new Map(matches.map((card) => [card.cardId, card])));
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -280,7 +280,7 @@ export function CardsScreen({
     }
   }
 
-  function beginMoveCopy(cards: SelectionCard[]): void {
+  function beginMoveCopy(cards: TransferableCard[]): void {
     const notes = uniqueNotes(cards);
     if (notes.length === 0) return;
     setMoveCopyCards(notes);
@@ -292,7 +292,8 @@ export function CardsScreen({
     setIsResolvingPractice(true);
     setErrorMessage(null);
     try {
-      const matches = await listMatchingCards(searchInput);
+      const matches = await controller.matching(searchInput);
+      if (!matches) return;
       setPracticeSourceLabel("the current filtered results");
       setPracticeCards(matches);
     } catch (error: unknown) {
@@ -436,7 +437,6 @@ export function CardsScreen({
               ? () =>
                   beginMoveCopy([
                     {
-                      cardId: editingCard.id,
                       noteId: editingCard.noteId,
                       deckId: editingCard.deckId,
                     },
@@ -450,7 +450,7 @@ export function CardsScreen({
               setEditingCard(null);
               setCreatingDeckId(null);
             }
-            showToast("success", wasEditing ? "CardPresentation updated." : "CardPresentation saved.");
+            showToast("success", wasEditing ? "Flashcard updated." : "Flashcard saved.");
             if (saved.deckId !== deck.id) showToast("info", "The card is now in a different deck.");
             await reconcileAfterCommit("The flashcard");
           }}

@@ -36,7 +36,7 @@ const previews: ReviewPreviewSet = {
 
 function makeCurrent(): PracticeCard {
   return {
-    card: makeCardPresentation(),
+    presentation: makeCardPresentation(),
     deckName: "Cardiology",
     dueAt: 1,
     scheduleState: 2,

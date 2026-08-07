@@ -1,7 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as ipc from "../ipc";
+import * as assetsIpc from "../ipc/assets";
+import * as cardsIpc from "../ipc/cards";
+import * as decksIpc from "../ipc/decks";
+import * as templatesIpc from "../ipc/templates";
 import { CardEditorScreen } from "./CardEditorScreen";
 
 vi.mock("../editor/RichTextEditor", () => ({
@@ -10,14 +13,19 @@ vi.mock("../editor/RichTextEditor", () => ({
 vi.mock("../editor/RichTextView", () => ({
   RichTextView: () => <div>Preview</div>,
 }));
-vi.mock("../ipc", () => ({
+vi.mock("../ipc/assets", () => ({
   beginAssetDraft: vi.fn(),
   cancelAssetDraft: vi.fn(),
+  syncAssetDraft: vi.fn(),
+}));
+vi.mock("../ipc/cards", () => ({
   createCardNote: vi.fn(),
   findDuplicateCards: vi.fn(),
-  generateCardsFromTemplate: vi.fn(),
-  getCardTemplate: vi.fn(),
-  getCardTypeInfo: vi.fn(),
+  getCardNote: vi.fn(),
+  listTags: vi.fn(),
+  updateCardNote: vi.fn(),
+}));
+vi.mock("../ipc/common", () => ({
   getErrorCode: (error: unknown) =>
     typeof error === "object" && error !== null && "code" in error
       ? String((error as { code: unknown }).code)
@@ -25,16 +33,18 @@ vi.mock("../ipc", () => ({
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
   ),
-  getCardNote: vi.fn(),
-  listCardTemplateSummaries: vi.fn(),
+}));
+vi.mock("../ipc/decks", () => ({
   listDecks: vi.fn(),
-  listTags: vi.fn(),
+}));
+vi.mock("../ipc/templates", () => ({
+  generateCardsFromTemplate: vi.fn(),
+  getCardTemplate: vi.fn(),
+  listCardTemplateSummaries: vi.fn(),
   previewTemplateCards: vi.fn(),
-  syncAssetDraft: vi.fn(),
-  updateCardNote: vi.fn(),
 }));
 
-const deck: ipc.DeckSummary = {
+const deck: decksIpc.DeckSummary = {
   id: "a".repeat(32),
   name: "Pharmacology",
   description: "",
@@ -47,13 +57,13 @@ const deck: ipc.DeckSummary = {
   revision: 1,
 };
 
-const secondDeck: ipc.DeckSummary = {
+const secondDeck: decksIpc.DeckSummary = {
   ...deck,
   id: "e".repeat(32),
   name: "Pathophysiology",
 };
 
-const card: ipc.CardNote = {
+const card: cardsIpc.CardNote = {
   id: "b".repeat(32),
   noteId: "c".repeat(32),
   deckId: deck.id,
@@ -85,16 +95,16 @@ const draftId = "9".repeat(32);
 describe("CardEditorScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.beginAssetDraft).mockResolvedValue({
+    vi.mocked(assetsIpc.beginAssetDraft).mockResolvedValue({
       id: draftId,
       purpose: "card",
       expiresAt: Date.now() + 10_000,
     });
-    vi.mocked(ipc.cancelAssetDraft).mockResolvedValue(undefined);
-    vi.mocked(ipc.syncAssetDraft).mockResolvedValue(undefined);
-    vi.mocked(ipc.listDecks).mockResolvedValue([deck, secondDeck]);
-    vi.mocked(ipc.listTags).mockResolvedValue([]);
-    vi.mocked(ipc.listCardTemplateSummaries).mockResolvedValue([]);
+    vi.mocked(assetsIpc.cancelAssetDraft).mockResolvedValue(undefined);
+    vi.mocked(assetsIpc.syncAssetDraft).mockResolvedValue(undefined);
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([deck, secondDeck]);
+    vi.mocked(cardsIpc.listTags).mockResolvedValue([]);
+    vi.mocked(templatesIpc.listCardTemplateSummaries).mockResolvedValue([]);
     vi.mocked(ipc.getCardTypeInfo).mockResolvedValue({
       cardType: "basic",
       reverseEnabled: false,
@@ -102,7 +112,7 @@ describe("CardEditorScreen", () => {
       clozeMode: "one_at_a_time",
       generatedCardCount: 1,
     });
-    vi.mocked(ipc.findDuplicateCards).mockResolvedValue([
+    vi.mocked(cardsIpc.findDuplicateCards).mockResolvedValue([
       {
         noteId: "d".repeat(32),
         deckId: secondDeck.id,
@@ -110,7 +120,7 @@ describe("CardEditorScreen", () => {
         backText: "Answer",
       },
     ]);
-    vi.mocked(ipc.updateCardNote).mockResolvedValue({
+    vi.mocked(cardsIpc.updateCardNote).mockResolvedValue({
       ...card,
       deckId: secondDeck.id,
     });
@@ -132,9 +142,9 @@ describe("CardEditorScreen", () => {
 
     expect(await screen.findByText("Medication")).toBeTruthy();
     await waitFor(() => {
-      expect(ipc.beginAssetDraft).toHaveBeenCalledWith("card", card.noteId);
+      expect(assetsIpc.beginAssetDraft).toHaveBeenCalledWith("card", card.noteId);
       expect(ipc.getCardTypeInfo).toHaveBeenCalledWith(card.noteId);
-      expect(ipc.listCardTemplateSummaries).toHaveBeenCalledOnce();
+      expect(templatesIpc.listCardTemplateSummaries).toHaveBeenCalledOnce();
       expect(
         (screen.getByRole("combobox", { name: "Card template" }) as HTMLSelectElement)
           .value,
@@ -165,10 +175,10 @@ describe("CardEditorScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save duplicate anyway" }));
 
     await waitFor(() => {
-      expect(ipc.findDuplicateCards).toHaveBeenCalledWith(
+      expect(cardsIpc.findDuplicateCards).toHaveBeenCalledWith(
         expect.objectContaining({ deckId: secondDeck.id }),
       );
-      expect(ipc.updateCardNote).toHaveBeenCalledWith(
+      expect(cardsIpc.updateCardNote).toHaveBeenCalledWith(
         expect.objectContaining({
           noteId: card.noteId,
           deckId: secondDeck.id,

@@ -35,6 +35,11 @@ export async function latestResult<T>(
   operation: () => Promise<T>,
 ): Promise<T | undefined> {
   const token = lane.begin();
-  const value = await operation();
-  return lane.isCurrent(token) ? value : undefined;
+  try {
+    const value = await operation();
+    return lane.isCurrent(token) ? value : undefined;
+  } catch (error: unknown) {
+    if (!lane.isCurrent(token)) return undefined;
+    throw error;
+  }
 }
