@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -47,37 +47,6 @@ jobs:
         run: |
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.cache/ostudy/cargo-target"
-
-      - name: Restore current Practice controller screen
-        if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
-        env:
-          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: |
-          git fetch origin "$HEAD_BRANCH"
-          git fetch origin f54397cbed69ed1dabd4dd35e675f17eeae71be5
-          git checkout -B "$HEAD_BRANCH" "origin/$HEAD_BRANCH"
-          git show f54397cbed69ed1dabd4dd35e675f17eeae71be5:src/screens/PracticeScreen.tsx > src/screens/PracticeScreen.tsx
-          python3 - <<'PY'
-          from pathlib import Path
-          practice = Path('src/screens/PracticeScreen.tsx')
-          text = practice.read_text(encoding='utf-8')
-          stale = 'import { getRecentPracticeReviews } from "../ipc/analytics";\n'
-          if text.count(stale) != 1:
-              raise SystemExit('expected retired Practice analytics import exactly once')
-          practice.write_text(text.replace(stale, '', 1), encoding='utf-8')
-
-          workflow = Path('.github/workflows/check.yml')
-          source = workflow.read_text(encoding='utf-8')
-          source = source.replace('permissions:\n  contents: write\n', 'permissions:\n  contents: read\n', 1)
-          start = source.index('      - name: Restore current Practice controller screen\n')
-          end = source.index('      - name: Select qualification gate\n', start)
-          workflow.write_text(source[:start] + source[end:], encoding='utf-8')
-          PY
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/check.yml src/screens/PracticeScreen.tsx
-          git commit -m "fix: restore current Practice controller behavior"
-          git push origin "HEAD:$HEAD_BRANCH"
 
       - name: Select qualification gate
         id: gate
