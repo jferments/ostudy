@@ -1079,9 +1079,8 @@ mod tests {
             })
             .expect("card should delete");
         assert_eq!(deletion.affected_count, 1);
-        let missing = database.with_connection(|connection| {
-            get_card_from_connection(connection, &paths, &note_id)
-        });
+        let missing = database
+            .with_connection(|connection| get_card_from_connection(connection, &paths, &note_id));
         assert!(missing.is_err(), "deleted card should not hydrate");
 
         let _ = std::fs::remove_dir_all(temporary);
