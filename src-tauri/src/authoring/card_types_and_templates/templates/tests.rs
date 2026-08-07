@@ -10,14 +10,10 @@ fn test_field() -> CardTemplateFieldDto {
 }
 
 fn test_lookup() -> AutomaticTemplateFieldLookup {
-    automatic_template_field_lookup_from_dtos(&[test_field()])
-        .expect("field lookup should build")
+    automatic_template_field_lookup_from_dtos(&[test_field()]).expect("field lookup should build")
 }
 
-fn test_values(
-    document: Value,
-    asset_ids: Vec<String>,
-) -> HashMap<String, ValidatedTemplateValue> {
+fn test_values(document: Value, asset_ids: Vec<String>) -> HashMap<String, ValidatedTemplateValue> {
     HashMap::from([(
         test_field().id,
         ValidatedTemplateValue {
@@ -50,8 +46,14 @@ fn resolves_typed_field_names_to_stable_ids() {
         content[1]["type"],
         Value::String(TEMPLATE_INLINE_NODE.to_string())
     );
-    assert_eq!(content[1]["attrs"]["fieldId"], Value::String(test_field().id));
-    assert_eq!(content[1]["attrs"]["label"], Value::String("Concept".to_string()));
+    assert_eq!(
+        content[1]["attrs"]["fieldId"],
+        Value::String(test_field().id)
+    );
+    assert_eq!(
+        content[1]["attrs"]["label"],
+        Value::String("Concept".to_string())
+    );
     assert_eq!(content[2]["text"], Value::String(" after".to_string()));
 }
 
@@ -91,7 +93,10 @@ fn keeps_simple_single_paragraph_values_inline() {
     assert_eq!(content.len(), 3);
     assert_eq!(content[0]["text"], Value::String("Before ".to_string()));
     assert_eq!(content[1]["text"], Value::String("alpha".to_string()));
-    assert_eq!(content[1]["marks"][0]["type"], Value::String("bold".to_string()));
+    assert_eq!(
+        content[1]["marks"][0]["type"],
+        Value::String("bold".to_string())
+    );
     assert_eq!(content[2]["text"], Value::String(" after".to_string()));
 }
 
@@ -133,7 +138,10 @@ fn promotes_lists_to_blocks_and_splits_surrounding_paragraphs() {
         .expect("document blocks should exist");
     assert_eq!(blocks.len(), 3);
     assert_eq!(blocks[0]["type"], Value::String("paragraph".to_string()));
-    assert_eq!(blocks[0]["content"][0]["text"], Value::String("Effects: ".to_string()));
+    assert_eq!(
+        blocks[0]["content"][0]["text"],
+        Value::String("Effects: ".to_string())
+    );
     assert_eq!(blocks[1]["type"], Value::String("orderedList".to_string()));
     assert_eq!(blocks[2]["type"], Value::String("paragraph".to_string()));
     assert_eq!(
@@ -226,21 +234,17 @@ fn rejects_unknown_and_incomplete_typed_placeholders() {
 
 #[test]
 fn cloze_rotation_uses_one_card_schedule_review_count() {
-    let parsed = parse_cloze("{{c1::Alpha}} and {{c2::Beta}}")
-        .expect("cloze should parse");
+    let parsed = parse_cloze("{{c1::Alpha}} and {{c2::Beta}}").expect("cloze should parse");
     assert_eq!(
-        cloze_target_from_variant(&parsed, "one_at_a_time", None, 0)
-            .expect("first target"),
+        cloze_target_from_variant(&parsed, "one_at_a_time", None, 0).expect("first target"),
         Some(1)
     );
     assert_eq!(
-        cloze_target_from_variant(&parsed, "one_at_a_time", None, 1)
-            .expect("second target"),
+        cloze_target_from_variant(&parsed, "one_at_a_time", None, 1).expect("second target"),
         Some(2)
     );
     assert_eq!(
-        cloze_target_from_variant(&parsed, "one_at_a_time", None, 2)
-            .expect("wrapped target"),
+        cloze_target_from_variant(&parsed, "one_at_a_time", None, 2).expect("wrapped target"),
         Some(1)
     );
 }
