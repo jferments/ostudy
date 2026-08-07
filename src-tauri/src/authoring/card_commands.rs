@@ -1,3 +1,5 @@
+use super::*;
+
 #[tauri::command]
 pub fn list_tags(
     database: State<'_, Database>,
@@ -66,12 +68,7 @@ pub fn create_organized_card(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         ensure_active_deck(&transaction, &deck_id)?;
-        ensure_assets_available(
-            &transaction,
-            &paths,
-            &asset_ids,
-            asset_draft_id.as_deref(),
-        )?;
+        ensure_assets_available(&transaction, &paths, &asset_ids, asset_draft_id.as_deref())?;
         if !allow_duplicate
             && duplicate_checkable(&content.front_text, &content.back_text)
             && has_exact_duplicate(
@@ -86,14 +83,8 @@ pub fn create_organized_card(
             return Err(duplicate_error());
         }
         let now = unix_time_millis()?;
-        let note_id = insert_organized_card(
-            &transaction,
-            &deck_id,
-            content,
-            &tags,
-            &duplicate_hash,
-            now,
-        )?;
+        let note_id =
+            insert_organized_card(&transaction, &deck_id, content, &tags, &duplicate_hash, now)?;
         let finalization = finalize_assets_for_owner(
             &transaction,
             &paths,
@@ -148,12 +139,7 @@ pub fn update_organized_card(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
-        ensure_assets_available(
-            &transaction,
-            &paths,
-            &asset_ids,
-            asset_draft_id.as_deref(),
-        )?;
+        ensure_assets_available(&transaction, &paths, &asset_ids, asset_draft_id.as_deref())?;
         ensure_active_deck(&transaction, &deck_id)?;
 
         let note_exists: i64 = transaction
@@ -363,14 +349,7 @@ pub fn bulk_create_cards(
                 continue;
             }
 
-            insert_organized_card(
-                &transaction,
-                &deck_id,
-                content,
-                &tags,
-                &hash,
-                now,
-            )?;
+            insert_organized_card(&transaction, &deck_id, content, &tags, &hash, now)?;
             created_count += 1;
         }
 
@@ -387,11 +366,8 @@ pub fn bulk_tag_cards(
     database: State<'_, Database>,
     input: BulkTagCardsInput,
 ) -> Result<BulkActionResultDto, CommandError> {
-    let note_ids = validate_note_ids_for_action(
-        input.note_ids,
-        MAX_BULK_ACTION_NOTES,
-        "Change tags on",
-    )?;
+    let note_ids =
+        validate_note_ids_for_action(input.note_ids, MAX_BULK_ACTION_NOTES, "Change tags on")?;
     let tags = validate_tags(input.tags)?;
     if tags.is_empty() {
         return Err(CommandError::new(

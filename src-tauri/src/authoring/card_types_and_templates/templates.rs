@@ -1,4 +1,6 @@
-fn create_card_template_in_connection(
+use super::*;
+
+pub(super) fn create_card_template_in_connection(
     connection: &mut Connection,
     paths: &AppPaths,
     input: CreateCardTemplateInput,
@@ -35,7 +37,7 @@ fn create_card_template_in_connection(
     load_stored_template(connection, paths, &template_id, true).map(|stored| stored.dto)
 }
 
-fn update_card_template_in_connection(
+pub(super) fn update_card_template_in_connection(
     connection: &mut Connection,
     paths: &AppPaths,
     input: UpdateCardTemplateInput,
@@ -79,20 +81,10 @@ fn update_card_template_in_connection(
             "This template changed in another window. Reload it and try again.",
         ));
     }
-    ensure_template_name_available(
-        &transaction,
-        &normalized_name,
-        Some(&input.template_id),
-    )?;
-    let fields =
-        validate_template_fields(&transaction, &input.template_id, input.fields, true)?;
-    let rules = validate_template_rules(
-        &transaction,
-        &input.template_id,
-        input.rules,
-        &fields,
-        true,
-    )?;
+    ensure_template_name_available(&transaction, &normalized_name, Some(&input.template_id))?;
+    let fields = validate_template_fields(&transaction, &input.template_id, input.fields, true)?;
+    let rules =
+        validate_template_rules(&transaction, &input.template_id, input.rules, &fields, true)?;
     let asset_ids = template_rule_asset_ids(&rules)?;
     ensure_assets_exist(&transaction, &asset_ids)?;
     let now = unix_time_millis()?;
@@ -136,7 +128,7 @@ fn update_card_template_in_connection(
     load_stored_template(connection, paths, &input.template_id, true).map(|stored| stored.dto)
 }
 
-fn delete_card_template_in_connection(
+pub(super) fn delete_card_template_in_connection(
     connection: &mut Connection,
     template_id: &str,
 ) -> Result<(), CommandError> {
@@ -158,7 +150,7 @@ fn delete_card_template_in_connection(
     Ok(())
 }
 
-fn load_stored_template(
+pub(super) fn load_stored_template(
     connection: &Connection,
     paths: &AppPaths,
     template_id: &str,
@@ -187,10 +179,7 @@ fn load_stored_template(
         .optional()
         .map_err(CommandError::database)?
         .ok_or_else(|| {
-            CommandError::new(
-                "template_not_found",
-                "That card template no longer exists.",
-            )
+            CommandError::new("template_not_found", "That card template no longer exists.")
         })?;
     let fields = {
         let mut statement = connection
@@ -255,8 +244,7 @@ fn load_stored_template(
                 name,
                 front_doc: serde_json::from_str(&front_json)
                     .map_err(CommandError::serialization)?,
-                back_doc: serde_json::from_str(&back_json)
-                    .map_err(CommandError::serialization)?,
+                back_doc: serde_json::from_str(&back_json).map_err(CommandError::serialization)?,
                 position,
             })
         })
@@ -460,12 +448,8 @@ fn resolve_template_child_id(
     };
     validate_entity_id(&id, label)?;
     let sql = match table {
-        "card_template_fields" => {
-            "SELECT template_id FROM card_template_fields WHERE id = ?1"
-        }
-        "card_template_rules" => {
-            "SELECT template_id FROM card_template_rules WHERE id = ?1"
-        }
+        "card_template_fields" => "SELECT template_id FROM card_template_fields WHERE id = ?1",
+        "card_template_rules" => "SELECT template_id FROM card_template_rules WHERE id = ?1",
         _ => {
             return Err(CommandError::new(
                 "invalid_template_child",
@@ -562,12 +546,7 @@ fn ensure_template_name_available(
 }
 
 fn validate_template_name(value: String) -> Result<String, CommandError> {
-    validate_bounded_visible_text(
-        value,
-        MAX_TEMPLATE_NAME_CHARS,
-        "Template names",
-        false,
-    )
+    validate_bounded_visible_text(value, MAX_TEMPLATE_NAME_CHARS, "Template names", false)
 }
 
 fn validate_template_field_name(value: String) -> Result<String, CommandError> {
@@ -714,10 +693,8 @@ fn sanitize_template_node(
             }
         }
         match node_type {
-            TEMPLATE_INLINE_NODE
-                if matches!(parent_type, Some("paragraph") | Some("heading")) => {}
-            TEMPLATE_BLOCK_NODE
-                if matches!(parent_type, Some("doc") | Some("blockquote")) => {}
+            TEMPLATE_INLINE_NODE if matches!(parent_type, Some("paragraph") | Some("heading")) => {}
+            TEMPLATE_BLOCK_NODE if matches!(parent_type, Some("doc") | Some("blockquote")) => {}
             TEMPLATE_INLINE_NODE => {
                 return Err(CommandError::new(
                     "invalid_template_placeholder",
@@ -833,7 +810,10 @@ fn extract_template_plain_text(document: &Value) -> Result<String, CommandError>
                 "A template field contains an invalid document node.",
             )
         })?;
-        let node_type = object.get("type").and_then(Value::as_str).unwrap_or_default();
+        let node_type = object
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         if node_type == "text" {
             if let Some(text) = object.get("text").and_then(Value::as_str) {
                 output.push_str(text);
@@ -909,7 +889,10 @@ fn render_template_children(
 ) -> Result<Vec<Value>, CommandError> {
     let mut rendered = Vec::new();
     for child in children {
-        let child_type = child.get("type").and_then(Value::as_str).unwrap_or_default();
+        let child_type = child
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         if child_type == TEMPLATE_BLOCK_NODE {
             if !matches!(parent_type, "doc" | "blockquote") {
                 return Err(CommandError::new(
@@ -1100,10 +1083,7 @@ fn generate_template_cards_in_connection(
     let mut seen = BTreeSet::new();
 
     for rendered in rendered_cards {
-        let normalized = normalized_pair(
-            &rendered.content.front_text,
-            &rendered.content.back_text,
-        );
+        let normalized = normalized_pair(&rendered.content.front_text, &rendered.content.back_text);
         let hash = duplicate_hash(&normalized.0, &normalized.1);
         if !seen.insert(normalized.clone())
             || has_exact_duplicate(
@@ -1138,7 +1118,7 @@ fn generate_template_cards_in_connection(
     })
 }
 
-fn ensure_template_revision(
+pub(super) fn ensure_template_revision(
     template: &StoredTemplate,
     expected_revision: i64,
 ) -> Result<(), CommandError> {
@@ -1256,3 +1236,105 @@ fn load_assets_by_ids(
     }
     Ok(assets)
 }
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardTemplateSummaryDto {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub field_count: i64,
+    pub generated_card_rule_count: i64,
+    pub image_count: i64,
+    pub updated_at: i64,
+    pub revision: i64,
+}
+
+#[tauri::command]
+pub fn list_card_template_summaries(
+    database: State<'_, Database>,
+) -> Result<Vec<CardTemplateSummaryDto>, CommandError> {
+    database.with_connection(list_card_template_summaries_in_connection)
+}
+
+fn list_card_template_summaries_in_connection(
+    connection: &mut Connection,
+) -> Result<Vec<CardTemplateSummaryDto>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT
+                 ct.id,
+                 ct.name,
+                 ct.description,
+                 COUNT(DISTINCT ctf.id),
+                 COUNT(DISTINCT ctr.id),
+                 COUNT(DISTINCT CASE
+                     WHEN a.deleted_at IS NULL AND a.lifecycle_state = 'ready' THEN a.id
+                 END),
+                 ct.updated_at,
+                 ct.revision
+             FROM card_templates ct
+             LEFT JOIN card_template_fields ctf ON ctf.template_id = ct.id
+             LEFT JOIN card_template_rules ctr ON ctr.template_id = ct.id
+             LEFT JOIN card_template_assets cta ON cta.template_id = ct.id
+             LEFT JOIN assets a ON a.id = cta.asset_id
+             WHERE ct.deleted_at IS NULL
+             GROUP BY ct.id, ct.name, ct.description, ct.updated_at, ct.revision
+             ORDER BY ct.name COLLATE NOCASE ASC, ct.created_at ASC, ct.id ASC",
+        )
+        .map_err(CommandError::database)?;
+    let summaries = statement
+        .query_map([], |row| {
+            Ok(CardTemplateSummaryDto {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                field_count: row.get(3)?,
+                generated_card_rule_count: row.get(4)?,
+                image_count: row.get(5)?,
+                updated_at: row.get(6)?,
+                revision: row.get(7)?,
+            })
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    Ok(summaries)
+}
+
+#[cfg(test)]
+mod template_summary_tests {
+    use super::*;
+
+    #[test]
+    fn empty_template_library_returns_an_empty_summary_list() {
+        let database = Database::open_in_memory().expect("database should open");
+        let summaries = database
+            .with_connection(list_card_template_summaries_in_connection)
+            .expect("summaries should load");
+        assert!(summaries.is_empty());
+    }
+}
+
+mod automatic_layout;
+mod repair;
+mod stable_update;
+
+#[cfg(test)]
+use automatic_layout::materialize_automatic_template_document;
+use automatic_layout::{
+    automatic_template_field_lookup_from_dtos, normalize_typed_template_layout,
+    AutomaticTemplateFieldLookup,
+};
+pub(super) use automatic_layout::{
+    generate_automatic_template_cards_in_connection, normalize_card_template_dto_for_editing,
+    prepare_automatic_create_template_input, prepare_automatic_update_template_input,
+    render_automatic_template_previews, template_update_contains_new_children,
+};
+pub(crate) use repair::apply_stage3_data_repairs;
+pub(super) use stable_update::update_card_template_with_stable_children_in_connection;
+
+#[cfg(test)]
+mod asset_tests;
+#[cfg(test)]
+mod tests;

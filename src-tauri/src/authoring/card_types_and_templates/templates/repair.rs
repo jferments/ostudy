@@ -1,6 +1,6 @@
-pub(crate) fn apply_stage3_data_repairs(
-    connection: &Connection,
-) -> Result<i64, CommandError> {
+use super::*;
+
+pub(crate) fn apply_stage3_data_repairs(connection: &Connection) -> Result<i64, CommandError> {
     let before = connection.total_changes();
     normalize_abandoned_image_occlusion(connection)?;
     normalize_legacy_template_documents(connection)?;
@@ -10,9 +10,7 @@ pub(crate) fn apply_stage3_data_repairs(
     Ok(i64::try_from(changed).unwrap_or(i64::MAX))
 }
 
-fn normalize_abandoned_image_occlusion(
-    connection: &Connection,
-) -> Result<(), CommandError> {
+fn normalize_abandoned_image_occlusion(connection: &Connection) -> Result<(), CommandError> {
     let note_ids = {
         let mut statement = connection
             .prepare("SELECT id FROM notes WHERE note_type = 'image_occlusion'")
@@ -143,9 +141,7 @@ fn normalize_legacy_template_documents(connection: &Connection) -> Result<(), Co
     Ok(())
 }
 
-fn normalize_explicit_template_placeholders(
-    connection: &Connection,
-) -> Result<(), CommandError> {
+fn normalize_explicit_template_placeholders(connection: &Connection) -> Result<(), CommandError> {
     let rules = {
         let mut statement = connection
             .prepare(

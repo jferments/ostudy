@@ -1,13 +1,14 @@
-// Strict, direct import for LLM-generated `.ostudy.json` flashcard files.
-//
-// This file is included inside the `authoring` module so it reuses the
-// canonical card validation, tag, duplicate, generated-card, and scheduling
-// implementation instead of maintaining a parallel persistence path.
+use super::*;
+
+// Strict, direct import for LLM-generated `.ostudy.json` flashcard files. The
+// importer reuses canonical authoring validation and persistence rather than
+// maintaining a parallel card-storage path.
 
 const GENERATED_IMPORT_FORMAT: &str = "ostudy-flashcards";
 const GENERATED_IMPORT_VERSION: i64 = 1;
 const MAX_GENERATED_IMPORT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_GENERATED_IMPORT_CARDS: usize = 10_000;
+const MAX_GENERATED_IMPORT_ERROR_EXAMPLES: usize = 20;
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -156,22 +157,23 @@ fn prepare_flashcard_import_bytes(bytes: &[u8]) -> Result<PreparedImport, Comman
 
     validate_import_tag_syntax(&parsed.default_tags, "defaultTags")?;
     let mut notes = Vec::with_capacity(parsed.cards.len());
-    let mut card_errors = Vec::new();
+    let mut error_count = 0_usize;
+    let mut error_examples = Vec::new();
     for (index, card) in parsed.cards.into_iter().enumerate() {
         match prepare_import_card(index, &parsed.default_tags, card) {
             Ok(note) => notes.push(note),
-            Err(error) => card_errors.push(error.message),
+            Err(error) => {
+                error_count += 1;
+                if error_examples.len() < MAX_GENERATED_IMPORT_ERROR_EXAMPLES {
+                    error_examples.push(error.message);
+                }
+            }
         }
     }
-    if !card_errors.is_empty() {
+    if error_count > 0 {
         return Err(CommandError::new(
             "invalid_flashcard_import_cards",
-            format!(
-                "{} {} could not be imported:\n{}",
-                card_errors.len(),
-                if card_errors.len() == 1 { "card" } else { "cards" },
-                card_errors.join("\n")
-            ),
+            format_import_card_errors(error_count, &error_examples),
         ));
     }
 
@@ -181,6 +183,22 @@ fn prepare_flashcard_import_bytes(bytes: &[u8]) -> Result<PreparedImport, Comman
         description,
         notes,
     })
+}
+
+fn format_import_card_errors(total: usize, examples: &[String]) -> String {
+    let mut message = format!(
+        "{total} {} could not be imported:\n{}",
+        if total == 1 { "card" } else { "cards" },
+        examples.join("\n")
+    );
+    let omitted = total.saturating_sub(examples.len());
+    if omitted > 0 {
+        message.push_str(&format!(
+            "\n… {omitted} additional {} omitted from this diagnostic.",
+            if omitted == 1 { "error was" } else { "errors were" }
+        ));
+    }
+    message
 }
 
 fn import_prepared_flashcards(
@@ -880,7 +898,7 @@ mod generated_import_tests {
     }
 
     #[test]
-    fn card_validation_reports_every_invalid_card_before_writing() {
+    fn card_validation_reports_every_small_batch_error_before_writing() {
         let invalid = br#"{
           "format":"ostudy-flashcards",
           "formatVersion":1,
@@ -897,5 +915,23 @@ mod generated_import_tests {
         assert_eq!(error.code, "invalid_flashcard_import_cards");
         assert!(error.message.contains("cards[0].front"));
         assert!(error.message.contains("cards[1].back"));
+    }
+
+    #[test]
+    fn large_invalid_batches_report_a_bounded_example_set() {
+        let cards = (0..50)
+            .map(|_| r#"{"type":"basic","front":"","back":"Answer"}"#)
+            .collect::<Vec<_>>()
+            .join(",");
+        let invalid = format!(
+            r#"{{"format":"ostudy-flashcards","formatVersion":1,"deck":{{"mode":"create","name":"Invalid cards"}},"cards":[{cards}]}}"#
+        );
+        let error = match prepare_flashcard_import_bytes(invalid.as_bytes()) {
+            Ok(_) => panic!("invalid cards should be summarized"),
+            Err(error) => error,
+        };
+        assert!(error.message.starts_with("50 cards could not be imported:"));
+        assert!(error.message.contains("30 additional errors were omitted"));
+        assert!(!error.message.contains("cards[20].front"));
     }
 }

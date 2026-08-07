@@ -1,4 +1,6 @@
-fn update_card_template_with_stable_children_in_connection(
+use super::*;
+
+pub(in super::super) fn update_card_template_with_stable_children_in_connection(
     connection: &mut Connection,
     paths: &AppPaths,
     input: UpdateCardTemplateInput,
@@ -42,30 +44,16 @@ fn update_card_template_with_stable_children_in_connection(
             "This template changed in another window. Reload it and try again.",
         ));
     }
-    ensure_template_name_available(
-        &transaction,
-        &normalized_name,
-        Some(&input.template_id),
-    )?;
+    ensure_template_name_available(&transaction, &normalized_name, Some(&input.template_id))?;
     seed_new_template_child_ids(
         &transaction,
         &input.template_id,
         &input.fields,
         &input.rules,
     )?;
-    let fields = validate_template_fields(
-        &transaction,
-        &input.template_id,
-        input.fields,
-        true,
-    )?;
-    let rules = validate_template_rules(
-        &transaction,
-        &input.template_id,
-        input.rules,
-        &fields,
-        true,
-    )?;
+    let fields = validate_template_fields(&transaction, &input.template_id, input.fields, true)?;
+    let rules =
+        validate_template_rules(&transaction, &input.template_id, input.rules, &fields, true)?;
     let asset_ids = template_rule_asset_ids(&rules)?;
     ensure_assets_exist(&transaction, &asset_ids)?;
     let now = unix_time_millis()?;

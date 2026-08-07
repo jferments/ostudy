@@ -1,45 +1,13 @@
+#!/usr/bin/env node
+
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { access, readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const root = join(scriptDirectory, "..");
+const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (...parts) => readFile(join(root, ...parts), "utf8");
-
-function parseEnv(text) {
-  return new Map(
-    text
-      .split(/\r?\n/u)
-      .filter((line) => line.trim() !== "" && !line.trim().startsWith("#"))
-      .map((line) => {
-        const separator = line.indexOf("=");
-        return [line.slice(0, separator), line.slice(separator + 1)];
-      }),
-  );
-}
-
-function tomlPackageValue(cargo, key) {
-  const packageSection = cargo.split("[package]")[1]?.split(/\n\[/u)[0] ?? "";
-  return packageSection.match(new RegExp(`^${key}\\s*=\\s*"([^"]+)"`, "mu"))?.[1];
-}
-
-async function collectOwnedText(directory = root) {
-  const output = [];
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if ([".git", "node_modules", "dist", "target", "artifacts"].includes(entry.name)) continue;
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) {
-      output.push(...(await collectOwnedText(path)));
-      continue;
-    }
-    const rel = relative(root, path);
-    if (["pnpm-lock.yaml", "src-tauri/Cargo.lock", "scripts/verify-project-manifests.mjs"].includes(rel)) continue;
-    if (!/\.(?:json|mjs|js|ts|tsx|toml|yaml|yml|md|sql|sh|py|html|env)$/u.test(rel)) continue;
-    output.push([rel, await readFile(path, "utf8")]);
-  }
-  return output;
-}
+const failures = [];
 
 const [
   envText,
@@ -49,28 +17,13 @@ const [
   toolchain,
   tauriText,
   capabilityText,
-  migration1,
-  migration2,
-  migration3,
   database,
-  rustCommands,
-  app,
-  ipc,
-  analyticsIpc,
-  authoringWrites,
-  scheduler,
-  transfer,
-  launcher,
-  buildScript,
-  buildStateScript,
-  cargoTargetScript,
-  checkStateScript,
-  checkStaticScript,
-  checkFastScript,
-  checkScript,
-  checkChangedScript,
-  failureSummaryScript,
-  setupScript,
+  nodeVersion,
+  nvmVersion,
+  checkStatic,
+  checkFast,
+  checkFull,
+  checkChanged,
   checkWorkflow,
   releaseWorkflow,
   pullRequestTemplate,
@@ -82,28 +35,13 @@ const [
   read("rust-toolchain.toml"),
   read("src-tauri", "tauri.conf.json"),
   read("src-tauri", "capabilities", "main.json"),
-  read("src-tauri", "migrations", "0001_decks.sql"),
-  read("src-tauri", "migrations", "0002_cards_assets_settings_practice.sql"),
-  read("src-tauri", "migrations", "0003_fsrs_reviews.sql"),
   read("src-tauri", "src", "database.rs"),
-  read("src-tauri", "src", "lib.rs"),
-  read("src", "App.tsx"),
-  read("src", "ipc.ts"),
-  read("src", "analytics-ipc.ts"),
-  read("src-tauri", "src", "authoring", "writes_and_transfer.rs"),
-  read("src-tauri", "src", "scheduler.rs"),
-  read("src-tauri", "src", "studydeck.rs"),
-  read("run-app.sh"),
-  read("scripts", "build.sh"),
-  read("scripts", "build-state.sh"),
-  read("scripts", "cargo-target.sh"),
-  read("scripts", "check-state.sh"),
+  read(".node-version"),
+  read(".nvmrc"),
   read("scripts", "check-static.sh"),
   read("scripts", "check-fast.sh"),
   read("scripts", "check.sh"),
   read("scripts", "check-changed.sh"),
-  read("scripts", "summarize-check-failure.mjs"),
-  read("scripts", "setup-ubuntu.sh"),
   read(".github", "workflows", "check.yml"),
   read(".github", "workflows", "release.yml"),
   read(".github", "pull_request_template.md"),
@@ -113,19 +51,15 @@ const env = parseEnv(envText);
 const pkg = JSON.parse(packageText);
 const tauri = JSON.parse(tauriText);
 const capability = JSON.parse(capabilityText);
-const failures = [];
 
 function equal(label, actual, expected) {
-  if (actual !== expected) failures.push(`${label}: expected ${expected}, found ${String(actual)}`);
+  if (actual !== expected) failures.push(`${label}: expected ${String(expected)}, found ${String(actual)}`);
 }
-
 function requireText(label, text, needles) {
-  for (const needle of needles) {
-    if (!text.includes(needle)) failures.push(`${label} missing: ${needle}`);
-  }
+  for (const needle of needles) if (!text.includes(needle)) failures.push(`${label} missing: ${needle}`);
 }
 
-const versions = {
+const packageVersions = {
   "@tauri-apps/api": env.get("TAURI_API_VERSION"),
   "@tauri-apps/cli": env.get("TAURI_CLI_VERSION"),
   "@tauri-apps/plugin-dialog": env.get("TAURI_DIALOG_VERSION"),
@@ -146,11 +80,11 @@ const versions = {
   jsdom: env.get("JSDOM_VERSION"),
 };
 for (const name of Object.keys(pkg.dependencies ?? {}).filter((name) => name.startsWith("@tiptap/"))) {
-  versions[name] = env.get("TIPTAP_VERSION");
+  packageVersions[name] = env.get("TIPTAP_VERSION");
 }
-for (const [name, version] of Object.entries(versions)) {
+for (const [name, expected] of Object.entries(packageVersions)) {
   const actual = pkg.dependencies?.[name] ?? pkg.devDependencies?.[name];
-  equal(`package ${name}`, actual, version);
+  equal(`package ${name}`, actual, expected);
   if (typeof actual === "string" && /[~^*<>]/u.test(actual)) failures.push(`${name} is not exactly pinned`);
 }
 
@@ -159,26 +93,14 @@ equal("package version", pkg.version, "0.1.0");
 equal("packageManager", pkg.packageManager, `pnpm@${env.get("PNPM_VERSION")}`);
 equal("Node engine", pkg.engines?.node, env.get("NODE_VERSION"));
 equal("pnpm engine", pkg.engines?.pnpm, env.get("PNPM_VERSION"));
+equal(".node-version", nodeVersion.trim(), env.get("NODE_VERSION"));
+equal(".nvmrc", nvmVersion.trim(), env.get("NODE_VERSION"));
 equal("license", pkg.license, "MIT");
 equal("Cargo package name", tomlPackageValue(cargo, "name"), "ostudy");
 equal("Cargo version", tomlPackageValue(cargo, "version"), pkg.version);
 equal("Tauri product name", tauri.productName, "ostudy");
 equal("Tauri identifier", tauri.identifier, "io.github.jferments.ostudy");
 equal("Tauri version", tauri.version, pkg.version);
-if (!cargo.includes('name = "ostudy_lib"')) failures.push("Cargo library is not named ostudy_lib");
-if (!rustCommands.includes("mod logging;")) failures.push("Rust structured logging module is not registered");
-
-for (const required of [
-  "strictDepBuilds: true",
-  "dangerouslyAllowAllBuilds: false",
-  `'esbuild@${env.get("ESBUILD_VERSION")}': true`,
-  "verifyDepsBeforeRun: error",
-  "blockExoticSubdeps: true",
-]) {
-  if (!workspace.includes(required)) failures.push(`pnpm-workspace.yaml missing ${required}`);
-}
-const allowSection = workspace.split("allowBuilds:")[1]?.split(/\n(?=\S)/u)[0] ?? "";
-if ((allowSection.match(/:\s*true/gmu) ?? []).length !== 1) failures.push("allowBuilds must permit exactly one package");
 
 for (const [label, needle] of [
   ["Rust toolchain", `channel = "${env.get("RUST_VERSION")}"`],
@@ -194,150 +116,147 @@ for (const [label, needle] of [
   if (!source.includes(needle)) failures.push(`${label} exact pin missing`);
 }
 
+for (const required of [
+  "strictDepBuilds: true",
+  "dangerouslyAllowAllBuilds: false",
+  `'esbuild@${env.get("ESBUILD_VERSION")}': true`,
+  "verifyDepsBeforeRun: error",
+  "blockExoticSubdeps: true",
+]) {
+  if (!workspace.includes(required)) failures.push(`pnpm-workspace.yaml missing ${required}`);
+}
+const allowSection = workspace.split("allowBuilds:")[1]?.split(/\n(?=\S)/u)[0] ?? "";
+if ((allowSection.match(/:\s*true/gmu) ?? []).length !== 1) failures.push("allowBuilds must permit exactly one package");
+
 if (!tauri.app?.security?.assetProtocol?.enable) failures.push("asset protocol not enabled");
 if (!(tauri.app?.security?.csp ?? "").includes("asset:")) failures.push("CSP does not allow local asset images");
 for (const permission of ["core:default", "dialog:default", "opener:default"]) {
   if (!capability.permissions?.includes(permission)) failures.push(`capability missing ${permission}`);
 }
 
-for (const [label, text] of [["0001", migration1], ["0002", migration2], ["0003", migration3]]) {
-  const checksum = createHash("sha256").update(text).digest("hex");
-  if (!database.includes(`"${checksum}"`)) failures.push(`database.rs checksum mismatch for ${label}: ${checksum}`);
+const migrationDirectory = join(root, "src-tauri", "migrations");
+const migrationFiles = (await readdir(migrationDirectory))
+  .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
+  .sort();
+const registry = new Map();
+for (const match of database.matchAll(/Migration\s*\{([\s\S]*?)\n\s*\},/gu)) {
+  const body = match[1];
+  const version = Number(body.match(/version:\s*(\d+)/u)?.[1]);
+  const checksum = body.match(/checksum:\s*"([0-9a-f]{64})"/u)?.[1];
+  const file = body.match(/include_str!\("\.\.\/migrations\/([^"]+)"\)/u)?.[1];
+  if (!Number.isInteger(version) || !checksum || !file) {
+    failures.push("A migration registry entry is malformed.");
+    continue;
+  }
+  if (registry.has(version)) failures.push(`Migration version ${version} is registered twice.`);
+  registry.set(version, { checksum, file });
 }
-if (!database.includes('release: "0.1.0"') || !database.includes("v0.1.0.sql")) {
-  failures.push("0.1.0 release schema fixture is not registered");
+for (const file of migrationFiles) {
+  const version = Number(file.slice(0, 4));
+  const entry = registry.get(version);
+  if (!entry) {
+    failures.push(`Migration ${file} is not registered.`);
+    continue;
+  }
+  if (entry.file !== file) failures.push(`Migration ${version} registry path mismatch: ${entry.file} vs ${file}`);
+  const sql = await readFile(join(migrationDirectory, file), "utf8");
+  const checksum = createHash("sha256").update(sql).digest("hex");
+  if (entry.checksum !== checksum) failures.push(`Migration ${file} checksum mismatch: ${checksum}`);
 }
+for (const [version, entry] of registry) {
+  if (!migrationFiles.includes(entry.file)) failures.push(`Migration registry version ${version} references missing ${entry.file}`);
+}
+const latest = Number(database.match(/LATEST_SCHEMA_VERSION:\s*i64\s*=\s*(\d+)/u)?.[1]);
+const maximumMigration = Math.max(...migrationFiles.map((file) => Number(file.slice(0, 4))));
+equal("latest schema version", latest, maximumMigration);
+
 const releaseFixture = await read("src-tauri", "tests", "fixtures", "v0.1.0.sql");
-if (!releaseFixture.includes("Immutable database fixture captured for the ostudy 0.1.0 release") ||
-    !releaseFixture.includes("CREATE TABLE schema_migrations") ||
-    !releaseFixture.includes("PRAGMA user_version = 3")) {
-  failures.push("0.1.0 migration fixture is not a complete historical schema snapshot");
-}
+requireText("0.1.0 release fixture", releaseFixture, [
+  "Immutable database fixture captured for the ostudy 0.1.0 release",
+  "CREATE TABLE schema_migrations",
+  "PRAGMA user_version = 3",
+]);
 
-const frontendIpc = `${ipc}\n${analyticsIpc}`;
-for (const command of [
-  "list_decks", "get_deck", "create_deck", "update_deck", "delete_deck",
-  "list_deck_card_summaries", "delete_card",
-  "list_tags", "search_cards", "list_matching_cards",
-  "get_organized_card", "create_organized_card", "update_organized_card",
-  "find_duplicate_cards", "analyze_bulk_cards", "bulk_create_cards",
-  "transfer_cards", "bulk_tag_cards", "delete_cards",
-  "import_image", "get_settings", "save_settings", "get_app_info",
-  "start_selected_practice", "start_card_practice",
-  "mark_practice_card_viewed", "mark_practice_card_revealed",
-  "submit_practice_review", "complete_practice_session",
-  "get_analytics", "get_recent_practice_reviews",
-  "export_deck", "import_deck",
-]) {
-  if (!rustCommands.includes(command)) failures.push(`Rust command not registered: ${command}`);
-  if (!frontendIpc.includes(`"${command}"`)) failures.push(`frontend command missing: ${command}`);
+requireText("check-static.sh", checkStatic, [
+  "verify-project-manifests.mjs",
+  "verify-ipc-contract.mjs",
+  "verify-repository-policy.mjs",
+  "verify-test-policy.mjs",
+  "python3 -m unittest",
+  "pnpm install --frozen-lockfile",
+  "pnpm exec tsc",
+  "cargo fmt",
+]);
+requireText("check-fast.sh", checkFast, ["check-static.sh", "pnpm test", "cargo check"]);
+requireText("check.sh", checkFull, ["pnpm run build", "cargo clippy", "cargo test", "smoke-native.sh"]);
+requireText("check-changed.sh", checkChanged, ["vitest run --changed", "cargo test", "check-fast.sh", "iteration aid"]);
+requireText("check workflow", checkWorkflow, [
+  "runs-on: [self-hosted, linux, x64, ostudy]",
+  "OSTUDY_CARGO_TARGET_DIR",
+  "check-fast.sh",
+  "check.sh",
+]);
+requireText("release workflow", releaseWorkflow, [
+  "runs-on: [self-hosted, linux, x64, ostudy]",
+  "./scripts/release.sh",
+]);
+if (!pullRequestTemplate.includes("Acceptance criteria") || !pullRequestTemplate.includes("./scripts/check.sh")) {
+  failures.push("pull request template is missing acceptance criteria or full validation");
 }
-if (rustCommands.includes("list_cards") || frontendIpc.includes('"list_cards"')) {
-  failures.push("obsolete unbounded list_cards command is still present");
-}
-
-if (!authoringWrites.includes('const CONTENT_FORMAT: &str = "tiptap-json"') ||
-    !authoringWrites.includes("const CONTENT_SCHEMA_VERSION: i64 = 1")) {
-  failures.push("canonical card format and schema version are not pinned in the active authoring path");
-}
-if (!scheduler.includes("FSRS::new(parameters).next")) failures.push("FSRS adapter is not wired to the scheduling crate");
-if (transfer.includes(" (Imported)") || transfer.includes("imported_deck_name")) failures.push("deck import rewrites display names");
-if (!app.includes("<strong>ostudy</strong>") || !app.includes("Opening ostudy")) failures.push("frontend branding is incomplete");
-if (/pnpm run build|cargo build|pnpm tauri dev/u.test(launcher)) {
-  failures.push("run-app.sh must launch the existing binary without compiling or starting a dev server");
-}
-
-requireText("build.sh", buildScript, ["pnpm tauri build --debug --no-bundle --ci", "ostudy_write_build_stamp", "CARGO_BUILD_JOBS"]);
-requireText("build-state.sh", buildStateScript, ["CARGO_TARGET_DIR", "OSTUDY_BINARY", "ostudy_source_fingerprint"]);
-requireText("cargo-target.sh", cargoTargetScript, ["CI:-false", ".cache", "CARGO_TARGET_DIR", "OSTUDY_CARGO_TARGET_DIR"]);
-requireText("check-state.sh", checkStateScript, ["git ls-files -z", "git ls-files --others --exclude-standard -z", "rustc -Vv", "ostudy_check_stamp_is_current"]);
-requireText("check-static.sh", checkStaticScript, ["verify-project-manifests.mjs", "verify-test-policy.mjs", "verify-script-syntax.sh", "pnpm install --frozen-lockfile", "pnpm exec tsc", "cargo fmt", "ostudy_write_check_stamp static"]);
-requireText("check-fast.sh", checkFastScript, ["check-static.sh", "pnpm test", "cargo check", "ostudy_write_check_stamp fast"]);
-requireText("check.sh", checkScript, ["ostudy_check_stamp_is_current fast", "pnpm run build", "cargo clippy", "cargo test", "pnpm tauri build --debug --no-bundle --ci", "smoke-native.sh", "ostudy_write_check_stamp full"]);
-requireText("check-changed.sh", checkChangedScript, ["vitest run --changed", "cargo test", "check-fast.sh", "iteration aid"]);
-requireText("failure summarizer", failureSummaryScript, ["STATIC|FAST|FULL", "GITHUB_SHA", "Diff in ", "error TS"]);
 
 for (const [name, expected] of [
   ["check:static", "./scripts/check-static.sh"],
   ["check:fast", "./scripts/check-fast.sh"],
   ["check:changed", "./scripts/check-changed.sh"],
   ["check", "./scripts/check.sh"],
+  ["verify:contracts", "node ./scripts/verify-ipc-contract.mjs && node ./scripts/verify-repository-policy.mjs"],
 ]) {
   equal(`package script ${name}`, pkg.scripts?.[name], expected);
 }
 
-if (!setupScript.includes('"$SCRIPT_DIR/build.sh"')) failures.push("setup does not create the initial build");
-requireText("GitHub check workflow", checkWorkflow, [
-  "runs-on: [self-hosted, linux, x64, ostudy]",
-  "type: choice",
-  "- static",
-  "- fast",
-  "- full",
-  "PR_DRAFT",
-  'gate="fast"',
-  'gate="full"',
-  "OSTUDY_CARGO_TARGET_DIR",
-  "bash ./scripts/check-fast.sh",
-  "./scripts/check.sh",
-  "OSTUDY_FAST_CHECK_PASSED",
-  "summarize-check-failure.mjs",
-]);
-if (/runs-on:\s*(?:ubuntu|windows|macos)-/u.test(checkWorkflow)) failures.push("check workflow still uses a GitHub-hosted runner");
-if (!releaseWorkflow.includes("./scripts/release.sh")) failures.push("release workflow does not use the release script");
-if (!releaseWorkflow.includes("runs-on: [self-hosted, linux, x64, ostudy]")) failures.push("release workflow is not pinned to the Multipass self-hosted runner labels");
-if (/runs-on:\s*(?:ubuntu|windows|macos)-/u.test(releaseWorkflow)) failures.push("release workflow still uses a GitHub-hosted runner");
-if (!pullRequestTemplate.includes("Acceptance criteria") || !pullRequestTemplate.includes("./scripts/check.sh")) {
-  failures.push("pull request template is missing acceptance criteria or validation");
-}
-
 for (const requiredPath of [
   "scripts/build.sh",
-  "scripts/build-state.sh",
-  "scripts/cargo-target.sh",
-  "scripts/check-state.sh",
   "scripts/check-static.sh",
   "scripts/check-fast.sh",
   "scripts/check.sh",
   "scripts/check-changed.sh",
-  "scripts/summarize-check-failure.mjs",
-  "scripts/export-diagnostics.sh",
+  "scripts/verify-ipc-contract.mjs",
+  "scripts/verify-repository-policy.mjs",
   "scripts/log-run.py",
-  "scripts/smoke-native.sh",
-  "scripts/release.sh",
-  "tests/webdriver/smoke.py",
-  "src/analytics-ipc.ts",
-  "src/test/setup.ts",
-  "src/components/Toast.test.tsx",
-  "src/screens/SettingsScreen.test.tsx",
-  "src-tauri/src/logging.rs",
+  "tests/scripts/test_log_run.py",
+  "src/diagnostics.ts",
+  "src/diagnostics.test.ts",
+  "src-tauri/src/diagnostics.rs",
   "src-tauri/tests/fixtures/v0.1.0.sql",
-  ".github/workflows/check.yml",
-  ".github/workflows/release.yml",
-  ".github/pull_request_template.md",
 ]) {
   try {
-    await readFile(join(root, requiredPath), "utf8");
+    await access(join(root, requiredPath));
   } catch {
     failures.push(`required development file is missing: ${requiredPath}`);
   }
 }
 
-const ownedText = await collectOwnedText();
-for (const [path, text] of ownedText) {
-  for (const [label, pattern] of [
-    ["archive revision 5.4", /\b(?:revision|version|release)\s+(?:v)?5\.4(?:\.0)?\b/iu],
-    ["old pre-Git release version 0.3", /\b(?:ostudy\s+|revision\s+|version\s+|release\s+|v)0\.3(?:\.0)?\b/iu],
-    ["example Tauri identifier", /com\.example\.studyapp/u],
-    ["obsolete PROJECT_REVISION", /PROJECT_REVISION/u],
-  ]) {
-    if (pattern.test(text)) failures.push(`${path} still contains ${label}`);
-  }
-}
-
 if (failures.length > 0) {
-  console.error("Project verification failed:");
+  console.error("Project manifest verification failed:");
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
+console.log(
+  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, and tiered qualification manifests are consistent.`,
+);
 
-console.log("OK   ostudy identity, versions, migrations, commands, tiered checks, self-hosted CI, diagnostics, and release files are internally consistent.");
+function parseEnv(text) {
+  return new Map(
+    text
+      .split(/\r?\n/u)
+      .filter((line) => line.trim() !== "" && !line.trim().startsWith("#"))
+      .map((line) => {
+        const separator = line.indexOf("=");
+        return [line.slice(0, separator), line.slice(separator + 1)];
+      }),
+  );
+}
+function tomlPackageValue(text, key) {
+  const packageSection = text.split("[package]")[1]?.split(/\n\[/u)[0] ?? "";
+  return packageSection.match(new RegExp(`^${key}\\s*=\\s*"([^"]+)"`, "mu"))?.[1];
+}
