@@ -55,7 +55,14 @@ fn insert_reviewed_card(
                  ?3, ?4, 'Original question', 'Original answer',
                  ?5, ?5, 1, ?6, 0, '', 'one_at_a_time'
              )",
-            params![seed.note_id, seed.deck_id, front_doc, back_doc, now, "d".repeat(64)],
+            params![
+                seed.note_id,
+                seed.deck_id,
+                front_doc,
+                back_doc,
+                now,
+                "d".repeat(64)
+            ],
         )
         .expect("note should insert");
     connection
