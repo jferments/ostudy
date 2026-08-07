@@ -202,7 +202,7 @@ def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
     create_button = find_element(
         session_id,
         "xpath",
-        "//section[@role='dialog']//button[normalize-space(.)='Create deck']",
+        "//*[@role='dialog']//button[normalize-space(.)='Create deck']",
         deadline,
     )
     click(session_id, create_button)
