@@ -1,5 +1,10 @@
 import { RichTextEditor } from "../../editor/RichTextEditor";
-import type { Asset, RichDocument } from "../../ipc";
+import {
+  type Asset,
+} from "../../ipc/assets";
+import {
+  type RichDocument,
+} from "../../ipc/common";
 
 interface TemplateLayoutEditorProps {
   label: string;

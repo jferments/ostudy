@@ -29,7 +29,8 @@ const MAX_PLAIN_TEXT_CHARS: usize = 200_000;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CardDto {
+pub struct CardPresentationDto {
+    #[serde(rename = "cardId")]
     pub id: String,
     pub note_id: String,
     pub deck_id: String,
@@ -41,6 +42,7 @@ pub struct CardDto {
     pub assets: Vec<AssetDto>,
     pub created_at: i64,
     pub updated_at: i64,
+    #[serde(rename = "noteRevision")]
     pub revision: i64,
 }
 
@@ -71,7 +73,7 @@ pub(crate) fn get_card_from_connection(
     connection: &Connection,
     paths: &AppPaths,
     note_id: &str,
-) -> Result<CardDto, CommandError> {
+) -> Result<CardPresentationDto, CommandError> {
     let raw = connection
         .query_row(
             "SELECT c.id, n.id, c.deck_id, c.direction, n.front_doc, n.back_doc,\n\
@@ -99,13 +101,13 @@ fn hydrate_card(
     connection: &Connection,
     paths: &AppPaths,
     raw: RawCard,
-) -> Result<CardDto, CommandError> {
+) -> Result<CardPresentationDto, CommandError> {
     let front_doc =
         serde_json::from_str(&raw.front_doc_json).map_err(CommandError::serialization)?;
     let back_doc = serde_json::from_str(&raw.back_doc_json).map_err(CommandError::serialization)?;
     let assets = get_assets_for_note(connection, paths, &raw.note_id)?;
 
-    Ok(CardDto {
+    Ok(CardPresentationDto {
         id: raw.id,
         note_id: raw.note_id,
         deck_id: raw.deck_id,

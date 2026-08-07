@@ -1,6 +1,11 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import type { Asset, RichDocument } from "../ipc";
+import {
+  type Asset,
+} from "../ipc/assets";
+import {
+  type RichDocument,
+} from "../ipc/common";
 
 export const EMPTY_RICH_DOCUMENT: RichDocument = {
   type: "doc",

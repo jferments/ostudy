@@ -13,7 +13,7 @@ vi.mock("../editor/RichTextView", () => ({
 vi.mock("../ipc", () => ({
   beginAssetDraft: vi.fn(),
   cancelAssetDraft: vi.fn(),
-  createGeneratedCard: vi.fn(),
+  createCardNote: vi.fn(),
   findDuplicateCards: vi.fn(),
   generateCardsFromTemplate: vi.fn(),
   getCardTemplate: vi.fn(),
@@ -25,13 +25,13 @@ vi.mock("../ipc", () => ({
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
   ),
-  getOrganizedCard: vi.fn(),
+  getCardNote: vi.fn(),
   listCardTemplateSummaries: vi.fn(),
   listDecks: vi.fn(),
   listTags: vi.fn(),
   previewTemplateCards: vi.fn(),
   syncAssetDraft: vi.fn(),
-  updateGeneratedCard: vi.fn(),
+  updateCardNote: vi.fn(),
 }));
 
 const deck: ipc.DeckSummary = {
@@ -53,7 +53,7 @@ const secondDeck: ipc.DeckSummary = {
   name: "Pathophysiology",
 };
 
-const card: ipc.OrganizedCard = {
+const card: ipc.CardNote = {
   id: "b".repeat(32),
   noteId: "c".repeat(32),
   deckId: deck.id,
@@ -110,7 +110,7 @@ describe("CardEditorScreen", () => {
         backText: "Answer",
       },
     ]);
-    vi.mocked(ipc.updateGeneratedCard).mockResolvedValue({
+    vi.mocked(ipc.updateCardNote).mockResolvedValue({
       ...card,
       deckId: secondDeck.id,
     });
@@ -168,7 +168,7 @@ describe("CardEditorScreen", () => {
       expect(ipc.findDuplicateCards).toHaveBeenCalledWith(
         expect.objectContaining({ deckId: secondDeck.id }),
       );
-      expect(ipc.updateGeneratedCard).toHaveBeenCalledWith(
+      expect(ipc.updateCardNote).toHaveBeenCalledWith(
         expect.objectContaining({
           noteId: card.noteId,
           deckId: secondDeck.id,

@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 
-import type { ClozeMode } from "../../ipc";
+import {
+  type ClozeMode,
+} from "../../ipc/cards";
 import {
   distinctClozeGroups,
   markSelectionAsBlank,

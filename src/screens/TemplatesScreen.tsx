@@ -5,20 +5,24 @@ import { collectAssetIds, EMPTY_RICH_DOCUMENT, cloneDocument } from "../editor/r
 import {
   beginAssetDraft,
   cancelAssetDraft,
+  syncAssetDraft,
+  type Asset,
+} from "../ipc/assets";
+import {
+  getErrorMessage,
+  type RichDocument,
+} from "../ipc/common";
+import {
   createCardTemplate,
   deleteCardTemplate,
   getCardTemplate,
-  getErrorMessage,
   listCardTemplateSummaries,
-  syncAssetDraft,
   updateCardTemplate,
-  type Asset,
   type CardTemplate,
   type CardTemplateFieldInput,
   type CardTemplateRuleInput,
   type CardTemplateSummary,
-  type RichDocument,
-} from "../ipc";
+} from "../ipc/templates";
 import { TemplateLayoutEditor } from "./templates/TemplateLayoutEditor";
 
 interface TemplatesScreenProps {

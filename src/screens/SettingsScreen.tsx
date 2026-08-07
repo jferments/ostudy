@@ -3,13 +3,17 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 
 import {
   exportLibraryBackup,
-  getAppInfo,
-  getErrorMessage,
   prepareLibraryRestore,
+} from "../ipc/backup";
+import {
+  getErrorMessage,
+} from "../ipc/common";
+import {
+  getAppInfo,
   saveSettings,
   type AppInfo,
   type AppSettings,
-} from "../ipc";
+} from "../ipc/settings";
 
 interface SettingsScreenProps {
   settings: AppSettings;

@@ -35,7 +35,7 @@ vi.mock("../ipc", () => ({
     }
     return "Unexpected error";
   },
-  getOrganizedCard: vi.fn(),
+  getCardNote: vi.fn(),
   importDeck: vi.fn(),
   listDeckCardSummaries: vi.fn(),
   setDeckArchived: vi.fn(),

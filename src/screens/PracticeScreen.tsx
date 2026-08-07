@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { PracticeLaunchRequest } from "../App";
-import { getRecentPracticeReviews } from "../analytics-ipc";
+import { getRecentPracticeReviews } from "../ipc/analytics";
 import {
-  applyScheduleAction,
-  completePracticeSession,
   createMutationId,
   createOperationId,
   createSubmissionId,
   getErrorCode,
   getErrorMessage,
+} from "../ipc/common";
+import {
+  type DeckSummary,
+} from "../ipc/decks";
+import {
+  completePracticeSession,
   getPracticeCardWindow,
   getPracticeWorkload,
   markPracticeCardRevealed,
@@ -17,16 +21,20 @@ import {
   startCardPractice,
   startSelectedPractice,
   submitPracticeReview,
-  type AppSettings,
-  type DeckSummary,
   type PracticeCard,
   type PracticeSession,
   type PracticeWorkloadOverview,
-  type RescheduleIntent,
   type ReviewPreviewSet,
-  type ScheduleAction,
   type SubmitReviewInput,
-} from "../ipc";
+} from "../ipc/practice";
+import {
+  applyScheduleAction,
+  type RescheduleIntent,
+  type ScheduleAction,
+} from "../ipc/scheduling";
+import {
+  type AppSettings,
+} from "../ipc/settings";
 import { ActivePractice } from "./practice/ActivePractice";
 import {
   outcomeForScore,
@@ -319,7 +327,7 @@ export function PracticeScreen({
   useEffect(() => {
     if (!session || !current || completed) return;
     questionShownAtRef.current = Date.now();
-    void markPracticeCardViewed(session.id, current.card.id).catch((error: unknown) => {
+    void markPracticeCardViewed(session.id, current.presentation.id).catch((error: unknown) => {
       showToast("error", getErrorMessage(error));
     });
   }, [completed, current, session, showToast]);
@@ -334,7 +342,7 @@ export function PracticeScreen({
     setIsRevealing(true);
     setErrorMessage(null);
     try {
-      setPreviewSet(await markPracticeCardRevealed(session.id, current.card.id));
+      setPreviewSet(await markPracticeCardRevealed(session.id, current.presentation.id));
       setRevealed(true);
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -350,7 +358,7 @@ export function PracticeScreen({
     if (
       pending &&
       (pending.sessionId !== session.id ||
-        pending.cardId !== current.card.id ||
+        pending.cardId !== current.presentation.id ||
         pending.score !== score)
     ) {
       setErrorMessage(
@@ -361,7 +369,7 @@ export function PracticeScreen({
 
     const input: SubmitReviewInput = pending?.input ?? {
       sessionId: session.id,
-      cardId: current.card.id,
+      cardId: current.presentation.id,
       submissionId: createSubmissionId(),
       outcome: outcomeForScore(score),
       responseTimeMs: Math.max(
@@ -373,7 +381,7 @@ export function PracticeScreen({
     if (!pending) {
       pendingReviewRef.current = {
         sessionId: session.id,
-        cardId: current.card.id,
+        cardId: current.presentation.id,
         score,
         input,
       };
@@ -435,7 +443,7 @@ export function PracticeScreen({
     try {
       await applyScheduleAction({
         mutationId: createMutationId(),
-        cardIds: [current.card.id],
+        cardIds: [current.presentation.id],
         action,
         rescheduleIntent,
         sessionId: session.id,
@@ -520,7 +528,7 @@ export function PracticeScreen({
   }
 
   if (session && completed) {
-    const sessionDeckIds = [...new Set(sessionCards.map((card) => card.card.deckId))];
+    const sessionDeckIds = [...new Set(sessionCards.map((card) => card.presentation.deckId))];
     return (
       <PracticeComplete
         ratedCount={ratedCount}

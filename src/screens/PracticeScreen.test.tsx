@@ -74,7 +74,7 @@ const settings: ipc.AppSettings = {
   dailyNewLimit: 20,
   dailyReviewLimit: 200,
 };
-const card: ipc.Flashcard = {
+const card: ipc.CardPresentation = {
   id: "b".repeat(32),
   noteId: "c".repeat(32),
   deckId: deck.id,

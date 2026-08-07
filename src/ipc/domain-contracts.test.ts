@@ -2,61 +2,76 @@ import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  analyzeBulkCards,
-  applyScheduleAction,
   beginAssetDraft,
+  cancelAssetDraft,
+  importImage,
+  syncAssetDraft,
+} from "./assets";
+import {
+  exportLibraryBackup,
+  prepareLibraryRestore,
+} from "./backup";
+import {
+  analyzeBulkCards,
   bulkCreateCards,
   bulkTagCards,
-  cancelAssetDraft,
-  completePracticeSession,
-  createCardTemplate,
-  createDeck,
-  createGeneratedCard,
+  createCardNote,
+  deleteCards,
+  findDuplicateCards,
+  getCardNote,
+  listMatchingCards,
+  listTags,
+  searchCards,
+  transferCards,
+  undoDeletion,
+  updateCardNote,
+  type CardSearchInput,
+  type CreateCardNoteInput,
+} from "./cards";
+import {
   createMutationId,
   createOperationId,
   createSubmissionId,
-  deleteCards,
-  exportDeck,
-  exportLibraryBackup,
-  findDuplicateCards,
-  generateCardsFromTemplate,
-  getAppInfo,
-  getCardTemplate,
-  getCardTypeInfo,
-  getDeck,
   getErrorCode,
   getErrorMessage,
-  getOrganizedCard,
-  getPracticeCardWindow,
-  getPracticeWorkload,
-  getSettings,
+} from "./common";
+import {
+  createDeck,
+  exportDeck,
+  getDeck,
   importDeck,
-  importImage,
-  listCardTemplateSummaries,
   listDeckCardSummaries,
   listDecks,
-  listMatchingCards,
-  listTags,
+  updateDeck,
+} from "./decks";
+import {
+  completePracticeSession,
+  getPracticeCardWindow,
+  getPracticeWorkload,
   markPracticeCardRevealed,
   markPracticeCardViewed,
-  prepareLibraryRestore,
-  previewTemplateCards,
-  saveSettings,
-  searchCards,
   startCardPractice,
   startSelectedPractice,
   submitPracticeReview,
-  syncAssetDraft,
-  transferCards,
-  undoDeletion,
-  updateCardTemplate,
-  updateDeck,
-  updateGeneratedCard,
+} from "./practice";
+import {
+  applyScheduleAction,
+} from "./scheduling";
+import {
+  getAppInfo,
+  getSettings,
+  saveSettings,
   type AppSettings,
-  type CardSearchInput,
+} from "./settings";
+import {
+  createCardTemplate,
+  generateCardsFromTemplate,
+  getCardTemplate,
+  listCardTemplateSummaries,
+  previewTemplateCards,
+  updateCardTemplate,
   type CreateCardTemplateInput,
-  type CreateGeneratedCardInput,
-} from "./ipc";
+} from "./templates";
 import { makeSettings, paragraphDocument } from "./test/factories";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -82,7 +97,7 @@ const searchInput: CardSearchInput = {
   offset: 0,
 };
 
-const generatedInput: CreateGeneratedCardInput = {
+const generatedInput: CreateCardNoteInput = {
   deckId,
   cardType: "basic",
   reverseEnabled: true,
@@ -175,26 +190,26 @@ describe("typed Tauri IPC wrappers", () => {
       { input: searchInput },
     );
     await expectInvocation(
-      () => getOrganizedCard(noteId),
-      "get_organized_card",
+      () => getCardNote(noteId),
+      "get_card_note",
       { noteId },
     );
   });
 
   it("wires generated-card, template-summary, duplicate, and bulk commands", async () => {
     await expectInvocation(
-      () => createGeneratedCard(generatedInput),
-      "create_generated_card",
+      () => createCardNote(generatedInput),
+      "create_card_note",
       { input: generatedInput },
     );
     await expectInvocation(
       () =>
-        updateGeneratedCard({
+        updateCardNote({
           ...generatedInput,
           noteId,
           revision: 3,
         }),
-      "update_generated_card",
+      "update_card_note",
       { input: { ...generatedInput, noteId, revision: 3 } },
     );
     await expectInvocation(() => getCardTypeInfo(noteId), "get_card_type_info", {

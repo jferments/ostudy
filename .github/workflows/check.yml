@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -47,31 +47,6 @@ jobs:
         run: |
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.cache/ostudy/cargo-target"
-
-      - name: Apply Stage 3.12 domain migration
-        if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
-        env:
-          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: |
-          git fetch origin "$HEAD_BRANCH"
-          git checkout -B "$HEAD_BRANCH" "origin/$HEAD_BRANCH"
-          python3 ./scripts/apply-stage312-domain-refactor.py
-          python3 - <<'PY'
-          from pathlib import Path
-          workflow = Path('.github/workflows/check.yml')
-          text = workflow.read_text(encoding='utf-8')
-          text = text.replace('permissions:\n  contents: write\n', 'permissions:\n  contents: read\n', 1)
-          start = text.index('      - name: Apply Stage 3.12 domain migration\n')
-          end = text.index('      - name: Select qualification gate\n', start)
-          workflow.write_text(text[:start] + text[end:], encoding='utf-8')
-          Path('scripts/apply-stage312-domain-refactor.py').unlink()
-          PY
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "refactor: establish Stage 3.12 domain contracts"
-          git push origin "HEAD:$HEAD_BRANCH"
 
       - name: Select qualification gate
         id: gate

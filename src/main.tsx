@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
-import { recordWebviewDiagnostic } from "./diagnostics";
+import { recordWebviewDiagnostic } from "./ipc/diagnostics";
 import "./styles.css";
 import "./practice-confidence.css";
 import "./card-organization.css";

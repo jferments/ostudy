@@ -2,11 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, MutableRefObject } from "react";
 
 import {
-  applyScheduleAction,
-  createMutationId,
-  getErrorCode,
-  getErrorMessage,
-  getOrganizedCard,
+  getCardNote,
   listMatchingCards,
   listTags,
   searchCards,
@@ -16,15 +12,27 @@ import {
   type CardSearchPage,
   type CardSort,
   type CardStatusFilter,
-  type CardTemplate,
-  type DeckSummary,
-  type GenerateTemplateCardsResult,
-  type OrganizedCard,
+  type CardNote,
   type ReviewedFilter,
-  type ScheduleAction,
   type SelectionCard,
   type TagSummary,
-} from "../ipc";
+} from "../ipc/cards";
+import {
+  createMutationId,
+  getErrorCode,
+  getErrorMessage,
+} from "../ipc/common";
+import {
+  type DeckSummary,
+} from "../ipc/decks";
+import {
+  applyScheduleAction,
+  type ScheduleAction,
+} from "../ipc/scheduling";
+import {
+  type CardTemplate,
+  type GenerateTemplateCardsResult,
+} from "../ipc/templates";
 import { CardEditorScreen } from "./CardEditorScreen";
 import { BulkEntryModal } from "./cards/BulkEntryModal";
 import { BulkTagModal } from "./cards/BulkTagModal";
@@ -89,7 +97,7 @@ export function CardsScreen({
   const [isApplyingSchedule, setIsApplyingSchedule] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedCards, setSelectedCards] = useState<Map<string, SelectionCard>>(new Map());
-  const [editingCard, setEditingCard] = useState<OrganizedCard | null>(null);
+  const [editingCard, setEditingCard] = useState<CardNote | null>(null);
   const [creatingDeckId, setCreatingDeckId] = useState<string | null>(null);
   const [isOpeningCard, setIsOpeningCard] = useState(false);
   const openCardRequestSequence = useRef(0);
@@ -232,7 +240,7 @@ export function CardsScreen({
     setIsOpeningCard(true);
     setErrorMessage(null);
     try {
-      const card = await getOrganizedCard(noteId);
+      const card = await getCardNote(noteId);
       if (openCardRequestSequence.current === requestId) setEditingCard(card);
     } catch (error: unknown) {
       if (openCardRequestSequence.current === requestId) setErrorMessage(getErrorMessage(error));
@@ -442,7 +450,7 @@ export function CardsScreen({
               setEditingCard(null);
               setCreatingDeckId(null);
             }
-            showToast("success", wasEditing ? "Flashcard updated." : "Flashcard saved.");
+            showToast("success", wasEditing ? "CardPresentation updated." : "CardPresentation saved.");
             if (saved.deckId !== deck.id) showToast("info", "The card is now in a different deck.");
             await reconcileAfterCommit("The flashcard");
           }}

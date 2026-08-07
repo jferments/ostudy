@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getAnalytics, getRecentPracticeReviews } from "./analytics-ipc";
+import { getAnalytics, getRecentPracticeReviews } from "./analytics";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),

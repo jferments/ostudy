@@ -23,7 +23,7 @@ function deletionResult(affectedCount: number): ipc.DeletionResult {
     affectedCount,
     undoToken,
     undoExpiresAt: Date.now() + 10_000,
-    subjectLabel: affectedCount === 1 ? "Flashcard" : `${affectedCount} flashcards`,
+    subjectLabel: affectedCount === 1 ? "CardPresentation" : `${affectedCount} flashcards`,
   };
 }
 

@@ -3,11 +3,15 @@ import type { ChangeEvent } from "react";
 
 import { Modal } from "../../components/Modal";
 import {
-  getErrorMessage,
   transferCards,
-  type DeckSummary,
   type TransferCardsMode,
-} from "../../ipc";
+} from "../../ipc/cards";
+import {
+  getErrorMessage,
+} from "../../ipc/common";
+import {
+  type DeckSummary,
+} from "../../ipc/decks";
 
 export interface TransferableCard {
   noteId: string;

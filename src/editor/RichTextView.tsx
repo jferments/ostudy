@@ -3,7 +3,13 @@ import type { MouseEvent } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
-import { getErrorMessage, type Asset, type RichDocument } from "../ipc";
+import {
+  type Asset,
+} from "../ipc/assets";
+import {
+  getErrorMessage,
+  type RichDocument,
+} from "../ipc/common";
 import { createEditorExtensions } from "./extensions";
 import { isAllowedExternalLink } from "./links";
 import { hydrateDocument } from "./richText";

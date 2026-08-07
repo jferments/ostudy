@@ -21,7 +21,7 @@ vi.mock("../ipc", () => ({
   getErrorMessage: vi.fn((error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
   ),
-  getOrganizedCard: vi.fn(),
+  getCardNote: vi.fn(),
   listMatchingCards: vi.fn(),
   listTags: vi.fn(),
   searchCards: vi.fn(),

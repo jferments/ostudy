@@ -6,8 +6,19 @@ import {
   type Analytics,
   type AnalyticsRange,
   type TagAnalytics,
-} from "../analytics-ipc";
-import { getErrorMessage, type AppSettings, type DeckSummary, type ReviewOutcome } from "../ipc";
+} from "../ipc/analytics";
+import {
+  getErrorMessage,
+} from "../ipc/common";
+import {
+  type DeckSummary,
+} from "../ipc/decks";
+import {
+  type ReviewOutcome,
+} from "../ipc/practice";
+import {
+  type AppSettings,
+} from "../ipc/settings";
 import { ProgressChart } from "./analytics/ProgressChart";
 
 interface AnalyticsScreenProps {

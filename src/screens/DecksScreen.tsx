@@ -4,30 +4,38 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 
 import { Modal } from "../components/Modal";
 import type { ShowToast } from "../components/Toast";
-import { importGeneratedFlashcards } from "../generatedImport";
+import { importGeneratedFlashcards } from "../ipc/generated-import";
+import {
+  deleteCard,
+  getCardNote,
+  undoDeletion,
+  type CardNote,
+} from "../ipc/cards";
+import {
+  createOperationId,
+  getErrorCode,
+  getErrorMessage,
+} from "../ipc/common";
 import {
   createDeck,
-  createOperationId,
-  deleteCard,
   deleteDeck,
   exportDeck,
   getDeck,
-  getErrorCode,
-  getErrorMessage,
-  getOrganizedCard,
   importDeck,
   listDeckCardSummaries,
   setDeckArchived,
-  undoDeletion,
   updateDeck,
-  type AppSettings,
-  type CardTemplate,
   type CreateDeckInput,
   type DeckCardSummary,
   type DeckSummary,
+} from "../ipc/decks";
+import {
+  type AppSettings,
+} from "../ipc/settings";
+import {
+  type CardTemplate,
   type GenerateTemplateCardsResult,
-  type OrganizedCard,
-} from "../ipc";
+} from "../ipc/templates";
 import { CardEditorScreen } from "./CardEditorScreen";
 
 interface DecksScreenProps {
@@ -55,7 +63,7 @@ export function DecksScreen({
   const [cards, setCards] = useState<DeckCardSummary[]>([]);
   const [cardTotalCount, setCardTotalCount] = useState(0);
   const [hasMoreCards, setHasMoreCards] = useState(false);
-  const [editingCard, setEditingCard] = useState<OrganizedCard | null>(null);
+  const [editingCard, setEditingCard] = useState<CardNote | null>(null);
   const [deckDialog, setDeckDialog] = useState<"create" | "edit" | null>(null);
   const [isLoadingDeck, setIsLoadingDeck] = useState(false);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
@@ -213,7 +221,7 @@ export function DecksScreen({
 
   async function openCardEditor(summary: DeckCardSummary): Promise<void> {
     try {
-      const card = await getOrganizedCard(summary.noteId);
+      const card = await getCardNote(summary.noteId);
       setEditingCard(card);
       setView("editor");
     } catch (error: unknown) {
@@ -331,7 +339,7 @@ export function DecksScreen({
     try {
       const deletion = await deleteCard(card.noteId);
       const deckId = selectedDeck?.id;
-      showToast("success", "Flashcard deleted.", {
+      showToast("success", "CardPresentation deleted.", {
         label: "Undo",
         expiresAt: deletion.undoExpiresAt,
         run: async () => {
@@ -499,7 +507,7 @@ export function DecksScreen({
             setEditingCard(null);
             setView("detail");
           }
-          showToast("success", wasEditing ? "Flashcard updated." : "Flashcard saved.");
+          showToast("success", wasEditing ? "CardPresentation updated." : "CardPresentation saved.");
           await refreshSelectedDeckAfterMutation(selectedDeck.id);
         }}
         onTemplateGenerated={async (

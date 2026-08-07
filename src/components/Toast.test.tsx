@@ -44,7 +44,7 @@ describe("Toast", () => {
         toast={{
           id: 3,
           kind: "success",
-          text: "Flashcard deleted.",
+          text: "CardPresentation deleted.",
           action: { label: "Undo", run, expiresAt: Date.now() + 10_000 },
         }}
         onDismiss={onDismiss}

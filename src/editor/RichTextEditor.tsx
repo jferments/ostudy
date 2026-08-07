@@ -5,7 +5,14 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import { getErrorMessage, importImage, type Asset, type RichDocument } from "../ipc";
+import {
+  importImage,
+  type Asset,
+} from "../ipc/assets";
+import {
+  getErrorMessage,
+  type RichDocument,
+} from "../ipc/common";
 import { createEditorExtensions } from "./extensions";
 import { isAllowedExternalLink, normalizeExternalLink } from "./links";
 import { canonicalizeDocument, hydrateDocument } from "./richText";

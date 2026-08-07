@@ -12,34 +12,41 @@ import {
 import {
   beginAssetDraft,
   cancelAssetDraft,
-  createGeneratedCard,
+  syncAssetDraft,
+  type Asset,
+} from "../ipc/assets";
+import {
+  createCardNote,
   findDuplicateCards,
-  generateCardsFromTemplate,
-  getCardTemplate,
-  getCardTypeInfo,
+  getCardNote,
+  listTags,
+  updateCardNote,
+  type BuiltInCardType,
+  type ClozeMode,
+  type DuplicateCard,
+  type CardNote,
+  type TagSummary,
+} from "../ipc/cards";
+import {
   getErrorCode,
   getErrorMessage,
-  getOrganizedCard,
-  listCardTemplateSummaries,
+  type RichDocument,
+} from "../ipc/common";
+import {
   listDecks,
-  listTags,
+  type DeckSummary,
+} from "../ipc/decks";
+import {
+  generateCardsFromTemplate,
+  getCardTemplate,
+  listCardTemplateSummaries,
   previewTemplateCards,
-  syncAssetDraft,
-  updateGeneratedCard,
-  type Asset,
-  type BuiltInCardType,
   type CardTemplate,
   type CardTemplateSummary,
-  type ClozeMode,
-  type DeckSummary,
-  type DuplicateCard,
   type GenerateTemplateCardsResult,
-  type OrganizedCard,
-  type RichDocument,
-  type TagSummary,
   type TemplateCardPreview,
   type TemplateValueInput,
-} from "../ipc";
+} from "../ipc/templates";
 import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
 import { distinctClozeGroups } from "./card-editor/cloze";
@@ -48,9 +55,9 @@ import { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
 interface CardEditorScreenProps {
   deck: DeckSummary;
   decks?: DeckSummary[];
-  card: OrganizedCard | null;
+  card: CardNote | null;
   onCancel: () => void;
-  onSaved: (card: OrganizedCard, continueAdding: boolean) => void | Promise<void>;
+  onSaved: (card: CardNote, continueAdding: boolean) => void | Promise<void>;
   onTemplateGenerated: (
     result: GenerateTemplateCardsResult,
     continueAdding: boolean,
@@ -84,26 +91,31 @@ export function CardEditorScreen({
     availableDecks.find((candidate) => candidate.id === selectedDeckId) ?? deck;
 
   const [templateSummaries, setTemplateSummaries] = useState<CardTemplateSummary[]>([]);
-  const [selectedTemplateKey, setSelectedTemplateKey] = useState("basic");
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState(card?.cardType ?? "basic");
   const [selectedCustomTemplate, setSelectedCustomTemplate] = useState<CardTemplate | null>(null);
   const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
   const templateRequestSequence = useRef(0);
   const builtInCardType: BuiltInCardType =
     selectedTemplateKey === "cloze" ? "cloze" : "basic";
-  const [isLoadingType, setIsLoadingType] = useState(existing);
-  const [reverseEnabled, setReverseEnabled] = useState(false);
-  const [clozeSource, setClozeSource] = useState("");
-  const [clozeMode, setClozeMode] = useState<ClozeMode>("one_at_a_time");
+  const [reverseEnabled, setReverseEnabled] = useState(
+    card?.cardType === "basic" ? card.reverseEnabled : false,
+  );
+  const [clozeSource, setClozeSource] = useState(
+    card?.cardType === "cloze" ? card.clozeSource : "",
+  );
+  const [clozeMode, setClozeMode] = useState<ClozeMode>(
+    card?.cardType === "cloze" ? card.clozeMode : "one_at_a_time",
+  );
 
   const [frontDoc, setFrontDoc] = useState<RichDocument>(() =>
-    card ? cloneDocument(card.frontDoc) : cloneDocument(EMPTY_RICH_DOCUMENT),
+    card?.cardType === "basic" ? cloneDocument(card.frontDoc) : cloneDocument(EMPTY_RICH_DOCUMENT),
   );
   const [backDoc, setBackDoc] = useState<RichDocument>(() =>
-    card ? cloneDocument(card.backDoc) : cloneDocument(EMPTY_RICH_DOCUMENT),
+    card?.cardType === "basic" ? cloneDocument(card.backDoc) : cloneDocument(EMPTY_RICH_DOCUMENT),
   );
-  const [frontText, setFrontText] = useState(card?.frontText ?? "");
-  const [backText, setBackText] = useState(card?.backText ?? "");
-  const [assets, setAssets] = useState<Asset[]>(card?.assets ?? []);
+  const [frontText, setFrontText] = useState(card?.cardType === "basic" ? card.frontText : "");
+  const [backText, setBackText] = useState(card?.cardType === "basic" ? card.backText : "");
+  const [assets, setAssets] = useState<Asset[]>(card?.cardType === "basic" ? card.assets : []);
   const [assetDraftId, setAssetDraftId] = useState<string | null>(null);
   const assetDraftRef = useRef<string | null>(null);
   const [tags, setTags] = useState<string[]>(card?.tags ?? []);
@@ -139,7 +151,6 @@ export function CardEditorScreen({
     contentReady &&
     selectedDeckId !== "" &&
     !isSaving &&
-    !isLoadingType &&
     !isLoadingTemplate;
   const assetIds = useMemo(() => new Set(assets.map((asset) => asset.id)), [assets]);
   const usedAssetIds = useMemo(() => {
@@ -269,31 +280,6 @@ export function CardEditorScreen({
       });
   }, []);
 
-  useEffect(() => {
-    if (!existing || !card) {
-      setIsLoadingType(false);
-      return;
-    }
-    let current = true;
-    setIsLoadingType(true);
-    void getCardTypeInfo(card.noteId)
-      .then((info) => {
-        if (!current) return;
-        setSelectedTemplateKey(info.cardType);
-        setReverseEnabled(info.reverseEnabled);
-        setClozeSource(info.clozeSource);
-        setClozeMode(info.clozeMode);
-      })
-      .catch((error: unknown) => {
-        if (current) setErrorMessage(getErrorMessage(error));
-      })
-      .finally(() => {
-        if (current) setIsLoadingType(false);
-      });
-    return () => {
-      current = false;
-    };
-  }, [card, existing]);
 
   useEffect(() => {
     if (!selectedCustomTemplate) {
@@ -426,7 +412,7 @@ export function CardEditorScreen({
         }
       }
 
-      let saved: OrganizedCard;
+      let saved: CardNote;
       if (builtInCardType === "cloze") {
         const input = {
           deckId: selectedDeckId,
@@ -439,12 +425,12 @@ export function CardEditorScreen({
         };
         saved =
           existing && card
-            ? await updateGeneratedCard({
+            ? await updateCardNote({
                 ...input,
                 noteId: card.noteId,
                 revision: card.revision,
               })
-            : await createGeneratedCard(input);
+            : await createCardNote(input);
       } else {
         const input = {
           deckId: selectedDeckId,
@@ -458,12 +444,12 @@ export function CardEditorScreen({
         };
         saved =
           existing && card
-            ? await updateGeneratedCard({
+            ? await updateCardNote({
                 ...input,
                 noteId: card.noteId,
                 revision: card.revision,
               })
-            : await createGeneratedCard(input);
+            : await createCardNote(input);
       }
 
       markAssetDraftCommitted();
@@ -862,7 +848,7 @@ export function CardEditorScreen({
           onClose={() => setMoveCopyOpen(false)}
           onComplete={async () => {
             setMoveCopyOpen(false);
-            const refreshed = await getOrganizedCard(card.noteId);
+            const refreshed = await getCardNote(card.noteId);
             await onSaved(refreshed, false);
           }}
         />
