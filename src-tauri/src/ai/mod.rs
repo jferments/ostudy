@@ -27,12 +27,15 @@ pub(crate) use profiles::{
     update_ai_provider_profile,
 };
 
+use std::sync::Mutex;
+
 use gateway::AiGateway;
 use secrets::SecretManager;
 
 pub struct AiRuntimeState {
     pub(crate) secrets: SecretManager,
     pub(crate) gateway: AiGateway,
+    pub(crate) profile_mutations: Mutex<()>,
 }
 
 impl AiRuntimeState {
@@ -40,6 +43,7 @@ impl AiRuntimeState {
         Ok(Self {
             secrets: SecretManager::default(),
             gateway: AiGateway::new()?,
+            profile_mutations: Mutex::new(()),
         })
     }
 }
