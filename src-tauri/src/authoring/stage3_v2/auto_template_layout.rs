@@ -81,15 +81,6 @@ fn normalize_card_template_dto_for_editing(
     Ok(template)
 }
 
-fn normalize_card_template_list_for_editing(
-    templates: Vec<CardTemplateDto>,
-) -> Result<Vec<CardTemplateDto>, CommandError> {
-    templates
-        .into_iter()
-        .map(normalize_card_template_dto_for_editing)
-        .collect()
-}
-
 fn automatic_template_field_lookup_from_inputs(
     fields: &[CardTemplateFieldInput],
 ) -> Result<AutomaticTemplateFieldLookup, CommandError> {
@@ -179,9 +170,7 @@ fn normalize_template_layout_node(
         )
     })?;
 
-    if node_type == "text"
-        && matches!(parent_type, Some("paragraph") | Some("heading"))
-    {
+    if node_type == "text" && matches!(parent_type, Some("paragraph") | Some("heading")) {
         return split_typed_template_text_node(object, lookup, placeholder_count);
     }
 
@@ -584,12 +573,7 @@ fn materialize_template_text_block(
         }
     }
 
-    push_materialized_text_block(
-        &mut rendered,
-        block,
-        &mut inline,
-        !split_by_block_value,
-    );
+    push_materialized_text_block(&mut rendered, block, &mut inline, !split_by_block_value);
     Ok(rendered)
 }
 
