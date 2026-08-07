@@ -87,7 +87,6 @@ pub struct AnalyticsContext {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HistoryPeriod {
     Current,
-    Previous,
     CurrentAndPrevious,
 }
 
@@ -194,18 +193,13 @@ impl AnalyticsContext {
                 let end = push_value(values, self.window.end_local_date.to_string());
                 conditions.push(format!("a.review_local_date <= ?{end}"));
             }
-            HistoryPeriod::Previous => {
-                if let Some(window) = &self.window.previous {
-                    let start = push_value(values, window.start_local_date.to_string());
-                    let end = push_value(values, window.end_local_date.to_string());
-                    conditions.push(format!("a.review_local_date >= ?{start}"));
-                    conditions.push(format!("a.review_local_date <= ?{end}"));
-                } else {
-                    conditions.push("0 = 1".to_string());
-                }
-            }
             HistoryPeriod::CurrentAndPrevious => {
-                if let Some(window) = self.window.previous.as_ref().or(self.window.current.as_ref()) {
+                if let Some(window) = self
+                    .window
+                    .previous
+                    .as_ref()
+                    .or(self.window.current.as_ref())
+                {
                     let start = push_value(values, window.start_local_date.to_string());
                     conditions.push(format!("a.review_local_date >= ?{start}"));
                 }

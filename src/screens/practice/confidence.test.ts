@@ -16,8 +16,10 @@ function review(
   return {
     id: `${deckName}-${rating}-${reviewedAt}`,
     deckName,
+    capturedDeckName: deckName,
     cardId: "a".repeat(32),
-    frontText: "Question",
+    cardLabel: "Basic",
+    questionExcerpt: "Question",
     tags: [],
     outcome:
       rating === 1
@@ -30,7 +32,9 @@ function review(
     rating,
     responseTimeMs: 1_000,
     reviewedAt,
+    reviewLocalDate: "2026-08-06",
     dueAfter: reviewedAt + 60_000,
+    attributionSource: "captured",
   };
 }
 

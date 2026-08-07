@@ -8,6 +8,7 @@ export type TagAnalyticsStatus =
   | "needs_attention"
   | "on_track"
   | "strong";
+export type AttributionSource = "captured" | "legacy_current_state_backfill";
 
 export interface AnalyticsQuery {
   range: AnalyticsRange;
@@ -18,6 +19,8 @@ export interface AnalyticsQuery {
 
 export interface AnalyticsScope {
   range: AnalyticsRange;
+  startLocalDate: string | null;
+  endLocalDate: string;
   startAt: number | null;
   endAt: number;
   bucketGranularity: "day" | "week" | "month";
@@ -26,11 +29,16 @@ export interface AnalyticsScope {
   highlightedSessionId: string | null;
 }
 
-export interface AnalyticsSummary {
-  deckCount: number;
-  cardCount: number;
-  dueNow: number;
-  needsMorePractice: number;
+export interface CurrentInventorySummary {
+  currentDeckCount: number;
+  sourceNoteCount: number;
+  generatedCardCount: number;
+  studyableCardCount: number;
+  studyableDueCount: number;
+  needsMorePracticeCount: number;
+}
+
+export interface HistoricalReviewSummary {
   cardsPracticed: number;
   reviewCount: number;
   correctCount: number;
@@ -58,6 +66,8 @@ export interface RatingDistribution {
 }
 
 export interface TimelineBucket {
+  startLocalDate: string;
+  endLocalDate: string;
   startAt: number;
   endAt: number;
   cardsPracticed: number;
@@ -75,9 +85,12 @@ export interface TimelineBucket {
 export interface DeckAnalytics {
   deckId: string;
   deckName: string;
-  cardCount: number;
-  dueCount: number;
-  needsMorePractice: number;
+  isArchived: boolean;
+  sourceNoteCount: number;
+  generatedCardCount: number;
+  studyableCardCount: number;
+  studyableDueCount: number;
+  needsMorePracticeCount: number;
   cardsPracticed: number;
   reviewCount: number;
   correctCount: number;
@@ -91,9 +104,12 @@ export interface DeckAnalytics {
 export interface TagAnalytics {
   tagId: string;
   tagName: string;
-  cardCount: number;
-  dueCount: number;
-  needsMorePractice: number;
+  isCurrent: boolean;
+  sourceNoteCount: number;
+  generatedCardCount: number;
+  studyableCardCount: number;
+  studyableDueCount: number;
+  needsMorePracticeCount: number;
   cardsPracticed: number;
   reviewCount: number;
   correctCount: number;
@@ -109,14 +125,18 @@ export interface TagAnalytics {
 export interface RecentReview {
   id: string;
   deckName: string;
+  capturedDeckName: string;
   cardId: string;
-  frontText: string;
+  cardLabel: string;
+  questionExcerpt: string;
   tags: string[];
   outcome: ReviewOutcome;
   rating: 1 | 2 | 3 | 4;
   responseTimeMs: number;
   reviewedAt: number;
+  reviewLocalDate: string;
   dueAfter: number;
+  attributionSource: AttributionSource;
 }
 
 export interface SessionAnalytics {
@@ -134,9 +154,35 @@ export interface SessionAnalytics {
   highlighted: boolean;
 }
 
+export interface AttributionCoverage {
+  capturedReviewCount: number;
+  legacyBackfilledReviewCount: number;
+}
+
+export interface AnalyticsDeckOption {
+  id: string;
+  name: string;
+  isArchived: boolean;
+  hasCurrentCards: boolean;
+  hasHistory: boolean;
+}
+
+export interface AnalyticsTagOption {
+  id: string;
+  name: string;
+  isCurrent: boolean;
+  hasHistory: boolean;
+}
+
+export interface AnalyticsDimensionOptions {
+  decks: AnalyticsDeckOption[];
+  tags: AnalyticsTagOption[];
+}
+
 export interface Analytics {
   scope: AnalyticsScope;
-  summary: AnalyticsSummary;
+  currentInventory: CurrentInventorySummary;
+  history: HistoricalReviewSummary;
   dailyLimits: DailyLimitUsage;
   ratingDistribution: RatingDistribution;
   timeline: TimelineBucket[];
@@ -144,6 +190,8 @@ export interface Analytics {
   tagStats: TagAnalytics[];
   recentReviews: RecentReview[];
   recentSessions: SessionAnalytics[];
+  attributionCoverage: AttributionCoverage;
+  dimensionOptions: AnalyticsDimensionOptions;
 }
 
 export async function getAnalytics(input: AnalyticsQuery): Promise<Analytics> {

@@ -166,7 +166,7 @@ mod extended_tests {
             mutation_id: test_id(mutation),
             card_ids: card_ids.to_vec(),
             action: action.to_string(),
-            due_at: None,
+            reschedule_intent: None,
             session_id: None,
         }
     }
@@ -225,6 +225,7 @@ mod extended_tests {
                         unchanged_count: 0,
                         rejected_count: 0,
                         action: "suspend".to_string(),
+                        resolved_due_at: None,
                     }
                 );
                 assert_eq!(operation_counts(connection, 1)?, (1, 3));
@@ -334,7 +335,7 @@ mod extended_tests {
     }
 
     #[test]
-    fn reset_preserves_review_history_and_exact_reschedule_can_be_a_no_op() {
+    fn reset_preserves_review_history_and_reschedule_retry_reuses_the_resolved_instant() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
@@ -348,12 +349,18 @@ mod extended_tests {
                 assert_eq!((fresh_reset.changed_count, fresh_reset.unchanged_count), (0, 1));
                 assert_eq!(load_schedule(connection, card_id)?.revision, 1);
 
-                let current_due = load_schedule(connection, card_id)?.due_at;
-                let mut same_due = action_input(&card_ids, 8, "reschedule");
-                same_due.due_at = Some(current_due);
-                let reschedule = apply_in_connection(connection, same_due)?;
-                assert_eq!((reschedule.changed_count, reschedule.unchanged_count), (0, 1));
-                assert_eq!(load_schedule(connection, card_id)?.revision, 1);
+                let mut due_now = action_input(&card_ids, 8, "reschedule");
+                due_now.reschedule_intent = Some(RescheduleIntent::DueNow);
+                let reschedule = apply_in_connection(connection, due_now)?;
+                assert_eq!((reschedule.changed_count, reschedule.unchanged_count), (1, 0));
+                let resolved = reschedule
+                    .resolved_due_at
+                    .expect("reschedule should return its resolved instant");
+                let mut replay_input = action_input(&card_ids, 8, "reschedule");
+                replay_input.reschedule_intent = Some(RescheduleIntent::DueNow);
+                let replay = apply_in_connection(connection, replay_input)?;
+                assert_eq!(replay.resolved_due_at, Some(resolved));
+                assert_eq!(load_schedule(connection, card_id)?.due_at, resolved);
 
                 connection
                     .execute(
@@ -374,7 +381,7 @@ mod extended_tests {
                 assert_eq!(schedule.state, 0);
                 assert_eq!(schedule.reps, 0);
                 assert_eq!(schedule.lapses, 0);
-                assert_eq!(schedule.revision, 2);
+                assert_eq!(schedule.revision, 3);
                 let review_count: i64 = connection
                     .query_row(
                         "SELECT COUNT(*) FROM review_events WHERE card_id = ?1",
@@ -483,7 +490,7 @@ mod extended_tests {
     }
 
     #[test]
-    fn strict_inputs_reject_unknown_fields_empty_selections_and_invalid_dates() {
+    fn strict_inputs_reject_unknown_fields_empty_selections_and_invalid_intents() {
         let unknown = serde_json::from_value::<ScheduleActionInput>(json!({
             "mutationId": test_id(17),
             "cardIds": [test_id(18)],
@@ -502,21 +509,21 @@ mod extended_tests {
 
         let card_ids = vec![test_id(20)];
         let mut invalid = action_input(&card_ids, 21, "reschedule");
-        invalid.due_at = Some(-1);
+        invalid.reschedule_intent = Some(RescheduleIntent::CalendarDays { days: 4 });
         assert_eq!(
             validate_input(invalid)
-                .expect_err("negative dates must fail")
+                .expect_err("unsupported day counts must fail")
                 .code,
-            "invalid_reschedule_date"
+            "invalid_reschedule_days"
         );
 
         let mut unexpected = action_input(&card_ids, 22, "suspend");
-        unexpected.due_at = Some(1);
+        unexpected.reschedule_intent = Some(RescheduleIntent::Tomorrow);
         assert_eq!(
             validate_input(unexpected)
-                .expect_err("non-reschedule actions cannot carry dates")
+                .expect_err("non-reschedule actions cannot carry date intents")
                 .code,
-            "unexpected_reschedule_date"
+            "unexpected_reschedule_intent"
         );
     }
 }

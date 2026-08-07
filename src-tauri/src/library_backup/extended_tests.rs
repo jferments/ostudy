@@ -35,6 +35,7 @@ fn populate_complete_library(
         )?;
         let note_id = generate_id(connection)?;
         let card_id = generate_id(connection)?;
+        let tag_id = generate_id(connection)?;
         let asset_id = generate_id(connection)?;
         let asset_relative = AppPaths::image_relative_path(&asset_id, "png");
         let asset_path = paths.resolve_relative(&asset_relative);
@@ -114,6 +115,19 @@ fn populate_complete_library(
                 params![note_id, asset_id],
             )
             .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO tags (id, name, normalized_name, created_at, updated_at)
+                 VALUES (?1, 'Important', 'important', 10, 10)",
+                [tag_id.as_str()],
+            )
+            .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
+                params![note_id, tag_id],
+            )
+            .map_err(CommandError::database)?;
 
         let template_id = generate_id(connection)?;
         let field_id = generate_id(connection)?;
@@ -169,11 +183,13 @@ fn populate_complete_library(
                 "INSERT INTO practice_sessions (
                      id, selected_deck_ids_json, shuffle, card_count,
                      viewed_count, revealed_count, started_at, completed_at,
-                     rated_count, correct_count, mode
-                 ) VALUES (?1, ?2, 0, 1, 1, 1, 20, 30, 1, 1, 'scheduled')",
+                     rated_count, correct_count, mode, selected_tag_ids_json
+                 ) VALUES (?1, ?2, 0, 1, 1, 1, 20, 30, 1, 1, 'scheduled', ?3)",
                 params![
                     session_id,
                     serde_json::to_string(&vec![deck.id.clone()])
+                        .map_err(CommandError::serialization)?,
+                    serde_json::to_string(&vec![tag_id.clone()])
                         .map_err(CommandError::serialization)?,
                 ],
             )
@@ -183,10 +199,47 @@ fn populate_complete_library(
                 "INSERT INTO practice_session_cards (
                      session_id, card_id, position, viewed_at, revealed_at,
                      rated_at, rating, response_time_ms, presentation_variant
-                 ) VALUES (?1, ?2, 0, 21, 22, 23, 3, 1200, '')",
+                 ) VALUES (?1, ?2, 0, 21, 22, 23, 3, 1200, 'forward')",
                 params![session_id, card_id],
             )
             .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO practice_session_card_snapshots (
+                     session_id, card_id, note_id, note_revision,
+                     owner_deck_id_at_capture, captured_deck_name,
+                     direction, card_type, card_label, presentation_variant,
+                     front_doc_json, back_doc_json, front_text, back_text,
+                     question_excerpt, question_text_hash,
+                     question_was_truncated, captured_at
+                 ) VALUES (
+                     ?1, ?2, ?3, 1,
+                     ?4, 'Backed up deck',
+                     'forward', 'basic', 'Basic', 'forward',
+                     ?5, ?6, 'Question', 'Answer',
+                     'Question', ?7, 0, 20
+                 )",
+                params![
+                    session_id,
+                    card_id,
+                    note_id,
+                    deck.id,
+                    content.front_doc_json,
+                    content.back_doc_json,
+                    "a".repeat(64),
+                ],
+            )
+            .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO practice_session_card_tag_snapshots (
+                     session_id, card_id, tag_id, tag_name
+                 ) VALUES (?1, ?2, ?3, 'Important')",
+                params![session_id, card_id, tag_id],
+            )
+            .map_err(CommandError::database)?;
+
+        let review_id = generate_id(connection)?;
         connection
             .execute(
                 "INSERT INTO review_events (
@@ -208,12 +261,41 @@ fn populate_complete_library(
                      ?5, 1, 1, 1
                  )",
                 params![
-                    generate_id(connection)?,
+                    review_id,
                     generate_id(connection)?,
                     session_id,
                     card_id,
                     "f".repeat(64),
                 ],
+            )
+            .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO review_event_attributions (
+                     review_event_id, reviewed_at, review_local_date,
+                     time_zone_id, utc_offset_minutes,
+                     card_id, note_id, note_revision,
+                     owner_deck_id_at_review, captured_deck_name,
+                     direction, card_type, card_label, presentation_variant,
+                     question_excerpt, question_text_hash,
+                     question_was_truncated, attribution_source
+                 ) VALUES (
+                     ?1, 23, '2026-08-06',
+                     'America/Los_Angeles', -420,
+                     ?2, ?3, 1,
+                     ?4, 'Backed up deck',
+                     'forward', 'basic', 'Basic', 'forward',
+                     'Question', ?5, 0, 'captured'
+                 )",
+                params![review_id, card_id, note_id, deck.id, "b".repeat(64)],
+            )
+            .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO review_event_tag_attributions (
+                     review_event_id, tag_id, tag_name
+                 ) VALUES (?1, ?2, 'Important')",
+                params![review_id, tag_id],
             )
             .map_err(CommandError::database)?;
         connection
@@ -265,7 +347,7 @@ fn complete_backup_restore_replaces_the_library_with_every_history_source() {
     let restored = Database::open(target_paths.database_path()).expect("restored database");
     restored
         .with_connection(|connection| {
-            let counts: (i64, i64, i64, i64, i64) = connection
+            let counts: (i64, i64, i64, i64, i64, i64, i64, i64, i64) = connection
                 .query_row(
                     "SELECT
                          (SELECT COUNT(*) FROM decks WHERE deleted_at IS NULL),
@@ -273,7 +355,11 @@ fn complete_backup_restore_replaces_the_library_with_every_history_source() {
                          (SELECT COUNT(*) FROM review_events),
                          (SELECT COUNT(*) FROM practice_sessions),
                          (SELECT COUNT(*) FROM assets
-                          WHERE lifecycle_state = 'ready' AND deleted_at IS NULL)",
+                          WHERE lifecycle_state = 'ready' AND deleted_at IS NULL),
+                         (SELECT COUNT(*) FROM practice_session_card_snapshots),
+                         (SELECT COUNT(*) FROM practice_session_card_tag_snapshots),
+                         (SELECT COUNT(*) FROM review_event_attributions),
+                         (SELECT COUNT(*) FROM review_event_tag_attributions)",
                     [],
                     |row| {
                         Ok((
@@ -282,11 +368,15 @@ fn complete_backup_restore_replaces_the_library_with_every_history_source() {
                             row.get(2)?,
                             row.get(3)?,
                             row.get(4)?,
+                            row.get(5)?,
+                            row.get(6)?,
+                            row.get(7)?,
+                            row.get(8)?,
                         ))
                     },
                 )
                 .map_err(CommandError::database)?;
-            assert_eq!(counts, (1, 1, 1, 1, 1));
+            assert_eq!(counts, (1, 1, 1, 1, 1, 1, 1, 1, 1));
             let deck_name: String = connection
                 .query_row(
                     "SELECT name FROM decks WHERE id = ?1",
@@ -303,6 +393,26 @@ fn complete_backup_restore_replaces_the_library_with_every_history_source() {
                 )
                 .map_err(CommandError::database)?;
             assert_eq!(schedule, (2, 7, 4));
+            let attribution: (String, String, String, String) = connection
+                .query_row(
+                    "SELECT a.review_local_date, a.time_zone_id,
+                            a.question_excerpt, t.tag_name
+                     FROM review_event_attributions a
+                     JOIN review_event_tag_attributions t
+                       ON t.review_event_id = a.review_event_id",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(
+                attribution,
+                (
+                    "2026-08-06".to_string(),
+                    "America/Los_Angeles".to_string(),
+                    "Question".to_string(),
+                    "Important".to_string(),
+                )
+            );
             let daily_new: String = connection
                 .query_row(
                     "SELECT value_json FROM app_settings WHERE key = 'dailyNewLimit'",

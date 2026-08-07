@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as ipc from "../ipc";
+import { deferred } from "../test/factories";
 import { TemplatesScreen } from "./TemplatesScreen";
 
 vi.mock("../ipc", () => ({
@@ -9,9 +10,10 @@ vi.mock("../ipc", () => ({
   cancelAssetDraft: vi.fn(),
   createCardTemplate: vi.fn(),
   deleteCardTemplate: vi.fn(),
+  getCardTemplate: vi.fn(),
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
-  listCardTemplates: vi.fn(),
+  listCardTemplateSummaries: vi.fn(),
   syncAssetDraft: vi.fn(),
   updateCardTemplate: vi.fn(),
 }));
@@ -54,7 +56,7 @@ function savedTemplate(): ipc.CardTemplate {
 describe("TemplatesScreen managed assets", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(ipc.listCardTemplates).mockResolvedValue([]);
+    vi.mocked(ipc.listCardTemplateSummaries).mockResolvedValue([]);
     vi.mocked(ipc.beginAssetDraft).mockResolvedValue({
       id: draftId,
       purpose: "template",
@@ -66,9 +68,7 @@ describe("TemplatesScreen managed assets", () => {
   });
 
   it("opens one template draft and commits its identity with the template", async () => {
-    render(
-      <TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />,
-    );
+    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />);
 
     await screen.findByRole("heading", { name: "Create a reusable card template" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
@@ -80,7 +80,7 @@ describe("TemplatesScreen managed assets", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
       target: { value: "Medication" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save template" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save template" }));
 
     await waitFor(() => {
       expect(ipc.createCardTemplate).toHaveBeenCalledWith(
@@ -93,9 +93,7 @@ describe("TemplatesScreen managed assets", () => {
   });
 
   it("cancels the uncommitted draft when the editor is canceled", async () => {
-    render(
-      <TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />,
-    );
+    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />);
 
     await screen.findByRole("heading", { name: "Create a reusable card template" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
@@ -103,5 +101,34 @@ describe("TemplatesScreen managed assets", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(ipc.cancelAssetDraft).toHaveBeenCalledWith(draftId));
+  });
+
+  it("blocks save and cancels a managed draft that resolves after cancellation", async () => {
+    const opening = deferred<Awaited<ReturnType<typeof ipc.beginAssetDraft>>>();
+    vi.mocked(ipc.beginAssetDraft).mockReturnValueOnce(opening.promise);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<TemplatesScreen onDirtyChange={vi.fn()} showToast={vi.fn()} />);
+
+    await screen.findByRole("heading", { name: "Create a reusable card template" });
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Medication" },
+    });
+
+    const preparing = screen.getByRole("button", { name: "Preparing…" }) as HTMLButtonElement;
+    expect(preparing.disabled).toBe(true);
+    fireEvent.click(preparing);
+    expect(ipc.createCardTemplate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    opening.resolve({
+      id: draftId,
+      purpose: "template",
+      expiresAt: Date.now() + 10_000,
+    });
+
+    await waitFor(() => expect(ipc.cancelAssetDraft).toHaveBeenCalledWith(draftId));
+    expect(ipc.createCardTemplate).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Create a reusable card template" })).toBeTruthy();
   });
 });

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as generatedImport from "../generatedImport";
 import * as ipc from "../ipc";
-import { makeDeck, makeFlashcard, makeSettings, resetTestEntityIds } from "../test/factories";
+import { makeDeck, makeSettings, resetTestEntityIds } from "../test/factories";
 import { DecksScreen } from "./DecksScreen";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -35,8 +35,10 @@ vi.mock("../ipc", () => ({
     }
     return "Unexpected error";
   },
+  getOrganizedCard: vi.fn(),
   importDeck: vi.fn(),
-  listCards: vi.fn(),
+  listDeckCardSummaries: vi.fn(),
+  setDeckArchived: vi.fn(),
   undoDeletion: vi.fn(),
   updateDeck: vi.fn(),
 }));
@@ -44,8 +46,32 @@ vi.mock("./CardEditorScreen", () => ({
   CardEditorScreen: () => <div>Card editor</div>,
 }));
 
+function summaryFor(deck: ipc.DeckSummary): ipc.DeckCardSummary {
+  return {
+    noteId: "c".repeat(32),
+    primaryCardId: "b".repeat(32),
+    questionExcerpt: `${deck.name} question`,
+    answerExcerpt: "Answer",
+    generatedCardCount: 1,
+    imageCount: 0,
+    updatedAt: 1,
+  };
+}
+
+function pageFor(deck: ipc.DeckSummary): ipc.DeckCardSummaryPage {
+  if (deck.sourceNoteCount === 0) {
+    return { cards: [], totalCount: 0, offset: 0, hasMore: false };
+  }
+  return {
+    cards: [summaryFor(deck)],
+    totalCount: deck.sourceNoteCount,
+    offset: 0,
+    hasMore: deck.sourceNoteCount > 1,
+  };
+}
+
 function renderDeckLibrary(
-  deck = makeDeck({ name: "Cardiology", cardCount: 1 }),
+  deck = makeDeck({ name: "Cardiology", sourceNoteCount: 1, generatedCardCount: 1 }),
   overrides: Partial<React.ComponentProps<typeof DecksScreen>> = {},
 ) {
   const refreshDecks = vi.fn().mockResolvedValue([deck]);
@@ -78,12 +104,23 @@ describe("DecksScreen extended behavior", () => {
     resetTestEntityIds();
     vi.mocked(openDialog).mockResolvedValue(null);
     vi.mocked(saveDialog).mockResolvedValue(null);
-    vi.mocked(ipc.listCards).mockResolvedValue([]);
+    vi.mocked(ipc.listDeckCardSummaries).mockResolvedValue({
+      cards: [],
+      totalCount: 0,
+      offset: 0,
+      hasMore: false,
+    });
   });
 
   it("creates a named deck and opens its detail view", async () => {
     const existing = makeDeck({ name: "Existing" });
-    const created = makeDeck({ name: "Neurology", description: "CNS review", cardCount: 0 });
+    const created = makeDeck({
+      name: "Neurology",
+      description: "CNS review",
+      sourceNoteCount: 0,
+      generatedCardCount: 0,
+      studyableDueCount: 0,
+    });
     vi.mocked(ipc.createDeck).mockResolvedValue(created);
     const { refreshDecks, showToast } = renderDeckLibrary(existing);
 
@@ -110,9 +147,7 @@ describe("DecksScreen extended behavior", () => {
 
   it("does not invoke an importer when the native picker is canceled", async () => {
     renderDeckLibrary();
-
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
-
     await waitFor(() => expect(openDialog).toHaveBeenCalledOnce());
     expect(ipc.importDeck).not.toHaveBeenCalled();
     expect(generatedImport.importGeneratedFlashcards).not.toHaveBeenCalled();
@@ -121,9 +156,7 @@ describe("DecksScreen extended behavior", () => {
   it("rejects an unsupported selected extension without mutating the library", async () => {
     vi.mocked(openDialog).mockResolvedValue("/tmp/cards.txt");
     const { showToast } = renderDeckLibrary();
-
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
-
     await waitFor(() => {
       expect(showToast).toHaveBeenCalledWith(
         "error",
@@ -136,7 +169,11 @@ describe("DecksScreen extended behavior", () => {
   });
 
   it("reports skipped generated-JSON duplicates from the authoritative result", async () => {
-    const imported = makeDeck({ name: "Imported pharmacology", cardCount: 3 });
+    const imported = makeDeck({
+      name: "Imported pharmacology",
+      sourceNoteCount: 2,
+      generatedCardCount: 3,
+    });
     vi.mocked(openDialog).mockResolvedValue("/tmp/cards.ostudy.json");
     vi.mocked(generatedImport.importGeneratedFlashcards).mockResolvedValue({
       deckId: imported.id,
@@ -145,9 +182,7 @@ describe("DecksScreen extended behavior", () => {
       skippedDuplicateCount: 4,
     });
     vi.mocked(ipc.getDeck).mockResolvedValue(imported);
-    vi.mocked(ipc.listCards).mockResolvedValue([
-      makeFlashcard({ deckId: imported.id }),
-    ]);
+    vi.mocked(ipc.listDeckCardSummaries).mockResolvedValue(pageFor(imported));
     const { showToast } = renderDeckLibrary();
 
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
@@ -161,15 +196,21 @@ describe("DecksScreen extended behavior", () => {
     expect(screen.getByRole("heading", { name: imported.name })).toBeTruthy();
   });
 
-  it("does not reclassify a committed studydeck import when detail refresh fails", async () => {
-    const imported = makeDeck({ name: "Imported deck", cardCount: 2 });
+  it("keeps a committed studydeck import open when its card page cannot load", async () => {
+    const imported = makeDeck({
+      name: "Imported deck",
+      sourceNoteCount: 2,
+      generatedCardCount: 2,
+    });
     vi.mocked(openDialog).mockResolvedValue("/tmp/imported.studydeck");
     vi.mocked(ipc.importDeck).mockResolvedValue({
       deck: imported,
       cardCount: 2,
       assetCount: 0,
     });
-    vi.mocked(ipc.listCards).mockRejectedValue(new Error("Card list unavailable."));
+    vi.mocked(ipc.listDeckCardSummaries).mockRejectedValue(
+      new Error("Card page unavailable."),
+    );
     const refreshDecks = vi.fn().mockResolvedValue([imported]);
     const { showToast } = renderDeckLibrary(undefined, { refreshDecks });
 
@@ -180,20 +221,15 @@ describe("DecksScreen extended behavior", () => {
         "/tmp/imported.studydeck",
         importOperationId,
       );
-      expect(showToast).toHaveBeenNthCalledWith(
-        1,
+      expect(showToast).toHaveBeenCalledWith(
         "success",
         "Imported “Imported deck” with 2 cards.",
       );
-      expect(showToast).toHaveBeenNthCalledWith(
-        2,
-        "info",
-        "The deck was imported, but it could not be displayed yet: Card list unavailable.",
-      );
       expect(refreshDecks).toHaveBeenCalledOnce();
     });
-    expect(showToast).not.toHaveBeenCalledWith("error", expect.anything());
     expect(screen.getByRole("heading", { name: imported.name })).toBeTruthy();
+    expect(await screen.findByText("Card page unavailable.")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "No matching flashcards" })).toBeNull();
   });
 
   it("keeps the library usable when a studydeck import fails", async () => {
@@ -217,7 +253,7 @@ describe("DecksScreen extended behavior", () => {
   });
 
   it("reuses one import operation identity after an ambiguous transport result", async () => {
-    const imported = makeDeck({ name: "Recovered import", cardCount: 1 });
+    const imported = makeDeck({ name: "Recovered import" });
     vi.mocked(openDialog).mockResolvedValue("/tmp/retry.studydeck");
     vi.mocked(ipc.importDeck)
       .mockRejectedValueOnce(new Error("Native response was interrupted."))
@@ -246,9 +282,7 @@ describe("DecksScreen extended behavior", () => {
 
   it("does not export when the native save picker is canceled", async () => {
     renderDeckLibrary();
-
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
-
     await waitFor(() => expect(saveDialog).toHaveBeenCalledOnce());
     expect(ipc.exportDeck).not.toHaveBeenCalled();
   });
@@ -261,14 +295,9 @@ describe("DecksScreen extended behavior", () => {
       assetCount: 1,
     });
     const { deck, showToast } = renderDeckLibrary();
-
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
-
     await waitFor(() => {
-      expect(ipc.exportDeck).toHaveBeenCalledWith(
-        deck.id,
-        "/tmp/cardiology.studydeck",
-      );
+      expect(ipc.exportDeck).toHaveBeenCalledWith(deck.id, "/tmp/cardiology.studydeck");
       expect(showToast).toHaveBeenCalledWith("success", "Exported 3 cards.");
     });
   });
@@ -276,10 +305,9 @@ describe("DecksScreen extended behavior", () => {
   it("honors delete confirmation before issuing a destructive command", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const { deck } = renderDeckLibrary();
-
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(confirm).toHaveBeenCalledWith(
-      `Delete “${deck.name}” and its 1 card?`,
+      `Delete “${deck.name}” and its 1 source note? Its review history will also be permanently removed after the Undo period.`,
     );
     expect(ipc.deleteDeck).not.toHaveBeenCalled();
 

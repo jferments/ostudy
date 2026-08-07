@@ -2,7 +2,7 @@ import type { Analytics } from "../analytics-ipc";
 import type {
   AppSettings,
   Asset,
-  Deck,
+  DeckSummary,
   Flashcard,
   OrganizedCard,
   PracticeSession,
@@ -36,9 +36,7 @@ export function paragraphDocument(text = "Content"): RichDocument {
   };
 }
 
-export function makeSettings(
-  overrides: Partial<AppSettings> = {},
-): AppSettings {
+export function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
     theme: "dark",
     uiFont: "system",
@@ -55,13 +53,15 @@ export function makeSettings(
   };
 }
 
-export function makeDeck(overrides: Partial<Deck> = {}): Deck {
+export function makeDeck(overrides: Partial<DeckSummary> = {}): DeckSummary {
   return {
     id: testEntityId(),
     name: "Test deck",
     description: "",
-    cardCount: 1,
-    dueCount: 1,
+    sourceNoteCount: 1,
+    generatedCardCount: 1,
+    studyableDueCount: 1,
+    archivedAt: null,
     createdAt: 1,
     updatedAt: 1,
     revision: 1,
@@ -81,9 +81,7 @@ export function makeAsset(overrides: Partial<Asset> = {}): Asset {
   };
 }
 
-export function makeFlashcard(
-  overrides: Partial<Flashcard> = {},
-): Flashcard {
+export function makeFlashcard(overrides: Partial<Flashcard> = {}): Flashcard {
   const deckId = overrides.deckId ?? testEntityId();
   return {
     id: testEntityId(),
@@ -120,15 +118,20 @@ export function makePracticeSession(
   const card = makeFlashcard({ deckId: deck.id });
   return {
     id: testEntityId(),
-    cards: [
-      {
-        card,
-        deckName: deck.name,
-        dueAt: Date.now(),
-        scheduleState: 0,
-        needsMorePractice: false,
-      },
-    ],
+    cardCount: 1,
+    firstWindow: {
+      startPosition: 0,
+      cards: [
+        {
+          card,
+          deckName: deck.name,
+          dueAt: Date.now(),
+          scheduleState: 0,
+          needsMorePractice: false,
+        },
+      ],
+      hasMore: false,
+    },
     shuffle: false,
     mode: "scheduled",
     startedAt: Date.now(),
@@ -139,7 +142,9 @@ export function makePracticeSession(
 export function makeAnalytics(overrides: Partial<Analytics> = {}): Analytics {
   const base: Analytics = {
     scope: {
-      range: "30d",
+      range: "7d",
+      startLocalDate: "2026-08-01",
+      endLocalDate: "2026-08-06",
       startAt: 1,
       endAt: 2,
       bucketGranularity: "day",
@@ -147,11 +152,15 @@ export function makeAnalytics(overrides: Partial<Analytics> = {}): Analytics {
       tagIds: [],
       highlightedSessionId: null,
     },
-    summary: {
-      deckCount: 0,
-      cardCount: 0,
-      dueNow: 0,
-      needsMorePractice: 0,
+    currentInventory: {
+      currentDeckCount: 0,
+      sourceNoteCount: 0,
+      generatedCardCount: 0,
+      studyableCardCount: 0,
+      studyableDueCount: 0,
+      needsMorePracticeCount: 0,
+    },
+    history: {
       cardsPracticed: 0,
       reviewCount: 0,
       correctCount: 0,
@@ -175,6 +184,14 @@ export function makeAnalytics(overrides: Partial<Analytics> = {}): Analytics {
     tagStats: [],
     recentReviews: [],
     recentSessions: [],
+    attributionCoverage: {
+      capturedReviewCount: 0,
+      legacyBackfilledReviewCount: 0,
+    },
+    dimensionOptions: {
+      decks: [],
+      tags: [],
+    },
   };
   return { ...base, ...overrides };
 }

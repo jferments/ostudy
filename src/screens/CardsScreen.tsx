@@ -10,14 +10,14 @@ import {
   listMatchingCards,
   listTags,
   searchCards,
+  type AvailabilityFilter,
   type CardBrowserRow,
   type CardSearchInput,
   type CardSearchPage,
   type CardSort,
   type CardStatusFilter,
   type CardTemplate,
-  type Deck,
-  type DueFilter,
+  type DeckSummary,
   type GenerateTemplateCardsResult,
   type OrganizedCard,
   type ReviewedFilter,
@@ -35,8 +35,8 @@ import { ScheduleActionModal } from "./cards/ScheduleActionModal";
 import { scheduleActionNotice } from "./cards/scheduleActionResult";
 
 interface CardsScreenProps {
-  decks: Deck[];
-  refreshDecks: () => Promise<Deck[]>;
+  decks: DeckSummary[];
+  refreshDecks: () => Promise<DeckSummary[]>;
   onPracticeCards: (cardIds: string[]) => void;
   onDirtyChange: (dirty: boolean) => void;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
@@ -68,9 +68,14 @@ export function CardsScreen({
   onDirtyChange,
   showToast,
 }: CardsScreenProps) {
+  const activeDecks = useMemo(
+    () => decks.filter((deck) => deck.archivedAt === null),
+    [decks],
+  );
   const [deckIds, setDeckIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
-  const [dueFilter, setDueFilter] = useState<DueFilter>("all");
+  const [availabilityFilter, setAvailabilityFilter] =
+    useState<AvailabilityFilter>("all");
   const [statusFilter, setStatusFilter] = useState<CardStatusFilter>("active");
   const [reviewedFilter, setReviewedFilter] = useState<ReviewedFilter>("all");
   const [sort, setSort] = useState<CardSort>("updated_desc");
@@ -83,19 +88,16 @@ export function CardsScreen({
   const [isResolvingPractice, setIsResolvingPractice] = useState(false);
   const [isApplyingSchedule, setIsApplyingSchedule] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [selectedCards, setSelectedCards] = useState<Map<string, SelectionCard>>(
-    new Map(),
-  );
+  const [selectedCards, setSelectedCards] = useState<Map<string, SelectionCard>>(new Map());
   const [editingCard, setEditingCard] = useState<OrganizedCard | null>(null);
   const [creatingDeckId, setCreatingDeckId] = useState<string | null>(null);
   const [isOpeningCard, setIsOpeningCard] = useState(false);
+  const openCardRequestSequence = useRef(0);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
   const [moveCopyCards, setMoveCopyCards] = useState<SelectionCard[]>([]);
   const [practiceCards, setPracticeCards] = useState<SelectionCard[] | null>(null);
-  const [practiceSourceLabel, setPracticeSourceLabel] = useState(
-    "the current results",
-  );
+  const [practiceSourceLabel, setPracticeSourceLabel] = useState("the current results");
   const requestSequence = useRef(0);
   const pendingScheduleMutationRef = useRef<PendingScheduleMutation | null>(null);
 
@@ -106,20 +108,28 @@ export function CardsScreen({
       deckIds: [...deckIds],
       query,
       tagIds: [...tagIds],
-      dueFilter,
+      availabilityFilter,
       statusFilter,
       reviewedFilter,
       sort: normalizedSort,
       limit: PAGE_SIZE,
       offset: 0,
     }),
-    [deckIds, dueFilter, normalizedSort, query, reviewedFilter, statusFilter, tagIds],
+    [
+      availabilityFilter,
+      deckIds,
+      normalizedSort,
+      query,
+      reviewedFilter,
+      statusFilter,
+      tagIds,
+    ],
   );
   const selected = useMemo(() => [...selectedCards.values()], [selectedCards]);
   const selectedNotes = useMemo(() => uniqueNotes(selected), [selected]);
   const selectedDeck =
     deckIds.size === 1
-      ? (decks.find((deck) => deck.id === [...deckIds][0]) ?? null)
+      ? (activeDecks.find((deck) => deck.id === [...deckIds][0]) ?? null)
       : null;
 
   const loadTags = useCallback(async (): Promise<void> => {
@@ -153,9 +163,7 @@ export function CardsScreen({
           cards: append ? [...current.cards, ...result.cards] : result.cards,
         }));
       } catch (error: unknown) {
-        if (requestSequence.current === requestId) {
-          setErrorMessage(getErrorMessage(error));
-        }
+        if (requestSequence.current === requestId) setErrorMessage(getErrorMessage(error));
       } finally {
         if (requestSequence.current === requestId) {
           setIsLoading(false);
@@ -167,12 +175,25 @@ export function CardsScreen({
   );
 
   useEffect(() => {
+    setDeckIds((current) => {
+      const activeIds = new Set(activeDecks.map((deck) => deck.id));
+      return new Set([...current].filter((id) => activeIds.has(id)));
+    });
+  }, [activeDecks]);
+
+  useEffect(() => {
     void loadTags();
   }, [loadTags]);
 
   useEffect(() => {
     if (query.trim() === "" && sort === "relevance") setSort("updated_desc");
   }, [query, sort]);
+
+  useEffect(() => {
+    if (statusFilter === "suspended" || statusFilter === "buried") {
+      setAvailabilityFilter("all");
+    }
+  }, [statusFilter]);
 
   useEffect(() => {
     setSelectedCards(new Map());
@@ -206,15 +227,17 @@ export function CardsScreen({
   }
 
   async function openCard(noteId: string): Promise<void> {
-    if (isOpeningCard) return;
+    const requestId = openCardRequestSequence.current + 1;
+    openCardRequestSequence.current = requestId;
     setIsOpeningCard(true);
     setErrorMessage(null);
     try {
-      setEditingCard(await getOrganizedCard(noteId));
+      const card = await getOrganizedCard(noteId);
+      if (openCardRequestSequence.current === requestId) setEditingCard(card);
     } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
+      if (openCardRequestSequence.current === requestId) setErrorMessage(getErrorMessage(error));
     } finally {
-      setIsOpeningCard(false);
+      if (openCardRequestSequence.current === requestId) setIsOpeningCard(false);
     }
   }
 
@@ -320,7 +343,7 @@ export function CardsScreen({
       return (
         <MoveCopyModal
           cards={moveCopyCards}
-          decks={decks}
+          decks={activeDecks}
           onClose={() => {
             setSelectionAction(null);
             setMoveCopyCards([]);
@@ -368,12 +391,12 @@ export function CardsScreen({
 
   if (editingCard || creatingDeckId) {
     const editorDeckId = editingCard?.deckId ?? creatingDeckId;
-    const deck = decks.find((candidate) => candidate.id === editorDeckId);
+    const deck = activeDecks.find((candidate) => candidate.id === editorDeckId);
     if (!deck) {
       return (
         <div className="screen cards-screen">
           <div className="inline-alert error-alert">
-            The card’s deck could not be found. Return to Search/Filter and refresh.
+            The card’s active deck could not be found. Return to Search/Filter and refresh.
           </div>
           <button
             type="button"
@@ -392,7 +415,7 @@ export function CardsScreen({
       <>
         <CardEditorScreen
           deck={deck}
-          decks={decks}
+          decks={activeDecks}
           card={editingCard}
           onDirtyChange={onDirtyChange}
           onCancel={() => {
@@ -420,9 +443,7 @@ export function CardsScreen({
               setCreatingDeckId(null);
             }
             showToast("success", wasEditing ? "Flashcard updated." : "Flashcard saved.");
-            if (saved.deckId !== deck.id) {
-              showToast("info", "The card is now in a different deck.");
-            }
+            if (saved.deckId !== deck.id) showToast("info", "The card is now in a different deck.");
             await reconcileAfterCommit("The flashcard");
           }}
           onTemplateGenerated={async (
@@ -461,7 +482,7 @@ export function CardsScreen({
         <div>
           <h1>Search/Filter</h1>
           <p>
-            Find independently scheduled cards and manage exact card schedules without
+            Find independently scheduled generated cards and manage exact card schedules without
             changing sibling presentations.
           </p>
         </div>
@@ -469,7 +490,7 @@ export function CardsScreen({
           <button
             type="button"
             className="secondary-button"
-            disabled={decks.length === 0}
+            disabled={activeDecks.length === 0}
             onClick={() => setBulkOpen(true)}
           >
             Bulk add
@@ -479,9 +500,7 @@ export function CardsScreen({
             className="primary-button"
             disabled={!selectedDeck}
             title={
-              selectedDeck
-                ? undefined
-                : "Select exactly one deck before adding an individual card"
+              selectedDeck ? undefined : "Select exactly one active deck before adding a card"
             }
             onClick={() => {
               if (!selectedDeck) return;
@@ -496,7 +515,7 @@ export function CardsScreen({
 
       <section className="card-library-toolbar" aria-label="Card filters">
         <details className="filter-menu deck-filter-menu">
-          <summary>{deckFilterSummary(deckIds, decks)}</summary>
+          <summary>{deckFilterSummary(deckIds, activeDecks)}</summary>
           <div className="filter-checklist">
             <label>
               <input
@@ -504,10 +523,10 @@ export function CardsScreen({
                 checked={deckIds.size === 0}
                 onChange={() => setDeckIds(new Set())}
               />
-              <span>All decks</span>
-              <small>{decks.reduce((sum, deck) => sum + deck.cardCount, 0)}</small>
+              <span>All active decks</span>
+              <small>{activeDecks.reduce((sum, deck) => sum + deck.generatedCardCount, 0)}</small>
             </label>
-            {decks.map((deck) => (
+            {activeDecks.map((deck) => (
               <label key={deck.id}>
                 <input
                   type="checkbox"
@@ -520,7 +539,7 @@ export function CardsScreen({
                   }}
                 />
                 <span>{deck.name}</span>
-                <small>{deck.cardCount}</small>
+                <small>{deck.generatedCardCount}</small>
               </label>
             ))}
           </div>
@@ -534,23 +553,22 @@ export function CardsScreen({
             onChange={(event) => {
               const value = event.currentTarget.value;
               setQuery(value);
-              if (value.trim() !== "" && sort === "updated_desc") {
-                setSort("relevance");
-              }
+              if (value.trim() !== "" && sort === "updated_desc") setSort("relevance");
             }}
           />
         </label>
         <label>
-          <span>Due</span>
+          <span>Availability</span>
           <select
-            value={dueFilter}
+            value={availabilityFilter}
+            disabled={statusFilter === "suspended" || statusFilter === "buried"}
             onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              setDueFilter(event.currentTarget.value as DueFilter)
+              setAvailabilityFilter(event.currentTarget.value as AvailabilityFilter)
             }
           >
-            <option value="all">Any due date</option>
-            <option value="due">Due now</option>
-            <option value="not_due">Not due</option>
+            <option value="all">Any schedule</option>
+            <option value="ready_now">Ready now</option>
+            <option value="scheduled_later">Scheduled later</option>
           </select>
         </label>
         <label>
@@ -561,8 +579,8 @@ export function CardsScreen({
               setStatusFilter(event.currentTarget.value as CardStatusFilter)
             }
           >
-            <option value="active">Active</option>
-            <option value="all">Any status</option>
+            <option value="active">Studyable</option>
+            <option value="all">Any current status</option>
             <option value="suspended">Suspended</option>
             <option value="buried">Buried</option>
             <option value="needs_more_practice">Needs more practice</option>
@@ -576,12 +594,12 @@ export function CardsScreen({
               setReviewedFilter(event.currentTarget.value as ReviewedFilter)
             }
           >
-            <option value="all">Any time</option>
+            <option value="all">Any local date</option>
             <option value="never">Never studied</option>
-            <option value="last_1_day">Within 24 hours</option>
-            <option value="last_7_days">Within 7 days</option>
-            <option value="last_30_days">Within 30 days</option>
-            <option value="older_30_days">More than 30 days ago</option>
+            <option value="today">Today</option>
+            <option value="past_7_local_dates">Past 7 local dates</option>
+            <option value="past_30_local_dates">Past 30 local dates</option>
+            <option value="before_past_30_local_dates">Before the past 30 local dates</option>
           </select>
         </label>
         <label>
@@ -598,14 +616,14 @@ export function CardsScreen({
             <option value="updated_desc">Recently updated</option>
             <option value="last_reviewed_desc">Recently studied</option>
             <option value="question_asc">Question A–Z</option>
-            <option value="due_asc">Next due</option>
+            <option value="due_asc">Next scheduled</option>
           </select>
         </label>
         <details className="filter-menu tag-filter-menu">
           <summary>Tags{tagIds.size > 0 ? ` (${tagIds.size})` : ""}</summary>
           <div className="filter-checklist">
             {tags.length === 0 ? (
-              <p>No tags in the selected decks.</p>
+              <p>No tags in the selected active decks.</p>
             ) : (
               tags.map((tag) => (
                 <label key={tag.id}>
@@ -620,16 +638,14 @@ export function CardsScreen({
                     }}
                   />
                   <span>{tag.name}</span>
-                  <small>{tag.cardCount}</small>
+                  <small>
+                    {tag.generatedCardCount} cards · {tag.studyableDueCount} ready
+                  </small>
                 </label>
               ))
             )}
             {tagIds.size > 0 ? (
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => setTagIds(new Set())}
-              >
+              <button type="button" className="text-button" onClick={() => setTagIds(new Set())}>
                 Clear tag filters
               </button>
             ) : null}
@@ -671,17 +687,14 @@ export function CardsScreen({
           >
             Practice selected
           </button>
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => setSelectedCards(new Map())}
-          >
+          <button type="button" className="text-button" onClick={() => setSelectedCards(new Map())}>
             Deselect all
           </button>
         </section>
       ) : null}
 
       {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+      {isOpeningCard ? <div className="inline-progress">Opening card…</div> : null}
       {isLoading ? <div className="inline-progress">Searching cards…</div> : null}
       {!isLoading && page.totalCount === 0 ? (
         <section className="compact-empty-state large-empty-state">
@@ -697,7 +710,7 @@ export function CardsScreen({
               <strong>
                 {page.cards.length} of {page.totalCount}
               </strong>
-              <span> cards shown</span>
+              <span> generated cards shown</span>
             </div>
             <div className="selection-buttons" aria-label="Selection controls">
               <button type="button" className="secondary-button" onClick={selectVisible}>
@@ -739,17 +752,10 @@ export function CardsScreen({
               return (
                 <article
                   key={card.cardId}
-                  className={
-                    selectedRow
-                      ? "organized-card-row selected"
-                      : "organized-card-row"
-                  }
+                  className={selectedRow ? "organized-card-row selected" : "organized-card-row"}
                   role="row"
                 >
-                  <label
-                    className="card-row-selector"
-                    onClick={(event) => event.stopPropagation()}
-                  >
+                  <label className="card-row-selector" onClick={(event) => event.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedRow}
@@ -825,7 +831,7 @@ export function CardsScreen({
 
       {bulkOpen ? (
         <BulkEntryModal
-          decks={decks}
+          decks={activeDecks}
           defaultDeckId={selectedDeck?.id}
           onClose={() => setBulkOpen(false)}
           onSaved={refreshAfterMutation}
@@ -869,11 +875,9 @@ function selectionFromRow(card: CardBrowserRow): SelectionCard {
   return { cardId: card.cardId, noteId: card.noteId, deckId: card.deckId };
 }
 
-function deckFilterSummary(deckIds: Set<string>, decks: Deck[]): string {
-  if (deckIds.size === 0) return "All decks";
-  const selectedNames = decks
-    .filter((deck) => deckIds.has(deck.id))
-    .map((deck) => deck.name);
+function deckFilterSummary(deckIds: Set<string>, decks: DeckSummary[]): string {
+  if (deckIds.size === 0) return "All active decks";
+  const selectedNames = decks.filter((deck) => deckIds.has(deck.id)).map((deck) => deck.name);
   return selectedNames.length === 1
     ? (selectedNames[0] ?? "1 deck")
     : `${selectedNames.length} decks`;
@@ -886,23 +890,18 @@ function summarize(value: string): string {
 }
 
 function formatDue(value: number): string {
-  const now = Date.now();
-  if (value <= now) return "Due now";
-  const days = Math.ceil((value - now) / 86_400_000);
-  if (days <= 1) return "Due tomorrow";
-  if (days < 14) return `Due in ${days} days`;
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+  if (value <= Date.now()) return "Ready now";
+  return `Scheduled ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
     new Date(value),
-  );
+  )}`;
 }
 
 function formatLastStudied(value: number | null): string {
   if (value === null) return "Never studied";
-  const days = Math.floor(Math.max(0, Date.now() - value) / 86_400_000);
-  if (days === 0) return "Studied within 24 hours";
-  if (days === 1) return "Studied 1 day ago";
-  if (days < 30) return `Studied ${days} days ago`;
+  const reviewed = new Date(value);
+  const today = new Date();
+  if (reviewed.toDateString() === today.toDateString()) return "Studied today";
   return `Studied ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
-    new Date(value),
+    reviewed,
   )}`;
 }

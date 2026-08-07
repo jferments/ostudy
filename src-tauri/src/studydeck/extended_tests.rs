@@ -185,3 +185,53 @@ fn database_failure_after_asset_staging_leaves_no_partial_deck_or_file() {
     assert_eq!(fs::read_dir(paths.images_dir()).unwrap().count(), 0);
     let _ = fs::remove_dir_all(paths.app_data_dir());
 }
+
+#[test]
+fn imported_studydeck_gets_fresh_schedules_and_no_learner_history() {
+    let paths = temp_paths("history-isolation");
+    let database = Database::open(paths.database_path()).expect("database");
+    let before = unix_time_millis().expect("clock");
+    database
+        .with_connection(|connection| {
+            let package = basic_package("Portable content only");
+            read::validate_package_data(&package, true)?;
+            import::import_package(
+                connection,
+                &paths,
+                &"c".repeat(32),
+                &"4".repeat(64),
+                package,
+            )?;
+
+            for table in [
+                "practice_sessions",
+                "practice_session_cards",
+                "practice_session_card_snapshots",
+                "practice_session_card_tag_snapshots",
+                "review_events",
+                "review_event_attributions",
+                "review_event_tag_attributions",
+                "schedule_action_events",
+            ] {
+                let count: i64 = connection
+                    .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                        row.get(0)
+                    })
+                    .map_err(CommandError::database)?;
+                assert_eq!(count, 0, "studydeck imported learner history into {table}");
+            }
+
+            let schedule: (i64, i64, i64, i64) = connection
+                .query_row(
+                    "SELECT state, reps, lapses, due_at FROM card_schedules",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!((schedule.0, schedule.1, schedule.2), (0, 0, 0));
+            assert!(schedule.3 >= before, "fresh schedule predates local import");
+            Ok(())
+        })
+        .expect("history-isolated studydeck should import");
+    let _ = fs::remove_dir_all(paths.app_data_dir());
+}

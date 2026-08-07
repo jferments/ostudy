@@ -207,7 +207,7 @@ if (!releaseFixture.includes("Immutable database fixture captured for the ostudy
 const frontendIpc = `${ipc}\n${analyticsIpc}`;
 for (const command of [
   "list_decks", "get_deck", "create_deck", "update_deck", "delete_deck",
-  "list_cards", "delete_card",
+  "list_deck_card_summaries", "delete_card",
   "list_tags", "search_cards", "list_matching_cards",
   "get_organized_card", "create_organized_card", "update_organized_card",
   "find_duplicate_cards", "analyze_bulk_cards", "bulk_create_cards",
@@ -221,6 +221,9 @@ for (const command of [
 ]) {
   if (!rustCommands.includes(command)) failures.push(`Rust command not registered: ${command}`);
   if (!frontendIpc.includes(`"${command}"`)) failures.push(`frontend command missing: ${command}`);
+}
+if (rustCommands.includes("list_cards") || frontendIpc.includes('"list_cards"')) {
+  failures.push("obsolete unbounded list_cards command is still present");
 }
 
 if (!authoringWrites.includes('const CONTENT_FORMAT: &str = "tiptap-json"') ||

@@ -1,9 +1,7 @@
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 
 use crate::{
-    error::CommandError,
-    projections::learning_signals as signal_projection,
-    studyability,
+    error::CommandError, projections::learning_signals as signal_projection, studyability,
 };
 
 use super::{scope::AnalyticsContext, CurrentInventorySummaryDto};

@@ -1,5 +1,5 @@
-#[tauri::command(rename = "transfer_cards")]
-pub fn transfer_generated_cards(
+#[tauri::command]
+pub fn transfer_cards(
     database: State<'_, Database>,
     input: TransferCardsInput,
 ) -> Result<TransferCardsResultDto, CommandError> {
@@ -114,7 +114,14 @@ fn copy_generated_note_to_deck(
         .optional()
         .map_err(CommandError::database)?
         .ok_or_else(|| CommandError::new("card_not_found", "A selected card no longer exists."))?;
-    let (note_type, content_format, content_schema_version, reverse_enabled, cloze_source, cloze_mode) = metadata;
+    let (
+        note_type,
+        content_format,
+        content_schema_version,
+        reverse_enabled,
+        cloze_source,
+        cloze_mode,
+    ) = metadata;
     if !matches!(note_type.as_str(), "basic" | "cloze")
         || content_format != CONTENT_FORMAT
         || content_schema_version != CONTENT_SCHEMA_VERSION
@@ -166,14 +173,14 @@ fn copy_generated_note_to_deck(
                           template_ordinal, direction",
             )
             .map_err(CommandError::database)?;
-        let source_cards = statement
+        let cards = statement
             .query_map([source.id.as_str()], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(CommandError::database)?;
-        source_cards
+        cards
     };
     if source_cards.is_empty() {
         return Err(CommandError::new(

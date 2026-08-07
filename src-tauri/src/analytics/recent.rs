@@ -54,7 +54,7 @@ pub fn load_reviews(
         conditions = conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    statement
+    let reviews = statement
         .query_map(params_from_iter(values.iter()), |row| {
             let grouped: String = row.get(6)?;
             Ok(RecentReviewDto {
@@ -76,7 +76,8 @@ pub fn load_reviews(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(reviews)
 }
 
 pub fn load_sessions(
@@ -111,12 +112,12 @@ pub fn load_sessions(
         conditions = conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    statement
+    let sessions = statement
         .query_map(params_from_iter(values.iter()), |row| {
             let id: String = row.get(0)?;
             let deck_names_json: String = row.get(2)?;
-            let deck_names = serde_json::from_str::<Vec<String>>(&deck_names_json)
-                .unwrap_or_default();
+            let deck_names =
+                serde_json::from_str::<Vec<String>>(&deck_names_json).unwrap_or_default();
             let started_at: i64 = row.get(3)?;
             let completed_at: Option<i64> = row.get(4)?;
             let rated_count: i64 = row.get(6)?;
@@ -142,7 +143,8 @@ pub fn load_sessions(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(sessions)
 }
 
 pub fn load_dimension_options(
@@ -174,7 +176,7 @@ pub fn load_dimension_options(
                           d.name COLLATE NOCASE, d.id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let deck_options = statement
             .query_map([], |row| {
                 Ok(AnalyticsDeckOptionDto {
                     id: row.get(0)?,
@@ -186,7 +188,8 @@ pub fn load_dimension_options(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        deck_options
     };
     let tags = {
         let mut statement = connection
@@ -223,7 +226,7 @@ pub fn load_dimension_options(
                  ORDER BY t.name COLLATE NOCASE, t.id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let tag_options = statement
             .query_map([], |row| {
                 Ok(AnalyticsTagOptionDto {
                     id: row.get(0)?,
@@ -234,7 +237,8 @@ pub fn load_dimension_options(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        tag_options
     };
     Ok(AnalyticsDimensionOptionsDto { decks, tags })
 }

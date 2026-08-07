@@ -6,8 +6,20 @@ import type { TagSummary } from "../ipc";
 import { TagInput } from "./TagInput";
 
 const suggestions: TagSummary[] = [
-  { id: "a".repeat(32), name: "Cardiology", cardCount: 12 },
-  { id: "b".repeat(32), name: "Medication safety", cardCount: 4 },
+  {
+    id: "a".repeat(32),
+    name: "Cardiology",
+    sourceNoteCount: 10,
+    generatedCardCount: 12,
+    studyableDueCount: 4,
+  },
+  {
+    id: "b".repeat(32),
+    name: "Medication safety",
+    sourceNoteCount: 4,
+    generatedCardCount: 4,
+    studyableDueCount: 1,
+  },
 ];
 
 function Harness({ initial = [] }: { initial?: string[] }) {

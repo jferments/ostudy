@@ -5,6 +5,7 @@ import {
   createMutationId,
   getErrorCode,
   getErrorMessage,
+  type RescheduleIntent,
   type SelectionCard,
 } from "../../ipc";
 import { scheduleActionNotice } from "./scheduleActionResult";
@@ -38,14 +39,15 @@ export function ScheduleActionModal({
 
   async function submit(): Promise<void> {
     if (savingRef.current) return;
-    const dueAt = action === "reschedule" ? resolveDueAt(dueChoice, customDate) : undefined;
-    if (action === "reschedule" && dueAt === null) {
+    const rescheduleIntent =
+      action === "reschedule" ? resolveRescheduleIntent(dueChoice, customDate) : undefined;
+    if (action === "reschedule" && !rescheduleIntent) {
       pendingMutationRef.current = null;
       setErrorMessage("Choose a valid custom due date.");
       return;
     }
     const cardIds = [...new Set(cards.map((card) => card.cardId))].sort();
-    const key = JSON.stringify({ action, cardIds, dueAt });
+    const key = JSON.stringify({ action, cardIds, rescheduleIntent });
     const mutationId = mutationIdForRequest(key);
 
     savingRef.current = true;
@@ -58,7 +60,7 @@ export function ScheduleActionModal({
         mutationId,
         cardIds,
         action,
-        dueAt: dueAt ?? undefined,
+        rescheduleIntent: rescheduleIntent ?? undefined,
       });
       pendingMutationRef.current = null;
     } catch (error: unknown) {
@@ -140,14 +142,14 @@ export function ScheduleActionModal({
         </header>
         {action === "reset" ? (
           <div className="inline-alert warning-alert">
-            The selected cards will become New and due now. Existing review history
-            remains available for later analytics. The complete selection changes in
-            one transaction or not at all.
+            The selected cards will become New and ready now. Existing review history remains
+            available for analytics. The complete selection changes in one transaction or not at
+            all.
           </div>
         ) : (
           <div className="schedule-action-options">
             <label>
-              <span>New due date</span>
+              <span>New schedule date</span>
               <select
                 value={dueChoice}
                 disabled={isSaving}
@@ -156,16 +158,16 @@ export function ScheduleActionModal({
                   setDueChoice(event.currentTarget.value);
                 }}
               >
-                <option value="today">Today</option>
+                <option value="today">Ready now</option>
                 <option value="tomorrow">Tomorrow</option>
-                <option value="3_days">In 3 days</option>
-                <option value="1_week">In 1 week</option>
-                <option value="custom">Custom date</option>
+                <option value="3_days">In 3 local calendar days</option>
+                <option value="1_week">In 7 local calendar days</option>
+                <option value="custom">Custom local date</option>
               </select>
             </label>
             {dueChoice === "custom" ? (
               <label>
-                <span>Custom date</span>
+                <span>Custom local date</span>
                 <input
                   type="date"
                   value={customDate}
@@ -178,15 +180,13 @@ export function ScheduleActionModal({
               </label>
             ) : null}
             <p className="muted-copy">
-              Rescheduling changes the next due date without recording a successful
-              review or changing FSRS difficulty and stability. The complete selection
-              changes in one transaction or not at all.
+              Rust resolves the selected local calendar date to the first valid instant in the
+              system time zone. Rescheduling does not record a successful review or change FSRS
+              difficulty and stability.
             </p>
           </div>
         )}
-        {errorMessage ? (
-          <div className="inline-alert error-alert">{errorMessage}</div>
-        ) : null}
+        {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
         <footer className="modal-actions">
           <button
             type="button"
@@ -214,16 +214,13 @@ export function ScheduleActionModal({
   );
 }
 
-function resolveDueAt(choice: string, customDate: string): number | null {
-  const date = new Date();
-  date.setHours(12, 0, 0, 0);
-  if (choice === "today") return date.getTime();
-  if (choice === "tomorrow") date.setDate(date.getDate() + 1);
-  else if (choice === "3_days") date.setDate(date.getDate() + 3);
-  else if (choice === "1_week") date.setDate(date.getDate() + 7);
-  else if (choice === "custom") {
-    const parsed = new Date(`${customDate}T12:00:00`);
-    return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+function resolveRescheduleIntent(choice: string, customDate: string): RescheduleIntent | null {
+  if (choice === "today") return { kind: "due_now" };
+  if (choice === "tomorrow") return { kind: "tomorrow" };
+  if (choice === "3_days") return { kind: "calendar_days", days: 3 };
+  if (choice === "1_week") return { kind: "calendar_days", days: 7 };
+  if (choice === "custom" && /^\d{4}-\d{2}-\d{2}$/u.test(customDate)) {
+    return { kind: "calendar_date", date: customDate };
   }
-  return date.getTime();
+  return null;
 }

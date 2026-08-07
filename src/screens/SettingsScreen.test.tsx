@@ -59,7 +59,7 @@ describe("SettingsScreen", () => {
       dataDirectory: "/tmp/ostudy/data",
       databasePath: "/tmp/ostudy/data/library.sqlite3",
       imageDirectory: "/tmp/ostudy/data/assets/images",
-      databaseSchemaVersion: 13,
+      databaseSchemaVersion: 14,
     });
     vi.mocked(ipc.saveSettings).mockImplementation(async (input) => input);
     vi.mocked(ipc.exportLibraryBackup).mockResolvedValue({

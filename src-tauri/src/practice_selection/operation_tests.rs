@@ -114,6 +114,7 @@ fn equivalent_practice_start_retry_returns_one_committed_session() {
                 &paths.paths,
                 operation_id.clone(),
                 vec![deck_id.clone()],
+                Vec::new(),
                 false,
                 "extra",
             )?;
@@ -122,13 +123,15 @@ fn equivalent_practice_start_retry_returns_one_committed_session() {
                 &paths.paths,
                 operation_id.clone(),
                 vec![deck_id.clone()],
+                Vec::new(),
                 false,
                 "extra",
             )?;
 
             assert_eq!(replay.id, first.id);
-            assert_eq!(replay.cards.len(), 1);
-            assert_eq!(replay.cards[0].card.id, card_id);
+            assert_eq!(replay.card_count, 1);
+            assert_eq!(replay.first_window.cards.len(), 1);
+            assert_eq!(replay.first_window.cards[0].card.id, card_id);
             let count: i64 = connection
                 .query_row(
                     "SELECT COUNT(*) FROM practice_sessions
@@ -144,6 +147,7 @@ fn equivalent_practice_start_retry_returns_one_committed_session() {
                 &paths.paths,
                 operation_id,
                 vec![deck_id],
+                Vec::new(),
                 true,
                 "extra",
             )
@@ -181,6 +185,7 @@ fn response_hydration_failure_occurs_before_session_commit() {
                 &paths.paths,
                 "b".repeat(32),
                 vec![deck_id],
+                Vec::new(),
                 false,
                 "extra",
             )
@@ -222,6 +227,7 @@ fn operation_identifiers_cannot_cross_practice_start_kinds() {
                 &paths.paths,
                 operation_id.clone(),
                 vec![deck_id],
+                Vec::new(),
                 false,
                 "extra",
             )?;
@@ -238,4 +244,41 @@ fn operation_identifiers_cannot_cross_practice_start_kinds() {
             Ok(())
         })
         .expect("operation kind conflicts should be visible");
+}
+
+#[test]
+fn practice_start_persists_snapshot_and_returns_a_bounded_first_window() {
+    let paths = TestPaths::new();
+    let database = Database::open_in_memory().expect("database should open");
+    database
+        .with_connection(|connection| {
+            let deck_id = create_deck_in_connection(
+                connection,
+                CreateDeckInput {
+                    name: "Snapshots".to_string(),
+                    description: None,
+                },
+            )?
+            .id;
+            let (_, card_id) = create_card(connection, &deck_id)?;
+            let session = start_card_practice_in_connection(
+                connection,
+                &paths.paths,
+                "d".repeat(32),
+                vec![card_id.clone()],
+                false,
+            )?;
+            assert_eq!(session.first_window.cards.len(), 1);
+            let snapshot_count: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM practice_session_card_snapshots
+                     WHERE session_id = ?1 AND card_id = ?2",
+                    params![session.id, card_id],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(snapshot_count, 1);
+            Ok(())
+        })
+        .expect("practice snapshot should be durable");
 }

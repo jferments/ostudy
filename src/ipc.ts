@@ -4,12 +4,14 @@ export type RichDocument = Record<string, unknown>;
 export type BuiltInCardType = "basic" | "cloze";
 export type ClozeMode = "one_at_a_time" | "all_together";
 
-export interface Deck {
+export interface DeckSummary {
   id: string;
   name: string;
   description: string;
-  cardCount: number;
-  dueCount: number;
+  sourceNoteCount: number;
+  generatedCardCount: number;
+  studyableDueCount: number;
+  archivedAt: number | null;
   createdAt: number;
   updatedAt: number;
   revision: number;
@@ -25,6 +27,37 @@ export interface UpdateDeckInput {
   name: string;
   description?: string;
   revision: number;
+}
+
+export interface SetDeckArchivedInput {
+  deckId: string;
+  revision: number;
+  archived: boolean;
+}
+
+export interface DeckCardSummaryQuery {
+  deckId: string;
+  query: string;
+  sort: "updated_desc" | "question_asc";
+  limit: number;
+  offset: number;
+}
+
+export interface DeckCardSummary {
+  noteId: string;
+  primaryCardId: string;
+  questionExcerpt: string;
+  answerExcerpt: string;
+  generatedCardCount: number;
+  imageCount: number;
+  updatedAt: number;
+}
+
+export interface DeckCardSummaryPage {
+  cards: DeckCardSummary[];
+  totalCount: number;
+  offset: number;
+  hasMore: boolean;
 }
 
 export interface Asset {
@@ -154,6 +187,17 @@ export interface CardTemplate {
   revision: number;
 }
 
+export interface CardTemplateSummary {
+  id: string;
+  name: string;
+  description: string;
+  fieldCount: number;
+  generatedCardRuleCount: number;
+  imageCount: number;
+  updatedAt: number;
+  revision: number;
+}
+
 export interface CardTemplateFieldInput {
   id?: string;
   name: string;
@@ -217,10 +261,12 @@ export interface GenerateTemplateCardsResult {
 export interface TagSummary {
   id: string;
   name: string;
-  cardCount: number;
+  sourceNoteCount: number;
+  generatedCardCount: number;
+  studyableDueCount: number;
 }
 
-export type DueFilter = "all" | "due" | "not_due";
+export type AvailabilityFilter = "all" | "ready_now" | "scheduled_later";
 export type CardStatusFilter =
   | "all"
   | "active"
@@ -230,10 +276,10 @@ export type CardStatusFilter =
 export type ReviewedFilter =
   | "all"
   | "never"
-  | "last_1_day"
-  | "last_7_days"
-  | "last_30_days"
-  | "older_30_days";
+  | "today"
+  | "past_7_local_dates"
+  | "past_30_local_dates"
+  | "before_past_30_local_dates";
 export type CardSort =
   | "relevance"
   | "updated_desc"
@@ -245,7 +291,7 @@ export interface CardSearchInput {
   deckIds: string[];
   query: string;
   tagIds: string[];
-  dueFilter: DueFilter;
+  availabilityFilter: AvailabilityFilter;
   statusFilter: CardStatusFilter;
   reviewedFilter: ReviewedFilter;
   sort: CardSort;
@@ -383,9 +429,16 @@ export interface PracticeCard {
   needsMorePractice: boolean;
 }
 
+export interface PracticeCardWindow {
+  startPosition: number;
+  cards: PracticeCard[];
+  hasMore: boolean;
+}
+
 export interface PracticeSession {
   id: string;
-  cards: PracticeCard[];
+  cardCount: number;
+  firstWindow: PracticeCardWindow;
   shuffle: boolean;
   mode: PracticeMode;
   startedAt: number;
@@ -398,8 +451,8 @@ export interface PracticeWorkloadOverview {
   reviewsCompleted: number;
   newRemaining: number;
   reviewsRemaining: number;
-  dueReviews: number;
-  dueNew: number;
+  studyableDueReviews: number;
+  studyableDueNew: number;
   scheduledReviews: number;
   scheduledNew: number;
   omittedDueReviews: number;
@@ -411,6 +464,7 @@ export interface PracticeWorkloadOverview {
 export interface StartPracticeInput {
   operationId: string;
   deckIds: string[];
+  tagIds: string[];
   shuffle: boolean;
   mode: "scheduled" | "extra";
 }
@@ -419,6 +473,12 @@ export interface StartCardPracticeInput {
   operationId: string;
   cardIds: string[];
   shuffle: boolean;
+}
+
+export interface PracticeCardWindowInput {
+  sessionId: string;
+  startPosition: number;
+  limit: number;
 }
 
 export type ReviewOutcome =
@@ -467,17 +527,28 @@ export type ScheduleAction =
   | "reset"
   | "reschedule";
 
+export type RescheduleIntent =
+  | { kind: "due_now" }
+  | { kind: "tomorrow" }
+  | { kind: "calendar_days"; days: number }
+  | { kind: "calendar_date"; date: string };
+
 export interface ScheduleActionInput {
   mutationId: string;
   cardIds: string[];
   action: ScheduleAction;
-  dueAt?: number;
+  rescheduleIntent?: RescheduleIntent;
   sessionId?: string;
 }
 
 export interface ScheduleActionResult {
   affectedCount: number;
+  requestedCount: number;
+  changedCount: number;
+  unchangedCount: number;
+  rejectedCount: number;
   action: ScheduleAction;
+  resolvedDueAt: number | null;
 }
 
 export interface ExportResult {
@@ -487,7 +558,7 @@ export interface ExportResult {
 }
 
 export interface ImportResult {
-  deck: Deck;
+  deck: DeckSummary;
   cardCount: number;
   assetCount: number;
 }
@@ -513,28 +584,34 @@ export interface CommandErrorPayload {
   message?: string;
 }
 
-export async function listDecks(): Promise<Deck[]> {
-  return invoke<Deck[]>("list_decks");
+export async function listDecks(): Promise<DeckSummary[]> {
+  return invoke<DeckSummary[]>("list_decks");
 }
 
-export async function getDeck(deckId: string): Promise<Deck> {
-  return invoke<Deck>("get_deck", { deckId });
+export async function getDeck(deckId: string): Promise<DeckSummary> {
+  return invoke<DeckSummary>("get_deck", { deckId });
 }
 
-export async function createDeck(input: CreateDeckInput): Promise<Deck> {
-  return invoke<Deck>("create_deck", { input });
+export async function createDeck(input: CreateDeckInput): Promise<DeckSummary> {
+  return invoke<DeckSummary>("create_deck", { input });
 }
 
-export async function updateDeck(input: UpdateDeckInput): Promise<Deck> {
-  return invoke<Deck>("update_deck", { input });
+export async function updateDeck(input: UpdateDeckInput): Promise<DeckSummary> {
+  return invoke<DeckSummary>("update_deck", { input });
+}
+
+export async function setDeckArchived(input: SetDeckArchivedInput): Promise<DeckSummary> {
+  return invoke<DeckSummary>("set_deck_archived", { input });
 }
 
 export async function deleteDeck(deckId: string): Promise<DeletionResult> {
   return invoke<DeletionResult>("delete_deck", { deckId });
 }
 
-export async function listCards(deckId: string): Promise<Flashcard[]> {
-  return invoke<Flashcard[]>("list_cards", { deckId });
+export async function listDeckCardSummaries(
+  input: DeckCardSummaryQuery,
+): Promise<DeckCardSummaryPage> {
+  return invoke<DeckCardSummaryPage>("list_deck_card_summaries", { input });
 }
 
 export async function deleteCard(noteId: string): Promise<DeletionResult> {
@@ -596,8 +673,8 @@ export async function updateGeneratedCard(input: UpdateGeneratedCardInput): Prom
   return invoke<OrganizedCard>("update_generated_card", { input });
 }
 
-export async function listCardTemplates(): Promise<CardTemplate[]> {
-  return invoke<CardTemplate[]>("list_card_templates");
+export async function listCardTemplateSummaries(): Promise<CardTemplateSummary[]> {
+  return invoke<CardTemplateSummary[]>("list_card_template_summaries");
 }
 
 export async function getCardTemplate(templateId: string): Promise<CardTemplate> {
@@ -616,11 +693,15 @@ export async function deleteCardTemplate(templateId: string): Promise<void> {
   return invoke<void>("delete_card_template", { templateId });
 }
 
-export async function previewTemplateCards(input: PreviewTemplateCardsInput): Promise<TemplateCardPreview[]> {
+export async function previewTemplateCards(
+  input: PreviewTemplateCardsInput,
+): Promise<TemplateCardPreview[]> {
   return invoke<TemplateCardPreview[]>("preview_template_cards", { input });
 }
 
-export async function generateCardsFromTemplate(input: GenerateTemplateCardsInput): Promise<GenerateTemplateCardsResult> {
+export async function generateCardsFromTemplate(
+  input: GenerateTemplateCardsInput,
+): Promise<GenerateTemplateCardsResult> {
   return invoke<GenerateTemplateCardsResult>("generate_cards_from_template", { input });
 }
 
@@ -664,8 +745,13 @@ export async function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("get_app_info");
 }
 
-export async function getPracticeWorkload(deckIds: string[]): Promise<PracticeWorkloadOverview> {
-  return invoke<PracticeWorkloadOverview>("get_practice_workload", { input: { deckIds } });
+export async function getPracticeWorkload(
+  deckIds: string[],
+  tagIds: string[] = [],
+): Promise<PracticeWorkloadOverview> {
+  return invoke<PracticeWorkloadOverview>("get_practice_workload", {
+    input: { deckIds, tagIds },
+  });
 }
 
 export async function startSelectedPractice(input: StartPracticeInput): Promise<PracticeSession> {
@@ -674,6 +760,12 @@ export async function startSelectedPractice(input: StartPracticeInput): Promise<
 
 export async function startCardPractice(input: StartCardPracticeInput): Promise<PracticeSession> {
   return invoke<PracticeSession>("start_card_practice", { input });
+}
+
+export async function getPracticeCardWindow(
+  input: PracticeCardWindowInput,
+): Promise<PracticeCardWindow> {
+  return invoke<PracticeCardWindow>("get_practice_card_window", { input });
 }
 
 export async function markPracticeCardViewed(sessionId: string, cardId: string): Promise<void> {

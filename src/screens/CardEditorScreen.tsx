@@ -15,11 +15,12 @@ import {
   createGeneratedCard,
   findDuplicateCards,
   generateCardsFromTemplate,
+  getCardTemplate,
   getCardTypeInfo,
   getErrorCode,
   getErrorMessage,
   getOrganizedCard,
-  listCardTemplates,
+  listCardTemplateSummaries,
   listDecks,
   listTags,
   previewTemplateCards,
@@ -28,10 +29,10 @@ import {
   type Asset,
   type BuiltInCardType,
   type CardTemplate,
+  type CardTemplateSummary,
   type ClozeMode,
-  type Deck,
+  type DeckSummary,
   type DuplicateCard,
-  type Flashcard,
   type GenerateTemplateCardsResult,
   type OrganizedCard,
   type RichDocument,
@@ -45,9 +46,9 @@ import { distinctClozeGroups } from "./card-editor/cloze";
 import { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
 
 interface CardEditorScreenProps {
-  deck: Deck;
-  decks?: Deck[];
-  card: Flashcard | OrganizedCard | null;
+  deck: DeckSummary;
+  decks?: DeckSummary[];
+  card: OrganizedCard | null;
   onCancel: () => void;
   onSaved: (card: OrganizedCard, continueAdding: boolean) => void | Promise<void>;
   onTemplateGenerated: (
@@ -70,21 +71,23 @@ export function CardEditorScreen({
   onMoveCopy,
 }: CardEditorScreenProps) {
   const existing = card !== null && card.noteId !== "";
-  const [loadedDecks, setLoadedDecks] = useState<Deck[]>(providedDecks ?? []);
+  const [loadedDecks, setLoadedDecks] = useState<DeckSummary[]>(providedDecks ?? []);
   const availableDecks = useMemo(() => {
-    const byId = new Map<string, Deck>();
-    for (const candidate of [deck, ...loadedDecks]) byId.set(candidate.id, candidate);
+    const byId = new Map<string, DeckSummary>();
+    for (const candidate of [deck, ...loadedDecks]) {
+      if (candidate.archivedAt === null) byId.set(candidate.id, candidate);
+    }
     return [...byId.values()];
   }, [deck, loadedDecks]);
   const [selectedDeckId, setSelectedDeckId] = useState(card?.deckId ?? deck.id);
   const selectedDeck =
     availableDecks.find((candidate) => candidate.id === selectedDeckId) ?? deck;
 
-  const [templates, setTemplates] = useState<CardTemplate[]>([]);
+  const [templateSummaries, setTemplateSummaries] = useState<CardTemplateSummary[]>([]);
   const [selectedTemplateKey, setSelectedTemplateKey] = useState("basic");
-  const selectedCustomTemplate = templates.find(
-    (template) => template.id === selectedTemplateKey,
-  );
+  const [selectedCustomTemplate, setSelectedCustomTemplate] = useState<CardTemplate | null>(null);
+  const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
+  const templateRequestSequence = useRef(0);
   const builtInCardType: BuiltInCardType =
     selectedTemplateKey === "cloze" ? "cloze" : "basic";
   const [isLoadingType, setIsLoadingType] = useState(existing);
@@ -103,9 +106,7 @@ export function CardEditorScreen({
   const [assets, setAssets] = useState<Asset[]>(card?.assets ?? []);
   const [assetDraftId, setAssetDraftId] = useState<string | null>(null);
   const assetDraftRef = useRef<string | null>(null);
-  const [tags, setTags] = useState<string[]>(
-    card && "tags" in card ? card.tags : [],
-  );
+  const [tags, setTags] = useState<string[]>(card?.tags ?? []);
   const [tagSuggestions, setTagSuggestions] = useState<TagSummary[]>([]);
   const [templateValues, setTemplateValues] = useState<TemplateValueInput[]>([]);
   const [templatePreviews, setTemplatePreviews] = useState<TemplateCardPreview[]>([]);
@@ -126,7 +127,7 @@ export function CardEditorScreen({
   const hasBack = !isDocumentEmpty(backText, backDoc);
   const clozeGroups = useMemo(() => distinctClozeGroups(clozeSource), [clozeSource]);
   const templateValuesComplete =
-    selectedCustomTemplate !== undefined &&
+    selectedCustomTemplate !== null &&
     templateValues.length === selectedCustomTemplate.fields.length &&
     templateValues.every((entry) => !isDocumentEmpty(entry.text, entry.doc));
   const contentReady = selectedCustomTemplate
@@ -135,7 +136,11 @@ export function CardEditorScreen({
       ? clozeSource.trim() !== "" && clozeGroups.length > 0
       : hasFront && hasBack;
   const canSave =
-    contentReady && selectedDeckId !== "" && !isSaving && !isLoadingType;
+    contentReady &&
+    selectedDeckId !== "" &&
+    !isSaving &&
+    !isLoadingType &&
+    !isLoadingTemplate;
   const assetIds = useMemo(() => new Set(assets.map((asset) => asset.id)), [assets]);
   const usedAssetIds = useMemo(() => {
     const ids = new Set<string>();
@@ -207,9 +212,7 @@ export function CardEditorScreen({
       })
       .catch((error: unknown) => {
         if (current) {
-          setErrorMessage(
-            `The deck list could not be loaded: ${getErrorMessage(error)}`,
-          );
+          setErrorMessage(`The deck list could not be loaded: ${getErrorMessage(error)}`);
         }
       });
     return () => {
@@ -219,21 +222,44 @@ export function CardEditorScreen({
 
   useEffect(() => {
     let current = true;
-    void listCardTemplates()
+    void listCardTemplateSummaries()
       .then((loaded) => {
-        if (current) setTemplates(loaded);
+        if (current) setTemplateSummaries(loaded);
       })
       .catch((error: unknown) => {
         if (current) {
-          setErrorMessage(
-            `Card templates could not be loaded: ${getErrorMessage(error)}`,
-          );
+          setErrorMessage(`Card templates could not be loaded: ${getErrorMessage(error)}`);
         }
       });
     return () => {
       current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (selectedTemplateKey === "basic" || selectedTemplateKey === "cloze") {
+      templateRequestSequence.current += 1;
+      setSelectedCustomTemplate(null);
+      setIsLoadingTemplate(false);
+      return;
+    }
+    const requestId = templateRequestSequence.current + 1;
+    templateRequestSequence.current = requestId;
+    setSelectedCustomTemplate(null);
+    setTemplateValues([]);
+    setTemplatePreviews([]);
+    setIsLoadingTemplate(true);
+    void getCardTemplate(selectedTemplateKey)
+      .then((template) => {
+        if (templateRequestSequence.current === requestId) setSelectedCustomTemplate(template);
+      })
+      .catch((error: unknown) => {
+        if (templateRequestSequence.current === requestId) setErrorMessage(getErrorMessage(error));
+      })
+      .finally(() => {
+        if (templateRequestSequence.current === requestId) setIsLoadingTemplate(false);
+      });
+  }, [selectedTemplateKey]);
 
   useEffect(() => {
     void listTags()
@@ -263,21 +289,6 @@ export function CardEditorScreen({
       })
       .finally(() => {
         if (current) setIsLoadingType(false);
-      });
-    return () => {
-      current = false;
-    };
-  }, [card, existing]);
-
-  useEffect(() => {
-    if (!existing || !card || "tags" in card) return;
-    let current = true;
-    void getOrganizedCard(card.noteId)
-      .then((organized) => {
-        if (current) setTags(organized.tags);
-      })
-      .catch((error: unknown) => {
-        if (current) setErrorMessage(getErrorMessage(error));
       });
     return () => {
       current = false;
@@ -362,10 +373,7 @@ export function CardEditorScreen({
     }
   }
 
-  async function save(
-    continueAdding: boolean,
-    allowDuplicate: boolean,
-  ): Promise<void> {
+  async function save(continueAdding: boolean, allowDuplicate: boolean): Promise<void> {
     if (!contentReady) {
       setErrorMessage(
         selectedCustomTemplate
@@ -396,9 +404,7 @@ export function CardEditorScreen({
         setDirty(false);
         setTemplatePreviews([]);
         await onTemplateGenerated(result, continueAdding, selectedCustomTemplate);
-        if (continueAdding) {
-          await resetForAnother(selectedCustomTemplate.assets);
-        }
+        if (continueAdding) await resetForAnother(selectedCustomTemplate.assets);
         return;
       }
 
@@ -534,13 +540,23 @@ export function CardEditorScreen({
     ? `Generate ${selectedCustomTemplate.rules.length} ${
         selectedCustomTemplate.rules.length === 1 ? "card" : "cards"
       }`
-    : "Save card";
+    : isLoadingTemplate
+      ? "Loading template…"
+      : "Save card";
 
   return (
-    <div className="card-editor-screen" aria-busy={isSaving || isLoadingType}>
+    <div
+      className="card-editor-screen"
+      aria-busy={isSaving || isLoadingType || isLoadingTemplate}
+    >
       <header className="screen-header card-editor-header">
         <div>
-          <button type="button" className="back-button" disabled={isSaving} onClick={() => void cancel()}>
+          <button
+            type="button"
+            className="back-button"
+            disabled={isSaving}
+            onClick={() => void cancel()}
+          >
             ← {deck.name}
           </button>
           <h1>{title}</h1>
@@ -570,7 +586,12 @@ export function CardEditorScreen({
               {previewOpen ? "Hide preview" : "Preview card"}
             </button>
           ) : null}
-          <button type="button" className="secondary-button" disabled={isSaving} onClick={() => void cancel()}>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={isSaving}
+            onClick={() => void cancel()}
+          >
             Cancel
           </button>
           {!existing ? (
@@ -601,8 +622,8 @@ export function CardEditorScreen({
           <div>
             <h2 id="duplicate-warning-title">This looks like an exact duplicate</h2>
             <p>
-              A card in {selectedDeck.name} already has the same normalized question and
-              answer. Review it before creating another copy.
+              A card in {selectedDeck.name} already has the same normalized question and answer.
+              Review it before creating another copy.
             </p>
             {duplicateMatches
               .filter((match) => match.noteId !== "")
@@ -652,9 +673,9 @@ export function CardEditorScreen({
             >
               <option value="basic">Basic</option>
               <option value="cloze">Fill in the blank</option>
-              {templates.length > 0 ? (
+              {templateSummaries.length > 0 ? (
                 <optgroup label="Reusable templates">
-                  {templates.map((template) => (
+                  {templateSummaries.map((template) => (
                     <option key={template.id} value={template.id}>
                       {template.name}
                     </option>
@@ -686,9 +707,10 @@ export function CardEditorScreen({
                 </option>
               ))}
             </select>
-            <small>A card belongs to one deck and can have any number of tags.</small>
+            <small>A card belongs to one active deck and can have any number of tags.</small>
           </label>
 
+          {isLoadingTemplate ? <div className="inline-progress">Loading template…</div> : null}
           {selectedCustomTemplate ? (
             <TemplateEntryForm
               key={`${selectedCustomTemplate.id}-${editorGeneration}`}
@@ -754,9 +776,7 @@ export function CardEditorScreen({
               <label className="switch-row reverse-card-option">
                 <span>
                   <strong>Create reverse card</strong>
-                  <small>
-                    Study both directions with separate schedules and review histories.
-                  </small>
+                  <small>Study both directions with separate schedules and review histories.</small>
                 </span>
                 <input
                   type="checkbox"

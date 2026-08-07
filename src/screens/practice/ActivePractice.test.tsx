@@ -1,7 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { PracticeSession, ReviewPreviewSet } from "../../ipc";
+import type {
+  PracticeCard,
+  PracticeSession,
+  ReviewPreviewSet,
+} from "../../ipc";
 import { makeFlashcard, resetTestEntityIds } from "../../test/factories";
 import { ActivePractice } from "./ActivePractice";
 
@@ -30,19 +34,26 @@ const previews: ReviewPreviewSet = {
   ],
 };
 
+function makeCurrent(): PracticeCard {
+  return {
+    card: makeFlashcard(),
+    deckName: "Cardiology",
+    dueAt: 1,
+    scheduleState: 2,
+    needsMorePractice: true,
+  };
+}
+
 function makeSession(): PracticeSession {
-  const card = makeFlashcard();
+  const current = makeCurrent();
   return {
     id: "a".repeat(32),
-    cards: [
-      {
-        card,
-        deckName: "Cardiology",
-        dueAt: 1,
-        scheduleState: 2,
-        needsMorePractice: true,
-      },
-    ],
+    cardCount: 1,
+    firstWindow: {
+      startPosition: 0,
+      cards: [current],
+      hasMore: false,
+    },
     shuffle: false,
     mode: "scheduled",
     startedAt: 1,
@@ -52,8 +63,10 @@ function makeSession(): PracticeSession {
 function renderActive(
   overrides: Partial<React.ComponentProps<typeof ActivePractice>> = {},
 ) {
+  const session = makeSession();
   const props: React.ComponentProps<typeof ActivePractice> = {
-    session: makeSession(),
+    session,
+    current: session.firstWindow.cards[0] as PracticeCard,
     position: 0,
     revealed: false,
     ratedCount: 0,
@@ -149,8 +162,9 @@ describe("ActivePractice", () => {
 
     expect(onScheduleAction).toHaveBeenNthCalledWith(1, "bury");
     expect(onScheduleAction).toHaveBeenNthCalledWith(2, "suspend");
-    expect(onScheduleAction.mock.calls[2]?.[0]).toBe("reschedule");
-    expect(typeof onScheduleAction.mock.calls[2]?.[1]).toBe("number");
+    expect(onScheduleAction).toHaveBeenNthCalledWith(3, "reschedule", {
+      kind: "tomorrow",
+    });
     expect(onScheduleAction).toHaveBeenNthCalledWith(4, "reset");
   });
 

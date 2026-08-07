@@ -33,7 +33,7 @@ use crate::{
     assets::{detect_image_bytes, validate_original_filename},
     cards::{collect_asset_ids, validate_content},
     database::Database,
-    decks::{get_deck_from_connection, validate_description, validate_name, DeckDto},
+    decks::{get_deck_from_connection, validate_description, validate_name, DeckSummaryDto},
     error::CommandError,
     paths::AppPaths,
     util::{generate_id, unix_time_millis, validate_entity_id},
@@ -145,7 +145,7 @@ pub struct ExportResultDto {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportResultDto {
-    pub deck: DeckDto,
+    pub deck: DeckSummaryDto,
     pub card_count: i64,
     pub asset_count: i64,
 }

@@ -8,12 +8,14 @@ use crate::{
     cards::CardDto,
     database::Database,
     error::CommandError,
+    projections::practice as practice_projection,
     scheduler::{
         apply_review, load_schedule, preview_intervals, update_schedule, ReviewOutcome,
         ReviewPreviewSetDto, ScheduleTransition, SCHEDULER_NAME, SCHEDULER_VERSION,
     },
     settings::load_settings,
-    util::{bool_to_integer, generate_id, unix_time_millis, validate_entity_id},
+    study_calendar::StudyTimeContext,
+    util::{bool_to_integer, generate_id, validate_entity_id},
 };
 
 const MAX_RESPONSE_TIME_MS: i64 = 86_400_000;
@@ -31,9 +33,18 @@ pub struct PracticeCardDto {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PracticeCardWindowDto {
+    pub start_position: i64,
+    pub cards: Vec<PracticeCardDto>,
+    pub has_more: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PracticeSessionDto {
     pub id: String,
-    pub cards: Vec<PracticeCardDto>,
+    pub card_count: i64,
+    pub first_window: PracticeCardWindowDto,
     pub shuffle: bool,
     pub mode: String,
     pub started_at: i64,
@@ -108,10 +119,10 @@ pub fn mark_practice_card_revealed(
     validate_card_event(&input)?;
     database.with_connection(|connection| {
         record_practice_event(connection, &input.session_id, &input.card_id, true)?;
-        let now = unix_time_millis()?;
+        let time = StudyTimeContext::capture()?;
         let desired_retention = load_settings(connection)?.desired_retention;
         let schedule = load_schedule(connection, &input.card_id)?;
-        preview_intervals(&schedule, now, desired_retention)
+        preview_intervals(&schedule, time.now_utc_millis, desired_retention)
     })
 }
 
@@ -130,14 +141,14 @@ pub fn complete_practice_session(
     session_id: String,
 ) -> Result<(), CommandError> {
     validate_entity_id(&session_id, "practice session")?;
-    let now = unix_time_millis()?;
+    let time = StudyTimeContext::capture()?;
     database.with_connection(|connection| {
         let changed = connection
             .execute(
                 "UPDATE practice_sessions
                  SET completed_at = COALESCE(completed_at, ?1)
                  WHERE id = ?2",
-                params![now, session_id],
+                params![time.now_utc_millis, session_id],
             )
             .map_err(CommandError::database)?;
         if changed == 0 {
@@ -155,13 +166,13 @@ fn validate_card_event(input: &PracticeCardEventInput) -> Result<(), CommandErro
     validate_entity_id(&input.card_id, "card")
 }
 
-fn record_practice_event(
+pub(crate) fn record_practice_event(
     connection: &mut Connection,
     session_id: &str,
     card_id: &str,
     revealed: bool,
 ) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
+    let time = StudyTimeContext::capture()?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
@@ -185,12 +196,12 @@ fn record_practice_event(
            )"
     };
     let changed = transaction
-        .execute(sql, params![now, session_id, card_id])
+        .execute(sql, params![time.now_utc_millis, session_id, card_id])
         .map_err(CommandError::database)?;
     if changed == 0 {
         return Err(practice_card_state_error(&transaction, session_id)?);
     }
-    refresh_session_counters(&transaction, session_id, now)?;
+    refresh_session_counters(&transaction, session_id, time.now_utc_millis)?;
     transaction.commit().map_err(CommandError::database)
 }
 
@@ -228,7 +239,7 @@ pub(crate) fn submit_review_in_connection(
 ) -> Result<ReviewResultDto, CommandError> {
     let outcome = ReviewOutcome::parse(&input.outcome)?;
     let request_fingerprint = review_request_fingerprint(&input)?;
-    let reviewed_at = unix_time_millis()?;
+    let time = StudyTimeContext::capture()?;
     let desired_retention = load_settings(connection)?.desired_retention;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -289,7 +300,7 @@ pub(crate) fn submit_review_in_connection(
             "This card's schedule changed after the interval preview. Reveal it again and choose a rating.",
         ));
     }
-    let transition = apply_review(current, outcome, reviewed_at, desired_retention)?;
+    let transition = apply_review(current, outcome, time.now_utc_millis, desired_retention)?;
     update_schedule(&transaction, &transition.after)?;
 
     let updated = transaction
@@ -299,7 +310,7 @@ pub(crate) fn submit_review_in_connection(
              WHERE session_id = ?4 AND card_id = ?5
                AND rated_at IS NULL AND dismissed_at IS NULL",
             params![
-                reviewed_at,
+                time.now_utc_millis,
                 outcome.rating_number(),
                 input.response_time_ms,
                 input.session_id,
@@ -314,7 +325,7 @@ pub(crate) fn submit_review_in_connection(
         ));
     }
 
-    refresh_session_counters(&transaction, &input.session_id, reviewed_at)?;
+    refresh_session_counters(&transaction, &input.session_id, time.now_utc_millis)?;
     let (rated_count, correct_count, completed_at): (i64, i64, Option<i64>) = transaction
         .query_row(
             "SELECT rated_count, correct_count, completed_at
@@ -328,18 +339,25 @@ pub(crate) fn submit_review_in_connection(
         rating: outcome.rating_number(),
         outcome: outcome.as_str().to_string(),
         due_at: transition.after.due_at,
-        interval_ms: transition.after.due_at.saturating_sub(reviewed_at),
+        interval_ms: transition.after.due_at.saturating_sub(time.now_utc_millis),
         completed: completed_at.is_some(),
         rated_count,
         correct_count,
     };
-    insert_review_event(
+    let event_id = insert_review_event(
         &transaction,
         &input,
         &request_fingerprint,
         &transition,
         &result,
-        reviewed_at,
+        time.now_utc_millis,
+    )?;
+    practice_projection::insert_review_attribution(
+        &transaction,
+        &event_id,
+        &input.session_id,
+        &input.card_id,
+        &time,
     )?;
     transaction.commit().map_err(CommandError::database)?;
     Ok(result)
@@ -365,9 +383,6 @@ fn ensure_equivalent_review_retry(
     let equivalent = match existing.request_fingerprint.as_deref() {
         Some(stored) => stored == request_fingerprint,
         None => {
-            // Rows created before schema 9 have no complete request fingerprint.
-            // Preserve their historical replay behavior while still comparing every
-            // request field that the old ledger recorded.
             existing.session_id.as_deref() == Some(input.session_id.as_str())
                 && existing.card_id == input.card_id
                 && existing.outcome == input.outcome
@@ -375,12 +390,13 @@ fn ensure_equivalent_review_retry(
         }
     };
     if equivalent {
-        return Ok(());
+        Ok(())
+    } else {
+        Err(CommandError::new(
+            "idempotency_conflict",
+            "That review retry identifier was already used for a different request. Reveal the card again before rating it.",
+        ))
     }
-    Err(CommandError::new(
-        "idempotency_conflict",
-        "That review retry identifier was already used for a different request. Reveal the card again before rating it.",
-    ))
 }
 
 fn insert_review_event(
@@ -390,7 +406,7 @@ fn insert_review_event(
     transition: &ScheduleTransition,
     result: &ReviewResultDto,
     created_at: i64,
-) -> Result<(), CommandError> {
+) -> Result<String, CommandError> {
     let event_id = generate_id(connection)?;
     connection
         .execute(
@@ -438,7 +454,7 @@ fn insert_review_event(
             ],
         )
         .map_err(CommandError::database)?;
-    Ok(())
+    Ok(event_id)
 }
 
 fn review_result_for_submission(

@@ -16,6 +16,7 @@ vi.mock("../ipc", () => ({
   createGeneratedCard: vi.fn(),
   findDuplicateCards: vi.fn(),
   generateCardsFromTemplate: vi.fn(),
+  getCardTemplate: vi.fn(),
   getCardTypeInfo: vi.fn(),
   getErrorCode: (error: unknown) =>
     typeof error === "object" && error !== null && "code" in error
@@ -25,27 +26,28 @@ vi.mock("../ipc", () => ({
     error instanceof Error ? error.message : "Unexpected error",
   ),
   getOrganizedCard: vi.fn(),
-  listCardTemplates: vi.fn(),
+  listCardTemplateSummaries: vi.fn(),
   listDecks: vi.fn(),
   listTags: vi.fn(),
   previewTemplateCards: vi.fn(),
   syncAssetDraft: vi.fn(),
-  transferCards: vi.fn(),
   updateGeneratedCard: vi.fn(),
 }));
 
-const deck: ipc.Deck = {
+const deck: ipc.DeckSummary = {
   id: "a".repeat(32),
   name: "Pharmacology",
   description: "",
-  cardCount: 2,
-  dueCount: 1,
+  sourceNoteCount: 2,
+  generatedCardCount: 2,
+  studyableDueCount: 1,
+  archivedAt: null,
   createdAt: 1,
   updatedAt: 1,
   revision: 1,
 };
 
-const secondDeck: ipc.Deck = {
+const secondDeck: ipc.DeckSummary = {
   ...deck,
   id: "e".repeat(32),
   name: "Pathophysiology",
@@ -92,7 +94,7 @@ describe("CardEditorScreen", () => {
     vi.mocked(ipc.syncAssetDraft).mockResolvedValue(undefined);
     vi.mocked(ipc.listDecks).mockResolvedValue([deck, secondDeck]);
     vi.mocked(ipc.listTags).mockResolvedValue([]);
-    vi.mocked(ipc.listCardTemplates).mockResolvedValue([]);
+    vi.mocked(ipc.listCardTemplateSummaries).mockResolvedValue([]);
     vi.mocked(ipc.getCardTypeInfo).mockResolvedValue({
       cardType: "basic",
       reverseEnabled: false,
@@ -132,6 +134,7 @@ describe("CardEditorScreen", () => {
     await waitFor(() => {
       expect(ipc.beginAssetDraft).toHaveBeenCalledWith("card", card.noteId);
       expect(ipc.getCardTypeInfo).toHaveBeenCalledWith(card.noteId);
+      expect(ipc.listCardTemplateSummaries).toHaveBeenCalledOnce();
       expect(
         (screen.getByRole("combobox", { name: "Card template" }) as HTMLSelectElement)
           .value,
@@ -159,9 +162,7 @@ describe("CardEditorScreen", () => {
       }),
     ).toBeTruthy();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Save duplicate anyway" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Save duplicate anyway" }));
 
     await waitFor(() => {
       expect(ipc.findDuplicateCards).toHaveBeenCalledWith(

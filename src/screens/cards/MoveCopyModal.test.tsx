@@ -156,7 +156,7 @@ describe("MoveCopyModal", () => {
     });
   });
 
-  it("shows an empty state when no different destination exists", () => {
+  it("shows an empty state when no different active destination exists", () => {
     const onlyDeck = makeDeck({ name: "Only deck" });
     render(
       <MoveCopyModal
@@ -167,7 +167,9 @@ describe("MoveCopyModal", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Create another deck first" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Create or unarchive another deck first" }),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Move 1 card/u })).toBeNull();
   });
 

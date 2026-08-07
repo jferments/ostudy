@@ -1,4 +1,6 @@
-use rusqlite::Connection;
+use std::collections::{BTreeSet, HashMap};
+
+use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 use serde::Serialize;
 use tauri::State;
 
@@ -7,6 +9,7 @@ use crate::{
     database::Database,
     error::CommandError,
     paths::AppPaths,
+    projections::scope::{chunks, push_value},
     util::validate_entity_id,
 };
 
@@ -21,10 +24,6 @@ pub struct AssetDto {
     pub created_at: i64,
 }
 
-/// Stages an image inside an explicit editor/import draft.
-///
-/// The stable Tauri command name remains `import_image`; only its payload gains
-/// the draft identity needed to make cancel, save, and crash behavior explicit.
 #[tauri::command]
 pub fn import_image(
     database: State<'_, Database>,
@@ -39,68 +38,102 @@ pub(crate) fn get_assets_for_note(
     paths: &AppPaths,
     note_id: &str,
 ) -> Result<Vec<AssetDto>, CommandError> {
-    let mut statement = connection
-        .prepare(
-            "SELECT DISTINCT a.id, a.original_filename, a.mime_type, a.byte_size,
-                    a.relative_path, a.created_at
-             FROM assets a
-             JOIN note_assets na ON na.asset_id = a.id
-             WHERE na.note_id = ?1
-               AND a.deleted_at IS NULL
-               AND a.lifecycle_state = 'ready'
-             ORDER BY a.created_at ASC, a.id ASC",
-        )
-        .map_err(CommandError::database)?;
-
-    let rows = statement
-        .query_map([note_id], |row| {
-            let relative_path: String = row.get(4)?;
-            Ok(AssetDto {
-                id: row.get(0)?,
-                original_filename: row.get(1)?,
-                mime_type: row.get(2)?,
-                byte_size: row.get(3)?,
-                file_path: paths
-                    .resolve_relative(&relative_path)
-                    .to_string_lossy()
-                    .into_owned(),
-                created_at: row.get(5)?,
-            })
-        })
-        .map_err(CommandError::database)?;
-
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+    let mut assets = load_assets_for_notes(connection, paths, &[note_id.to_string()])?;
+    Ok(assets.remove(note_id).unwrap_or_default())
 }
 
-/// Compatibility validation used by paths that are converted to explicit
-/// finalization in the same Stage 3.3 change set. A staged row is not sufficient
-/// for a durable save by itself; the caller must also finalize it with the
-/// matching draft before committing.
+pub(crate) fn load_assets_for_notes(
+    connection: &Connection,
+    paths: &AppPaths,
+    note_ids: &[String],
+) -> Result<HashMap<String, Vec<AssetDto>>, CommandError> {
+    let mut result = note_ids
+        .iter()
+        .cloned()
+        .map(|note_id| (note_id, Vec::new()))
+        .collect::<HashMap<_, _>>();
+    for chunk in chunks(note_ids) {
+        let mut values = Vec::<SqlValue>::new();
+        let placeholders = chunk
+            .iter()
+            .map(|note_id| format!("?{}", push_value(&mut values, note_id.clone())))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT DISTINCT
+                 na.note_id, a.id, a.original_filename, a.mime_type, a.byte_size,
+                 a.relative_path, a.created_at
+             FROM note_assets na
+             JOIN assets a ON a.id = na.asset_id
+             WHERE na.note_id IN ({placeholders})
+               AND a.deleted_at IS NULL
+               AND a.lifecycle_state = 'ready'
+             ORDER BY na.note_id, a.created_at ASC, a.id ASC"
+        );
+        let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
+        let rows = statement
+            .query_map(params_from_iter(values.iter()), |row| {
+                let note_id: String = row.get(0)?;
+                let relative_path: String = row.get(5)?;
+                Ok((
+                    note_id,
+                    AssetDto {
+                        id: row.get(1)?,
+                        original_filename: row.get(2)?,
+                        mime_type: row.get(3)?,
+                        byte_size: row.get(4)?,
+                        file_path: paths
+                            .resolve_relative(&relative_path)
+                            .to_string_lossy()
+                            .into_owned(),
+                        created_at: row.get(6)?,
+                    },
+                ))
+            })
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        for (note_id, asset) in rows {
+            result.entry(note_id).or_default().push(asset);
+        }
+    }
+    Ok(result)
+}
+
 pub(crate) fn ensure_assets_exist(
     connection: &Connection,
     asset_ids: &[String],
 ) -> Result<(), CommandError> {
+    let mut unique = BTreeSet::new();
     for asset_id in asset_ids {
         validate_entity_id(asset_id, "asset")?;
-        let exists: i64 = connection
-            .query_row(
-                "SELECT EXISTS(
-                     SELECT 1 FROM assets
-                     WHERE id = ?1
-                       AND deleted_at IS NULL
-                       AND lifecycle_state IN ('staged', 'ready')
-                 )",
-                [asset_id],
-                |row| row.get(0),
-            )
+        unique.insert(asset_id.clone());
+    }
+    let unique = unique.into_iter().collect::<Vec<_>>();
+    let mut found = 0_usize;
+    for chunk in chunks(&unique) {
+        let mut values = Vec::<SqlValue>::new();
+        let placeholders = chunk
+            .iter()
+            .map(|asset_id| format!("?{}", push_value(&mut values, asset_id.clone())))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT COUNT(*) FROM assets
+             WHERE id IN ({placeholders})
+               AND deleted_at IS NULL
+               AND lifecycle_state IN ('staged', 'ready')"
+        );
+        let count: i64 = connection
+            .query_row(&sql, params_from_iter(values.iter()), |row| row.get(0))
             .map_err(CommandError::database)?;
-        if exists == 0 {
-            return Err(CommandError::new(
-                "asset_not_found",
-                "One of the images used by this content is no longer available.",
-            ));
-        }
+        found = found.saturating_add(usize::try_from(count).unwrap_or(usize::MAX));
+    }
+    if found != unique.len() {
+        return Err(CommandError::new(
+            "asset_not_found",
+            "One of the images used by this content is no longer available.",
+        ));
     }
     Ok(())
 }
@@ -136,7 +169,6 @@ pub(crate) fn detect_image_bytes(
     if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
         return Ok(("image/webp", "webp"));
     }
-
     Err(CommandError::new(
         "unsupported_image",
         "Use a PNG, JPEG, GIF, or WebP image.",

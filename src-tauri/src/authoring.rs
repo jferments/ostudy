@@ -22,3 +22,4 @@ include!("authoring/stage3/transfer.rs");
 include!("authoring/generated_import.rs");
 include!("authoring/normalization.rs");
 include!("authoring/tests.rs");
+include!("authoring/stage36_38_tests.rs");

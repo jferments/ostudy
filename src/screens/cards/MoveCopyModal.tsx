@@ -5,7 +5,7 @@ import { Modal } from "../../components/Modal";
 import {
   getErrorMessage,
   transferCards,
-  type Deck,
+  type DeckSummary,
   type TransferCardsMode,
 } from "../../ipc";
 
@@ -16,7 +16,7 @@ export interface TransferableCard {
 
 interface MoveCopyModalProps {
   cards: TransferableCard[];
-  decks: Deck[];
+  decks: DeckSummary[];
   onClose: () => void;
   onComplete: () => void | Promise<void>;
   showToast?: (kind: "success" | "error" | "info", text: string) => void;
@@ -29,11 +29,10 @@ export function MoveCopyModal({
   onComplete,
   showToast,
 }: MoveCopyModalProps) {
-  const sourceDeckIds = useMemo(
-    () => new Set(cards.map((card) => card.deckId)),
-    [cards],
+  const sourceDeckIds = useMemo(() => new Set(cards.map((card) => card.deckId)), [cards]);
+  const destinations = decks.filter(
+    (deck) => deck.archivedAt === null && !sourceDeckIds.has(deck.id),
   );
-  const destinations = decks.filter((deck) => !sourceDeckIds.has(deck.id));
   const [targetDeckId, setTargetDeckId] = useState(destinations[0]?.id ?? "");
   const [mode, setMode] = useState<TransferCardsMode>("move");
   const [skipDuplicates, setSkipDuplicates] = useState(true);
@@ -77,7 +76,9 @@ export function MoveCopyModal({
     try {
       await onComplete();
     } catch (error: unknown) {
-      const message = `The cards were ${mode === "move" ? "moved" : "copied"}, but the current view could not refresh: ${getErrorMessage(error)}`;
+      const message = `The cards were ${
+        mode === "move" ? "moved" : "copied"
+      }, but the current view could not refresh: ${getErrorMessage(error)}`;
       if (showToast) showToast("info", message);
       else setErrorMessage(message);
     } finally {
@@ -97,8 +98,8 @@ export function MoveCopyModal({
     >
       {destinations.length === 0 ? (
         <div className="compact-empty-state modal-empty-state">
-          <h3>Create another deck first</h3>
-          <p>A destination deck must be different from every selected card’s deck.</p>
+          <h3>Create or unarchive another deck first</h3>
+          <p>A destination deck must be active and different from every selected card’s deck.</p>
           <div className="modal-actions">
             <button type="button" className="primary-button" onClick={onClose}>
               Close
@@ -120,9 +121,7 @@ export function MoveCopyModal({
               />
               <span>
                 <strong>Move</strong>
-                <small>
-                  Keep review history and remove the cards from their current decks.
-                </small>
+                <small>Keep all review history and reattribute it to the destination deck.</small>
               </span>
             </label>
             <label className="transfer-mode-option">
@@ -170,9 +169,7 @@ export function MoveCopyModal({
             <span>Skip exact duplicates already in the destination</span>
           </label>
 
-          {errorMessage ? (
-            <div className="inline-alert error-alert">{errorMessage}</div>
-          ) : null}
+          {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
 
           <div className="modal-actions">
             <button

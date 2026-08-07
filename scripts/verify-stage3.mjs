@@ -45,7 +45,11 @@ const [
   read("src-tauri", "src", "authoring", "stage3_v2", "templates.rs"),
   read("src-tauri", "src", "authoring", "stage3_v2", "auto_template_layout.rs"),
   read("src-tauri", "src", "authoring", "stage3_v2", "normalization.rs"),
-  read("src-tauri", "src", "practice_selection.rs"),
+  readJoined(
+    ["src-tauri", "src", "practice_selection.rs"],
+    ["src-tauri", "src", "projections", "practice.rs"],
+    ["src-tauri", "src", "authoring", "stage3_v2", "projected_render.rs"],
+  ),
   read("src", "ipc.ts"),
   read("src", "App.tsx"),
   read("src", "screens", "CardEditorScreen.tsx"),
@@ -110,7 +114,7 @@ for (const command of [
   "get_card_type_info",
   "create_generated_card",
   "update_generated_card",
-  "list_card_templates",
+  "list_card_template_summaries",
   "get_card_template",
   "create_card_template",
   "update_card_template",
@@ -121,14 +125,15 @@ for (const command of [
   if (!rustCommands.includes(command)) failures.push(`Rust command not registered: ${command}`);
   if (!ipc.includes(`"${command}"`)) failures.push(`frontend command missing: ${command}`);
 }
+if (rustCommands.includes("list_card_templates") || ipc.includes('"list_card_templates"')) {
+  failures.push("obsolete unbounded list_card_templates command is still present");
+}
 
 for (const fragment of [
   "apply_stage3_data_repairs",
   "normalize_cloze_card_rows",
   "cards: vec![GeneratedCardSpec",
   'direction: "forward"',
-  "presentation_variant_for_card",
-  "render_stored_card_presentation_for_variant",
   "templateFieldInline",
   "templateFieldBlock",
   "card_template_assets",
@@ -155,10 +160,12 @@ if (authoringGenerated.includes('direction: "cloze"')) {
   failures.push("active cloze creation still generates sibling card identities");
 }
 
+// Stage 3.8 moved practice hydration to projected rows. Verify the complete
+// boundary: session selection, the typed projection, and pure rendering.
 for (const fragment of [
-  "presentation_variant_for_card",
+  "projected_presentation_variant",
   "presentation_variant",
-  "get_generated_card_for_practice",
+  "render_projected_presentation",
 ]) {
   if (!practiceSelection.includes(fragment)) failures.push(`practice snapshot behavior missing: ${fragment}`);
 }
@@ -193,7 +200,7 @@ for (const fragment of [
   "Question layout",
   "Answer layout",
   "TemplateLayoutEditor",
-  "renderer keeps simple values inline",
+  "listCardTemplateSummaries",
 ]) {
   if (!templatesScreen.includes(fragment)) failures.push(`Templates screen missing: ${fragment}`);
 }
@@ -249,6 +256,7 @@ if (stage3Transfer.includes("CREATE TABLE card_templates")) {
 for (const fragment of ['label="Templates"', "<TemplatesScreen", "hasUnsavedTemplate"]) {
   if (!app.includes(fragment)) failures.push(`Templates navigation missing: ${fragment}`);
 }
+
 for (const [name, document, fragments] of [
   ["architecture", architecture, ["template", "cloze"]],
   ["data model", dataModel, ["template", "cloze"]],

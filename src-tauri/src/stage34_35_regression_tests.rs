@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::{
     asset_lifecycle,
-    data_repairs::{apply_required_repairs, verify_repair_ledger},
+    data_repairs::{apply_required_repairs, verify_repair_ledger, RepairPhase},
     error::CommandError,
     paths::AppPaths,
 };
@@ -23,6 +23,8 @@ const PRE_CANONICAL_MIGRATIONS: &[&str] = &[
 ];
 
 const CANONICAL_MIGRATION: &str = include_str!("../migrations/0013_canonical_data_model.sql");
+const ATTRIBUTION_MIGRATION: &str =
+    include_str!("../migrations/0014_review_attribution_and_projection_indexes.sql");
 
 fn pre_canonical_database() -> Connection {
     let connection = Connection::open_in_memory().expect("database should open");
@@ -148,7 +150,13 @@ fn versioned_repairs_migrate_legacy_rows_before_the_schema_is_narrowed() {
         )
         .expect("legacy template rule should insert");
 
-    apply_required_repairs(&mut connection).expect("repairs should succeed");
+    apply_required_repairs(&mut connection, RepairPhase::BeforeMigration(13))
+        .expect("repairs should succeed");
+    let pre_canonical_repair_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
+        .expect("pre-canonical repair count");
+    assert_eq!(pre_canonical_repair_count, 2);
+
     connection
         .execute_batch("PRAGMA foreign_keys = OFF;")
         .expect("foreign keys should disable for the physical rebuild");
@@ -164,6 +172,12 @@ fn versioned_repairs_migrate_legacy_rows_before_the_schema_is_narrowed() {
     connection
         .execute_batch("PRAGMA foreign_keys = ON;")
         .expect("foreign keys should be restored after the physical rebuild");
+
+    connection
+        .execute_batch(ATTRIBUTION_MIGRATION)
+        .expect("attribution migration should apply");
+    apply_required_repairs(&mut connection, RepairPhase::AfterMigration(14))
+        .expect("review attribution repair should succeed");
     verify_repair_ledger(&connection).expect("repair ledger should verify");
 
     let image_state: (String, String, i64, Option<i64>) = connection
@@ -252,13 +266,16 @@ fn versioned_repairs_migrate_legacy_rows_before_the_schema_is_narrowed() {
     assert!(invalid_rule.is_err());
 
     let before = connection.total_changes();
-    apply_required_repairs(&mut connection).expect("second repair pass should succeed");
+    apply_required_repairs(&mut connection, RepairPhase::BeforeMigration(13))
+        .expect("second pre-canonical repair pass should succeed");
+    apply_required_repairs(&mut connection, RepairPhase::AfterMigration(14))
+        .expect("second attribution repair pass should succeed");
     verify_repair_ledger(&connection).expect("ledger should still verify");
     assert_eq!(before, connection.total_changes());
     let repair_count: i64 = connection
         .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
         .expect("repair count");
-    assert_eq!(repair_count, 2);
+    assert_eq!(repair_count, 3);
     let integrity: String = connection
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .expect("integrity check");
@@ -312,7 +329,7 @@ fn canonical_database_reopen_does_not_mutate_application_rows() {
             let repair_rows: i64 = connection
                 .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
                 .map_err(CommandError::database)?;
-            assert_eq!(repair_rows, 2);
+            assert_eq!(repair_rows, 3);
             Ok(())
         })
         .expect("canonical startup should be read-only");

@@ -1,4 +1,4 @@
-//! Shared card hydration, per-deck browsing, deletion, and rich-text validation.
+//! Shared card hydration, deletion, and rich-text validation.
 //!
 //! The React/Tiptap editor sends JSON documents across the Tauri IPC boundary.
 //! This module treats those documents as untrusted input, validates the supported
@@ -13,18 +13,16 @@ use rusqlite::params;
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use serde_json::Value;
-use tauri::State;
 
 use crate::{
     assets::{get_assets_for_note, AssetDto},
-    database::Database,
     error::CommandError,
     paths::AppPaths,
     util::validate_entity_id,
 };
 
 #[cfg(test)]
-use crate::util::unix_time_millis;
+use crate::{database::Database, util::unix_time_millis};
 
 const MAX_DOCUMENT_BYTES: usize = 1_000_000;
 const MAX_PLAIN_TEXT_CHARS: usize = 200_000;
@@ -67,51 +65,6 @@ struct RawCard {
     created_at: i64,
     updated_at: i64,
     revision: i64,
-}
-
-#[tauri::command]
-pub fn list_cards(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    deck_id: String,
-) -> Result<Vec<CardDto>, CommandError> {
-    validate_entity_id(&deck_id, "deck")?;
-    database.with_connection(|connection| list_cards_from_connection(connection, &paths, &deck_id))
-}
-
-pub(crate) fn list_cards_from_connection(
-    connection: &Connection,
-    paths: &AppPaths,
-    deck_id: &str,
-) -> Result<Vec<CardDto>, CommandError> {
-    let mut statement = connection
-        .prepare(
-            "SELECT c.id, n.id, c.deck_id, c.direction, n.front_doc, n.back_doc,\n\
-                    n.front_text, n.back_text, n.created_at, n.updated_at, n.revision\n\
-             FROM cards c\n\
-             JOIN notes n ON n.id = c.note_id\n\
-             JOIN decks d ON d.id = c.deck_id\n\
-             WHERE c.deck_id = ?1\n\
-               AND c.deleted_at IS NULL\n\
-               AND n.deleted_at IS NULL\n\
-               AND d.deleted_at IS NULL\n\
-               AND d.archived_at IS NULL\n\
-               AND c.direction = 'forward'\n\
-             ORDER BY n.updated_at DESC, n.created_at DESC",
-        )
-        .map_err(CommandError::database)?;
-
-    let rows = statement
-        .query_map([deck_id], raw_card_from_row)
-        .map_err(CommandError::database)?;
-    let raw_cards = rows
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-
-    raw_cards
-        .into_iter()
-        .map(|raw| hydrate_card(connection, paths, raw))
-        .collect()
 }
 
 pub(crate) fn get_card_from_connection(
@@ -1047,7 +1000,7 @@ mod tests {
     }
 
     #[test]
-    fn lists_hydrates_and_deletes_a_card() {
+    fn hydrates_and_deletes_a_card() {
         let database = Database::open_in_memory().expect("database should open");
         let temporary = tempfile_path();
         let paths = AppPaths::new(temporary.clone()).expect("paths should initialize");
@@ -1116,11 +1069,6 @@ mod tests {
         assert_eq!(loaded.id, card_id);
         assert_eq!(loaded.front_text, "What is ATP?");
 
-        let cards = database
-            .with_connection(|connection| list_cards_from_connection(connection, &paths, &deck.id))
-            .expect("cards should list");
-        assert_eq!(cards.len(), 1);
-
         let deletion = database
             .with_connection(|connection| {
                 crate::deletion::delete_cards(
@@ -1131,10 +1079,9 @@ mod tests {
             })
             .expect("card should delete");
         assert_eq!(deletion.affected_count, 1);
-        let cards = database
-            .with_connection(|connection| list_cards_from_connection(connection, &paths, &deck.id))
-            .expect("cards should list");
-        assert!(cards.is_empty());
+        let missing = database
+            .with_connection(|connection| get_card_from_connection(connection, &paths, &note_id));
+        assert!(missing.is_err(), "deleted card should not hydrate");
 
         let _ = std::fs::remove_dir_all(temporary);
     }

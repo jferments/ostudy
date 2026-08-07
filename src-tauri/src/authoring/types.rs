@@ -16,7 +16,10 @@ use crate::{
     database::Database,
     error::CommandError,
     paths::AppPaths,
+    projections::learning_signals as signal_projection,
     scheduler::insert_new_schedule,
+    study_calendar::StudyTimeContext,
+    studyability,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
@@ -37,7 +40,9 @@ const TAG_SEPARATOR: char = '\u{001f}';
 pub struct TagDto {
     pub id: String,
     pub name: String,
-    pub card_count: i64,
+    pub source_note_count: i64,
+    pub generated_card_count: i64,
+    pub studyable_due_count: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -112,8 +117,8 @@ pub struct SearchCardsInput {
     pub query: String,
     #[serde(default)]
     pub tag_ids: Vec<String>,
-    #[serde(default = "default_due_filter")]
-    pub due_filter: String,
+    #[serde(default = "default_availability_filter")]
+    pub availability_filter: String,
     #[serde(default = "default_status_filter")]
     pub status_filter: String,
     #[serde(default = "default_reviewed_filter")]
@@ -240,7 +245,6 @@ pub struct BulkTagCardsInput {
     pub tags: Vec<String>,
     pub mode: String,
 }
-
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

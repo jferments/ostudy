@@ -96,7 +96,7 @@ pub fn load_decks(
         history_conditions = history_conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    statement
+    let decks = statement
         .query_map(params_from_iter(values.iter()), |row| {
             let review_count: i64 = row.get(9)?;
             let correct_count: i64 = row.get(10)?;
@@ -121,7 +121,8 @@ pub fn load_decks(
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(decks)
 }
 
 pub fn load_tags(
