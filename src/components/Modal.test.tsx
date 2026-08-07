@@ -23,10 +23,11 @@ describe("Modal", () => {
 
   it("closes from Escape, the close button, and the backdrop", () => {
     const onClose = renderModal();
+    const dialog = screen.getByRole("dialog", { name: "Confirm action" });
 
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
-    fireEvent.mouseDown(document.querySelector(".modal-backdrop") as HTMLElement);
+    fireEvent.mouseDown(dialog);
 
     expect(onClose).toHaveBeenCalledTimes(3);
   });
