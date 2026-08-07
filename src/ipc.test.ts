@@ -86,12 +86,8 @@ const generatedInput: CreateGeneratedCardInput = {
   deckId,
   cardType: "basic",
   reverseEnabled: true,
-  clozeSource: "",
-  clozeMode: "one_at_a_time",
   frontDoc: paragraphDocument("Question"),
   backDoc: paragraphDocument("Answer"),
-  frontText: "Question",
-  backText: "Answer",
   tags: ["Medication"],
   allowDuplicate: false,
 };
