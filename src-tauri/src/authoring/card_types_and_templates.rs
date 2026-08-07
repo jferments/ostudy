@@ -371,9 +371,8 @@ pub fn delete_card_template(
     template_id: String,
 ) -> Result<(), CommandError> {
     validate_entity_id(&template_id, "card template")?;
-    database.with_connection(|connection| {
-        delete_card_template_in_connection(connection, &template_id)
-    })
+    database
+        .with_connection(|connection| delete_card_template_in_connection(connection, &template_id))
 }
 
 #[tauri::command]
@@ -892,8 +891,7 @@ fn sync_generated_cards(
         .collect::<BTreeSet<_>>();
 
     for spec in desired {
-        if let Some((card_id, _)) =
-            by_key.get(&(spec.direction.to_string(), spec.template_ordinal))
+        if let Some((card_id, _)) = by_key.get(&(spec.direction.to_string(), spec.template_ordinal))
         {
             connection
                 .execute(
@@ -998,7 +996,9 @@ fn parse_cloze(value: &str) -> Result<ParsedCloze, CommandError> {
             return Err(invalid_cloze_marker());
         }
         let after_separator = &marker[separator + 2..];
-        let close = after_separator.find("}}").ok_or_else(invalid_cloze_marker)?;
+        let close = after_separator
+            .find("}}")
+            .ok_or_else(invalid_cloze_marker)?;
         let raw_blank = &after_separator[..close];
         let blank = raw_blank.trim();
         if blank.is_empty() || raw_blank.contains("{{") || raw_blank.contains("}}") {
@@ -1227,6 +1227,10 @@ pub(crate) fn render_projected_presentation(
 }
 
 mod templates;
+pub(super) use templates::{
+    __cmd__list_card_template_summaries, apply_stage3_data_repairs, list_card_template_summaries,
+    CardTemplateSummaryDto,
+};
 use templates::{
     create_card_template_in_connection, delete_card_template_in_connection,
     ensure_template_revision, generate_automatic_template_cards_in_connection,
@@ -1235,13 +1239,9 @@ use templates::{
     render_automatic_template_previews, template_update_contains_new_children,
     update_card_template_in_connection, update_card_template_with_stable_children_in_connection,
 };
-pub(super) use templates::{
-    apply_stage3_data_repairs, list_card_template_summaries, CardTemplateSummaryDto,
-    __cmd__list_card_template_summaries,
-};
 
 #[path = "generated_import_module.rs"]
 mod generated_import;
 pub(super) use generated_import::{
-    import_generated_flashcards, FlashcardImportResultDto, __cmd__import_generated_flashcards,
+    __cmd__import_generated_flashcards, import_generated_flashcards, FlashcardImportResultDto,
 };

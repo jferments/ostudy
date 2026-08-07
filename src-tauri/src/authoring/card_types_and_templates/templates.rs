@@ -179,10 +179,7 @@ pub(super) fn load_stored_template(
         .optional()
         .map_err(CommandError::database)?
         .ok_or_else(|| {
-            CommandError::new(
-                "template_not_found",
-                "That card template no longer exists.",
-            )
+            CommandError::new("template_not_found", "That card template no longer exists.")
         })?;
     let fields = {
         let mut statement = connection
@@ -247,8 +244,7 @@ pub(super) fn load_stored_template(
                 name,
                 front_doc: serde_json::from_str(&front_json)
                     .map_err(CommandError::serialization)?,
-                back_doc: serde_json::from_str(&back_json)
-                    .map_err(CommandError::serialization)?,
+                back_doc: serde_json::from_str(&back_json).map_err(CommandError::serialization)?,
                 position,
             })
         })
@@ -452,12 +448,8 @@ fn resolve_template_child_id(
     };
     validate_entity_id(&id, label)?;
     let sql = match table {
-        "card_template_fields" => {
-            "SELECT template_id FROM card_template_fields WHERE id = ?1"
-        }
-        "card_template_rules" => {
-            "SELECT template_id FROM card_template_rules WHERE id = ?1"
-        }
+        "card_template_fields" => "SELECT template_id FROM card_template_fields WHERE id = ?1",
+        "card_template_rules" => "SELECT template_id FROM card_template_rules WHERE id = ?1",
         _ => {
             return Err(CommandError::new(
                 "invalid_template_child",
@@ -554,12 +546,7 @@ fn ensure_template_name_available(
 }
 
 fn validate_template_name(value: String) -> Result<String, CommandError> {
-    validate_bounded_visible_text(
-        value,
-        MAX_TEMPLATE_NAME_CHARS,
-        "Template names",
-        false,
-    )
+    validate_bounded_visible_text(value, MAX_TEMPLATE_NAME_CHARS, "Template names", false)
 }
 
 fn validate_template_field_name(value: String) -> Result<String, CommandError> {
@@ -1333,12 +1320,12 @@ mod automatic_layout;
 mod repair;
 mod stable_update;
 
+#[cfg(test)]
+use automatic_layout::materialize_automatic_template_document;
 use automatic_layout::{
     automatic_template_field_lookup_from_dtos, normalize_typed_template_layout,
     AutomaticTemplateFieldLookup,
 };
-#[cfg(test)]
-use automatic_layout::materialize_automatic_template_document;
 pub(super) use automatic_layout::{
     generate_automatic_template_cards_in_connection, normalize_card_template_dto_for_editing,
     prepare_automatic_create_template_input, prepare_automatic_update_template_input,

@@ -39,9 +39,9 @@ fn normalize_event(value: &str) -> String {
     let normalized = value.trim().to_ascii_lowercase();
     if normalized.is_empty()
         || normalized.len() > MAX_EVENT_CHARS
-        || !normalized
-            .chars()
-            .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_')
+        || !normalized.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+        })
     {
         "webview_error".to_string()
     } else {
@@ -55,7 +55,10 @@ fn bounded_text(value: &str, maximum: usize) -> String {
         return value.to_string();
     }
     let omitted = length.saturating_sub(maximum);
-    format!("{}… [truncated {omitted} characters]", value.chars().take(maximum).collect::<String>())
+    format!(
+        "{}… [truncated {omitted} characters]",
+        value.chars().take(maximum).collect::<String>()
+    )
 }
 
 #[cfg(test)]
@@ -65,7 +68,10 @@ mod tests {
     #[test]
     fn diagnostic_fields_are_normalized_and_bounded() {
         assert_eq!(normalize_event(" Render Crash "), "webview_error");
-        assert_eq!(normalize_event("webview_render_error"), "webview_render_error");
+        assert_eq!(
+            normalize_event("webview_render_error"),
+            "webview_render_error"
+        );
         let bounded = bounded_text(&"x".repeat(MAX_MESSAGE_CHARS + 50), MAX_MESSAGE_CHARS);
         assert!(bounded.contains("truncated 50 characters"));
         assert!(bounded.chars().count() < MAX_MESSAGE_CHARS + 100);

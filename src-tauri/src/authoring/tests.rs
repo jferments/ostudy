@@ -103,10 +103,7 @@ fn creates_searches_and_detects_tagged_cards() {
 
     let page = database
         .with_connection(|connection| {
-            search_cards_in_connection(
-                connection,
-                search_input(vec![deck_id.clone()], "warfarin"),
-            )
+            search_cards_in_connection(connection, search_input(vec![deck_id.clone()], "warfarin"))
         })
         .expect("search should work");
     assert_eq!(page.total_count, 1);

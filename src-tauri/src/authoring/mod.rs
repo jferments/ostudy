@@ -12,9 +12,8 @@
 use std::collections::{BTreeSet, HashSet};
 
 use rusqlite::{
-    params, params_from_iter,
-    types::Value as SqlValue,
-    Connection, OptionalExtension, Transaction, TransactionBehavior,
+    params, params_from_iter, types::Value as SqlValue, Connection, OptionalExtension, Transaction,
+    TransactionBehavior,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -1021,10 +1020,7 @@ fn content_asset_ids(content: &ValidatedContent) -> Vec<String> {
         .collect()
 }
 
-fn ensure_active_deck(
-    connection: &Connection,
-    deck_id: &str,
-) -> Result<(), CommandError> {
+fn ensure_active_deck(connection: &Connection, deck_id: &str) -> Result<(), CommandError> {
     let exists: i64 = connection
         .query_row(
             "SELECT EXISTS(
@@ -1141,14 +1137,14 @@ fn duplicate_error() -> CommandError {
     )
 }
 
-fn prepare_bulk_row(
-    index: usize,
-    row: BulkCardRowInput,
-) -> Result<PreparedBulkRow, CommandError> {
+fn prepare_bulk_row(index: usize, row: BulkCardRowInput) -> Result<PreparedBulkRow, CommandError> {
     if row.question.trim().is_empty() || row.answer.trim().is_empty() {
         return Err(CommandError::new(
             "invalid_bulk_card",
-            format!("Bulk row {} needs both a question and an answer.", index + 1),
+            format!(
+                "Bulk row {} needs both a question and an answer.",
+                index + 1
+            ),
         ));
     }
     let front_doc = plain_text_document(&row.question);
@@ -1265,10 +1261,7 @@ fn find_existing_tag_ids(
     Ok(tag_ids)
 }
 
-fn load_source_note(
-    connection: &Connection,
-    note_id: &str,
-) -> Result<SourceNote, CommandError> {
+fn load_source_note(connection: &Connection, note_id: &str) -> Result<SourceNote, CommandError> {
     connection
         .query_row(
             "SELECT id, deck_id, front_doc, back_doc, front_text, back_text,
@@ -1408,13 +1401,13 @@ mod history_tests;
 mod tests;
 
 pub(crate) use card_commands::{
-    analyze_bulk_cards, backfill_duplicate_hashes_in_connection, bulk_create_cards,
-    bulk_tag_cards, create_organized_card, find_duplicate_cards, get_organized_card,
-    list_matching_cards, list_tags, search_cards, update_organized_card,
+    analyze_bulk_cards, backfill_duplicate_hashes_in_connection, bulk_create_cards, bulk_tag_cards,
+    create_organized_card, find_duplicate_cards, get_organized_card, list_matching_cards,
+    list_tags, search_cards, update_organized_card,
 };
 pub(crate) use card_types_and_templates::{
-    apply_stage3_data_repairs, create_card_template, create_generated_card,
-    delete_card_template, generate_cards_from_template, get_card_template, get_card_type_info,
+    apply_stage3_data_repairs, create_card_template, create_generated_card, delete_card_template,
+    generate_cards_from_template, get_card_template, get_card_type_info,
     import_generated_flashcards, list_card_template_summaries, preview_template_cards,
     projected_presentation_variant, render_projected_presentation, update_card_template,
     update_generated_card, ProjectedPresentationInput, RenderedCardPresentation,
