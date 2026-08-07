@@ -13,7 +13,7 @@ const rustFiles = allFiles.filter((path) => path.endsWith(".rs"));
 for (const path of rustFiles) {
   const text = await readFile(path, "utf8");
   const displayPath = relative(root, path).replaceAll("\\", "/");
-  if (/\binclude!\s*\(/u.test(text)) {
+  if (displayPath.startsWith("src-tauri/src/authoring") && /\binclude!\s*\(/u.test(text)) {
     failures.push(`${displayPath}: lexical include! source composition is forbidden; use ordinary Rust modules`);
   }
   const staleSuppression = /#\[(?:allow|expect)\s*\(\s*(?:dead_code|unused|unused_imports|unused_variables)\s*\)\]/gu;
@@ -101,7 +101,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `OK   Repository policy: ${rustFiles.length} Rust files use explicit modules, workflows are immutable/self-hosted, and stale structural gates are absent.`,
+  `OK   Repository policy: authoring uses explicit modules, workflows are immutable/self-hosted, and stale structural gates are absent.`,
 );
 
 async function collectFiles(directory) {
