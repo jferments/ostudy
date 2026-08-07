@@ -11,9 +11,7 @@ use crate::{
     settings::load_settings,
     study_calendar::StudyTimeContext,
     util::{generate_id, unix_time_millis},
-    workload::{
-        planned_scheduled_cards_for_scope, workload_overview_for_scope, StudyScope,
-    },
+    workload::{planned_scheduled_cards_for_scope, workload_overview_for_scope, StudyScope},
 };
 
 fn paragraph(text: &str) -> Value {
