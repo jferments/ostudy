@@ -48,15 +48,15 @@ their native adapters are implemented.
 ## Credentials
 
 Credential bytes never enter SQLite, backups, diagnostics, logs, operation
-records, or frontend state. The database stores only nonsecret profile metadata
-and credential epochs. A Rust `SecretStore` abstraction resolves credentials
-from a native operating-system keyring when available and supports an explicit
-session-only in-memory credential when secure persistence is unavailable. There
-is no plaintext fallback.
+records, or frontend read state. The database stores only nonsecret profile
+metadata, credential-storage intent (`none`, `secure`, or `session`), and
+credential epochs. A Rust secret boundary resolves credentials from the native
+operating-system keyring or from explicit session-only process memory. There is
+no plaintext fallback.
 
-The frontend receives only a status such as `missing`, `savedSecurely`,
-`sessionOnly`, `notRequired`, or `secureStoreUnavailable`. Saved credential
-values cannot be read back through IPC.
+A profile marked session-only never falls through to a stale secure credential
+after restart. The frontend receives only credential status and cannot read a
+saved value back through IPC.
 
 ## Endpoint policy
 
@@ -68,32 +68,66 @@ to an arbitrary host. Redirects are rejected by the native HTTP client.
 
 ## Gateway
 
-The internal `AiGateway` normalizes text messages, model identity, output
-constraints, generation bounds, finish reasons, usage metadata, and safe errors.
-Provider adapters own wire-format differences. The initial output constraints
-are ordinary text, JSON object mode, and JSON Schema mode.
+The internal `AiGateway` normalizes provider requests, generation bounds,
+finish reasons, usage metadata, and safe errors. Provider adapters own
+wire-format differences. The initial output constraints are ordinary text, JSON
+object mode, and JSON Schema mode.
 
 llama.cpp remains responsible for applying the model's embedded chat template.
 ostudy detects template presence for diagnostics but does not store, expose, or
-normally override the full template. DeepSeek uses JSON object mode followed by
-independent local schema and semantic validation.
+normally replace the full template. The bounded connectivity probes request
+non-thinking operation when supported so a tiny probe measures final-answer
+behavior rather than consuming its output budget on reasoning.
+
+DeepSeek V4 connectivity probes likewise explicitly disable thinking. Future
+learning tasks may deliberately enable provider reasoning when their task policy
+calls for it; connectivity verification is intentionally different because it
+needs a small, deterministic final answer. DeepSeek structured probes use JSON
+object mode followed by independent strict Rust and semantic validation.
+
+A provider-reported `finish_reason` of `length` is diagnostic evidence, not an
+automatic failure when the final content already satisfies the exact probe
+contract. Invalid, empty, or semantically wrong final content still fails.
+
+## llama.cpp model identity
+
+llama.cpp's OpenAI-compatible model ID is a server-routing identity, not
+necessarily a Hugging Face repository name. A single-model server commonly
+reports the loaded GGUF file path unless it was started with an explicit alias.
+
+When a saved llama.cpp profile does not match `/v1/models` but the server reports
+exactly one loaded model, ostudy treats that as a recoverable identity mismatch:
+
+- Test connection records a partial model-verification result;
+- the remaining probes use the server-reported model ID for that test only;
+- Refresh models places the server-reported ID into the editable draft;
+- the user must explicitly save the profile before the new ID becomes durable.
+
+Multiple-model mismatches and DeepSeek model mismatches remain hard failures.
 
 ## Capability evidence
 
 Provider capabilities are not inferred solely from provider names. A connection
-probe verifies endpoint reachability, authentication, selected-model
-availability, text completion, and constrained structured output. Capability
-records distinguish `supported`, `unsupported`, and `unknown`, and whether the
-value was declared by the server or actively probed. Results are bound to the
-profile revision, credential epoch, model, and adapter revision so stale probes
+probe verifies endpoint reachability, authentication, selected-model identity,
+text completion, and constrained structured output. Capability records
+distinguish `supported`, `unsupported`, and `unknown`, and whether the value was
+declared by the server or actively probed. Results are bound to the profile
+revision, credential epoch, saved model, and adapter revision so stale probes
 cannot become current after configuration changes.
 
 ## Privacy and diagnostics
 
-Persisted probe records contain only bounded, typed, redacted data: provider
-kind, model ID, phase status, safe error code, latency, finish reason, and usage
-counts where returned. Prompts, provider response bodies, reasoning content,
-chat-template text, and credentials are never persisted by default.
+Persisted probe records contain only bounded, typed, redacted data: profile and
+model identity, phase status, safe error code, latency, capability evidence, and
+safe usage metadata where returned. Prompts, provider response bodies, reasoning
+content, chat-template text, Authorization headers, and credentials are never
+persisted by the profile-verification path.
+
+The Settings UI exposes **View diagnostic information** after a probe. It shows
+only redacted operational metadata such as provider, endpoint, destination
+scope, configured model, adapter/result-schema versions, refreshed model IDs,
+phase status, latency, and safe error codes. It deliberately does not expose raw
+request or response content.
 
 ## Future document-grounded tasks
 
