@@ -182,7 +182,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Profile name" }), {
       target: { value: "Local nursing model" },
     });
-    fireEvent.change(screen.getByRole("textbox", { name: "Model ID" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Model ID" }), {
       target: { value: "nursing-qwen" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create profile" }));
