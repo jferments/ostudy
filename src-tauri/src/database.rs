@@ -112,9 +112,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "12b4ec2518478a9798a19e87577f440a89943d06abfe7cb725f56727a854b75a",
         sql: include_str!("../migrations/0016_ai_provider_probe_capabilities.sql"),
     },
+    Migration {
+        version: 17,
+        name: "document_flashcard_generation",
+        checksum: "6f503141d0a99e0e603fc465c18ae456f18a9c7c66d16b3289b4d5cd4ed7baaa",
+        sql: include_str!("../migrations/0017_document_flashcard_generation.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 16;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 17;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -337,15 +343,14 @@ fn apply_foreign_key_disabled_migration(
             .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
 
         let has_violation = {
-            let mut statement =
-                transaction
-                    .prepare("PRAGMA foreign_key_check")
-                    .map_err(|error| {
-                        format!(
-                            "Could not prepare migration {} foreign-key validation: {error}",
-                            migration.version
-                        )
-                    })?;
+            let mut statement = transaction
+                .prepare("PRAGMA foreign_key_check")
+                .map_err(|error| {
+                    format!(
+                        "Could not prepare migration {} foreign-key validation: {error}",
+                        migration.version
+                    )
+                })?;
             let mut rows = statement.query([]).map_err(|error| {
                 format!(
                     "Could not run migration {} foreign-key validation: {error}",
@@ -442,6 +447,11 @@ mod tests {
                     "ai_task_defaults",
                     "ai_provider_probe_results",
                     "ai_provider_capabilities",
+                    "documents",
+                    "document_pages",
+                    "document_generation_jobs",
+                    "document_generation_units",
+                    "document_decks",
                 ] {
                     let exists: i64 = connection
                         .query_row(

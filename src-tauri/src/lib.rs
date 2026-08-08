@@ -2,9 +2,9 @@
 //!
 //! Startup resolves the managed application paths, opens and migrates SQLite,
 //! finalizes expired deletion recovery windows, purges finalized card-owned
-//! history, and reconciles the asset ledger with the managed filesystem before
-//! publishing any Tauri state. A failed durable initialization therefore stops
-//! startup instead of exposing commands to a partially reconciled library.
+//! history, reconciles managed images and PDFs, then publishes Tauri state. A
+//! failed durable initialization therefore stops startup instead of exposing
+//! commands to a partially reconciled library.
 
 mod ai;
 mod analytics;
@@ -20,6 +20,7 @@ mod deletion;
 mod deletion_commands;
 mod deletion_purge;
 mod diagnostics;
+mod documents;
 mod error;
 mod library_backup;
 mod logging;
@@ -73,6 +74,8 @@ pub fn run() {
                 .map_err(|error| io::Error::other(error.message))?;
             asset_lifecycle::reconcile_startup(&database, &paths)
                 .map_err(|error| io::Error::other(error.message))?;
+            documents::reconcile_startup(&database, &paths)
+                .map_err(|error| io::Error::other(error.message))?;
             if let Some(restore) = pending_restore {
                 restore.commit();
             }
@@ -92,7 +95,7 @@ pub fn run() {
             logging::info(
                 "application_started",
                 format!(
-                    "data_directory={} database={} asset_reconciliation=complete ai_gateway=ready",
+                    "data_directory={} database={} asset_reconciliation=complete document_reconciliation=complete ai_gateway=ready",
                     paths.app_data_dir().display(),
                     paths.database_path().display()
                 ),
@@ -150,6 +153,11 @@ pub fn run() {
             ai::probes::list_ai_provider_models,
             ai::probes::test_ai_provider_profile,
             ai::probes::get_ai_provider_probe_result,
+            documents::list_documents,
+            documents::get_document_source_path,
+            documents::import_pdf_and_generate_flashcards,
+            documents::retry_pdf_flashcard_generation,
+            documents::set_document_archived,
             library_backup::export_library_backup,
             library_backup::prepare_library_restore,
             practice_selection::get_practice_workload,

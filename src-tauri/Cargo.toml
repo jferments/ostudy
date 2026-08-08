@@ -15,7 +15,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
+base64 = "=0.22.1"
 chrono = "=0.4.45"
+justpdf = "=0.1.2"
 keyring = "=4.1.6"
 reqwest = { version = "=0.13.4", default-features = false, features = ["json", "rustls"] }
 rs-fsrs = "=1.2.1"
