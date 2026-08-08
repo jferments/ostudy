@@ -274,6 +274,18 @@
   color: var(--text);
 }
 
+.fieldHelp {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.fieldHelp code {
+  color: var(--text);
+  font-size: 0.76rem;
+}
+
 .actionRow {
   display: flex;
   flex-wrap: wrap;
@@ -563,6 +575,74 @@
   border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
 }
 
+.probeDiagnostics {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface-strong);
+}
+
+.probeDiagnostics summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.86rem;
+  font-weight: 760;
+}
+
+.probeDiagnostics > p {
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.probeDiagnostics dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.probeDiagnostics dl > div {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.probeDiagnostics dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.probeDiagnostics dd {
+  min-width: 0;
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.probeDiagnostics h3 {
+  margin: 12px 0 6px;
+  font-size: 0.82rem;
+}
+
+.probeDiagnostics ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.probeDiagnostics .diagnosticWide {
+  grid-column: 1 / -1;
+}
+
 .plannedProviderGrid article {
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -586,8 +666,13 @@
 
   .formGrid,
   .capabilityGrid,
-  .plannedProviderGrid {
+  .plannedProviderGrid,
+  .probeDiagnostics dl {
     grid-template-columns: 1fr;
+  }
+
+  .probeDiagnostics .diagnosticWide {
+    grid-column: auto;
   }
 }
 
@@ -617,6 +702,15 @@
   .profileListItem {
     min-width: min(260px, 78vw);
     scroll-snap-align: start;
+  }
+}
+
+@media (max-width: 520px) {
+  .settingsCard,
+  .fullWidthCard,
+  .emptyDetail,
+  .aiSidebar {
+    border-radius: 12px;
   }
 
   .dailyLimitGrid,
