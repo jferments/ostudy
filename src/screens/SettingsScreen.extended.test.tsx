@@ -186,7 +186,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Profile name" }), {
       target: { value: "Local nursing model" },
     });
-    fireEvent.change(screen.getByRole("combobox", { name: "Model ID" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: /^Model ID/u }), {
       target: { value: "nursing-qwen" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create profile" }));
@@ -261,7 +261,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
     await screen.findByDisplayValue("Local nursing model");
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh models" }));
-    const modelInput = await screen.findByRole("combobox", { name: "Model ID" });
+    const modelInput = await screen.findByRole("combobox", { name: /^Model ID/u });
     await waitFor(() => {
       expect((modelInput as HTMLInputElement).value).toBe(
         "/models/Qwen3.6-27B-MTP-Q4_K_M.gguf",
