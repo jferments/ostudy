@@ -124,7 +124,13 @@ where
                 error.to_string(),
             ))
         })?;
-    let page_count = usize::from(document.pages().len());
+    let page_count = usize::try_from(document.pages().len()).map_err(|_| {
+        RenderProcessError::Backend(PdfRenderError::new(
+            PdfRenderErrorKind::Open,
+            None,
+            "Pdfium reported a page count outside the supported platform range.",
+        ))
+    })?;
     let render_config = PdfRenderConfig::new()
         .set_target_width(2048)
         .set_maximum_height(2048)
