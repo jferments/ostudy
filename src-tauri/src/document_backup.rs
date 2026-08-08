@@ -157,7 +157,9 @@ pub(crate) fn validate_document_files(
     let has_documents = table_exists(snapshot, "documents")?;
     let expected_sources = if has_documents {
         snapshot
-            .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get::<_, i64>(0))
+            .query_row("SELECT COUNT(*) FROM documents", [], |row| {
+                row.get::<_, i64>(0)
+            })
             .map_err(CommandError::database)?
     } else {
         0
@@ -206,8 +208,16 @@ pub(crate) fn validate_document_files(
         .map_err(CommandError::database)?;
 
     for row in rows {
-        let (document_id, page_number, file_kind, relative_path, mime_type, byte_size, sha256, data) =
-            row.map_err(CommandError::database)?;
+        let (
+            document_id,
+            page_number,
+            file_kind,
+            relative_path,
+            mime_type,
+            byte_size,
+            sha256,
+            data,
+        ) = row.map_err(CommandError::database)?;
         validate_document_path(&document_id, page_number, &file_kind, &relative_path)?;
         let stored = match file_kind.as_str() {
             "source_pdf" => snapshot
@@ -246,7 +256,14 @@ pub(crate) fn validate_document_files(
                 .map_err(CommandError::database)?,
             _ => None,
         };
-        if stored != Some((relative_path.clone(), mime_type.clone(), byte_size, sha256.clone())) {
+        if stored
+            != Some((
+                relative_path.clone(),
+                mime_type.clone(),
+                byte_size,
+                sha256.clone(),
+            ))
+        {
             return Err(CommandError::new(
                 "invalid_backup",
                 "A packaged document file does not match the SQLite document ledger.",
@@ -267,7 +284,8 @@ pub(crate) fn validate_document_files(
                 "A packaged document file failed its size or hash validation.",
             ));
         }
-        if file_kind == "source_pdf" && (!data.starts_with(b"%PDF-") || mime_type != "application/pdf")
+        if file_kind == "source_pdf"
+            && (!data.starts_with(b"%PDF-") || mime_type != "application/pdf")
         {
             return Err(CommandError::new(
                 "invalid_backup",
@@ -294,10 +312,7 @@ pub(crate) fn validate_document_files(
     Ok(actual)
 }
 
-pub(crate) fn table_exists(
-    connection: &Connection,
-    table: &str,
-) -> Result<bool, CommandError> {
+pub(crate) fn table_exists(connection: &Connection, table: &str) -> Result<bool, CommandError> {
     connection
         .query_row(
             "SELECT EXISTS(
@@ -318,7 +333,8 @@ fn read_managed_file(
     maximum_size: usize,
     failure_message: &str,
 ) -> Result<Vec<u8>, CommandError> {
-    let data = fs::read(path).map_err(|_| CommandError::new("missing_document_file", failure_message))?;
+    let data =
+        fs::read(path).map_err(|_| CommandError::new("missing_document_file", failure_message))?;
     if data.is_empty()
         || data.len() > maximum_size
         || i64::try_from(data.len()).unwrap_or(i64::MAX) != expected_size
@@ -335,7 +351,11 @@ fn validate_document_path(
     file_kind: &str,
     relative_path: &str,
 ) -> Result<(), CommandError> {
-    if document_id.len() != 32 || document_id.chars().any(|character| !character.is_ascii_hexdigit()) {
+    if document_id.len() != 32
+        || document_id
+            .chars()
+            .any(|character| !character.is_ascii_hexdigit())
+    {
         return Err(CommandError::new(
             "invalid_backup",
             "A packaged document has an invalid identity.",
@@ -354,8 +374,7 @@ fn validate_document_path(
                 && components[0] == Component::Normal("documents".as_ref())
                 && components[1] == Component::Normal(document_id.as_ref())
                 && components[2] == Component::Normal("pages".as_ref())
-                && components[3]
-                    == Component::Normal(format!("page-{page:06}.png").as_ref())
+                && components[3] == Component::Normal(format!("page-{page:06}.png").as_ref())
         }
         _ => false,
     };

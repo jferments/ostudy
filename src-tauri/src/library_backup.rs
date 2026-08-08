@@ -616,7 +616,9 @@ fn validate_backup_package(
         document_backup::validate_document_files(&package, &snapshot, None)?;
     } else if document_backup::table_exists(&snapshot, "documents")?
         && snapshot
-            .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get::<_, i64>(0))
+            .query_row("SELECT COUNT(*) FROM documents", [], |row| {
+                row.get::<_, i64>(0)
+            })
             .map_err(CommandError::database)?
             > 0
     {
