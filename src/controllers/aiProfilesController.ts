@@ -40,6 +40,7 @@ export interface AiProfilesController {
   credentialDraft: string;
   credentialPersistence: AiCredentialPersistence;
   models: AiProviderModel[];
+  modelsLoaded: boolean;
   probeResult: AiProviderProbeResult | null;
   dirty: boolean;
   loading: boolean;
@@ -74,6 +75,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
   const [credentialPersistence, setCredentialPersistence] =
     useState<AiCredentialPersistence>("secure");
   const [models, setModels] = useState<AiProviderModel[]>([]);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
   const [probeResult, setProbeResult] = useState<AiProviderProbeResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
@@ -90,6 +92,56 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     if (listLane.isCurrent(token)) setProfiles(loaded);
     return loaded;
   }, [listLane]);
+
+  const discoverModelsForProfile = useCallback(
+    async (profile: AiProviderProfileDetail, announceChanges: boolean): Promise<void> => {
+      if (!canDiscoverModels(profile)) {
+        setModels([]);
+        setModelsLoaded(false);
+        return;
+      }
+      const token = modelLane.begin();
+      setRefreshingModels(true);
+      setErrorMessage(null);
+      try {
+        const result = await listAiProviderModels(profile.id, profile.revision);
+        if (!modelLane.isCurrent(token)) return;
+        setModels(result.models);
+        setModelsLoaded(true);
+
+        const selectedStillAvailable = result.models.some((model) => model.id === profile.modelId);
+        if (result.models.length === 1 && result.models[0]?.id !== profile.modelId) {
+          const serverModelId = result.models[0]?.id;
+          if (serverModelId) {
+            setDraft((current) => (current ? { ...current, modelId: serverModelId } : current));
+            if (announceChanges) {
+              showToast(
+                "info",
+                "The provider reports one available model. ostudy selected it; save the model choice to finish setup.",
+              );
+            }
+          }
+        } else if (profile.modelId && !selectedStillAvailable) {
+          setDraft((current) => (current ? { ...current, modelId: "" } : current));
+          if (announceChanges) {
+            showToast(
+              "info",
+              "The saved model is not in the provider's current model list. Choose one of the reported models.",
+            );
+          }
+        }
+      } catch (error: unknown) {
+        if (modelLane.isCurrent(token)) {
+          setModels([]);
+          setModelsLoaded(true);
+          setErrorMessage(getErrorMessage(error));
+        }
+      } finally {
+        if (modelLane.isCurrent(token)) setRefreshingModels(false);
+      }
+    },
+    [modelLane, showToast],
+  );
 
   const reload = useCallback(async (): Promise<void> => {
     const token = listLane.begin();
@@ -125,6 +177,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     if (!profileId || profileId.startsWith("new:")) {
       setSelectedProfile(null);
       setModels([]);
+      setModelsLoaded(false);
       setProbeResult(null);
       return;
     }
@@ -141,11 +194,15 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
           profile.credentialStatus.securePersistenceAvailable ? "secure" : "session",
         );
         setModels([]);
+        setModelsLoaded(false);
+        if (canDiscoverModels(profile)) {
+          void discoverModelsForProfile(profile, false);
+        }
       })
       .catch((error: unknown) => {
         if (detailLane.isCurrent(token)) setErrorMessage(getErrorMessage(error));
       });
-  }, [detailLane, selectedProfileId]);
+  }, [detailLane, discoverModelsForProfile, selectedProfileId]);
 
   const dirty = useMemo(() => {
     if (credentialDraft !== "") return true;
@@ -157,6 +214,8 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
   function selectProfile(profileId: string): void {
     setSelectedProfileId(profileId);
     setCredentialDraft("");
+    setModels([]);
+    setModelsLoaded(false);
     setErrorMessage(null);
   }
 
@@ -178,6 +237,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     setCredentialDraft("");
     setCredentialPersistence("secure");
     setModels([]);
+    setModelsLoaded(false);
     setProbeResult(null);
     setErrorMessage(null);
   }
@@ -191,14 +251,20 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     setMutating(true);
     setErrorMessage(null);
     try {
+      const wasExisting = selectedProfile !== null;
       const saved = selectedProfile
         ? await updateAiProviderProfile(selectedProfile.id, selectedProfile.revision, draft)
         : await createAiProviderProfile(draft);
       setSelectedProfile(saved);
       setDraft(draftFromProfile(saved));
       setSelectedProfileId(saved.id);
+      setModels([]);
+      setModelsLoaded(false);
       await loadProfiles();
-      showToast("success", selectedProfile ? "AI provider profile saved." : "AI provider profile created.");
+      showToast("success", wasExisting ? "AI provider profile saved." : "AI provider profile created.");
+      if (canDiscoverModels(saved)) {
+        await discoverModelsForProfile(saved, !wasExisting);
+      }
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -218,6 +284,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       setDraft(null);
       setCredentialDraft("");
       setModels([]);
+      setModelsLoaded(false);
       setProbeResult(null);
       if (defaults.flashcardGenerationProfileId === selectedProfile.id) {
         setDefaults(EMPTY_DEFAULTS);
@@ -244,6 +311,8 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       setSelectedProfile(saved);
       setDraft(draftFromProfile(saved));
       setCredentialDraft("");
+      setModels([]);
+      setModelsLoaded(false);
       setProbeResult(null);
       await loadProfiles();
       showToast(
@@ -252,6 +321,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
           ? "AI credential saved securely."
           : "AI credential is available for this session.",
       );
+      await discoverModelsForProfile(saved, true);
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -268,6 +338,8 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       setSelectedProfile(saved);
       setDraft(draftFromProfile(saved));
       setCredentialDraft("");
+      setModels([]);
+      setModelsLoaded(false);
       setProbeResult(null);
       await loadProfiles();
       showToast("success", "AI credential removed.");
@@ -279,33 +351,15 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
   }
 
   async function refreshModels(): Promise<void> {
-    if (!selectedProfile || dirty || refreshingModels) return;
-    const token = modelLane.begin();
-    setRefreshingModels(true);
-    setErrorMessage(null);
-    try {
-      const result = await listAiProviderModels(selectedProfile.id, selectedProfile.revision);
-      if (!modelLane.isCurrent(token)) return;
-      setModels(result.models);
-      if (
-        selectedProfile.providerKind === "llama_cpp" &&
-        result.models.length === 1 &&
-        result.models[0]?.id !== selectedProfile.modelId
-      ) {
-        const serverModelId = result.models[0]?.id;
-        if (serverModelId) {
-          setDraft((current) => (current ? { ...current, modelId: serverModelId } : current));
-          showToast(
-            "info",
-            "llama.cpp reports a different model ID. ostudy filled the server-reported ID; review it and save the profile.",
-          );
-        }
-      }
-    } catch (error: unknown) {
-      if (modelLane.isCurrent(token)) setErrorMessage(getErrorMessage(error));
-    } finally {
-      if (modelLane.isCurrent(token)) setRefreshingModels(false);
+    if (
+      !selectedProfile ||
+      dirty ||
+      refreshingModels ||
+      !canDiscoverModels(selectedProfile)
+    ) {
+      return;
     }
+    await discoverModelsForProfile(selectedProfile, true);
   }
 
   async function testProfile(): Promise<void> {
@@ -365,6 +419,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     credentialDraft,
     credentialPersistence,
     models,
+    modelsLoaded,
     probeResult,
     dirty,
     loading,
@@ -387,6 +442,14 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     discardDraft,
     reload,
   };
+}
+
+function canDiscoverModels(profile: AiProviderProfileDetail): boolean {
+  if (profile.authMode === "none") return true;
+  return (
+    profile.credentialStatus.status === "saved_securely" ||
+    profile.credentialStatus.status === "session_only"
+  );
 }
 
 function draftFromProfile(profile: AiProviderProfileDetail): AiProfileDraft {
