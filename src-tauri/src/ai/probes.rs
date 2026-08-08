@@ -144,9 +144,8 @@ pub async fn list_ai_provider_models(
     input: AiProfileReferenceInput,
 ) -> Result<AiProviderModelsDto, CommandError> {
     validate_profile_reference(&input)?;
-    let profile = database.with_connection(|connection| {
-        load_profile_snapshot(connection, &input.profile_id)
-    })?;
+    let profile = database
+        .with_connection(|connection| load_profile_snapshot(connection, &input.profile_id))?;
     if profile.revision != input.revision {
         return Err(profile_changed());
     }
@@ -163,9 +162,7 @@ pub async fn list_ai_provider_models(
         ));
     }
 
-    let credential = runtime
-        .secrets
-        .resolve(&profile.id, profile.auth_mode)?;
+    let credential = runtime.secrets.resolve(&profile.id, profile.auth_mode)?;
     let bearer = credential
         .as_ref()
         .map(|value| value.as_utf8())
@@ -189,9 +186,8 @@ pub async fn test_ai_provider_profile(
     input: AiProfileReferenceInput,
 ) -> Result<AiProviderProbeResultDto, CommandError> {
     validate_profile_reference(&input)?;
-    let profile = database.with_connection(|connection| {
-        load_profile_snapshot(connection, &input.profile_id)
-    })?;
+    let profile = database
+        .with_connection(|connection| load_profile_snapshot(connection, &input.profile_id))?;
     if profile.revision != input.revision {
         return Err(profile_changed());
     }
@@ -204,9 +200,7 @@ pub async fn test_ai_provider_profile(
         "The saved provider profile passed local validation.",
         None,
     )];
-    let credential = runtime
-        .secrets
-        .resolve(&profile.id, profile.auth_mode)?;
+    let credential = runtime.secrets.resolve(&profile.id, profile.auth_mode)?;
     phases.push(passed_phase(
         "credential_resolution",
         "Credential",
@@ -353,9 +347,7 @@ pub async fn test_ai_provider_profile(
             phases.push(passed_phase(
                 "text_completion",
                 "Text completion",
-                &format!(
-                    "The selected model completed the minimal text probe (finish: {finish})."
-                ),
+                &format!("The selected model completed the minimal text probe (finish: {finish})."),
                 Some(elapsed_ms(text_start)),
             ));
             outcome
@@ -368,14 +360,8 @@ pub async fn test_ai_provider_profile(
                 Some(elapsed_ms(text_start)),
                 error_value.safe,
             ));
-            let capabilities = build_capabilities(
-                &profile,
-                models.is_some(),
-                false,
-                false,
-                false,
-                &properties,
-            );
+            let capabilities =
+                build_capabilities(&profile, models.is_some(), false, false, false, &properties);
             return finish_and_persist(
                 database.inner(),
                 &profile,
@@ -584,10 +570,7 @@ fn persist_result(
     transaction.commit().map_err(CommandError::database)
 }
 
-fn snapshot_matches_result(
-    profile: &ProfileSnapshot,
-    result: &AiProviderProbeResultDto,
-) -> bool {
+fn snapshot_matches_result(profile: &ProfileSnapshot, result: &AiProviderProbeResultDto) -> bool {
     profile.revision == result.profile_revision
         && profile.credential_epoch == result.credential_epoch
         && profile.model_id == result.tested_model_id
@@ -769,12 +752,7 @@ fn elapsed_ms(started: Instant) -> i64 {
     i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX)
 }
 
-fn passed_phase(
-    phase: &str,
-    label: &str,
-    message: &str,
-    latency_ms: Option<i64>,
-) -> ProbePhaseDto {
+fn passed_phase(phase: &str, label: &str, message: &str, latency_ms: Option<i64>) -> ProbePhaseDto {
     ProbePhaseDto {
         phase: phase.to_string(),
         label: label.to_string(),

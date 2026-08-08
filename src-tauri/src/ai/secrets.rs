@@ -266,9 +266,7 @@ fn validate_credential(value: &str) -> Result<(), CommandError> {
     if value.trim().is_empty() || value.len() > MAX_CREDENTIAL_BYTES {
         return Err(CommandError::new(
             "invalid_ai_credential",
-            format!(
-                "Enter a non-empty AI credential no longer than {MAX_CREDENTIAL_BYTES} bytes."
-            ),
+            format!("Enter a non-empty AI credential no longer than {MAX_CREDENTIAL_BYTES} bytes."),
         ));
     }
     if value.chars().any(char::is_control) {
@@ -320,10 +318,7 @@ mod tests {
             )
             .expect("session credential should save");
         let status = manager
-            .status(
-                "0123456789abcdef0123456789abcdef",
-                AuthMode::Bearer,
-            )
+            .status("0123456789abcdef0123456789abcdef", AuthMode::Bearer)
             .expect("status should load");
         assert_eq!(status.status, CredentialStatus::SessionOnly);
         let serialized = serde_json::to_string(&status).expect("status should serialize");

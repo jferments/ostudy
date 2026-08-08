@@ -108,20 +108,14 @@ pub fn validate_endpoint(
 
 pub fn endpoint_origin_from_str(value: &str) -> Result<String, CommandError> {
     let url = Url::parse(value).map_err(|_| {
-        CommandError::new(
-            "invalid_ai_base_url",
-            "The saved AI server URL is invalid.",
-        )
+        CommandError::new("invalid_ai_base_url", "The saved AI server URL is invalid.")
     })?;
     endpoint_origin(&url)
 }
 
 pub fn join_endpoint(base_url: &str, relative: &str) -> Result<Url, CommandError> {
     let base = Url::parse(base_url).map_err(|_| {
-        CommandError::new(
-            "invalid_ai_base_url",
-            "The saved AI server URL is invalid.",
-        )
+        CommandError::new("invalid_ai_base_url", "The saved AI server URL is invalid.")
     })?;
     base.join(relative).map_err(|_| {
         CommandError::new(
@@ -211,44 +205,28 @@ mod tests {
 
     #[test]
     fn permits_loopback_http_and_normalizes_trailing_slash() {
-        let endpoint = validate_endpoint(
-            ProviderKind::LlamaCpp,
-            "http://127.0.0.1:8080/v1",
-            false,
-        )
-        .expect("loopback should be valid");
+        let endpoint = validate_endpoint(ProviderKind::LlamaCpp, "http://127.0.0.1:8080/v1", false)
+            .expect("loopback should be valid");
         assert_eq!(endpoint.normalized_url, "http://127.0.0.1:8080/v1/");
         assert_eq!(endpoint.scope, NetworkScope::Local);
     }
 
     #[test]
     fn requires_explicit_lan_http_acknowledgement() {
-        assert!(validate_endpoint(
-            ProviderKind::LlamaCpp,
-            "http://192.168.1.10:8080/",
-            false,
-        )
-        .is_err());
+        assert!(
+            validate_endpoint(ProviderKind::LlamaCpp, "http://192.168.1.10:8080/", false,).is_err()
+        );
         assert_eq!(
-            validate_endpoint(
-                ProviderKind::LlamaCpp,
-                "http://192.168.1.10:8080/",
-                true,
-            )
-            .expect("acknowledged LAN URL should work")
-            .scope,
+            validate_endpoint(ProviderKind::LlamaCpp, "http://192.168.1.10:8080/", true,)
+                .expect("acknowledged LAN URL should work")
+                .scope,
             NetworkScope::Lan
         );
     }
 
     #[test]
     fn rejects_public_cleartext_and_url_credentials() {
-        assert!(validate_endpoint(
-            ProviderKind::LlamaCpp,
-            "http://example.com/",
-            true,
-        )
-        .is_err());
+        assert!(validate_endpoint(ProviderKind::LlamaCpp, "http://example.com/", true,).is_err());
         assert!(validate_endpoint(
             ProviderKind::LlamaCpp,
             "https://user:secret@example.com/",
@@ -259,17 +237,12 @@ mod tests {
 
     #[test]
     fn keeps_deepseek_on_the_official_endpoint() {
-        assert!(validate_endpoint(
-            ProviderKind::Deepseek,
-            "https://api.deepseek.com/",
-            false,
-        )
-        .is_ok());
-        assert!(validate_endpoint(
-            ProviderKind::Deepseek,
-            "https://proxy.example.com/",
-            false,
-        )
-        .is_err());
+        assert!(
+            validate_endpoint(ProviderKind::Deepseek, "https://api.deepseek.com/", false,).is_ok()
+        );
+        assert!(
+            validate_endpoint(ProviderKind::Deepseek, "https://proxy.example.com/", false,)
+                .is_err()
+        );
     }
 }

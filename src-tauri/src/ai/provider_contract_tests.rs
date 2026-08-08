@@ -77,7 +77,12 @@ fn llama_cpp_adapter_discovers_models_and_verifies_server_structured_output() {
             extra_headers: Vec::new(),
         },
     ]);
-    let profile = profile(ProviderKind::LlamaCpp, base_url, "nursing-qwen", AuthMode::None);
+    let profile = profile(
+        ProviderKind::LlamaCpp,
+        base_url,
+        "nursing-qwen",
+        AuthMode::None,
+    );
     let gateway = AiGateway::new().expect("gateway should initialize");
 
     tauri::async_runtime::block_on(async {
@@ -94,7 +99,10 @@ fn llama_cpp_adapter_discovers_models_and_verifies_server_structured_output() {
         assert_eq!(properties.image_input_declared, Some(true));
         assert_eq!(properties.context_window_tokens, Some(16384));
         assert_eq!(
-            properties.server_chat_template_hash.as_deref().map(str::len),
+            properties
+                .server_chat_template_hash
+                .as_deref()
+                .map(str::len),
             Some(64)
         );
 
@@ -266,7 +274,9 @@ fn assert_plain_completion_request(body: &str) {
 fn assert_llama_schema_request(body: &str) {
     let value: Value = serde_json::from_str(body).expect("request should be JSON");
     assert_eq!(
-        value.pointer("/response_format/type").and_then(Value::as_str),
+        value
+            .pointer("/response_format/type")
+            .and_then(Value::as_str),
         Some("json_schema")
     );
     assert_eq!(
@@ -283,7 +293,9 @@ fn assert_llama_schema_request(body: &str) {
 fn assert_deepseek_json_object_request(body: &str) {
     let value: Value = serde_json::from_str(body).expect("request should be JSON");
     assert_eq!(
-        value.pointer("/response_format/type").and_then(Value::as_str),
+        value
+            .pointer("/response_format/type")
+            .and_then(Value::as_str),
         Some("json_object")
     );
     assert!(value.pointer("/response_format/json_schema").is_none());
@@ -294,9 +306,7 @@ fn assert_deepseek_json_object_request(body: &str) {
     assert!(system.contains("valid JSON"));
 }
 
-fn spawn_mock_server(
-    exchanges: Vec<ExpectedExchange>,
-) -> (String, thread::JoinHandle<()>) {
+fn spawn_mock_server(exchanges: Vec<ExpectedExchange>) -> (String, thread::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("mock listener should bind");
     let address = listener.local_addr().expect("mock address should resolve");
     let queue = Arc::new(Mutex::new(VecDeque::from(exchanges)));
@@ -341,16 +351,23 @@ fn read_request(stream: &mut TcpStream) -> MockRequest {
         if let Some(index) = find_subsequence(&bytes, b"\r\n\r\n") {
             break index + 4;
         }
-        assert!(bytes.len() < 64 * 1024, "request headers exceeded test bound");
+        assert!(
+            bytes.len() < 64 * 1024,
+            "request headers exceeded test bound"
+        );
     };
-    let header_text = String::from_utf8(bytes[..header_end].to_vec())
-        .expect("request headers should be UTF-8");
+    let header_text =
+        String::from_utf8(bytes[..header_end].to_vec()).expect("request headers should be UTF-8");
     let content_length = header_text
         .lines()
         .find_map(|line| {
             let (name, value) = line.split_once(':')?;
-            name.eq_ignore_ascii_case("content-length")
-                .then(|| value.trim().parse::<usize>().expect("content length should parse"))
+            name.eq_ignore_ascii_case("content-length").then(|| {
+                value
+                    .trim()
+                    .parse::<usize>()
+                    .expect("content length should parse")
+            })
         })
         .unwrap_or(0);
     while bytes.len() < header_end + content_length {
@@ -358,7 +375,10 @@ fn read_request(stream: &mut TcpStream) -> MockRequest {
         assert!(count > 0, "request closed before body completed");
         bytes.extend_from_slice(&buffer[..count]);
     }
-    let request_line = header_text.lines().next().expect("request line should exist");
+    let request_line = header_text
+        .lines()
+        .next()
+        .expect("request line should exist");
     let mut parts = request_line.split_whitespace();
     let method = parts.next().expect("method should exist").to_string();
     let path = parts.next().expect("path should exist").to_string();
@@ -398,5 +418,7 @@ fn write_response(stream: &mut TcpStream, expected: ExpectedExchange) {
 }
 
 fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }

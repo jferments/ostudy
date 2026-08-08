@@ -84,7 +84,9 @@ pub fn run() {
                 return Err(io::Error::other("The database state was already initialized.").into());
             }
             if !app.manage(ai_runtime) {
-                return Err(io::Error::other("The AI runtime state was already initialized.").into());
+                return Err(
+                    io::Error::other("The AI runtime state was already initialized.").into(),
+                );
             }
 
             logging::info(

@@ -25,7 +25,11 @@ fn database_backups_preserve_profile_metadata_without_session_credentials() {
                      ) VALUES (?1, 'Backup profile', 'backup profile', ?2,
                                'https://api.deepseek.com/', 'deepseek-chat', ?3,
                                1, 0, 60000, 0, 1, 1, 1, NULL)",
-                    params![profile_id, ProviderKind::Deepseek.as_str(), AuthMode::Bearer.as_str()],
+                    params![
+                        profile_id,
+                        ProviderKind::Deepseek.as_str(),
+                        AuthMode::Bearer.as_str()
+                    ],
                 )
                 .map_err(CommandError::database)?;
             Ok(())
@@ -78,5 +82,8 @@ fn unique_snapshot_path() -> PathBuf {
 }
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
-    !needle.is_empty() && haystack.windows(needle.len()).any(|window| window == needle)
+    !needle.is_empty()
+        && haystack
+            .windows(needle.len())
+            .any(|window| window == needle)
 }

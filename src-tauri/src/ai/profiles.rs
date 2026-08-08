@@ -182,11 +182,7 @@ impl ProfileSnapshot {
                 "Select or enter a model before testing this AI provider profile.",
             ));
         }
-        validate_endpoint(
-            self.provider_kind,
-            &self.base_url,
-            self.allow_insecure_http,
-        )?;
+        validate_endpoint(self.provider_kind, &self.base_url, self.allow_insecure_http)?;
         Ok(())
     }
 }
@@ -781,7 +777,10 @@ fn list_profiles(connection: &mut Connection) -> Result<Vec<StoredProfile>, Comm
         )
         .map_err(CommandError::database)?;
     let rows = statement
-        .query_map([i64::try_from(MAX_ACTIVE_PROFILES + 1).unwrap_or(33)], raw_row)
+        .query_map(
+            [i64::try_from(MAX_ACTIVE_PROFILES + 1).unwrap_or(33)],
+            raw_row,
+        )
         .map_err(CommandError::database)?;
     let raw = rows
         .collect::<Result<Vec<_>, _>>()
@@ -880,9 +879,7 @@ fn build_detail(
         &profile.base_url,
         profile.allow_insecure_http,
     )?;
-    let credential_status = runtime
-        .secrets
-        .status(&profile.id, profile.auth_mode)?;
+    let credential_status = runtime.secrets.status(&profile.id, profile.auth_mode)?;
     let configuration_status = configuration_status(profile, credential_status.status);
     Ok(AiProviderProfileDetailDto {
         id: profile.id.clone(),
@@ -1274,9 +1271,12 @@ mod tests {
                     .map_err(CommandError::database)?
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(CommandError::database)?;
-                assert!(!operation_columns
-                    .iter()
-                    .any(|column| column.contains("credential_value") || column.contains("secret")));
+                assert!(
+                    !operation_columns
+                        .iter()
+                        .any(|column| column.contains("credential_value")
+                            || column.contains("secret"))
+                );
                 Ok(())
             })
             .expect("operation schema should inspect");

@@ -63,7 +63,12 @@ pub async fn list_models(
     };
     let url = join_endpoint(&profile.base_url, path).map_err(command_to_gateway)?;
     let value = gateway
-        .get_json(url, bearer, profile.request_timeout_ms, MAX_MODEL_LIST_BYTES)
+        .get_json(
+            url,
+            bearer,
+            profile.request_timeout_ms,
+            MAX_MODEL_LIST_BYTES,
+        )
         .await?;
     parse_model_list(&value)
 }
@@ -78,7 +83,12 @@ pub async fn load_properties(
     }
     let url = join_endpoint(&profile.base_url, "props").map_err(command_to_gateway)?;
     let value = gateway
-        .get_json(url, bearer, profile.request_timeout_ms, MAX_MODEL_LIST_BYTES)
+        .get_json(
+            url,
+            bearer,
+            profile.request_timeout_ms,
+            MAX_MODEL_LIST_BYTES,
+        )
         .await?;
     Ok(parse_llama_properties(&value))
 }
@@ -226,7 +236,13 @@ async fn send_completion(
     };
     let url = join_endpoint(&profile.base_url, path).map_err(command_to_gateway)?;
     let value = gateway
-        .post_json(url, bearer, &body, profile.request_timeout_ms, MAX_COMPLETION_BYTES)
+        .post_json(
+            url,
+            bearer,
+            &body,
+            profile.request_timeout_ms,
+            MAX_COMPLETION_BYTES,
+        )
         .await?;
     parse_completion(&value)
 }
@@ -360,14 +376,11 @@ fn parse_llama_properties(value: &Value) -> ProviderProperties {
             })
         })
         .or_else(|| value.get("has_vision_encoder").and_then(Value::as_bool));
-    let context_window_tokens = value
-        .get("n_ctx")
-        .and_then(Value::as_i64)
-        .or_else(|| {
-            value
-                .pointer("/default_generation_settings/n_ctx")
-                .and_then(Value::as_i64)
-        });
+    let context_window_tokens = value.get("n_ctx").and_then(Value::as_i64).or_else(|| {
+        value
+            .pointer("/default_generation_settings/n_ctx")
+            .and_then(Value::as_i64)
+    });
     ProviderProperties {
         server_chat_template_present: Some(chat_template.is_some()),
         server_chat_template_hash,
@@ -395,7 +408,10 @@ mod tests {
         }))
         .expect("model list should parse");
         assert_eq!(
-            models.iter().map(|model| model.id.as_str()).collect::<Vec<_>>(),
+            models
+                .iter()
+                .map(|model| model.id.as_str())
+                .collect::<Vec<_>>(),
             vec!["model-a", "model-b"]
         );
     }
@@ -416,7 +432,10 @@ mod tests {
         assert_eq!(properties.image_input_declared, Some(true));
         assert_eq!(properties.context_window_tokens, Some(8192));
         assert_eq!(
-            properties.server_chat_template_hash.as_deref().map(str::len),
+            properties
+                .server_chat_template_hash
+                .as_deref()
+                .map(str::len),
             Some(64)
         );
     }
