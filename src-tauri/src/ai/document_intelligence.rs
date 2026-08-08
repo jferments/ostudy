@@ -7,9 +7,7 @@ use serde_json::{json, Value};
 use url::Url;
 
 use crate::{
-    database::Database,
-    document_semantics::SemanticWindow,
-    error::CommandError,
+    database::Database, document_semantics::SemanticWindow, error::CommandError,
 };
 
 use super::{
@@ -26,6 +24,7 @@ const OUTLINE_SCHEMA_VERSION: i64 = 1;
 const FLASHCARD_PROMPT_VERSION: i64 = 3;
 const FLASHCARD_SCHEMA_VERSION: i64 = 3;
 const CURATION_PROMPT_VERSION: i64 = 1;
+
 const MAX_WINDOW_CARDS: usize = 32;
 const MAX_CARD_TEXT_CHARS: usize = 50_000;
 const MAX_TAGS_PER_CARD: usize = 32;
@@ -153,6 +152,7 @@ pub(crate) fn load_document_task_context(
                 "Choose a default Flashcard generation profile in Settings → AI/LLM before uploading a PDF.",
             )
         })?;
+
         let profile = load_profile_snapshot(connection, &profile_id)?;
         profile.validate_for_provider_request()?;
         let storage: String = connection
@@ -168,6 +168,7 @@ pub(crate) fn load_document_task_context(
             &profile.base_url,
             profile.allow_insecure_http,
         )?;
+
         let probe_matches = connection
             .query_row(
                 "SELECT EXISTS(
@@ -293,9 +294,9 @@ pub(crate) async fn curate_document_cards(
     if cards.len() <= 1 {
         return Ok(cards);
     }
+
     let outline_json = serde_json::to_string(outline).map_err(CommandError::serialization)?;
     let mut retained = Vec::new();
-
     for batch in cards.chunks(MAX_CURATE_CARDS_PER_BATCH) {
         let summaries = batch
             .iter()
@@ -311,12 +312,12 @@ pub(crate) async fn curate_document_cards(
             summaries.join("\n")
         );
         let keep = request_curation_with_retry(runtime, task, &user, batch.len()).await?;
-        retained.extend(keep.into_iter().filter_map(|index| batch.get(index).cloned()));
+        retained.extend(
+            keep.into_iter()
+                .filter_map(|index| batch.get(index).cloned()),
+        );
     }
 
-    // Deterministic exact/near-exact front-text suppression across provider
-    // curation batches. Canonical authoring still performs its own authoritative
-    // duplicate fingerprint check later.
     let mut seen = HashSet::new();
     retained.retain(|card| seen.insert(card_identity(card)));
     Ok(retained)
@@ -329,7 +330,6 @@ async fn request_outline_fragment(
     page_count: i64,
     window: &SemanticWindow,
 ) -> Result<DocumentOutline, CommandError> {
-    let system = outline_system_prompt();
     let user = format!(
         "Document: {document_title}\nTotal PDF pages: {page_count}\nCurrent source window: pages {}–{}\n\n\
          <ostudy-source-window>\n{}\n</ostudy-source-window>\n\n\
@@ -339,7 +339,7 @@ async fn request_outline_fragment(
         window.page_end,
         window.source_text,
     );
-    request_outline_with_retry(runtime, task, &system, &user).await
+    request_outline_with_retry(runtime, task, &outline_system_prompt(), &user).await
 }
 
 async fn request_outline_merge(
@@ -350,7 +350,6 @@ async fn request_outline_merge(
     outlines: &[DocumentOutline],
 ) -> Result<DocumentOutline, CommandError> {
     let fragments = serde_json::to_string(outlines).map_err(CommandError::serialization)?;
-    let system = outline_system_prompt();
     let user = format!(
         "Document: {document_title}\nTotal PDF pages: {page_count}\n\n\
          These are validated outline fragments from contiguous source windows:\n\
@@ -358,7 +357,7 @@ async fn request_outline_merge(
          Merge them into one coherent hierarchy. Deduplicate repeated objectives/concepts created by overlapping windows. \
          Preserve important cross-window relationships and correct page ranges. Do not elevate incidental details merely because they appear in a fragment."
     );
-    request_outline_with_retry(runtime, task, &system, &user).await
+    request_outline_with_retry(runtime, task, &outline_system_prompt(), &user).await
 }
 
 async fn request_outline_with_retry(
@@ -367,19 +366,39 @@ async fn request_outline_with_retry(
     system: &str,
     user: &str,
 ) -> Result<DocumentOutline, CommandError> {
-    let first = request_json(runtime, task, system, user, &outline_schema(), "ostudy_document_outline", 8_192, &[])
-        .await
-        .and_then(parse_outline);
+    let schema = outline_schema();
+    let first = request_json(
+        runtime,
+        task,
+        system,
+        user,
+        &schema,
+        "ostudy_document_outline",
+        8_192,
+        &[],
+    )
+    .await
+    .and_then(parse_outline);
+
     match first {
         Ok(outline) => Ok(outline),
         Err(error) if retryable_contract_error(&error) => {
             let repaired = format!(
                 "{user}\n\nA prior response failed local schema validation. Generate a fresh response and follow the JSON contract exactly. Return JSON only."
             );
-            request_json(runtime, task, system, &repaired, &outline_schema(), "ostudy_document_outline", 8_192, &[])
-                .await
-                .and_then(parse_outline)
-                .map_err(|retry_error| collapse_contract_error(retry_error, "document outline"))
+            request_json(
+                runtime,
+                task,
+                system,
+                &repaired,
+                &schema,
+                "ostudy_document_outline",
+                8_192,
+                &[],
+            )
+            .await
+            .and_then(parse_outline)
+            .map_err(|retry_error| collapse_contract_error(retry_error, "document outline"))
         }
         Err(error) => Err(error),
     }
@@ -392,19 +411,39 @@ async fn request_flashcards_with_retry(
     user: &str,
     images: &[SourcePageImage],
 ) -> Result<Vec<Value>, CommandError> {
-    let first = request_json(runtime, task, system, user, &flashcard_schema(), "ostudy_document_flashcards", 8_192, images)
-        .await
-        .and_then(parse_flashcards);
+    let schema = flashcard_schema();
+    let first = request_json(
+        runtime,
+        task,
+        system,
+        user,
+        &schema,
+        "ostudy_document_flashcards",
+        8_192,
+        images,
+    )
+    .await
+    .and_then(parse_flashcards);
+
     match first {
         Ok(cards) => Ok(cards),
         Err(error) if retryable_contract_error(&error) => {
             let repaired = format!(
                 "{user}\n\nA prior response failed local schema validation. Generate a fresh response from the source and follow the JSON contract exactly. Do not discuss the failure. Return JSON only."
             );
-            request_json(runtime, task, system, &repaired, &flashcard_schema(), "ostudy_document_flashcards", 8_192, images)
-                .await
-                .and_then(parse_flashcards)
-                .map_err(|retry_error| collapse_contract_error(retry_error, "flashcards"))
+            request_json(
+                runtime,
+                task,
+                system,
+                &repaired,
+                &schema,
+                "ostudy_document_flashcards",
+                8_192,
+                images,
+            )
+            .await
+            .and_then(parse_flashcards)
+            .map_err(|retry_error| collapse_contract_error(retry_error, "flashcards"))
         }
         Err(error) => Err(error),
     }
@@ -420,22 +459,44 @@ async fn request_curation_with_retry(
         "You are the final educational relevance editor for ostudy. Select, but never rewrite, generated flashcards. Optimize global learning-objective coverage and remove low-value/redundant material. Return only the required JSON. Curation prompt version: {CURATION_PROMPT_VERSION}."
     );
     let schema = curation_schema(candidate_count);
-    let first = request_json(runtime, task, &system, user, &schema, "ostudy_document_card_curation", 2_048, &[])
-        .await
-        .and_then(|value| parse_curation(value, candidate_count));
+    let first = request_json(
+        runtime,
+        task,
+        &system,
+        user,
+        &schema,
+        "ostudy_document_card_curation",
+        2_048,
+        &[],
+    )
+    .await
+    .and_then(|value| parse_curation(value, candidate_count));
+
     match first {
         Ok(indices) => Ok(indices),
         Err(error) if retryable_contract_error(&error) => {
-            let repaired = format!("{user}\n\nThe prior response was invalid. Return a fresh JSON object containing only valid candidate indices.");
-            request_json(runtime, task, &system, &repaired, &schema, "ostudy_document_card_curation", 2_048, &[])
-                .await
-                .and_then(|value| parse_curation(value, candidate_count))
-                .map_err(|retry_error| collapse_contract_error(retry_error, "card curation"))
+            let repaired = format!(
+                "{user}\n\nThe prior response was invalid. Return a fresh JSON object containing only valid candidate indices."
+            );
+            request_json(
+                runtime,
+                task,
+                &system,
+                &repaired,
+                &schema,
+                "ostudy_document_card_curation",
+                2_048,
+                &[],
+            )
+            .await
+            .and_then(|value| parse_curation(value, candidate_count))
+            .map_err(|retry_error| collapse_contract_error(retry_error, "card curation"))
         }
         Err(error) => Err(error),
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn request_json(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
@@ -462,11 +523,19 @@ async fn request_json(
             for image in images.iter().take(MAX_INLINE_IMAGES) {
                 parts.push(json!({
                     "type": "text",
-                    "text": format!("Rendered PDF page {} follows. Use it only as source evidence for diagrams, tables, equations, and layout-dependent content.", image.page_number)
+                    "text": format!(
+                        "Rendered PDF page {} follows. Use it only as source evidence for diagrams, tables, equations, and layout-dependent content.",
+                        image.page_number
+                    )
                 }));
                 parts.push(json!({
                     "type": "image_url",
-                    "image_url": { "url": format!("data:image/png;base64,{}", STANDARD.encode(&image.bytes)) }
+                    "image_url": {
+                        "url": format!(
+                            "data:image/png;base64,{}",
+                            STANDARD.encode(&image.bytes)
+                        )
+                    }
                 }));
             }
             json!({
@@ -516,13 +585,17 @@ async fn request_json(
         }
     };
 
-    let request_bytes = serde_json::to_vec(&body).map_err(CommandError::serialization)?;
-    if request_bytes.len() > MAX_REQUEST_JSON_BYTES {
+    if serde_json::to_vec(&body)
+        .map_err(CommandError::serialization)?
+        .len()
+        > MAX_REQUEST_JSON_BYTES
+    {
         return Err(CommandError::new(
             "ai_request_too_large",
             "This semantic document window is too large for ostudy's bounded provider request.",
         ));
     }
+
     let response = runtime
         .gateway
         .post_json(
@@ -557,8 +630,11 @@ fn validate_outline(outline: &DocumentOutline) -> Result<(), CommandError> {
         || outline.key_concepts.len() > MAX_OUTLINE_CONCEPTS
         || outline.sections.len() > MAX_OUTLINE_SECTIONS
     {
-        return Err(output_error("The generated document outline exceeded ostudy's bounds."));
+        return Err(output_error(
+            "The generated document outline exceeded ostudy's bounds.",
+        ));
     }
+
     for value in outline
         .learning_objectives
         .iter()
@@ -570,10 +646,14 @@ fn validate_outline(outline: &DocumentOutline) -> Result<(), CommandError> {
         validate_outline_text("section title", &section.title)?;
         validate_outline_text("section summary", &section.summary)?;
         if section.page_start < 1 || section.page_end < section.page_start {
-            return Err(output_error("The generated outline contained an invalid page range."));
+            return Err(output_error(
+                "The generated outline contained an invalid page range.",
+            ));
         }
         if section.learning_objectives.len() > 32 || section.key_concepts.len() > 48 {
-            return Err(output_error("A generated outline section exceeded ostudy's item bounds."));
+            return Err(output_error(
+                "A generated outline section exceeded ostudy's item bounds.",
+            ));
         }
         for value in section
             .learning_objectives
@@ -593,7 +673,9 @@ fn validate_outline_text(field: &str, value: &str) -> Result<(), CommandError> {
             .chars()
             .any(|character| character.is_control() && !matches!(character, '\n' | '\t'))
     {
-        return Err(output_error(format!("The generated {field} was empty, oversized, or invalid.")));
+        return Err(output_error(format!(
+            "The generated {field} was empty, oversized, or invalid."
+        )));
     }
     Ok(())
 }
@@ -617,58 +699,136 @@ fn parse_flashcards(value: Value) -> Result<Vec<Value>, CommandError> {
 
 fn normalize_generated_card(index: usize, card: GeneratedStudyCard) -> Result<Value, CommandError> {
     match card {
-        GeneratedStudyCard::Basic { front, back, reverse_enabled, tags } => {
+        GeneratedStudyCard::Basic {
+            front,
+            back,
+            reverse_enabled,
+            tags,
+        } => {
             validate_card_text(index, "front", &front)?;
             validate_card_text(index, "back", &back)?;
             validate_tags(index, &tags)?;
-            Ok(json!({ "type": "basic", "front": front, "back": back, "reverseEnabled": reverse_enabled, "tags": tags }))
+            Ok(json!({
+                "type": "basic",
+                "front": front,
+                "back": back,
+                "reverseEnabled": reverse_enabled,
+                "tags": tags
+            }))
         }
-        GeneratedStudyCard::Definition { term, definition, tags } => {
+        GeneratedStudyCard::Definition {
+            term,
+            definition,
+            tags,
+        } => {
             validate_card_text(index, "term", &term)?;
             validate_card_text(index, "definition", &definition)?;
             validate_tags(index, &tags)?;
-            Ok(json!({ "type": "basic", "front": format!("What is {}?", term.trim()), "back": definition, "reverseEnabled": false, "tags": tags }))
+            Ok(json!({
+                "type": "basic",
+                "front": format!("What is {}?", term.trim()),
+                "back": definition,
+                "reverseEnabled": false,
+                "tags": tags
+            }))
         }
-        GeneratedStudyCard::MultipleChoice { question, options, correct_index, explanation, tags } => {
+        GeneratedStudyCard::MultipleChoice {
+            question,
+            options,
+            correct_index,
+            explanation,
+            tags,
+        } => {
             validate_card_text(index, "question", &question)?;
             validate_card_text(index, "explanation", &explanation)?;
             validate_tags(index, &tags)?;
             if options.len() != 4 || correct_index >= 4 {
-                return Err(output_error(format!("Generated card {} must have four options and a correctIndex from 0 through 3.", index + 1)));
+                return Err(output_error(format!(
+                    "Generated card {} must have four options and a correctIndex from 0 through 3.",
+                    index + 1
+                )));
             }
             let mut normalized = HashSet::new();
             for (option_index, option) in options.iter().enumerate() {
                 validate_card_text(index, &format!("options[{option_index}]"), option)?;
                 if !normalized.insert(option.trim().to_lowercase()) {
-                    return Err(output_error(format!("Generated card {} contains duplicate multiple-choice options.", index + 1)));
+                    return Err(output_error(format!(
+                        "Generated card {} contains duplicate multiple-choice options.",
+                        index + 1
+                    )));
                 }
             }
             let labels = ["A", "B", "C", "D"];
-            let front = format!("{}\n\nA. {}\nB. {}\nC. {}\nD. {}", question.trim(), options[0].trim(), options[1].trim(), options[2].trim(), options[3].trim());
-            let back = format!("**Answer: {}. {}**\n\n{}", labels[correct_index], options[correct_index].trim(), explanation.trim());
-            Ok(json!({ "type": "basic", "front": front, "back": back, "reverseEnabled": false, "tags": tags }))
+            let front = format!(
+                "{}\n\nA. {}\nB. {}\nC. {}\nD. {}",
+                question.trim(),
+                options[0].trim(),
+                options[1].trim(),
+                options[2].trim(),
+                options[3].trim()
+            );
+            let back = format!(
+                "**Answer: {}. {}**\n\n{}",
+                labels[correct_index],
+                options[correct_index].trim(),
+                explanation.trim()
+            );
+            Ok(json!({
+                "type": "basic",
+                "front": front,
+                "back": back,
+                "reverseEnabled": false,
+                "tags": tags
+            }))
         }
-        GeneratedStudyCard::CriticalThinking { prompt, answer, tags } => {
+        GeneratedStudyCard::CriticalThinking {
+            prompt,
+            answer,
+            tags,
+        } => {
             validate_card_text(index, "prompt", &prompt)?;
             validate_card_text(index, "answer", &answer)?;
             validate_tags(index, &tags)?;
-            Ok(json!({ "type": "basic", "front": prompt, "back": answer, "reverseEnabled": false, "tags": tags }))
+            Ok(json!({
+                "type": "basic",
+                "front": prompt,
+                "back": answer,
+                "reverseEnabled": false,
+                "tags": tags
+            }))
         }
-        GeneratedStudyCard::Cloze { text, blanks, mode, tags } => {
+        GeneratedStudyCard::Cloze {
+            text,
+            blanks,
+            mode,
+            tags,
+        } => {
             validate_card_text(index, "text", &text)?;
             validate_tags(index, &tags)?;
             if !matches!(mode.as_str(), "one_at_a_time" | "all_together") {
-                return Err(output_error(format!("Generated card {} has an unsupported cloze mode.", index + 1)));
+                return Err(output_error(format!(
+                    "Generated card {} has an unsupported cloze mode.",
+                    index + 1
+                )));
             }
-            Ok(json!({ "type": "cloze", "text": build_cloze_text(index, &text, &blanks)?, "mode": mode, "tags": tags }))
+            Ok(json!({
+                "type": "cloze",
+                "text": build_cloze_text(index, &text, &blanks)?,
+                "mode": mode,
+                "tags": tags
+            }))
         }
     }
 }
 
 fn build_cloze_text(index: usize, text: &str, blanks: &[String]) -> Result<String, CommandError> {
     if blanks.is_empty() || blanks.len() > MAX_CLOZE_BLANKS {
-        return Err(output_error(format!("Generated card {} must select between one and {MAX_CLOZE_BLANKS} cloze blanks.", index + 1)));
+        return Err(output_error(format!(
+            "Generated card {} must select between one and {MAX_CLOZE_BLANKS} cloze blanks.",
+            index + 1
+        )));
     }
+
     let mut unique = HashSet::new();
     let mut ranges: Vec<(usize, usize, usize, String)> = Vec::with_capacity(blanks.len());
     for (blank_index, blank) in blanks.iter().enumerate() {
@@ -679,24 +839,38 @@ fn build_cloze_text(index: usize, text: &str, blanks: &[String]) -> Result<Strin
             || trimmed.contains("}}")
             || !unique.insert(trimmed.to_string())
         {
-            return Err(output_error(format!("Generated card {} contains an invalid or duplicate cloze blank.", index + 1)));
+            return Err(output_error(format!(
+                "Generated card {} contains an invalid or duplicate cloze blank.",
+                index + 1
+            )));
         }
+
         let mut search_start = 0_usize;
         let selected = loop {
-            let Some(relative) = text[search_start..].find(trimmed) else { break None; };
+            let Some(relative) = text[search_start..].find(trimmed) else {
+                break None;
+            };
             let start = search_start + relative;
             let end = start + trimmed.len();
-            if ranges.iter().all(|(other_start, other_end, _, _)| end <= *other_start || start >= *other_end) {
+            if ranges.iter().all(|(other_start, other_end, _, _)| {
+                end <= *other_start || start >= *other_end
+            }) {
                 break Some((start, end));
             }
             search_start = end;
-            if search_start >= text.len() { break None; }
+            if search_start >= text.len() {
+                break None;
+            }
         };
         let Some((start, end)) = selected else {
-            return Err(output_error(format!("Generated card {} selected a cloze blank that is not an exact non-overlapping substring of its text.", index + 1)));
+            return Err(output_error(format!(
+                "Generated card {} selected a cloze blank that is not an exact non-overlapping substring of its text.",
+                index + 1
+            )));
         };
         ranges.push((start, end, blank_index + 1, trimmed.to_string()));
     }
+
     ranges.sort_by_key(|range| Reverse(range.0));
     let mut marked = text.to_string();
     for (start, end, group, blank) in ranges {
@@ -709,16 +883,24 @@ fn validate_card_text(index: usize, field: &str, value: &str) -> Result<(), Comm
     let count = value.chars().count();
     if value.trim().is_empty()
         || count > MAX_CARD_TEXT_CHARS
-        || value.chars().any(|character| character.is_control() && !matches!(character, '\n' | '\t'))
+        || value
+            .chars()
+            .any(|character| character.is_control() && !matches!(character, '\n' | '\t'))
     {
-        return Err(output_error(format!("Generated card {} has an empty, oversized, or invalid {field} field.", index + 1)));
+        return Err(output_error(format!(
+            "Generated card {} has an empty, oversized, or invalid {field} field.",
+            index + 1
+        )));
     }
     Ok(())
 }
 
 fn validate_tags(index: usize, tags: &[String]) -> Result<(), CommandError> {
     if tags.len() > MAX_TAGS_PER_CARD {
-        return Err(output_error(format!("Generated card {} contains too many tags.", index + 1)));
+        return Err(output_error(format!(
+            "Generated card {} contains too many tags.",
+            index + 1
+        )));
     }
     for tag in tags {
         if tag.trim().is_empty()
@@ -726,7 +908,10 @@ fn validate_tags(index: usize, tags: &[String]) -> Result<(), CommandError> {
             || tag.starts_with('#')
             || tag.chars().any(char::is_control)
         {
-            return Err(output_error(format!("Generated card {} contains an invalid tag.", index + 1)));
+            return Err(output_error(format!(
+                "Generated card {} contains an invalid tag.",
+                index + 1
+            )));
         }
     }
     Ok(())
@@ -738,36 +923,50 @@ fn parse_curation(value: Value, candidate_count: usize) -> Result<Vec<usize>, Co
     let mut seen = HashSet::new();
     for index in &output.keep_indices {
         if *index >= candidate_count || !seen.insert(*index) {
-            return Err(output_error("The card-curation response contained an invalid or duplicate index."));
+            return Err(output_error(
+                "The card-curation response contained an invalid or duplicate index.",
+            ));
         }
     }
     Ok(output.keep_indices)
 }
 
 fn compact_card_summary(index: usize, card: &Value) -> String {
-    let card_type = card.get("type").and_then(Value::as_str).unwrap_or("unknown");
+    let card_type = card
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
     let primary = card
         .get("front")
         .or_else(|| card.get("text"))
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let secondary = card.get("back").and_then(Value::as_str).unwrap_or_default();
+    let secondary = card
+        .get("back")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     format!(
         "{} | {} | {} | {}",
         index,
         card_type,
-        primary.chars().take(700).collect::<String>().replace('\n', " "),
-        secondary.chars().take(400).collect::<String>().replace('\n', " ")
+        primary
+            .chars()
+            .take(700)
+            .collect::<String>()
+            .replace('\n', " "),
+        secondary
+            .chars()
+            .take(400)
+            .collect::<String>()
+            .replace('\n', " ")
     )
 }
 
 fn card_identity(card: &Value) -> String {
-    let value = card
-        .get("front")
+    card.get("front")
         .or_else(|| card.get("text"))
         .and_then(Value::as_str)
-        .unwrap_or_default();
-    value
+        .unwrap_or_default()
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -792,23 +991,30 @@ fn outline_schema() -> Value {
         "additionalProperties": false,
         "required": ["summary", "learningObjectives", "keyConcepts", "sections"],
         "properties": {
-            "summary": { "type": "string", "minLength": 1, "maxLength": MAX_OUTLINE_TEXT_CHARS },
-            "learningObjectives": { "type": "array", "maxItems": MAX_OUTLINE_OBJECTIVES, "items": { "type": "string", "minLength": 1, "maxLength": 2000 } },
-            "keyConcepts": { "type": "array", "maxItems": MAX_OUTLINE_CONCEPTS, "items": { "type": "string", "minLength": 1, "maxLength": 1000 } },
+            "summary": string_schema(MAX_OUTLINE_TEXT_CHARS),
+            "learningObjectives": string_array_schema(MAX_OUTLINE_OBJECTIVES, 2_000),
+            "keyConcepts": string_array_schema(MAX_OUTLINE_CONCEPTS, 1_000),
             "sections": {
                 "type": "array",
                 "maxItems": MAX_OUTLINE_SECTIONS,
                 "items": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["title", "pageStart", "pageEnd", "summary", "learningObjectives", "keyConcepts"],
+                    "required": [
+                        "title",
+                        "pageStart",
+                        "pageEnd",
+                        "summary",
+                        "learningObjectives",
+                        "keyConcepts"
+                    ],
                     "properties": {
-                        "title": { "type": "string", "minLength": 1, "maxLength": 2000 },
+                        "title": string_schema(2_000),
                         "pageStart": { "type": "integer", "minimum": 1 },
                         "pageEnd": { "type": "integer", "minimum": 1 },
-                        "summary": { "type": "string", "minLength": 1, "maxLength": 10000 },
-                        "learningObjectives": { "type": "array", "maxItems": 32, "items": { "type": "string", "minLength": 1, "maxLength": 2000 } },
-                        "keyConcepts": { "type": "array", "maxItems": 48, "items": { "type": "string", "minLength": 1, "maxLength": 1000 } }
+                        "summary": string_schema(10_000),
+                        "learningObjectives": string_array_schema(32, 2_000),
+                        "keyConcepts": string_array_schema(48, 1_000)
                     }
                 }
             }
@@ -817,20 +1023,133 @@ fn outline_schema() -> Value {
 }
 
 fn flashcard_schema() -> Value {
-    let tags = json!({ "type": "array", "maxItems": MAX_TAGS_PER_CARD, "items": { "type": "string", "minLength": 1, "maxLength": MAX_TAG_CHARS } });
     json!({
-        "type": "object", "additionalProperties": false, "required": ["cards"],
-        "properties": { "cards": { "type": "array", "maxItems": MAX_WINDOW_CARDS, "items": { "oneOf": [
-            { "type": "object", "additionalProperties": false, "required": ["type", "front", "back"], "properties": { "type": { "const": "basic" }, "front": { "type": "string", "minLength": 1, "maxLength": MAX_CARD_TEXT_CHARS }, "back": { "type": "string", "minLength": 1, "maxLength": MAX_CARD_TEXT_CHARS }, "reverseEnabled": { "type": "boolean" }, "tags": tags.clone() } },
-            { "type": "object", "additionalProperties": false, "required": ["type", "term", "definition"], "properties": { "type": { "const": "definition" }, "term": { "type": "string", "minLength": 1, "maxLength": MAX_CARD_TEXT_CHARS }, "definition": { "type": "string", "minLength": 1, "maxLength": MAX_CARD_TEXT_CHARS }, "tags": tags.clone() } },
-            { "type": "object", "additionalProperties": false, "required": ["type", "question", "options", "correctIndex", "explanation"], "properties": { "type": { "const": "multiple_choice" }, "question": { "type": "string", "minLength": 1, "maxLength": MAX_CARD_TEXT_CHARS }, "options": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "string", "minLength": 1, "maxLength": MAX_CARD_TEXT_CHARS } }, "correctIndex": { "type": "integer", "minimum": 0, "maximum": 3 }, "explanation": { "type": "string", "minLength": 1, "maxLength": MAX_CARD_TEXT_CHARS }, "tags": tags.clone() } },
-            { "type": "object", "additionalProperties": false, "required": ["type", "prompt", "answer"], "properties": { "type": { "const": "critical_thinking" }, "prompt": { "type": "string", "minLength": 1, "maxLength": MAX_CARD_TEXT_CHARS }, "answer": { "type": "string", "minLength": 1, "maxLength": MAX_CARD_TEXT_CHARS }, "tags": tags.clone() } },
-            { "type": "object", "additionalProperties": false, "required": ["type", "text", "blanks"], "properties": { "type": { "const": "cloze" }, "text": { "type": "string", "minLength": 1, "maxLength": MAX_CARD_TEXT_CHARS }, "blanks": { "type": "array", "minItems": 1, "maxItems": MAX_CLOZE_BLANKS, "items": { "type": "string", "minLength": 1, "maxLength": MAX_CLOZE_BLANK_CHARS } }, "mode": { "type": "string", "enum": ["one_at_a_time", "all_together"] }, "tags": tags }
-        ] } } }
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cards"],
+        "properties": {
+            "cards": {
+                "type": "array",
+                "maxItems": MAX_WINDOW_CARDS,
+                "items": {
+                    "oneOf": [
+                        basic_card_schema(),
+                        definition_card_schema(),
+                        multiple_choice_card_schema(),
+                        critical_thinking_card_schema(),
+                        cloze_card_schema()
+                    ]
+                }
+            }
+        }
     })
 }
 
+fn basic_card_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "front", "back"],
+        "properties": {
+            "type": { "const": "basic" },
+            "front": string_schema(MAX_CARD_TEXT_CHARS),
+            "back": string_schema(MAX_CARD_TEXT_CHARS),
+            "reverseEnabled": { "type": "boolean" },
+            "tags": tag_schema()
+        }
+    })
+}
+
+fn definition_card_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "term", "definition"],
+        "properties": {
+            "type": { "const": "definition" },
+            "term": string_schema(MAX_CARD_TEXT_CHARS),
+            "definition": string_schema(MAX_CARD_TEXT_CHARS),
+            "tags": tag_schema()
+        }
+    })
+}
+
+fn multiple_choice_card_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "question", "options", "correctIndex", "explanation"],
+        "properties": {
+            "type": { "const": "multiple_choice" },
+            "question": string_schema(MAX_CARD_TEXT_CHARS),
+            "options": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "items": string_schema(MAX_CARD_TEXT_CHARS)
+            },
+            "correctIndex": { "type": "integer", "minimum": 0, "maximum": 3 },
+            "explanation": string_schema(MAX_CARD_TEXT_CHARS),
+            "tags": tag_schema()
+        }
+    })
+}
+
+fn critical_thinking_card_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "prompt", "answer"],
+        "properties": {
+            "type": { "const": "critical_thinking" },
+            "prompt": string_schema(MAX_CARD_TEXT_CHARS),
+            "answer": string_schema(MAX_CARD_TEXT_CHARS),
+            "tags": tag_schema()
+        }
+    })
+}
+
+fn cloze_card_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "text", "blanks"],
+        "properties": {
+            "type": { "const": "cloze" },
+            "text": string_schema(MAX_CARD_TEXT_CHARS),
+            "blanks": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": MAX_CLOZE_BLANKS,
+                "items": string_schema(MAX_CLOZE_BLANK_CHARS)
+            },
+            "mode": {
+                "type": "string",
+                "enum": ["one_at_a_time", "all_together"]
+            },
+            "tags": tag_schema()
+        }
+    })
+}
+
+fn string_schema(maximum: usize) -> Value {
+    json!({ "type": "string", "minLength": 1, "maxLength": maximum })
+}
+
+fn string_array_schema(maximum_items: usize, maximum_string: usize) -> Value {
+    json!({
+        "type": "array",
+        "maxItems": maximum_items,
+        "items": string_schema(maximum_string)
+    })
+}
+
+fn tag_schema() -> Value {
+    string_array_schema(MAX_TAGS_PER_CARD, MAX_TAG_CHARS)
+}
+
 fn curation_schema(candidate_count: usize) -> Value {
+    let maximum_index = candidate_count.saturating_sub(1);
     json!({
         "type": "object",
         "additionalProperties": false,
@@ -839,7 +1158,11 @@ fn curation_schema(candidate_count: usize) -> Value {
             "keepIndices": {
                 "type": "array",
                 "maxItems": candidate_count,
-                "items": { "type": "integer", "minimum": 0, "maximum": candidate_count.saturating_sub(1) }
+                "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": maximum_index
+                }
             }
         }
     })
@@ -854,15 +1177,26 @@ fn parse_completion_content(value: &Value) -> Result<&str, CommandError> {
         .and_then(|message| message.get("content"))
         .and_then(Value::as_str)
         .filter(|content| !content.trim().is_empty())
-        .ok_or_else(|| CommandError::new("ai_empty_response", "The model returned no final document-task content."))
+        .ok_or_else(|| {
+            CommandError::new(
+                "ai_empty_response",
+                "The model returned no final document-task content.",
+            )
+        })
 }
 
 fn normalize_json_content(value: &str) -> &str {
     let trimmed = value.trim();
-    if let Some(inner) = trimmed.strip_prefix("```json").and_then(|value| value.strip_suffix("```")) {
+    if let Some(inner) = trimmed
+        .strip_prefix("```json")
+        .and_then(|value| value.strip_suffix("```"))
+    {
         return inner.trim();
     }
-    if let Some(inner) = trimmed.strip_prefix("```").and_then(|value| value.strip_suffix("```")) {
+    if let Some(inner) = trimmed
+        .strip_prefix("```")
+        .and_then(|value| value.strip_suffix("```"))
+    {
         return inner.trim();
     }
     trimmed
@@ -874,10 +1208,20 @@ fn completion_endpoint(profile: &ProfileSnapshot) -> Result<Url, CommandError> {
             let base_includes_v1 = Url::parse(&profile.base_url)
                 .ok()
                 .is_some_and(|url| url.path().trim_end_matches('/').ends_with("/v1"));
-            join_endpoint(&profile.base_url, if base_includes_v1 { "chat/completions" } else { "v1/chat/completions" })
+            join_endpoint(
+                &profile.base_url,
+                if base_includes_v1 {
+                    "chat/completions"
+                } else {
+                    "v1/chat/completions"
+                },
+            )
         }
         ProviderKind::Deepseek => join_endpoint(&profile.base_url, "chat/completions"),
-        _ => Err(CommandError::new("ai_provider_not_implemented", "The selected AI provider cannot analyze PDF documents in this ostudy build.")),
+        _ => Err(CommandError::new(
+            "ai_provider_not_implemented",
+            "The selected AI provider cannot analyze PDF documents in this ostudy build.",
+        )),
     }
 }
 
@@ -891,14 +1235,19 @@ fn output_error(message: impl Into<String>) -> CommandError {
 }
 
 fn retryable_contract_error(error: &CommandError) -> bool {
-    matches!(error.code.as_str(), "ai_document_output_invalid" | "ai_empty_response")
+    matches!(
+        error.code.as_str(),
+        "ai_document_output_invalid" | "ai_empty_response"
+    )
 }
 
 fn collapse_contract_error(error: CommandError, task: &str) -> CommandError {
     if retryable_contract_error(&error) {
         CommandError::new(
             "ai_document_output_invalid",
-            format!("The AI provider twice returned {task} that did not match ostudy's contract. Retry the document or choose a different model."),
+            format!(
+                "The AI provider twice returned {task} that did not match ostudy's contract. Retry the document or choose a different model."
+            ),
         )
     } else {
         error
@@ -949,20 +1298,29 @@ mod tests {
             &["heart rate".to_string(), "stroke volume".to_string()],
         )
         .unwrap();
-        assert_eq!(marked, "Cardiac output equals {{c1::heart rate}} multiplied by {{c2::stroke volume}}.");
+        assert_eq!(
+            marked,
+            "Cardiac output equals {{c1::heart rate}} multiplied by {{c2::stroke volume}}."
+        );
     }
 
     #[test]
     fn curation_rejects_duplicate_or_out_of_range_indices() {
         assert!(parse_curation(json!({ "keepIndices": [0, 0] }), 2).is_err());
         assert!(parse_curation(json!({ "keepIndices": [2] }), 2).is_err());
-        assert_eq!(parse_curation(json!({ "keepIndices": [1] }), 2).unwrap(), vec![1]);
+        assert_eq!(
+            parse_curation(json!({ "keepIndices": [1] }), 2).unwrap(),
+            vec![1]
+        );
     }
 
     #[test]
     fn schemas_are_versioned_and_bounded() {
-        assert!(serde_json::to_string(&flashcard_schema()).unwrap().contains("multiple_choice"));
-        assert!(serde_json::to_string(&outline_schema()).unwrap().contains("learningObjectives"));
+        let flashcards = serde_json::to_string(&flashcard_schema()).unwrap();
+        let outline = serde_json::to_string(&outline_schema()).unwrap();
+        assert!(flashcards.contains("multiple_choice"));
+        assert!(flashcards.contains("critical_thinking"));
+        assert!(outline.contains("learningObjectives"));
         assert_eq!(FLASHCARD_SCHEMA_VERSION, 3);
         assert_eq!(OUTLINE_SCHEMA_VERSION, 1);
     }
