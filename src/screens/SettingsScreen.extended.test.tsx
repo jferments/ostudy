@@ -27,7 +27,11 @@ vi.mock("../ipc/aiProfiles", () => ({
 }));
 vi.mock("../ipc/common", async (importOriginal) => {
   const original = await importOriginal<typeof import("../ipc/common")>();
-  return { ...original, getErrorMessage: (error: unknown) => error instanceof Error ? error.message : "Unexpected error" };
+  return {
+    ...original,
+    getErrorMessage: (error: unknown) =>
+      error instanceof Error ? error.message : "Unexpected error",
+  };
 });
 
 const llamaId = "a".repeat(32);
@@ -89,7 +93,7 @@ function profileDetail(
     providerLabel: deepseek ? "DeepSeek" : "llama.cpp / Unsloth GGUF",
     baseUrl: deepseek ? "https://api.deepseek.com/" : "http://127.0.0.1:8080/",
     baseUrlEditable: !deepseek,
-    modelId: deepseek ? "deepseek-chat" : "nursing-qwen",
+    modelId: deepseek ? "deepseek-v4-flash" : "nursing-qwen",
     authMode: deepseek ? "bearer" : "none",
     enabled: true,
     allowInsecureHttp: false,
@@ -235,6 +239,42 @@ describe("SettingsScreen AI/LLM behavior", () => {
     expect(screen.queryByText("sentinel-secret")).toBeNull();
   });
 
+  it("adopts a sole llama.cpp server model ID as an unsaved draft after refresh", async () => {
+    const detail = profileDetail("llama_cpp", { modelId: "unsloth/Qwen3.6-27B-MTP-GGUF" });
+    vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(detail)]);
+    vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(detail);
+    vi.mocked(aiIpc.listAiProviderModels).mockResolvedValue({
+      profileId: llamaId,
+      profileRevision: 1,
+      providerKind: "llama_cpp",
+      models: [
+        {
+          id: "/models/Qwen3.6-27B-MTP-Q4_K_M.gguf",
+          displayName: "/models/Qwen3.6-27B-MTP-Q4_K_M.gguf",
+          ownedBy: "llamacpp",
+        },
+      ],
+      retrievedAt: 1,
+    });
+    const { showToast } = renderSettings();
+    await openAiTab();
+    await screen.findByDisplayValue("Local nursing model");
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh models" }));
+    const modelInput = await screen.findByRole("combobox", { name: "Model ID" });
+    await waitFor(() => {
+      expect((modelInput as HTMLInputElement).value).toBe(
+        "/models/Qwen3.6-27B-MTP-Q4_K_M.gguf",
+      );
+    });
+    expect(screen.getByRole("button", { name: "Save profile" })).not.toBeDisabled();
+    expect(aiIpc.updateAiProviderProfile).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      "info",
+      expect.stringContaining("server-reported ID"),
+    );
+  });
+
   it("shows model discovery and a redacted capability probe result", async () => {
     const detail = profileDetail("llama_cpp");
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(detail)]);
@@ -244,7 +284,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
       profileRevision: 1,
       credentialEpoch: 0,
       testedModelId: "nursing-qwen",
-      adapterRevision: 1,
+      adapterRevision: 2,
       resultSchemaVersion: 1,
       overallStatus: "verified",
       phases: [
@@ -287,6 +327,11 @@ describe("SettingsScreen AI/LLM behavior", () => {
     expect(await screen.findByText("Text completion")).toBeTruthy();
     expect(screen.getByText("Server chat template")).toBeTruthy();
     expect(screen.getByText("JSON Schema")).toBeTruthy();
+    fireEvent.click(screen.getByText("View diagnostic information"));
+    expect(screen.getByText("Adapter revision")).toBeTruthy();
+    expect(screen.getByText("http://127.0.0.1:8080/")).toBeTruthy();
+    expect(screen.getByText(/never includes the API credential/u)).toBeTruthy();
+    expect(screen.queryByText("sentinel-secret")).toBeNull();
     expect(showToast).toHaveBeenCalledWith("success", "AI provider profile verified.");
   });
 
