@@ -16,6 +16,8 @@ tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
 chrono = "=0.4.45"
+keyring = "=4.1.6"
+reqwest = { version = "=0.13.4", default-features = false, features = ["json", "rustls"] }
 rs-fsrs = "=1.2.1"
 rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled", "backup", "trace"] }
 serde = { version = "=1.0.229", features = ["derive"] }
@@ -24,3 +26,4 @@ sha2 = "=0.10.9"
 tauri-plugin-dialog = "=2.7.2"
 tauri-plugin-opener = "=2.5.4"
 tauri = { version = "=2.11.5", features = ["protocol-asset"] }
+url = "=2.5.7"

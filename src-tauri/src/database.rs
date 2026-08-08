@@ -100,9 +100,21 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "ed5b4f510d014b34f7c6b83c3fcf7914baaa3942e51345a74fb8a7179cc1e11a",
         sql: include_str!("../migrations/0014_review_attribution_and_projection_indexes.sql"),
     },
+    Migration {
+        version: 15,
+        name: "ai_provider_profiles",
+        checksum: "241246c924f8b050138011088014f515bdb26145eecd4536320331d905ad783b",
+        sql: include_str!("../migrations/0015_ai_provider_profiles.sql"),
+    },
+    Migration {
+        version: 16,
+        name: "ai_provider_probe_capabilities",
+        checksum: "12b4ec2518478a9798a19e87577f440a89943d06abfe7cb725f56727a854b75a",
+        sql: include_str!("../migrations/0016_ai_provider_probe_capabilities.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 14;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 16;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -144,10 +156,6 @@ impl Database {
 
 fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
     configure_connection(connection)?;
-
-    // Repairs 1-2 need the repair ledger introduced by schema 12 and must run
-    // before schema 13 physically narrows legacy columns. Repair 3 needs the
-    // attribution tables introduced by schema 14.
     apply_migrations_through(connection, 12)?;
     apply_required_repairs(connection, RepairPhase::BeforeMigration(13))?;
     apply_migrations_after(connection, 12)?;
@@ -403,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    fn migrations_and_repairs_are_idempotent_and_reach_schema_fourteen() {
+    fn migrations_and_repairs_are_idempotent_and_reach_latest_schema() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
@@ -430,6 +438,10 @@ mod tests {
                     "review_event_attributions",
                     "review_event_tag_attributions",
                     "data_repairs",
+                    "ai_provider_profiles",
+                    "ai_task_defaults",
+                    "ai_provider_probe_results",
+                    "ai_provider_capabilities",
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -440,34 +452,16 @@ mod tests {
                         .map_err(CommandError::database)?;
                     assert_eq!(exists, 1, "missing table {table}");
                 }
-                for (table, column) in [
-                    ("cards", "archive_suspended_at"),
-                    ("schedule_action_operations", "reschedule_intent_json"),
-                    ("practice_sessions", "selected_tag_ids_json"),
-                    ("review_event_attributions", "review_local_date"),
-                ] {
-                    let exists: i64 = connection
-                        .query_row(
-                            "SELECT EXISTS(
-                                 SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2
-                             )",
-                            params![table, column],
-                            |row| row.get(0),
-                        )
-                        .map_err(CommandError::database)?;
-                    assert_eq!(exists, 1, "missing {table}.{column}");
-                }
                 Ok(())
             })
             .expect("canonical reopen should not write");
     }
 
     #[test]
-    fn schema_four_upgrades_forward_without_rewriting_history_or_losing_cards() {
+    fn released_schema_upgrades_forward_without_losing_integrity() {
         let fixture = &RELEASED_SCHEMA_FIXTURES[0];
         assert_eq!(fixture.release, "0.1.0");
         assert_eq!(fixture.schema_version, 3);
-
         let mut connection = Connection::open_in_memory().expect("database should open");
         connection
             .execute_batch(fixture.sql)

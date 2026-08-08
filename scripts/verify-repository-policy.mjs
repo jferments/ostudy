@@ -20,12 +20,24 @@ for (const path of rustFiles) {
   for (const match of text.matchAll(staleSuppression)) {
     failures.push(`${displayPath}:${lineNumber(text, match.index ?? 0)}: stale-code diagnostics are suppressed`);
   }
+  if (/\breqwest\b/u.test(text) && displayPath !== "src-tauri/src/ai/gateway.rs") {
+    failures.push(`${displayPath}: provider HTTP is confined to the native AI gateway transport`);
+  }
+  if (/\bkeyring\b/u.test(text) && displayPath !== "src-tauri/src/ai/secrets.rs") {
+    failures.push(`${displayPath}: operating-system credentials are confined to the AI secret-store boundary`);
+  }
 }
 
 for (const path of allFiles) {
   const displayPath = relative(root, path).replaceAll("\\", "/");
   if (displayPath.startsWith("src-tauri/src/authoring/") && /(?:^|\/)stage\d/iu.test(displayPath)) {
     failures.push(`${displayPath}: production modules must use domain names rather than implementation-stage names`);
+  }
+  if (displayPath.startsWith("src-tauri/migrations/") && displayPath.endsWith(".sql")) {
+    const text = await readFile(path, "utf8");
+    if (/^\s*(?:api_key|secret_value|credential_value|token_value)\s+/gimu.test(text)) {
+      failures.push(`${displayPath}: credentials may not be stored in SQLite migration columns`);
+    }
   }
 }
 for (const forbiddenPath of [
@@ -107,6 +119,12 @@ for (const path of frontendProductionFiles) {
   if (/\bwindow\.confirm\s*\(/u.test(text)) {
     failures.push(`${displayPath}: ordinary browser confirmation is forbidden; use the shared asynchronous confirmation service`);
   }
+  if (/\bfetch\s*\(|\bXMLHttpRequest\b/u.test(text)) {
+    failures.push(`${displayPath}: provider and application networking must cross typed IPC and run natively`);
+  }
+  if (/from\s+["'](?:openai|@anthropic-ai\/sdk|@google\/generative-ai|ollama)["']/u.test(text)) {
+    failures.push(`${displayPath}: frontend provider SDKs are forbidden; use the Rust AI gateway`);
+  }
 
   if (
     /from\s+["']@tauri-apps\/(?:plugin-dialog|plugin-opener)["']/u.test(text)
@@ -132,6 +150,18 @@ for (const path of frontendProductionFiles) {
     if (/from\s+["']@tauri-apps\//u.test(text)) {
       failures.push(`${displayPath}: shared UI primitives may not import Tauri APIs directly`);
     }
+  }
+}
+
+const nativeCompositionRoot = await readFile(join(root, "src-tauri", "src", "lib.rs"), "utf8");
+for (const genericCommand of [
+  "send_ai_prompt",
+  "complete_ai_prompt",
+  "chat_with_ai",
+  "generic_ai_completion",
+]) {
+  if (nativeCompositionRoot.includes(genericCommand)) {
+    failures.push(`src-tauri/src/lib.rs: generic AI command is forbidden: ${genericCommand}`);
   }
 }
 
@@ -178,7 +208,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Repository policy: explicit native modules, immutable self-hosted workflows, typed UI/platform boundaries, shared overlays, and semantic style entry points are enforced.",
+  "OK   Repository policy: explicit native modules, immutable self-hosted workflows, typed UI/platform boundaries, shared overlays, semantic style entry points, and isolated AI network/secret boundaries are enforced.",
 );
 
 async function collectFiles(directory) {

@@ -110,7 +110,10 @@ for (const [label, needle] of [
   ["serde", `version = "=${env.get("SERDE_VERSION")}"`],
   ["serde_json", `serde_json = "=${env.get("SERDE_JSON_VERSION")}"`],
   ["chrono", `chrono = "=${env.get("CHRONO_VERSION")}"`],
+  ["keyring", `keyring = "=${env.get("KEYRING_VERSION")}"`],
+  ["reqwest", `version = "=${env.get("REQWEST_VERSION")}"`],
   ["rs-fsrs", `rs-fsrs = "=${env.get("RS_FSRS_VERSION")}"`],
+  ["url", `url = "=${env.get("URL_VERSION")}"`],
 ]) {
   const source = label === "Rust toolchain" ? toolchain : cargo;
   if (!source.includes(needle)) failures.push(`${label} exact pin missing`);
@@ -139,7 +142,8 @@ const migrationFiles = (await readdir(migrationDirectory))
   .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
   .sort();
 const registry = new Map();
-for (const match of database.matchAll(/Migration\s*\{([\s\S]*?)\n\s*\},/gu)) {
+// Parse explicit Migration struct literals without depending on line wrapping.
+for (const match of database.matchAll(/Migration\s*\{([\s\S]*?)\},/gu)) {
   const body = match[1];
   const version = Number(body.match(/version:\s*(\d+)/u)?.[1]);
   const checksum = body.match(/checksum:\s*"([0-9a-f]{64})"/u)?.[1];

@@ -138,8 +138,9 @@ export function useAppController() {
   async function confirmDiscardSettings(): Promise<boolean> {
     if (section !== "settings" || !hasUnsavedSettings) return true;
     const accepted = await confirm({
-      title: "Discard settings preview?",
-      description: "The unsaved appearance and study-setting changes will be reverted.",
+      title: "Discard settings changes?",
+      description:
+        "Unsaved preference previews, AI provider metadata, and credential entry will be discarded. Saved credentials are unchanged.",
       confirmLabel: "Discard changes",
       destructive: true,
     });
@@ -213,7 +214,8 @@ export function useAppController() {
   function saveSettingsLocally(settings: AppSettings): void {
     setSavedSettings(settings);
     setActiveSettings(settings);
-    setHasUnsavedSettings(false);
+    // Settings owns a combined dirty state. Saving ordinary preferences must not
+    // clear an unrelated AI profile or credential draft.
   }
 
   return {

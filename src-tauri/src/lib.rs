@@ -6,6 +6,7 @@
 //! publishing any Tauri state. A failed durable initialization therefore stops
 //! startup instead of exposing commands to a partially reconciled library.
 
+mod ai;
 mod analytics;
 mod asset_lifecycle;
 mod assets;
@@ -44,6 +45,7 @@ mod stage36_38_regression_tests;
 
 use std::io;
 
+use ai::AiRuntimeState;
 use database::Database;
 use paths::AppPaths;
 use tauri::Manager;
@@ -63,6 +65,7 @@ pub fn run() {
             let pending_restore =
                 library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
+            let ai_runtime = AiRuntimeState::new().map_err(io::Error::other)?;
 
             deletion::finalize_expired_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
@@ -80,11 +83,16 @@ pub fn run() {
             if !app.manage(database) {
                 return Err(io::Error::other("The database state was already initialized.").into());
             }
+            if !app.manage(ai_runtime) {
+                return Err(
+                    io::Error::other("The AI runtime state was already initialized.").into(),
+                );
+            }
 
             logging::info(
                 "application_started",
                 format!(
-                    "data_directory={} database={} asset_reconciliation=complete",
+                    "data_directory={} database={} asset_reconciliation=complete ai_gateway=ready",
                     paths.app_data_dir().display(),
                     paths.database_path().display()
                 ),
@@ -129,6 +137,19 @@ pub fn run() {
             settings::get_settings,
             settings::save_settings,
             settings::get_app_info,
+            ai::profiles::get_ai_provider_catalog,
+            ai::profiles::list_ai_provider_profiles,
+            ai::profiles::get_ai_provider_profile,
+            ai::profiles::create_ai_provider_profile,
+            ai::profiles::update_ai_provider_profile,
+            ai::profiles::delete_ai_provider_profile,
+            ai::profiles::set_ai_provider_credential,
+            ai::profiles::clear_ai_provider_credential,
+            ai::profiles::get_ai_task_defaults,
+            ai::profiles::set_ai_task_default,
+            ai::probes::list_ai_provider_models,
+            ai::probes::test_ai_provider_profile,
+            ai::probes::get_ai_provider_probe_result,
             library_backup::export_library_backup,
             library_backup::prepare_library_restore,
             practice_selection::get_practice_workload,

@@ -4,7 +4,9 @@
 
 ostudy is a local-first Tauri 2 desktop/mobile application. React and TypeScript
 render the interface; Rust owns durable domain behavior; SQLite stores structured
-state; and the application-managed filesystem stores image bytes.
+state; and the application-managed filesystem stores managed content bytes.
+Optional AI features connect to an existing local model server or an explicitly
+configured cloud API; ostudy does not install or run inference infrastructure.
 
 ```text
 React feature views
@@ -17,12 +19,14 @@ Tauri command boundary
         ↓
 Rust domain/services
         ↓
-SQLite + managed assets
+SQLite + managed assets + native platform services
 ```
 
 Platform capabilities such as file selection, external URL opening, hardware
 Back, future audio, and future haptics are isolated under `src/platform/` rather
-than being mixed into IPC or feature screens.
+than being mixed into IPC or feature screens. Provider HTTP and credential
+storage are separate native AI boundaries and are not exposed as frontend
+platform adapters.
 
 ## Frontend layers
 
@@ -30,7 +34,9 @@ than being mixed into IPC or feature screens.
 
 All direct `invoke()` calls live under `src/ipc/`, split by domain. Command-name
 parity with the Rust `generate_handler!` registry is mechanically verified.
-Screens and controllers import only the IPC domains they use.
+Screens and controllers import only the IPC domains they use. AI IPC contains
+profile administration, model discovery, and bounded profile verification; it
+does not expose a generic prompt/completion command.
 
 ### Controllers
 
@@ -46,6 +52,10 @@ Obsolete read results may finish natively but may not overwrite newer UI state.
 Durable mutations are not treated as cancellable reads: if a write committed,
 subsequent view-refresh failure is reported separately rather than inviting a
 second write.
+
+Settings composes independent ordinary-preference, backup, and AI-profile
+controllers. Saving appearance or scheduling preferences cannot clear an
+unrelated AI metadata or credential-entry draft.
 
 ### Source notes and study presentations
 
@@ -64,6 +74,8 @@ rules are in `docs/UI-ARCHITECTURE.md` and ADR 0014.
   scroll locking.
 - Feature code uses shared overlay primitives or asynchronous confirmation. It
   does not hand-write dialog semantics or ordinary `window.confirm()` calls.
+- Shared Tabs own tablist/tabpanel semantics, roving focus, arrow keys, Home/End,
+  compact scrolling, and stable accessible relationships.
 - Only `src/ui/foundations/index.css` is imported globally. New UI styling uses
   CSS Modules and semantic tokens.
 - Wide, medium, and compact layout modes share the same controllers. Compact
@@ -94,14 +106,17 @@ changing Decks, Settings, Card Editor, or import workflows.
 2. applies a validated pending whole-library restore if present;
 3. opens/migrates SQLite;
 4. runs any missing versioned data repair exactly once;
-5. finalizes expired deletion recovery windows;
-6. purges finalized deletion-owned history;
-7. reconciles managed assets;
-8. publishes application paths and database state;
-9. registers the typed command surface.
+5. initializes the Rust AI runtime without contacting a provider;
+6. finalizes expired deletion recovery windows;
+7. purges finalized deletion-owned history;
+8. reconciles managed assets;
+9. publishes application paths, database state, and native AI state;
+10. registers the typed command surface.
 
 A durable startup failure stops application initialization rather than exposing a
-partially reconciled library.
+partially reconciled library. A temporarily unavailable operating-system
+credential store does not prevent non-AI application startup; affected credential
+operations fail explicitly or allow an intentional session-only credential.
 
 ## Rust domain modules
 
@@ -119,7 +134,10 @@ It owns:
 - move/copy transfer operations.
 
 Command/service orchestrators own logical transactions. Subordinate helpers take
-`&Connection` or `&Transaction` and do not commit secretly.
+`&Connection` or `&Transaction` and do not commit secretly. The authoring
+subsystem remains network-free; future AI generation must enter through a native
+task service and reuse authoring validation rather than giving a provider direct
+write authority.
 
 ### Studyability and local calendar
 
@@ -163,6 +181,44 @@ Historical attribution follows stable entity identities:
 - archived decks remain in historical analytics;
 - finalized deleted-deck history is purged according to the deletion contract.
 
+### AI provider platform
+
+`src-tauri/src/ai/` owns provider metadata, credential isolation, endpoint policy,
+native HTTP transport, provider adapters, capability probes, and redacted probe
+persistence. Detailed decisions are in `docs/AI-ARCHITECTURE.md`, ADR 0015, and
+ADR 0016.
+
+Provider profiles are separate from `AppSettings`. SQLite stores stable profile
+IDs, immutable provider kinds, normalized endpoints, model IDs, auth modes,
+enabled state, timeouts, credential epochs, optimistic revisions, and explicit
+task defaults. Credential bytes never enter SQLite.
+
+`SecretManager` is the sole credential boundary. Secure credentials use the
+operating-system credential service; explicit session-only credentials remain in
+native process memory. Read DTOs expose status only. Changing a credential or
+profile invalidates older capability evidence. Metadata and credential mutations
+share one native mutation lane so an endpoint cannot change concurrently with a
+secret write.
+
+`AiGateway` is the sole provider HTTP transport. It uses bounded native requests,
+Rustls TLS, disabled redirects, no cookies, no raw provider-body logging, and
+safe error normalization. Provider adapters own route and structured-output
+differences. Initial adapters support llama.cpp and DeepSeek:
+
+- llama.cpp applies the server/model chat template; ostudy stores only presence
+  and an optional SHA-256 fingerprint;
+- llama.cpp structured output uses JSON Schema plus independent local semantic
+  validation;
+- DeepSeek structured output uses JSON object mode plus strict Rust and semantic
+  validation;
+- deterministic loopback fixtures verify request/response contracts without
+  internet access or paid credentials.
+
+Capabilities distinguish supported, unsupported, and unknown states and whether
+evidence was declared or actively probed. Probe persistence is conditional on the
+profile revision, credential epoch, and model still matching the tested snapshot.
+There is no generic prompt IPC and no automatic local-to-cloud fallback.
+
 ### Imports, exports, and backup
 
 `.studydeck` is the content-sharing format. Imported decks receive fresh local
@@ -177,7 +233,9 @@ atomicity, fresh schedules, and cleanup in isolated temporary storage.
 
 `.ostudybackup` is the complete personal-library backup format and includes
 content, templates, managed images, schedules, review events, sessions,
-analytics-source records, repairs, and settings.
+analytics-source records, repairs, ordinary settings, AI provider metadata, task
+defaults, and redacted capability evidence. API credentials and session-only
+secrets are excluded because they never enter the SQLite snapshot.
 
 ## Data model
 
@@ -196,11 +254,17 @@ practice session
 
 review event
   └── immutable reviewed card/presentation identity
+
+AI task default
+  └── provider profile metadata
+       ├── credential status (native secret store; no bytes in SQLite)
+       └── redacted capability/probe evidence
 ```
 
 Cards are scheduled, buried, suspended, reviewed, and selected. Notes own
 editable content and tags. This distinction must remain visible in DTO names and
-frontend workflows.
+frontend workflows. AI provider profiles do not own or mutate cards; future task
+services must cross ordinary authoring validation and transactions.
 
 ## Migrations and repairs
 
@@ -228,8 +292,8 @@ the SQLite library.
 
 ## Untrusted content and template safety
 
-All card, template, and imported-deck content is untrusted until Rust validates
-it.
+All card, template, imported-deck, provider, and future document content is
+untrusted until Rust validates it.
 
 - Cards are structured JSON, never executable HTML or script source.
 - Node types, marks, attributes, nesting, sizes, colors, and image references use
@@ -245,6 +309,11 @@ it.
 - Search text is derived by Rust and SQLite statements use bound parameters.
 - Unknown structured content, unknown fields, or malformed placeholders fail
   visibly.
+- Provider output is parsed into strict Rust types and semantically checked; HTTP
+  success never grants database or authoring authority.
+- Provider redirects are rejected and public cleartext HTTP is forbidden.
+- Raw provider prompts, responses, reasoning content, headers, and credentials
+  are not persisted by the profile verification path.
 
 ## Quality boundaries
 
@@ -257,8 +326,16 @@ The static gate enforces durable contracts rather than historical source shape:
 - no skipped/focused/ignored tests;
 - immutable self-hosted workflows;
 - UI/platform dependency direction;
-- shared overlay ownership;
-- one global style entry point and removal of historical stage-named CSS paths.
+- shared overlay and tab ownership;
+- one global style entry point and removal of historical stage-named CSS paths;
+- no frontend provider networking or provider SDKs;
+- provider HTTP confined to the native AI gateway;
+- operating-system keyring access confined to the AI secret boundary;
+- no credential-value columns in SQLite migrations;
+- no generic AI completion command.
 
-Feature behavior belongs in Rust tests, Vitest/controller/component tests,
-migration/package/conformance fixtures, and native WebDriver workflows.
+The self-hosted workflow may upload exact candidate Cargo lock and rustfmt
+artifacts, but qualification still fails until both are committed. Feature
+behavior belongs in Rust tests, deterministic provider contract fixtures,
+Vitest/controller/component tests, migration/package/conformance fixtures, and
+native WebDriver workflows.
