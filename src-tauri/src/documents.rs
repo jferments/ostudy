@@ -31,6 +31,7 @@ const MAX_SEMANTIC_TEXT_BYTES: usize = 128 * 1024 * 1024;
 const MAX_RENDER_BYTES: usize = 32 * 1024 * 1024;
 const MAX_GENERATED_CARDS: usize = 10_000;
 const MAX_DOCUMENTS_RETURNED: i64 = 500;
+
 const OUTLINE_WINDOW_MAX_TOKENS: usize = 32_000;
 const OUTLINE_WINDOW_MAX_PAGES: usize = 48;
 const OUTLINE_WINDOW_OVERLAP_TOKENS: usize = 2_000;
@@ -38,6 +39,7 @@ const GENERATION_WINDOW_MAX_TOKENS: usize = 20_000;
 const GENERATION_WINDOW_MAX_PAGES: usize = 40;
 const GENERATION_WINDOW_OVERLAP_TOKENS: usize = 2_000;
 const MAX_IMAGES_PER_GENERATION_WINDOW: usize = 6;
+
 const INTERRUPTED_ERROR_CODE: &str = "document_generation_interrupted";
 const INTERRUPTED_ERROR_MESSAGE: &str =
     "PDF processing stopped when ostudy closed. Retry generation to continue.";
@@ -106,7 +108,7 @@ struct StoredDocument {
 }
 
 #[derive(Clone, Debug)]
-struct ExtractedPage {
+struct PageRecord {
     page_number: i64,
     plain_text: String,
     text_sha256: String,
@@ -117,13 +119,8 @@ struct ExtractedPage {
 
 #[derive(Debug)]
 struct ProcessedDocument {
-    pages: Vec<ExtractedPage>,
+    pages: Vec<PageRecord>,
     semantic: ExtractedDocument,
-}
-
-#[derive(Debug)]
-struct ManagedPdf {
-    document_id: String,
 }
 
 #[tauri::command]
@@ -131,8 +128,7 @@ pub fn list_documents(
     database: State<'_, Database>,
     include_archived: bool,
 ) -> Result<Vec<DocumentDto>, CommandError> {
-    database
-        .with_connection(|connection| list_documents_from_connection(connection, include_archived))
+    database.with_connection(|connection| list_document_rows(connection, include_archived))
 }
 
 #[tauri::command]
@@ -161,23 +157,20 @@ pub async fn import_pdf_and_generate_flashcards(
     render_runtime: State<'_, PdfRenderRuntime>,
     input: ImportPdfDocumentInput,
 ) -> Result<DocumentGenerationResultDto, CommandError> {
-    let managed = import_managed_pdf(database.inner(), paths.inner(), &input.source_path)?;
-    match process_and_generate(
+    let document_id = import_managed_pdf(database.inner(), paths.inner(), &input.source_path)?;
+    let result = process_and_generate(
         database.clone(),
         paths.clone(),
         runtime.clone(),
         render_runtime.inner().clone(),
-        &managed.document_id,
+        &document_id,
         false,
     )
-    .await
-    {
-        Ok(result) => Ok(result),
-        Err(error) => {
-            record_document_failure(database.inner(), &managed.document_id, &error);
-            Err(error)
-        }
+    .await;
+    if let Err(error) = &result {
+        record_document_failure(database.inner(), &document_id, error);
     }
+    result
 }
 
 #[tauri::command]
@@ -203,7 +196,8 @@ pub async fn retry_pdf_flashcard_generation(
             "This PDF already has a generated deck. Delete that deck before generating it again.",
         ));
     }
-    match process_and_generate(
+
+    let result = process_and_generate(
         database.clone(),
         paths.clone(),
         runtime.clone(),
@@ -211,14 +205,11 @@ pub async fn retry_pdf_flashcard_generation(
         &input.document_id,
         true,
     )
-    .await
-    {
-        Ok(result) => Ok(result),
-        Err(error) => {
-            record_document_failure(database.inner(), &input.document_id, &error);
-            Err(error)
-        }
+    .await;
+    if let Err(error) = &result {
+        record_document_failure(database.inner(), &input.document_id, error);
     }
+    result
 }
 
 #[tauri::command]
@@ -233,27 +224,15 @@ pub fn set_document_archived(
             "The document revision is invalid.",
         ));
     }
+
     database.with_connection(|connection| {
         let now = unix_time_millis()?;
         let lifecycle = if input.archived {
             "archived"
+        } else if active_generated_deck_exists(connection, &input.document_id)? {
+            "ready"
         } else {
-            let active_generated_deck = connection
-                .query_row(
-                    "SELECT EXISTS(
-                         SELECT 1
-                         FROM documents document
-                         JOIN decks deck ON deck.id = document.generated_deck_id
-                         WHERE document.id = ?1
-                           AND document.revision = ?2
-                           AND deck.deleted_at IS NULL
-                     )",
-                    params![input.document_id, input.revision],
-                    |row| row.get::<_, i64>(0),
-                )
-                .map(|value| value != 0)
-                .map_err(CommandError::database)?;
-            if active_generated_deck { "ready" } else { "failed" }
+            "failed"
         };
         let changed = connection
             .execute(
@@ -319,10 +298,10 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
         for entry in fs::read_dir(paths.document_staging_dir()).map_err(CommandError::io)? {
             let entry = entry.map_err(CommandError::io)?;
             let path = entry.path();
-            if path.is_file() {
-                let _ = fs::remove_file(path);
-            } else if path.is_dir() {
+            if path.is_dir() {
                 let _ = fs::remove_dir_all(path);
+            } else {
+                let _ = fs::remove_file(path);
             }
         }
     }
@@ -331,13 +310,14 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
         let mut statement = connection
             .prepare("SELECT id, source_relative_path FROM documents WHERE archived_at IS NULL")
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)
+            .map_err(CommandError::database)?;
+        Ok(rows)
     })?;
     for (document_id, relative_path) in managed_sources {
         if !paths.resolve_relative(&relative_path).is_file() {
@@ -372,24 +352,22 @@ async fn process_and_generate(
         ));
     }
 
-    let should_extract = force_extract
-        || stored.dto.page_count == 0
+    let backend_changed = stored.extraction_backend != pdf_backend::active_backend_id()
+        || stored.render_backend != pdf_render_backend::active_backend_id();
+    let incomplete_derivatives = stored.dto.page_count == 0
         || stored.dto.extracted_page_count != stored.dto.page_count
         || stored.dto.rendered_page_count != stored.dto.page_count
-        || stored.semantic_chunk_count == 0
-        || stored.extraction_backend != pdf_backend::active_backend_id()
-        || stored.render_backend != pdf_render_backend::active_backend_id();
-
-    if should_extract {
-        let path_clone = paths.inner().clone();
-        let document_id_owned = document_id.to_string();
-        let source_clone = source_path.clone();
+        || stored.semantic_chunk_count == 0;
+    if force_extract || backend_changed || incomplete_derivatives {
+        let paths_owned = paths.inner().clone();
+        let source_owned = source_path.clone();
+        let id_owned = document_id.to_string();
         let processed = tauri::async_runtime::spawn_blocking(move || {
             extract_and_render_pdf(
-                &path_clone,
+                &paths_owned,
                 &render_runtime,
-                &document_id_owned,
-                &source_clone,
+                &id_owned,
+                &source_owned,
             )
         })
         .await
@@ -402,18 +380,18 @@ async fn process_and_generate(
         persist_processed_document(database.inner(), document_id, &processed)?;
     }
 
-    let pages = load_generation_pages(database.inner(), paths.inner(), document_id)?;
-    let chunks = load_semantic_chunks(database.inner(), document_id)?;
+    let pages = load_pages(database.inner(), paths.inner(), document_id)?;
     if pages.is_empty() {
         return Err(CommandError::new(
             "document_has_no_pages",
             "The PDF did not contain any pages that ostudy could process.",
         ));
     }
+    let chunks = load_semantic_chunks(database.inner(), document_id)?;
     if chunks.is_empty() {
         return Err(CommandError::new(
             "document_has_no_semantic_content",
-            "The PDF did not contain structured text that ostudy could analyze. Image-only PDFs require a future OCR or image-first analysis mode.",
+            "The PDF did not contain structured text that ostudy could analyze. Image-only PDFs require an image-capable generation profile.",
         ));
     }
 
@@ -433,7 +411,7 @@ async fn process_and_generate(
         &outline_windows,
     )
     .await?;
-    persist_document_outline(database.inner(), document_id, &task, &outline)?;
+    persist_outline(database.inner(), document_id, &task, &outline)?;
 
     let generation_windows = build_semantic_windows(
         &chunks,
@@ -447,6 +425,7 @@ async fn process_and_generate(
             "The PDF did not contain semantic source windows for flashcard generation.",
         ));
     }
+
     let job_id = create_generation_job(
         database.inner(),
         document_id,
@@ -454,10 +433,9 @@ async fn process_and_generate(
         pages.len(),
         &generation_windows,
     )?;
-    let mut all_cards = Vec::new();
-
+    let mut generated_cards = Vec::new();
     for window in &generation_windows {
-        mark_generation_window_running(database.inner(), &job_id, window.window_index)?;
+        mark_window_running(database.inner(), &job_id, window.window_index)?;
         let images = if task.include_page_images {
             load_window_images(paths.inner(), &pages, window)?
         } else {
@@ -472,69 +450,61 @@ async fn process_and_generate(
             &images,
         )
         .await?;
-        if all_cards.len().saturating_add(cards.len()) > MAX_GENERATED_CARDS {
+        if generated_cards.len().saturating_add(cards.len()) > MAX_GENERATED_CARDS {
             return Err(CommandError::new(
                 "too_many_generated_cards",
                 format!("The model generated more than {MAX_GENERATED_CARDS} cards from this PDF."),
             ));
         }
-        mark_generation_window_complete(
-            database.inner(),
-            &job_id,
-            window,
-            cards.len(),
-            cards.is_empty(),
-        )?;
-        all_cards.extend(cards);
+        mark_window_complete(database.inner(), &job_id, window, cards.len())?;
+        generated_cards.extend(cards);
     }
 
-    if all_cards.is_empty() {
+    if generated_cards.is_empty() {
         return Err(CommandError::new(
             "document_generated_no_cards",
             "The document analysis found no material important enough to generate flashcards.",
         ));
     }
-
-    let all_cards =
-        document_intelligence::curate_document_cards(runtime.inner(), &task, &outline, all_cards)
-            .await?;
-    if all_cards.is_empty() {
+    let generated_cards = document_intelligence::curate_document_cards(
+        runtime.inner(),
+        &task,
+        &outline,
+        generated_cards,
+    )
+    .await?;
+    if generated_cards.is_empty() {
         return Err(CommandError::new(
             "document_generated_no_cards",
             "The global relevance pass removed all generated cards as low-value or redundant.",
         ));
     }
 
-    mark_job_committing(database.inner(), &job_id, all_cards.len())?;
-    let generated_json = build_generated_import_json(&stored.dto, all_cards)?;
-    let import_result = import_generated_flashcards_bytes_with_commit(
+    mark_job_committing(database.inner(), &job_id, generated_cards.len())?;
+    let payload = build_generated_import_json(&stored.dto, generated_cards)?;
+    let result = import_generated_flashcards_bytes_with_commit(
         database.inner(),
-        generated_json.as_bytes(),
-        |connection, result, now| {
+        payload.as_bytes(),
+        |connection, import_result, now| {
             connection
                 .execute(
                     "INSERT INTO document_decks (document_id, deck_id, job_id, created_at)
                      VALUES (?1, ?2, ?3, ?4)",
-                    params![document_id, result.deck_id.as_str(), job_id, now],
+                    params![document_id, import_result.deck_id, job_id, now],
                 )
                 .map_err(CommandError::database)?;
             connection
                 .execute(
                     "UPDATE documents
-                     SET lifecycle_state = 'ready',
-                         generated_note_count = ?1,
-                         generated_card_count = ?2,
-                         generated_deck_id = ?3,
-                         safe_error_code = '',
-                         safe_error_message = '',
-                         updated_at = ?4,
-                         completed_at = ?4,
-                         revision = revision + 1
+                     SET lifecycle_state = 'ready', generated_note_count = ?1,
+                         generated_card_count = ?2, generated_deck_id = ?3,
+                         safe_error_code = '', safe_error_message = '',
+                         updated_at = ?4, completed_at = ?4, revision = revision + 1
                      WHERE id = ?5",
                     params![
-                        result.created_note_count,
-                        result.created_card_count,
-                        result.deck_id.as_str(),
+                        import_result.created_note_count,
+                        import_result.created_card_count,
+                        import_result.deck_id,
                         now,
                         document_id,
                     ],
@@ -543,17 +513,13 @@ async fn process_and_generate(
             connection
                 .execute(
                     "UPDATE document_generation_jobs
-                     SET state = 'succeeded',
-                         generated_candidate_count = ?1,
-                         generated_deck_id = ?2,
-                         safe_error_code = '',
-                         safe_error_message = '',
-                         updated_at = ?3,
-                         completed_at = ?3
+                     SET state = 'succeeded', generated_candidate_count = ?1,
+                         generated_deck_id = ?2, safe_error_code = '',
+                         safe_error_message = '', updated_at = ?3, completed_at = ?3
                      WHERE id = ?4",
                     params![
-                        i64::try_from(result.created_note_count).unwrap_or(i64::MAX),
-                        result.deck_id.as_str(),
+                        import_result.created_note_count,
+                        import_result.deck_id,
                         now,
                         job_id,
                     ],
@@ -567,10 +533,10 @@ async fn process_and_generate(
         .dto;
     Ok(DocumentGenerationResultDto {
         document,
-        deck_id: import_result.deck_id,
-        created_note_count: import_result.created_note_count,
-        created_card_count: import_result.created_card_count,
-        skipped_duplicate_count: import_result.skipped_duplicate_count,
+        deck_id: result.deck_id,
+        created_note_count: result.created_note_count,
+        created_card_count: result.created_card_count,
+        skipped_duplicate_count: result.skipped_duplicate_count,
     })
 }
 
@@ -578,7 +544,7 @@ fn import_managed_pdf(
     database: &Database,
     paths: &AppPaths,
     source_path: &str,
-) -> Result<ManagedPdf, CommandError> {
+) -> Result<String, CommandError> {
     let source = fs::canonicalize(source_path).map_err(CommandError::io)?;
     if !source.is_file() {
         return Err(CommandError::new("invalid_pdf", "Select a PDF file."));
@@ -602,17 +568,17 @@ fn import_managed_pdf(
             .and_then(|value| value.to_str())
             .unwrap_or("Imported PDF"),
     )?;
-    let document_id = database.with_connection(generate_id)?;
+    let document_id = database.with_connection(|connection| generate_id(connection))?;
     let staged_relative = AppPaths::staged_document_relative_path(&document_id);
     let staged_path = paths.resolve_relative(&staged_relative);
     let (byte_size, sha256) = copy_pdf_with_hash(&source, &staged_path)?;
 
-    let duplicate: Option<String> = database.with_connection(|connection| {
+    let duplicate = database.with_connection(|connection| {
         connection
             .query_row(
                 "SELECT id FROM documents WHERE sha256 = ?1 LIMIT 1",
                 [sha256.as_str()],
-                |row| row.get(0),
+                |row| row.get::<_, String>(0),
             )
             .optional()
             .map_err(CommandError::database)
@@ -639,7 +605,7 @@ fn import_managed_pdf(
     sync_directory(directory)?;
 
     let now = unix_time_millis()?;
-    let inserted = database.with_connection(|connection| {
+    let insert_result = database.with_connection(|connection| {
         connection
             .execute(
                 "INSERT INTO documents (
@@ -665,11 +631,11 @@ fn import_managed_pdf(
             .map_err(CommandError::database)?;
         Ok(())
     });
-    if let Err(error) = inserted {
+    if let Err(error) = insert_result {
         let _ = fs::remove_dir_all(directory);
         return Err(error);
     }
-    Ok(ManagedPdf { document_id })
+    Ok(document_id)
 }
 
 fn extract_and_render_pdf(
@@ -691,7 +657,7 @@ fn extract_and_render_pdf(
         .pages
         .iter()
         .map(|page| {
-            let text = normalize_page_text(page.text.clone());
+            let text = normalize_page_text(&page.text);
             total_text_bytes = total_text_bytes.saturating_add(text.len());
             (page.page_number, text)
         })
@@ -717,20 +683,23 @@ fn extract_and_render_pdf(
     let page_directory = paths.document_pages_dir(document_id);
     fs::create_dir_all(&page_directory).map_err(CommandError::io)?;
     let mut rendered = Vec::<(usize, String, i64, String)>::new();
-    let rendered_count = pdf_render_backend::render_pages(
+    let render_result = pdf_render_backend::render_pages(
         render_runtime,
         source_path,
         |page_number, png| -> Result<(), CommandError> {
             if png.is_empty() || png.len() > MAX_RENDER_BYTES {
                 return Err(CommandError::new(
                     "pdf_render_too_large",
-                    format!("The rendered image for PDF page {page_number} exceeds ostudy's page-image limit."),
+                    format!(
+                        "The rendered image for PDF page {page_number} exceeds ostudy's page-image limit."
+                    ),
                 ));
             }
-            let page_i64 = i64::try_from(page_number).unwrap_or(i64::MAX);
-            let relative = AppPaths::document_page_relative_path(document_id, page_i64);
-            let path = paths.resolve_relative(&relative);
-            write_replacing_file(&path, &png)?;
+            let relative = AppPaths::document_page_relative_path(
+                document_id,
+                i64::try_from(page_number).unwrap_or(i64::MAX),
+            );
+            write_replacing_file(&paths.resolve_relative(&relative), &png)?;
             rendered.push((
                 page_number,
                 relative,
@@ -740,7 +709,7 @@ fn extract_and_render_pdf(
             Ok(())
         },
     );
-    let rendered_count = match rendered_count {
+    let rendered_count = match render_result {
         Ok(count) => count,
         Err(RenderProcessError::Visitor(error)) => return Err(error),
         Err(RenderProcessError::Backend(error)) => return Err(map_pdf_render_error(error)),
@@ -770,7 +739,7 @@ fn extract_and_render_pdf(
                     format!("The renderer did not return PDF page {page_number}."),
                 )
             })?;
-        pages.push(ExtractedPage {
+        pages.push(PageRecord {
             page_number: i64::try_from(page_number).unwrap_or(i64::MAX),
             text_sha256: sha256_hex(plain_text.as_bytes()),
             plain_text,
@@ -779,7 +748,6 @@ fn extract_and_render_pdf(
             render_sha256,
         });
     }
-
     Ok(ProcessedDocument { pages, semantic })
 }
 
@@ -793,30 +761,19 @@ fn persist_processed_document(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "DELETE FROM document_pages WHERE document_id = ?1",
-                [document_id],
-            )
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "DELETE FROM document_semantic_elements WHERE document_id = ?1",
-                [document_id],
-            )
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "DELETE FROM document_semantic_chunks WHERE document_id = ?1",
-                [document_id],
-            )
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "DELETE FROM document_outlines WHERE document_id = ?1",
-                [document_id],
-            )
-            .map_err(CommandError::database)?;
+        for table in [
+            "document_pages",
+            "document_semantic_elements",
+            "document_semantic_chunks",
+            "document_outlines",
+        ] {
+            transaction
+                .execute(
+                    &format!("DELETE FROM {table} WHERE document_id = ?1"),
+                    [document_id],
+                )
+                .map_err(CommandError::database)?;
+        }
 
         for page in &processed.pages {
             transaction
@@ -841,10 +798,7 @@ fn persist_processed_document(
         }
 
         for element in &processed.semantic.elements {
-            let element_type = normalize_element_type(&element.element_type)?;
             let text = normalize_semantic_text(&element.text, 250_000);
-            let heading_path = serde_json::to_string(&element.heading_path)
-                .map_err(CommandError::serialization)?;
             transaction
                 .execute(
                     "INSERT INTO document_semantic_elements (
@@ -861,10 +815,11 @@ fn persist_processed_document(
                         document_id,
                         i64::try_from(element.element_index).unwrap_or(i64::MAX),
                         i64::try_from(element.page_number).unwrap_or(i64::MAX),
-                        element_type,
+                        normalize_element_type(&element.element_type)?,
                         text,
                         element.parent_heading,
-                        heading_path,
+                        serde_json::to_string(&element.heading_path)
+                            .map_err(CommandError::serialization)?,
                         element.bbox.x,
                         element.bbox.y,
                         element.bbox.width.max(0.0),
@@ -887,7 +842,7 @@ fn persist_processed_document(
             let page_numbers = chunk
                 .page_numbers
                 .iter()
-                .map(|value| i64::try_from(*value).unwrap_or(i64::MAX))
+                .map(|page| i64::try_from(*page).unwrap_or(i64::MAX))
                 .collect::<Vec<_>>();
             transaction
                 .execute(
@@ -918,25 +873,18 @@ fn persist_processed_document(
                 .map_err(CommandError::database)?;
         }
 
-        let count = i64::try_from(processed.pages.len()).unwrap_or(i64::MAX);
+        let page_count = i64::try_from(processed.pages.len()).unwrap_or(i64::MAX);
         transaction
             .execute(
                 "UPDATE documents
-                 SET page_count = ?1,
-                     extracted_page_count = ?1,
-                     rendered_page_count = ?1,
-                     extraction_backend = ?2,
-                     render_backend = ?3,
-                     semantic_element_count = ?4,
-                     semantic_chunk_count = ?5,
-                     outline_state = 'pending',
-                     safe_error_code = '',
-                     safe_error_message = '',
-                     updated_at = ?6,
-                     revision = revision + 1
+                 SET page_count = ?1, extracted_page_count = ?1, rendered_page_count = ?1,
+                     extraction_backend = ?2, render_backend = ?3,
+                     semantic_element_count = ?4, semantic_chunk_count = ?5,
+                     outline_state = 'pending', safe_error_code = '', safe_error_message = '',
+                     updated_at = ?6, revision = revision + 1
                  WHERE id = ?7",
                 params![
-                    count,
+                    page_count,
                     pdf_backend::active_backend_id(),
                     pdf_render_backend::active_backend_id(),
                     i64::try_from(processed.semantic.elements.len()).unwrap_or(i64::MAX),
@@ -950,11 +898,11 @@ fn persist_processed_document(
     })
 }
 
-fn load_generation_pages(
+fn load_pages(
     database: &Database,
     paths: &AppPaths,
     document_id: &str,
-) -> Result<Vec<ExtractedPage>, CommandError> {
+) -> Result<Vec<PageRecord>, CommandError> {
     database.with_connection(|connection| {
         let mut statement = connection
             .prepare(
@@ -965,7 +913,7 @@ fn load_generation_pages(
             .map_err(CommandError::database)?;
         let pages = statement
             .query_map([document_id], |row| {
-                Ok(ExtractedPage {
+                Ok(PageRecord {
                     page_number: row.get(0)?,
                     plain_text: row.get(1)?,
                     text_sha256: row.get(2)?,
@@ -1002,7 +950,7 @@ fn load_semantic_chunks(
                  WHERE document_id = ?1 ORDER BY chunk_index",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([document_id], |row| {
                 let pages_json: String = row.get(3)?;
                 let types_json: String = row.get(4)?;
@@ -1033,24 +981,12 @@ fn load_semantic_chunks(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)
-    })
-}
-
-fn mark_outline_building(database: &Database, document_id: &str) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        connection
-            .execute(
-                "UPDATE documents SET outline_state = 'building', updated_at = ?1 WHERE id = ?2",
-                params![now, document_id],
-            )
             .map_err(CommandError::database)?;
-        Ok(())
+        Ok(rows)
     })
 }
 
-fn persist_document_outline(
+fn persist_outline(
     database: &Database,
     document_id: &str,
     task: &document_intelligence::DocumentTaskContext,
@@ -1168,7 +1104,36 @@ fn create_generation_job(
     })
 }
 
-fn mark_generation_window_running(
+fn mark_document_processing(database: &Database, document_id: &str) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE documents
+                 SET lifecycle_state = 'processing', safe_error_code = '', safe_error_message = '',
+                     updated_at = ?1, completed_at = NULL, revision = revision + 1
+                 WHERE id = ?2 AND archived_at IS NULL",
+                params![now, document_id],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
+    })
+}
+
+fn mark_outline_building(database: &Database, document_id: &str) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE documents SET outline_state = 'building', updated_at = ?1 WHERE id = ?2",
+                params![now, document_id],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
+    })
+}
+
+fn mark_window_running(
     database: &Database,
     job_id: &str,
     window_index: usize,
@@ -1177,7 +1142,8 @@ fn mark_generation_window_running(
     database.with_connection(|connection| {
         connection
             .execute(
-                "UPDATE document_generation_windows SET state = 'running', updated_at = ?1
+                "UPDATE document_generation_windows
+                 SET state = 'running', updated_at = ?1
                  WHERE job_id = ?2 AND window_index = ?3",
                 params![now, job_id, i64::try_from(window_index).unwrap_or(i64::MAX)],
             )
@@ -1186,12 +1152,11 @@ fn mark_generation_window_running(
     })
 }
 
-fn mark_generation_window_complete(
+fn mark_window_complete(
     database: &Database,
     job_id: &str,
     window: &SemanticWindow,
     card_count: usize,
-    skipped: bool,
 ) -> Result<(), CommandError> {
     let now = unix_time_millis()?;
     database.with_connection(|connection| {
@@ -1201,11 +1166,11 @@ fn mark_generation_window_complete(
         transaction
             .execute(
                 "UPDATE document_generation_windows
-                 SET state = ?1, card_count = ?2,
-                     safe_error_code = '', safe_error_message = '', updated_at = ?3
+                 SET state = ?1, card_count = ?2, safe_error_code = '',
+                     safe_error_message = '', updated_at = ?3
                  WHERE job_id = ?4 AND window_index = ?5",
                 params![
-                    if skipped { "skipped" } else { "succeeded" },
+                    if card_count == 0 { "skipped" } else { "succeeded" },
                     i64::try_from(card_count).unwrap_or(i64::MAX),
                     now,
                     job_id,
@@ -1230,9 +1195,69 @@ fn mark_generation_window_complete(
     })
 }
 
+fn mark_job_committing(
+    database: &Database,
+    job_id: &str,
+    card_count: usize,
+) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE document_generation_jobs
+                 SET state = 'committing', generated_candidate_count = ?1, updated_at = ?2
+                 WHERE id = ?3",
+                params![i64::try_from(card_count).unwrap_or(i64::MAX), now, job_id],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
+    })
+}
+
+fn record_document_failure(database: &Database, document_id: &str, error: &CommandError) {
+    let now = unix_time_millis().unwrap_or_default();
+    let _ = database.with_connection(|connection| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        transaction
+            .execute(
+                "UPDATE documents
+                 SET lifecycle_state = CASE WHEN archived_at IS NULL THEN 'failed' ELSE 'archived' END,
+                     outline_state = CASE WHEN outline_state = 'building' THEN 'failed' ELSE outline_state END,
+                     safe_error_code = ?1, safe_error_message = ?2,
+                     updated_at = ?3, revision = revision + 1
+                 WHERE id = ?4",
+                params![
+                    bounded_error(&error.code, 80),
+                    bounded_error(&error.message, 1000),
+                    now,
+                    document_id,
+                ],
+            )
+            .map_err(CommandError::database)?;
+        transaction
+            .execute(
+                "UPDATE document_generation_jobs
+                 SET state = 'failed', safe_error_code = ?1, safe_error_message = ?2,
+                     updated_at = ?3, completed_at = ?3
+                 WHERE document_id = ?4
+                   AND state IN ('queued', 'extracting', 'generating', 'committing')",
+                params![
+                    bounded_error(&error.code, 80),
+                    bounded_error(&error.message, 1000),
+                    now,
+                    document_id,
+                ],
+            )
+            .map_err(CommandError::database)?;
+        transaction.commit().map_err(CommandError::database)
+    });
+}
+
 fn load_window_images(
     paths: &AppPaths,
-    pages: &[ExtractedPage],
+    pages: &[PageRecord],
     window: &SemanticWindow,
 ) -> Result<Vec<document_intelligence::SourcePageImage>, CommandError> {
     let selected = select_image_pages(&window.page_numbers, MAX_IMAGES_PER_GENERATION_WINDOW);
@@ -1265,113 +1290,46 @@ fn load_window_images(
 }
 
 fn select_image_pages(page_numbers: &[i64], maximum: usize) -> Vec<i64> {
+    if maximum == 0 {
+        return Vec::new();
+    }
     let mut unique = page_numbers.to_vec();
     unique.sort_unstable();
     unique.dedup();
-    if unique.len() <= maximum || maximum == 0 {
-        return unique.into_iter().take(maximum).collect();
+    if unique.len() <= maximum {
+        return unique;
     }
     if maximum == 1 {
         return vec![unique[unique.len() / 2]];
     }
     let last = unique.len() - 1;
-    let mut selected = (0..maximum)
+    (0..maximum)
         .map(|index| unique[index * last / (maximum - 1)])
-        .collect::<Vec<_>>();
-    selected.sort_unstable();
-    selected.dedup();
-    selected
-}
-
-fn mark_job_committing(
-    database: &Database,
-    job_id: &str,
-    candidate_count: usize,
-) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        connection
-            .execute(
-                "UPDATE document_generation_jobs
-                 SET state = 'committing', generated_candidate_count = ?1, updated_at = ?2
-                 WHERE id = ?3",
-                params![
-                    i64::try_from(candidate_count).unwrap_or(i64::MAX),
-                    now,
-                    job_id
-                ],
-            )
-            .map_err(CommandError::database)?;
-        Ok(())
-    })
-}
-
-fn mark_document_processing(database: &Database, document_id: &str) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        connection
-            .execute(
-                "UPDATE documents
-                 SET lifecycle_state = 'processing', safe_error_code = '', safe_error_message = '',
-                     updated_at = ?1, completed_at = NULL, revision = revision + 1
-                 WHERE id = ?2 AND archived_at IS NULL",
-                params![now, document_id],
-            )
-            .map_err(CommandError::database)?;
-        Ok(())
-    })
-}
-
-fn record_document_failure(database: &Database, document_id: &str, error: &CommandError) {
-    let now = unix_time_millis().unwrap_or_default();
-    let _ = database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "UPDATE documents
-                 SET lifecycle_state = CASE WHEN archived_at IS NULL THEN 'failed' ELSE 'archived' END,
-                     outline_state = CASE WHEN outline_state = 'building' THEN 'failed' ELSE outline_state END,
-                     safe_error_code = ?1, safe_error_message = ?2,
-                     updated_at = ?3, revision = revision + 1
-                 WHERE id = ?4",
-                params![bounded_error(&error.code, 80), bounded_error(&error.message, 1000), now, document_id],
-            )
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "UPDATE document_generation_jobs
-                 SET state = 'failed', safe_error_code = ?1, safe_error_message = ?2,
-                     updated_at = ?3, completed_at = ?3
-                 WHERE document_id = ?4
-                   AND state IN ('queued', 'extracting', 'generating', 'committing')",
-                params![bounded_error(&error.code, 80), bounded_error(&error.message, 1000), now, document_id],
-            )
-            .map_err(CommandError::database)?;
-        transaction.commit().map_err(CommandError::database)
-    });
+        .collect()
 }
 
 fn build_generated_import_json(
     document: &DocumentDto,
     cards: Vec<serde_json::Value>,
 ) -> Result<String, CommandError> {
-    let description = format!(
-        "AI-generated flashcards from {}. Edit or delete these cards through the normal deck tools.",
-        document.original_filename
-    );
     serde_json::to_string(&serde_json::json!({
         "format": "ostudy-flashcards",
         "formatVersion": 1,
-        "deck": { "mode": "create", "name": document.title, "description": description },
+        "deck": {
+            "mode": "create",
+            "name": document.title,
+            "description": format!(
+                "AI-generated flashcards from {}. Edit or delete these cards through the normal deck tools.",
+                document.original_filename
+            )
+        },
         "defaultTags": ["AI generated", "PDF"],
         "cards": cards,
     }))
     .map_err(CommandError::serialization)
 }
 
-fn list_documents_from_connection(
+fn list_document_rows(
     connection: &Connection,
     include_archived: bool,
 ) -> Result<Vec<DocumentDto>, CommandError> {
@@ -1381,27 +1339,29 @@ fn list_documents_from_connection(
                     page_count, extracted_page_count, rendered_page_count,
                     generated_note_count, generated_card_count,
                     CASE WHEN EXISTS (
-                        SELECT 1 FROM decks active_generated_deck
-                        WHERE active_generated_deck.id = documents.generated_deck_id
-                          AND active_generated_deck.deleted_at IS NULL
-                    ) THEN documents.generated_deck_id ELSE NULL END AS generated_deck_id,
+                        SELECT 1 FROM decks deck
+                        WHERE deck.id = documents.generated_deck_id AND deck.deleted_at IS NULL
+                    ) THEN documents.generated_deck_id ELSE NULL END,
                     safe_error_code, safe_error_message, created_at, updated_at,
                     completed_at, archived_at, revision
-             FROM documents WHERE (?1 = 1 OR archived_at IS NULL)
-             ORDER BY updated_at DESC, id LIMIT ?2",
+             FROM documents
+             WHERE (?1 = 1 OR archived_at IS NULL)
+             ORDER BY updated_at DESC, id
+             LIMIT ?2",
         )
         .map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map(
             params![
                 if include_archived { 1_i64 } else { 0_i64 },
-                MAX_DOCUMENTS_RETURNED
+                MAX_DOCUMENTS_RETURNED,
             ],
             document_row,
         )
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(rows)
 }
 
 fn load_document(
@@ -1414,10 +1374,9 @@ fn load_document(
                     page_count, extracted_page_count, rendered_page_count,
                     generated_note_count, generated_card_count,
                     CASE WHEN EXISTS (
-                        SELECT 1 FROM decks active_generated_deck
-                        WHERE active_generated_deck.id = documents.generated_deck_id
-                          AND active_generated_deck.deleted_at IS NULL
-                    ) THEN documents.generated_deck_id ELSE NULL END AS generated_deck_id,
+                        SELECT 1 FROM decks deck
+                        WHERE deck.id = documents.generated_deck_id AND deck.deleted_at IS NULL
+                    ) THEN documents.generated_deck_id ELSE NULL END,
                     safe_error_code, safe_error_message, created_at, updated_at,
                     completed_at, archived_at, revision, source_relative_path,
                     extraction_backend, render_backend, semantic_chunk_count
@@ -1425,27 +1384,7 @@ fn load_document(
             [document_id],
             |row| {
                 Ok(StoredDocument {
-                    dto: DocumentDto {
-                        id: row.get(0)?,
-                        title: row.get(1)?,
-                        original_filename: row.get(2)?,
-                        byte_size: row.get(3)?,
-                        sha256: row.get(4)?,
-                        lifecycle_state: row.get(5)?,
-                        page_count: row.get(6)?,
-                        extracted_page_count: row.get(7)?,
-                        rendered_page_count: row.get(8)?,
-                        generated_note_count: row.get(9)?,
-                        generated_card_count: row.get(10)?,
-                        generated_deck_id: row.get(11)?,
-                        safe_error_code: row.get(12)?,
-                        safe_error_message: row.get(13)?,
-                        created_at: row.get(14)?,
-                        updated_at: row.get(15)?,
-                        completed_at: row.get(16)?,
-                        archived_at: row.get(17)?,
-                        revision: row.get(18)?,
-                    },
+                    dto: document_row(row)?,
                     source_relative_path: row.get(19)?,
                     extraction_backend: row.get(20)?,
                     render_backend: row.get(21)?,
@@ -1487,13 +1426,33 @@ fn document_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentDto> {
     })
 }
 
+fn active_generated_deck_exists(
+    connection: &Connection,
+    document_id: &str,
+) -> Result<bool, CommandError> {
+    connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM documents document
+                 JOIN decks deck ON deck.id = document.generated_deck_id
+                 WHERE document.id = ?1 AND deck.deleted_at IS NULL
+             )",
+            [document_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|value| value != 0)
+        .map_err(CommandError::database)
+}
+
 fn map_pdf_backend_error(error: PdfBackendError) -> CommandError {
     let backend = pdf_backend::active_backend_id();
     let page = error.page_number.unwrap_or_default();
     match error.kind {
         PdfBackendErrorKind::Open | PdfBackendErrorKind::PageCount => CommandError::new(
             "pdf_open_failed",
-            format!("The PDF could not be opened by the structured extraction backend ({backend}): {error}"),
+            format!(
+                "The PDF could not be opened by the structured extraction backend ({backend}): {error}"
+            ),
         ),
         PdfBackendErrorKind::ExtractText => CommandError::new(
             "pdf_text_extraction_failed",
@@ -1543,7 +1502,7 @@ fn normalize_element_type(value: &str) -> Result<&'static str, CommandError> {
     }
 }
 
-fn normalize_page_text(value: String) -> String {
+fn normalize_page_text(value: &str) -> String {
     normalize_semantic_text(
         &value.replace("\r\n", "\n").replace('\r', "\n"),
         MAX_PAGE_TEXT_CHARS,
@@ -1698,7 +1657,7 @@ mod tests {
     #[test]
     fn normalizes_page_text_without_control_characters() {
         assert_eq!(
-            normalize_page_text(" line\r\none\0two\rthree ".to_string()),
+            normalize_page_text(" line\r\none\0two\rthree "),
             "line\nonetwo\nthree"
         );
     }
@@ -1752,7 +1711,11 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(
             &build_generated_import_json(
                 &document,
-                vec![serde_json::json!({ "type": "basic", "front": "Question", "back": "Answer" })],
+                vec![serde_json::json!({
+                    "type": "basic",
+                    "front": "Question",
+                    "back": "Answer"
+                })],
             )
             .unwrap(),
         )
