@@ -18,6 +18,44 @@ pub enum CredentialPersistence {
     Session,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CredentialStorage {
+    None,
+    Secure,
+    Session,
+}
+
+impl CredentialStorage {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Secure => "secure",
+            Self::Session => "session",
+        }
+    }
+
+    pub(crate) fn from_db(value: &str) -> Result<Self, CommandError> {
+        match value {
+            "none" => Ok(Self::None),
+            "secure" => Ok(Self::Secure),
+            "session" => Ok(Self::Session),
+            _ => Err(CommandError::new(
+                "invalid_ai_credential_storage",
+                "The saved AI credential-storage state is invalid.",
+            )),
+        }
+    }
+}
+
+impl From<CredentialPersistence> for CredentialStorage {
+    fn from(value: CredentialPersistence) -> Self {
+        match value {
+            CredentialPersistence::Secure => Self::Secure,
+            CredentialPersistence::Session => Self::Session,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum CredentialStatus {
@@ -77,75 +115,101 @@ impl SecretManager {
         &self,
         profile_id: &str,
         auth_mode: AuthMode,
+        storage: CredentialStorage,
     ) -> Result<CredentialStatusDto, CommandError> {
         if !auth_mode.requires_credential() {
             return Ok(CredentialStatusDto {
                 status: CredentialStatus::NotRequired,
                 authentication_required: false,
-                secure_persistence_available: secure_store_available(),
+                secure_persistence_available: secure_store_constructible(),
                 session_only_available: false,
             });
         }
 
-        if self.session_contains(profile_id)? {
-            return Ok(CredentialStatusDto {
-                status: CredentialStatus::SessionOnly,
+        match storage {
+            CredentialStorage::None => Ok(CredentialStatusDto {
+                status: CredentialStatus::Missing,
                 authentication_required: true,
-                secure_persistence_available: secure_store_available(),
+                secure_persistence_available: secure_store_constructible(),
                 session_only_available: true,
-            });
-        }
-
-        let secure_available = secure_store_available();
-        let status = if !secure_available {
-            CredentialStatus::SecureStoreUnavailable
-        } else {
-            match read_secure(profile_id) {
-                Ok(Some(_secret)) => CredentialStatus::SavedSecurely,
-                Ok(None) => CredentialStatus::Missing,
-                Err(SecretStoreError::Unavailable) => CredentialStatus::SecureStoreUnavailable,
+            }),
+            CredentialStorage::Session => Ok(CredentialStatusDto {
+                status: if self.session_contains(profile_id)? {
+                    CredentialStatus::SessionOnly
+                } else {
+                    CredentialStatus::Missing
+                },
+                authentication_required: true,
+                secure_persistence_available: secure_store_constructible(),
+                session_only_available: true,
+            }),
+            CredentialStorage::Secure => match read_secure(profile_id) {
+                Ok(Some(_secret)) => Ok(CredentialStatusDto {
+                    status: CredentialStatus::SavedSecurely,
+                    authentication_required: true,
+                    secure_persistence_available: true,
+                    session_only_available: true,
+                }),
+                Ok(None) => Ok(CredentialStatusDto {
+                    status: CredentialStatus::Missing,
+                    authentication_required: true,
+                    secure_persistence_available: true,
+                    session_only_available: true,
+                }),
+                Err(SecretStoreError::Unavailable) => Ok(CredentialStatusDto {
+                    status: CredentialStatus::SecureStoreUnavailable,
+                    authentication_required: true,
+                    secure_persistence_available: false,
+                    session_only_available: false,
+                }),
                 Err(SecretStoreError::Failed) => {
-                    return Err(secret_command_error(
-                        "ai_secure_store_failed",
-                        "The operating-system credential store could not be read.",
-                    ));
+                    logging::error("ai_secret_store_error", "ai_secure_store_failed");
+                    Ok(CredentialStatusDto {
+                        status: CredentialStatus::SecureStoreUnavailable,
+                        authentication_required: true,
+                        secure_persistence_available: false,
+                        session_only_available: false,
+                    })
                 }
-            }
-        };
-
-        Ok(CredentialStatusDto {
-            status,
-            authentication_required: true,
-            secure_persistence_available: secure_available,
-            session_only_available: true,
-        })
+            },
+        }
     }
 
     pub fn resolve(
         &self,
         profile_id: &str,
         auth_mode: AuthMode,
+        storage: CredentialStorage,
     ) -> Result<Option<SecretValue>, CommandError> {
         if !auth_mode.requires_credential() {
             return Ok(None);
         }
-        if let Some(secret) = self.take_session_copy(profile_id)? {
-            return Ok(Some(secret));
-        }
-        match read_secure(profile_id) {
-            Ok(Some(secret)) => Ok(Some(secret)),
-            Ok(None) => Err(CommandError::new(
+        match storage {
+            CredentialStorage::None => Err(CommandError::new(
                 "ai_credential_required",
                 "This AI provider profile needs a credential.",
             )),
-            Err(SecretStoreError::Unavailable) => Err(CommandError::new(
-                "ai_secure_store_unavailable",
-                "The operating-system credential store is unavailable. Enter a session-only credential.",
-            )),
-            Err(SecretStoreError::Failed) => Err(secret_command_error(
-                "ai_secure_store_failed",
-                "The operating-system credential store could not be read.",
-            )),
+            CredentialStorage::Session => self.take_session_copy(profile_id)?.map(Some).ok_or_else(|| {
+                CommandError::new(
+                    "ai_credential_required",
+                    "This session-only AI credential expired when ostudy closed. Enter it again.",
+                )
+            }),
+            CredentialStorage::Secure => match read_secure(profile_id) {
+                Ok(Some(secret)) => Ok(Some(secret)),
+                Ok(None) => Err(CommandError::new(
+                    "ai_credential_required",
+                    "The securely saved AI credential is missing. Enter it again.",
+                )),
+                Err(SecretStoreError::Unavailable) => Err(CommandError::new(
+                    "ai_secure_store_unavailable",
+                    "The operating-system credential store is unavailable.",
+                )),
+                Err(SecretStoreError::Failed) => Err(secret_command_error(
+                    "ai_secure_store_failed",
+                    "The operating-system credential store could not be read.",
+                )),
+            },
         }
     }
 
@@ -154,41 +218,43 @@ impl SecretManager {
         profile_id: &str,
         credential: String,
         persistence: CredentialPersistence,
+        previous_storage: CredentialStorage,
     ) -> Result<(), CommandError> {
         validate_credential(&credential)?;
         match persistence {
             CredentialPersistence::Secure => {
-                if !secure_store_available() {
-                    return Err(CommandError::new(
-                        "ai_secure_store_unavailable",
-                        "Secure credential storage is unavailable. Use a session-only credential instead.",
-                    ));
-                }
                 write_secure(profile_id, credential.as_bytes()).map_err(map_write_error)?;
                 self.remove_session(profile_id)?;
             }
             CredentialPersistence::Session => {
+                if previous_storage == CredentialStorage::Secure {
+                    delete_secure(profile_id).map_err(map_delete_error)?;
+                }
                 self.insert_session(profile_id, credential.into_bytes())?;
             }
         }
         Ok(())
     }
 
-    pub fn clear(&self, profile_id: &str) -> Result<(), CommandError> {
-        self.remove_session(profile_id)?;
-        if !secure_store_available() {
-            return Ok(());
-        }
-        match delete_secure(profile_id) {
-            Ok(()) => Ok(()),
-            Err(SecretStoreError::Unavailable) => Err(CommandError::new(
-                "ai_secure_store_unavailable",
-                "The operating-system credential store is unavailable.",
-            )),
-            Err(SecretStoreError::Failed) => Err(secret_command_error(
-                "ai_secure_store_failed",
-                "The operating-system credential could not be removed.",
-            )),
+    pub fn clear(
+        &self,
+        profile_id: &str,
+        storage: CredentialStorage,
+    ) -> Result<(), CommandError> {
+        match storage {
+            CredentialStorage::None => {
+                self.remove_session(profile_id)?;
+                Ok(())
+            }
+            CredentialStorage::Session => {
+                self.remove_session(profile_id)?;
+                Ok(())
+            }
+            CredentialStorage::Secure => {
+                delete_secure(profile_id).map_err(map_delete_error)?;
+                self.remove_session(profile_id)?;
+                Ok(())
+            }
         }
     }
 
@@ -223,7 +289,7 @@ enum SecretStoreError {
     Failed,
 }
 
-fn secure_store_available() -> bool {
+fn secure_store_constructible() -> bool {
     Entry::new(KEYRING_SERVICE, KEYRING_AVAILABILITY_ACCOUNT).is_ok()
 }
 
@@ -291,6 +357,19 @@ fn map_write_error(error: SecretStoreError) -> CommandError {
     }
 }
 
+fn map_delete_error(error: SecretStoreError) -> CommandError {
+    match error {
+        SecretStoreError::Unavailable => CommandError::new(
+            "ai_secure_store_unavailable",
+            "The operating-system credential store is unavailable, so ostudy cannot confirm credential removal.",
+        ),
+        SecretStoreError::Failed => secret_command_error(
+            "ai_secure_store_failed",
+            "The operating-system credential could not be removed.",
+        ),
+    }
+}
+
 fn secret_lock_error() -> CommandError {
     CommandError::new(
         "ai_secret_lock_poisoned",
@@ -315,14 +394,51 @@ mod tests {
                 "0123456789abcdef0123456789abcdef",
                 "sentinel-secret".to_string(),
                 CredentialPersistence::Session,
+                CredentialStorage::None,
             )
             .expect("session credential should save");
         let status = manager
-            .status("0123456789abcdef0123456789abcdef", AuthMode::Bearer)
+            .status(
+                "0123456789abcdef0123456789abcdef",
+                AuthMode::Bearer,
+                CredentialStorage::Session,
+            )
             .expect("status should load");
         assert_eq!(status.status, CredentialStatus::SessionOnly);
         let serialized = serde_json::to_string(&status).expect("status should serialize");
         assert!(!serialized.contains("sentinel-secret"));
+    }
+
+    #[test]
+    fn session_storage_does_not_fall_back_to_a_secure_credential_after_restart() {
+        let manager = SecretManager::default();
+        let status = manager
+            .status(
+                "fedcba9876543210fedcba9876543210",
+                AuthMode::Bearer,
+                CredentialStorage::Session,
+            )
+            .expect("status should load without touching the keyring");
+        assert_eq!(status.status, CredentialStatus::Missing);
+        assert!(manager
+            .resolve(
+                "fedcba9876543210fedcba9876543210",
+                AuthMode::Bearer,
+                CredentialStorage::Session,
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn credential_storage_round_trips_database_values() {
+        for storage in [
+            CredentialStorage::None,
+            CredentialStorage::Secure,
+            CredentialStorage::Session,
+        ] {
+            assert_eq!(CredentialStorage::from_db(storage.as_str()).unwrap(), storage);
+        }
+        assert!(CredentialStorage::from_db("plaintext").is_err());
     }
 
     #[test]
