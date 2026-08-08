@@ -98,29 +98,50 @@ pub async fn run_text_probe(
     profile: &ProfileSnapshot,
     bearer: Option<&str>,
 ) -> Result<CompletionOutcome, AiGatewayError> {
-    let body = json!({
-        "model": profile.model_id,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are performing a connectivity test. Follow the user's exact output instruction."
-            },
-            {
-                "role": "user",
-                "content": "Reply with exactly OSTUDY_OK and no other text."
-            }
-        ],
-        "temperature": 0,
-        "max_tokens": 24
-    });
+    let messages = json!([
+        {
+            "role": "system",
+            "content": "You are performing a connectivity test. Follow the user's exact output instruction."
+        },
+        {
+            "role": "user",
+            "content": "Reply with exactly OSTUDY_OK and no other text."
+        }
+    ]);
+    let body = match profile.provider_kind {
+        ProviderKind::LlamaCpp => json!({
+            "model": profile.model_id,
+            "messages": messages,
+            "temperature": 0,
+            "max_tokens": 64,
+            "stream": false,
+            "reasoning_effort": "none",
+            "chat_template_kwargs": { "enable_thinking": false }
+        }),
+        ProviderKind::Deepseek => json!({
+            "model": profile.model_id,
+            "messages": messages,
+            "temperature": 0,
+            "max_tokens": 64,
+            "stream": false,
+            "thinking": { "type": "disabled" }
+        }),
+        _ => {
+            return Err(error(
+                "ai_provider_not_implemented",
+                "This AI provider adapter is not implemented.",
+                false,
+                None,
+            ));
+        }
+    };
     let outcome = send_completion(gateway, profile, bearer, body).await?;
     if outcome.content.trim() != "OSTUDY_OK" {
-        return Err(error(
-            "ai_text_probe_invalid",
-            "The model responded, but it did not follow the minimal text probe.",
-            false,
-            None,
-        ));
+        let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
+        let message = format!(
+            "The model responded, but it did not follow the minimal text probe (finish: {finish})."
+        );
+        return Err(error("ai_text_probe_invalid", &message, false, None));
     }
     Ok(outcome)
 }
@@ -154,7 +175,10 @@ pub async fn run_structured_probe(
                 }
             ],
             "temperature": 0,
-            "max_tokens": 64,
+            "max_tokens": 128,
+            "stream": false,
+            "reasoning_effort": "none",
+            "chat_template_kwargs": { "enable_thinking": false },
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
@@ -182,7 +206,9 @@ pub async fn run_structured_probe(
                 }
             ],
             "temperature": 0,
-            "max_tokens": 64,
+            "max_tokens": 128,
+            "stream": false,
+            "thinking": { "type": "disabled" },
             "response_format": { "type": "json_object" }
         }),
         _ => {
@@ -319,7 +345,7 @@ fn parse_completion(value: &Value) -> Result<CompletionOutcome, AiGatewayError> 
         .ok_or_else(|| {
             error(
                 "ai_empty_response",
-                "The provider returned no text content.",
+                "The provider returned no final text content.",
                 false,
                 None,
             )
@@ -327,7 +353,7 @@ fn parse_completion(value: &Value) -> Result<CompletionOutcome, AiGatewayError> 
     if content.is_empty() {
         return Err(error(
             "ai_empty_response",
-            "The provider returned empty text content.",
+            "The provider returned empty final text content.",
             false,
             None,
         ));
@@ -336,14 +362,6 @@ fn parse_completion(value: &Value) -> Result<CompletionOutcome, AiGatewayError> 
         .get("finish_reason")
         .and_then(Value::as_str)
         .map(ToString::to_string);
-    if finish_reason.as_deref() == Some("length") {
-        return Err(error(
-            "ai_truncated_response",
-            "The provider stopped because the output-token limit was reached.",
-            true,
-            None,
-        ));
-    }
     let usage = value.get("usage");
     Ok(CompletionOutcome {
         content: content.to_string(),
@@ -419,6 +437,19 @@ mod tests {
     #[test]
     fn rejects_structurally_empty_completion_responses() {
         assert!(parse_completion(&json!({ "choices": [] })).is_err());
+    }
+
+    #[test]
+    fn accepts_valid_probe_content_even_when_provider_reports_length_finish() {
+        let outcome = parse_completion(&json!({
+            "choices": [{
+                "message": { "content": "OSTUDY_OK" },
+                "finish_reason": "length"
+            }]
+        }))
+        .expect("valid final content should remain available to semantic validation");
+        assert_eq!(outcome.content, "OSTUDY_OK");
+        assert_eq!(outcome.finish_reason.as_deref(), Some("length"));
     }
 
     #[test]
