@@ -53,7 +53,6 @@ jobs:
       - name: Apply canonical Rust generated files
         id: normalize
         run: |
-          node ./scripts/apply-document-rust-fixes.mjs
           cargo metadata \
             --manifest-path src-tauri/Cargo.toml \
             --format-version 1 \
