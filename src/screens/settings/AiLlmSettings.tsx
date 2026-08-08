@@ -10,6 +10,7 @@ import type {
   AiProbePhase,
 } from "../../ipc/aiProfiles";
 import { useConfirm } from "../../ui/overlays/overlayContext";
+import aiStyles from "./AiLlmSettings.module.css";
 import styles from "./Settings.module.css";
 
 interface AiLlmSettingsProps {
@@ -577,11 +578,11 @@ function ProbeResultView({
         ))}
       </div>
       {profile.providerKind === "deepseek" ? (
-        <p className={styles.capabilityNote}>
+        <p className={aiStyles.capabilityNote}>
           DeepSeek currently documents JSON Object output rather than provider-enforced JSON Schema. ostudy therefore validates DeepSeek structured output against its own schema locally; “Provider JSON Schema: not offered” is expected, not a connection failure.
         </p>
       ) : null}
-      <section className={styles.diagnosticLog} aria-label="Connection diagnostic log">
+      <section className={aiStyles.diagnosticLog} aria-label="Connection diagnostic log">
         <h3>Connection diagnostic log</h3>
         <p>
           Plaintext and redacted for troubleshooting. It records attempted routes, phase results, normalized error codes, and timing, but never credentials, Authorization headers, raw prompts, provider response text, model reasoning, or full chat templates.
@@ -601,14 +602,18 @@ function CapabilityBadge({
 }) {
   const providerDoesNotOfferSchema =
     providerKind === "deepseek" && capability.key === "json_schema_output";
+  const isNeutralUnsupported = capability.status === "unsupported";
   const statusLabel = providerDoesNotOfferSchema
     ? "not offered"
-    : capability.status === "unsupported"
+    : isNeutralUnsupported
       ? "not offered"
       : capability.status;
   const sourceLabel = providerDoesNotOfferSchema ? "provider" : capability.source;
   return (
-    <span className={styles.capabilityBadge} data-status={capability.status}>
+    <span
+      className={`${styles.capabilityBadge} ${isNeutralUnsupported ? aiStyles.neutralCapability : ""}`}
+      data-status={isNeutralUnsupported ? "unknown" : capability.status}
+    >
       <strong>{capabilityLabel(capability.key, providerKind)}</strong>
       <small>
         {statusLabel} · {sourceLabel}
@@ -622,11 +627,17 @@ function buildConnectionDiagnosticLog(
   profile: AiProviderProfileDetail,
   models: AiProviderModel[],
 ): string {
-  const completionPath = profile.providerKind === "llama_cpp" ? "v1/chat/completions" : "chat/completions";
+  const completionPath =
+    profile.providerKind === "llama_cpp" ? "v1/chat/completions" : "chat/completions";
   const modelPath = "models";
-  const structuredFormat = profile.providerKind === "llama_cpp" ? "json_schema" : "json_object + local_schema_validation";
+  const structuredFormat =
+    profile.providerKind === "llama_cpp"
+      ? "json_schema"
+      : "json_object + local_schema_validation";
   const modelPreview = models.slice(0, 20).map((model) => `  - ${model.id}`);
-  if (models.length > 20) modelPreview.push(`  - ... ${models.length - 20} more model(s) omitted`);
+  if (models.length > 20) {
+    modelPreview.push(`  - ... ${models.length - 20} more model(s) omitted`);
+  }
   if (modelPreview.length === 0) modelPreview.push("  - not refreshed in this UI session");
 
   const lines = [
@@ -650,7 +661,10 @@ function buildConnectionDiagnosticLog(
 
   if (profile.providerKind === "llama_cpp") {
     lines.push(
-      `  server_properties: GET ${joinDiagnosticEndpoint(profile.baseUrl, `props?model=${encodeURIComponent(result.testedModelId || profile.modelId)}`)} (optional metadata)`,
+      `  server_properties: GET ${joinDiagnosticEndpoint(
+        profile.baseUrl,
+        `props?model=${encodeURIComponent(result.testedModelId || profile.modelId)}`,
+      )} (optional metadata)`,
     );
   }
   lines.push(
