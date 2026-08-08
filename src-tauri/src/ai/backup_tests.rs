@@ -6,7 +6,7 @@ use crate::{database::Database, error::CommandError};
 
 use super::{
     catalog::{AuthMode, ProviderKind},
-    secrets::{CredentialPersistence, SecretManager},
+    secrets::{CredentialPersistence, CredentialStorage, SecretManager},
 };
 
 #[test]
@@ -20,11 +20,11 @@ fn database_backups_preserve_profile_metadata_without_session_credentials() {
                     "INSERT INTO ai_provider_profiles (
                          id, display_name, normalized_name, provider_kind, base_url,
                          model_id, auth_mode, enabled, allow_insecure_http,
-                         request_timeout_ms, credential_epoch, revision,
+                         request_timeout_ms, credential_storage, credential_epoch, revision,
                          created_at, updated_at, deleted_at
                      ) VALUES (?1, 'Backup profile', 'backup profile', ?2,
                                'https://api.deepseek.com/', 'deepseek-chat', ?3,
-                               1, 0, 60000, 0, 1, 1, 1, NULL)",
+                               1, 0, 60000, 'session', 0, 1, 1, 1, NULL)",
                     params![
                         profile_id,
                         ProviderKind::Deepseek.as_str(),
@@ -43,6 +43,7 @@ fn database_backups_preserve_profile_metadata_without_session_credentials() {
             profile_id,
             sentinel.to_string(),
             CredentialPersistence::Session,
+            CredentialStorage::None,
         )
         .expect("session credential should save");
 
@@ -59,14 +60,16 @@ fn database_backups_preserve_profile_metadata_without_session_credentials() {
         .expect("database snapshot should succeed");
 
     let restored = Connection::open(&snapshot_path).expect("snapshot should open");
-    let restored_name: String = restored
+    let (restored_name, restored_storage): (String, String) = restored
         .query_row(
-            "SELECT display_name FROM ai_provider_profiles WHERE id = ?1",
+            "SELECT display_name, credential_storage
+             FROM ai_provider_profiles WHERE id = ?1",
             [profile_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .expect("profile metadata should be present");
     assert_eq!(restored_name, "Backup profile");
+    assert_eq!(restored_storage, "session");
 
     let bytes = fs::read(&snapshot_path).expect("snapshot bytes should read");
     assert!(!contains_bytes(&bytes, sentinel.as_bytes()));
