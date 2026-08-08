@@ -32,7 +32,7 @@ No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is install
 - base64 `0.22.1`
 - image `0.25.10` with PNG support
 - oxidize-pdf `4.2.2`, default features disabled, with `compression` and `semantic`
-- pdfium-render `0.9.4` using the Pdfium 7881 API, image 0.25 integration, and serialized thread-safe binding access
+- pdfium-render `0.9.3` using the Pdfium 7881 API, image 0.25 integration, and serialized thread-safe binding access
 
 `rs-fsrs` remains isolated behind `src-tauri/src/scheduler.rs`; durable rows and IPC objects use ostudy-owned types.
 
