@@ -44,6 +44,12 @@ impl fmt::Display for PdfBackendError {
     }
 }
 
+#[derive(Debug)]
+pub(crate) enum PdfProcessError<E> {
+    Backend(PdfBackendError),
+    Visitor(E),
+}
+
 /// Engine-neutral page stream used by the managed-document pipeline.
 ///
 /// A future `oxidize-pdf`, `pdfium-render`, or platform-native implementation
@@ -52,12 +58,14 @@ impl fmt::Display for PdfBackendError {
 pub(crate) trait PdfBackend {
     fn id(&self) -> &'static str;
 
-    fn for_each_page(
+    fn for_each_page<E, F>(
         &self,
         source_path: &Path,
         render_dpi: f64,
-        visitor: &mut dyn FnMut(usize, String, Vec<u8>) -> Result<(), PdfBackendError>,
-    ) -> Result<usize, PdfBackendError>;
+        visitor: F,
+    ) -> Result<usize, PdfProcessError<E>>
+    where
+        F: FnMut(usize, String, Vec<u8>) -> Result<(), E>;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -68,39 +76,47 @@ impl PdfBackend for JustPdfBackend {
         "justpdf-0.1"
     }
 
-    fn for_each_page(
+    fn for_each_page<E, F>(
         &self,
         source_path: &Path,
         render_dpi: f64,
-        visitor: &mut dyn FnMut(usize, String, Vec<u8>) -> Result<(), PdfBackendError>,
-    ) -> Result<usize, PdfBackendError> {
-        let document = Document::open(source_path)
-            .map_err(|error| PdfBackendError::new(PdfBackendErrorKind::Open, None, error.to_string()))?;
+        mut visitor: F,
+    ) -> Result<usize, PdfProcessError<E>>
+    where
+        F: FnMut(usize, String, Vec<u8>) -> Result<(), E>,
+    {
+        let document = Document::open(source_path).map_err(|error| {
+            PdfProcessError::Backend(PdfBackendError::new(
+                PdfBackendErrorKind::Open,
+                None,
+                error.to_string(),
+            ))
+        })?;
         let page_count = document.page_count();
         for index in 0..page_count {
             let page_number = index + 1;
             let page = document.page(index).map_err(|error| {
-                PdfBackendError::new(
+                PdfProcessError::Backend(PdfBackendError::new(
                     PdfBackendErrorKind::ReadPage,
                     Some(page_number),
                     error.to_string(),
-                )
+                ))
             })?;
             let text = page.text().map_err(|error| {
-                PdfBackendError::new(
+                PdfProcessError::Backend(PdfBackendError::new(
                     PdfBackendErrorKind::ExtractText,
                     Some(page_number),
                     error.to_string(),
-                )
+                ))
             })?;
             let png = page.render_png(render_dpi).map_err(|error| {
-                PdfBackendError::new(
+                PdfProcessError::Backend(PdfBackendError::new(
                     PdfBackendErrorKind::RenderPage,
                     Some(page_number),
                     error.to_string(),
-                )
+                ))
             })?;
-            visitor(page_number, text, png)?;
+            visitor(page_number, text, png).map_err(PdfProcessError::Visitor)?;
         }
         Ok(page_count)
     }
@@ -110,11 +126,14 @@ pub(crate) fn active_backend_id() -> &'static str {
     JustPdfBackend.id()
 }
 
-pub(crate) fn for_each_page(
+pub(crate) fn for_each_page<E, F>(
     source_path: &Path,
     render_dpi: f64,
-    visitor: &mut dyn FnMut(usize, String, Vec<u8>) -> Result<(), PdfBackendError>,
-) -> Result<usize, PdfBackendError> {
+    visitor: F,
+) -> Result<usize, PdfProcessError<E>>
+where
+    F: FnMut(usize, String, Vec<u8>) -> Result<(), E>,
+{
     JustPdfBackend.for_each_page(source_path, render_dpi, visitor)
 }
 
