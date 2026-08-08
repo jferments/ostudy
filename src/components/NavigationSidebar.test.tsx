@@ -53,21 +53,21 @@ describe("NavigationSidebar", () => {
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
   });
 
-  it("keeps Documents in compact bottom navigation and puts secondary sections in More", async () => {
+  it("preserves the established compact priorities and exposes Documents through More", async () => {
     const onNavigate = renderNavigation(true);
 
-    for (const label of ["Decks", "Documents", "Search", "Practice", "More"]) {
+    for (const label of ["Decks", "Search", "Practice", "Analytics", "More"]) {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     }
+    expect(screen.queryByRole("button", { name: "Documents" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Templates" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Analytics" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Documents" }));
-    expect(onNavigate).toHaveBeenCalledWith("documents");
+    fireEvent.click(screen.getByRole("button", { name: "Analytics" }));
+    expect(onNavigate).toHaveBeenCalledWith("analytics");
 
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     expect(await screen.findByRole("dialog", { name: "More" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Templates" }));
-    expect(onNavigate).toHaveBeenCalledWith("templates");
+    fireEvent.click(screen.getByRole("button", { name: "Documents" }));
+    expect(onNavigate).toHaveBeenCalledWith("documents");
   });
 });
