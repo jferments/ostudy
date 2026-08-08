@@ -194,8 +194,8 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
           {documents.map((document) => {
             const busy = busyDocumentId === document.id;
             const canRetry =
-              document.lifecycleState === "failed" &&
               document.generatedDeckId === null &&
+              document.lifecycleState !== "processing" &&
               document.archivedAt === null;
             return (
               <article key={document.id} className={styles.card}>
@@ -240,6 +240,11 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                     <p className={styles.deckNote}>
                       The generated deck is available in Decks and uses the normal editing,
                       scheduling, archive, and deletion tools.
+                    </p>
+                  ) : document.generatedCardCount > 0 && document.lifecycleState === "ready" ? (
+                    <p className={styles.deckNote}>
+                      The previous generated deck was deleted. Retry generation to create a new
+                      deck from the retained PDF.
                     </p>
                   ) : null}
                 </div>
@@ -286,7 +291,7 @@ function statusLabel(document: DocumentSummary): string {
     case "processing":
       return "Processing";
     case "ready":
-      return "Deck created";
+      return document.generatedDeckId ? "Deck created" : "Ready to regenerate";
     case "failed":
       return "Needs attention";
     default:
