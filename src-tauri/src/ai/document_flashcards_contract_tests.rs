@@ -140,7 +140,10 @@ struct MockRequest {
 
 fn assert_document_request(body: &str) {
     let value: Value = serde_json::from_str(body).expect("request should be JSON");
-    assert_eq!(value.get("model").and_then(Value::as_str), Some("vision-model"));
+    assert_eq!(
+        value.get("model").and_then(Value::as_str),
+        Some("vision-model")
+    );
     assert_eq!(value.get("stream").and_then(Value::as_bool), Some(false));
     assert_eq!(
         value
@@ -179,7 +182,9 @@ fn assert_document_request(body: &str) {
     let encoded = data_url
         .strip_prefix("data:image/png;base64,")
         .expect("image must be a local PNG data URL");
-    let decoded = STANDARD.decode(encoded).expect("inline image should decode");
+    let decoded = STANDARD
+        .decode(encoded)
+        .expect("inline image should decode");
     assert!(decoded.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]));
     assert!(!body.contains("/home/"));
     assert!(!body.contains("Authorization"));
@@ -198,7 +203,10 @@ fn read_request(stream: &mut TcpStream) -> MockRequest {
         if let Some(index) = find_subsequence(&bytes, b"\r\n\r\n") {
             break index + 4;
         }
-        assert!(bytes.len() < 64 * 1024, "request headers exceeded test bound");
+        assert!(
+            bytes.len() < 64 * 1024,
+            "request headers exceeded test bound"
+        );
     };
     let header_text =
         String::from_utf8(bytes[..header_end].to_vec()).expect("headers should be UTF-8");
@@ -219,7 +227,10 @@ fn read_request(stream: &mut TcpStream) -> MockRequest {
         assert!(count > 0, "request closed before body completed");
         bytes.extend_from_slice(&buffer[..count]);
     }
-    let request_line = header_text.lines().next().expect("request line should exist");
+    let request_line = header_text
+        .lines()
+        .next()
+        .expect("request line should exist");
     let mut parts = request_line.split_whitespace();
     let method = parts.next().expect("method should exist").to_string();
     let path = parts.next().expect("path should exist").to_string();
