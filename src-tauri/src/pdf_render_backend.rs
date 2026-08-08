@@ -64,7 +64,12 @@ impl PdfRenderRuntime {
         if let Some(resource_dir) = resource_dir {
             let filename = platform_library_filename();
             candidates.push(resource_dir.join("pdfium").join(filename));
-            candidates.push(resource_dir.join("resources").join("pdfium").join(filename));
+            candidates.push(
+                resource_dir
+                    .join("resources")
+                    .join("pdfium")
+                    .join(filename),
+            );
         }
         if let Ok(executable) = env::current_exe() {
             if let Some(parent) = executable.parent() {
@@ -102,7 +107,7 @@ impl PdfRenderRuntime {
 }
 
 pub(crate) fn active_backend_id() -> &'static str {
-    "pdfium-7881/pdfium-render-0.9.4"
+    "pdfium-7881/pdfium-render-0.9.3"
 }
 
 pub(crate) fn render_pages<E, F>(
@@ -182,7 +187,7 @@ mod tests {
 
     #[test]
     fn active_renderer_is_versioned_and_separate_from_extraction() {
-        assert_eq!(active_backend_id(), "pdfium-7881/pdfium-render-0.9.4");
+        assert_eq!(active_backend_id(), "pdfium-7881/pdfium-render-0.9.3");
         assert!(!platform_library_filename().is_empty());
     }
 }
