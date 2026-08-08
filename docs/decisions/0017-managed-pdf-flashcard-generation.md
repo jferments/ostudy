@@ -26,7 +26,7 @@ The Documents screen exposes one primary action: **Upload PDF**. Selecting a fil
 6. generates zero or more Basic/Cloze cards from each page;
 7. validates every response against a strict task schema;
 8. assembles one strict internal `ostudy-flashcards` version-1 payload;
-9. commits a new deck through canonical generated-card authoring.
+9. commits a new deck and its document provenance through canonical generated-card authoring.
 
 There is no generated-card preview, approval queue, candidate editor, or separate commit button.
 
@@ -46,13 +46,15 @@ documents/<document-id>/pages/page-000001.png
 
 The source file is immutable. Renaming or replacing source bytes is outside this stage. Exact re-imports are rejected as duplicates. Documents may be archived without deleting their generated deck.
 
-SQLite records document metadata, per-page extracted text and render hashes, durable generation jobs, per-page units, safe errors, and generated-deck provenance. Startup reconciliation marks interrupted work as retryable failure and removes stale staging files.
+SQLite records document metadata, per-page extracted text and render hashes, durable generation jobs, per-page status/count units, safe errors, and generated-deck provenance. It does not retain duplicate copies of generated question/answer bodies in job rows. Startup reconciliation marks interrupted work as retryable failure and removes stale staging files.
 
 ### Local PDF processing
 
 PDF parsing, text extraction, and page rendering use the pinned pure-Rust `justpdf` dependency. No PDF content is sent to a provider during import or extraction. No OCR engine, Python runtime, Tesseract installation, Pdfium binary, or JavaScript PDF viewer is added.
 
 Processing is bounded by source size, page count, extracted text size, render size, and total generated-card count. Page images and full PDF bytes never cross the frontend IPC boundary.
+
+A retry reuses complete, hash-recorded text extraction and page renders. It rebuilds those derivatives only when the persisted page ledger is incomplete or a managed render is missing.
 
 ### Task-specific provider use
 
@@ -71,7 +73,7 @@ DeepSeek and other text-only profiles receive extracted text only. ostudy never 
 
 Provider output must be a bounded object containing Basic and/or Cloze card inputs. Unknown fields, unsupported card types, empty fields, oversized content, invalid tag shapes, and invalid cloze modes are rejected before authoring.
 
-After task-level validation, ostudy reuses the existing generated-import path. That path remains authoritative for:
+After task-level validation, ostudy reuses the existing generated-import path in memory. That path remains authoritative for:
 
 - restricted Markdown conversion and validation;
 - cloze marker validation;
@@ -80,6 +82,8 @@ After task-level validation, ostudy reuses the existing generated-import path. T
 - forward/reverse/cloze card directions;
 - fresh scheduling rows;
 - all-or-nothing database commit.
+
+Deck/card creation, the document-to-deck relationship, document completion state, and generation-job completion state are written in the same SQLite transaction. A provenance write failure therefore rolls back the newly generated deck and cards rather than leaving an orphaned partially recorded result.
 
 The model cannot select an existing deck, preserve scheduling data, overwrite cards, delete data, attach arbitrary files, or bypass duplicate and safe-content rules.
 
@@ -98,6 +102,8 @@ Each document file is checked against its SQLite path, size, MIME type, signatur
 
 A failed generation leaves the PDF in Documents with a safe error and **Retry generation**. Successful cards appear immediately in a normal deck. The learner uses ordinary deck/card interfaces to edit or delete generated content.
 
+Deleting the generated deck does not delete the managed PDF. Document projections treat a soft-deleted deck as absent and offer **Retry generation** so a new normal deck can be created from the retained extraction and page renders.
+
 ## Consequences
 
 - The common PDF-to-deck action requires only one user decision: choosing the PDF.
@@ -114,4 +120,4 @@ This stage does not add OCR, embeddings, vector search, an in-app PDF viewer, pa
 
 ## Validation
 
-The decision is protected by migration checks, path/hash/signature tests, PDF extraction/render fixtures, provider contract tests, strict card-schema tests, canonical generated-import tests, frontend direct-flow tests, backup/restore round trips, typed IPC parity, repository policy checks, and opt-in real-provider testing.
+The decision is protected by migration checks, path/hash/signature tests, PDF extraction/render fixtures, provider contract tests, strict card-schema tests, canonical generated-import rollback tests, direct frontend workflow tests, deleted-deck regeneration tests, backup/restore round trips, typed IPC parity, repository policy checks, and opt-in real-provider testing.
