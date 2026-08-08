@@ -4,6 +4,17 @@ pub(super) fn import_prepared_flashcards(
     connection: &mut Connection,
     prepared: PreparedImport,
 ) -> Result<FlashcardImportResultDto, CommandError> {
+    import_prepared_flashcards_with_commit(connection, prepared, |_, _, _| Ok(()))
+}
+
+pub(super) fn import_prepared_flashcards_with_commit<F>(
+    connection: &mut Connection,
+    prepared: PreparedImport,
+    before_commit: F,
+) -> Result<FlashcardImportResultDto, CommandError>
+where
+    F: FnOnce(&Connection, &FlashcardImportResultDto, i64) -> Result<(), CommandError>,
+{
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
@@ -91,13 +102,15 @@ pub(super) fn import_prepared_flashcards(
             .map_err(CommandError::database)?;
     }
 
-    transaction.commit().map_err(CommandError::database)?;
-    Ok(FlashcardImportResultDto {
+    let result = FlashcardImportResultDto {
         deck_id,
         created_note_count: created_notes,
         created_card_count: created_cards,
         skipped_duplicate_count: skipped,
-    })
+    };
+    before_commit(&transaction, &result, now)?;
+    transaction.commit().map_err(CommandError::database)?;
+    Ok(result)
 }
 
 fn load_destination_duplicate_pairs(
