@@ -21,7 +21,7 @@ chrono = "=0.4.45"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 keyring = "=4.1.6"
 oxidize-pdf = { version = "=4.2.2", default-features = false, features = ["compression", "semantic"] }
-pdfium-render = { version = "=0.9.4", default-features = false, features = ["pdfium_7881", "image_025", "thread_safe"] }
+pdfium-render = { version = "=0.9.3", default-features = false, features = ["pdfium_7881", "image_025", "thread_safe"] }
 reqwest = { version = "=0.13.4", default-features = false, features = ["json", "rustls"] }
 rs-fsrs = "=1.2.1"
 rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled", "backup", "trace"] }
