@@ -17,6 +17,8 @@ mod secrets;
 #[cfg(test)]
 mod backup_tests;
 #[cfg(test)]
+mod document_flashcards_contract_tests;
+#[cfg(test)]
 mod provider_contract_tests;
 
 use std::sync::Mutex;
