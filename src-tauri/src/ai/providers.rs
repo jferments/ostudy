@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use url::Url;
 
 use super::{
     catalog::ProviderKind,
@@ -49,9 +50,11 @@ pub async fn list_models(
     profile: &ProfileSnapshot,
     bearer: Option<&str>,
 ) -> Result<Vec<ProviderModel>, AiGatewayError> {
-    let path = match profile.provider_kind {
-        ProviderKind::LlamaCpp => "models",
-        ProviderKind::Deepseek => "models",
+    let url = match profile.provider_kind {
+        ProviderKind::LlamaCpp => llama_openai_endpoint(&profile.base_url, "models")?,
+        ProviderKind::Deepseek => {
+            join_endpoint(&profile.base_url, "models").map_err(command_to_gateway)?
+        }
         _ => {
             return Err(error(
                 "ai_provider_not_implemented",
@@ -61,7 +64,6 @@ pub async fn list_models(
             ));
         }
     };
-    let url = join_endpoint(&profile.base_url, path).map_err(command_to_gateway)?;
     let value = gateway
         .get_json(
             url,
@@ -81,7 +83,7 @@ pub async fn load_properties(
     if profile.provider_kind != ProviderKind::LlamaCpp {
         return Ok(ProviderProperties::default());
     }
-    let mut url = join_endpoint(&profile.base_url, "props").map_err(command_to_gateway)?;
+    let mut url = llama_root_endpoint(&profile.base_url, "props")?;
     url.query_pairs_mut()
         .append_pair("model", &profile.model_id);
     match gateway
@@ -261,9 +263,11 @@ async fn send_completion(
     bearer: Option<&str>,
     body: Value,
 ) -> Result<CompletionOutcome, AiGatewayError> {
-    let path = match profile.provider_kind {
-        ProviderKind::LlamaCpp => "v1/chat/completions",
-        ProviderKind::Deepseek => "chat/completions",
+    let url = match profile.provider_kind {
+        ProviderKind::LlamaCpp => llama_openai_endpoint(&profile.base_url, "chat/completions")?,
+        ProviderKind::Deepseek => {
+            join_endpoint(&profile.base_url, "chat/completions").map_err(command_to_gateway)?
+        }
         _ => {
             return Err(error(
                 "ai_provider_not_implemented",
@@ -273,7 +277,6 @@ async fn send_completion(
             ));
         }
     };
-    let url = join_endpoint(&profile.base_url, path).map_err(command_to_gateway)?;
     let value = gateway
         .post_json(
             url,
@@ -284,6 +287,30 @@ async fn send_completion(
         )
         .await?;
     parse_completion(&value)
+}
+
+fn llama_openai_endpoint(base_url: &str, suffix: &str) -> Result<Url, AiGatewayError> {
+    let relative = if llama_base_includes_v1(base_url) {
+        suffix.to_string()
+    } else {
+        format!("v1/{suffix}")
+    };
+    join_endpoint(base_url, &relative).map_err(command_to_gateway)
+}
+
+fn llama_root_endpoint(base_url: &str, suffix: &str) -> Result<Url, AiGatewayError> {
+    let relative = if llama_base_includes_v1(base_url) {
+        format!("../{suffix}")
+    } else {
+        suffix.to_string()
+    };
+    join_endpoint(base_url, &relative).map_err(command_to_gateway)
+}
+
+fn llama_base_includes_v1(base_url: &str) -> bool {
+    Url::parse(base_url)
+        .ok()
+        .is_some_and(|url| url.path().trim_end_matches('/').ends_with("/v1"))
 }
 
 fn parse_model_list(value: &Value) -> Result<Vec<ProviderModel>, AiGatewayError> {
@@ -444,6 +471,28 @@ mod tests {
                 .map(|model| model.id.as_str())
                 .collect::<Vec<_>>(),
             vec!["model-a", "model-b"]
+        );
+    }
+
+    #[test]
+    fn llama_openai_routes_accept_server_root_or_v1_base() {
+        assert_eq!(
+            llama_openai_endpoint("http://127.0.0.1:8080/", "models")
+                .unwrap()
+                .as_str(),
+            "http://127.0.0.1:8080/v1/models"
+        );
+        assert_eq!(
+            llama_openai_endpoint("http://127.0.0.1:8080/v1/", "models")
+                .unwrap()
+                .as_str(),
+            "http://127.0.0.1:8080/v1/models"
+        );
+        assert_eq!(
+            llama_root_endpoint("http://127.0.0.1:8080/v1/", "props")
+                .unwrap()
+                .as_str(),
+            "http://127.0.0.1:8080/props"
         );
     }
 
