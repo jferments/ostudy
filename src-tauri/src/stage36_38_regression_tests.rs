@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 
 use crate::{
     analytics::{load_analytics, AnalyticsQueryDto},
-    database::Database,
+    database::{Database, LATEST_SCHEMA_VERSION},
     deletion_purge::purge_finalized_in_connection,
     study_calendar::StudyTimeContext,
     studyability::CardEligibility,
@@ -374,13 +374,24 @@ fn due_boundary_never_overrides_archive_or_manual_suspension() {
 }
 
 #[test]
-fn schema_fourteen_and_all_three_repairs_are_present_on_canonical_open() {
+fn schema_fourteen_and_all_three_repairs_remain_present_on_canonical_open() {
     let database = Database::open_in_memory().expect("database should open");
     database
         .with_connection(|connection| {
             let schema_version: i64 = connection
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .expect("schema version should load");
+            let schema_fourteen_present: i64 = connection
+                .query_row(
+                    "SELECT EXISTS(
+                         SELECT 1 FROM schema_migrations
+                         WHERE version = 14
+                           AND name = 'review_attribution_and_projection_indexes'
+                     )",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("schema fourteen ledger entry should load");
             let repair_count: i64 = connection
                 .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
                 .expect("repair count should load");
@@ -398,10 +409,11 @@ fn schema_fourteen_and_all_three_repairs_are_present_on_canonical_open() {
                     |row| row.get(0),
                 )
                 .expect("attribution tables should load");
-            assert_eq!(schema_version, 14);
+            assert_eq!(schema_version, LATEST_SCHEMA_VERSION);
+            assert_eq!(schema_fourteen_present, 1);
             assert_eq!(repair_count, 3);
             assert_eq!(attribution_tables, 4);
             Ok(())
         })
-        .expect("canonical schema should contain Stage 3.6-3.8 state");
+        .expect("canonical schema should retain Stage 3.6-3.8 state");
 }
