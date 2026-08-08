@@ -6,8 +6,8 @@ use super::{catalog, endpoint_policy, gateway, profiles, secrets, AiRuntimeState
 mod implementation;
 
 pub(crate) use implementation::{
-    curate_document_cards, generate_window_flashcards, load_document_task_context,
-    DocumentOutline, DocumentTaskContext, SourcePageImage,
+    curate_document_cards, generate_window_flashcards, load_document_task_context, DocumentOutline,
+    DocumentTaskContext, SourcePageImage,
 };
 
 /// Compatibility entry point for callers that only have structured text.
