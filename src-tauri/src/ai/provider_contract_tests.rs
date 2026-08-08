@@ -37,7 +37,7 @@ fn llama_cpp_adapter_discovers_models_and_verifies_server_structured_output() {
     let (base_url, server) = spawn_mock_server(vec![
         ExpectedExchange {
             method: "GET",
-            path: "/v1/models",
+            path: "/models",
             assert_body: assert_empty_body,
             status: 200,
             response_body: json!({
@@ -49,7 +49,7 @@ fn llama_cpp_adapter_discovers_models_and_verifies_server_structured_output() {
         },
         ExpectedExchange {
             method: "GET",
-            path: "/props",
+            path: "/props?model=nursing-qwen",
             assert_body: assert_empty_body,
             status: 200,
             response_body: json!({
@@ -113,6 +113,35 @@ fn llama_cpp_adapter_discovers_models_and_verifies_server_structured_output() {
             .await
             .expect("schema probe should pass");
     });
+    server.join().expect("mock server should finish");
+}
+
+#[test]
+fn llama_cpp_optional_props_tolerates_non_json_metadata_response() {
+    let (base_url, server) = spawn_mock_server(vec![ExpectedExchange {
+        method: "GET",
+        path: "/props?model=nursing-qwen",
+        assert_body: assert_empty_body,
+        status: 200,
+        response_body: "optional metadata unavailable".to_string(),
+        extra_headers: Vec::new(),
+    }]);
+    let profile = profile(
+        ProviderKind::LlamaCpp,
+        base_url,
+        "nursing-qwen",
+        AuthMode::None,
+    );
+    let gateway = AiGateway::new().expect("gateway should initialize");
+
+    let properties = tauri::async_runtime::block_on(async {
+        providers::load_properties(&gateway, &profile, None)
+            .await
+            .expect("non-JSON optional metadata must not fail provider connectivity")
+    });
+    assert_eq!(properties.server_chat_template_present, None);
+    assert_eq!(properties.image_input_declared, None);
+    assert_eq!(properties.context_window_tokens, None);
     server.join().expect("mock server should finish");
 }
 
