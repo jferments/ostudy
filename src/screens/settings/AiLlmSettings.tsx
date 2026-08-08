@@ -3,8 +3,11 @@ import type {
   AiCapability,
   AiCredentialStatus,
   AiProfileDraft,
+  AiProviderKind,
   AiProviderModel,
   AiProviderProfileDetail,
+  AiProviderProbeResult,
+  AiProbePhase,
 } from "../../ipc/aiProfiles";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import styles from "./Settings.module.css";
@@ -214,6 +217,8 @@ function ProfileEditor({
   const provider = controller.catalog.find((entry) => entry.providerKind === draft.providerKind);
   const saved = controller.selectedProfile;
   const isLlama = draft.providerKind === "llama_cpp";
+  const currentModelInList = controller.models.some((model) => model.id === draft.modelId);
+  const modelSelectionDisabled = !saved || controller.refreshingModels || controller.mutating;
 
   return (
     <section className={styles.settingsCard} aria-busy={controller.mutating}>
@@ -254,22 +259,33 @@ function ProfileEditor({
           />
         </label>
         <label className={styles.stackedField}>
-          <span>Model ID</span>
-          <input
+          <span>Model</span>
+          <select
+            aria-label="Model"
             value={draft.modelId}
-            maxLength={300}
-            list="ai-provider-models"
-            placeholder={isLlama ? "Loaded GGUF model ID" : "Provider model ID"}
+            disabled={modelSelectionDisabled}
             onChange={(event) => controller.updateDraft({ modelId: event.currentTarget.value })}
-          />
-          <datalist id="ai-provider-models">
+          >
+            <option value="">
+              {saved ? "Refresh models to load available choices" : "Create profile, then refresh models"}
+            </option>
+            {draft.modelId && !currentModelInList ? (
+              <option value={draft.modelId}>{draft.modelId} — saved selection</option>
+            ) : null}
             {controller.models.map((model) => (
-              <option key={model.id} value={model.id} />
+              <option key={model.id} value={model.id}>
+                {model.displayName || model.id}
+              </option>
             ))}
-          </datalist>
+          </select>
+          <small className={styles.fieldHelp}>
+            {saved
+              ? "Model choices come from this provider's model-list API. Use Refresh models below to update the list."
+              : "Create the trusted provider profile first; then ostudy can query that endpoint for its available models."}
+          </small>
           {isLlama ? (
             <small className={styles.fieldHelp}>
-              llama.cpp normally reports the loaded GGUF path as its API model ID unless the server is started with <code>--alias</code>. Refresh models to use the server-reported ID.
+              llama.cpp may expose a GGUF path as the API model ID unless the server is started with <code>--alias</code>.
             </small>
           ) : null}
         </label>
@@ -504,9 +520,11 @@ function ConnectionPanel({
       </div>
       {controller.models.length > 0 ? (
         <p className={styles.note}>
-          {controller.models.length} model(s) returned. Choose a model ID above and save the profile before testing it.
+          {controller.models.length} available model(s) returned by the provider. Select one in Profile configuration and save before testing a different model.
         </p>
-      ) : null}
+      ) : (
+        <p className={styles.note}>Refresh models to query this provider for selectable model IDs.</p>
+      )}
       {controller.probeResult ? (
         <ProbeResultView
           result={controller.probeResult}
@@ -551,55 +569,115 @@ function ProbeResultView({
       </div>
       <div className={styles.capabilityGrid}>
         {result.capabilities.map((capability) => (
-          <CapabilityBadge key={capability.key} capability={capability} />
+          <CapabilityBadge
+            key={capability.key}
+            capability={capability}
+            providerKind={profile.providerKind}
+          />
         ))}
       </div>
-      <details className={styles.probeDiagnostics}>
-        <summary>View diagnostic information</summary>
-        <p>
-          This is redacted connection metadata. It never includes the API credential, Authorization header, probe prompts, provider response text, or model reasoning.
+      {profile.providerKind === "deepseek" ? (
+        <p className={styles.capabilityNote}>
+          DeepSeek currently documents JSON Object output rather than provider-enforced JSON Schema. ostudy therefore validates DeepSeek structured output against its own schema locally; “Provider JSON Schema: not offered” is expected, not a connection failure.
         </p>
-        <dl>
-          <div><dt>Provider</dt><dd>{profile.providerLabel}</dd></div>
-          <div><dt>Endpoint</dt><dd>{profile.baseUrl}</dd></div>
-          <div><dt>Destination</dt><dd>{scopeLabel(profile.networkScope)}</dd></div>
-          <div><dt>Configured model</dt><dd>{profile.modelId}</dd></div>
-          <div><dt>Adapter revision</dt><dd>{result.adapterRevision}</dd></div>
-          <div><dt>Result schema</dt><dd>{result.resultSchemaVersion}</dd></div>
-          <div><dt>Persisted</dt><dd>{result.persisted ? "yes" : "no"}</dd></div>
-          <div>
-            <dt>Probe reasoning</dt>
-            <dd>{profile.providerKind === "deepseek" ? "disabled for bounded connectivity test" : "disabled when supported by the llama.cpp chat template"}</dd>
-          </div>
-          <div className={styles.diagnosticWide}>
-            <dt>Last refreshed model IDs</dt>
-            <dd>{models.length > 0 ? models.map((model) => model.id).join(", ") : "not refreshed in this UI session"}</dd>
-          </div>
-        </dl>
-        <h3>Phase diagnostics</h3>
-        <ul>
-          {result.phases.map((phase) => (
-            <li key={phase.phase}>
-              <strong>{phase.phase}</strong>: {phase.status}
-              {phase.latencyMs !== null ? ` · ${phase.latencyMs} ms` : ""}
-              {phase.error ? ` · ${phase.error.code}${phase.error.retryable ? " · retryable" : ""}` : ""}
-            </li>
-          ))}
-        </ul>
-      </details>
+      ) : null}
+      <section className={styles.diagnosticLog} aria-label="Connection diagnostic log">
+        <h3>Connection diagnostic log</h3>
+        <p>
+          Plaintext and redacted for troubleshooting. It records attempted routes, phase results, normalized error codes, and timing, but never credentials, Authorization headers, raw prompts, provider response text, model reasoning, or full chat templates.
+        </p>
+        <pre>{buildConnectionDiagnosticLog(result, profile, models)}</pre>
+      </section>
     </div>
   );
 }
 
-function CapabilityBadge({ capability }: { capability: AiCapability }) {
+function CapabilityBadge({
+  capability,
+  providerKind,
+}: {
+  capability: AiCapability;
+  providerKind: AiProviderKind;
+}) {
+  const providerDoesNotOfferSchema =
+    providerKind === "deepseek" && capability.key === "json_schema_output";
+  const statusLabel = providerDoesNotOfferSchema
+    ? "not offered"
+    : capability.status === "unsupported"
+      ? "not offered"
+      : capability.status;
+  const sourceLabel = providerDoesNotOfferSchema ? "provider" : capability.source;
   return (
     <span className={styles.capabilityBadge} data-status={capability.status}>
-      <strong>{capabilityLabel(capability.key)}</strong>
+      <strong>{capabilityLabel(capability.key, providerKind)}</strong>
       <small>
-        {capability.status} · {capability.source}
+        {statusLabel} · {sourceLabel}
       </small>
     </span>
   );
+}
+
+function buildConnectionDiagnosticLog(
+  result: AiProviderProbeResult,
+  profile: AiProviderProfileDetail,
+  models: AiProviderModel[],
+): string {
+  const completionPath = profile.providerKind === "llama_cpp" ? "v1/chat/completions" : "chat/completions";
+  const modelPath = "models";
+  const structuredFormat = profile.providerKind === "llama_cpp" ? "json_schema" : "json_object + local_schema_validation";
+  const modelPreview = models.slice(0, 20).map((model) => `  - ${model.id}`);
+  if (models.length > 20) modelPreview.push(`  - ... ${models.length - 20} more model(s) omitted`);
+  if (modelPreview.length === 0) modelPreview.push("  - not refreshed in this UI session");
+
+  const lines = [
+    "ostudy AI provider connection test",
+    `tested_at: ${new Date(result.testedAt).toISOString()}`,
+    `provider: ${profile.providerLabel} (${profile.providerKind})`,
+    `endpoint: ${profile.baseUrl}`,
+    `destination: ${scopeLabel(profile.networkScope)}`,
+    `configured_model: ${profile.modelId || "<none>"}`,
+    `tested_model: ${result.testedModelId || "<none>"}`,
+    `profile_revision: ${result.profileRevision}`,
+    `credential_epoch: ${result.credentialEpoch}`,
+    `adapter_revision: ${result.adapterRevision}`,
+    `result_schema_version: ${result.resultSchemaVersion}`,
+    `overall_status: ${result.overallStatus}${result.stale ? " (stale)" : ""}`,
+    "credential: available status only; secret value redacted",
+    "",
+    "attempts:",
+    `  model_discovery: GET ${joinDiagnosticEndpoint(profile.baseUrl, modelPath)}`,
+  ];
+
+  if (profile.providerKind === "llama_cpp") {
+    lines.push(
+      `  server_properties: GET ${joinDiagnosticEndpoint(profile.baseUrl, `props?model=${encodeURIComponent(result.testedModelId || profile.modelId)}`)} (optional metadata)`,
+    );
+  }
+  lines.push(
+    `  text_completion: POST ${joinDiagnosticEndpoint(profile.baseUrl, completionPath)} (stream=false; thinking/reasoning disabled for probe)`,
+    `  structured_output: POST ${joinDiagnosticEndpoint(profile.baseUrl, completionPath)} (response_format=${structuredFormat}; stream=false)`,
+    "",
+    "phase_results:",
+  );
+  for (const phase of result.phases) lines.push(formatDiagnosticPhase(phase));
+  lines.push("", `refreshed_models: ${models.length}`, ...modelPreview);
+  return lines.join("\n");
+}
+
+function formatDiagnosticPhase(phase: AiProbePhase): string {
+  const latency = phase.latencyMs === null ? "" : ` latency_ms=${phase.latencyMs}`;
+  const error = phase.error
+    ? ` error_code=${phase.error.code} retryable=${phase.error.retryable} message=${phase.error.message}`
+    : "";
+  return `  ${phase.phase}: ${phase.status}${latency}${error}`;
+}
+
+function joinDiagnosticEndpoint(baseUrl: string, path: string): string {
+  try {
+    return new URL(path, baseUrl).toString();
+  } catch {
+    return `${baseUrl}${path}`;
+  }
 }
 
 function hasProfileChanges(
@@ -665,12 +743,12 @@ function credentialShortLabel(status: AiCredentialStatus): string {
   }
 }
 
-function capabilityLabel(key: string): string {
+function capabilityLabel(key: string, providerKind: AiProviderKind): string {
   const labels: Record<string, string> = {
     text_input: "Text",
     image_input: "Images",
     json_object_output: "JSON object",
-    json_schema_output: "JSON Schema",
+    json_schema_output: providerKind === "deepseek" ? "Provider JSON Schema" : "JSON Schema",
     local_schema_validation: "Local validation",
     model_listing: "Model listing",
     usage_reporting: "Usage reporting",
