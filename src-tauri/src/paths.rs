@@ -57,10 +57,6 @@ impl AppPaths {
         &self.asset_quarantine_dir
     }
 
-    pub fn documents_dir(&self) -> &Path {
-        &self.documents_dir
-    }
-
     pub fn document_staging_dir(&self) -> &Path {
         &self.document_staging_dir
     }
