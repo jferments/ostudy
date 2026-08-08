@@ -311,13 +311,14 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                  WHERE archived_at IS NULL",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)
+            .map_err(CommandError::database)?;
+        Ok(rows)
     })?;
     for (document_id, relative_path) in missing {
         if !paths.resolve_relative(&relative_path).is_file() {
@@ -478,7 +479,7 @@ fn import_managed_pdf(
             .and_then(|value| value.to_str())
             .unwrap_or("Imported PDF"),
     )?;
-    let document_id = database.with_connection(generate_id)?;
+    let document_id = database.with_connection(|connection| generate_id(connection))?;
     let staged_relative = AppPaths::staged_document_relative_path(&document_id);
     let staged_path = paths.resolve_relative(&staged_relative);
     let (byte_size, sha256) = copy_pdf_with_hash(&source, &staged_path)?;
@@ -1049,7 +1050,7 @@ fn list_documents_from_connection(
              LIMIT ?2",
         )
         .map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map(
             params![
                 if include_archived { 1_i64 } else { 0_i64 },
@@ -1059,7 +1060,8 @@ fn list_documents_from_connection(
         )
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(rows)
 }
 
 fn load_document(
