@@ -178,7 +178,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
     await openAiTab();
 
     fireEvent.click(screen.getByRole("button", { name: "Add llama.cpp" }));
-    expect(screen.getByText(/GGUF models exported by Unsloth/u)).toBeTruthy();
+    expect(screen.getByText(/Unsloth-exported GGUF/u)).toBeTruthy();
     fireEvent.change(screen.getByRole("textbox", { name: "Profile name" }), {
       target: { value: "Local nursing model" },
     });
