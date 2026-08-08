@@ -47,7 +47,9 @@ server and verifies the exact initial adapter behavior.
 
 ### llama.cpp
 
-- provider-backed model discovery through `/models`;
+- provider-backed model discovery through the OpenAI-compatible `/v1/models` route;
+- server-root and `/v1/` base URLs normalize to the same OpenAI-compatible model
+  and chat-completion routes;
 - optional model/server properties through `/props?model=<selected-id>`;
 - non-JSON or missing optional properties metadata does not invalidate an
   otherwise healthy provider connection;
@@ -57,19 +59,18 @@ server and verifies the exact initial adapter behavior.
 - chat-template presence is fingerprinted without retaining template text;
 - declared image and context-window metadata remains distinct from active probes.
 
-The model ID returned by the model-list API is the routing identity ostudy must
-send back to the server. It may be a GGUF path rather than a Hugging Face
-repository name. If a single llama.cpp model is returned under a different ID,
-Test connection treats that as a recoverable partial result and continues with
-the server-reported ID. Refresh models puts that ID into the model dropdown draft
-so it can be reviewed and saved. Starting llama.cpp with an explicit `--alias`
-is another way to establish a stable API model ID.
+The model ID returned by `/v1/models` is the routing identity ostudy must send
+back to the server. It may be a GGUF path rather than a Hugging Face repository
+name. If a single llama.cpp model is returned under a different ID, ostudy can
+select that sole API-reported value in the model-selection draft. Starting
+llama.cpp with an explicit `--alias` is another way to establish a stable API
+model ID.
 
 ### DeepSeek
 
 - current model discovery through `/models`;
 - text completion through `/chat/completions`;
-- current V4 model IDs are selected from provider discovery rather than typed or
+- current model IDs are selected from provider discovery rather than typed or
   hard-coded in Settings;
 - connectivity probes explicitly disable thinking and disable streaming;
 - JSON Object mode is used rather than falsely claiming provider-enforced JSON
@@ -93,6 +94,27 @@ the evidence that ostudy checked the provider's JSON against the expected schema
 - provider responses and errors remain bounded;
 - normalized errors never include the credential sentinel.
 
+## Setup-order contract
+
+AI provider setup follows the dependency order required by the actual APIs:
+
+1. Save the provider/server identity and trusted endpoint.
+2. Save the API credential when authentication is required.
+3. ostudy automatically issues the provider's model-list GET request as soon as
+   the saved endpoint and credential are sufficient to authenticate it.
+4. The Model dropdown is rendered from that returned list only. A previously
+   saved model that is absent from the current response is shown as stale
+   configuration, not inserted into the provider-returned choices.
+5. Save the selected API model ID.
+6. Run Test connection against the saved endpoint, credential, and model.
+
+For no-auth llama.cpp profiles, step 3 occurs immediately after the endpoint is
+saved. For credentialed providers such as DeepSeek, model discovery does not run
+until the credential has been submitted to the native secret boundary. Opening
+an already-configured profile also refreshes its model list automatically when
+its saved credential state permits the request. **Refresh models** remains a
+manual retry/update operation, not a prerequisite for ordinary setup.
+
 ## Plaintext redacted diagnostics
 
 After Test connection, the UI renders a selectable **Connection diagnostic log**
@@ -108,7 +130,7 @@ The transcript includes:
 - optional llama.cpp properties route;
 - adapter and result-schema revisions;
 - per-phase status, latency, normalized error code, and retryability;
-- a bounded preview of model IDs refreshed during the current UI session.
+- a bounded preview of model IDs loaded during the current UI session.
 
 It deliberately excludes API credentials, Authorization headers, raw prompts,
 provider response text, model reasoning, and complete llama.cpp chat templates.
@@ -122,18 +144,21 @@ Settings → AI/LLM:
 
 1. Start an existing llama.cpp server outside ostudy.
 2. Add a **llama.cpp / Unsloth GGUF** profile with its loopback or explicitly
-   acknowledged LAN URL and create the profile.
-3. Choose **Refresh models**. Confirm the Model dropdown is populated by the
-   server rather than requiring free-text input.
-4. Select the intended model. If the server exposes a path-like model ID, either
+   acknowledged LAN server root and create the profile.
+3. Because the default llama.cpp profile uses no authentication, confirm that
+   ostudy automatically requests `GET /v1/models` after profile creation.
+4. Confirm the Model dropdown appears **after** the credential step and contains
+   only IDs returned by the server.
+5. Select the intended model. If the server exposes a path-like model ID, either
    save that returned ID or configure a llama.cpp `--alias` and refresh again.
-5. Save the selected model and run **Test connection**.
-6. Confirm model discovery, text completion, and structured output. Properties
+6. Save the selected model and run **Test connection**.
+7. Confirm model discovery, text completion, and structured output. Properties
    metadata may remain unavailable without degrading those verified capabilities.
-7. Confirm the server/model chat-template capability is reported when properties
+8. Confirm the server/model chat-template capability is reported when properties
    metadata actually exposes it.
-8. Copy the **Connection diagnostic log** and confirm it contains attempted routes
-   and phase statuses but no raw prompt, response, or credential.
+9. Copy the **Connection diagnostic log** and confirm it contains `/v1/models`,
+   attempted completion routes, and phase statuses but no raw prompt, response,
+   or credential.
 
 A model exported or fine-tuned with Unsloth is still configured as a llama.cpp
 profile. ostudy does not generate or replace the model's token-level chat
@@ -142,15 +167,16 @@ template.
 ## Manual DeepSeek qualification
 
 1. Add a **DeepSeek** profile and create it.
-2. Save the API key securely or choose session-only storage.
-3. Choose **Refresh models** and confirm the Model dropdown is populated by the
-   current DeepSeek model-list API.
-4. Select the desired model and save the profile.
-5. Run **Test connection**.
-6. Confirm text completion, JSON Object, and Local validation are supported.
-7. Confirm **Provider JSON Schema** is displayed neutrally as **not offered** and
+2. Confirm no Model dropdown is available before an API credential exists.
+3. Save the API key securely or choose session-only storage.
+4. Confirm ostudy automatically requests `/models` and then renders the returned
+   DeepSeek IDs in the Model dropdown.
+5. Select the desired model and save the model choice.
+6. Run **Test connection**.
+7. Confirm text completion, JSON Object, and Local validation are supported.
+8. Confirm **Provider JSON Schema** is displayed neutrally as **not offered** and
    is not treated as a failed connection.
-8. Copy the **Connection diagnostic log** and confirm the probe is described as
+9. Copy the **Connection diagnostic log** and confirm the probe is described as
    non-thinking and contains no credential or model output.
 
 Testing sends tiny prompts and may consume a small amount of paid API usage. It
