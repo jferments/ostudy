@@ -243,15 +243,8 @@ pub(crate) async fn build_document_outline(
     for (index, window) in windows.iter().enumerate() {
         let images = window_images.get(index).map_or(&[][..], Vec::as_slice);
         outlines.push(
-            request_outline_fragment(
-                runtime,
-                task,
-                document_title,
-                page_count,
-                window,
-                images,
-            )
-            .await?,
+            request_outline_fragment(runtime, task, document_title, page_count, window, images)
+                .await?,
         );
     }
 
@@ -360,14 +353,7 @@ async fn request_outline_fragment(
         window.page_end,
         window.source_text,
     );
-    request_outline_with_retry(
-        runtime,
-        task,
-        &outline_system_prompt(),
-        &user,
-        images,
-    )
-    .await
+    request_outline_with_retry(runtime, task, &outline_system_prompt(), &user, images).await
 }
 
 async fn request_outline_merge(
@@ -892,9 +878,10 @@ fn build_cloze_text(index: usize, text: &str, blanks: &[String]) -> Result<Strin
             };
             let start = search_start + relative;
             let end = start + trimmed.len();
-            if ranges.iter().all(|(other_start, other_end, _, _)| {
-                end <= *other_start || start >= *other_end
-            }) {
+            if ranges
+                .iter()
+                .all(|(other_start, other_end, _, _)| end <= *other_start || start >= *other_end)
+            {
                 break Some((start, end));
             }
             search_start = end;
@@ -981,10 +968,7 @@ fn compact_card_summary(index: usize, card: &Value) -> String {
         .or_else(|| card.get("text"))
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let secondary = card
-        .get("back")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
+    let secondary = card.get("back").and_then(Value::as_str).unwrap_or_default();
     format!(
         "{} | {} | {} | {}",
         index,
