@@ -113,9 +113,11 @@ select PDF
 
 The model never receives the original PDF file, a local path, database access, or filesystem authority. Document text is embedded as untrusted source data and cannot replace the task prompt or output contract.
 
-Generation is page-bounded. One page failure stops the task with a durable, safe error and leaves the managed PDF available for retry. Job rows record only provider/model identity, safe status, bounded validated card JSON, and progress. Raw provider responses and model reasoning are not stored.
+Generation is page-bounded. One page failure stops the task with a durable, safe error and leaves the managed PDF available for retry. Durable job rows record provider/model identity, progress, safe status, and card counts; they do not retain raw provider responses, model reasoning, or duplicate copies of generated question and answer bodies.
 
-There is deliberately no generated-card approval queue. Once every page response has passed the task-level schema checks, the complete generated deck is committed through the existing `.ostudy.json` authoring pipeline. That pipeline remains authoritative for restricted Markdown, cloze syntax, tags, duplicates, generated card directions, fresh schedules, and transaction rollback. The resulting deck and cards are ordinary ostudy data and can be edited, moved, archived, or deleted through existing interfaces.
+There is deliberately no generated-card approval queue. Once every page response has passed the task-level schema checks, the complete generated deck is committed through the existing in-memory `.ostudy.json` authoring pipeline. That pipeline remains authoritative for restricted Markdown, cloze syntax, tags, duplicates, generated card directions, fresh schedules, and transaction rollback. Deck/card creation, document-to-deck provenance, and generation completion are committed in the same SQLite transaction. The resulting deck and cards are ordinary ostudy data and can be edited, moved, archived, or deleted through existing interfaces.
+
+A retry reuses complete extracted text and rendered pages rather than repeating local PDF work. If the generated deck is later soft-deleted, the document projection treats that deck as absent and offers regeneration from the retained PDF.
 
 Source PDFs, extracted page text, rendered page ledgers, generation state, and generated-deck provenance are durable SQLite/managed-file data. Full-library backup version 2 includes source PDFs and rendered pages while continuing to exclude provider credentials.
 
