@@ -50,9 +50,10 @@ jobs:
       - name: Expose user-local tools
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Apply canonical rustfmt
+      - name: Apply document retry correction and canonical rustfmt
         id: format
         run: |
+          node ./scripts/apply-document-retry-integrity-fix.mjs
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           git diff --check
           if git diff --quiet -- '*.rs'; then
@@ -69,7 +70,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- '*.rs'
-          git commit -m "chore: apply canonical rustfmt"
+          git commit -m "fix: rebuild and verify PDF page renders on retry"
           git push origin "HEAD:${HEAD_REF}"
 
   check:
