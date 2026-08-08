@@ -126,16 +126,6 @@ impl AiTaskKind {
             Self::FlashcardGeneration => "flashcard_generation",
         }
     }
-
-    pub fn from_db(value: &str) -> Result<Self, CommandError> {
-        match value {
-            "flashcard_generation" => Ok(Self::FlashcardGeneration),
-            _ => Err(CommandError::new(
-                "invalid_ai_task",
-                "The saved AI task assignment is invalid.",
-            )),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Serialize)]
