@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{cmp::Reverse, collections::HashSet};
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use rusqlite::OptionalExtension;
@@ -88,6 +88,15 @@ enum GeneratedStudyCard {
         #[serde(default)]
         tags: Vec<String>,
     },
+}
+
+#[derive(Clone, Copy)]
+struct PageRequest<'a> {
+    document_title: &'a str,
+    page_number: i64,
+    page_text: &'a str,
+    page_png: Option<&'a [u8]>,
+    repair_attempt: bool,
 }
 
 pub(crate) fn load_document_task_context(
@@ -199,34 +208,27 @@ pub(crate) async fn generate_page_flashcards(
         .take(MAX_PAGE_TEXT_CHARS)
         .collect::<String>();
 
-    let first = request_page_flashcards(
-        runtime,
-        &task.profile,
-        bearer,
+    let request = PageRequest {
         document_title,
         page_number,
-        &bounded_text,
+        page_text: &bounded_text,
         page_png,
-        false,
-    )
-    .await
-    .and_then(validate_page_output);
+        repair_attempt: false,
+    };
+    let first = request_page_flashcards(runtime, &task.profile, bearer, request)
+        .await
+        .and_then(validate_page_output);
 
     match first {
         Ok(cards) => Ok(cards),
         Err(error) if should_retry_contract_error(&error) => {
-            let second = request_page_flashcards(
-                runtime,
-                &task.profile,
-                bearer,
-                document_title,
-                page_number,
-                &bounded_text,
-                page_png,
-                true,
-            )
-            .await
-            .and_then(validate_page_output);
+            let retry_request = PageRequest {
+                repair_attempt: true,
+                ..request
+            };
+            let second = request_page_flashcards(runtime, &task.profile, bearer, retry_request)
+                .await
+                .and_then(validate_page_output);
             second.map_err(|retry_error| {
                 if should_retry_contract_error(&retry_error) {
                     CommandError::new(
@@ -246,24 +248,21 @@ async fn request_page_flashcards(
     runtime: &AiRuntimeState,
     profile: &ProfileSnapshot,
     bearer: Option<&str>,
-    document_title: &str,
-    page_number: i64,
-    page_text: &str,
-    page_png: Option<&[u8]>,
-    repair_attempt: bool,
+    request: PageRequest<'_>,
 ) -> Result<PageFlashcardOutput, CommandError> {
     let system_prompt = system_prompt();
-    let retry_instruction = if repair_attempt {
+    let retry_instruction = if request.repair_attempt {
         "\nA prior response from this provider failed local schema validation. Generate a fresh response from the source material and follow the JSON contract exactly. Do not copy or discuss the prior response."
     } else {
         ""
     };
     let source_text = format!(
-        "Document: {document_title}\nPDF page: {page_number}\n\n\
+        "Document: {}\nPDF page: {}\n\n\
          Extracted page text follows between delimiters.\n\
-         <ostudy-source>\n{page_text}\n</ostudy-source>\n\n\
+         <ostudy-source>\n{}\n</ostudy-source>\n\n\
          Create only the study-worthy flashcards justified by this page. \
-         It is correct to return an empty cards array when the page is references, navigation, legal/publishing material, or contains no high-value learning content.{retry_instruction}"
+         It is correct to return an empty cards array when the page is references, navigation, legal/publishing material, or contains no high-value learning content.{retry_instruction}",
+        request.document_title, request.page_number, request.page_text
     );
     let schema = output_schema();
     let body = match profile.provider_kind {
@@ -272,7 +271,7 @@ async fn request_page_flashcards(
                 "type": "text",
                 "text": source_text,
             })];
-            if let Some(image) = page_png {
+            if let Some(image) = request.page_png {
                 let encoded = STANDARD.encode(image);
                 parts.push(json!({
                     "type": "image_url",
@@ -579,7 +578,7 @@ fn build_cloze_text(index: usize, text: &str, blanks: &[String]) -> Result<Strin
         ranges.push((start, end, blank_index + 1, trimmed.to_string()));
     }
 
-    ranges.sort_by(|left, right| right.0.cmp(&left.0));
+    ranges.sort_by_key(|range| Reverse(range.0));
     let mut marked = text.to_string();
     for (start, end, group, blank) in ranges {
         marked.replace_range(start..end, &format!("{{{{c{group}::{blank}}}}}"));
@@ -589,7 +588,11 @@ fn build_cloze_text(index: usize, text: &str, blanks: &[String]) -> Result<Strin
 
 fn validate_text(index: usize, field: &str, value: &str) -> Result<(), CommandError> {
     let count = value.chars().count();
-    if value.trim().is_empty() || count > MAX_CARD_TEXT_CHARS || value.chars().any(char::is_control)
+    if value.trim().is_empty()
+        || count > MAX_CARD_TEXT_CHARS
+        || value
+            .chars()
+            .any(|character| character.is_control() && !matches!(character, '\n' | '\t'))
     {
         return Err(output_error(format!(
             "Generated card {} has an empty, oversized, or invalid {field} field.",
@@ -855,10 +858,7 @@ mod tests {
         let cards = validate_page_output(output).expect("supported cards should normalize");
         assert_eq!(cards.len(), 4);
         assert_eq!(cards[0]["type"], "basic");
-        assert!(cards[1]["front"]
-            .as_str()
-            .unwrap()
-            .contains("A. Heart rate"));
+        assert!(cards[1]["front"].as_str().unwrap().contains("A. Heart rate"));
         assert!(cards[2]["back"]
             .as_str()
             .unwrap()
@@ -884,12 +884,21 @@ mod tests {
     }
 
     #[test]
+    fn generated_markdown_text_allows_line_breaks_but_not_other_controls() {
+        assert!(validate_text(0, "front", "Question\n\n- item one\n- item two").is_ok());
+        assert!(validate_text(0, "front", "Question\0hidden").is_err());
+    }
+
+    #[test]
     fn strips_only_outer_json_code_fences() {
         assert_eq!(
             normalize_json_content("```json\n{\"cards\":[]}\n```"),
             "{\"cards\":[]}"
         );
-        assert_eq!(normalize_json_content("{\"cards\":[]}"), "{\"cards\":[]}");
+        assert_eq!(
+            normalize_json_content("{\"cards\":[]}"),
+            "{\"cards\":[]}"
+        );
     }
 
     #[test]
