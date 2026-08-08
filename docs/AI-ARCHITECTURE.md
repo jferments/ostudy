@@ -28,7 +28,7 @@ credentials, Authorization headers, raw provider responses, or a generic
 "send prompt" command. Future task services call the internal gateway through
 narrow task-specific workflows.
 
-## Provider profiles
+## Provider profiles and model selection
 
 AI provider configuration is separate from ordinary `AppSettings`. Each profile
 has a stable identity, immutable provider kind, normalized base URL, selected
@@ -44,6 +44,13 @@ Initial implemented providers are:
 
 Ollama, OpenAI, Gemini, and Claude remain catalogued as planned providers until
 their native adapters are implemented.
+
+Model IDs are provider-owned routing identifiers, not free-form user metadata.
+A new profile is created first so it has a trusted endpoint and credential
+boundary. The user then explicitly chooses **Refresh models**, ostudy queries the
+provider's model-list API through Rust, and the Settings UI presents those
+returned IDs in a dropdown. A saved model that is not in the most recently
+refreshed list remains visible until the user explicitly replaces and saves it.
 
 ## Credentials
 
@@ -85,25 +92,39 @@ calls for it; connectivity verification is intentionally different because it
 needs a small, deterministic final answer. DeepSeek structured probes use JSON
 object mode followed by independent strict Rust and semantic validation.
 
+DeepSeek does not currently get credited with provider-enforced JSON Schema when
+that capability is not offered by its API. The UI labels this neutrally as
+**Provider JSON Schema: not offered**. The separate **Local validation**
+capability records the schema validation ostudy actually performs after receiving
+DeepSeek JSON output, so absence of provider-side JSON Schema is not a connection
+failure.
+
 A provider-reported `finish_reason` of `length` is diagnostic evidence, not an
 automatic failure when the final content already satisfies the exact probe
 contract. Invalid, empty, or semantically wrong final content still fails.
 
-## llama.cpp model identity
+## llama.cpp model identity and metadata
 
-llama.cpp's OpenAI-compatible model ID is a server-routing identity, not
-necessarily a Hugging Face repository name. A single-model server commonly
-reports the loaded GGUF file path unless it was started with an explicit alias.
+llama.cpp's API model ID is a server-routing identity, not necessarily a Hugging
+Face repository name. A server may expose a GGUF file path unless it was started
+with an explicit alias.
 
-When a saved llama.cpp profile does not match `/v1/models` but the server reports
-exactly one loaded model, ostudy treats that as a recoverable identity mismatch:
+Model discovery uses llama.cpp's model-list route and treats the server's returned
+ID as authoritative for API routing. When a saved llama.cpp profile does not
+match the list but the server reports exactly one loaded model, ostudy treats
+that as a recoverable identity mismatch:
 
 - Test connection records a partial model-verification result;
 - the remaining probes use the server-reported model ID for that test only;
-- Refresh models places the server-reported ID into the editable draft;
+- Refresh models places the server-reported ID into the model dropdown draft;
 - the user must explicitly save the profile before the new ID becomes durable.
 
 Multiple-model mismatches and DeepSeek model mismatches remain hard failures.
+
+llama.cpp `/props` metadata is optional evidence. In router deployments ostudy
+supplies the selected model as the route selector. A missing or non-JSON optional
+properties response does not invalidate model discovery, text generation, or
+structured-output verification; those capabilities are tested independently.
 
 ## Capability evidence
 
@@ -115,7 +136,7 @@ declared by the server or actively probed. Results are bound to the profile
 revision, credential epoch, saved model, and adapter revision so stale probes
 cannot become current after configuration changes.
 
-## Privacy and diagnostics
+## Privacy and plaintext diagnostics
 
 Persisted probe records contain only bounded, typed, redacted data: profile and
 model identity, phase status, safe error code, latency, capability evidence, and
@@ -123,15 +144,22 @@ safe usage metadata where returned. Prompts, provider response bodies, reasoning
 content, chat-template text, Authorization headers, and credentials are never
 persisted by the profile-verification path.
 
-The Settings UI exposes **View diagnostic information** after a probe. It shows
-only redacted operational metadata such as provider, endpoint, destination
-scope, configured model, adapter/result-schema versions, refreshed model IDs,
-phase status, latency, and safe error codes. It deliberately does not expose raw
-request or response content.
+After a test, Settings displays a selectable **Connection diagnostic log** as
+plain text rather than hiding metadata behind a disclosure control. The transcript
+records the normalized endpoint routes that were attempted, provider/model
+identity, adapter versions, phase status, latency, retryability, safe error codes,
+and a bounded preview of model IDs returned by the most recent refresh. It
+explicitly redacts credentials and excludes raw prompts, raw provider responses,
+reasoning content, and full chat templates.
+
+The plaintext log is intended to be copied into a bug report when a real provider
+behaves differently from deterministic contract fixtures without requiring the
+user to capture network traffic or disclose an API key.
 
 ## Future document-grounded tasks
 
 Later flashcard and tutor services will reuse the same profile, secret, endpoint,
-gateway, structured-output, and capability services. Documents and learning
-history will be selected and validated by those task services; the gateway will
-not itself receive database access or authority to create cards.
+gateway, structured-output, capability, model-discovery, and diagnostic services.
+Documents and learning history will be selected and validated by those task
+services; the gateway will not itself receive database access or authority to
+create cards.
