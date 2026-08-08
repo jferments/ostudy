@@ -53,12 +53,14 @@ A stale saved model that is not present in the latest provider response is shown
 
 Unsloth describes how a model was trained/exported; the runtime protocol is the llama.cpp server API. ostudy therefore configures these models as llama.cpp provider profiles.
 
-For a normal llama.cpp server, ostudy uses the OpenAI-compatible routes:
+For a normal single-model llama.cpp server, ostudy uses the OpenAI-compatible routes:
 
 - `GET /v1/models` for the loaded API model identity;
 - `POST /v1/chat/completions` for text and structured-output probes.
 
 A saved base URL may be the server root or may end in `/v1/`; adapter route construction normalizes both without producing a duplicate `/v1/v1/...` path.
+
+Current llama.cpp also has a bare `GET /models` catalog when the server is running in router mode. That router catalog is a different endpoint with different semantics: it can enumerate models available to the router, including unloaded models. Stage 4.2's ordinary llama.cpp profile targets the OpenAI-compatible loaded-model contract at `/v1/models`; it must not assume the router-only catalog exists on every server. A non-router web/UI response at bare `/models` therefore cannot break standard model discovery.
 
 llama.cpp may return the GGUF file path as the model ID unless the server was started with an explicit `--alias`. The API-reported ID is the routing identity ostudy should save and send back to that server.
 
@@ -114,7 +116,7 @@ Persisted probe records contain no raw prompt, response, reasoning, credential, 
 
 After Test connection, Settings renders a selectable plaintext **Connection diagnostic log**. It records safe operational facts such as provider, normalized endpoint, destination scope, configured/tested model ID, attempted routes, adapter/result versions, phase status, latency, normalized error codes, and a bounded model-list preview.
 
-For llama.cpp diagnostics, the required OpenAI-compatible discovery route is shown as `/v1/models`; `/props` is explicitly identified as optional metadata.
+For ordinary llama.cpp diagnostics, the required OpenAI-compatible discovery route is shown as `/v1/models`; `/props` is explicitly identified as optional metadata.
 
 The transcript deliberately excludes credentials, Authorization headers, raw prompts, raw provider responses, reasoning content, and full chat templates. It is intended to be safe to paste into a bug report.
 
