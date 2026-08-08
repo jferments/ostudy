@@ -131,6 +131,17 @@ describe("DocumentsScreen", () => {
     });
   });
 
+  it("offers regeneration when the previously generated deck was deleted", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([
+      makeDocument({ generatedDeckId: null, lifecycleState: "ready" }),
+    ]);
+    renderDocuments();
+
+    expect(await screen.findByText("Ready to regenerate")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry generation" })).toBeTruthy();
+    expect(screen.getByText(/previous generated deck was deleted/u)).toBeTruthy();
+  });
+
   it("opens the managed PDF through the platform boundary", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
     renderDocuments();
