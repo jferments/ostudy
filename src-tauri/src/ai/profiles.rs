@@ -158,7 +158,6 @@ pub(crate) struct ProfileSnapshot {
     pub enabled: bool,
     pub allow_insecure_http: bool,
     pub request_timeout_ms: i64,
-    pub credential_storage: CredentialStorage,
     pub credential_epoch: i64,
     pub revision: i64,
 }
@@ -258,7 +257,6 @@ impl From<&StoredProfile> for ProfileSnapshot {
             enabled: profile.enabled,
             allow_insecure_http: profile.allow_insecure_http,
             request_timeout_ms: profile.request_timeout_ms,
-            credential_storage: profile.credential_storage,
             credential_epoch: profile.credential_epoch,
             revision: profile.revision,
         }
@@ -1238,7 +1236,6 @@ mod tests {
                 assert_eq!(storage, "none");
                 let snapshot = load_profile_snapshot(connection, &profile_id)?;
                 assert_eq!(snapshot.provider_kind, ProviderKind::LlamaCpp);
-                assert_eq!(snapshot.credential_storage, CredentialStorage::None);
                 Ok(())
             })
             .expect("profile should load");
