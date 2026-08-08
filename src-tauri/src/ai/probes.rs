@@ -360,9 +360,7 @@ pub async fn test_ai_provider_profile(
             phases.push(passed_phase(
                 "text_completion",
                 "Text completion",
-                &format!(
-                    "The selected model completed the minimal text probe (finish: {finish})."
-                ),
+                &format!("The selected model completed the minimal text probe (finish: {finish})."),
                 Some(elapsed_ms(text_start)),
             ));
             outcome
@@ -375,14 +373,8 @@ pub async fn test_ai_provider_profile(
                 Some(elapsed_ms(text_start)),
                 error_value.safe,
             ));
-            let capabilities = build_capabilities(
-                &profile,
-                models.is_some(),
-                false,
-                false,
-                false,
-                &properties,
-            );
+            let capabilities =
+                build_capabilities(&profile, models.is_some(), false, false, false, &properties);
             return finish_and_persist(
                 database.inner(),
                 &profile,
@@ -796,12 +788,7 @@ fn elapsed_ms(started: Instant) -> i64 {
     i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX)
 }
 
-fn passed_phase(
-    phase: &str,
-    label: &str,
-    message: &str,
-    latency_ms: Option<i64>,
-) -> ProbePhaseDto {
+fn passed_phase(phase: &str, label: &str, message: &str, latency_ms: Option<i64>) -> ProbePhaseDto {
     ProbePhaseDto {
         phase: phase.to_string(),
         label: label.to_string(),

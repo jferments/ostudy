@@ -16,9 +16,7 @@ use super::{
     endpoint_policy::{
         endpoint_origin_from_str, validate_endpoint, NetworkScope, ValidatedEndpoint,
     },
-    secrets::{
-        CredentialPersistence, CredentialStatus, CredentialStatusDto, CredentialStorage,
-    },
+    secrets::{CredentialPersistence, CredentialStatus, CredentialStatusDto, CredentialStorage},
     AiRuntimeState,
 };
 
@@ -901,9 +899,10 @@ fn build_detail(
         &profile.base_url,
         profile.allow_insecure_http,
     )?;
-    let credential_status = runtime
-        .secrets
-        .status(&profile.id, profile.auth_mode, profile.credential_storage)?;
+    let credential_status =
+        runtime
+            .secrets
+            .status(&profile.id, profile.auth_mode, profile.credential_storage)?;
     let configuration_status = configuration_status(profile, credential_status.status);
     Ok(AiProviderProfileDetailDto {
         id: profile.id.clone(),

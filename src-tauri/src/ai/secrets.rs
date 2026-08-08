@@ -226,11 +226,7 @@ impl SecretManager {
         Ok(())
     }
 
-    pub fn clear(
-        &self,
-        profile_id: &str,
-        storage: CredentialStorage,
-    ) -> Result<(), CommandError> {
+    pub fn clear(&self, profile_id: &str, storage: CredentialStorage) -> Result<(), CommandError> {
         match storage {
             CredentialStorage::None | CredentialStorage::Session => {
                 self.remove_session(profile_id)?;
@@ -418,7 +414,10 @@ mod tests {
             CredentialStorage::Secure,
             CredentialStorage::Session,
         ] {
-            assert_eq!(CredentialStorage::from_db(storage.as_str()).unwrap(), storage);
+            assert_eq!(
+                CredentialStorage::from_db(storage.as_str()).unwrap(),
+                storage
+            );
         }
         assert!(CredentialStorage::from_db("plaintext").is_err());
     }
