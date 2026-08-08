@@ -93,10 +93,10 @@ function destinationMessage(profile: AiProviderProfileSummary): string {
   }
   switch (profile.networkScope) {
     case "local":
-      return "Selected page text and supported page images stay on this computer's configured model server.";
+      return "Extracted page text and supported page images stay on this computer's configured model server.";
     case "lan":
-      return "Selected page text and supported page images will be sent to the configured local-network server.";
+      return "Extracted page text and supported page images will be sent to the configured local-network server.";
     case "cloud":
-      return "Selected PDF page text and supported page images will be transmitted to this cloud provider.";
+      return "PDF page text and supported page images will be transmitted to this cloud provider.";
   }
 }
