@@ -82,7 +82,8 @@ pub async fn load_properties(
         return Ok(ProviderProperties::default());
     }
     let mut url = join_endpoint(&profile.base_url, "props").map_err(command_to_gateway)?;
-    url.query_pairs_mut().append_pair("model", &profile.model_id);
+    url.query_pairs_mut()
+        .append_pair("model", &profile.model_id);
     match gateway
         .get_json(
             url,
