@@ -1,7 +1,9 @@
 -- AI provider profiles and explicit task defaults.
 --
 -- Credentials are intentionally excluded from SQLite. The credential_epoch
--- invalidates provider verification state after any credential mutation.
+-- invalidates provider verification state after any credential mutation. The
+-- credential_storage column records only where ostudy expects the secret to
+-- live; it never contains credential bytes.
 
 CREATE TABLE ai_provider_profiles (
     id                      TEXT PRIMARY KEY CHECK(length(id) = 32),
@@ -19,6 +21,8 @@ CREATE TABLE ai_provider_profiles (
     allow_insecure_http     INTEGER NOT NULL DEFAULT 0 CHECK(allow_insecure_http IN (0, 1)),
     request_timeout_ms      INTEGER NOT NULL DEFAULT 60000
                             CHECK(request_timeout_ms BETWEEN 1000 AND 300000),
+    credential_storage      TEXT NOT NULL DEFAULT 'none'
+                            CHECK(credential_storage IN ('none', 'secure', 'session')),
     credential_epoch        INTEGER NOT NULL DEFAULT 0 CHECK(credential_epoch >= 0),
     revision                INTEGER NOT NULL DEFAULT 1 CHECK(revision >= 1),
     created_at              INTEGER NOT NULL,
