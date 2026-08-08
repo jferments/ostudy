@@ -26,6 +26,7 @@ mod error;
 mod library_backup;
 mod logging;
 mod paths;
+mod pdf_backend;
 mod practice;
 mod practice_selection;
 mod projections;
