@@ -3,6 +3,7 @@ import type {
   AiCapability,
   AiCredentialStatus,
   AiProfileDraft,
+  AiProviderModel,
   AiProviderProfileDetail,
 } from "../../ipc/aiProfiles";
 import { useConfirm } from "../../ui/overlays/overlayContext";
@@ -20,7 +21,11 @@ export function AiLlmSettings({ controller }: AiLlmSettingsProps) {
   const plannedProviders = controller.catalog.filter(
     (provider) => provider.implementationStatus === "planned",
   );
-  const profileDirty = hasProfileChanges(controller.draft, controller.selectedProfile, controller.selectedProfileId);
+  const profileDirty = hasProfileChanges(
+    controller.draft,
+    controller.selectedProfile,
+    controller.selectedProfileId,
+  );
 
   async function changeProfile(profileId: string): Promise<void> {
     if (profileId === controller.selectedProfileId) return;
@@ -37,7 +42,9 @@ export function AiLlmSettings({ controller }: AiLlmSettingsProps) {
     controller.selectProfile(profileId);
   }
 
-  async function beginCreate(providerKind: Parameters<typeof controller.beginCreate>[0]): Promise<void> {
+  async function beginCreate(
+    providerKind: Parameters<typeof controller.beginCreate>[0],
+  ): Promise<void> {
     if (controller.dirty) {
       const accepted = await confirm({
         title: "Discard AI profile changes?",
@@ -158,14 +165,16 @@ export function AiLlmSettings({ controller }: AiLlmSettingsProps) {
               value={controller.defaults.flashcardGenerationProfileId ?? ""}
               disabled={controller.mutating}
               onChange={(event) =>
-                void controller.setFlashcardDefault(event.currentTarget.value || null)}
+                void controller.setFlashcardDefault(event.currentTarget.value || null)
+              }
             >
               <option value="">Choose each time</option>
               {controller.profiles
                 .filter((profile) => profile.configurationStatus !== "planned")
                 .map((profile) => (
                   <option key={profile.id} value={profile.id}>
-                    {profile.displayName}{profile.configurationStatus === "ready" ? "" : " — incomplete"}
+                    {profile.displayName}
+                    {profile.configurationStatus === "ready" ? "" : " — incomplete"}
                   </option>
                 ))}
             </select>
@@ -191,7 +200,11 @@ export function AiLlmSettings({ controller }: AiLlmSettingsProps) {
   );
 }
 
-function ProfileEditor({ controller, profileDirty, onDelete }: {
+function ProfileEditor({
+  controller,
+  profileDirty,
+  onDelete,
+}: {
   controller: AiProfilesController;
   profileDirty: boolean;
   onDelete: () => void;
@@ -209,7 +222,10 @@ function ProfileEditor({ controller, profileDirty, onDelete }: {
           <h2>{saved ? "Profile configuration" : "New provider profile"}</h2>
           <p>{provider?.description}</p>
         </div>
-        <span className={styles.scopeBadge} data-scope={saved?.networkScope ?? (isLlama ? "local" : "cloud")}>
+        <span
+          className={styles.scopeBadge}
+          data-scope={saved?.networkScope ?? (isLlama ? "local" : "cloud")}
+        >
           {scopeLabel(saved?.networkScope ?? (isLlama ? "local" : "cloud"))}
         </span>
       </div>
@@ -247,14 +263,23 @@ function ProfileEditor({ controller, profileDirty, onDelete }: {
             onChange={(event) => controller.updateDraft({ modelId: event.currentTarget.value })}
           />
           <datalist id="ai-provider-models">
-            {controller.models.map((model) => <option key={model.id} value={model.id} />)}
+            {controller.models.map((model) => (
+              <option key={model.id} value={model.id} />
+            ))}
           </datalist>
+          {isLlama ? (
+            <small className={styles.fieldHelp}>
+              llama.cpp normally reports the loaded GGUF path as its API model ID unless the server is started with <code>--alias</code>. Refresh models to use the server-reported ID.
+            </small>
+          ) : null}
         </label>
         <label className={styles.stackedField}>
           <span>Request timeout</span>
           <select
             value={draft.requestTimeoutMs}
-            onChange={(event) => controller.updateDraft({ requestTimeoutMs: Number(event.currentTarget.value) })}
+            onChange={(event) =>
+              controller.updateDraft({ requestTimeoutMs: Number(event.currentTarget.value) })
+            }
           >
             <option value={30_000}>30 seconds</option>
             <option value={60_000}>60 seconds</option>
@@ -268,7 +293,10 @@ function ProfileEditor({ controller, profileDirty, onDelete }: {
             <select
               value={draft.authMode}
               onChange={(event) =>
-                controller.updateDraft({ authMode: event.currentTarget.value as AiProfileDraft["authMode"] })}
+                controller.updateDraft({
+                  authMode: event.currentTarget.value as AiProfileDraft["authMode"],
+                })
+              }
             >
               <option value="none">None</option>
               <option value="bearer">Bearer token</option>
@@ -276,7 +304,10 @@ function ProfileEditor({ controller, profileDirty, onDelete }: {
           </label>
         ) : null}
         <label className={styles.switchRow}>
-          <span><strong>Enable profile</strong><small>Allow future AI tasks to select this profile.</small></span>
+          <span>
+            <strong>Enable profile</strong>
+            <small>Allow future AI tasks to select this profile.</small>
+          </span>
           <input
             type="checkbox"
             checked={draft.enabled}
@@ -292,7 +323,9 @@ function ProfileEditor({ controller, profileDirty, onDelete }: {
             <input
               type="checkbox"
               checked={draft.allowInsecureHttp}
-              onChange={(event) => controller.updateDraft({ allowInsecureHttp: event.currentTarget.checked })}
+              onChange={(event) =>
+                controller.updateDraft({ allowInsecureHttp: event.currentTarget.checked })
+              }
             />
           </label>
         ) : null}
@@ -304,7 +337,7 @@ function ProfileEditor({ controller, profileDirty, onDelete }: {
         </p>
       ) : (
         <p className={styles.cloudNotice}>
-          DeepSeek is a cloud provider. Connection tests send a small prompt and future tasks will transmit the selected course evidence to this service only after explicit use.
+          DeepSeek is a cloud provider. Connection tests send a small prompt in non-thinking mode so the bounded probe measures final-answer generation instead of spending its token budget on reasoning.
         </p>
       )}
 
@@ -323,7 +356,12 @@ function ProfileEditor({ controller, profileDirty, onDelete }: {
           </button>
         ) : null}
         {saved ? (
-          <button type="button" className="danger-button" disabled={controller.mutating} onClick={onDelete}>
+          <button
+            type="button"
+            className="danger-button"
+            disabled={controller.mutating}
+            onClick={onDelete}
+          >
             Delete profile
           </button>
         ) : null}
@@ -418,7 +456,10 @@ function CredentialPanel({ controller }: { controller: AiProfilesController }) {
   );
 }
 
-function ConnectionPanel({ controller, profileDirty }: {
+function ConnectionPanel({
+  controller,
+  profileDirty,
+}: {
   controller: AiProfilesController;
   profileDirty: boolean;
 }) {
@@ -439,7 +480,9 @@ function ConnectionPanel({ controller, profileDirty }: {
         ) : null}
       </div>
       {blocked ? (
-        <div className="inline-alert info-alert">Save or discard profile and credential-entry changes before testing.</div>
+        <div className="inline-alert info-alert">
+          Save or discard profile and credential-entry changes before testing.
+        </div>
       ) : null}
       <div className={styles.actionRow}>
         <button
@@ -460,16 +503,32 @@ function ConnectionPanel({ controller, profileDirty }: {
         </button>
       </div>
       {controller.models.length > 0 ? (
-        <p className={styles.note}>{controller.models.length} model(s) returned. Choose a model ID above and save the profile before testing it.</p>
+        <p className={styles.note}>
+          {controller.models.length} model(s) returned. Choose a model ID above and save the profile before testing it.
+        </p>
       ) : null}
-      {controller.probeResult ? <ProbeResultView result={controller.probeResult} /> : (
+      {controller.probeResult ? (
+        <ProbeResultView
+          result={controller.probeResult}
+          profile={profile}
+          models={controller.models}
+        />
+      ) : (
         <p className={styles.note}>No verification result has been recorded for this profile.</p>
       )}
     </section>
   );
 }
 
-function ProbeResultView({ result }: { result: NonNullable<AiProfilesController["probeResult"]> }) {
+function ProbeResultView({
+  result,
+  profile,
+  models,
+}: {
+  result: NonNullable<AiProfilesController["probeResult"]>;
+  profile: AiProviderProfileDetail;
+  models: AiProviderModel[];
+}) {
   return (
     <div className={styles.probeResult}>
       <p className={styles.note}>
@@ -479,7 +538,9 @@ function ProbeResultView({ result }: { result: NonNullable<AiProfilesController[
       <div className={styles.phaseList}>
         {result.phases.map((phase) => (
           <article key={phase.phase} data-status={phase.status}>
-            <span aria-hidden="true">{phase.status === "passed" ? "✓" : phase.status === "failed" ? "!" : "—"}</span>
+            <span aria-hidden="true">
+              {phase.status === "passed" ? "✓" : phase.status === "failed" ? "!" : "—"}
+            </span>
             <div>
               <strong>{phase.label}</strong>
               <p>{phase.error?.message ?? phase.message}</p>
@@ -493,6 +554,39 @@ function ProbeResultView({ result }: { result: NonNullable<AiProfilesController[
           <CapabilityBadge key={capability.key} capability={capability} />
         ))}
       </div>
+      <details className={styles.probeDiagnostics}>
+        <summary>View diagnostic information</summary>
+        <p>
+          This is redacted connection metadata. It never includes the API credential, Authorization header, probe prompts, provider response text, or model reasoning.
+        </p>
+        <dl>
+          <div><dt>Provider</dt><dd>{profile.providerLabel}</dd></div>
+          <div><dt>Endpoint</dt><dd>{profile.baseUrl}</dd></div>
+          <div><dt>Destination</dt><dd>{scopeLabel(profile.networkScope)}</dd></div>
+          <div><dt>Configured model</dt><dd>{profile.modelId}</dd></div>
+          <div><dt>Adapter revision</dt><dd>{result.adapterRevision}</dd></div>
+          <div><dt>Result schema</dt><dd>{result.resultSchemaVersion}</dd></div>
+          <div><dt>Persisted</dt><dd>{result.persisted ? "yes" : "no"}</dd></div>
+          <div>
+            <dt>Probe reasoning</dt>
+            <dd>{profile.providerKind === "deepseek" ? "disabled for bounded connectivity test" : "disabled when supported by the llama.cpp chat template"}</dd>
+          </div>
+          <div className={styles.diagnosticWide}>
+            <dt>Last refreshed model IDs</dt>
+            <dd>{models.length > 0 ? models.map((model) => model.id).join(", ") : "not refreshed in this UI session"}</dd>
+          </div>
+        </dl>
+        <h3>Phase diagnostics</h3>
+        <ul>
+          {result.phases.map((phase) => (
+            <li key={phase.phase}>
+              <strong>{phase.phase}</strong>: {phase.status}
+              {phase.latencyMs !== null ? ` · ${phase.latencyMs} ms` : ""}
+              {phase.error ? ` · ${phase.error.code}${phase.error.retryable ? " · retryable" : ""}` : ""}
+            </li>
+          ))}
+        </ul>
+      </details>
     </div>
   );
 }
@@ -501,7 +595,9 @@ function CapabilityBadge({ capability }: { capability: AiCapability }) {
   return (
     <span className={styles.capabilityBadge} data-status={capability.status}>
       <strong>{capabilityLabel(capability.key)}</strong>
-      <small>{capability.status} · {capability.source}</small>
+      <small>
+        {capability.status} · {capability.source}
+      </small>
     </span>
   );
 }
@@ -530,26 +626,42 @@ function scopeLabel(scope: "local" | "lan" | "cloud"): string {
 }
 
 function configurationLabel(status: string): string {
-  return status === "ready" ? "Ready" : status === "disabled" ? "Disabled" : status === "planned" ? "Planned" : "Needs configuration";
+  return status === "ready"
+    ? "Ready"
+    : status === "disabled"
+      ? "Disabled"
+      : status === "planned"
+        ? "Planned"
+        : "Needs configuration";
 }
 
 function credentialLabel(status: AiCredentialStatus): string {
   switch (status) {
-    case "saved_securely": return "A credential is stored in the operating-system credential store.";
-    case "session_only": return "A credential is held only in native memory for this session.";
-    case "secure_store_unavailable": return "Secure persistence is unavailable; use a session-only credential.";
-    case "not_required": return "This profile does not require authentication.";
-    default: return "No credential is available for this profile.";
+    case "saved_securely":
+      return "A credential is stored in the operating-system credential store.";
+    case "session_only":
+      return "A credential is held only in native memory for this session.";
+    case "secure_store_unavailable":
+      return "Secure persistence is unavailable; use a session-only credential.";
+    case "not_required":
+      return "This profile does not require authentication.";
+    default:
+      return "No credential is available for this profile.";
   }
 }
 
 function credentialShortLabel(status: AiCredentialStatus): string {
   switch (status) {
-    case "saved_securely": return "Saved securely";
-    case "session_only": return "Session only";
-    case "secure_store_unavailable": return "Secure store unavailable";
-    case "not_required": return "Not required";
-    default: return "Missing";
+    case "saved_securely":
+      return "Saved securely";
+    case "session_only":
+      return "Session only";
+    case "secure_store_unavailable":
+      return "Secure store unavailable";
+    case "not_required":
+      return "Not required";
+    default:
+      return "Missing";
   }
 }
 
@@ -574,7 +686,12 @@ function capabilityLabel(key: string): string {
 function isLoopbackUrl(value: string): boolean {
   try {
     const hostname = new URL(value).hostname.toLowerCase();
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "[::1]" ||
+      hostname === "::1"
+    );
   } catch {
     return false;
   }
