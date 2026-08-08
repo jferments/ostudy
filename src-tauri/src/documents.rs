@@ -12,9 +12,7 @@ use tauri::State;
 
 use crate::{
     ai::{document_flashcards, AiRuntimeState},
-    authoring::card_types_and_templates::generated_import::{
-        import_generated_flashcards, FlashcardImportResultDto,
-    },
+    authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit,
     database::Database,
     error::CommandError,
     paths::AppPaths,
@@ -187,7 +185,7 @@ pub async fn retry_pdf_flashcard_generation(
         paths.clone(),
         runtime.clone(),
         &input.document_id,
-        true,
+        false,
     )
     .await
     {
@@ -216,17 +214,22 @@ pub fn set_document_archived(
         let lifecycle = if input.archived {
             "archived"
         } else {
-            let generated_deck_id: Option<String> = connection
+            let active_generated_deck = connection
                 .query_row(
-                    "SELECT generated_deck_id FROM documents
-                     WHERE id = ?1 AND revision = ?2",
+                    "SELECT EXISTS(
+                         SELECT 1
+                         FROM documents document
+                         JOIN decks deck ON deck.id = document.generated_deck_id
+                         WHERE document.id = ?1
+                           AND document.revision = ?2
+                           AND deck.deleted_at IS NULL
+                     )",
                     params![input.document_id, input.revision],
-                    |row| row.get(0),
+                    |row| row.get::<_, i64>(0),
                 )
-                .optional()
-                .map_err(CommandError::database)?
-                .flatten();
-            if generated_deck_id.is_some() {
+                .map(|value| value != 0)
+                .map_err(CommandError::database)?;
+            if active_generated_deck {
                 "ready"
             } else {
                 "failed"
@@ -430,15 +433,55 @@ async fn process_and_generate(
 
     mark_job_committing(database.inner(), &job_id, all_cards.len())?;
     let generated_json = build_generated_import_json(&stored.dto, all_cards)?;
-    let import_path = paths
-        .document_staging_dir()
-        .join(format!("{document_id}-{job_id}.ostudy.json"));
-    write_new_file(&import_path, generated_json.as_bytes())?;
-    let import_result =
-        import_generated_flashcards(database.clone(), import_path.to_string_lossy().into_owned());
-    let _ = fs::remove_file(&import_path);
-    let import_result = import_result?;
-    finalize_generation(database.inner(), document_id, &job_id, &import_result)?;
+    let import_result = import_generated_flashcards_bytes_with_commit(
+        database.inner(),
+        generated_json.as_bytes(),
+        |connection, result, now| {
+            connection
+                .execute(
+                    "INSERT INTO document_decks (document_id, deck_id, job_id, created_at)
+                     VALUES (?1, ?2, ?3, ?4)",
+                    params![document_id, result.deck_id.as_str(), job_id, now],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "UPDATE documents
+                     SET lifecycle_state = 'ready',
+                         generated_note_count = ?1,
+                         generated_card_count = ?2,
+                         generated_deck_id = ?3,
+                         safe_error_code = '',
+                         safe_error_message = '',
+                         updated_at = ?4,
+                         completed_at = ?4,
+                         revision = revision + 1
+                     WHERE id = ?5",
+                    params![
+                        result.created_note_count,
+                        result.created_card_count,
+                        result.deck_id.as_str(),
+                        now,
+                        document_id,
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "UPDATE document_generation_jobs
+                     SET state = 'succeeded',
+                         generated_deck_id = ?1,
+                         safe_error_code = '',
+                         safe_error_message = '',
+                         updated_at = ?2,
+                         completed_at = ?2
+                     WHERE id = ?3",
+                    params![result.deck_id.as_str(), now, job_id],
+                )
+                .map_err(CommandError::database)?;
+            Ok(())
+        },
+    )?;
     let document = database
         .with_connection(|connection| load_document(connection, document_id))?
         .dto;
@@ -808,13 +851,6 @@ fn mark_generation_unit_complete(
     cards: &[serde_json::Value],
     skipped: bool,
 ) -> Result<(), CommandError> {
-    let cards_json = serde_json::to_string(cards).map_err(CommandError::serialization)?;
-    if cards_json.len() > 1_048_576 {
-        return Err(CommandError::new(
-            "generated_page_cards_too_large",
-            "The model returned too much flashcard content for one PDF page.",
-        ));
-    }
     let now = unix_time_millis()?;
     let card_count = i64::try_from(cards.len()).unwrap_or(i64::MAX);
     database.with_connection(|connection| {
@@ -825,15 +861,14 @@ fn mark_generation_unit_complete(
             .execute(
                 "UPDATE document_generation_units
                  SET state = ?1,
-                     cards_json = ?2,
-                     card_count = ?3,
+                     cards_json = '[]',
+                     card_count = ?2,
                      safe_error_code = '',
                      safe_error_message = '',
-                     updated_at = ?4
-                 WHERE job_id = ?5 AND page_number = ?6",
+                     updated_at = ?3
+                 WHERE job_id = ?4 AND page_number = ?5",
                 params![
                     if skipped { "skipped" } else { "succeeded" },
-                    cards_json,
                     card_count,
                     now,
                     job_id,
@@ -883,63 +918,6 @@ fn mark_job_committing(
             )
             .map_err(CommandError::database)?;
         Ok(())
-    })
-}
-
-fn finalize_generation(
-    database: &Database,
-    document_id: &str,
-    job_id: &str,
-    result: &FlashcardImportResultDto,
-) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "INSERT INTO document_decks (document_id, deck_id, job_id, created_at)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![document_id, result.deck_id, job_id, now],
-            )
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "UPDATE documents
-                 SET lifecycle_state = 'ready',
-                     generated_note_count = ?1,
-                     generated_card_count = ?2,
-                     generated_deck_id = ?3,
-                     safe_error_code = '',
-                     safe_error_message = '',
-                     updated_at = ?4,
-                     completed_at = ?4,
-                     revision = revision + 1
-                 WHERE id = ?5",
-                params![
-                    result.created_note_count,
-                    result.created_card_count,
-                    result.deck_id,
-                    now,
-                    document_id,
-                ],
-            )
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "UPDATE document_generation_jobs
-                 SET state = 'succeeded',
-                     generated_deck_id = ?1,
-                     safe_error_code = '',
-                     safe_error_message = '',
-                     updated_at = ?2,
-                     completed_at = ?2
-                 WHERE id = ?3",
-                params![result.deck_id, now, job_id],
-            )
-            .map_err(CommandError::database)?;
-        transaction.commit().map_err(CommandError::database)
     })
 }
 
@@ -1041,7 +1019,13 @@ fn list_documents_from_connection(
         .prepare(
             "SELECT id, title, original_filename, byte_size, sha256, lifecycle_state,
                     page_count, extracted_page_count, rendered_page_count,
-                    generated_note_count, generated_card_count, generated_deck_id,
+                    generated_note_count, generated_card_count,
+                    CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM decks active_generated_deck
+                        WHERE active_generated_deck.id = documents.generated_deck_id
+                          AND active_generated_deck.deleted_at IS NULL
+                    ) THEN documents.generated_deck_id ELSE NULL END AS generated_deck_id,
                     safe_error_code, safe_error_message, created_at, updated_at,
                     completed_at, archived_at, revision
              FROM documents
@@ -1072,7 +1056,13 @@ fn load_document(
         .query_row(
             "SELECT id, title, original_filename, byte_size, sha256, lifecycle_state,
                     page_count, extracted_page_count, rendered_page_count,
-                    generated_note_count, generated_card_count, generated_deck_id,
+                    generated_note_count, generated_card_count,
+                    CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM decks active_generated_deck
+                        WHERE active_generated_deck.id = documents.generated_deck_id
+                          AND active_generated_deck.deleted_at IS NULL
+                    ) THEN documents.generated_deck_id ELSE NULL END AS generated_deck_id,
                     safe_error_code, safe_error_message, created_at, updated_at,
                     completed_at, archived_at, revision, source_relative_path
              FROM documents
