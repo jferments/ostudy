@@ -10,8 +10,8 @@ import { LoadingState } from "./ui/primitives/EmptyState";
 const DecksScreen = lazy(() =>
   import("./screens/DecksScreen").then((module) => ({ default: module.DecksScreen })),
 );
-const DocumentsScreen = lazy(() =>
-  import("./screens/DocumentsScreen").then((module) => ({ default: module.DocumentsScreen })),
+const DocumentsSection = lazy(() =>
+  import("./screens/DocumentsSection").then((module) => ({ default: module.DocumentsSection })),
 );
 const CardsScreen = lazy(() =>
   import("./screens/CardsScreen").then((module) => ({ default: module.CardsScreen })),
@@ -82,7 +82,7 @@ function App() {
               />
             ) : null}
             {controller.section === "documents" ? (
-              <DocumentsScreen
+              <DocumentsSection
                 refreshDecks={controller.refreshDecks}
                 showToast={controller.showToast}
               />
