@@ -16,7 +16,7 @@ credentials, broaden the WebView network boundary, and make task validation easy
 to bypass.
 
 llama.cpp should apply the chat template stored with the model. DeepSeek uses
-JSON object mode rather than the same provider-enforced JSON Schema semantics
+JSON Object mode rather than the same provider-enforced JSON Schema semantics
 used by llama.cpp. HTTP success alone therefore cannot be treated as proof that a
 capability works.
 
@@ -47,6 +47,18 @@ output. Future flashcard, quiz, and tutor services call the internal gateway
 through task-specific native workflows that own prompts, grounding, schemas, and
 persistence.
 
+### Provider-backed model selection
+
+Model identity is obtained from provider APIs rather than entered as arbitrary
+free text in Settings. A user first creates the trusted profile/endpoint identity,
+adds a credential when required, and then explicitly refreshes the provider's
+model list. The frontend renders those returned IDs in a dropdown and saves only
+the explicitly selected value.
+
+The saved model remains visible if it is not present in a later refresh so an API
+change cannot silently replace durable configuration. Testing a different model
+requires selecting and saving it first.
+
 ### Provider adapters
 
 The initial adapters are llama.cpp and DeepSeek. A shared OpenAI-style wire shape
@@ -56,8 +68,10 @@ behavior, structured output, and capability interpretation.
 
 For llama.cpp:
 
-- `/v1/models` is used when available;
-- `/props` supplies declared model/server properties;
+- `/models` is used for model discovery, including router deployments;
+- `/props?model=<selected-id>` supplies optional declared model/server properties;
+- missing or non-JSON optional properties metadata does not invalidate model
+  discovery, text generation, or structured-output verification;
 - `/v1/chat/completions` performs text and JSON-Schema probes;
 - connectivity probes request non-thinking operation when supported;
 - the server/model chat template remains authoritative;
@@ -73,12 +87,14 @@ For DeepSeek:
 
 - the fixed official endpoint and bearer credential are used;
 - `/models` performs current model discovery;
-- `/chat/completions` performs text and JSON-object probes;
+- `/chat/completions` performs text and JSON-Object probes;
 - bounded connectivity probes explicitly disable thinking so the output budget
   is spent on the final answer;
 - the response is parsed into strict Rust data and checked against an exact text
   contract or request-specific structured echo value;
-- DeepSeek is not advertised as provider-enforced JSON Schema.
+- DeepSeek is not advertised as provider-enforced JSON Schema;
+- absence of provider-side JSON Schema is neutral capability metadata, while the
+  separate local-validation capability records ostudy's schema enforcement.
 
 A future task may intentionally enable model reasoning. The connectivity probe is
 not a general task policy: it is deliberately small and deterministic.
@@ -86,12 +102,12 @@ not a general task policy: it is deliberately small and deterministic.
 ### Model identity reconciliation
 
 A saved provider model ID must normally match model discovery. The exception is a
-single-model llama.cpp server: if `/v1/models` returns exactly one different ID,
-ostudy records a partial model-verification phase, temporarily uses the
+single-model llama.cpp server: if model discovery returns exactly one different
+ID, ostudy records a partial model-verification phase, temporarily uses the
 server-reported ID for the remaining probe phases, and leaves the saved profile
-unchanged. Refresh models can copy that server ID into the editable draft, after
-which the user explicitly saves it. Starting llama.cpp with a stable alias is the
-alternative way to keep a human-friendly API model ID.
+unchanged. Refresh models puts that server ID into the model dropdown draft,
+after which the user explicitly saves it. Starting llama.cpp with a stable alias
+is the alternative way to keep a human-friendly API model ID.
 
 Multiple-model mismatches and cloud-provider model mismatches remain hard
 failures.
@@ -122,15 +138,19 @@ Before persistence, the service reloads the profile and compares revision,
 credential epoch, and saved model ID. Results from stale in-flight requests are
 returned to the initiating caller but cannot replace current capability evidence.
 
-### Redacted diagnostics
+### Plaintext redacted diagnostics
 
-After a profile probe the Settings UI may display a redacted diagnostics panel.
-It contains only operational metadata already safe for the profile boundary:
-provider, normalized endpoint, Local/LAN/Cloud scope, configured model, adapter
-and result-schema revisions, model IDs refreshed in the current UI session,
-phase status/latency, and normalized safe error codes. It does not expose the
-credential, Authorization header, probe prompt, provider response body,
-reasoning, or full chat template.
+After a profile probe, Settings renders a selectable plaintext connection
+transcript rather than a hidden disclosure panel. It contains only operational
+metadata safe for the profile boundary: provider, normalized endpoint,
+Local/LAN/Cloud scope, configured/tested model, attempted model/properties/
+completion routes, adapter and result-schema revisions, a bounded model-list
+preview, phase status/latency, and normalized safe error codes.
+
+The transcript does not expose the credential, Authorization header, probe
+prompt, provider response body, reasoning, or full chat template. Its purpose is
+to let a user paste actionable connection/formatting evidence into a bug report
+without capturing raw network traffic.
 
 ### Error normalization
 
@@ -138,19 +158,22 @@ Network and provider failures are normalized to stable safe codes covering
 configuration, missing credentials, connection failures, timeouts, TLS,
 redirects, oversized responses, authentication, permission, missing model,
 rate limiting, provider availability, empty responses, invalid final text or
-JSON, and failed structured-output validation. Raw provider error bodies are not
-part of the normal UI contract.
+required JSON, and failed structured-output validation. Raw provider error bodies
+are not part of the normal UI contract.
 
 ## Consequences
 
 - future task services share one hardened transport and provider boundary;
 - provider API drift is isolated to adapters and deterministic contract fixtures;
+- model choices come from provider APIs rather than unvalidated hand-entered IDs;
 - reasoning-capable models can be verified without wasting a tiny connectivity
   budget on hidden reasoning;
 - local-server model aliases/file paths can be repaired without silently changing
   durable profile configuration;
-- local-server compatibility is represented as evidence rather than assumed from
-  a provider label;
+- optional llama.cpp metadata cannot falsely turn successful generation into a
+  provider failure;
+- DeepSeek's lack of provider JSON Schema is represented accurately without
+  implying that local structured-output validation failed;
 - cloud tests occur only through an explicit user action and may consume a small
   amount of provider usage;
 - no provider can gain card-writing or database authority through the gateway;
@@ -166,9 +189,9 @@ AI jobs, provider fallback, or model-server installation.
 ## Validation
 
 The decision is protected by deterministic local HTTP contract tests for
-llama.cpp and DeepSeek, explicit reasoning-control request assertions, redirect
-and credential-forwarding tests, wrong-semantic JSON rejection, response parser
-tests, llama model-identity reconciliation tests, stale-result tests,
-model-discovery and redacted-diagnostics UI tests, strict IPC parity, and
-repository policy checks confining `reqwest` and keyring access to their native
-boundaries.
+llama.cpp and DeepSeek, explicit reasoning-control request assertions, optional
+llama properties fallback coverage, redirect and credential-forwarding tests,
+wrong-semantic JSON rejection, response parser tests, llama model-identity
+reconciliation tests, provider-backed model-dropdown tests, plaintext redacted
+transcript tests, strict IPC parity, and repository policy checks confining
+`reqwest` and keyring access to their native boundaries.
