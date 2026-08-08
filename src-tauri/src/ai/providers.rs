@@ -50,7 +50,7 @@ pub async fn list_models(
     bearer: Option<&str>,
 ) -> Result<Vec<ProviderModel>, AiGatewayError> {
     let path = match profile.provider_kind {
-        ProviderKind::LlamaCpp => "v1/models",
+        ProviderKind::LlamaCpp => "models",
         ProviderKind::Deepseek => "models",
         _ => {
             return Err(error(
@@ -81,16 +81,28 @@ pub async fn load_properties(
     if profile.provider_kind != ProviderKind::LlamaCpp {
         return Ok(ProviderProperties::default());
     }
-    let url = join_endpoint(&profile.base_url, "props").map_err(command_to_gateway)?;
-    let value = gateway
+    let mut url = join_endpoint(&profile.base_url, "props").map_err(command_to_gateway)?;
+    url.query_pairs_mut().append_pair("model", &profile.model_id);
+    match gateway
         .get_json(
             url,
             bearer,
             profile.request_timeout_ms,
             MAX_MODEL_LIST_BYTES,
         )
-        .await?;
-    Ok(parse_llama_properties(&value))
+        .await
+    {
+        Ok(value) => Ok(parse_llama_properties(&value)),
+        Err(error_value)
+            if matches!(
+                error_value.safe.code.as_str(),
+                "ai_provider_protocol_error" | "ai_http_not_found"
+            ) =>
+        {
+            Ok(ProviderProperties::default())
+        }
+        Err(error_value) => Err(error_value),
+    }
 }
 
 pub async fn run_text_probe(
