@@ -185,7 +185,7 @@ pub async fn retry_pdf_flashcard_generation(
         paths.clone(),
         runtime.clone(),
         &input.document_id,
-        false,
+        true,
     )
     .await
     {
@@ -389,7 +389,11 @@ async fn process_and_generate(
         let image = if task.include_page_images {
             let bytes = fs::read(paths.resolve_relative(&page.render_relative_path))
                 .map_err(CommandError::io)?;
-            if bytes.is_empty() || bytes.len() > MAX_RENDER_BYTES {
+            if bytes.is_empty()
+                || bytes.len() > MAX_RENDER_BYTES
+                || i64::try_from(bytes.len()).unwrap_or(i64::MAX) != page.render_byte_size
+                || sha256_hex(&bytes) != page.render_sha256
+            {
                 return Err(CommandError::new(
                     "document_render_invalid",
                     "A rendered PDF page is empty or exceeds the provider request limit.",
