@@ -363,12 +363,7 @@ async fn process_and_generate(
         let source_owned = source_path.clone();
         let id_owned = document_id.to_string();
         let processed = tauri::async_runtime::spawn_blocking(move || {
-            extract_and_render_pdf(
-                &paths_owned,
-                &render_runtime,
-                &id_owned,
-                &source_owned,
-            )
+            extract_and_render_pdf(&paths_owned, &render_runtime, &id_owned, &source_owned)
         })
         .await
         .map_err(|error| {
@@ -1170,7 +1165,11 @@ fn mark_window_complete(
                      safe_error_message = '', updated_at = ?3
                  WHERE job_id = ?4 AND window_index = ?5",
                 params![
-                    if card_count == 0 { "skipped" } else { "succeeded" },
+                    if card_count == 0 {
+                        "skipped"
+                    } else {
+                        "succeeded"
+                    },
                     i64::try_from(card_count).unwrap_or(i64::MAX),
                     now,
                     job_id,
