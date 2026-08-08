@@ -285,7 +285,22 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     setErrorMessage(null);
     try {
       const result = await listAiProviderModels(selectedProfile.id, selectedProfile.revision);
-      if (modelLane.isCurrent(token)) setModels(result.models);
+      if (!modelLane.isCurrent(token)) return;
+      setModels(result.models);
+      if (
+        selectedProfile.providerKind === "llama_cpp" &&
+        result.models.length === 1 &&
+        result.models[0]?.id !== selectedProfile.modelId
+      ) {
+        const serverModelId = result.models[0]?.id;
+        if (serverModelId) {
+          setDraft((current) => (current ? { ...current, modelId: serverModelId } : current));
+          showToast(
+            "info",
+            "llama.cpp reports a different model ID. ostudy filled the server-reported ID; review it and save the profile.",
+          );
+        }
+      }
     } catch (error: unknown) {
       if (modelLane.isCurrent(token)) setErrorMessage(getErrorMessage(error));
     } finally {
