@@ -30,7 +30,11 @@ fn pinned_pdf_engine_extracts_text_and_renders_a_real_fixture() {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(!normalized.is_empty());
     assert!(
-        normalized.chars().filter(|character| character.is_alphabetic()).count() >= 10,
+        normalized
+            .chars()
+            .filter(|character| character.is_alphabetic())
+            .count()
+            >= 10,
         "the real PDF fixture should yield meaningful extracted text"
     );
     let png = page.render_png(72.0).expect("fixture page should render");
