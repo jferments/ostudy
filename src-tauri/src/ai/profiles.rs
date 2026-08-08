@@ -11,7 +11,7 @@ use crate::{
 use super::{
     catalog::{
         provider_catalog, AiTaskKind, AuthMode, ProviderCatalogEntryDto, ProviderKind,
-        DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, MIN_TIMEOUT_MS,
+        MAX_TIMEOUT_MS, MIN_TIMEOUT_MS,
     },
     endpoint_policy::{
         endpoint_origin_from_str, validate_endpoint, NetworkScope, ValidatedEndpoint,
@@ -1178,7 +1178,7 @@ fn default_profile_input(provider_kind: ProviderKind) -> CreateAiProviderProfile
         auth_mode: provider_kind.default_auth_mode(),
         enabled: true,
         allow_insecure_http: false,
-        request_timeout_ms: DEFAULT_TIMEOUT_MS,
+        request_timeout_ms: super::catalog::DEFAULT_TIMEOUT_MS,
     }
 }
 
