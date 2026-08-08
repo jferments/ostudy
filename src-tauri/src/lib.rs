@@ -20,6 +20,7 @@ mod deletion;
 mod deletion_commands;
 mod deletion_purge;
 mod diagnostics;
+mod document_backup;
 mod documents;
 mod error;
 mod library_backup;
