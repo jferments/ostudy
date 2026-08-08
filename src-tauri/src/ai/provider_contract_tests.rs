@@ -37,7 +37,7 @@ fn llama_cpp_adapter_discovers_models_and_verifies_server_structured_output() {
     let (base_url, server) = spawn_mock_server(vec![
         ExpectedExchange {
             method: "GET",
-            path: "/models",
+            path: "/v1/models",
             assert_body: assert_empty_body,
             status: 200,
             response_body: json!({
