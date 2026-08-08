@@ -106,10 +106,12 @@ for (const [label, needle] of [
   ["Rust toolchain", `channel = "${env.get("RUST_VERSION")}"`],
   ["tauri", `version = "=${env.get("TAURI_RUST_VERSION")}"`],
   ["tauri-build", `version = "=${env.get("TAURI_BUILD_VERSION")}"`],
+  ["base64", `base64 = "=${env.get("BASE64_VERSION")}"`],
   ["rusqlite", `version = "=${env.get("RUSQLITE_VERSION")}"`],
   ["serde", `version = "=${env.get("SERDE_VERSION")}"`],
   ["serde_json", `serde_json = "=${env.get("SERDE_JSON_VERSION")}"`],
   ["chrono", `chrono = "=${env.get("CHRONO_VERSION")}"`],
+  ["justpdf", `justpdf = "=${env.get("JUSTPDF_VERSION")}"`],
   ["keyring", `keyring = "=${env.get("KEYRING_VERSION")}"`],
   ["reqwest", `version = "=${env.get("REQWEST_VERSION")}"`],
   ["rs-fsrs", `rs-fsrs = "=${env.get("RS_FSRS_VERSION")}"`],
@@ -197,6 +199,8 @@ requireText("check-changed.sh", checkChanged, ["vitest run --changed", "cargo te
 requireText("check workflow", checkWorkflow, [
   "runs-on: [self-hosted, linux, x64, ostudy]",
   "OSTUDY_CARGO_TARGET_DIR",
+  "cargo metadata",
+  "git add src-tauri/Cargo.lock",
   "check-fast.sh",
   "check.sh",
 ]);
@@ -230,8 +234,15 @@ for (const requiredPath of [
   "tests/scripts/test_log_run.py",
   "src/ipc/diagnostics.ts",
   "src/ipc/diagnostics.test.ts",
+  "src/ipc/documents.ts",
+  "src/screens/DocumentsScreen.tsx",
   "src-tauri/src/diagnostics.rs",
+  "src-tauri/src/documents.rs",
+  "src-tauri/src/document_backup.rs",
+  "src-tauri/src/ai/document_flashcards.rs",
   "src-tauri/tests/fixtures/v0.1.0.sql",
+  "src-tauri/tests/fixtures/document-generation/simple-text.pdf",
+  "docs/decisions/0017-managed-pdf-flashcard-generation.md",
 ]) {
   try {
     await access(join(root, requiredPath));
