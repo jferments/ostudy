@@ -45,7 +45,8 @@ CREATE TABLE ai_profile_operations (
     operation_kind      TEXT NOT NULL
                         CHECK(operation_kind IN (
                             'create_profile', 'update_profile',
-                            'delete_profile', 'set_task_default'
+                            'delete_profile', 'set_task_default',
+                            'set_credential', 'clear_credential'
                         )),
     profile_id          TEXT,
     committed_at        INTEGER NOT NULL
