@@ -169,7 +169,18 @@ export async function updateAiProviderProfile(
   operationId = createOperationId(),
 ): Promise<AiProviderProfileDetail> {
   return invoke<AiProviderProfileDetail>("update_ai_provider_profile", {
-    input: { ...input, profileId, revision, operationId },
+    input: {
+      operationId,
+      profileId,
+      revision,
+      displayName: input.displayName,
+      baseUrl: input.baseUrl,
+      modelId: input.modelId,
+      authMode: input.authMode,
+      enabled: input.enabled,
+      allowInsecureHttp: input.allowInsecureHttp,
+      requestTimeoutMs: input.requestTimeoutMs,
+    },
   });
 }
 
