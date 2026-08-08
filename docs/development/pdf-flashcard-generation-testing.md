@@ -105,7 +105,7 @@ For a multimodal llama.cpp test, use a model/server configuration whose `/props`
 
 ## PDF-backend compatibility acceptance
 
-The active PR #38 engine is `justpdf`, but the document feature is intentionally insulated from that choice by `src-tauri/src/pdf_backend.rs`. Compatibility testing should therefore be maintained as an engine-neutral corpus rather than encoding justpdf-specific assumptions into document logic.
+The active PR #38 engine is `justpdf`, exposed by the backend ID `justpdf-0.1`, but the document feature is intentionally insulated from that choice by `src-tauri/src/pdf_backend.rs`. Compatibility testing should therefore be maintained as an engine-neutral corpus rather than encoding justpdf-specific assumptions into document logic.
 
 For each candidate backend (`justpdf`, a future `oxidize-pdf` implementation, a future `pdfium-render` implementation, or a platform-native implementation), use the same corpus and record:
 
