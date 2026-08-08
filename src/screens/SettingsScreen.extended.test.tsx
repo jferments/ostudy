@@ -114,6 +114,18 @@ function profileDetail(
   };
 }
 
+function readyDeepseekProfile(): aiIpc.AiProviderProfileDetail {
+  return profileDetail("deepseek", {
+    credentialStatus: {
+      status: "saved_securely",
+      authenticationRequired: true,
+      securePersistenceAvailable: true,
+      sessionOnlyAvailable: true,
+    },
+    configurationStatus: "ready",
+  });
+}
+
 function summary(detail: aiIpc.AiProviderProfileDetail): aiIpc.AiProviderProfileSummary {
   return {
     id: detail.id,
@@ -173,9 +185,12 @@ describe("SettingsScreen AI/LLM behavior", () => {
     });
   });
 
-  it("creates a llama.cpp profile without treating Unsloth as a separate protocol", async () => {
+  it("creates a llama.cpp profile before API-backed model discovery", async () => {
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([]);
-    const created = profileDetail("llama_cpp");
+    const created = profileDetail("llama_cpp", {
+      modelId: "",
+      configurationStatus: "incomplete",
+    });
     vi.mocked(aiIpc.createAiProviderProfile).mockResolvedValue(created);
     vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(created);
     renderSettings();
@@ -186,9 +201,10 @@ describe("SettingsScreen AI/LLM behavior", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Profile name" }), {
       target: { value: "Local nursing model" },
     });
-    fireEvent.change(screen.getByRole("combobox", { name: /^Model ID/u }), {
-      target: { value: "nursing-qwen" },
-    });
+    const modelSelect = screen.getByRole("combobox", { name: "Model" }) as HTMLSelectElement;
+    expect(modelSelect.disabled).toBe(true);
+    expect(modelSelect.value).toBe("");
+    expect(screen.getByText(/Create the trusted provider profile first/u)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Create profile" }));
 
     await waitFor(() => {
@@ -196,7 +212,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
         expect.objectContaining({
           providerKind: "llama_cpp",
           baseUrl: "http://127.0.0.1:8080/",
-          modelId: "nursing-qwen",
+          modelId: "",
           authMode: "none",
         }),
       );
@@ -204,15 +220,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
   });
 
   it("never reloads a stored DeepSeek credential into the password field", async () => {
-    const detail = profileDetail("deepseek", {
-      credentialStatus: {
-        status: "saved_securely",
-        authenticationRequired: true,
-        securePersistenceAvailable: true,
-        sessionOnlyAvailable: true,
-      },
-      configurationStatus: "ready",
-    });
+    const detail = readyDeepseekProfile();
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(detail)]);
     vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(detail);
     vi.mocked(aiIpc.setAiProviderCredential).mockResolvedValue({
@@ -239,7 +247,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
     expect(screen.queryByText("sentinel-secret")).toBeNull();
   });
 
-  it("adopts a sole llama.cpp server model ID as an unsaved draft after refresh", async () => {
+  it("adopts a sole llama.cpp server model ID as an unsaved dropdown selection after refresh", async () => {
     const detail = profileDetail("llama_cpp", { modelId: "unsloth/Qwen3.6-27B-MTP-GGUF" });
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(detail)]);
     vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(detail);
@@ -261,9 +269,9 @@ describe("SettingsScreen AI/LLM behavior", () => {
     await screen.findByDisplayValue("Local nursing model");
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh models" }));
-    const modelInput = await screen.findByRole("combobox", { name: /^Model ID/u });
+    const modelSelect = await screen.findByRole("combobox", { name: "Model" });
     await waitFor(() => {
-      expect((modelInput as HTMLInputElement).value).toBe(
+      expect((modelSelect as HTMLSelectElement).value).toBe(
         "/models/Qwen3.6-27B-MTP-Q4_K_M.gguf",
       );
     });
@@ -277,7 +285,42 @@ describe("SettingsScreen AI/LLM behavior", () => {
     );
   });
 
-  it("shows model discovery and a redacted capability probe result", async () => {
+  it("loads DeepSeek model choices from the API and saves the selected model", async () => {
+    const detail = readyDeepseekProfile();
+    const saved = { ...detail, modelId: "deepseek-v4-pro", revision: 2 };
+    vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(detail)]);
+    vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(detail);
+    vi.mocked(aiIpc.listAiProviderModels).mockResolvedValue({
+      profileId: deepseekId,
+      profileRevision: 1,
+      providerKind: "deepseek",
+      models: [
+        { id: "deepseek-v4-flash", displayName: "deepseek-v4-flash", ownedBy: "deepseek" },
+        { id: "deepseek-v4-pro", displayName: "deepseek-v4-pro", ownedBy: "deepseek" },
+      ],
+      retrievedAt: 2,
+    });
+    vi.mocked(aiIpc.updateAiProviderProfile).mockResolvedValue(saved);
+    renderSettings();
+    await openAiTab();
+    await screen.findByDisplayValue("DeepSeek course model");
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh models" }));
+    const modelSelect = await screen.findByRole("combobox", { name: "Model" });
+    expect(await screen.findByRole("option", { name: "deepseek-v4-pro" })).toBeTruthy();
+    fireEvent.change(modelSelect, { target: { value: "deepseek-v4-pro" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
+
+    await waitFor(() => {
+      expect(aiIpc.updateAiProviderProfile).toHaveBeenCalledWith(
+        deepseekId,
+        1,
+        expect.objectContaining({ modelId: "deepseek-v4-pro" }),
+      );
+    });
+  });
+
+  it("shows a redacted plaintext connection transcript instead of a diagnostic disclosure", async () => {
     const detail = profileDetail("llama_cpp");
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(detail)]);
     vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(detail);
@@ -323,18 +366,79 @@ describe("SettingsScreen AI/LLM behavior", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh models" }));
     await waitFor(() => expect(aiIpc.listAiProviderModels).toHaveBeenCalledWith(llamaId, 1));
-    expect(await screen.findByText(/1 model\(s\) returned/u)).toBeTruthy();
-
     fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
-    expect(await screen.findByText("Text completion")).toBeTruthy();
-    expect(screen.getByText("Server chat template")).toBeTruthy();
-    expect(screen.getByText("JSON Schema")).toBeTruthy();
-    fireEvent.click(screen.getByText("View diagnostic information"));
-    expect(screen.getByText("Adapter revision")).toBeTruthy();
-    expect(screen.getByText("http://127.0.0.1:8080/")).toBeTruthy();
-    expect(screen.getByText(/never includes the API credential/u)).toBeTruthy();
-    expect(screen.queryByText("sentinel-secret")).toBeNull();
+
+    const diagnostic = await screen.findByLabelText("Connection diagnostic log");
+    const transcript = diagnostic.textContent ?? "";
+    expect(screen.queryByText("View diagnostic information")).toBeNull();
+    expect(transcript).toContain("ostudy AI provider connection test");
+    expect(transcript).toContain("model_discovery: GET http://127.0.0.1:8080/models");
+    expect(transcript).toContain(
+      "server_properties: GET http://127.0.0.1:8080/props?model=nursing-qwen",
+    );
+    expect(transcript).toContain(
+      "text_completion: POST http://127.0.0.1:8080/v1/chat/completions",
+    );
+    expect(transcript).toContain("secret value redacted");
+    expect(transcript).not.toContain("sentinel-secret");
     expect(showToast).toHaveBeenCalledWith("success", "AI provider profile verified.");
+  });
+
+  it("presents DeepSeek provider JSON Schema absence as expected neutral metadata", async () => {
+    const detail = readyDeepseekProfile();
+    vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(detail)]);
+    vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(detail);
+    vi.mocked(aiIpc.testAiProviderProfile).mockResolvedValue({
+      profileId: deepseekId,
+      profileRevision: 1,
+      credentialEpoch: 0,
+      testedModelId: "deepseek-v4-flash",
+      adapterRevision: 2,
+      resultSchemaVersion: 1,
+      overallStatus: "verified",
+      phases: [
+        {
+          phase: "structured_output",
+          label: "Structured output",
+          status: "passed",
+          message: "Local validation passed.",
+          latencyMs: 20,
+          error: null,
+        },
+      ],
+      capabilities: [
+        {
+          key: "json_object_output",
+          status: "supported",
+          source: "probed",
+          value: null,
+        },
+        {
+          key: "json_schema_output",
+          status: "unsupported",
+          source: "probed",
+          value: null,
+        },
+        {
+          key: "local_schema_validation",
+          status: "supported",
+          source: "probed",
+          value: null,
+        },
+      ],
+      testedAt: 3,
+      persisted: true,
+      stale: false,
+    });
+    renderSettings();
+    await openAiTab();
+    await screen.findByDisplayValue("DeepSeek course model");
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+
+    expect(await screen.findByText("Provider JSON Schema")).toBeTruthy();
+    expect(screen.getByText("not offered · provider")).toBeTruthy();
+    expect(screen.getByText("Local validation")).toBeTruthy();
+    expect(screen.getByText(/expected, not a connection failure/u)).toBeTruthy();
   });
 
   it("marks credential entry as unsaved settings without persisting the value", async () => {
