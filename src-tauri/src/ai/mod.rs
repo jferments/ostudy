@@ -7,8 +7,8 @@
 mod catalog;
 mod endpoint_policy;
 mod gateway;
-mod probes;
-mod profiles;
+pub(crate) mod probes;
+pub(crate) mod profiles;
 mod providers;
 mod secrets;
 
@@ -16,16 +16,6 @@ mod secrets;
 mod backup_tests;
 #[cfg(test)]
 mod provider_contract_tests;
-
-pub(crate) use probes::{
-    get_ai_provider_probe_result, list_ai_provider_models, test_ai_provider_profile,
-};
-pub(crate) use profiles::{
-    clear_ai_provider_credential, create_ai_provider_profile, delete_ai_provider_profile,
-    get_ai_provider_catalog, get_ai_provider_profile, get_ai_task_defaults,
-    list_ai_provider_profiles, set_ai_provider_credential, set_ai_task_default,
-    update_ai_provider_profile,
-};
 
 use std::sync::Mutex;
 
