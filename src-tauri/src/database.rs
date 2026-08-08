@@ -37,7 +37,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 4,
         name: "card_organization",
-        checksum: "0e0e25b3de24b04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d",
+        checksum: "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d",
         sql: include_str!("../migrations/0004_card_organization.sql"),
     },
     Migration {
