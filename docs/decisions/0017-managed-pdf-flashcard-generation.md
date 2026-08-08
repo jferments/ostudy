@@ -54,7 +54,7 @@ PDF parsing, text extraction, and page rendering use the pinned pure-Rust `justp
 
 Processing is bounded by source size, page count, extracted text size, render size, and total generated-card count. Page images and full PDF bytes never cross the frontend IPC boundary.
 
-A retry reuses complete, hash-recorded text extraction and page renders. It rebuilds those derivatives only when the persisted page ledger is incomplete or a managed render is missing.
+A retry rebuilds extracted text and rendered pages from the immutable managed source PDF before contacting the provider. The rebuilt page files are checked against their recorded byte sizes and SHA-256 values immediately before transmission, so deleted or corrupted derivatives do not survive a retry.
 
 ### Task-specific provider use
 
@@ -102,7 +102,7 @@ Each document file is checked against its SQLite path, size, MIME type, signatur
 
 A failed generation leaves the PDF in Documents with a safe error and **Retry generation**. Successful cards appear immediately in a normal deck. The learner uses ordinary deck/card interfaces to edit or delete generated content.
 
-Deleting the generated deck does not delete the managed PDF. Document projections treat a soft-deleted deck as absent and offer **Retry generation** so a new normal deck can be created from the retained extraction and page renders.
+Deleting the generated deck does not delete the managed PDF. Document projections treat a soft-deleted deck as absent and offer **Retry generation** so a new normal deck can be created from the retained source.
 
 ## Consequences
 
