@@ -108,7 +108,9 @@ fn document_backup_round_trip_preserves_source_and_page_files() {
              );",
         )
         .expect("package schema should initialize");
-    let transaction = package.transaction().expect("package transaction should begin");
+    let transaction = package
+        .transaction()
+        .expect("package transaction should begin");
     assert_eq!(
         export_document_files(&snapshot, &paths, &transaction)
             .expect("document files should export"),
