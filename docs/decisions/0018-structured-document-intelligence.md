@@ -20,7 +20,7 @@ ostudy no longer has one concrete PDF engine embedded in document lifecycle code
 - `src-tauri/src/pdf_render_backend.rs` is the raster page-rendering boundary.
 - `src-tauri/src/documents.rs` owns limits, managed paths, hashing, SQLite state, retries, AI orchestration, and canonical authoring.
 
-The active structured extractor is **oxidize-pdf 4.2.2** with the `Rag` extraction profile. OCR features are explicitly disabled. The active renderer is **Pdfium build 7881** through `pdfium-render 0.9.4`.
+The active structured extractor is **oxidize-pdf 4.2.2** with the `Rag` extraction profile. OCR features are explicitly disabled. The active renderer is **Pdfium build 7881** through `pdfium-render 0.9.3`.
 
 This split permits future replacement of either capability independently. For example, a platform-native renderer can replace Pdfium without changing extraction or document intelligence, and another structured extractor can replace oxidize-pdf without changing rendering, persistence, provider adapters, or card authoring.
 
