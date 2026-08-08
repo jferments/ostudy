@@ -4,7 +4,6 @@ use std::{
     path::Path,
 };
 
-use justpdf::Document;
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -16,6 +15,7 @@ use crate::{
     database::Database,
     error::CommandError,
     paths::AppPaths,
+    pdf_backend::{self, PdfBackendError, PdfBackendErrorKind, PdfProcessError},
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
@@ -600,80 +600,92 @@ fn extract_and_render_pdf(
     document_id: &str,
     source_path: &Path,
 ) -> Result<Vec<ExtractedPage>, CommandError> {
-    let document = Document::open(source_path).map_err(|error| {
-        CommandError::new(
-            "pdf_open_failed",
-            format!("The PDF could not be opened: {error}"),
-        )
-    })?;
-    let page_count = document.page_count();
+    let page_directory = paths.document_pages_dir(document_id);
+    fs::create_dir_all(&page_directory).map_err(CommandError::io)?;
+    let mut extracted = Vec::new();
+    let mut total_text_bytes = 0_usize;
+
+    let processed = pdf_backend::for_each_page(
+        source_path,
+        PDF_RENDER_DPI,
+        |page_number, raw_text, png| -> Result<(), CommandError> {
+            if page_number > MAX_PDF_PAGES {
+                return Err(CommandError::new(
+                    "unsupported_pdf_page_count",
+                    format!("PDFs must contain between 1 and {MAX_PDF_PAGES} pages."),
+                ));
+            }
+            let plain_text = normalize_page_text(raw_text);
+            total_text_bytes = total_text_bytes.saturating_add(plain_text.len());
+            if total_text_bytes > MAX_TOTAL_TEXT_BYTES {
+                return Err(CommandError::new(
+                    "pdf_text_too_large",
+                    "The extracted PDF text exceeds ostudy's 96 MB processing limit.",
+                ));
+            }
+            if png.is_empty() || png.len() > MAX_RENDER_BYTES {
+                return Err(CommandError::new(
+                    "pdf_render_too_large",
+                    format!(
+                        "The rendered image for PDF page {page_number} exceeds ostudy's page-image limit."
+                    ),
+                ));
+            }
+
+            let page_number = i64::try_from(page_number).unwrap_or(i64::MAX);
+            let render_relative = AppPaths::document_page_relative_path(document_id, page_number);
+            let render_path = paths.resolve_relative(&render_relative);
+            write_replacing_file(&render_path, &png)?;
+            extracted.push(ExtractedPage {
+                page_number,
+                text_sha256: sha256_hex(plain_text.as_bytes()),
+                plain_text,
+                render_relative_path: render_relative,
+                render_byte_size: i64::try_from(png.len()).unwrap_or(i64::MAX),
+                render_sha256: sha256_hex(&png),
+            });
+            Ok(())
+        },
+    );
+
+    let page_count = match processed {
+        Ok(page_count) => page_count,
+        Err(PdfProcessError::Visitor(error)) => return Err(error),
+        Err(PdfProcessError::Backend(error)) => return Err(map_pdf_backend_error(error)),
+    };
     if page_count == 0 || page_count > MAX_PDF_PAGES {
         return Err(CommandError::new(
             "unsupported_pdf_page_count",
             format!("PDFs must contain between 1 and {MAX_PDF_PAGES} pages."),
         ));
     }
-
-    let page_directory = paths.document_pages_dir(document_id);
-    fs::create_dir_all(&page_directory).map_err(CommandError::io)?;
-    let mut extracted = Vec::with_capacity(page_count);
-    let mut total_text_bytes = 0_usize;
-
-    for index in 0..page_count {
-        let page = document.page(index).map_err(|error| {
-            CommandError::new(
-                "pdf_page_failed",
-                format!("PDF page {} could not be read: {error}", index + 1),
-            )
-        })?;
-        let plain_text = page.text().map(normalize_page_text).map_err(|error| {
-            CommandError::new(
-                "pdf_text_extraction_failed",
-                format!(
-                    "Text could not be extracted from PDF page {}: {error}",
-                    index + 1
-                ),
-            )
-        })?;
-        total_text_bytes = total_text_bytes.saturating_add(plain_text.len());
-        if total_text_bytes > MAX_TOTAL_TEXT_BYTES {
-            return Err(CommandError::new(
-                "pdf_text_too_large",
-                "The extracted PDF text exceeds ostudy's 96 MB processing limit.",
-            ));
-        }
-
-        let png = page.render_png(PDF_RENDER_DPI).map_err(|error| {
-            CommandError::new(
-                "pdf_render_failed",
-                format!("PDF page {} could not be rendered: {error}", index + 1),
-            )
-        })?;
-        if png.is_empty() || png.len() > MAX_RENDER_BYTES {
-            return Err(CommandError::new(
-                "pdf_render_too_large",
-                format!(
-                    "The rendered image for PDF page {} exceeds ostudy's page-image limit.",
-                    index + 1
-                ),
-            ));
-        }
-        let page_number = i64::try_from(index + 1).unwrap_or(i64::MAX);
-        let render_relative = AppPaths::document_page_relative_path(document_id, page_number);
-        let render_path = paths.resolve_relative(&render_relative);
-        write_replacing_file(&render_path, &png)?;
-
-        extracted.push(ExtractedPage {
-            page_number,
-            text_sha256: sha256_hex(plain_text.as_bytes()),
-            plain_text,
-            render_relative_path: render_relative,
-            render_byte_size: i64::try_from(png.len()).unwrap_or(i64::MAX),
-            render_sha256: sha256_hex(&png),
-        });
-    }
     sync_directory(&page_directory)?;
     Ok(extracted)
+}
+
+fn map_pdf_backend_error(error: PdfBackendError) -> CommandError {
+    let backend = pdf_backend::active_backend_id();
+    let page = error.page_number.unwrap_or_default();
+    match error.kind {
+        PdfBackendErrorKind::Open => CommandError::new(
+            "pdf_open_failed",
+            format!(
+                "The PDF could not be opened by the current PDF backend ({backend}): {error}"
+            ),
+        ),
+        PdfBackendErrorKind::ReadPage => CommandError::new(
+            "pdf_page_failed",
+            format!("PDF page {page} could not be read by {backend}: {error}"),
+        ),
+        PdfBackendErrorKind::ExtractText => CommandError::new(
+            "pdf_text_extraction_failed",
+            format!("Text could not be extracted from PDF page {page} by {backend}: {error}"),
+        ),
+        PdfBackendErrorKind::RenderPage => CommandError::new(
+            "pdf_render_failed",
+            format!("PDF page {page} could not be rendered by {backend}: {error}"),
+        ),
+    }
 }
 
 fn persist_extracted_pages(
