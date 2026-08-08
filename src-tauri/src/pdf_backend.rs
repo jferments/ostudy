@@ -116,8 +116,15 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
     let document = PdfDocument::open(source_path).map_err(|error| {
         PdfBackendError::new(PdfBackendErrorKind::Open, None, error.to_string())
     })?;
-    let page_count = document.page_count().map_err(|error| {
+    let page_count_u32 = document.page_count().map_err(|error| {
         PdfBackendError::new(PdfBackendErrorKind::PageCount, None, error.to_string())
+    })?;
+    let page_count = usize::try_from(page_count_u32).map_err(|_| {
+        PdfBackendError::new(
+            PdfBackendErrorKind::PageCount,
+            None,
+            "PDF page count exceeded the supported platform range.",
+        )
     })?;
 
     let mut pages = Vec::with_capacity(page_count);
