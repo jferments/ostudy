@@ -10,6 +10,7 @@ import { useRequestLane } from "./requestLane";
 
 export type AppSection =
   | "decks"
+  | "documents"
   | "cards"
   | "templates"
   | "practice"

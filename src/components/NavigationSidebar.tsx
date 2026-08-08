@@ -12,6 +12,7 @@ interface NavigationSidebarProps {
 
 const ITEMS: ReadonlyArray<{ section: AppSection; icon: string; label: string }> = [
   { section: "decks", icon: "▤", label: "Decks" },
+  { section: "documents", icon: "▣", label: "Documents" },
   { section: "cards", icon: "⌕", label: "Search/Filter" },
   { section: "templates", icon: "▧", label: "Templates" },
   { section: "practice", icon: "▶", label: "Practice" },
@@ -19,7 +20,7 @@ const ITEMS: ReadonlyArray<{ section: AppSection; icon: string; label: string }>
   { section: "settings", icon: "⚙", label: "Settings" },
 ];
 
-const COMPACT_SECTIONS = new Set<AppSection>(["decks", "cards", "practice", "analytics"]);
+const COMPACT_SECTIONS = new Set<AppSection>(["decks", "documents", "cards", "practice"]);
 
 export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProps) {
   const compact = useMediaQuery("(max-width: 760px)");
