@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -139,6 +140,25 @@ for (const permission of ["core:default", "dialog:default", "opener:default"]) {
   if (!capability.permissions?.includes(permission)) failures.push(`capability missing ${permission}`);
 }
 
+const trackedScriptEntries = execFileSync("git", ["ls-files", "-s", "scripts"], {
+  cwd: root,
+  encoding: "utf8",
+})
+  .trim()
+  .split(/\r?\n/u)
+  .filter(Boolean);
+for (const entry of trackedScriptEntries) {
+  const match = entry.match(/^(\d{6})\s+[0-9a-f]+\s+\d+\t(.+)$/u);
+  if (!match) {
+    failures.push(`Could not parse tracked script entry: ${entry}`);
+    continue;
+  }
+  const [, mode, path] = match;
+  if (path.endsWith(".sh") && mode !== "100755") {
+    failures.push(`${path} must be committed executable (100755), found ${mode}`);
+  }
+}
+
 const migrationDirectory = join(root, "src-tauri", "migrations");
 const migrationFiles = (await readdir(migrationDirectory))
   .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
@@ -257,7 +277,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, and tiered qualification manifests are consistent.`,
+  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, executable script modes, and tiered qualification manifests are consistent.`,
 );
 
 function parseEnv(text) {
