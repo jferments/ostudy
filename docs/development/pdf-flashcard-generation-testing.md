@@ -73,6 +73,10 @@ Use a deterministic test server or intentionally incompatible model that returns
 
 Close ostudy while a document is processing. On the next start, the interrupted document/job should be reconciled to a retryable failed state rather than resuming provider transmission automatically.
 
+### Missing or corrupted rendered page
+
+After a failed generation in a disposable library, remove or alter one managed page PNG and select **Retry generation**. ostudy should rebuild extracted text and page renders from the immutable managed PDF, verify each rebuilt render against its byte-size and SHA-256 ledger values before provider transmission, and then continue generation.
+
 ### Duplicate PDF
 
 Upload the exact same PDF bytes twice. The second import should be rejected as an existing managed document. Use the existing document row rather than creating a duplicate source copy.
