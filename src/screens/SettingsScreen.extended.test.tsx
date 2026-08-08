@@ -176,16 +176,38 @@ describe("SettingsScreen AI/LLM behavior", () => {
     vi.mocked(aiIpc.getAiProviderCatalog).mockResolvedValue(catalog());
     vi.mocked(aiIpc.getAiTaskDefaults).mockResolvedValue({ flashcardGenerationProfileId: null });
     vi.mocked(aiIpc.getAiProviderProbeResult).mockResolvedValue(null);
-    vi.mocked(aiIpc.listAiProviderModels).mockResolvedValue({
-      profileId: llamaId,
-      profileRevision: 1,
-      providerKind: "llama_cpp",
-      models: [{ id: "nursing-qwen", displayName: "nursing-qwen", ownedBy: "local" }],
-      retrievedAt: 1,
+    vi.mocked(aiIpc.listAiProviderModels).mockImplementation(async (profileId, revision) => {
+      if (profileId === deepseekId) {
+        return {
+          profileId,
+          profileRevision: revision,
+          providerKind: "deepseek",
+          models: [
+            {
+              id: "deepseek-v4-flash",
+              displayName: "deepseek-v4-flash",
+              ownedBy: "deepseek",
+            },
+            {
+              id: "deepseek-v4-pro",
+              displayName: "deepseek-v4-pro",
+              ownedBy: "deepseek",
+            },
+          ],
+          retrievedAt: 2,
+        };
+      }
+      return {
+        profileId,
+        profileRevision: revision,
+        providerKind: "llama_cpp",
+        models: [{ id: "nursing-qwen", displayName: "nursing-qwen", ownedBy: "local" }],
+        retrievedAt: 1,
+      };
     });
   });
 
-  it("creates a llama.cpp profile before API-backed model discovery", async () => {
+  it("creates a llama.cpp endpoint before automatically discovering its API model", async () => {
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([]);
     const created = profileDetail("llama_cpp", {
       modelId: "",
@@ -197,14 +219,12 @@ describe("SettingsScreen AI/LLM behavior", () => {
     await openAiTab();
 
     fireEvent.click(screen.getByRole("button", { name: "Add llama.cpp" }));
-    expect(screen.getByText(/Unsloth-exported GGUF/u)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "1. Provider connection" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Model" })).toBeNull();
+    expect(screen.getByText(/GET \/v1\/models/u)).toBeTruthy();
     fireEvent.change(screen.getByRole("textbox", { name: "Profile name" }), {
       target: { value: "Local nursing model" },
     });
-    const modelSelect = screen.getByRole("combobox", { name: "Model" }) as HTMLSelectElement;
-    expect(modelSelect.disabled).toBe(true);
-    expect(modelSelect.value).toBe("");
-    expect(screen.getByText(/Create the trusted provider profile first/u)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Create profile" }));
 
     await waitFor(() => {
@@ -216,7 +236,60 @@ describe("SettingsScreen AI/LLM behavior", () => {
           authMode: "none",
         }),
       );
+      expect(aiIpc.listAiProviderModels).toHaveBeenCalledWith(llamaId, 1);
     });
+    const modelSelect = await screen.findByRole("combobox", { name: "Model" });
+    expect((modelSelect as HTMLSelectElement).value).toBe("nursing-qwen");
+    expect(screen.getByRole("button", { name: "Save selected model" })).toBeTruthy();
+  });
+
+  it("requires the API credential before DeepSeek model discovery and loads models after save", async () => {
+    const detail = profileDetail("deepseek", {
+      modelId: "",
+      configurationStatus: "incomplete",
+    });
+    const credentialSaved = {
+      ...detail,
+      revision: 2,
+      credentialEpoch: 1,
+      credentialStatus: {
+        status: "saved_securely" as const,
+        authenticationRequired: true,
+        securePersistenceAvailable: true,
+        sessionOnlyAvailable: true,
+      },
+    };
+    vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(detail)]);
+    vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(detail);
+    vi.mocked(aiIpc.setAiProviderCredential).mockResolvedValue(credentialSaved);
+    renderSettings();
+    await openAiTab();
+
+    await screen.findByDisplayValue("DeepSeek course model");
+    expect(screen.getByRole("heading", { name: "2. API credential" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "3. Available model" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Model" })).toBeNull();
+    expect(screen.getByText(/Save the API credential above/u)).toBeTruthy();
+    expect(aiIpc.listAiProviderModels).not.toHaveBeenCalled();
+
+    const credential = screen.getByLabelText("API credential");
+    fireEvent.change(credential, { target: { value: "sentinel-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
+
+    await waitFor(() => {
+      expect(aiIpc.setAiProviderCredential).toHaveBeenCalledWith(
+        deepseekId,
+        1,
+        "sentinel-secret",
+        "secure",
+      );
+      expect(aiIpc.listAiProviderModels).toHaveBeenCalledWith(deepseekId, 2);
+    });
+    const modelSelect = await screen.findByRole("combobox", { name: "Model" });
+    expect(screen.getByRole("option", { name: "deepseek-v4-flash" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "deepseek-v4-pro" })).toBeTruthy();
+    expect((modelSelect as HTMLSelectElement).value).toBe("");
+    expect(screen.queryByText("sentinel-secret")).toBeNull();
   });
 
   it("never reloads a stored DeepSeek credential into the password field", async () => {
@@ -247,7 +320,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
     expect(screen.queryByText("sentinel-secret")).toBeNull();
   });
 
-  it("adopts a sole llama.cpp server model ID as an unsaved dropdown selection after refresh", async () => {
+  it("automatically adopts a sole llama.cpp API model as an unsaved model choice", async () => {
     const detail = profileDetail("llama_cpp", { modelId: "unsloth/Qwen3.6-27B-MTP-GGUF" });
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(detail)]);
     vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(detail);
@@ -264,25 +337,17 @@ describe("SettingsScreen AI/LLM behavior", () => {
       ],
       retrievedAt: 1,
     });
-    const { showToast } = renderSettings();
+    renderSettings();
     await openAiTab();
     await screen.findByDisplayValue("Local nursing model");
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh models" }));
+    await waitFor(() => expect(aiIpc.listAiProviderModels).toHaveBeenCalledWith(llamaId, 1));
     const modelSelect = await screen.findByRole("combobox", { name: "Model" });
-    await waitFor(() => {
-      expect((modelSelect as HTMLSelectElement).value).toBe(
-        "/models/Qwen3.6-27B-MTP-Q4_K_M.gguf",
-      );
-    });
-    expect((screen.getByRole("button", { name: "Save profile" }) as HTMLButtonElement).disabled).toBe(
-      false,
+    expect((modelSelect as HTMLSelectElement).value).toBe(
+      "/models/Qwen3.6-27B-MTP-Q4_K_M.gguf",
     );
+    expect(screen.getByRole("button", { name: "Save selected model" })).toBeTruthy();
     expect(aiIpc.updateAiProviderProfile).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(
-      "info",
-      expect.stringContaining("server-reported ID"),
-    );
   });
 
   it("loads DeepSeek model choices from the API and saves the selected model", async () => {
@@ -290,26 +355,16 @@ describe("SettingsScreen AI/LLM behavior", () => {
     const saved = { ...detail, modelId: "deepseek-v4-pro", revision: 2 };
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(detail)]);
     vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(detail);
-    vi.mocked(aiIpc.listAiProviderModels).mockResolvedValue({
-      profileId: deepseekId,
-      profileRevision: 1,
-      providerKind: "deepseek",
-      models: [
-        { id: "deepseek-v4-flash", displayName: "deepseek-v4-flash", ownedBy: "deepseek" },
-        { id: "deepseek-v4-pro", displayName: "deepseek-v4-pro", ownedBy: "deepseek" },
-      ],
-      retrievedAt: 2,
-    });
     vi.mocked(aiIpc.updateAiProviderProfile).mockResolvedValue(saved);
     renderSettings();
     await openAiTab();
     await screen.findByDisplayValue("DeepSeek course model");
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh models" }));
+    await waitFor(() => expect(aiIpc.listAiProviderModels).toHaveBeenCalledWith(deepseekId, 1));
     const modelSelect = await screen.findByRole("combobox", { name: "Model" });
-    expect(await screen.findByRole("option", { name: "deepseek-v4-pro" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "deepseek-v4-pro" })).toBeTruthy();
     fireEvent.change(modelSelect, { target: { value: "deepseek-v4-pro" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save selected model" }));
 
     await waitFor(() => {
       expect(aiIpc.updateAiProviderProfile).toHaveBeenCalledWith(
@@ -320,7 +375,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
     });
   });
 
-  it("shows a redacted plaintext connection transcript instead of a diagnostic disclosure", async () => {
+  it("shows a redacted plaintext connection transcript with the llama.cpp v1 routes", async () => {
     const detail = profileDetail("llama_cpp");
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(detail)]);
     vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(detail);
@@ -363,16 +418,15 @@ describe("SettingsScreen AI/LLM behavior", () => {
     const { showToast } = renderSettings();
     await openAiTab();
     await screen.findByDisplayValue("Local nursing model");
-
-    fireEvent.click(screen.getByRole("button", { name: "Refresh models" }));
     await waitFor(() => expect(aiIpc.listAiProviderModels).toHaveBeenCalledWith(llamaId, 1));
+
     fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
 
     const diagnostic = await screen.findByLabelText("Connection diagnostic log");
     const transcript = diagnostic.textContent ?? "";
     expect(screen.queryByText("View diagnostic information")).toBeNull();
     expect(transcript).toContain("ostudy AI provider connection test");
-    expect(transcript).toContain("model_discovery: GET http://127.0.0.1:8080/models");
+    expect(transcript).toContain("model_discovery: GET http://127.0.0.1:8080/v1/models");
     expect(transcript).toContain(
       "server_properties: GET http://127.0.0.1:8080/props?model=nursing-qwen",
     );
@@ -433,6 +487,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
     renderSettings();
     await openAiTab();
     await screen.findByDisplayValue("DeepSeek course model");
+    await waitFor(() => expect(aiIpc.listAiProviderModels).toHaveBeenCalledWith(deepseekId, 1));
     fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
 
     expect(await screen.findByText("Provider JSON Schema")).toBeTruthy();
@@ -452,5 +507,6 @@ describe("SettingsScreen AI/LLM behavior", () => {
     fireEvent.change(credential, { target: { value: "temporary-entry" } });
     await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
     expect(aiIpc.setAiProviderCredential).not.toHaveBeenCalled();
+    expect(aiIpc.listAiProviderModels).not.toHaveBeenCalled();
   });
 });
