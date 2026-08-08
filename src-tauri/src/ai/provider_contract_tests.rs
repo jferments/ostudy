@@ -63,7 +63,7 @@ fn llama_cpp_adapter_discovers_models_and_verifies_server_structured_output() {
         ExpectedExchange {
             method: "POST",
             path: "/v1/chat/completions",
-            assert_body: assert_plain_completion_request,
+            assert_body: assert_llama_text_completion_request,
             status: 200,
             response_body: completion_response("OSTUDY_OK"),
             extra_headers: Vec::new(),
@@ -117,7 +117,7 @@ fn llama_cpp_adapter_discovers_models_and_verifies_server_structured_output() {
 }
 
 #[test]
-fn deepseek_adapter_uses_json_object_mode_then_validates_the_result_locally() {
+fn deepseek_v4_adapter_disables_thinking_for_bounded_connectivity_probes() {
     let echo = "deepseek-contract-echo";
     let (base_url, server) = spawn_mock_server(vec![
         ExpectedExchange {
@@ -127,7 +127,7 @@ fn deepseek_adapter_uses_json_object_mode_then_validates_the_result_locally() {
             status: 200,
             response_body: json!({
                 "object": "list",
-                "data": [{ "id": "deepseek-chat", "owned_by": "deepseek" }]
+                "data": [{ "id": "deepseek-v4-flash", "owned_by": "deepseek" }]
             })
             .to_string(),
             extra_headers: Vec::new(),
@@ -135,9 +135,9 @@ fn deepseek_adapter_uses_json_object_mode_then_validates_the_result_locally() {
         ExpectedExchange {
             method: "POST",
             path: "/chat/completions",
-            assert_body: assert_plain_completion_request,
+            assert_body: assert_deepseek_text_completion_request,
             status: 200,
-            response_body: completion_response("OSTUDY_OK"),
+            response_body: completion_response_with_finish("OSTUDY_OK", "length"),
             extra_headers: Vec::new(),
         },
         ExpectedExchange {
@@ -152,7 +152,7 @@ fn deepseek_adapter_uses_json_object_mode_then_validates_the_result_locally() {
     let profile = profile(
         ProviderKind::Deepseek,
         base_url,
-        "deepseek-chat",
+        "deepseek-v4-flash",
         AuthMode::Bearer,
     );
     let gateway = AiGateway::new().expect("gateway should initialize");
@@ -161,10 +161,11 @@ fn deepseek_adapter_uses_json_object_mode_then_validates_the_result_locally() {
         let models = providers::list_models(&gateway, &profile, Some("sentinel-token"))
             .await
             .expect("models should load");
-        assert_eq!(models[0].id, "deepseek-chat");
-        providers::run_text_probe(&gateway, &profile, Some("sentinel-token"))
+        assert_eq!(models[0].id, "deepseek-v4-flash");
+        let text = providers::run_text_probe(&gateway, &profile, Some("sentinel-token"))
             .await
-            .expect("text probe should pass");
+            .expect("valid final content should pass even when finish reason is length");
+        assert_eq!(text.finish_reason.as_deref(), Some("length"));
         providers::run_structured_probe(&gateway, &profile, Some("sentinel-token"), echo)
             .await
             .expect("JSON object should pass local validation");
@@ -212,7 +213,7 @@ fn deepseek_structured_probe_rejects_valid_json_with_the_wrong_semantics() {
     let profile = profile(
         ProviderKind::Deepseek,
         base_url,
-        "deepseek-chat",
+        "deepseek-v4-flash",
         AuthMode::Bearer,
     );
     let gateway = AiGateway::new().expect("gateway should initialize");
@@ -247,13 +248,17 @@ fn profile(
 }
 
 fn completion_response(content: &str) -> String {
+    completion_response_with_finish(content, "stop")
+}
+
+fn completion_response_with_finish(content: &str, finish_reason: &str) -> String {
     json!({
         "id": "completion-id",
         "model": "mock-model",
         "choices": [{
             "index": 0,
             "message": { "role": "assistant", "content": content },
-            "finish_reason": "stop"
+            "finish_reason": finish_reason
         }],
         "usage": { "prompt_tokens": 5, "completion_tokens": 3 }
     })
@@ -264,15 +269,44 @@ fn assert_empty_body(body: &str) {
     assert!(body.is_empty());
 }
 
-fn assert_plain_completion_request(body: &str) {
+fn assert_llama_text_completion_request(body: &str) {
     let value: Value = serde_json::from_str(body).expect("request should be JSON");
     assert_eq!(value.get("temperature").and_then(Value::as_i64), Some(0));
+    assert_eq!(value.get("stream").and_then(Value::as_bool), Some(false));
+    assert_eq!(value.get("reasoning_effort").and_then(Value::as_str), Some("none"));
+    assert_eq!(
+        value
+            .pointer("/chat_template_kwargs/enable_thinking")
+            .and_then(Value::as_bool),
+        Some(false)
+    );
+    assert!(value.get("response_format").is_none());
+    assert!(value.get("messages").and_then(Value::as_array).is_some());
+}
+
+fn assert_deepseek_text_completion_request(body: &str) {
+    let value: Value = serde_json::from_str(body).expect("request should be JSON");
+    assert_eq!(value.get("model").and_then(Value::as_str), Some("deepseek-v4-flash"));
+    assert_eq!(value.get("temperature").and_then(Value::as_i64), Some(0));
+    assert_eq!(value.get("stream").and_then(Value::as_bool), Some(false));
+    assert_eq!(
+        value.pointer("/thinking/type").and_then(Value::as_str),
+        Some("disabled")
+    );
     assert!(value.get("response_format").is_none());
     assert!(value.get("messages").and_then(Value::as_array).is_some());
 }
 
 fn assert_llama_schema_request(body: &str) {
     let value: Value = serde_json::from_str(body).expect("request should be JSON");
+    assert_eq!(value.get("stream").and_then(Value::as_bool), Some(false));
+    assert_eq!(value.get("reasoning_effort").and_then(Value::as_str), Some("none"));
+    assert_eq!(
+        value
+            .pointer("/chat_template_kwargs/enable_thinking")
+            .and_then(Value::as_bool),
+        Some(false)
+    );
     assert_eq!(
         value
             .pointer("/response_format/type")
@@ -292,6 +326,12 @@ fn assert_llama_schema_request(body: &str) {
 
 fn assert_deepseek_json_object_request(body: &str) {
     let value: Value = serde_json::from_str(body).expect("request should be JSON");
+    assert_eq!(value.get("model").and_then(Value::as_str), Some("deepseek-v4-flash"));
+    assert_eq!(value.get("stream").and_then(Value::as_bool), Some(false));
+    assert_eq!(
+        value.pointer("/thinking/type").and_then(Value::as_str),
+        Some("disabled")
+    );
     assert_eq!(
         value
             .pointer("/response_format/type")
