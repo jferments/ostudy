@@ -403,10 +403,7 @@ fn validate_page_output(output: PageFlashcardOutput) -> Result<Vec<Value>, Comma
         .collect()
 }
 
-fn normalize_generated_card(
-    index: usize,
-    card: GeneratedStudyCard,
-) -> Result<Value, CommandError> {
+fn normalize_generated_card(index: usize, card: GeneratedStudyCard) -> Result<Value, CommandError> {
     match card {
         GeneratedStudyCard::Basic {
             front,
@@ -592,7 +589,8 @@ fn build_cloze_text(index: usize, text: &str, blanks: &[String]) -> Result<Strin
 
 fn validate_text(index: usize, field: &str, value: &str) -> Result<(), CommandError> {
     let count = value.chars().count();
-    if value.trim().is_empty() || count > MAX_CARD_TEXT_CHARS || value.chars().any(char::is_control) {
+    if value.trim().is_empty() || count > MAX_CARD_TEXT_CHARS || value.chars().any(char::is_control)
+    {
         return Err(output_error(format!(
             "Generated card {} has an empty, oversized, or invalid {field} field.",
             index + 1
@@ -786,7 +784,10 @@ fn output_error(message: impl Into<String>) -> CommandError {
 }
 
 fn should_retry_contract_error(error: &CommandError) -> bool {
-    matches!(error.code.as_str(), "ai_document_output_invalid" | "ai_empty_response")
+    matches!(
+        error.code.as_str(),
+        "ai_document_output_invalid" | "ai_empty_response"
+    )
 }
 
 fn default_cloze_mode() -> String {
@@ -854,8 +855,14 @@ mod tests {
         let cards = validate_page_output(output).expect("supported cards should normalize");
         assert_eq!(cards.len(), 4);
         assert_eq!(cards[0]["type"], "basic");
-        assert!(cards[1]["front"].as_str().unwrap().contains("A. Heart rate"));
-        assert!(cards[2]["back"].as_str().unwrap().contains("product of heart rate"));
+        assert!(cards[1]["front"]
+            .as_str()
+            .unwrap()
+            .contains("A. Heart rate"));
+        assert!(cards[2]["back"]
+            .as_str()
+            .unwrap()
+            .contains("product of heart rate"));
         assert_eq!(
             cards[3]["text"],
             "Cardiac output equals {{c1::heart rate}} multiplied by {{c2::stroke volume}}."
