@@ -127,8 +127,23 @@ def element_text(session_id: str, element_id: str) -> str:
     return str(value)
 
 
+def element_property(session_id: str, element_id: str, name: str) -> Any:
+    return request(
+        "GET",
+        f"/session/{session_id}/element/{element_id}/property/{name}",
+    )
+
+
+def element_enabled(session_id: str, element_id: str) -> bool:
+    return request("GET", f"/session/{session_id}/element/{element_id}/enabled") is True
+
+
 def click(session_id: str, element_id: str) -> None:
     request("POST", f"/session/{session_id}/element/{element_id}/click", {})
+
+
+def clear(session_id: str, element_id: str) -> None:
+    request("POST", f"/session/{session_id}/element/{element_id}/clear", {})
 
 
 def send_keys(session_id: str, element_id: str, text: str) -> None:
@@ -137,6 +152,100 @@ def send_keys(session_id: str, element_id: str, text: str) -> None:
         "POST",
         f"/session/{session_id}/element/{element_id}/value",
         {"text": text, "value": list(text)},
+    )
+
+
+def set_input_text(
+    session_id: str,
+    using: str,
+    value: str,
+    text: str,
+    deadline: float,
+) -> str:
+    """Enter controlled-input text and prove React/WebKit accepted the value."""
+    last_value: str | None = None
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            attempt_deadline = min(deadline, time.monotonic() + 2)
+            element = find_element(session_id, using, value, attempt_deadline)
+            clear(session_id, element)
+            send_keys(session_id, element, text)
+            verify_deadline = min(deadline, time.monotonic() + 2)
+            while time.monotonic() < verify_deadline:
+                current = element_property(session_id, element, "value")
+                last_value = "" if current is None else str(current)
+                if last_value == text:
+                    return element
+                time.sleep(0.1)
+        except Exception as error:
+            last_error = error
+        time.sleep(0.2)
+    raise TimeoutError(
+        f"Controlled input {using}={value} did not accept {text!r}; "
+        f"last value: {last_value!r}; last error: {last_error}"
+    )
+
+
+def set_rich_editor_text(
+    session_id: str,
+    index: int,
+    text: str,
+    deadline: float,
+) -> str:
+    """Enter rich-editor text and verify the rendered editable text before saving."""
+    selector = ".rich-editor-content[contenteditable='true']"
+    last_text: str | None = None
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            attempt_deadline = min(deadline, time.monotonic() + 2)
+            editors = find_elements(
+                session_id,
+                "css selector",
+                selector,
+                index + 1,
+                attempt_deadline,
+            )
+            element = editors[index]
+            clear(session_id, element)
+            send_keys(session_id, element, text)
+            verify_deadline = min(deadline, time.monotonic() + 2)
+            while time.monotonic() < verify_deadline:
+                last_text = element_text(session_id, element).strip()
+                if last_text == text:
+                    return element
+                time.sleep(0.1)
+        except Exception as error:
+            last_error = error
+        time.sleep(0.2)
+    raise TimeoutError(
+        f"Rich editor {index} did not accept {text!r}; "
+        f"last text: {last_text!r}; last error: {last_error}"
+    )
+
+
+def wait_for_enabled_element(
+    session_id: str,
+    using: str,
+    value: str,
+    deadline: float,
+) -> str:
+    last_enabled: bool | None = None
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            attempt_deadline = min(deadline, time.monotonic() + 2)
+            element = find_element(session_id, using, value, attempt_deadline)
+            last_enabled = element_enabled(session_id, element)
+            if last_enabled:
+                return element
+        except Exception as error:
+            last_error = error
+        time.sleep(0.1)
+    raise TimeoutError(
+        f"Expected {using}={value} to become enabled; "
+        f"last enabled state: {last_enabled!r}; last error: {last_error}"
     )
 
 
@@ -192,14 +301,14 @@ def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
     answer = "A deck, a card, and one accepted review."
 
     click_text_button(session_id, "New deck", deadline)
-    name_input = find_element(
+    set_input_text(
         session_id,
         "css selector",
         "input[placeholder='NCLEX Pharmacology']",
+        deck_name,
         deadline,
     )
-    send_keys(session_id, name_input, deck_name)
-    create_button = find_element(
+    create_button = wait_for_enabled_element(
         session_id,
         "xpath",
         "//*[@role='dialog']//button[normalize-space(.)='Create deck']",
@@ -209,16 +318,15 @@ def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
     wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
 
     click_text_button(session_id, "Add flashcard", deadline)
-    editors = find_elements(
+    set_rich_editor_text(session_id, 0, question, deadline)
+    set_rich_editor_text(session_id, 1, answer, deadline)
+    save_button = wait_for_enabled_element(
         session_id,
-        "css selector",
-        ".rich-editor-content[contenteditable='true']",
-        2,
+        "xpath",
+        "//button[normalize-space(.)='Save card']",
         deadline,
     )
-    send_keys(session_id, editors[0], question)
-    send_keys(session_id, editors[1], answer)
-    click_text_button(session_id, "Save card", deadline)
+    click(session_id, save_button)
     wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
     find_element(
         session_id,
