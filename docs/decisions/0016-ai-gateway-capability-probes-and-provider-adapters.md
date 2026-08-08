@@ -47,17 +47,31 @@ output. Future flashcard, quiz, and tutor services call the internal gateway
 through task-specific native workflows that own prompts, grounding, schemas, and
 persistence.
 
-### Provider-backed model selection
+### Provider-backed model selection and setup order
 
 Model identity is obtained from provider APIs rather than entered as arbitrary
-free text in Settings. A user first creates the trusted profile/endpoint identity,
-adds a credential when required, and then explicitly refreshes the provider's
-model list. The frontend renders those returned IDs in a dropdown and saves only
-the explicitly selected value.
+free text in Settings. Setup follows the dependency order imposed by those APIs:
 
-The saved model remains visible if it is not present in a later refresh so an API
-change cannot silently replace durable configuration. Testing a different model
-requires selecting and saving it first.
+1. Save the provider/server identity and trusted endpoint.
+2. Save a credential when that provider requires authentication.
+3. As soon as the saved endpoint and credential state are sufficient, ostudy
+   automatically requests the provider model list.
+4. The frontend renders only those returned model IDs in a dropdown.
+5. The user selects and saves an API model ID.
+6. Connection verification runs against that saved endpoint, credential, and
+   model.
+
+For a no-auth llama.cpp profile, model discovery may happen immediately after the
+endpoint is saved. For DeepSeek and other authenticated providers, model
+discovery must not run before the credential has been submitted to the native
+secret boundary. Opening an already-configured profile may refresh the model list
+automatically when its credential state permits the request. A manual **Refresh
+models** action remains available as a retry/update operation.
+
+A previously saved model that is not present in the latest provider response is
+reported as stale configuration; it is not inserted into the provider-returned
+choices. This prevents an old hand-entered or retired model ID from masquerading
+as a model currently advertised by the API.
 
 ### Provider adapters
 
@@ -68,7 +82,9 @@ behavior, structured output, and capability interpretation.
 
 For llama.cpp:
 
-- `/models` is used for model discovery, including router deployments;
+- the OpenAI-compatible `/v1/models` route is used for model discovery;
+- both a server-root base URL and a base URL ending in `/v1/` resolve to the same
+  `/v1/models` and `/v1/chat/completions` routes;
 - `/props?model=<selected-id>` supplies optional declared model/server properties;
 - missing or non-JSON optional properties metadata does not invalidate model
   discovery, text generation, or structured-output verification;
@@ -79,9 +95,8 @@ For llama.cpp:
   template body;
 - schema capability is considered supported only after local semantic
   validation;
-- the API model ID is treated as a server-routing identity. A sole returned
-  model with a different ID is a recoverable llama.cpp identity mismatch rather
-  than immediate proof that the server cannot generate.
+- the API model ID is treated as a server-routing identity. By default this may
+  be the GGUF file path; `--alias` can provide a stable human-friendly ID.
 
 For DeepSeek:
 
@@ -101,16 +116,12 @@ not a general task policy: it is deliberately small and deterministic.
 
 ### Model identity reconciliation
 
-A saved provider model ID must normally match model discovery. The exception is a
-single-model llama.cpp server: if model discovery returns exactly one different
-ID, ostudy records a partial model-verification phase, temporarily uses the
-server-reported ID for the remaining probe phases, and leaves the saved profile
-unchanged. Refresh models puts that server ID into the model dropdown draft,
-after which the user explicitly saves it. Starting llama.cpp with a stable alias
-is the alternative way to keep a human-friendly API model ID.
-
-Multiple-model mismatches and cloud-provider model mismatches remain hard
-failures.
+A saved provider model ID must normally match model discovery. For a single-model
+llama.cpp server, if discovery returns exactly one different ID, ostudy may place
+that sole server-reported value into the unsaved model-selection draft. The user
+still explicitly saves the durable model choice. Multiple-model mismatches and
+cloud-provider model mismatches require the user to select one of the IDs
+actually returned by the current provider response.
 
 ### Completion semantics
 
@@ -147,6 +158,12 @@ Local/LAN/Cloud scope, configured/tested model, attempted model/properties/
 completion routes, adapter and result-schema revisions, a bounded model-list
 preview, phase status/latency, and normalized safe error codes.
 
+For llama.cpp, the transcript identifies `/v1/models` as the required model-list
+route and `/props` as optional metadata. This distinction is important because a
+non-JSON response from the optional properties endpoint is not the same as a
+protocol failure on the required OpenAI-compatible model-list or completion
+routes.
+
 The transcript does not expose the credential, Authorization header, probe
 prompt, provider response body, reasoning, or full chat template. Its purpose is
 to let a user paste actionable connection/formatting evidence into a bug report
@@ -165,11 +182,14 @@ are not part of the normal UI contract.
 
 - future task services share one hardened transport and provider boundary;
 - provider API drift is isolated to adapters and deterministic contract fixtures;
-- model choices come from provider APIs rather than unvalidated hand-entered IDs;
+- model choices come from authenticated provider APIs rather than unvalidated
+  hand-entered IDs;
+- the Settings flow reflects the real dependency order of endpoint → credential
+  → model discovery → model selection → verification;
 - reasoning-capable models can be verified without wasting a tiny connectivity
   budget on hidden reasoning;
-- local-server model aliases/file paths can be repaired without silently changing
-  durable profile configuration;
+- local-server model aliases/file paths can be reconciled without silently
+  claiming an unavailable model;
 - optional llama.cpp metadata cannot falsely turn successful generation into a
   provider failure;
 - DeepSeek's lack of provider JSON Schema is represented accurately without
@@ -189,9 +209,10 @@ AI jobs, provider fallback, or model-server installation.
 ## Validation
 
 The decision is protected by deterministic local HTTP contract tests for
-llama.cpp and DeepSeek, explicit reasoning-control request assertions, optional
-llama properties fallback coverage, redirect and credential-forwarding tests,
-wrong-semantic JSON rejection, response parser tests, llama model-identity
-reconciliation tests, provider-backed model-dropdown tests, plaintext redacted
-transcript tests, strict IPC parity, and repository policy checks confining
-`reqwest` and keyring access to their native boundaries.
+llama.cpp and DeepSeek, exact llama `/v1/models` routing assertions, explicit
+reasoning-control request assertions, optional llama properties fallback coverage,
+redirect and credential-forwarding tests, wrong-semantic JSON rejection, response
+parser tests, model-identity reconciliation tests, credential-first provider-backed
+model-dropdown tests, plaintext redacted transcript tests, strict IPC parity, and
+repository policy checks confining `reqwest` and keyring access to their native
+boundaries.
