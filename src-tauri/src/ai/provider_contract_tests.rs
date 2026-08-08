@@ -273,7 +273,10 @@ fn assert_llama_text_completion_request(body: &str) {
     let value: Value = serde_json::from_str(body).expect("request should be JSON");
     assert_eq!(value.get("temperature").and_then(Value::as_i64), Some(0));
     assert_eq!(value.get("stream").and_then(Value::as_bool), Some(false));
-    assert_eq!(value.get("reasoning_effort").and_then(Value::as_str), Some("none"));
+    assert_eq!(
+        value.get("reasoning_effort").and_then(Value::as_str),
+        Some("none")
+    );
     assert_eq!(
         value
             .pointer("/chat_template_kwargs/enable_thinking")
@@ -286,7 +289,10 @@ fn assert_llama_text_completion_request(body: &str) {
 
 fn assert_deepseek_text_completion_request(body: &str) {
     let value: Value = serde_json::from_str(body).expect("request should be JSON");
-    assert_eq!(value.get("model").and_then(Value::as_str), Some("deepseek-v4-flash"));
+    assert_eq!(
+        value.get("model").and_then(Value::as_str),
+        Some("deepseek-v4-flash")
+    );
     assert_eq!(value.get("temperature").and_then(Value::as_i64), Some(0));
     assert_eq!(value.get("stream").and_then(Value::as_bool), Some(false));
     assert_eq!(
@@ -300,7 +306,10 @@ fn assert_deepseek_text_completion_request(body: &str) {
 fn assert_llama_schema_request(body: &str) {
     let value: Value = serde_json::from_str(body).expect("request should be JSON");
     assert_eq!(value.get("stream").and_then(Value::as_bool), Some(false));
-    assert_eq!(value.get("reasoning_effort").and_then(Value::as_str), Some("none"));
+    assert_eq!(
+        value.get("reasoning_effort").and_then(Value::as_str),
+        Some("none")
+    );
     assert_eq!(
         value
             .pointer("/chat_template_kwargs/enable_thinking")
@@ -326,7 +335,10 @@ fn assert_llama_schema_request(body: &str) {
 
 fn assert_deepseek_json_object_request(body: &str) {
     let value: Value = serde_json::from_str(body).expect("request should be JSON");
-    assert_eq!(value.get("model").and_then(Value::as_str), Some("deepseek-v4-flash"));
+    assert_eq!(
+        value.get("model").and_then(Value::as_str),
+        Some("deepseek-v4-flash")
+    );
     assert_eq!(value.get("stream").and_then(Value::as_bool), Some(false));
     assert_eq!(
         value.pointer("/thinking/type").and_then(Value::as_str),
