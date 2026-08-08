@@ -40,9 +40,11 @@ No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is install
 
 `base64` is used only inside the native document-flashcard task to lower a verified local PNG page into an inline provider content part. The encoded page is transient request data. It is not stored in SQLite, logs, diagnostics, or frontend state.
 
-`justpdf` is the native PDF parser, text extractor, and page renderer for the managed Documents workflow. The exact crate version and its transitive image/codec graph are captured by `src-tauri/Cargo.lock`. ostudy applies its own source-size, page-count, extracted-text, rendered-image, and generated-card limits around the library.
+`justpdf` is the **current implementation** of the native PDF backend, not a document-domain dependency. All direct `justpdf` use is isolated behind `src-tauri/src/pdf_backend.rs`. The rest of the managed Documents workflow consumes an ostudy-owned `PdfBackend` page-stream contract and owns its own path, size, hashing, persistence, retry, and provider rules. This allows a future `oxidize-pdf`, `pdfium-render`, or platform-native implementation to replace the active engine without changing the durable document/card model.
 
-The PDF path intentionally does not enable or install OCR. It packages no Tesseract, Pdfium, Python, external command-line PDF utility, or platform-specific PDF runtime. Scanned pages can still be rendered; a vision-capable configured model may receive the rendered page image when current capability evidence permits it.
+The current pure-Rust backend keeps PR #38 free of a separately distributed Pdfium native library. If a future compatibility corpus shows that a PDFium-backed implementation materially improves real-world PDF handling, that backend can be added behind the same boundary together with an explicit per-platform Pdfium packaging/update strategy.
+
+The PDF path intentionally does not enable or install OCR. It packages no Tesseract, Pdfium, Python, external command-line PDF utility, or platform-specific PDF runtime in this stage. Scanned pages can still be rendered; a vision-capable configured model may receive the rendered page image when current capability evidence permits it.
 
 No Python runtime, model weights, CUDA runtime, llama.cpp binary, Ollama binary, or other local inference infrastructure is packaged by these stages.
 
