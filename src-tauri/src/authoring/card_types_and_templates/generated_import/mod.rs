@@ -57,11 +57,7 @@ pub(crate) fn import_generated_flashcards_bytes_with_commit<F>(
     before_commit: F,
 ) -> Result<FlashcardImportResultDto, CommandError>
 where
-    F: FnOnce(
-        &rusqlite::Connection,
-        &FlashcardImportResultDto,
-        i64,
-    ) -> Result<(), CommandError>,
+    F: FnOnce(&rusqlite::Connection, &FlashcardImportResultDto, i64) -> Result<(), CommandError>,
 {
     let prepared = prepare_flashcard_import_bytes(bytes)?;
     database.with_connection(|connection| {
