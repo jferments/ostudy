@@ -858,7 +858,10 @@ mod tests {
         let cards = validate_page_output(output).expect("supported cards should normalize");
         assert_eq!(cards.len(), 4);
         assert_eq!(cards[0]["type"], "basic");
-        assert!(cards[1]["front"].as_str().unwrap().contains("A. Heart rate"));
+        assert!(cards[1]["front"]
+            .as_str()
+            .unwrap()
+            .contains("A. Heart rate"));
         assert!(cards[2]["back"]
             .as_str()
             .unwrap()
@@ -895,10 +898,7 @@ mod tests {
             normalize_json_content("```json\n{\"cards\":[]}\n```"),
             "{\"cards\":[]}"
         );
-        assert_eq!(
-            normalize_json_content("{\"cards\":[]}"),
-            "{\"cards\":[]}"
-        );
+        assert_eq!(normalize_json_content("{\"cards\":[]}"), "{\"cards\":[]}");
     }
 
     #[test]
