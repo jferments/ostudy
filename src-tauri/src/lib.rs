@@ -39,6 +39,10 @@ mod util;
 mod workload;
 
 #[cfg(test)]
+mod document_backup_tests;
+#[cfg(test)]
+mod document_pdf_tests;
+#[cfg(test)]
 mod regression_tests;
 #[cfg(test)]
 mod stage34_35_regression_tests;
