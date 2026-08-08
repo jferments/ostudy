@@ -103,7 +103,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 15,
         name: "ai_provider_profiles",
-        checksum: "0aa10f24550381da1ffd8c5939d56540186b913faea280dcd8dc492bee3aae2e",
+        checksum: "55a1ae02195874cdce4f6fd100f09a7dab0c3ae6dca221948266a43c444f32fe",
         sql: include_str!("../migrations/0015_ai_provider_profiles.sql"),
     },
     Migration {
