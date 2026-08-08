@@ -380,7 +380,9 @@ pub async fn test_ai_provider_profile(
     }
 
     let text_start = Instant::now();
-    let text_outcome = match providers::run_text_probe(&runtime.gateway, &request_profile, bearer).await {
+    let text_outcome = match providers::run_text_probe(&runtime.gateway, &request_profile, bearer)
+        .await
+    {
         Ok(outcome) => {
             let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
             phases.push(passed_phase(
@@ -876,8 +878,8 @@ fn profile_changed() -> CommandError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::catalog::AuthMode;
+    use super::*;
 
     fn profile(provider_kind: ProviderKind, model_id: &str) -> ProfileSnapshot {
         ProfileSnapshot {
