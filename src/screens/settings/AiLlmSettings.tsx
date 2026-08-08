@@ -30,6 +30,11 @@ export function AiLlmSettings({ controller }: AiLlmSettingsProps) {
     controller.selectedProfile,
     controller.selectedProfileId,
   );
+  const providerSettingsDirty = hasProviderSettingsChanges(
+    controller.draft,
+    controller.selectedProfile,
+    controller.selectedProfileId,
+  );
 
   async function changeProfile(profileId: string): Promise<void> {
     if (profileId === controller.selectedProfileId) return;
@@ -135,19 +140,23 @@ export function AiLlmSettings({ controller }: AiLlmSettingsProps) {
           <>
             <ProfileEditor
               controller={controller}
-              profileDirty={profileDirty}
+              providerSettingsDirty={providerSettingsDirty}
               onDelete={() => void deleteProfile()}
             />
             {controller.selectedProfile ? (
               <>
                 <CredentialPanel controller={controller} />
+                <ModelSelectionPanel
+                  controller={controller}
+                  providerSettingsDirty={providerSettingsDirty}
+                />
                 <ConnectionPanel controller={controller} profileDirty={profileDirty} />
               </>
             ) : (
               <section className={styles.settingsCard}>
-                <h2>Credential and connection tests</h2>
+                <h2>Next: credential and model discovery</h2>
                 <p className={styles.note}>
-                  Save the profile metadata first. Credentials, model discovery, and connection verification are attached only to a saved profile identity.
+                  Create the trusted provider/server profile first. After that, enter any required API credential. ostudy will then query the provider for its available models instead of asking you to type a model ID.
                 </p>
               </section>
             )}
@@ -206,11 +215,11 @@ export function AiLlmSettings({ controller }: AiLlmSettingsProps) {
 
 function ProfileEditor({
   controller,
-  profileDirty,
+  providerSettingsDirty,
   onDelete,
 }: {
   controller: AiProfilesController;
-  profileDirty: boolean;
+  providerSettingsDirty: boolean;
   onDelete: () => void;
 }) {
   const draft = controller.draft;
@@ -218,14 +227,12 @@ function ProfileEditor({
   const provider = controller.catalog.find((entry) => entry.providerKind === draft.providerKind);
   const saved = controller.selectedProfile;
   const isLlama = draft.providerKind === "llama_cpp";
-  const currentModelInList = controller.models.some((model) => model.id === draft.modelId);
-  const modelSelectionDisabled = !saved || controller.refreshingModels || controller.mutating;
 
   return (
     <section className={styles.settingsCard} aria-busy={controller.mutating}>
       <div className={styles.sectionHeading}>
         <div>
-          <h2>{saved ? "Profile configuration" : "New provider profile"}</h2>
+          <h2>1. Provider connection</h2>
           <p>{provider?.description}</p>
         </div>
         <span
@@ -258,51 +265,11 @@ function ProfileEditor({
             readOnly={provider?.baseUrlEditable === false}
             onChange={(event) => controller.updateDraft({ baseUrl: event.currentTarget.value })}
           />
-        </label>
-        <label className={styles.stackedField}>
-          <span>Model</span>
-          <select
-            aria-label="Model"
-            value={draft.modelId}
-            disabled={modelSelectionDisabled}
-            onChange={(event) => controller.updateDraft({ modelId: event.currentTarget.value })}
-          >
-            <option value="">
-              {saved ? "Refresh models to load available choices" : "Create profile, then refresh models"}
-            </option>
-            {draft.modelId && !currentModelInList ? (
-              <option value={draft.modelId}>{draft.modelId} — saved selection</option>
-            ) : null}
-            {controller.models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.displayName || model.id}
-              </option>
-            ))}
-          </select>
-          <small className={styles.fieldHelp}>
-            {saved
-              ? "Model choices come from this provider's model-list API. Use Refresh models below to update the list."
-              : "Create the trusted provider profile first; then ostudy can query that endpoint for its available models."}
-          </small>
           {isLlama ? (
             <small className={styles.fieldHelp}>
-              llama.cpp may expose a GGUF path as the API model ID unless the server is started with <code>--alias</code>.
+              Enter the llama.cpp server root, for example <code>http://localhost:8080/</code>. ostudy uses the server's OpenAI-compatible <code>GET /v1/models</code> and <code>POST /v1/chat/completions</code> routes automatically.
             </small>
           ) : null}
-        </label>
-        <label className={styles.stackedField}>
-          <span>Request timeout</span>
-          <select
-            value={draft.requestTimeoutMs}
-            onChange={(event) =>
-              controller.updateDraft({ requestTimeoutMs: Number(event.currentTarget.value) })
-            }
-          >
-            <option value={30_000}>30 seconds</option>
-            <option value={60_000}>60 seconds</option>
-            <option value={120_000}>2 minutes</option>
-            <option value={300_000}>5 minutes</option>
-          </select>
         </label>
         {isLlama ? (
           <label className={styles.stackedField}>
@@ -320,6 +287,20 @@ function ProfileEditor({
             </select>
           </label>
         ) : null}
+        <label className={styles.stackedField}>
+          <span>Request timeout</span>
+          <select
+            value={draft.requestTimeoutMs}
+            onChange={(event) =>
+              controller.updateDraft({ requestTimeoutMs: Number(event.currentTarget.value) })
+            }
+          >
+            <option value={30_000}>30 seconds</option>
+            <option value={60_000}>60 seconds</option>
+            <option value={120_000}>2 minutes</option>
+            <option value={300_000}>5 minutes</option>
+          </select>
+        </label>
         <label className={styles.switchRow}>
           <span>
             <strong>Enable profile</strong>
@@ -354,7 +335,7 @@ function ProfileEditor({
         </p>
       ) : (
         <p className={styles.cloudNotice}>
-          DeepSeek is a cloud provider. Connection tests send a small prompt in non-thinking mode so the bounded probe measures final-answer generation instead of spending its token budget on reasoning.
+          DeepSeek is a cloud provider. ostudy uses DeepSeek's fixed official API endpoint; the credential is entered only after this profile has a saved identity.
         </p>
       )}
 
@@ -362,12 +343,12 @@ function ProfileEditor({
         <button
           type="button"
           className="primary-button"
-          disabled={controller.mutating || !profileDirty}
+          disabled={controller.mutating || !providerSettingsDirty}
           onClick={() => void controller.saveProfile()}
         >
-          {controller.mutating ? "Saving…" : saved ? "Save profile" : "Create profile"}
+          {controller.mutating ? "Saving…" : saved ? "Save provider settings" : "Create profile"}
         </button>
-        {profileDirty ? (
+        {providerSettingsDirty && saved ? (
           <button type="button" className="secondary-button" onClick={controller.discardDraft}>
             Discard changes
           </button>
@@ -389,11 +370,14 @@ function ProfileEditor({
 
 function CredentialPanel({ controller }: { controller: AiProfilesController }) {
   const profile = controller.selectedProfile;
-  if (!profile || profile.authMode === "none") {
+  if (!profile) return null;
+  if (profile.authMode === "none") {
     return (
       <section className={styles.settingsCard}>
-        <h2>Credential</h2>
-        <p className={styles.note}>This profile is configured without authentication.</p>
+        <h2>2. API credential</h2>
+        <p className={styles.note}>
+          This server does not require authentication. ostudy can retrieve its available model list directly from the saved endpoint.
+        </p>
       </section>
     );
   }
@@ -404,7 +388,7 @@ function CredentialPanel({ controller }: { controller: AiProfilesController }) {
     <section className={styles.settingsCard}>
       <div className={styles.sectionHeading}>
         <div>
-          <h2>Credential</h2>
+          <h2>2. API credential</h2>
           <p>{credentialLabel(status.status)}</p>
         </div>
         <span className={styles.credentialBadge} data-status={status.status}>
@@ -447,7 +431,7 @@ function CredentialPanel({ controller }: { controller: AiProfilesController }) {
         </label>
       </fieldset>
       <p className={styles.securityNote}>
-        The credential never enters SQLite, React state after submission, diagnostics, `.studydeck` files, or `.ostudybackup` archives.
+        The credential never enters SQLite, React state after submission, diagnostics, `.studydeck` files, or `.ostudybackup` archives. After the credential is saved, ostudy automatically requests the provider's model list.
       </p>
       <div className={styles.actionRow}>
         <button
@@ -473,6 +457,144 @@ function CredentialPanel({ controller }: { controller: AiProfilesController }) {
   );
 }
 
+function ModelSelectionPanel({
+  controller,
+  providerSettingsDirty,
+}: {
+  controller: AiProfilesController;
+  providerSettingsDirty: boolean;
+}) {
+  const profile = controller.selectedProfile;
+  const draft = controller.draft;
+  if (!profile || !draft) return null;
+
+  const credentialReady = canUseProviderCredential(profile);
+  const unsavedCredential = controller.credentialDraft !== "";
+  const canQuery = credentialReady && !providerSettingsDirty && !unsavedCredential;
+  const modelAvailable = controller.models.some((model) => model.id === draft.modelId);
+  const modelValue = modelAvailable ? draft.modelId : "";
+  const modelDirty = draft.modelId !== profile.modelId;
+  const savedModelMissing =
+    controller.modelsLoaded &&
+    profile.modelId !== "" &&
+    !controller.models.some((model) => model.id === profile.modelId);
+
+  return (
+    <section className={styles.settingsCard} aria-busy={controller.refreshingModels}>
+      <div className={styles.sectionHeading}>
+        <div>
+          <h2>3. Available model</h2>
+          <p>
+            Model IDs come from the provider API after endpoint and credential setup. You do not need to type a model name manually.
+          </p>
+        </div>
+      </div>
+
+      {!credentialReady ? (
+        <div className="inline-alert info-alert">
+          Save the API credential above before ostudy requests this provider's model list.
+        </div>
+      ) : null}
+      {providerSettingsDirty ? (
+        <div className="inline-alert info-alert">
+          Save the provider/server changes above before retrieving models from the new endpoint.
+        </div>
+      ) : null}
+      {unsavedCredential ? (
+        <div className="inline-alert info-alert">
+          Save or discard the credential entry above before retrieving models.
+        </div>
+      ) : null}
+
+      {controller.refreshingModels ? (
+        <div className="inline-progress">Retrieving available models from the provider…</div>
+      ) : null}
+
+      {controller.modelsLoaded && controller.models.length > 0 ? (
+        <>
+          {savedModelMissing ? (
+            <div className="inline-alert info-alert">
+              The previously saved model <strong>{profile.modelId}</strong> is not in the provider's current model list. Choose a model returned by the API.
+            </div>
+          ) : null}
+          <label className={styles.stackedField}>
+            <span>Model</span>
+            <select
+              aria-label="Model"
+              value={modelValue}
+              disabled={!canQuery || controller.mutating || controller.refreshingModels}
+              onChange={(event) => controller.updateDraft({ modelId: event.currentTarget.value })}
+            >
+              <option value="">Select an available model</option>
+              {controller.models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.displayName || model.id}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className={styles.note}>
+            {controller.models.length} model{controller.models.length === 1 ? "" : "s"} returned by the provider.
+          </p>
+          {profile.providerKind === "llama_cpp" ? (
+            <p className={styles.note}>
+              llama.cpp normally reports the loaded GGUF file path as its model ID unless the server was started with <code>--alias</code>. The API-reported ID is the correct routing value for ostudy.
+            </p>
+          ) : null}
+          <div className={styles.actionRow}>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={!modelDirty || !draft.modelId || controller.mutating || providerSettingsDirty}
+              onClick={() => void controller.saveProfile()}
+            >
+              Save selected model
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={!canQuery || controller.refreshingModels || controller.mutating || modelDirty}
+              onClick={() => void controller.refreshModels()}
+            >
+              Refresh models
+            </button>
+          </div>
+        </>
+      ) : controller.modelsLoaded && !controller.refreshingModels ? (
+        <>
+          <p className={styles.note}>The provider returned no selectable models.</p>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={!canQuery || controller.refreshingModels || controller.mutating}
+            onClick={() => void controller.refreshModels()}
+          >
+            Retry model discovery
+          </button>
+        </>
+      ) : !controller.refreshingModels ? (
+        <>
+          <p className={styles.note}>
+            {canQuery
+              ? "ostudy will request the available model list automatically. You can also request it again manually."
+              : "Complete the preceding setup step before model discovery."}
+          </p>
+          {canQuery ? (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={controller.refreshingModels || controller.mutating}
+              onClick={() => void controller.refreshModels()}
+            >
+              Retrieve models
+            </button>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 function ConnectionPanel({
   controller,
   profileDirty,
@@ -482,13 +604,16 @@ function ConnectionPanel({
 }) {
   const profile = controller.selectedProfile;
   if (!profile) return null;
-  const blocked = profileDirty || controller.credentialDraft !== "";
+  const missingCredential = !canUseProviderCredential(profile);
+  const missingModel = profile.modelId === "";
+  const blocked =
+    profileDirty || controller.credentialDraft !== "" || missingCredential || missingModel;
   return (
     <section className={styles.settingsCard}>
       <div className={styles.sectionHeading}>
         <div>
-          <h2>Connection and capabilities</h2>
-          <p>Tests run only when requested and use the saved profile configuration.</p>
+          <h2>4. Connection and capabilities</h2>
+          <p>Tests run only when requested and use the saved endpoint, credential, and API-selected model.</p>
         </div>
         {controller.probeResult ? (
           <span className={styles.probeBadge} data-status={controller.probeResult.overallStatus}>
@@ -498,18 +623,14 @@ function ConnectionPanel({
       </div>
       {blocked ? (
         <div className="inline-alert info-alert">
-          Save or discard profile and credential-entry changes before testing.
+          {missingCredential
+            ? "Save the required API credential before testing."
+            : missingModel
+              ? "Retrieve and save an available model above before testing."
+              : "Save or discard profile, model, and credential-entry changes before testing."}
         </div>
       ) : null}
       <div className={styles.actionRow}>
-        <button
-          type="button"
-          className="secondary-button"
-          disabled={blocked || controller.refreshingModels || controller.testing}
-          onClick={() => void controller.refreshModels()}
-        >
-          {controller.refreshingModels ? "Refreshing…" : "Refresh models"}
-        </button>
         <button
           type="button"
           className="primary-button"
@@ -519,13 +640,6 @@ function ConnectionPanel({
           {controller.testing ? "Testing…" : "Test connection"}
         </button>
       </div>
-      {controller.models.length > 0 ? (
-        <p className={styles.note}>
-          {controller.models.length} available model(s) returned by the provider. Select one in Profile configuration and save before testing a different model.
-        </p>
-      ) : (
-        <p className={styles.note}>Refresh models to query this provider for selectable model IDs.</p>
-      )}
       {controller.probeResult ? (
         <ProbeResultView
           result={controller.probeResult}
@@ -627,9 +741,14 @@ function buildConnectionDiagnosticLog(
   profile: AiProviderProfileDetail,
   models: AiProviderModel[],
 ): string {
-  const completionPath =
-    profile.providerKind === "llama_cpp" ? "v1/chat/completions" : "chat/completions";
-  const modelPath = "models";
+  const modelEndpoint =
+    profile.providerKind === "llama_cpp"
+      ? joinLlamaOpenAiDiagnosticEndpoint(profile.baseUrl, "models")
+      : joinDiagnosticEndpoint(profile.baseUrl, "models");
+  const completionEndpoint =
+    profile.providerKind === "llama_cpp"
+      ? joinLlamaOpenAiDiagnosticEndpoint(profile.baseUrl, "chat/completions")
+      : joinDiagnosticEndpoint(profile.baseUrl, "chat/completions");
   const structuredFormat =
     profile.providerKind === "llama_cpp"
       ? "json_schema"
@@ -638,7 +757,7 @@ function buildConnectionDiagnosticLog(
   if (models.length > 20) {
     modelPreview.push(`  - ... ${models.length - 20} more model(s) omitted`);
   }
-  if (modelPreview.length === 0) modelPreview.push("  - not refreshed in this UI session");
+  if (modelPreview.length === 0) modelPreview.push("  - not loaded in this UI session");
 
   const lines = [
     "ostudy AI provider connection test",
@@ -656,25 +775,25 @@ function buildConnectionDiagnosticLog(
     "credential: available status only; secret value redacted",
     "",
     "attempts:",
-    `  model_discovery: GET ${joinDiagnosticEndpoint(profile.baseUrl, modelPath)}`,
+    `  model_discovery: GET ${modelEndpoint}`,
   ];
 
   if (profile.providerKind === "llama_cpp") {
     lines.push(
-      `  server_properties: GET ${joinDiagnosticEndpoint(
+      `  server_properties: GET ${joinLlamaRootDiagnosticEndpoint(
         profile.baseUrl,
         `props?model=${encodeURIComponent(result.testedModelId || profile.modelId)}`,
       )} (optional metadata)`,
     );
   }
   lines.push(
-    `  text_completion: POST ${joinDiagnosticEndpoint(profile.baseUrl, completionPath)} (stream=false; thinking/reasoning disabled for probe)`,
-    `  structured_output: POST ${joinDiagnosticEndpoint(profile.baseUrl, completionPath)} (response_format=${structuredFormat}; stream=false)`,
+    `  text_completion: POST ${completionEndpoint} (stream=false; thinking/reasoning disabled for probe)`,
+    `  structured_output: POST ${completionEndpoint} (response_format=${structuredFormat}; stream=false)`,
     "",
     "phase_results:",
   );
   for (const phase of result.phases) lines.push(formatDiagnosticPhase(phase));
-  lines.push("", `refreshed_models: ${models.length}`, ...modelPreview);
+  lines.push("", `loaded_models: ${models.length}`, ...modelPreview);
   return lines.join("\n");
 }
 
@@ -694,6 +813,26 @@ function joinDiagnosticEndpoint(baseUrl: string, path: string): string {
   }
 }
 
+function joinLlamaOpenAiDiagnosticEndpoint(baseUrl: string, suffix: string): string {
+  try {
+    const base = new URL(baseUrl);
+    const includesV1 = base.pathname.replace(/\/+$/u, "").endsWith("/v1");
+    return new URL(includesV1 ? suffix : `v1/${suffix}`, base).toString();
+  } catch {
+    return `${baseUrl}${baseUrl.endsWith("/v1/") ? suffix : `v1/${suffix}`}`;
+  }
+}
+
+function joinLlamaRootDiagnosticEndpoint(baseUrl: string, suffix: string): string {
+  try {
+    const base = new URL(baseUrl);
+    const includesV1 = base.pathname.replace(/\/+$/u, "").endsWith("/v1");
+    return new URL(includesV1 ? `../${suffix}` : suffix, base).toString();
+  } catch {
+    return `${baseUrl}${suffix}`;
+  }
+}
+
 function hasProfileChanges(
   draft: AiProfileDraft | null,
   selected: AiProviderProfileDetail | null,
@@ -701,7 +840,29 @@ function hasProfileChanges(
 ): boolean {
   if (!draft) return false;
   if (!selected) return selectedId?.startsWith("new:") === true;
-  return JSON.stringify(draft) !== JSON.stringify({
+  return JSON.stringify(draft) !== JSON.stringify(draftFromSelected(selected));
+}
+
+function hasProviderSettingsChanges(
+  draft: AiProfileDraft | null,
+  selected: AiProviderProfileDetail | null,
+  selectedId: string | null,
+): boolean {
+  if (!draft) return false;
+  if (!selected) return selectedId?.startsWith("new:") === true;
+  return (
+    draft.displayName !== selected.displayName ||
+    draft.providerKind !== selected.providerKind ||
+    draft.baseUrl !== selected.baseUrl ||
+    draft.authMode !== selected.authMode ||
+    draft.enabled !== selected.enabled ||
+    draft.allowInsecureHttp !== selected.allowInsecureHttp ||
+    draft.requestTimeoutMs !== selected.requestTimeoutMs
+  );
+}
+
+function draftFromSelected(selected: AiProviderProfileDetail): AiProfileDraft {
+  return {
     displayName: selected.displayName,
     providerKind: selected.providerKind,
     baseUrl: selected.baseUrl,
@@ -710,7 +871,15 @@ function hasProfileChanges(
     enabled: selected.enabled,
     allowInsecureHttp: selected.allowInsecureHttp,
     requestTimeoutMs: selected.requestTimeoutMs,
-  });
+  };
+}
+
+function canUseProviderCredential(profile: AiProviderProfileDetail): boolean {
+  if (profile.authMode === "none") return true;
+  return (
+    profile.credentialStatus.status === "saved_securely" ||
+    profile.credentialStatus.status === "session_only"
+  );
 }
 
 function scopeLabel(scope: "local" | "lan" | "cloud"): string {
