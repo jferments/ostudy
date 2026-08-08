@@ -113,7 +113,8 @@ pub fn list_documents(
     database: State<'_, Database>,
     include_archived: bool,
 ) -> Result<Vec<DocumentDto>, CommandError> {
-    database.with_connection(|connection| list_documents_from_connection(connection, include_archived))
+    database
+        .with_connection(|connection| list_documents_from_connection(connection, include_archived))
 }
 
 #[tauri::command]
@@ -258,10 +259,7 @@ pub fn set_document_archived(
     })
 }
 
-pub(crate) fn reconcile_startup(
-    database: &Database,
-    paths: &AppPaths,
-) -> Result<(), CommandError> {
+pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result<(), CommandError> {
     let now = unix_time_millis()?;
     database.with_connection(|connection| {
         let transaction = connection
@@ -314,7 +312,9 @@ pub(crate) fn reconcile_startup(
             )
             .map_err(CommandError::database)?;
         statement
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(CommandError::database)
@@ -413,18 +413,10 @@ async fn process_and_generate(
         if all_cards.len().saturating_add(cards.len()) > MAX_GENERATED_CARDS {
             return Err(CommandError::new(
                 "too_many_generated_cards",
-                format!(
-                    "The model generated more than {MAX_GENERATED_CARDS} cards from this PDF."
-                ),
+                format!("The model generated more than {MAX_GENERATED_CARDS} cards from this PDF."),
             ));
         }
-        mark_generation_unit_complete(
-            database.inner(),
-            &job_id,
-            page.page_number,
-            &cards,
-            false,
-        )?;
+        mark_generation_unit_complete(database.inner(), &job_id, page.page_number, &cards, false)?;
         all_cards.extend(cards);
     }
 
@@ -441,15 +433,14 @@ async fn process_and_generate(
         .document_staging_dir()
         .join(format!("{document_id}-{job_id}.ostudy.json"));
     write_new_file(&import_path, generated_json.as_bytes())?;
-    let import_result = import_generated_flashcards(
-        database.clone(),
-        import_path.to_string_lossy().into_owned(),
-    );
+    let import_result =
+        import_generated_flashcards(database.clone(), import_path.to_string_lossy().into_owned());
     let _ = fs::remove_file(&import_path);
     let import_result = import_result?;
     finalize_generation(database.inner(), document_id, &job_id, &import_result)?;
-    let document =
-        database.with_connection(|connection| load_document(connection, document_id))?.dto;
+    let document = database
+        .with_connection(|connection| load_document(connection, document_id))?
+        .dto;
     Ok(DocumentGenerationResultDto {
         document,
         deck_id: import_result.deck_id,
@@ -781,11 +772,7 @@ fn create_generation_job(
                     "INSERT INTO document_generation_units (
                          job_id, page_number, state, cards_json, card_count, updated_at
                      ) VALUES (?1, ?2, 'pending', '[]', 0, ?3)",
-                    params![
-                        job_id,
-                        i64::try_from(page_number).unwrap_or(i64::MAX),
-                        now
-                    ],
+                    params![job_id, i64::try_from(page_number).unwrap_or(i64::MAX), now],
                 )
                 .map_err(CommandError::database)?;
         }
@@ -1119,7 +1106,10 @@ fn load_document(
         .optional()
         .map_err(CommandError::database)?
         .ok_or_else(|| {
-            CommandError::new("document_not_found", "That PDF is no longer in the library.")
+            CommandError::new(
+                "document_not_found",
+                "That PDF is no longer in the library.",
+            )
         })
 }
 
@@ -1187,7 +1177,9 @@ fn copy_pdf_with_hash(source: &Path, destination: &Path) -> Result<(i64, String)
             ));
         }
         hasher.update(&buffer[..read]);
-        output.write_all(&buffer[..read]).map_err(CommandError::io)?;
+        output
+            .write_all(&buffer[..read])
+            .map_err(CommandError::io)?;
     }
     output.sync_all().map_err(CommandError::io)?;
     Ok((
@@ -1200,9 +1192,7 @@ fn normalize_page_text(value: String) -> String {
     let normalized = value.replace("\r\n", "\n").replace('\r', "\n");
     normalized
         .chars()
-        .filter(|character| {
-            !character.is_control() || matches!(character, '\n' | '\t')
-        })
+        .filter(|character| !character.is_control() || matches!(character, '\n' | '\t'))
         .take(MAX_PAGE_TEXT_CHARS)
         .collect::<String>()
         .trim()

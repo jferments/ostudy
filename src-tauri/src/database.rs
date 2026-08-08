@@ -343,14 +343,15 @@ fn apply_foreign_key_disabled_migration(
             .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
 
         let has_violation = {
-            let mut statement = transaction
-                .prepare("PRAGMA foreign_key_check")
-                .map_err(|error| {
-                    format!(
-                        "Could not prepare migration {} foreign-key validation: {error}",
-                        migration.version
-                    )
-                })?;
+            let mut statement =
+                transaction
+                    .prepare("PRAGMA foreign_key_check")
+                    .map_err(|error| {
+                        format!(
+                            "Could not prepare migration {} foreign-key validation: {error}",
+                            migration.version
+                        )
+                    })?;
             let mut rows = statement.query([]).map_err(|error| {
                 format!(
                     "Could not run migration {} foreign-key validation: {error}",

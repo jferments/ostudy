@@ -320,10 +320,7 @@ fn validate_card_shape(card: &Value) -> Result<(), CommandError> {
         .ok_or_else(invalid_output)?;
     match card_type {
         "basic" => {
-            require_allowed_fields(
-                object,
-                &["type", "front", "back", "reverseEnabled", "tags"],
-            )?;
+            require_allowed_fields(object, &["type", "front", "back", "reverseEnabled", "tags"])?;
             validate_card_text(object, "front")?;
             validate_card_text(object, "back")?;
             if object
