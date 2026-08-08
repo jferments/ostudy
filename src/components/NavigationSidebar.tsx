@@ -20,7 +20,7 @@ const ITEMS: ReadonlyArray<{ section: AppSection; icon: string; label: string }>
   { section: "settings", icon: "⚙", label: "Settings" },
 ];
 
-const COMPACT_SECTIONS = new Set<AppSection>(["decks", "documents", "cards", "practice"]);
+const COMPACT_SECTIONS = new Set<AppSection>(["decks", "cards", "practice", "analytics"]);
 
 export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProps) {
   const compact = useMediaQuery("(max-width: 760px)");
