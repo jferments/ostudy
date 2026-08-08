@@ -64,12 +64,7 @@ impl PdfRenderRuntime {
         if let Some(resource_dir) = resource_dir {
             let filename = platform_library_filename();
             candidates.push(resource_dir.join("pdfium").join(filename));
-            candidates.push(
-                resource_dir
-                    .join("resources")
-                    .join("pdfium")
-                    .join(filename),
-            );
+            candidates.push(resource_dir.join("resources").join("pdfium").join(filename));
         }
         if let Ok(executable) = env::current_exe() {
             if let Some(parent) = executable.parent() {
@@ -120,13 +115,15 @@ where
 {
     let bindings = runtime.bind().map_err(RenderProcessError::Backend)?;
     let pdfium = Pdfium::new(bindings);
-    let document = pdfium.load_pdf_from_file(source_path, None).map_err(|error| {
-        RenderProcessError::Backend(PdfRenderError::new(
-            PdfRenderErrorKind::Open,
-            None,
-            error.to_string(),
-        ))
-    })?;
+    let document = pdfium
+        .load_pdf_from_file(source_path, None)
+        .map_err(|error| {
+            RenderProcessError::Backend(PdfRenderError::new(
+                PdfRenderErrorKind::Open,
+                None,
+                error.to_string(),
+            ))
+        })?;
     let page_count = usize::from(document.pages().len());
     let render_config = PdfRenderConfig::new()
         .set_target_width(2048)

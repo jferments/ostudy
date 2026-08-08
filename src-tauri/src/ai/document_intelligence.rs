@@ -6,9 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use url::Url;
 
-use crate::{
-    database::Database, document_semantics::SemanticWindow, error::CommandError,
-};
+use crate::{database::Database, document_semantics::SemanticWindow, error::CommandError};
 
 use super::{
     catalog::ProviderKind,
@@ -852,9 +850,10 @@ fn build_cloze_text(index: usize, text: &str, blanks: &[String]) -> Result<Strin
             };
             let start = search_start + relative;
             let end = start + trimmed.len();
-            if ranges.iter().all(|(other_start, other_end, _, _)| {
-                end <= *other_start || start >= *other_end
-            }) {
+            if ranges
+                .iter()
+                .all(|(other_start, other_end, _, _)| end <= *other_start || start >= *other_end)
+            {
                 break Some((start, end));
             }
             search_start = end;
@@ -941,10 +940,7 @@ fn compact_card_summary(index: usize, card: &Value) -> String {
         .or_else(|| card.get("text"))
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let secondary = card
-        .get("back")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
+    let secondary = card.get("back").and_then(Value::as_str).unwrap_or_default();
     format!(
         "{} | {} | {} | {}",
         index,

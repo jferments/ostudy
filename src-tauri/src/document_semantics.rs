@@ -55,8 +55,8 @@ pub(crate) fn build_semantic_windows(
             let mut next_pages = pages.clone();
             next_pages.extend(chunk.page_numbers.iter().copied());
 
-            let would_exceed = end > start
-                && (next_tokens > max_tokens || next_pages.len() > max_pages);
+            let would_exceed =
+                end > start && (next_tokens > max_tokens || next_pages.len() > max_pages);
             if would_exceed {
                 break;
             }
@@ -186,7 +186,9 @@ mod tests {
         assert!(windows.len() >= 3);
         assert!(windows.iter().all(|window| window.page_numbers.len() <= 3));
         assert_eq!(windows[0].last_chunk_index, windows[1].first_chunk_index);
-        assert!(windows.iter().all(|window| window.page_end >= window.page_start));
+        assert!(windows
+            .iter()
+            .all(|window| window.page_end >= window.page_start));
     }
 
     #[test]

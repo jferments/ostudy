@@ -332,7 +332,9 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
             .prepare("SELECT id, source_relative_path FROM documents WHERE archived_at IS NULL")
             .map_err(CommandError::database)?;
         statement
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(CommandError::database)
@@ -493,13 +495,9 @@ async fn process_and_generate(
         ));
     }
 
-    let all_cards = document_intelligence::curate_document_cards(
-        runtime.inner(),
-        &task,
-        &outline,
-        all_cards,
-    )
-    .await?;
+    let all_cards =
+        document_intelligence::curate_document_cards(runtime.inner(), &task, &outline, all_cards)
+            .await?;
     if all_cards.is_empty() {
         return Err(CommandError::new(
             "document_generated_no_cards",
@@ -630,7 +628,10 @@ fn import_managed_pdf(
     let source_relative = AppPaths::document_source_relative_path(&document_id);
     let destination = paths.resolve_relative(&source_relative);
     let directory = destination.parent().ok_or_else(|| {
-        CommandError::new("invalid_document_path", "The managed document path is invalid.")
+        CommandError::new(
+            "invalid_document_path",
+            "The managed document path is invalid.",
+        )
     })?;
     fs::create_dir_all(directory).map_err(CommandError::io)?;
     fs::rename(&staged_path, &destination).map_err(CommandError::io)?;
@@ -793,16 +794,28 @@ fn persist_processed_document(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         transaction
-            .execute("DELETE FROM document_pages WHERE document_id = ?1", [document_id])
+            .execute(
+                "DELETE FROM document_pages WHERE document_id = ?1",
+                [document_id],
+            )
             .map_err(CommandError::database)?;
         transaction
-            .execute("DELETE FROM document_semantic_elements WHERE document_id = ?1", [document_id])
+            .execute(
+                "DELETE FROM document_semantic_elements WHERE document_id = ?1",
+                [document_id],
+            )
             .map_err(CommandError::database)?;
         transaction
-            .execute("DELETE FROM document_semantic_chunks WHERE document_id = ?1", [document_id])
+            .execute(
+                "DELETE FROM document_semantic_chunks WHERE document_id = ?1",
+                [document_id],
+            )
             .map_err(CommandError::database)?;
         transaction
-            .execute("DELETE FROM document_outlines WHERE document_id = ?1", [document_id])
+            .execute(
+                "DELETE FROM document_outlines WHERE document_id = ?1",
+                [document_id],
+            )
             .map_err(CommandError::database)?;
 
         for page in &processed.pages {
@@ -889,9 +902,12 @@ fn persist_processed_document(
                         i64::try_from(chunk.chunk_index).unwrap_or(i64::MAX),
                         text,
                         full_text,
-                        serde_json::to_string(&page_numbers).map_err(CommandError::serialization)?,
-                        serde_json::to_string(&chunk.bounding_boxes).map_err(CommandError::serialization)?,
-                        serde_json::to_string(&chunk.element_types).map_err(CommandError::serialization)?,
+                        serde_json::to_string(&page_numbers)
+                            .map_err(CommandError::serialization)?,
+                        serde_json::to_string(&chunk.bounding_boxes)
+                            .map_err(CommandError::serialization)?,
+                        serde_json::to_string(&chunk.element_types)
+                            .map_err(CommandError::serialization)?,
                         chunk.heading_context,
                         i64::try_from(chunk.token_estimate).unwrap_or(i64::MAX),
                         i64::from(chunk.is_oversized),
@@ -1139,7 +1155,8 @@ fn create_generation_job(
                         window.last_chunk_index,
                         window.page_start,
                         window.page_end,
-                        serde_json::to_string(&window.page_numbers).map_err(CommandError::serialization)?,
+                        serde_json::to_string(&window.page_numbers)
+                            .map_err(CommandError::serialization)?,
                         i64::try_from(window.token_estimate).unwrap_or(i64::MAX),
                         now,
                     ],
@@ -1224,8 +1241,14 @@ fn load_window_images(
         let page = pages
             .iter()
             .find(|page| page.page_number == page_number)
-            .ok_or_else(|| CommandError::new("document_render_missing", "A selected PDF page render is missing."))?;
-        let bytes = fs::read(paths.resolve_relative(&page.render_relative_path)).map_err(CommandError::io)?;
+            .ok_or_else(|| {
+                CommandError::new(
+                    "document_render_missing",
+                    "A selected PDF page render is missing.",
+                )
+            })?;
+        let bytes = fs::read(paths.resolve_relative(&page.render_relative_path))
+            .map_err(CommandError::io)?;
         if bytes.is_empty()
             || bytes.len() > MAX_RENDER_BYTES
             || i64::try_from(bytes.len()).unwrap_or(i64::MAX) != page.render_byte_size
@@ -1272,7 +1295,11 @@ fn mark_job_committing(
                 "UPDATE document_generation_jobs
                  SET state = 'committing', generated_candidate_count = ?1, updated_at = ?2
                  WHERE id = ?3",
-                params![i64::try_from(candidate_count).unwrap_or(i64::MAX), now, job_id],
+                params![
+                    i64::try_from(candidate_count).unwrap_or(i64::MAX),
+                    now,
+                    job_id
+                ],
             )
             .map_err(CommandError::database)?;
         Ok(())
@@ -1366,7 +1393,10 @@ fn list_documents_from_connection(
         .map_err(CommandError::database)?;
     statement
         .query_map(
-            params![if include_archived { 1_i64 } else { 0_i64 }, MAX_DOCUMENTS_RETURNED],
+            params![
+                if include_archived { 1_i64 } else { 0_i64 },
+                MAX_DOCUMENTS_RETURNED
+            ],
             document_row,
         )
         .map_err(CommandError::database)?
@@ -1396,12 +1426,25 @@ fn load_document(
             |row| {
                 Ok(StoredDocument {
                     dto: DocumentDto {
-                        id: row.get(0)?, title: row.get(1)?, original_filename: row.get(2)?,
-                        byte_size: row.get(3)?, sha256: row.get(4)?, lifecycle_state: row.get(5)?,
-                        page_count: row.get(6)?, extracted_page_count: row.get(7)?, rendered_page_count: row.get(8)?,
-                        generated_note_count: row.get(9)?, generated_card_count: row.get(10)?, generated_deck_id: row.get(11)?,
-                        safe_error_code: row.get(12)?, safe_error_message: row.get(13)?, created_at: row.get(14)?, updated_at: row.get(15)?,
-                        completed_at: row.get(16)?, archived_at: row.get(17)?, revision: row.get(18)?,
+                        id: row.get(0)?,
+                        title: row.get(1)?,
+                        original_filename: row.get(2)?,
+                        byte_size: row.get(3)?,
+                        sha256: row.get(4)?,
+                        lifecycle_state: row.get(5)?,
+                        page_count: row.get(6)?,
+                        extracted_page_count: row.get(7)?,
+                        rendered_page_count: row.get(8)?,
+                        generated_note_count: row.get(9)?,
+                        generated_card_count: row.get(10)?,
+                        generated_deck_id: row.get(11)?,
+                        safe_error_code: row.get(12)?,
+                        safe_error_message: row.get(13)?,
+                        created_at: row.get(14)?,
+                        updated_at: row.get(15)?,
+                        completed_at: row.get(16)?,
+                        archived_at: row.get(17)?,
+                        revision: row.get(18)?,
                     },
                     source_relative_path: row.get(19)?,
                     extraction_backend: row.get(20)?,
@@ -1412,17 +1455,35 @@ fn load_document(
         )
         .optional()
         .map_err(CommandError::database)?
-        .ok_or_else(|| CommandError::new("document_not_found", "That PDF is no longer in the library."))
+        .ok_or_else(|| {
+            CommandError::new(
+                "document_not_found",
+                "That PDF is no longer in the library.",
+            )
+        })
 }
 
 fn document_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentDto> {
     Ok(DocumentDto {
-        id: row.get(0)?, title: row.get(1)?, original_filename: row.get(2)?,
-        byte_size: row.get(3)?, sha256: row.get(4)?, lifecycle_state: row.get(5)?,
-        page_count: row.get(6)?, extracted_page_count: row.get(7)?, rendered_page_count: row.get(8)?,
-        generated_note_count: row.get(9)?, generated_card_count: row.get(10)?, generated_deck_id: row.get(11)?,
-        safe_error_code: row.get(12)?, safe_error_message: row.get(13)?, created_at: row.get(14)?, updated_at: row.get(15)?,
-        completed_at: row.get(16)?, archived_at: row.get(17)?, revision: row.get(18)?,
+        id: row.get(0)?,
+        title: row.get(1)?,
+        original_filename: row.get(2)?,
+        byte_size: row.get(3)?,
+        sha256: row.get(4)?,
+        lifecycle_state: row.get(5)?,
+        page_count: row.get(6)?,
+        extracted_page_count: row.get(7)?,
+        rendered_page_count: row.get(8)?,
+        generated_note_count: row.get(9)?,
+        generated_card_count: row.get(10)?,
+        generated_deck_id: row.get(11)?,
+        safe_error_code: row.get(12)?,
+        safe_error_message: row.get(13)?,
+        created_at: row.get(14)?,
+        updated_at: row.get(15)?,
+        completed_at: row.get(16)?,
+        archived_at: row.get(17)?,
+        revision: row.get(18)?,
     })
 }
 
@@ -1483,7 +1544,10 @@ fn normalize_element_type(value: &str) -> Result<&'static str, CommandError> {
 }
 
 fn normalize_page_text(value: String) -> String {
-    normalize_semantic_text(&value.replace("\r\n", "\n").replace('\r', "\n"), MAX_PAGE_TEXT_CHARS)
+    normalize_semantic_text(
+        &value.replace("\r\n", "\n").replace('\r', "\n"),
+        MAX_PAGE_TEXT_CHARS,
+    )
 }
 
 fn normalize_semantic_text(value: &str, maximum: usize) -> String {
@@ -1501,38 +1565,65 @@ fn copy_pdf_with_hash(source: &Path, destination: &Path) -> Result<(i64, String)
     let mut signature = [0_u8; 5];
     input.read_exact(&mut signature).map_err(CommandError::io)?;
     if &signature != b"%PDF-" {
-        return Err(CommandError::new("invalid_pdf", "The selected file does not have a valid PDF signature."));
+        return Err(CommandError::new(
+            "invalid_pdf",
+            "The selected file does not have a valid PDF signature.",
+        ));
     }
     input.rewind().map_err(CommandError::io)?;
-    let parent = destination.parent().ok_or_else(|| CommandError::new("invalid_document_path", "The document staging path is invalid."))?;
+    let parent = destination.parent().ok_or_else(|| {
+        CommandError::new(
+            "invalid_document_path",
+            "The document staging path is invalid.",
+        )
+    })?;
     fs::create_dir_all(parent).map_err(CommandError::io)?;
-    let mut output = OpenOptions::new().write(true).create_new(true).open(destination).map_err(CommandError::io)?;
+    let mut output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination)
+        .map_err(CommandError::io)?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; 1024 * 1024];
     let mut total = 0_u64;
     loop {
         let read = input.read(&mut buffer).map_err(CommandError::io)?;
-        if read == 0 { break; }
+        if read == 0 {
+            break;
+        }
         total = total.saturating_add(read as u64);
         if total > MAX_PDF_BYTES {
             let _ = fs::remove_file(destination);
-            return Err(CommandError::new("invalid_pdf_size", "The PDF exceeds the 512 MB document limit."));
+            return Err(CommandError::new(
+                "invalid_pdf_size",
+                "The PDF exceeds the 512 MB document limit.",
+            ));
         }
         hasher.update(&buffer[..read]);
-        output.write_all(&buffer[..read]).map_err(CommandError::io)?;
+        output
+            .write_all(&buffer[..read])
+            .map_err(CommandError::io)?;
     }
     output.sync_all().map_err(CommandError::io)?;
-    Ok((i64::try_from(total).unwrap_or(i64::MAX), format!("{:x}", hasher.finalize())))
+    Ok((
+        i64::try_from(total).unwrap_or(i64::MAX),
+        format!("{:x}", hasher.finalize()),
+    ))
 }
 
 fn validate_pdf_filename(value: &str) -> Result<String, CommandError> {
     let trimmed = value.trim();
     let valid = !trimmed.is_empty()
         && trimmed.chars().count() <= 255
-        && !trimmed.chars().any(|character| character.is_control() || matches!(character, '/' | '\\' | '\0'))
+        && !trimmed
+            .chars()
+            .any(|character| character.is_control() || matches!(character, '/' | '\\' | '\0'))
         && trimmed.to_ascii_lowercase().ends_with(".pdf");
     if !valid {
-        return Err(CommandError::new("invalid_pdf_name", "Select a PDF with a valid filename."));
+        return Err(CommandError::new(
+            "invalid_pdf_name",
+            "Select a PDF with a valid filename.",
+        ));
     }
     Ok(trimmed.to_string())
 }
@@ -1540,7 +1631,10 @@ fn validate_pdf_filename(value: &str) -> Result<String, CommandError> {
 fn validate_document_title(value: &str) -> Result<String, CommandError> {
     let trimmed = value.trim();
     if trimmed.is_empty() || trimmed.chars().count() > 200 {
-        return Err(CommandError::new("invalid_document_title", "The PDF title must contain 1 to 200 characters."));
+        return Err(CommandError::new(
+            "invalid_document_title",
+            "The PDF title must contain 1 to 200 characters.",
+        ));
     }
     Ok(trimmed.to_string())
 }
@@ -1554,7 +1648,12 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 fn write_replacing_file(destination: &Path, bytes: &[u8]) -> Result<(), CommandError> {
-    let parent = destination.parent().ok_or_else(|| CommandError::new("invalid_document_path", "The rendered-page path is invalid."))?;
+    let parent = destination.parent().ok_or_else(|| {
+        CommandError::new(
+            "invalid_document_path",
+            "The rendered-page path is invalid.",
+        )
+    })?;
     fs::create_dir_all(parent).map_err(CommandError::io)?;
     let temporary = destination.with_extension(format!("png.{}.tmp", std::process::id()));
     let _ = fs::remove_file(&temporary);
@@ -1571,17 +1670,25 @@ fn write_new_file(destination: &Path, bytes: &[u8]) -> Result<(), CommandError> 
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(CommandError::io)?;
     }
-    let mut file = OpenOptions::new().write(true).create_new(true).open(destination).map_err(CommandError::io)?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination)
+        .map_err(CommandError::io)?;
     file.write_all(bytes).map_err(CommandError::io)?;
     file.sync_all().map_err(CommandError::io)
 }
 
 fn sync_file(path: &Path) -> Result<(), CommandError> {
-    File::open(path).and_then(|file| file.sync_all()).map_err(CommandError::io)
+    File::open(path)
+        .and_then(|file| file.sync_all())
+        .map_err(CommandError::io)
 }
 
 fn sync_directory(path: &Path) -> Result<(), CommandError> {
-    File::open(path).and_then(|directory| directory.sync_all()).map_err(CommandError::io)
+    File::open(path)
+        .and_then(|directory| directory.sync_all())
+        .map_err(CommandError::io)
 }
 
 #[cfg(test)]
@@ -1590,15 +1697,24 @@ mod tests {
 
     #[test]
     fn normalizes_page_text_without_control_characters() {
-        assert_eq!(normalize_page_text(" line\r\none\0two\rthree ".to_string()), "line\nonetwo\nthree");
+        assert_eq!(
+            normalize_page_text(" line\r\none\0two\rthree ".to_string()),
+            "line\nonetwo\nthree"
+        );
     }
 
     #[test]
     fn validates_pdf_names_and_titles() {
         assert!(validate_pdf_filename("../unsafe.pdf").is_err());
         assert!(validate_pdf_filename("notes.txt").is_err());
-        assert_eq!(validate_pdf_filename("Lecture Notes.PDF").unwrap(), "Lecture Notes.PDF");
-        assert_eq!(validate_document_title(" Lecture Notes ").unwrap(), "Lecture Notes");
+        assert_eq!(
+            validate_pdf_filename("Lecture Notes.PDF").unwrap(),
+            "Lecture Notes.PDF"
+        );
+        assert_eq!(
+            validate_document_title(" Lecture Notes ").unwrap(),
+            "Lecture Notes"
+        );
     }
 
     #[test]
@@ -1614,12 +1730,24 @@ mod tests {
     fn generated_import_envelope_is_strict_ostudy_json() {
         let document = DocumentDto {
             id: "0123456789abcdef0123456789abcdef".to_string(),
-            title: "Physiology".to_string(), original_filename: "physiology.pdf".to_string(),
-            byte_size: 1, sha256: "0".repeat(64), lifecycle_state: "processing".to_string(),
-            page_count: 1, extracted_page_count: 1, rendered_page_count: 1,
-            generated_note_count: 0, generated_card_count: 0, generated_deck_id: None,
-            safe_error_code: String::new(), safe_error_message: String::new(),
-            created_at: 1, updated_at: 1, completed_at: None, archived_at: None, revision: 1,
+            title: "Physiology".to_string(),
+            original_filename: "physiology.pdf".to_string(),
+            byte_size: 1,
+            sha256: "0".repeat(64),
+            lifecycle_state: "processing".to_string(),
+            page_count: 1,
+            extracted_page_count: 1,
+            rendered_page_count: 1,
+            generated_note_count: 0,
+            generated_card_count: 0,
+            generated_deck_id: None,
+            safe_error_code: String::new(),
+            safe_error_message: String::new(),
+            created_at: 1,
+            updated_at: 1,
+            completed_at: None,
+            archived_at: None,
+            revision: 1,
         };
         let value: serde_json::Value = serde_json::from_str(
             &build_generated_import_json(

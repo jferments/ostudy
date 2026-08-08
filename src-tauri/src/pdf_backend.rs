@@ -211,7 +211,11 @@ fn convert_chunk(chunk: RagChunk) -> ExtractedSemanticChunk {
         page_numbers: chunk
             .page_numbers
             .into_iter()
-            .map(|page| usize::try_from(page).unwrap_or(usize::MAX).saturating_add(1))
+            .map(|page| {
+                usize::try_from(page)
+                    .unwrap_or(usize::MAX)
+                    .saturating_add(1)
+            })
             .collect(),
         bounding_boxes: chunk
             .bounding_boxes
