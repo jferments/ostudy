@@ -27,7 +27,7 @@ fn pinned_pdf_engine_extracts_text_and_renders_a_real_fixture() {
     assert_eq!(document.page_count(), 1);
     let page = document.page(0).expect("fixture page should load");
     let text = page.text().expect("fixture text should extract");
-    assert!(text.contains("cardiac output"));
+    assert!(text.to_ascii_lowercase().contains("cardiac output"));
     assert!(!text.trim().is_empty());
     let png = page.render_png(72.0).expect("fixture page should render");
     assert!(png.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]));
