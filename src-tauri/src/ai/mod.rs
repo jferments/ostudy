@@ -6,6 +6,7 @@
 //! React never receives credentials or arbitrary provider completions.
 
 mod catalog;
+#[path = "document_intelligence_adapter.rs"]
 pub(crate) mod document_intelligence;
 mod endpoint_policy;
 mod gateway;
