@@ -5,8 +5,7 @@ import * as documentIpc from "../ipc/documents";
 import * as platformFiles from "../platform/files";
 import { DocumentsScreen } from "./DocumentsScreen";
 
-vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
-vi.mock("../platform/files", () => ({ openFile: vi.fn() }));
+vi.mock("../platform/files", () => ({ openFile: vi.fn(), openLocalPath: vi.fn() }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
   importPdfAndGenerateFlashcards: vi.fn(),
@@ -61,6 +60,7 @@ describe("DocumentsScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(platformFiles.openFile).mockResolvedValue(null);
+    vi.mocked(platformFiles.openLocalPath).mockResolvedValue(undefined);
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([]);
     vi.mocked(documentIpc.getDocumentSourcePath).mockResolvedValue("/managed/source.pdf");
   });
@@ -128,6 +128,19 @@ describe("DocumentsScreen", () => {
     await waitFor(() => {
       expect(documentIpc.retryPdfFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
+    });
+  });
+
+  it("opens the managed PDF through the platform boundary", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    fireEvent.click(screen.getByRole("button", { name: "Open PDF" }));
+
+    await waitFor(() => {
+      expect(documentIpc.getDocumentSourcePath).toHaveBeenCalledWith(documentId);
+      expect(platformFiles.openLocalPath).toHaveBeenCalledWith("/managed/source.pdf");
     });
   });
 });

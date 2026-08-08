@@ -1,4 +1,3 @@
-import { openPath } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { ShowToast } from "../components/Toast";
@@ -11,7 +10,7 @@ import {
   setDocumentArchived,
   type DocumentSummary,
 } from "../ipc/documents";
-import { openFile } from "../platform/files";
+import { openFile, openLocalPath } from "../platform/files";
 import styles from "./DocumentsScreen.module.css";
 
 interface DocumentsScreenProps {
@@ -113,7 +112,7 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
   async function openPdf(document: DocumentSummary): Promise<void> {
     try {
       const sourcePath = await getDocumentSourcePath(document.id);
-      await openPath(sourcePath);
+      await openLocalPath(sourcePath);
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
     }
