@@ -16,7 +16,9 @@ use super::{
     endpoint_policy::{
         endpoint_origin_from_str, validate_endpoint, NetworkScope, ValidatedEndpoint,
     },
-    secrets::{CredentialPersistence, CredentialStatus, CredentialStatusDto},
+    secrets::{
+        CredentialPersistence, CredentialStatus, CredentialStatusDto, CredentialStorage,
+    },
     AiRuntimeState,
 };
 
@@ -158,6 +160,7 @@ pub(crate) struct ProfileSnapshot {
     pub enabled: bool,
     pub allow_insecure_http: bool,
     pub request_timeout_ms: i64,
+    pub credential_storage: CredentialStorage,
     pub credential_epoch: i64,
     pub revision: i64,
 }
@@ -198,6 +201,7 @@ struct StoredProfile {
     enabled: bool,
     allow_insecure_http: bool,
     request_timeout_ms: i64,
+    credential_storage: CredentialStorage,
     credential_epoch: i64,
     revision: i64,
     created_at: i64,
@@ -215,6 +219,7 @@ struct RawProfileRow {
     enabled: i64,
     allow_insecure_http: i64,
     request_timeout_ms: i64,
+    credential_storage: String,
     credential_epoch: i64,
     revision: i64,
     created_at: i64,
@@ -235,6 +240,7 @@ impl TryFrom<RawProfileRow> for StoredProfile {
             enabled: row.enabled != 0,
             allow_insecure_http: row.allow_insecure_http != 0,
             request_timeout_ms: row.request_timeout_ms,
+            credential_storage: CredentialStorage::from_db(&row.credential_storage)?,
             credential_epoch: row.credential_epoch,
             revision: row.revision,
             created_at: row.created_at,
@@ -254,6 +260,7 @@ impl From<&StoredProfile> for ProfileSnapshot {
             enabled: profile.enabled,
             allow_insecure_http: profile.allow_insecure_http,
             request_timeout_ms: profile.request_timeout_ms,
+            credential_storage: profile.credential_storage,
             credential_epoch: profile.credential_epoch,
             revision: profile.revision,
         }
@@ -332,7 +339,7 @@ pub fn update_ai_provider_profile(
         &input.base_url,
         input.allow_insecure_http,
     )?;
-    ensure_trust_boundary_can_change(&current, &next_endpoint, input.auth_mode, runtime.inner())?;
+    ensure_trust_boundary_can_change(&current, &next_endpoint, input.auth_mode)?;
 
     let profile_id = database.with_connection(|connection| {
         update_profile(connection, current.provider_kind, next_endpoint, input)
@@ -368,9 +375,9 @@ pub fn delete_ai_provider_profile(
     if current.revision != input.revision {
         return Err(profile_changed());
     }
-    if current.auth_mode.requires_credential() {
-        runtime.secrets.clear(&input.profile_id)?;
-    }
+    runtime
+        .secrets
+        .clear(&input.profile_id, current.credential_storage)?;
     database.with_connection(|connection| delete_profile(connection, &input))?;
     Ok(DeleteAiProviderProfileResultDto {
         profile_id: input.profile_id,
@@ -411,9 +418,13 @@ pub fn set_ai_provider_credential(
         ));
     }
 
-    runtime
-        .secrets
-        .set(&input.profile_id, input.credential, input.persistence)?;
+    let storage = CredentialStorage::from(input.persistence);
+    runtime.secrets.set(
+        &input.profile_id,
+        input.credential,
+        input.persistence,
+        current.credential_storage,
+    )?;
     database.with_connection(|connection| {
         commit_credential_epoch(
             connection,
@@ -421,6 +432,7 @@ pub fn set_ai_provider_credential(
             input.revision,
             &input.operation_id,
             "set_credential",
+            storage,
         )
     })?;
     let profile =
@@ -455,7 +467,9 @@ pub fn clear_ai_provider_credential(
         return Err(profile_changed());
     }
 
-    runtime.secrets.clear(&input.profile_id)?;
+    runtime
+        .secrets
+        .clear(&input.profile_id, current.credential_storage)?;
     database.with_connection(|connection| {
         commit_credential_epoch(
             connection,
@@ -463,6 +477,7 @@ pub fn clear_ai_provider_credential(
             input.revision,
             &input.operation_id,
             "clear_credential",
+            CredentialStorage::None,
         )
     })?;
     let profile =
@@ -537,12 +552,12 @@ fn create_profile(
             "INSERT INTO ai_provider_profiles (
                  id, display_name, normalized_name, provider_kind, base_url,
                  model_id, auth_mode, enabled, allow_insecure_http,
-                 request_timeout_ms, credential_epoch, revision,
+                 request_timeout_ms, credential_storage, credential_epoch, revision,
                  created_at, updated_at, deleted_at
              ) VALUES (
                  ?1, ?2, ?3, ?4, ?5,
                  ?6, ?7, ?8, ?9,
-                 ?10, 0, 1,
+                 ?10, 'none', 0, 1,
                  ?11, ?11, NULL
              )",
             params![
@@ -648,7 +663,11 @@ fn delete_profile(
     let changed = transaction
         .execute(
             "UPDATE ai_provider_profiles
-             SET deleted_at = ?1, enabled = 0, updated_at = ?1, revision = revision + 1
+             SET deleted_at = ?1,
+                 enabled = 0,
+                 credential_storage = 'none',
+                 updated_at = ?1,
+                 revision = revision + 1
              WHERE id = ?2 AND revision = ?3 AND deleted_at IS NULL",
             params![now, input.profile_id, input.revision],
         )
@@ -680,6 +699,7 @@ fn commit_credential_epoch(
     revision: i64,
     operation_id: &str,
     operation_kind: &str,
+    storage: CredentialStorage,
 ) -> Result<(), CommandError> {
     let now = unix_time_millis()?;
     let transaction = connection
@@ -688,11 +708,12 @@ fn commit_credential_epoch(
     let changed = transaction
         .execute(
             "UPDATE ai_provider_profiles
-             SET credential_epoch = credential_epoch + 1,
-                 updated_at = ?1,
+             SET credential_storage = ?1,
+                 credential_epoch = credential_epoch + 1,
+                 updated_at = ?2,
                  revision = revision + 1
-             WHERE id = ?2 AND revision = ?3 AND deleted_at IS NULL",
-            params![now, profile_id, revision],
+             WHERE id = ?3 AND revision = ?4 AND deleted_at IS NULL",
+            params![storage.as_str(), now, profile_id, revision],
         )
         .map_err(CommandError::database)?;
     if changed != 1 {
@@ -768,7 +789,7 @@ fn list_profiles(connection: &mut Connection) -> Result<Vec<StoredProfile>, Comm
         .prepare(
             "SELECT id, display_name, provider_kind, base_url,
                     model_id, auth_mode, enabled, allow_insecure_http,
-                    request_timeout_ms, credential_epoch, revision,
+                    request_timeout_ms, credential_storage, credential_epoch, revision,
                     created_at, updated_at
              FROM ai_provider_profiles
              WHERE deleted_at IS NULL
@@ -799,7 +820,7 @@ fn load_profile(connection: &Connection, profile_id: &str) -> Result<StoredProfi
         .query_row(
             "SELECT id, display_name, provider_kind, base_url,
                     model_id, auth_mode, enabled, allow_insecure_http,
-                    request_timeout_ms, credential_epoch, revision,
+                    request_timeout_ms, credential_storage, credential_epoch, revision,
                     created_at, updated_at
              FROM ai_provider_profiles
              WHERE id = ?1 AND deleted_at IS NULL",
@@ -829,10 +850,11 @@ fn raw_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawProfileRow> {
         enabled: row.get(6)?,
         allow_insecure_http: row.get(7)?,
         request_timeout_ms: row.get(8)?,
-        credential_epoch: row.get(9)?,
-        revision: row.get(10)?,
-        created_at: row.get(11)?,
-        updated_at: row.get(12)?,
+        credential_storage: row.get(9)?,
+        credential_epoch: row.get(10)?,
+        revision: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
     })
 }
 
@@ -879,7 +901,9 @@ fn build_detail(
         &profile.base_url,
         profile.allow_insecure_http,
     )?;
-    let credential_status = runtime.secrets.status(&profile.id, profile.auth_mode)?;
+    let credential_status = runtime
+        .secrets
+        .status(&profile.id, profile.auth_mode, profile.credential_storage)?;
     let configuration_status = configuration_status(profile, credential_status.status);
     Ok(AiProviderProfileDetailDto {
         id: profile.id.clone(),
@@ -928,7 +952,6 @@ fn ensure_trust_boundary_can_change(
     current: &StoredProfile,
     next_endpoint: &ValidatedEndpoint,
     next_auth_mode: AuthMode,
-    runtime: &AiRuntimeState,
 ) -> Result<(), CommandError> {
     let current_origin = endpoint_origin_from_str(&current.base_url)?;
     let origin_changes = current_origin != next_endpoint.origin;
@@ -937,15 +960,7 @@ fn ensure_trust_boundary_can_change(
     if !origin_changes && !authentication_is_removed {
         return Ok(());
     }
-
-    let status = runtime
-        .secrets
-        .status(&current.id, current.auth_mode)?
-        .status;
-    if matches!(
-        status,
-        CredentialStatus::SavedSecurely | CredentialStatus::SessionOnly
-    ) {
+    if current.credential_storage != CredentialStorage::None {
         return Err(CommandError::new(
             if origin_changes {
                 "ai_endpoint_has_credential"
@@ -1214,8 +1229,17 @@ mod tests {
                         || column.contains("token")
                         || column.contains("api_key")
                 }));
+                let storage: String = connection
+                    .query_row(
+                        "SELECT credential_storage FROM ai_provider_profiles WHERE id = ?1",
+                        [profile_id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(storage, "none");
                 let snapshot = load_profile_snapshot(connection, &profile_id)?;
                 assert_eq!(snapshot.provider_kind, ProviderKind::LlamaCpp);
+                assert_eq!(snapshot.credential_storage, CredentialStorage::None);
                 Ok(())
             })
             .expect("profile should load");
@@ -1252,6 +1276,7 @@ mod tests {
                     1,
                     "44444444444444444444444444444444",
                     "set_credential",
+                    CredentialStorage::Session,
                 )
             })
             .expect("credential epoch should commit");
@@ -1264,6 +1289,16 @@ mod tests {
         .expect("operation replay should load"));
         database
             .with_connection(|connection| {
+                let (storage, epoch): (String, i64) = connection
+                    .query_row(
+                        "SELECT credential_storage, credential_epoch
+                         FROM ai_provider_profiles WHERE id = ?1",
+                        [profile_id.as_str()],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(storage, "session");
+                assert_eq!(epoch, 1);
                 let operation_columns: Vec<String> = connection
                     .prepare("SELECT name FROM pragma_table_info('ai_profile_operations')")
                     .map_err(CommandError::database)?
@@ -1279,7 +1314,7 @@ mod tests {
                 );
                 Ok(())
             })
-            .expect("operation schema should inspect");
+            .expect("credential operation should remain redacted");
     }
 
     #[test]
