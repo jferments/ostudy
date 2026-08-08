@@ -1,11 +1,12 @@
 [package]
 name = "ostudy"
 version = "0.1.0"
-description = "A local-first flashcard and study application"
-authors = ["ostudy contributors"]
+description = "Local-first flashcards and study tools"
+authors = ["jferments"]
 edition = "2021"
+rust-version = "1.97"
 license = "MIT"
-rust-version = "1.97.1"
+publish = false
 
 [lib]
 name = "ostudy_lib"
@@ -17,8 +18,10 @@ tauri-build = { version = "=2.6.3", features = [] }
 [dependencies]
 base64 = "=0.22.1"
 chrono = "=0.4.45"
-justpdf = "=0.1.2"
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
 keyring = "=4.1.6"
+oxidize-pdf = { version = "=4.2.2", default-features = false, features = ["compression", "semantic"] }
+pdfium-render = { version = "=0.9.4", default-features = false, features = ["pdfium_7881", "image_025", "thread_safe"] }
 reqwest = { version = "=0.13.4", default-features = false, features = ["json", "rustls"] }
 rs-fsrs = "=1.2.1"
 rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled", "backup", "trace"] }

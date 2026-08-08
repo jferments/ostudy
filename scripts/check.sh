@@ -9,6 +9,8 @@ source "$ROOT_DIR/versions.env"
 source "$SCRIPT_DIR/check-state.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/cargo-target.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/pdfium-runtime.sh"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
@@ -39,6 +41,10 @@ else
 fi
 printf 'Cargo target: %s\n' "$CARGO_TARGET_DIR"
 printf 'Cargo parallel jobs: %s\n' "$CARGO_BUILD_JOBS"
+
+step "Verified Pdfium runtime"
+ostudy_prepare_pdfium
+printf 'Pdfium %s: %s\n' "$OSTUDY_PDFIUM_BUILD" "$OSTUDY_PDFIUM_LIBRARY"
 
 step "Frontend production build"
 pnpm run build

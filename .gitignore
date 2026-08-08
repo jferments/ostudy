@@ -1,7 +1,10 @@
+# Extracted native PDF runtime files are provisioned from an immutable,
+# SHA-256-verified Pdfium release during build/test and are not committed.
 node_modules/
 dist/
 src-tauri/target/
 src-tauri/gen/
+src-tauri/resources/pdfium/
 artifacts/
 *.log
 *.tar.gz

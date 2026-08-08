@@ -1,6 +1,11 @@
 use std::fs;
 
-use crate::{paths::AppPaths, pdf_backend, util::unix_time_millis};
+use crate::{
+    paths::AppPaths,
+    pdf_backend,
+    pdf_render_backend::{self, PdfRenderRuntime},
+    util::unix_time_millis,
+};
 
 fn temporary_paths(label: &str) -> AppPaths {
     let root = std::env::temp_dir().join(format!(
@@ -12,7 +17,7 @@ fn temporary_paths(label: &str) -> AppPaths {
 }
 
 #[test]
-fn active_pdf_backend_extracts_text_and_renders_a_real_fixture() {
+fn structured_extraction_and_pdfium_rendering_process_a_real_fixture() {
     let paths = temporary_paths("extract-render");
     let source = paths.app_data_dir().join("simple-text.pdf");
     fs::write(
@@ -21,28 +26,42 @@ fn active_pdf_backend_extracts_text_and_renders_a_real_fixture() {
     )
     .expect("fixture should be copied to a filesystem path");
 
-    let mut visited = 0_usize;
-    let page_count = pdf_backend::for_each_page(&source, 72.0, |page_number, text, png| {
-        visited += 1;
+    let extracted = pdf_backend::extract_document(&source)
+        .expect("oxidize-pdf should structurally extract the fixture");
+    assert_eq!(extracted.page_count, 1);
+    assert_eq!(extracted.pages.len(), 1);
+    let normalized = extracted.pages[0]
+        .text
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(!normalized.is_empty());
+    assert!(
+        normalized
+            .chars()
+            .filter(|character| character.is_alphabetic())
+            .count()
+            >= 10,
+        "the real PDF fixture should yield meaningful extracted text"
+    );
+    assert!(!extracted.elements.is_empty());
+    assert!(!extracted.chunks.is_empty());
+    assert!(extracted.chunks[0].page_numbers.contains(&1));
+    assert_eq!(pdf_backend::active_backend_id(), "oxidize-pdf-4.2.2-rag");
+
+    let runtime = PdfRenderRuntime::new(None);
+    let mut rendered = 0_usize;
+    let page_count = pdf_render_backend::render_pages(&runtime, &source, |page_number, png| {
+        rendered += 1;
         assert_eq!(page_number, 1);
-        let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
-        assert!(!normalized.is_empty());
-        assert!(
-            normalized
-                .chars()
-                .filter(|character| character.is_alphabetic())
-                .count()
-                >= 10,
-            "the real PDF fixture should yield meaningful extracted text"
-        );
         assert!(png.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]));
         assert!(png.len() > 100);
         Ok::<(), ()>(())
     })
-    .expect("active PDF backend should process the fixture");
+    .expect("Pdfium should render the fixture");
     assert_eq!(page_count, 1);
-    assert_eq!(visited, 1);
-    assert_eq!(pdf_backend::active_backend_id(), "justpdf-0.1");
+    assert_eq!(rendered, 1);
+    assert!(pdf_render_backend::active_backend_id().starts_with("pdfium-7881/"));
 
     fs::remove_dir_all(paths.app_data_dir()).expect("temporary fixture root should clean up");
 }

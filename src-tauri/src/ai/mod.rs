@@ -6,7 +6,7 @@
 //! React never receives credentials or arbitrary provider completions.
 
 mod catalog;
-pub(crate) mod document_flashcards;
+pub(crate) mod document_intelligence;
 mod endpoint_policy;
 mod gateway;
 pub(crate) mod probes;
@@ -16,8 +16,6 @@ mod secrets;
 
 #[cfg(test)]
 mod backup_tests;
-#[cfg(test)]
-mod document_flashcards_contract_tests;
 #[cfg(test)]
 mod provider_contract_tests;
 

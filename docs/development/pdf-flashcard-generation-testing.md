@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Stages 4.3–4.6 add one direct workflow: a selected PDF is copied into the managed Documents library, processed locally page by page, sent through the explicitly configured `flashcard_generation` provider profile, and committed as a normal deck after strict output validation.
+Stages 4.3–4.6 now use one direct workflow: a selected PDF is copied into the managed Documents library, structurally extracted with oxidize-pdf, rendered with Pdfium, analyzed into a reusable global outline, processed in overlapping semantic windows, and committed as a normal deck after global relevance curation and canonical card validation.
 
 There is no generated-card approval queue, preview page, or raw JSON screen. Uploading a PDF starts generation directly; the resulting deck and cards are inspected, edited, or deleted afterward through the ordinary Decks and Search/Filter interfaces.
 
@@ -20,152 +20,117 @@ pnpm install
 ./scripts/check.sh
 ```
 
-On a fresh clone, the shell scripts above must execute directly. Do **not** run `chmod +x` as part of normal setup. Project-manifest verification checks that every tracked `scripts/*.sh` file is committed with Git mode `100755` so an accidental executable-bit regression fails CI.
+On a fresh clone, shell scripts execute directly. Do not run `chmod +x` as normal setup. Project-manifest verification checks every tracked `scripts/*.sh` Git mode.
+
+`./scripts/check.sh` provisions the exact Pdfium 7881 runtime into a Git-ignored resource directory. The archive is cached under `~/.cache/ostudy/pdfium/`, and its SHA-256 digest is verified against the immutable GitHub release metadata before use.
 
 The automated suite covers:
 
-- schema migration 17 and immutable migration checksums;
+- schema migrations through 18 and immutable migration checksums;
 - typed document IPC parity;
 - executable Git modes for repository shell scripts;
-- the swappable PDF-backend boundary plus real local text extraction and PNG rendering;
+- oxidize-pdf structured extraction through the backend boundary;
+- semantic element/chunk persistence and cross-page window construction;
+- Pdfium PNG rendering through the independent renderer boundary;
+- absence of justpdf and OCR/Tesseract dependencies;
 - bounded managed source/page paths, signatures, sizes, and SHA-256 values;
-- deterministic llama.cpp multimodal request lowering through a loopback server;
-- generation-contract normalization for Basic, definition, multiple-choice, critical-thinking, and Cloze forms;
-- deterministic construction of canonical Cloze markers from validated exact blank substrings;
-- rejection of malformed output plus one same-provider repair attempt;
-- relevance-prompt rules that explicitly discard references/bibliographies and other low-value material;
-- canonical generated-import rollback when document provenance cannot commit;
+- relevance/outline/card schema validation;
+- deterministic native Cloze marker construction;
+- canonical generated-import rollback;
 - document source/page backup and restore;
 - retry and deleted-generated-deck behavior;
 - responsive Documents navigation and direct upload UI behavior.
 
-Normal CI never uses a real API key or internet provider.
+Normal CI never uses a real API key or internet AI provider.
 
-## Real-provider regression acceptance
+## Structural extraction acceptance
 
-These checks specifically cover failures observed against llama.cpp/Unsloth and DeepSeek during PR #38 development.
+Use PDFs with headings, paragraphs, lists, tables, multi-column content, rotated pages, and concepts that cross page boundaries. Confirm:
 
-### llama.cpp / Unsloth
+1. the PDF opens and all pages are counted;
+2. extracted page text is meaningful;
+3. semantic chunks retain page mappings and heading context;
+4. table/list/title elements are represented rather than flattened into an undifferentiated page string where the source permits recovery;
+5. semantic windows can span multiple pages and do not cut individual semantic chunks;
+6. source windows remain bounded by both estimated tokens and physical-page count.
 
-1. Configure and verify the same llama.cpp / Unsloth profile that previously produced `Mark at least one word or phrase as a blank` import failures.
-2. Assign it as the **Flashcard generation** default.
-3. Open **Documents** and retry the retained PDF, or upload a different copy in a disposable test library.
-4. Confirm the page render count reaches the document page count.
-5. Confirm generation creates a deck rather than surfacing card-by-card Cloze syntax errors.
-6. Inspect several generated fill-in-the-blank cards and verify their hidden spans are meaningful phrases from a complete sentence.
-7. Confirm the final cards behave as ordinary ostudy Cloze cards in practice.
-
-The model-facing Cloze contract no longer asks the model to emit `{{cN::...}}` markers. It supplies a normal sentence and exact blank substrings; Rust validates those substrings and writes the canonical markers itself.
-
-### DeepSeek
-
-1. Configure and verify the DeepSeek profile that previously produced `The model returned flashcard JSON that did not satisfy ostudy's card contract.`
-2. Assign it as the **Flashcard generation** default.
-3. Retry the retained PDF or upload a representative text-heavy PDF.
-4. Confirm generation succeeds using the JSON-object request plus the explicit generation-schema example.
-5. If the first response violates the local contract, confirm the same provider/model receives one bounded fresh-output retry rather than a fallback to another provider.
-6. If both responses fail, confirm the UI shows one concise safe contract error rather than raw provider output or a large per-card import dump.
-
-The application intentionally does not persist raw provider responses, so when an external model produces a contract failure the exact malformed field is not recoverable from the document ledger. Use a deterministic local fixture when raw wire-level diagnosis is required.
+The active extraction backend ID should identify `oxidize-pdf-4.2.2-rag`; the active renderer should identify Pdfium 7881 independently.
 
 ## Study-quality acceptance
 
 A successful JSON response is not sufficient. Inspect generated content for educational quality:
 
-1. Use a textbook or course PDF containing conceptual prose, definitions, mechanisms, and at least one reference/bibliography section.
-2. Verify generated cards concentrate on central concepts, mechanisms, causal relationships, important distinctions, processes, equations/variables, interpretation, and application.
-3. Verify bibliography/reference pages normally produce zero cards.
-4. Verify copyright, publisher, citation metadata, author biography, index/navigation, figure/page numbering, and similar document scaffolding do not become flashcards.
-5. Look for hyperspecific dates, names, or numerical trivia. These should be absent unless the value is itself important for understanding or decision-making.
-6. Verify cards are self-contained and do not ask where information appeared in the document.
-7. Verify the generator uses an appropriate mix when the material supports it: direct questions, important term/definition pairs, multiple choice, short application/critical-thinking questions, and Cloze/fill-in-the-blank.
-8. Verify it does not manufacture every card style on every page; zero or fewer cards should be preferred when the source has little durable learning value.
-9. For multiple-choice cards, verify all four choices are plausible enough to test discrimination and the explanation teaches why the selected answer is best.
-10. For critical-thinking cards, verify the prompt requires applying or connecting ideas rather than recalling an obscure detail.
+1. Use a textbook or course PDF containing conceptual prose, definitions, mechanisms, cross-page explanations, and a bibliography/reference section.
+2. Verify the global outline captures the document/chapter's major learning objectives rather than listing every fact.
+3. Verify generated cards concentrate on central concepts, mechanisms, causal relationships, important distinctions, processes, equations/variables, interpretation, and application.
+4. Verify concepts developed across page boundaries produce integrated questions rather than being silently split into unrelated page-level fragments.
+5. Verify bibliography/reference pages normally produce no cards.
+6. Verify copyright, publisher, citation metadata, author biography, index/navigation, figure/page numbering, and similar scaffolding do not become flashcards.
+7. Look for hyperspecific dates, names, or numerical trivia. These should be absent unless the value is itself important for understanding or decision-making.
+8. Verify cards are self-contained and do not ask where information appeared in the document.
+9. Verify the generator uses an appropriate mix when supported: direct questions, important term/definition pairs, multiple choice, application/critical-thinking questions, and Cloze/fill-in-the-blank.
+10. Verify the global curation pass removes redundant cards and overrepresented minor concepts while retaining coverage of major outline objectives.
 
-## Manual local-provider acceptance
+## Real-provider regression acceptance
 
-Before testing, configure and verify a `llama.cpp / Unsloth GGUF` or DeepSeek profile in **Settings → AI/LLM**, then assign it as the **Flashcard generation** default.
+### llama.cpp / Unsloth
 
-For a multimodal llama.cpp test, use a model/server configuration whose `/props` response declares image support. A text-only profile still receives locally extracted page text, but not the rendered page image.
+1. Configure and verify the same llama.cpp / Unsloth profile that previously produced Cloze import failures.
+2. Assign it as the **Flashcard generation** default.
+3. Retry the retained PDF or upload a representative copy.
+4. Confirm structured extraction and rendering reach the document page count.
+5. Confirm outline construction succeeds before card generation.
+6. Confirm generation creates a deck rather than surfacing Cloze syntax errors.
+7. Inspect fill-in-the-blank cards and verify hidden spans are meaningful exact phrases from complete sentences.
+8. With an image-capable model, verify selected page renders are supplied to semantic windows for visual/table/diagram grounding.
 
-1. Start the configured model server.
-2. Run `./run-app.sh`.
-3. Open **Documents**.
-4. Confirm the intended provider profile, model, and network destination remain the configured Flashcard generation default in Settings.
-5. Select **Upload PDF** and choose a small PDF with selectable text and at least one diagram or table.
-6. Keep the Documents screen open while processing runs.
-7. Verify the document row reports extracted/rendered page progress and eventually reports **Deck created**.
-8. Open **Decks** and verify a new deck named from the PDF filename exists.
-9. Open several generated cards. Verify the content is editable and the cards have fresh schedules.
-10. Open the source through **Open PDF** and verify the operating system opens the managed copy.
-11. Delete one generated card and confirm ordinary card deletion works.
-12. Delete the generated deck. Return to Documents and verify the document reports **Ready to regenerate** and offers **Retry generation**.
-13. Retry and verify a new normal deck is created without re-uploading the PDF.
+### DeepSeek
 
-## PDF-backend compatibility acceptance
+1. Configure and verify the DeepSeek profile that previously produced a card-contract failure.
+2. Assign it as the **Flashcard generation** default.
+3. Retry the retained PDF or upload a text-heavy PDF.
+4. Confirm outline, semantic-window generation, and global curation use JSON-object responses.
+5. If a response violates a local contract, confirm the same provider/model receives one bounded fresh-output retry, with no provider fallback.
+6. If both responses fail, confirm the UI shows one concise safe contract error rather than raw provider output.
 
-The active PR #38 engine is `justpdf`, exposed by the backend ID `justpdf-0.1`, but the document feature is intentionally insulated from that choice by `src-tauri/src/pdf_backend.rs`. Compatibility testing should therefore be maintained as an engine-neutral corpus rather than encoding justpdf-specific assumptions into document logic.
+## Cross-page reasoning test
 
-For each candidate backend (`justpdf`, a future `oxidize-pdf` implementation, a future `pdfium-render` implementation, or a platform-native implementation), use the same corpus and record:
+Use a source where one concept is introduced on one page and completed on the next two pages, such as a physiological mechanism with causes, compensatory responses, and consequences. Verify generated cards can test the full relationship. A good result should not require each page to independently contain a complete question/answer pair.
 
-- whether the PDF opens;
-- page count;
-- whether text extraction succeeds per page;
-- whether rendering succeeds per page;
-- whether extracted text is meaningfully usable;
-- whether every rendered page has a valid PNG signature;
-- processing time and peak-memory observations for large files;
-- exact safe backend error category for failures.
+## Pdfium runtime failure test
 
-Include ordinary PDFs plus real-world edge cases such as unusual object layouts, incremental updates, embedded fonts, rotated pages, image-heavy/scanned pages, complex diagrams, and PDFs produced by different authoring tools. If compatibility evidence shows the current engine is inadequate, implement another `PdfBackend` without changing the managed-document database/provider/card contracts.
+In a disposable development checkout, temporarily point `OSTUDY_PDFIUM_LIBRARY` at an invalid file and ensure no usable system/bundled fallback exists. PDF processing should fail with the safe `pdf_renderer_unavailable` category rather than crashing. Restore the environment and rerun `./scripts/check.sh` to reprovision the verified runtime.
 
 ## Failure and recovery checks
 
-### No task default
-
-Clear the Flashcard generation profile in Settings, then upload a PDF. The managed PDF should remain in Documents with a safe error. Configure a valid profile and use **Retry generation**.
-
-### Provider unavailable
-
-Stop the provider during generation. The document should remain available with a normalized provider error and a retry action. No partial deck should exist.
-
-### Invalid structured output
-
-Use a deterministic test server or intentionally incompatible model that returns malformed card JSON. The task should make one bounded retry against the same profile/model. If the second response is still invalid, it should fail before authoring. No deck, note, card, tag, or schedule rows should be partially committed.
-
-### Application restart
-
-Close ostudy while a document is processing. On the next start, the interrupted document/job should be reconciled to a retryable failed state rather than resuming provider transmission automatically.
-
-### Missing or corrupted rendered page
-
-After a failed generation in a disposable library, remove or alter one managed page PNG and select **Retry generation**. ostudy should rebuild extracted text and page renders from the immutable managed PDF, verify each rebuilt render against its byte-size and SHA-256 ledger values before provider transmission, and then continue generation.
-
-### Duplicate PDF
-
-Upload the exact same PDF bytes twice. The second import should be rejected as an existing managed document. Use the existing document row rather than creating a duplicate source copy.
+- **No task default:** the managed PDF remains available with a safe error; configure a profile and Retry.
+- **Provider unavailable:** no partial deck is committed; retry after restoring the provider.
+- **Invalid structured output:** one bounded same-provider repair attempt; no partial authoring.
+- **Application restart:** interrupted jobs become retryable and do not resume network transmission automatically.
+- **Missing/corrupt render:** retry rebuilds derived extraction/render data from the immutable managed source.
+- **Backend upgrade:** a document whose stored extraction/render backend IDs differ from the active IDs is rebuilt on retry.
+- **Duplicate PDF:** exact duplicate bytes are rejected by SHA-256.
 
 ## Backup and restore acceptance
 
 1. Generate a deck from a PDF.
-2. Export a complete `.ostudybackup` from Settings.
-3. Confirm no provider credential is present in the package through the existing secret-sentinel tests; never inspect a real credential manually.
-4. Restore the backup in a disposable test library.
-5. Restart ostudy when prompted.
-6. Verify the document row, source PDF, rendered pages, generated deck, cards, schedules, and document-to-deck provenance are present.
-7. Verify **Open PDF** works after restore.
+2. Export a complete `.ostudybackup`.
+3. Restore it in a disposable library.
+4. Verify source PDF, rendered pages, semantic elements/chunks, document outline, generation provenance, deck, cards, and schedules survive.
+5. Verify **Open PDF** works after restore.
 
-A backup is intentionally blocked while a document is actively processing, because the database and managed PDF/page files must be captured as one coherent library state.
+A backup remains blocked while a document is actively processing so database and managed files are captured coherently.
 
 ## Large-document observations
 
-The implementation processes provider requests sequentially by page and applies hard limits to source size, page count, extracted text, rendered PNG size, cards per page, and total cards. During manual testing with a large document, monitor:
+For a large textbook chapter or paper, record:
 
-- UI responsiveness while native PDF processing runs;
-- application memory;
-- provider request latency;
-- total generated-card usefulness;
-- whether text-only versus multimodal generation materially changes diagram/table cards.
+- extraction backend and renderer IDs;
+- page count, semantic element count, and semantic chunk count;
+- number and page spans of outline/generation windows;
+- outline quality;
+- generated-card count before/after global curation;
+- memory and provider latency;
+- whether cross-page questions improve over page-isolated generation.
 
-Record the provider/model ID, PDF backend ID, document page count, generated-card count, and any safe error code when reporting a problem. Do not attach API keys, raw Authorization headers, full provider responses, or copyrighted source PDFs to a public issue.
+Do not attach API keys, Authorization headers, raw provider responses, or copyrighted source PDFs to public reports.

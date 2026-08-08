@@ -30,7 +30,9 @@ No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is install
 - reqwest `0.13.4` with default features disabled and Rustls/JSON enabled
 - url `2.5.7`
 - base64 `0.22.1`
-- justpdf `0.1.2`
+- image `0.25.10` with PNG support
+- oxidize-pdf `4.2.2`, default features disabled, with `compression` and `semantic`
+- pdfium-render `0.9.4` using the Pdfium 7881 API, image 0.25 integration, and serialized thread-safe binding access
 
 `rs-fsrs` remains isolated behind `src-tauri/src/scheduler.rs`; durable rows and IPC objects use ostudy-owned types.
 
@@ -38,19 +40,31 @@ No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is install
 
 `reqwest` is isolated behind `src-tauri/src/ai/gateway.rs`. The client uses Rustls, disabled redirects, bounded timeouts and response bodies, no cookies, and no raw provider-body logging. Provider adapters use ostudy-owned wire DTOs rather than provider SDKs. The `url` crate owns normalized endpoint parsing and loopback/LAN/cloud policy.
 
-`base64` is used only inside the native document-flashcard task to lower a verified local PNG page into an inline provider content part. The encoded page is transient request data. It is not stored in SQLite, logs, diagnostics, or frontend state.
+`base64` is used only inside the native document-intelligence task to lower a verified local PNG page into an inline provider content part. The encoded page is transient request data. It is not stored in SQLite, logs, diagnostics, or frontend state.
 
-`justpdf` is the **current implementation** of the native PDF backend, not a document-domain dependency. All direct `justpdf` use is isolated behind `src-tauri/src/pdf_backend.rs`. The rest of the managed Documents workflow consumes an ostudy-owned `PdfBackend` page-stream contract and owns its own path, size, hashing, persistence, retry, and provider rules. This allows a future `oxidize-pdf`, `pdfium-render`, or platform-native implementation to replace the active engine without changing the durable document/card model.
+### Structured PDF extraction
 
-The current pure-Rust backend keeps PR #38 free of a separately distributed Pdfium native library. If a future compatibility corpus shows that a PDFium-backed implementation materially improves real-world PDF handling, that backend can be added behind the same boundary together with an explicit per-platform Pdfium packaging/update strategy.
+`oxidize-pdf` is the native structured extraction backend. ostudy uses its RAG extraction profile to recover page text, reading order, headings, semantic elements, geometry, heading context, tables/lists, and structure-aware chunks. The crate is compiled with default features disabled. OCR/Tesseract integration is not enabled, and repository dependency checks explicitly reject `rusty-tesseract`.
 
-The PDF path intentionally does not enable or install OCR. It packages no Tesseract, Pdfium, Python, external command-line PDF utility, or platform-specific PDF runtime in this stage. Scanned pages can still be rendered; a vision-capable configured model may receive the rendered page image when current capability evidence permits it.
+No oxidize-pdf type crosses the document boundary. `src-tauri/src/pdf_backend.rs` maps extraction results into ostudy-owned semantic page/element/chunk structures. This keeps the database, backup, AI, and UI layers independent of the concrete parser.
 
-No Python runtime, model weights, CUDA runtime, llama.cpp binary, Ollama binary, or other local inference infrastructure is packaged by these stages.
+### Page rendering
+
+`pdfium-render` is isolated behind `src-tauri/src/pdf_render_backend.rs` and performs only page rasterization. It binds to Pdfium build 7881 and returns PNG bytes to the managed-document pipeline.
+
+`pdfium-render` does not itself contain Pdfium. `scripts/pdfium-runtime.sh` provisions the immutable `chromium/7881` release from `bblanchon/pdfium-binaries`, requires GitHub release metadata to contain a SHA-256 digest, verifies the downloaded archive, caches it outside the repository, and copies the target library into the ignored `src-tauri/resources/pdfium/` directory for Tauri bundling. Development and test runs expose the verified path as `OSTUDY_PDFIUM_LIBRARY`; packaged applications resolve the bundled resource.
+
+The extraction and rendering backends are intentionally separate. A future parser or platform-native renderer can replace one without changing the other or changing managed document/card contracts.
+
+No Python runtime, model weights, CUDA runtime, llama.cpp binary, Ollama binary, OCR runtime, or other local inference infrastructure is packaged by these stages.
+
+## Document intelligence
+
+The document database stores engine-neutral semantic elements/chunks and a validated hierarchical document outline. Flashcard generation uses overlapping token/page-bounded semantic windows rather than one request per physical page. A final model-assisted relevance pass may reject low-value or redundant generated cards, but cannot rewrite or commit them directly. Canonical generated-card authoring remains authoritative for Markdown, Cloze syntax, tags, duplicate fingerprints, scheduling, and transactional persistence.
 
 ## Managed files and backups
 
-Card images, immutable source PDFs, and rendered PDF pages live under application-controlled paths. SQLite records their relative paths, sizes, MIME types, and integrity metadata. Full-library backup version 2 validates and packages these managed files alongside one coherent SQLite snapshot. Credentials and provider request/response bodies remain excluded.
+Card images, immutable source PDFs, and rendered PDF pages live under application-controlled paths. SQLite records their relative paths, sizes, MIME types, and integrity metadata. Full-library backup version 2 validates and packages these managed files alongside one coherent SQLite snapshot. Semantic elements, semantic chunks, outlines, and generation-window state are already included in the SQLite snapshot. Credentials and provider request/response bodies remain excluded.
 
 ## Lockfile policy
 

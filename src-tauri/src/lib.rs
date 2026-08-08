@@ -21,12 +21,14 @@ mod deletion_commands;
 mod deletion_purge;
 mod diagnostics;
 mod document_backup;
+mod document_semantics;
 mod documents;
 mod error;
 mod library_backup;
 mod logging;
 mod paths;
 mod pdf_backend;
+mod pdf_render_backend;
 mod practice;
 mod practice_selection;
 mod projections;
@@ -55,6 +57,7 @@ use std::io;
 use ai::AiRuntimeState;
 use database::Database;
 use paths::AppPaths;
+use pdf_render_backend::PdfRenderRuntime;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -68,11 +71,13 @@ pub fn run() {
                     "Could not resolve the application data directory: {error}"
                 ))
             })?;
+            let resource_directory = app.path().resource_dir().ok();
             let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
             let pending_restore =
                 library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
             let ai_runtime = AiRuntimeState::new().map_err(io::Error::other)?;
+            let pdf_render_runtime = PdfRenderRuntime::new(resource_directory);
 
             deletion::finalize_expired_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
@@ -93,17 +98,20 @@ pub fn run() {
                 return Err(io::Error::other("The database state was already initialized.").into());
             }
             if !app.manage(ai_runtime) {
-                return Err(
-                    io::Error::other("The AI runtime state was already initialized.").into(),
-                );
+                return Err(io::Error::other("The AI runtime state was already initialized.").into());
+            }
+            if !app.manage(pdf_render_runtime) {
+                return Err(io::Error::other("The PDF renderer state was already initialized.").into());
             }
 
             logging::info(
                 "application_started",
                 format!(
-                    "data_directory={} database={} asset_reconciliation=complete document_reconciliation=complete ai_gateway=ready",
+                    "data_directory={} database={} asset_reconciliation=complete document_reconciliation=complete ai_gateway=ready pdf_extraction={} pdf_renderer={}",
                     paths.app_data_dir().display(),
-                    paths.database_path().display()
+                    paths.database_path().display(),
+                    pdf_backend::active_backend_id(),
+                    pdf_render_backend::active_backend_id()
                 ),
             );
             Ok(())

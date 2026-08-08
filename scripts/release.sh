@@ -7,6 +7,8 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 source "$ROOT_DIR/versions.env"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/cargo-target.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/pdfium-runtime.sh"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
 cd "$ROOT_DIR"
@@ -29,6 +31,7 @@ node "$SCRIPT_DIR/verify-project-manifests.mjs"
 "$SCRIPT_DIR/release-check.sh"
 prepare_cargo_target "$ROOT_DIR"
 pnpm install --frozen-lockfile
+ostudy_prepare_pdfium
 
 printf '\n==> Building Linux Debian and AppImage bundles\n'
 pnpm tauri build --bundles deb,appimage --ci -- --locked
@@ -61,6 +64,7 @@ git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \
   printf 'architecture=%s\n' "$ARCH"
   printf 'built_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'cargo_jobs=%s\n' "$CARGO_BUILD_JOBS"
+  printf 'pdfium_build=%s\n' "$OSTUDY_PDFIUM_BUILD"
 } > "$OUT_DIR/BUILD-INFO.txt"
 (
   cd "$OUT_DIR"
