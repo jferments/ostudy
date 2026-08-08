@@ -267,7 +267,9 @@ describe("SettingsScreen AI/LLM behavior", () => {
         "/models/Qwen3.6-27B-MTP-Q4_K_M.gguf",
       );
     });
-    expect(screen.getByRole("button", { name: "Save profile" })).not.toBeDisabled();
+    expect((screen.getByRole("button", { name: "Save profile" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
     expect(aiIpc.updateAiProviderProfile).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith(
       "info",
