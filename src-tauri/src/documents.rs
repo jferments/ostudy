@@ -669,9 +669,7 @@ fn map_pdf_backend_error(error: PdfBackendError) -> CommandError {
     match error.kind {
         PdfBackendErrorKind::Open => CommandError::new(
             "pdf_open_failed",
-            format!(
-                "The PDF could not be opened by the current PDF backend ({backend}): {error}"
-            ),
+            format!("The PDF could not be opened by the current PDF backend ({backend}): {error}"),
         ),
         PdfBackendErrorKind::ReadPage => CommandError::new(
             "pdf_page_failed",
