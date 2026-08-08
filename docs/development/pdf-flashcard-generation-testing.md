@@ -4,7 +4,7 @@
 
 Stages 4.3–4.6 add one direct workflow: a selected PDF is copied into the managed Documents library, processed locally page by page, sent through the explicitly configured `flashcard_generation` provider profile, and committed as a normal deck after strict output validation.
 
-There is no generated-card approval queue. Test the resulting cards through the ordinary Decks, Search/Filter, card editor, scheduling, archive, and deletion interfaces.
+There is no generated-card approval queue, preview page, or raw JSON screen. Uploading a PDF starts generation directly; the resulting deck and cards are inspected, edited, or deleted afterward through the ordinary Decks and Search/Filter interfaces.
 
 ## Automated qualification
 
