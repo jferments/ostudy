@@ -5,56 +5,34 @@ import { fileURLToPath } from "node:url";
 
 const path = fileURLToPath(new URL("../src-tauri/src/documents.rs", import.meta.url));
 let source = await readFile(path, "utf8");
+const original = source;
 
-function replaceOnce(label, before, after) {
-  const first = source.indexOf(before);
-  if (first < 0) throw new Error(`Could not find ${label} in documents.rs`);
-  if (source.indexOf(before, first + before.length) >= 0) {
-    throw new Error(`${label} occurred more than once in documents.rs`);
+function replaceRegex(label, pattern, replacement, alreadyAppliedMarker) {
+  if (alreadyAppliedMarker && source.includes(alreadyAppliedMarker)) return;
+  if (!pattern.test(source)) {
+    throw new Error(`Could not find ${label} in documents.rs`);
   }
-  source = `${source.slice(0, first)}${after}${source.slice(first + before.length)}`;
+  source = source.replace(pattern, replacement);
 }
 
-function replaceAllExact(label, before, after, expectedCount) {
-  const actual = source.split(before).length - 1;
-  if (actual !== expectedCount) {
-    throw new Error(`${label}: expected ${expectedCount} occurrences, found ${actual}`);
-  }
-  source = source.split(before).join(after);
-}
-
-replaceOnce(
+replaceRegex(
   "generated import dependency",
-  `    authoring::card_types_and_templates::generated_import::{
-        import_generated_flashcards, FlashcardImportResultDto,
-    },`,
-  `    authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit,`,
+  /authoring::card_types_and_templates::generated_import::\{\s*import_generated_flashcards,\s*FlashcardImportResultDto,\s*\},/u,
+  "authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit,",
+  "import_generated_flashcards_bytes_with_commit,",
 );
 
-replaceOnce(
+replaceRegex(
   "retry extraction reuse",
-  `        &input.document_id,
-        true,
-    )`,
-  `        &input.document_id,
-        false,
-    )`,
+  /(pub async fn retry_pdf_flashcard_generation[\s\S]*?&input\.document_id,\s*)true(,\s*\)\s*\.await)/u,
+  "$1false$2",
+  null,
 );
 
-replaceOnce(
+replaceRegex(
   "restore lifecycle active deck lookup",
-  `            let generated_deck_id: Option<String> = connection
-                .query_row(
-                    "SELECT generated_deck_id FROM documents
-                     WHERE id = ?1 AND revision = ?2",
-                    params![input.document_id, input.revision],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(CommandError::database)?
-                .flatten();
-            if generated_deck_id.is_some() {`,
-  `            let active_generated_deck = connection
+  /let generated_deck_id: Option<String> = connection[\s\S]*?\.flatten\(\);\s*if generated_deck_id\.is_some\(\) \{/u,
+  `let active_generated_deck = connection
                 .query_row(
                     "SELECT EXISTS(
                          SELECT 1
@@ -70,22 +48,13 @@ replaceOnce(
                 .map(|value| value != 0)
                 .map_err(CommandError::database)?;
             if active_generated_deck {`,
+  "let active_generated_deck = connection",
 );
 
-replaceOnce(
+replaceRegex(
   "direct atomic generated import",
-  `    mark_job_committing(database.inner(), &job_id, all_cards.len())?;
-    let generated_json = build_generated_import_json(&stored.dto, all_cards)?;
-    let import_path = paths
-        .document_staging_dir()
-        .join(format!("{document_id}-{job_id}.ostudy.json"));
-    write_new_file(&import_path, generated_json.as_bytes())?;
-    let import_result =
-        import_generated_flashcards(database.clone(), import_path.to_string_lossy().into_owned());
-    let _ = fs::remove_file(&import_path);
-    let import_result = import_result?;
-    finalize_generation(database.inner(), document_id, &job_id, &import_result)?;`,
-  `    mark_job_committing(database.inner(), &job_id, all_cards.len())?;
+  /mark_job_committing\(database\.inner\(\), &job_id, all_cards\.len\(\)\)\?;[\s\S]*?finalize_generation\(database\.inner\(\), document_id, &job_id, &import_result\)\?;/u,
+  `mark_job_committing(database.inner(), &job_id, all_cards.len())?;
     let generated_json = build_generated_import_json(&stored.dto, all_cards)?;
     let import_result = import_generated_flashcards_bytes_with_commit(
         database.inner(),
@@ -136,40 +105,20 @@ replaceOnce(
             Ok(())
         },
     )?;`,
+  "import_generated_flashcards_bytes_with_commit(\n        database.inner()",
 );
 
-replaceOnce(
+replaceRegex(
   "job unit generated content retention",
-  `    let cards_json = serde_json::to_string(cards).map_err(CommandError::serialization)?;
-    if cards_json.len() > 1_048_576 {
-        return Err(CommandError::new(
-            "generated_page_cards_too_large",
-            "The model returned too much flashcard content for one PDF page.",
-        ));
-    }
-    let now = unix_time_millis()?;`,
-  `    let now = unix_time_millis()?;`,
+  /\s*let cards_json = serde_json::to_string\(cards\)\.map_err\(CommandError::serialization\)\?;\s*if cards_json\.len\(\) > 1_048_576 \{[\s\S]*?\n    \}\s*let now = unix_time_millis\(\)\?;/u,
+  "\n    let now = unix_time_millis()?;",
+  null,
 );
 
-replaceOnce(
+replaceRegex(
   "job unit update payload",
-  `                "UPDATE document_generation_units
-                 SET state = ?1,
-                     cards_json = ?2,
-                     card_count = ?3,
-                     safe_error_code = '',
-                     safe_error_message = '',
-                     updated_at = ?4
-                 WHERE job_id = ?5 AND page_number = ?6",
-                params![
-                    if skipped { "skipped" } else { "succeeded" },
-                    cards_json,
-                    card_count,
-                    now,
-                    job_id,
-                    page_number,
-                ],`,
-  `                "UPDATE document_generation_units
+  /"UPDATE document_generation_units\s+SET state = \?1,\s+cards_json = \?2,\s+card_count = \?3,\s+safe_error_code = '',\s+safe_error_message = '',\s+updated_at = \?4\s+WHERE job_id = \?5 AND page_number = \?6",\s*params!\[[\s\S]*?page_number,\s*\],/u,
+  `"UPDATE document_generation_units
                  SET state = ?1,
                      cards_json = '[]',
                      card_count = ?2,
@@ -184,30 +133,38 @@ replaceOnce(
                     job_id,
                     page_number,
                 ],`,
+  "cards_json = '[]',",
 );
 
-const finalizePattern = /\nfn finalize_generation\([\s\S]*?\n}\n\nfn mark_document_processing/u;
-if (!finalizePattern.test(source)) {
-  throw new Error("Could not find the standalone finalize_generation transaction");
+replaceRegex(
+  "standalone finalize generation transaction",
+  /\nfn finalize_generation\([\s\S]*?\n}\n\nfn mark_document_processing/u,
+  "\nfn mark_document_processing",
+  null,
+);
+
+if (!source.includes("AS generated_deck_id")) {
+  let projectionCount = 0;
+  source = source.replace(
+    /(\s*)generated_note_count, generated_card_count, generated_deck_id,/gu,
+    (_match, indentation) => {
+      projectionCount += 1;
+      return `${indentation}generated_note_count, generated_card_count,
+${indentation}CASE WHEN EXISTS (
+${indentation}    SELECT 1
+${indentation}    FROM decks active_generated_deck
+${indentation}    WHERE active_generated_deck.id = documents.generated_deck_id
+${indentation}      AND active_generated_deck.deleted_at IS NULL
+${indentation}) THEN documents.generated_deck_id ELSE NULL END AS generated_deck_id,`;
+    },
+  );
+  if (projectionCount !== 2) {
+    throw new Error(`Active generated deck projection: expected 2 replacements, found ${projectionCount}`);
+  }
 }
-source = source.replace(finalizePattern, "\nfn mark_document_processing");
 
-replaceAllExact(
-  "active generated deck projection",
-  `                    generated_note_count, generated_card_count, generated_deck_id,
-`,
-  `                    generated_note_count, generated_card_count,
-                    CASE WHEN EXISTS (
-                        SELECT 1
-                        FROM decks active_generated_deck
-                        WHERE active_generated_deck.id = documents.generated_deck_id
-                          AND active_generated_deck.deleted_at IS NULL
-                    ) THEN documents.generated_deck_id ELSE NULL END AS generated_deck_id,
-`,
-  2,
-);
-
-const testInsertion = `
+if (!source.includes("completed_generation_units_store_counts_without_duplicate_card_text")) {
+  const tests = `
 
     #[test]
     fn completed_generation_units_store_counts_without_duplicate_card_text() {
@@ -325,18 +282,17 @@ const testInsertion = `
                         [deck_id.as_str()],
                     )
                     .map_err(CommandError::database)?;
-                assert_eq!(
-                    load_document(connection, &document_id)?.dto.generated_deck_id,
-                    None
-                );
+                assert_eq!(load_document(connection, &document_id)?.dto.generated_deck_id, None);
                 Ok(())
             })
             .expect("active deck projection should track soft deletion");
     }
 `;
+  const finalModuleClose = source.lastIndexOf("\n}");
+  if (finalModuleClose < 0) throw new Error("Could not find documents test module close");
+  source = `${source.slice(0, finalModuleClose)}${tests}${source.slice(finalModuleClose)}`;
+}
 
-const finalModuleClose = source.lastIndexOf("\n}");
-if (finalModuleClose < 0) throw new Error("Could not find documents test module close");
-source = `${source.slice(0, finalModuleClose)}${testInsertion}${source.slice(finalModuleClose)}`;
-
-await writeFile(path, source, "utf8");
+if (source !== original) {
+  await writeFile(path, source, "utf8");
+}
