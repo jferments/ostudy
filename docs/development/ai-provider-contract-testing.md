@@ -31,7 +31,7 @@ Tests use unique sentinel credentials and verify that they are absent from:
 - read DTO serialization;
 - capability and probe records;
 - safe error messages;
-- frontend-rendered profile state.
+- frontend-rendered profile state and diagnostic transcripts.
 
 The native keyring is not required by normal CI. Session-only credential storage
 provides deterministic coverage of the secret boundary. A profile marked
@@ -47,31 +47,33 @@ server and verifies the exact initial adapter behavior.
 
 ### llama.cpp
 
-- model discovery through `/v1/models`;
-- model/server properties through `/props`;
+- provider-backed model discovery through `/models`;
+- optional model/server properties through `/props?model=<selected-id>`;
+- non-JSON or missing optional properties metadata does not invalidate an
+  otherwise healthy provider connection;
 - text completion through `/v1/chat/completions`;
 - JSON-Schema response formatting;
 - non-thinking request controls for bounded connectivity probes;
 - chat-template presence is fingerprinted without retaining template text;
 - declared image and context-window metadata remains distinct from active probes.
 
-The model ID returned by `/v1/models` is the routing identity ostudy must send
-back to the server. For a typical single-model server this may be the GGUF file
-path rather than the Hugging Face repository name entered by the learner. If a
-single llama.cpp model is returned under a different ID, Test connection treats
-that as a recoverable partial result and continues with the server-reported ID.
-Refresh models places that ID into the profile draft so it can be reviewed and
-saved. Starting llama.cpp with an explicit `--alias` is another way to establish
-a stable API model ID.
+The model ID returned by the model-list API is the routing identity ostudy must
+send back to the server. It may be a GGUF path rather than a Hugging Face
+repository name. If a single llama.cpp model is returned under a different ID,
+Test connection treats that as a recoverable partial result and continues with
+the server-reported ID. Refresh models puts that ID into the model dropdown draft
+so it can be reviewed and saved. Starting llama.cpp with an explicit `--alias`
+is another way to establish a stable API model ID.
 
 ### DeepSeek
 
 - current model discovery through `/models`;
 - text completion through `/chat/completions`;
-- current V4 model IDs such as `deepseek-v4-flash` are accepted from discovery
-  rather than relying on retired hard-coded aliases;
+- current V4 model IDs are selected from provider discovery rather than typed or
+  hard-coded in Settings;
 - connectivity probes explicitly disable thinking and disable streaming;
-- JSON object mode is used rather than false provider-enforced JSON Schema;
+- JSON Object mode is used rather than falsely claiming provider-enforced JSON
+  Schema;
 - strict Rust deserialization and request-specific semantic echo validation;
 - valid JSON with incorrect semantics is rejected;
 - valid exact final content may still pass if the provider reports a `length`
@@ -81,28 +83,37 @@ Connectivity tests deliberately use non-thinking mode because their purpose is a
 small deterministic final answer. Later learning tasks may explicitly enable
 provider reasoning when the task policy requires it.
 
+The DeepSeek capability display must show provider JSON Schema as **not offered**,
+not as a red connection error. The independent **Local validation** capability is
+the evidence that ostudy checked the provider's JSON against the expected schema.
+
 ### Transport
 
 - redirects are rejected rather than followed with a bearer credential;
 - provider responses and errors remain bounded;
 - normalized errors never include the credential sentinel.
 
-## Redacted diagnostics
+## Plaintext redacted diagnostics
 
-After Test connection, **View diagnostic information** exposes only metadata
-safe to share in a bug report:
+After Test connection, the UI renders a selectable **Connection diagnostic log**
+as plain text rather than a collapsible metadata panel. It is intended to be
+copied directly into a bug report.
+
+The transcript includes:
 
 - provider and normalized endpoint;
 - Local/LAN/Cloud destination scope;
-- configured model and model IDs refreshed during the current UI session;
+- configured and tested model IDs;
+- model discovery and completion routes attempted;
+- optional llama.cpp properties route;
 - adapter and result-schema revisions;
-- persisted/stale state;
-- per-phase status, latency, normalized error code, and retryability.
+- per-phase status, latency, normalized error code, and retryability;
+- a bounded preview of model IDs refreshed during the current UI session.
 
 It deliberately excludes API credentials, Authorization headers, raw prompts,
 provider response text, model reasoning, and complete llama.cpp chat templates.
-When asking for connection debugging information, prefer this panel over copying
-raw provider traffic.
+When asking for connection debugging information, copy this plaintext transcript
+rather than capturing raw provider traffic.
 
 ## Manual llama.cpp qualification
 
@@ -111,17 +122,18 @@ Settings → AI/LLM:
 
 1. Start an existing llama.cpp server outside ostudy.
 2. Add a **llama.cpp / Unsloth GGUF** profile with its loopback or explicitly
-   acknowledged LAN URL.
-3. Save the profile, then choose **Refresh models**.
-4. If the server reports one different model ID, review the ID placed into the
-   Model ID field and save it. Alternatively configure a llama.cpp `--alias` and
-   refresh again.
-5. Run **Test connection**.
-6. Confirm model discovery, server properties when available, text completion,
-   and structured output.
-7. Confirm the server/model chat-template capability is present when expected.
-8. Open **View diagnostic information** and confirm no raw prompt, response, or
-   credential is present.
+   acknowledged LAN URL and create the profile.
+3. Choose **Refresh models**. Confirm the Model dropdown is populated by the
+   server rather than requiring free-text input.
+4. Select the intended model. If the server exposes a path-like model ID, either
+   save that returned ID or configure a llama.cpp `--alias` and refresh again.
+5. Save the selected model and run **Test connection**.
+6. Confirm model discovery, text completion, and structured output. Properties
+   metadata may remain unavailable without degrading those verified capabilities.
+7. Confirm the server/model chat-template capability is reported when properties
+   metadata actually exposes it.
+8. Copy the **Connection diagnostic log** and confirm it contains attempted routes
+   and phase statuses but no raw prompt, response, or credential.
 
 A model exported or fine-tuned with Unsloth is still configured as a llama.cpp
 profile. ostudy does not generate or replace the model's token-level chat
@@ -129,14 +141,16 @@ template.
 
 ## Manual DeepSeek qualification
 
-1. Add a **DeepSeek** profile.
+1. Add a **DeepSeek** profile and create it.
 2. Save the API key securely or choose session-only storage.
-3. Refresh the current model list.
-4. Select the desired current V4 model and save the profile.
+3. Choose **Refresh models** and confirm the Model dropdown is populated by the
+   current DeepSeek model-list API.
+4. Select the desired model and save the profile.
 5. Run **Test connection**.
-6. Confirm text completion and JSON-object/local-validation capability.
-7. Confirm strict provider JSON Schema remains marked unsupported.
-8. Open **View diagnostic information** and confirm the probe is described as
+6. Confirm text completion, JSON Object, and Local validation are supported.
+7. Confirm **Provider JSON Schema** is displayed neutrally as **not offered** and
+   is not treated as a failed connection.
+8. Copy the **Connection diagnostic log** and confirm the probe is described as
    non-thinking and contains no credential or model output.
 
 Testing sends tiny prompts and may consume a small amount of paid API usage. It
@@ -156,10 +170,14 @@ The UI should distinguish at least:
 - rate limit and optional retry-after;
 - server unavailable;
 - empty or semantically incorrect final completion;
-- invalid JSON;
+- invalid JSON from a required provider response;
 - structured output that fails local semantic validation.
 
-A provider test may be **partial** when optional model identity reconciliation,
-model properties, or structured-output support is unavailable while ordinary
-text completion works. A partial result is not silently promoted to full
-readiness for a task requiring the missing capability.
+Optional llama.cpp properties metadata is not a required provider response and
+must not turn successful text/schema generation into a failed or partial
+connection solely because `/props` is missing or returns non-JSON data.
+
+A provider test may be **partial** when model identity reconciliation or required
+structured-output support is unavailable while ordinary text completion works.
+A partial result is not silently promoted to full readiness for a task requiring
+the missing capability.
