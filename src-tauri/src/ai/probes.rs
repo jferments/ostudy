@@ -20,7 +20,7 @@ use super::{
     AiRuntimeState,
 };
 
-const ADAPTER_REVISION: i64 = 1;
+const ADAPTER_REVISION: i64 = 2;
 const RESULT_SCHEMA_VERSION: i64 = 1;
 const MAX_PERSISTED_RESULT_BYTES: usize = 32 * 1024;
 
@@ -138,6 +138,13 @@ pub struct AiProviderModelsDto {
     pub retrieved_at: i64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ModelMatch {
+    Exact,
+    SoleLlamaServerId(String),
+    Missing,
+}
+
 #[tauri::command]
 pub async fn list_ai_provider_models(
     database: State<'_, Database>,
@@ -230,6 +237,7 @@ pub async fn test_ai_provider_profile(
         .transpose()?;
 
     let mut optional_failure = false;
+    let mut request_profile = profile.clone();
     let model_start = Instant::now();
     let models = match providers::list_models(&runtime.gateway, &profile, bearer).await {
         Ok(models) => {
@@ -275,44 +283,62 @@ pub async fn test_ai_provider_profile(
     };
 
     if let Some(models) = &models {
-        if !models.iter().any(|model| model.id == profile.model_id) {
-            phases.push(ProbePhaseDto {
-                phase: "model_verification".to_string(),
-                label: "Selected model".to_string(),
-                status: ProbePhaseStatus::Failed,
-                message: "The selected model was not present in the provider's model list."
-                    .to_string(),
-                latency_ms: None,
-                error: Some(SafeAiError {
-                    code: "ai_model_not_found".to_string(),
-                    message: "The selected model is not available from this provider.".to_string(),
-                    retryable: false,
-                    retry_after_seconds: None,
-                }),
-            });
-            let mut capabilities = default_unknown_capabilities(profile.provider_kind);
-            set_capability(
-                &mut capabilities,
-                "model_listing",
-                CapabilityStatus::Supported,
-                CapabilitySource::Probed,
+        match classify_model_match(&profile, models) {
+            ModelMatch::Exact => phases.push(passed_phase(
+                "model_verification",
+                "Selected model",
+                "The selected model is available.",
                 None,
-            );
-            return finish_and_persist(
-                database.inner(),
-                &profile,
-                ProbeOverallStatus::Failed,
-                phases,
-                capabilities,
-                tested_at,
-            );
+            )),
+            ModelMatch::SoleLlamaServerId(server_model_id) => {
+                optional_failure = true;
+                request_profile.model_id = server_model_id.clone();
+                phases.push(failed_phase(
+                    "model_verification",
+                    "Selected model",
+                    "llama.cpp reported one loaded model under a different API model ID. ostudy continued this connectivity test with the server-reported ID.",
+                    None,
+                    SafeAiError {
+                        code: "ai_llama_model_id_mismatch".to_string(),
+                        message: format!(
+                            "llama.cpp reports the loaded model as `{server_model_id}`. Refresh models and save that ID, or start llama.cpp with `--alias` matching your preferred ID."
+                        ),
+                        retryable: false,
+                        retry_after_seconds: None,
+                    },
+                ));
+            }
+            ModelMatch::Missing => {
+                phases.push(failed_phase(
+                    "model_verification",
+                    "Selected model",
+                    "The selected model was not present in the provider's model list.",
+                    None,
+                    SafeAiError {
+                        code: "ai_model_not_found".to_string(),
+                        message: "The selected model is not available from this provider. Refresh models and save one of the returned model IDs.".to_string(),
+                        retryable: false,
+                        retry_after_seconds: None,
+                    },
+                ));
+                let mut capabilities = default_unknown_capabilities(profile.provider_kind);
+                set_capability(
+                    &mut capabilities,
+                    "model_listing",
+                    CapabilityStatus::Supported,
+                    CapabilitySource::Probed,
+                    None,
+                );
+                return finish_and_persist(
+                    database.inner(),
+                    &profile,
+                    ProbeOverallStatus::Failed,
+                    phases,
+                    capabilities,
+                    tested_at,
+                );
+            }
         }
-        phases.push(passed_phase(
-            "model_verification",
-            "Selected model",
-            "The selected model is available.",
-            None,
-        ));
     } else {
         phases.push(skipped_phase(
             "model_verification",
@@ -324,7 +350,7 @@ pub async fn test_ai_provider_profile(
     let mut properties = ProviderProperties::default();
     if profile.provider_kind == ProviderKind::LlamaCpp {
         let property_start = Instant::now();
-        match providers::load_properties(&runtime.gateway, &profile, bearer).await {
+        match providers::load_properties(&runtime.gateway, &request_profile, bearer).await {
             Ok(loaded) => {
                 properties = loaded;
                 phases.push(passed_phase(
@@ -354,7 +380,7 @@ pub async fn test_ai_provider_profile(
     }
 
     let text_start = Instant::now();
-    let text_outcome = match providers::run_text_probe(&runtime.gateway, &profile, bearer).await {
+    let text_outcome = match providers::run_text_probe(&runtime.gateway, &request_profile, bearer).await {
         Ok(outcome) => {
             let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
             phases.push(passed_phase(
@@ -390,7 +416,7 @@ pub async fn test_ai_provider_profile(
     let structured_start = Instant::now();
     let structured_outcome = match providers::run_structured_probe(
         &runtime.gateway,
-        &profile,
+        &request_profile,
         bearer,
         &echo,
     )
@@ -474,6 +500,16 @@ pub fn get_ai_provider_probe_result(
         result.persisted = true;
         Ok(Some(result))
     })
+}
+
+fn classify_model_match(profile: &ProfileSnapshot, models: &[ProviderModel]) -> ModelMatch {
+    if models.iter().any(|model| model.id == profile.model_id) {
+        return ModelMatch::Exact;
+    }
+    if profile.provider_kind == ProviderKind::LlamaCpp && models.len() == 1 {
+        return ModelMatch::SoleLlamaServerId(models[0].id.clone());
+    }
+    ModelMatch::Missing
 }
 
 fn load_credential_storage(
@@ -841,6 +877,30 @@ fn profile_changed() -> CommandError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::catalog::AuthMode;
+
+    fn profile(provider_kind: ProviderKind, model_id: &str) -> ProfileSnapshot {
+        ProfileSnapshot {
+            id: "0123456789abcdef0123456789abcdef".to_string(),
+            provider_kind,
+            base_url: if provider_kind == ProviderKind::LlamaCpp {
+                "http://127.0.0.1:8080/".to_string()
+            } else {
+                "https://api.deepseek.com/".to_string()
+            },
+            model_id: model_id.to_string(),
+            auth_mode: if provider_kind == ProviderKind::Deepseek {
+                AuthMode::Bearer
+            } else {
+                AuthMode::None
+            },
+            enabled: true,
+            allow_insecure_http: false,
+            request_timeout_ms: 60_000,
+            credential_epoch: 2,
+            revision: 3,
+        }
+    }
 
     #[test]
     fn deepseek_never_claims_provider_enforced_json_schema() {
@@ -853,14 +913,39 @@ mod tests {
     }
 
     #[test]
+    fn sole_llama_model_mismatch_uses_server_reported_id_for_probe() {
+        let profile = profile(ProviderKind::LlamaCpp, "unsloth/repository-name");
+        let models = vec![ProviderModel {
+            id: "/models/Qwen3.6-27B-Q4_K_M.gguf".to_string(),
+            display_name: "Qwen3.6".to_string(),
+            owned_by: Some("llamacpp".to_string()),
+        }];
+        assert_eq!(
+            classify_model_match(&profile, &models),
+            ModelMatch::SoleLlamaServerId("/models/Qwen3.6-27B-Q4_K_M.gguf".to_string())
+        );
+    }
+
+    #[test]
+    fn deepseek_model_mismatch_remains_a_hard_failure() {
+        let profile = profile(ProviderKind::Deepseek, "deepseek-v4-flash");
+        let models = vec![ProviderModel {
+            id: "deepseek-v4-pro".to_string(),
+            display_name: "deepseek-v4-pro".to_string(),
+            owned_by: Some("deepseek".to_string()),
+        }];
+        assert_eq!(classify_model_match(&profile, &models), ModelMatch::Missing);
+    }
+
+    #[test]
     fn probe_results_serialize_without_raw_provider_payloads() {
         let result = AiProviderProbeResultDto {
             profile_id: "0123456789abcdef0123456789abcdef".to_string(),
             profile_revision: 1,
             credential_epoch: 0,
             tested_model_id: "model".to_string(),
-            adapter_revision: 1,
-            result_schema_version: 1,
+            adapter_revision: ADAPTER_REVISION,
+            result_schema_version: RESULT_SCHEMA_VERSION,
             overall_status: ProbeOverallStatus::Verified,
             phases: vec![passed_phase("text", "Text", "Passed.", Some(4))],
             capabilities: default_unknown_capabilities(ProviderKind::LlamaCpp),
@@ -876,25 +961,14 @@ mod tests {
 
     #[test]
     fn revision_model_and_credential_epoch_bind_probe_freshness() {
-        let profile = ProfileSnapshot {
-            id: "0123456789abcdef0123456789abcdef".to_string(),
-            provider_kind: ProviderKind::LlamaCpp,
-            base_url: "http://127.0.0.1:8080/".to_string(),
-            model_id: "model".to_string(),
-            auth_mode: super::super::catalog::AuthMode::None,
-            enabled: true,
-            allow_insecure_http: false,
-            request_timeout_ms: 60_000,
-            credential_epoch: 2,
-            revision: 3,
-        };
+        let profile = profile(ProviderKind::LlamaCpp, "model");
         let mut result = AiProviderProbeResultDto {
             profile_id: profile.id.clone(),
             profile_revision: 3,
             credential_epoch: 2,
             tested_model_id: "model".to_string(),
-            adapter_revision: 1,
-            result_schema_version: 1,
+            adapter_revision: ADAPTER_REVISION,
+            result_schema_version: RESULT_SCHEMA_VERSION,
             overall_status: ProbeOverallStatus::Verified,
             phases: Vec::new(),
             capabilities: Vec::new(),
