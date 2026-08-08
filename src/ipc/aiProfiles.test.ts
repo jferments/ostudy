@@ -7,6 +7,7 @@ import {
   listAiProviderModels,
   setAiProviderCredential,
   testAiProviderProfile,
+  updateAiProviderProfile,
 } from "./aiProfiles";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -38,6 +39,26 @@ describe("AI provider IPC", () => {
     expect(invoke).toHaveBeenCalledWith("create_ai_provider_profile", {
       input: { ...draft, operationId: "f".repeat(32) },
     });
+  });
+
+  it("omits immutable provider kind from update mutations", async () => {
+    await updateAiProviderProfile(profileId, 7, draft);
+    expect(invoke).toHaveBeenCalledWith("update_ai_provider_profile", {
+      input: {
+        operationId: "f".repeat(32),
+        profileId,
+        revision: 7,
+        displayName: draft.displayName,
+        baseUrl: draft.baseUrl,
+        modelId: draft.modelId,
+        authMode: draft.authMode,
+        enabled: draft.enabled,
+        allowInsecureHttp: draft.allowInsecureHttp,
+        requestTimeoutMs: draft.requestTimeoutMs,
+      },
+    });
+    const call = vi.mocked(invoke).mock.calls[0]?.[1] as { input?: Record<string, unknown> };
+    expect(call.input).not.toHaveProperty("providerKind");
   });
 
   it("submits credentials only to operation-identified write commands", async () => {
