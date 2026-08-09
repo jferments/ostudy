@@ -47,7 +47,10 @@ fn structured_extraction_and_pure_rust_rendering_process_a_real_fixture() {
     assert!(!extracted.elements.is_empty());
     assert!(!extracted.chunks.is_empty());
     assert!(extracted.chunks[0].page_numbers.contains(&1));
-    assert_eq!(pdf_backend::active_backend_id(), "oxidize-pdf-4.2.2-rag");
+    assert_eq!(
+        pdf_backend::active_backend_id(),
+        "oxidize-pdf-4.2.2-rag-quality-ocr-v1"
+    );
 
     let runtime = PdfRenderRuntime::new(None);
     let mut rendered = 0_usize;
