@@ -6,8 +6,10 @@
 
 - Create, rename, archive, and delete decks.
 - Create and edit rich-text flashcards with managed local images.
-- Upload a PDF into a managed document library and automatically create a flashcard deck from locally extracted text and rendered pages using the configured AI provider profile.
-- Keep failed PDF generations available for retry, and open the managed source PDF in the operating system's default reader.
+- Upload a PDF into a managed document library and automatically create a flashcard deck from locally extracted structure/text and rendered pages using the configured AI provider profile.
+- Process large PDFs as many small semantic AI requests instead of one large prompt; outline fragments are assembled natively and later generation uses only relevant outline sections.
+- Render PDF pages through a bounded multicore pure-Rust worker pool while preserving ordered durable page persistence.
+- Keep failed PDF generations available for retry with source-window-aware diagnostic errors, and open the managed source PDF in the operating system's default reader.
 - Add reusable tags and filter cards by one or more tags.
 - Search questions, answers, and tags with the local SQLite FTS5 index.
 - Browse cards across the whole library with schedule filters, sorting, multi-selection, and keyboard navigation.
