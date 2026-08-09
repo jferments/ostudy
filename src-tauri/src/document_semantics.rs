@@ -11,8 +11,10 @@ pub(crate) struct SemanticChunk {
     pub chunk_index: i64,
     pub text: String,
     pub full_text: String,
+    pub page_numbers: Vec<i64>,
     pub element_types: Vec<String>,
     pub heading_context: Option<String>,
+    pub token_estimate: usize,
 }
 
 /// A local, heading-aware document partition. Partitions are never sent as one
@@ -22,9 +24,7 @@ pub(crate) struct SemanticChunk {
 pub(crate) struct SemanticPartition {
     pub partition_index: usize,
     pub title: String,
-    pub page_numbers: Vec<i64>,
     pub page_start: i64,
-    pub token_estimate: usize,
     chunk_start: usize,
     chunk_end: usize,
 }
