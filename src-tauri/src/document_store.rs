@@ -497,7 +497,7 @@ pub(crate) fn load_semantic_chunks(
                     error,
                 )
             })?;
-        statement
+        let chunks = statement
             .query_map([document_id], |row| {
                 let units_json: String = row.get(3)?;
                 let types_json: String = row.get(4)?;
@@ -528,7 +528,8 @@ pub(crate) fn load_semantic_chunks(
             })
             .map_err(|error| db_error("document_semantic_chunks_query_failed", document_id, error))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| db_error("document_semantic_chunks_decode_failed", document_id, error))
+            .map_err(|error| db_error("document_semantic_chunks_decode_failed", document_id, error))?;
+        Ok(chunks)
     })
 }
 
@@ -549,7 +550,7 @@ pub(crate) fn load_source_renders(
                     error,
                 )
             })?;
-        statement
+        let renders = statement
             .query_map([document_id], |row| {
                 Ok(SourceRenderRecord {
                     unit_number: row.get(0)?,
@@ -572,7 +573,8 @@ pub(crate) fn load_source_renders(
                     document_id,
                     error,
                 )
-            })
+            })?;
+        Ok(renders)
     })
 }
 
@@ -764,11 +766,12 @@ mod tests {
                 let mut statement = connection
                     .prepare("SELECT window_index FROM document_generation_windows WHERE job_id = ?1 ORDER BY window_index")
                     .map_err(CommandError::database)?;
-                statement
+                let indices = statement
                     .query_map([job], |row| row.get::<_, i64>(0))
                     .map_err(CommandError::database)?
                     .collect::<Result<Vec<_>, _>>()
-                    .map_err(CommandError::database)
+                    .map_err(CommandError::database)?;
+                Ok(indices)
             })
             .unwrap();
         assert_eq!(indices, vec![0, 1]);
