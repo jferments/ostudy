@@ -10,6 +10,8 @@ PR #38 established managed PDF ingestion, structured extraction, bounded documen
 
 Real acceptance testing exposed a cross-layer defect: partitioned semantic windows were locally numbered inside one partition, so an 11-page llama.cpp source could produce multiple windows with the same `window_index`. SQLite correctly rejected the duplicate `(job_id, window_index)` primary key even though component-level tests and a clean CI database passed. After that defect was fixed, a second acceptance finding showed that applying a 1.2M aggregate-token ceiling to local llama.cpp was conceptually wrong: a 138-page source was already decomposed into safe bounded requests, but the planner rejected the job only because the sum of those requests was large.
 
+The same 138-page acceptance source then exposed a third class of failure: the PDF rendered correctly in normal readers, while both oxidize-pdf and Poppler recovered malformed body text because an embedded/subset font used unusable or obfuscated font-to-Unicode mappings. Some runs produced Unicode Private Use Area characters; oxidize's structural path produced deterministic high-Latin substitution text. Sending those strings to an LLM would create confidently wrong study material even though the file itself was visually readable.
+
 Stage 4 must be stabilized before adding OpenAI, Claude, Gemini, Z.ai, DOCX, PPTX, or Google export acquisition.
 
 ## Decision
@@ -18,14 +20,69 @@ Stage 4 must be stabilized before adding OpenAI, Claude, Gemini, Z.ai, DOCX, PPT
 
 The document AI pipeline consumes an ostudy-owned `DocumentSourceDescriptor`, semantic chunks/windows, and source locators. Current PDF acquisition maps physical pages to `SourceUnitKind::Page`. Future adapters can map PPTX slides to `Slide` and DOCX structural blocks to `Block` without changing AI planning or canonical authoring.
 
-PDF parsing/rendering lives in `document_ingestion.rs` and the existing PDF backend/render boundaries. The active PDF adapter emits an `IngestedDocument` containing:
+PDF parsing/rendering lives in `document_ingestion.rs` and the PDF backend/render boundaries. The active PDF adapter emits an `IngestedDocument` containing:
 
 - a format-neutral source descriptor;
 - normalized text/semantic structure;
-- optional rendered source-unit derivatives;
-- extraction/render backend identities.
+- rendered source-unit derivatives;
+- extraction/render backend identities;
+- extraction quality mode and OCR provenance when fallback is required.
 
-The durable `documents` row now records `source_format` and `source_unit_kind` explicitly. Current public commands remain PDF-specific because no additional source adapter is included in this stage.
+The durable `documents` row records `source_format`, `source_unit_kind`, extraction mode, OCR page counts, OCR completion count, OCR mean confidence, and OCR engine. Current public commands remain PDF-specific because no additional source adapter is included in this stage.
+
+### PDF text is untrusted until extraction-quality validation passes
+
+A parser returning a non-empty string is not proof that the PDF text layer represents the visible page. The PDF adapter therefore assesses both raw page text and structured semantic text before either becomes model input.
+
+The current quality detector treats these as evidence of a broken text layer:
+
+- meaningful density of Unicode Private Use Area characters;
+- Unicode replacement characters;
+- invalid control characters;
+- an extreme Latin-1 alphabetic substitution pattern with very little ordinary ASCII text, matching the real `Õâó...` failure;
+- native page extraction exceptions;
+- pages with no meaningful text and no trustworthy semantic text.
+
+The detector is intentionally heuristic and conservative. It does not maintain PDF-specific substitution alphabets or try to reverse-engineer publisher fonts. Normal accented Latin text must not be classified as corruption merely because it is non-ASCII.
+
+If oxidize's structural partitioner fails while per-page native text remains trustworthy, ostudy rebuilds page-level semantic content from that native text rather than unnecessarily paying an OCR quality penalty.
+
+After recovery, semantic chunks are validated again. Text that still looks corrupted is rejected before provider traffic with a safe document-text error. Corrupt source strings are never sent as a best-effort prompt.
+
+### OCR fallback is page-selective and uses oxidize-pdf's OCR abstraction
+
+When a page's native text layer is unreliable, ostudy renders only that page again at OCR resolution and processes the PNG through a provider implementing oxidize-pdf's `OcrProvider` contract.
+
+The current provider is `TesseractCliOcrProvider`:
+
+- it uses the system Tesseract executable only when OCR is actually required;
+- it returns an oxidize `OcrProcessingResult` with recovered text, mean word confidence, engine identity, language, image dimensions, and processing time;
+- it parses Tesseract TSV output rather than scraping human-formatted stdout;
+- it enforces a per-page timeout and kills an over-time child process;
+- it uses an isolated temporary directory that is deleted after each page;
+- it logs only safe page/reason/confidence metadata, never OCR source text.
+
+The repository deliberately does not add oxidize-pdf's optional `rusty-tesseract` wrapper. The wrapper still depends on a system Tesseract installation, while the repository's dependency policy already excludes it. Implementing `OcrProvider` directly preserves oxidize's OCR boundary without dependency/lockfile churn.
+
+Normal durable page derivatives remain 120-DPI PNGs. OCR pages are rendered separately at 300 DPI only for the duration of OCR and are not retained as a second image set. This avoids multiplying backup size while giving text recognition substantially more raster detail.
+
+Current OCR language is English (`eng`) because the first supported acceptance corpus is English nursing/pharmacology material. Other Tesseract language mappings exist in the provider, but automatic document-language selection is outside this PR. A non-English corrupt-text PDF should not be described as fully supported until language selection is added.
+
+If Tesseract is unavailable when a corrupt text layer requires OCR, the operation stops with `document_ocr_unavailable`, explains that local OCR is required, and leaves the managed original PDF available for retry. A normal PDF never requires Tesseract to be installed.
+
+### OCR degradation is visible and durable
+
+OCR is a recovery path, not a silent equivalence to native text extraction. Migration 21 persists:
+
+- `extraction_mode`: `native`, `page_text_fallback`, or `ocr_fallback`;
+- total OCR candidate page count;
+- completed OCR page count while processing;
+- mean confidence for accepted OCR pages;
+- OCR engine identity.
+
+The Documents UI displays live `Recovering text with OCR (X/Y pages)` progress. After a successful job, an OCR-backed document retains a visible warning that native PDF text was unreliable, OCR may contain recognition errors, and generated cards should be checked against the source. The success toast also calls out OCR use.
+
+Because the extraction backend identity changes when this quality/OCR contract changes, a retained document created under the older extraction backend automatically rebuilds its derivatives on Retry. Old final outlines/checkpoints are therefore not reused against newly recovered text.
 
 ### Source locators are the generic provenance boundary
 
@@ -53,7 +110,10 @@ The 11-page single-partition/two-window regression is protected at both semantic
 The Stage 4 native layer is split into:
 
 - `document_domain.rs` — format/source-unit/locator contracts;
-- `document_ingestion.rs` — current PDF ingestion adapter and derivative persistence;
+- `document_ingestion.rs` — current PDF ingestion adapter, quality recovery, and derivative persistence;
+- `pdf_backend.rs` — PDF interpretation and text-quality/recovery planning;
+- `pdf_ocr_backend.rs` — optional OCR provider boundary;
+- `pdf_render_backend.rs` — durable page rendering plus selected temporary OCR rendering;
 - `document_semantics.rs` — semantic partitions/windows and invariant validation;
 - `document_scale.rs` — context/budget-aware planning;
 - `document_cost.rs` — empirical cost calibration model and benchmark contract;
@@ -167,7 +227,10 @@ This reduces branch races/noise while catching planner-to-SQLite defects earlier
 
 - Adding DOCX/PPTX later requires a new ingestion adapter and source locator mapping, not a forked AI pipeline.
 - Adding a provider later requires capability/transport integration, not provider-specific branching throughout document orchestration.
-- Existing PDF IPC/UI remains stable during this architecture change.
+- Existing PDF IPC commands remain stable while Documents gains durable extraction-quality metadata.
+- Normal PDFs stay on pure native extraction and do not require an OCR executable.
+- Malformed/obfuscated text layers are detected before provider traffic and recovered from rendered glyphs when possible.
+- OCR-backed documents remain visibly marked as lower-confidence sources instead of silently masquerading as native extraction.
 - The planner becomes safer on local models whose actual context is smaller than a generic default.
 - Large local documents scale by number of bounded requests instead of being rejected by an arbitrary aggregate token total.
 - Metered providers still have an early runaway-cost circuit breaker.
@@ -178,7 +241,7 @@ This reduces branch races/noise while catching planner-to-SQLite defects earlier
 
 ## Non-goals
 
-This decision does **not** add OpenAI, Claude, Gemini, Z.ai, DOCX, PPTX, Google Docs, Google Slides, OCR, embeddings, or a generic arbitrary-prompt API. It does not automatically train/update cost coefficients from every user inference call.
+This decision does **not** add OpenAI, Claude, Gemini, Z.ai, DOCX, PPTX, Google Docs, Google Slides, embeddings, automatic OCR language detection, or a generic arbitrary-prompt API. It does not automatically train/update cost coefficients from every user inference call.
 
 ## Validation
 
@@ -190,9 +253,14 @@ The architecture is protected by:
 - a 138-page-style local budget regression that must continue when its aggregate estimate exceeds the former 1.2M ceiling;
 - a local-source regression above the cloud-only 250k source-token guard;
 - metered-provider aggregate-budget rejection tests;
+- Private Use Area, replacement/control, and Latin-1 substitution text-quality tests;
+- a regression proving corrupt structured text can fall back to trustworthy native page text without OCR;
+- a regression proving OCR-recovered text replaces corrupt page/semantic content and carries OCR provenance;
+- Tesseract TSV parsing/confidence and malformed-image tests;
+- selected OCR render bounds plus durable render DPI invariants;
 - provider-capability/context planning tests;
 - checkpoint semantic-identity tests;
 - empirical usage baseline corpus parsing;
-- latest-schema and forward-upgrade migration tests;
+- Migration 21 schema and forward-upgrade tests;
 - canonical fast/full gates;
-- required real-provider acceptance on the representative small, medium, and large sources before PR #39 is merged.
+- required real-provider acceptance on a normal PDF and the known malformed-font 138-page source before PR #39 is merged.
