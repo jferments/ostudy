@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type DocumentLifecycleState = "processing" | "ready" | "failed" | "archived";
 export type DocumentScaleMode = "standard" | "large";
+export type DocumentExtractionMode = "native" | "page_text_fallback" | "ocr_fallback";
 
 export interface DocumentSummary {
   id: string;
@@ -13,6 +14,11 @@ export interface DocumentSummary {
   pageCount: number;
   extractedPageCount: number;
   renderedPageCount: number;
+  extractionMode: DocumentExtractionMode;
+  ocrPageCount: number;
+  ocrCompletedPageCount: number;
+  ocrMeanConfidence: number | null;
+  ocrEngine: string;
   scaleMode: DocumentScaleMode;
   estimatedSourceTokens: number;
   outlineWindowCount: number;
