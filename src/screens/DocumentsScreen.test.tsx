@@ -11,6 +11,7 @@ vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
   importPdfAndGenerateFlashcards: vi.fn(),
   retryPdfFlashcardGeneration: vi.fn(),
+  generateMorePdfFlashcards: vi.fn(),
   cancelPdfFlashcardGeneration: vi.fn(),
   openDocumentSource: vi.fn(),
   deletePdfDocument: vi.fn(),
@@ -140,6 +141,24 @@ describe("DocumentsScreen", () => {
     });
   });
 
+  it("shows a lightweight local-processing phase before page metadata is committed", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([
+      makeDocument({
+        lifecycleState: "processing",
+        pageCount: 0,
+        extractedPageCount: 0,
+        renderedPageCount: 0,
+        generatedDeckId: null,
+        generatedCardCount: 0,
+        completedAt: null,
+      }),
+    ]);
+    renderDocuments();
+
+    expect(await screen.findByText("Processing")).toBeTruthy();
+    expect(screen.getByText("Extracting text / rendering pages")).toBeTruthy();
+  });
+
   it("offers an exact stop action while a document generation task is processing", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([
       makeDocument({
@@ -161,6 +180,31 @@ describe("DocumentsScreen", () => {
     expect(screen.queryByRole("button", { name: "Delete PDF" })).toBeNull();
   });
 
+  it("generates an additional coverage pass into the existing deck", async () => {
+    const existing = makeDocument();
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([existing]);
+    vi.mocked(documentIpc.generateMorePdfFlashcards).mockResolvedValue({
+      documentId,
+      deckId: existing.generatedDeckId ?? "",
+      createdNoteCount: 4,
+      createdCardCount: 5,
+      skippedDuplicateCount: 2,
+    });
+    const { showToast, refreshDecks } = renderDocuments();
+
+    expect(await screen.findByRole("button", { name: "Generate more cards" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Generate more cards" }));
+
+    await waitFor(() => {
+      expect(documentIpc.generateMorePdfFlashcards).toHaveBeenCalledWith(documentId);
+      expect(refreshDecks).toHaveBeenCalled();
+      expect(showToast).toHaveBeenCalledWith(
+        "success",
+        "Added 5 new flashcards to the existing deck.",
+      );
+    });
+  });
+
   it("offers regeneration when the previously generated deck was deleted", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([
       makeDocument({ generatedDeckId: null, lifecycleState: "ready" }),
@@ -169,6 +213,7 @@ describe("DocumentsScreen", () => {
 
     expect(await screen.findByText("Ready to regenerate")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry generation" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
     expect(screen.getByText(/previous generated deck was deleted/u)).toBeTruthy();
   });
 
