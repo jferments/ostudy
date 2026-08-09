@@ -396,7 +396,8 @@ fn build_source_units<'a>(
                 .get(segment_index)
                 .cloned()
                 .unwrap_or_default();
-            let page_numbers = segment_source_units(&chunk.page_numbers, segment_index, segment_count);
+            let page_numbers =
+                segment_source_units(&chunk.page_numbers, segment_index, segment_count);
             let distributed_estimate = source_token_estimate.div_ceil(segment_count);
             let segment_estimate = text.chars().count().div_ceil(4).max(distributed_estimate);
             units.push(SourceUnit {
@@ -678,8 +679,8 @@ mod tests {
         let plan = DocumentScalePlan::for_unit_count(11);
         let mut windows = build_partitioned_semantic_windows(&chunks, plan, 10_000, 10, 0);
         windows[1].window_index = 0;
-        let error = validate_semantic_windows(&windows, &DocumentSourceDescriptor::pdf(11))
-            .unwrap_err();
+        let error =
+            validate_semantic_windows(&windows, &DocumentSourceDescriptor::pdf(11)).unwrap_err();
         assert_eq!(error.code, "invalid_document_window_identity");
     }
 
