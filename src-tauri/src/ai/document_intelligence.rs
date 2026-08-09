@@ -136,7 +136,6 @@ struct JsonTaskRequest<'a> {
     system_prompt: &'a str,
     user_text: &'a str,
     schema: &'a Value,
-    schema_name: String,
     max_tokens: usize,
     images: &'a [SourcePageImage],
 }
@@ -381,7 +380,6 @@ async fn request_outline_with_retry(
     images: &[SourcePageImage],
 ) -> Result<DocumentOutline, CommandError> {
     let schema = outline_schema();
-    let schema_name = format!("ostudy_document_outline_v{OUTLINE_SCHEMA_VERSION}");
     let first = request_json(
         runtime,
         task,
@@ -389,7 +387,6 @@ async fn request_outline_with_retry(
             system_prompt: system,
             user_text: user,
             schema: &schema,
-            schema_name: schema_name.clone(),
             max_tokens: 8_192,
             images,
         },
@@ -410,7 +407,6 @@ async fn request_outline_with_retry(
                     system_prompt: system,
                     user_text: &repaired,
                     schema: &schema,
-                    schema_name,
                     max_tokens: 8_192,
                     images,
                 },
@@ -431,7 +427,6 @@ async fn request_flashcards_with_retry(
     images: &[SourcePageImage],
 ) -> Result<Vec<Value>, CommandError> {
     let schema = flashcard_schema();
-    let schema_name = format!("ostudy_document_flashcards_v{FLASHCARD_SCHEMA_VERSION}");
     let first = request_json(
         runtime,
         task,
@@ -439,7 +434,6 @@ async fn request_flashcards_with_retry(
             system_prompt: system,
             user_text: user,
             schema: &schema,
-            schema_name: schema_name.clone(),
             max_tokens: 8_192,
             images,
         },
@@ -460,7 +454,6 @@ async fn request_flashcards_with_retry(
                     system_prompt: system,
                     user_text: &repaired,
                     schema: &schema,
-                    schema_name,
                     max_tokens: 8_192,
                     images,
                 },
@@ -483,7 +476,6 @@ async fn request_curation_with_retry(
         "You are the final educational relevance editor for ostudy. Select, but never rewrite, generated flashcards. Optimize global learning-objective coverage and remove low-value/redundant material. Return only the required JSON. Curation prompt version: {CURATION_PROMPT_VERSION}. Curation schema version: {CURATION_SCHEMA_VERSION}."
     );
     let schema = curation_schema(candidate_count);
-    let schema_name = format!("ostudy_document_card_curation_v{CURATION_SCHEMA_VERSION}");
     let first = request_json(
         runtime,
         task,
@@ -491,7 +483,6 @@ async fn request_curation_with_retry(
             system_prompt: &system,
             user_text: user,
             schema: &schema,
-            schema_name: schema_name.clone(),
             max_tokens: 2_048,
             images: &[],
         },
@@ -512,7 +503,6 @@ async fn request_curation_with_retry(
                     system_prompt: &system,
                     user_text: &repaired,
                     schema: &schema,
-                    schema_name,
                     max_tokens: 2_048,
                     images: &[],
                 },
