@@ -249,7 +249,10 @@ pub(crate) fn persist_ingested_document(
             "document_generation_checkpoints",
         ] {
             transaction
-                .execute(&format!("DELETE FROM {table} WHERE document_id = ?1"), [document_id])
+                .execute(
+                    &format!("DELETE FROM {table} WHERE document_id = ?1"),
+                    [document_id],
+                )
                 .map_err(|error| {
                     CommandError::database_at(
                         "document_ingestion_clear_derivatives_failed",
@@ -308,7 +311,8 @@ pub(crate) fn persist_ingested_document(
                         normalize_element_type(&element.element_type)?,
                         text,
                         element.parent_heading,
-                        serde_json::to_string(&element.heading_path).map_err(CommandError::serialization)?,
+                        serde_json::to_string(&element.heading_path)
+                            .map_err(CommandError::serialization)?,
                         element.bbox.x,
                         element.bbox.y,
                         element.bbox.width.max(0.0),
@@ -352,9 +356,12 @@ pub(crate) fn persist_ingested_document(
                         to_i64(chunk.chunk_index),
                         text,
                         full_text,
-                        serde_json::to_string(&unit_numbers).map_err(CommandError::serialization)?,
-                        serde_json::to_string(&chunk.bounding_boxes).map_err(CommandError::serialization)?,
-                        serde_json::to_string(&chunk.element_types).map_err(CommandError::serialization)?,
+                        serde_json::to_string(&unit_numbers)
+                            .map_err(CommandError::serialization)?,
+                        serde_json::to_string(&chunk.bounding_boxes)
+                            .map_err(CommandError::serialization)?,
+                        serde_json::to_string(&chunk.element_types)
+                            .map_err(CommandError::serialization)?,
                         chunk.heading_context,
                         to_i64(chunk.token_estimate),
                         i64::from(chunk.is_oversized),
@@ -410,15 +417,13 @@ pub(crate) fn persist_ingested_document(
                 "The document changed before extracted derivatives could be committed.",
             ));
         }
-        transaction
-            .commit()
-            .map_err(|error| {
-                CommandError::database_at(
-                    "document_ingestion_commit_failed",
-                    format!("document={document_id}"),
-                    error,
-                )
-            })
+        transaction.commit().map_err(|error| {
+            CommandError::database_at(
+                "document_ingestion_commit_failed",
+                format!("document={document_id}"),
+                error,
+            )
+        })
     })
 }
 
@@ -534,7 +539,10 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 fn write_replacing_file(destination: &Path, bytes: &[u8]) -> Result<(), CommandError> {
     let parent = destination.parent().ok_or_else(|| {
-        CommandError::new("invalid_document_path", "The rendered-source path is invalid.")
+        CommandError::new(
+            "invalid_document_path",
+            "The rendered-source path is invalid.",
+        )
     })?;
     fs::create_dir_all(parent).map_err(CommandError::io)?;
     let temporary = destination.with_extension(format!("png.{}.tmp", std::process::id()));

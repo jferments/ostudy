@@ -119,7 +119,9 @@ pub(crate) async fn execute_generation_windows(
         if generated.len().saturating_add(cards.len()) > MAX_GENERATED_CARDS {
             return Err(CommandError::new(
                 "too_many_generated_cards",
-                format!("The model generated more than {MAX_GENERATED_CARDS} cards from this document."),
+                format!(
+                    "The model generated more than {MAX_GENERATED_CARDS} cards from this document."
+                ),
             ));
         }
         document_store::mark_window_complete(

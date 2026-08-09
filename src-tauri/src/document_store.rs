@@ -76,7 +76,11 @@ pub(crate) fn mark_document_processing(
                 params![now, document_id],
             )
             .map_err(|error| db_error("document_mark_processing_failed", document_id, error))?;
-        require_one(changed, "document_changed", "The document is no longer available for generation.")
+        require_one(
+            changed,
+            "document_changed",
+            "The document is no longer available for generation.",
+        )
     })
 }
 
@@ -93,7 +97,11 @@ pub(crate) fn mark_outline_building(
                 params![now, document_id],
             )
             .map_err(|error| db_error("document_outline_state_failed", document_id, error))?;
-        require_one(changed, "document_changed", "The document changed before outline analysis could start.")
+        require_one(
+            changed,
+            "document_changed",
+            "The document changed before outline analysis could start.",
+        )
     })
 }
 
@@ -125,7 +133,11 @@ pub(crate) fn initialize_ai_plan(
                 ],
             )
             .map_err(|error| db_error("document_ai_plan_write_failed", document_id, error))?;
-        require_one(changed, "document_changed", "The document changed while its AI plan was being recorded.")
+        require_one(
+            changed,
+            "document_changed",
+            "The document changed while its AI plan was being recorded.",
+        )
     })
 }
 
@@ -143,10 +155,21 @@ pub(crate) fn initialize_additional_progress(
                  SET scale_mode = ?1, generation_window_count = ?2,
                      generation_completed_window_count = 0, updated_at = ?3
                  WHERE id = ?4 AND lifecycle_state = 'processing'",
-                params![scale_mode, to_i64(generation_window_count), now, document_id],
+                params![
+                    scale_mode,
+                    to_i64(generation_window_count),
+                    now,
+                    document_id
+                ],
             )
-            .map_err(|error| db_error("document_additional_plan_write_failed", document_id, error))?;
-        require_one(changed, "document_changed", "The document changed before additional generation could start.")
+            .map_err(|error| {
+                db_error("document_additional_plan_write_failed", document_id, error)
+            })?;
+        require_one(
+            changed,
+            "document_changed",
+            "The document changed before additional generation could start.",
+        )
     })
 }
 
@@ -155,7 +178,12 @@ pub(crate) fn update_outline_progress(
     document_id: &str,
     completed: usize,
 ) -> Result<(), CommandError> {
-    update_progress(database, document_id, "outline_completed_window_count", completed)
+    update_progress(
+        database,
+        document_id,
+        "outline_completed_window_count",
+        completed,
+    )
 }
 
 pub(crate) fn update_generation_progress(
@@ -163,7 +191,12 @@ pub(crate) fn update_generation_progress(
     document_id: &str,
     completed: usize,
 ) -> Result<(), CommandError> {
-    update_progress(database, document_id, "generation_completed_window_count", completed)
+    update_progress(
+        database,
+        document_id,
+        "generation_completed_window_count",
+        completed,
+    )
 }
 
 fn update_progress(
@@ -193,7 +226,11 @@ fn update_progress(
                 params![to_i64(completed), now, document_id],
             )
             .map_err(|error| db_error("document_ai_progress_write_failed", document_id, error))?;
-        require_one(changed, "document_changed", "The document changed while AI progress was being recorded.")
+        require_one(
+            changed,
+            "document_changed",
+            "The document changed while AI progress was being recorded.",
+        )
     })
 }
 
@@ -209,7 +246,9 @@ pub(crate) fn create_generation_job(
     database.with_connection(|connection| {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| db_error("document_generation_job_begin_failed", document_id, error))?;
+            .map_err(|error| {
+                db_error("document_generation_job_begin_failed", document_id, error)
+            })?;
         let job_id = generate_id(&transaction)?;
         transaction
             .execute(
@@ -232,7 +271,14 @@ pub(crate) fn create_generation_job(
                     now,
                 ],
             )
-            .map_err(|error| db_error_with_job("document_generation_job_insert_failed", document_id, &job_id, error))?;
+            .map_err(|error| {
+                db_error_with_job(
+                    "document_generation_job_insert_failed",
+                    document_id,
+                    &job_id,
+                    error,
+                )
+            })?;
         for window in windows {
             transaction
                 .execute(
@@ -267,9 +313,14 @@ pub(crate) fn create_generation_job(
                     )
                 })?;
         }
-        transaction
-            .commit()
-            .map_err(|error| db_error_with_job("document_generation_job_commit_failed", document_id, &job_id, error))?;
+        transaction.commit().map_err(|error| {
+            db_error_with_job(
+                "document_generation_job_commit_failed",
+                document_id,
+                &job_id,
+                error,
+            )
+        })?;
         Ok(job_id)
     })
 }
@@ -289,8 +340,20 @@ pub(crate) fn mark_window_running(
                  WHERE job_id = ?2 AND window_index = ?3 AND state = 'pending'",
                 params![now, job_id, to_i64(window_index)],
             )
-            .map_err(|error| db_error_with_window("document_generation_window_start_failed", document_id, job_id, window_index, error))?;
-        require_one(changed, "document_window_changed", "The generation window changed before it could start.")
+            .map_err(|error| {
+                db_error_with_window(
+                    "document_generation_window_start_failed",
+                    document_id,
+                    job_id,
+                    window_index,
+                    error,
+                )
+            })?;
+        require_one(
+            changed,
+            "document_window_changed",
+            "The generation window changed before it could start.",
+        )
     })
 }
 
@@ -305,7 +368,15 @@ pub(crate) fn mark_window_complete(
     database.with_connection(|connection| {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| db_error_with_window("document_generation_window_complete_begin_failed", document_id, job_id, window.window_index, error))?;
+            .map_err(|error| {
+                db_error_with_window(
+                    "document_generation_window_complete_begin_failed",
+                    document_id,
+                    job_id,
+                    window.window_index,
+                    error,
+                )
+            })?;
         let changed = transaction
             .execute(
                 "UPDATE document_generation_windows
@@ -313,15 +384,31 @@ pub(crate) fn mark_window_complete(
                      safe_error_message = '', updated_at = ?3
                  WHERE job_id = ?4 AND window_index = ?5 AND state IN ('pending', 'running')",
                 params![
-                    if card_count == 0 { "skipped" } else { "succeeded" },
+                    if card_count == 0 {
+                        "skipped"
+                    } else {
+                        "succeeded"
+                    },
                     to_i64(card_count),
                     now,
                     job_id,
                     to_i64(window.window_index),
                 ],
             )
-            .map_err(|error| db_error_with_window("document_generation_window_complete_failed", document_id, job_id, window.window_index, error))?;
-        require_one(changed, "document_window_changed", "The generation window changed before completion could be recorded.")?;
+            .map_err(|error| {
+                db_error_with_window(
+                    "document_generation_window_complete_failed",
+                    document_id,
+                    job_id,
+                    window.window_index,
+                    error,
+                )
+            })?;
+        require_one(
+            changed,
+            "document_window_changed",
+            "The generation window changed before completion could be recorded.",
+        )?;
         let job_changed = transaction
             .execute(
                 "UPDATE document_generation_jobs
@@ -334,11 +421,27 @@ pub(crate) fn mark_window_complete(
                  WHERE id = ?2 AND state = 'generating'",
                 params![window.source_locator.last(), job_id, now],
             )
-            .map_err(|error| db_error_with_job("document_generation_job_progress_failed", document_id, job_id, error))?;
-        require_one(job_changed, "document_job_changed", "The generation job changed before window completion could be recorded.")?;
-        transaction
-            .commit()
-            .map_err(|error| db_error_with_job("document_generation_window_complete_commit_failed", document_id, job_id, error))
+            .map_err(|error| {
+                db_error_with_job(
+                    "document_generation_job_progress_failed",
+                    document_id,
+                    job_id,
+                    error,
+                )
+            })?;
+        require_one(
+            job_changed,
+            "document_job_changed",
+            "The generation job changed before window completion could be recorded.",
+        )?;
+        transaction.commit().map_err(|error| {
+            db_error_with_job(
+                "document_generation_window_complete_commit_failed",
+                document_id,
+                job_id,
+                error,
+            )
+        })
     })
 }
 
@@ -357,8 +460,19 @@ pub(crate) fn mark_job_committing(
                  WHERE id = ?3 AND document_id = ?4 AND state = 'generating'",
                 params![to_i64(card_count), now, job_id, document_id],
             )
-            .map_err(|error| db_error_with_job("document_generation_job_committing_failed", document_id, job_id, error))?;
-        require_one(changed, "document_job_changed", "The generation job changed before commit could begin.")
+            .map_err(|error| {
+                db_error_with_job(
+                    "document_generation_job_committing_failed",
+                    document_id,
+                    job_id,
+                    error,
+                )
+            })?;
+        require_one(
+            changed,
+            "document_job_changed",
+            "The generation job changed before commit could begin.",
+        )
     })
 }
 
@@ -374,7 +488,13 @@ pub(crate) fn load_semantic_chunks(
                  FROM document_semantic_chunks
                  WHERE document_id = ?1 ORDER BY chunk_index",
             )
-            .map_err(|error| db_error("document_semantic_chunks_prepare_failed", document_id, error))?;
+            .map_err(|error| {
+                db_error(
+                    "document_semantic_chunks_prepare_failed",
+                    document_id,
+                    error,
+                )
+            })?;
         statement
             .query_map([document_id], |row| {
                 let units_json: String = row.get(3)?;
@@ -420,7 +540,13 @@ pub(crate) fn load_source_renders(
                 "SELECT page_number, render_relative_path, render_byte_size, render_sha256
                  FROM document_pages WHERE document_id = ?1 ORDER BY page_number",
             )
-            .map_err(|error| db_error("document_render_projection_prepare_failed", document_id, error))?;
+            .map_err(|error| {
+                db_error(
+                    "document_render_projection_prepare_failed",
+                    document_id,
+                    error,
+                )
+            })?;
         statement
             .query_map([document_id], |row| {
                 Ok(SourceRenderRecord {
@@ -430,9 +556,21 @@ pub(crate) fn load_source_renders(
                     sha256: row.get(3)?,
                 })
             })
-            .map_err(|error| db_error("document_render_projection_query_failed", document_id, error))?
+            .map_err(|error| {
+                db_error(
+                    "document_render_projection_query_failed",
+                    document_id,
+                    error,
+                )
+            })?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| db_error("document_render_projection_decode_failed", document_id, error))
+            .map_err(|error| {
+                db_error(
+                    "document_render_projection_decode_failed",
+                    document_id,
+                    error,
+                )
+            })
     })
 }
 
@@ -457,7 +595,8 @@ pub(crate) fn load_window_images(
                     "A selected rendered source unit is missing.",
                 )
             })?;
-        let bytes = fs::read(paths.resolve_relative(&render.relative_path)).map_err(CommandError::io)?;
+        let bytes =
+            fs::read(paths.resolve_relative(&render.relative_path)).map_err(CommandError::io)?;
         if bytes.is_empty()
             || bytes.len() > MAX_RENDER_BYTES
             || to_i64(bytes.len()) != render.byte_size
@@ -513,11 +652,7 @@ fn db_error_with_job(
     job_id: &str,
     error: impl std::fmt::Display,
 ) -> CommandError {
-    CommandError::database_at(
-        event,
-        format!("document={document_id} job={job_id}"),
-        error,
-    )
+    CommandError::database_at(event, format!("document={document_id} job={job_id}"), error)
 }
 
 fn db_error_with_window(
@@ -547,8 +682,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use crate::{
-        document_domain::SourceLocator,
-        document_scale::DocumentScalePlan,
+        document_domain::SourceLocator, document_scale::DocumentScalePlan,
         document_semantics::build_partitioned_semantic_windows,
     };
 
@@ -570,19 +704,23 @@ mod tests {
         let document_id = "0123456789abcdef0123456789abcdef";
         database
             .with_connection(|connection| {
-                connection.execute(
-                    "INSERT INTO documents (
+                connection
+                    .execute(
+                        "INSERT INTO documents (
                          id, title, original_filename, mime_type, byte_size, sha256,
                          source_relative_path, lifecycle_state, created_at, updated_at
                      ) VALUES (?1, 'Test', 'test.pdf', 'application/pdf', 1,
                                ?2, 'documents/test/source.pdf', 'processing', 1, 1)",
-                    params![document_id, "a".repeat(64)],
-                ).map_err(CommandError::database)?;
+                        params![document_id, "a".repeat(64)],
+                    )
+                    .map_err(CommandError::database)?;
                 Ok(())
             })
             .expect("document fixture should insert");
 
-        let chunks = (0..11).map(|index| chunk(index, index + 1)).collect::<Vec<_>>();
+        let chunks = (0..11)
+            .map(|index| chunk(index, index + 1))
+            .collect::<Vec<_>>();
         let plan = DocumentScalePlan::for_provider(11, "llama_cpp");
         let windows = build_partitioned_semantic_windows(&chunks, plan, 10_000, 10, 0);
         assert_eq!(windows.len(), 2);
@@ -596,16 +734,18 @@ mod tests {
         };
         database
             .with_connection(|connection| {
-                connection.execute(
-                    "INSERT INTO ai_provider_profiles (
+                connection
+                    .execute(
+                        "INSERT INTO ai_provider_profiles (
                          id, display_name, normalized_name, provider_kind, base_url,
                          model_id, auth_mode, enabled, allow_insecure_http,
                          request_timeout_ms, credential_storage, credential_epoch,
                          revision, created_at, updated_at
                      ) VALUES (?1, 'Test', 'test', 'llama_cpp', 'http://127.0.0.1:8080/',
                                'test-model', 'none', 1, 1, 60000, 'none', 0, 1, 1, 1)",
-                    [identity.profile_id.as_str()],
-                ).map_err(CommandError::database)?;
+                        [identity.profile_id.as_str()],
+                    )
+                    .map_err(CommandError::database)?;
                 Ok(())
             })
             .expect("profile fixture should insert");
@@ -649,7 +789,8 @@ mod tests {
             token_estimate: 10,
             source_text: "source".to_string(),
         };
-        let error = validate_semantic_windows(&[window.clone()], &DocumentSourceDescriptor::pdf(1)).unwrap_err();
+        let error = validate_semantic_windows(&[window.clone()], &DocumentSourceDescriptor::pdf(1))
+            .unwrap_err();
         assert_eq!(error.code, "invalid_document_window_identity");
         window.window_index = 0;
         validate_semantic_windows(&[window], &DocumentSourceDescriptor::pdf(1)).unwrap();
@@ -657,6 +798,9 @@ mod tests {
 
     #[test]
     fn source_sampling_is_deterministic() {
-        assert_eq!(select_source_units(&(1..=40).collect::<Vec<_>>(), 3), vec![1, 20, 40]);
+        assert_eq!(
+            select_source_units(&(1..=40).collect::<Vec<_>>(), 3),
+            vec![1, 20, 40]
+        );
     }
 }
