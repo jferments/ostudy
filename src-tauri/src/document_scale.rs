@@ -6,8 +6,7 @@
 //! semantic windows rather than ever-growing requests.
 
 use crate::{
-    ai::document_provider::DocumentProviderCapabilities,
-    document_cost::DocumentCostCalibration,
+    ai::document_provider::DocumentProviderCapabilities, document_cost::DocumentCostCalibration,
     error::CommandError,
 };
 
@@ -210,7 +209,11 @@ fn context_bounded_source_tokens(
 }
 
 fn outline_completion_reserve(provider_kind: &str) -> usize {
-    if provider_kind == "deepseek" { 3_072 } else { 2_048 }
+    if provider_kind == "deepseek" {
+        3_072
+    } else {
+        2_048
+    }
 }
 
 fn generation_completion_reserve(maximum_cards: usize) -> usize {
