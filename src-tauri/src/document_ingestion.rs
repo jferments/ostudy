@@ -6,6 +6,7 @@
 //! provider execution, checkpointing, or canonical authoring.
 
 use std::{
+    collections::BTreeSet,
     fs::{self, File, OpenOptions},
     io::Write,
     path::Path,
@@ -23,10 +24,11 @@ use crate::{
     pdf_backend::{
         self, ExtractedDocument, PdfBackendError, PdfBackendErrorKind, RecoveredPageText,
     },
-    pdf_ocr_backend::TesseractCliOcrProvider,
+    pdf_ocr_backend::{self, TesseractCliOcrProvider},
     pdf_render_backend::{
         self, PdfRenderError, PdfRenderErrorKind, PdfRenderRuntime, RenderProcessError,
     },
+    task_cancellation,
     util::unix_time_millis,
 };
 
@@ -114,7 +116,9 @@ pub(crate) fn ingest_pdf<F>(
 where
     F: FnMut(IngestionProgress) -> Result<(), CommandError>,
 {
+    ensure_document_not_canceled(document_id)?;
     let mut semantic = pdf_backend::extract_document(source_path).map_err(map_pdf_backend_error)?;
+    ensure_document_not_canceled(document_id)?;
     if semantic.page_count == 0 || semantic.page_count > maximum_source_units {
         return Err(CommandError::new(
             "unsupported_document_unit_count",
@@ -147,10 +151,9 @@ where
     let page_directory = paths.document_pages_dir(document_id);
     fs::create_dir_all(&page_directory).map_err(CommandError::io)?;
     let mut rendered = Vec::<(usize, String, i64, String)>::new();
-    let render_result = pdf_render_backend::render_pages(
-        render_runtime,
-        source_path,
-        |page_number, png| -> Result<(), CommandError> {
+    let render_result =
+        pdf_render_backend::render_pages(render_runtime, source_path, |page_number, png| {
+            ensure_document_not_canceled(document_id)?;
             if png.is_empty() || png.len() > MAX_RENDER_BYTES {
                 return Err(CommandError::new(
                     "document_render_too_large",
@@ -175,8 +178,7 @@ where
                 total_units: semantic.page_count,
             })?;
             Ok(())
-        },
-    );
+        });
     let rendered_count = match render_result {
         Ok(count) => count,
         Err(RenderProcessError::Visitor(error)) => return Err(error),
@@ -189,6 +191,7 @@ where
         ));
     }
     sync_directory(&page_directory)?;
+    ensure_document_not_canceled(document_id)?;
 
     let recovered_pages = recover_ocr_pages(
         render_runtime,
@@ -209,13 +212,19 @@ where
                 / recovered_pages.len() as f64,
         )
     };
-    pdf_backend::apply_text_recovery(
-        &mut semantic,
+    let semantic_recovery_pages = expand_semantic_recovery_pages(
+        &semantic,
         &recovered_pages,
         &recovery_plan.native_semantic_fallback_pages,
     );
+    pdf_backend::apply_text_recovery(
+        &mut semantic,
+        &recovered_pages,
+        &semantic_recovery_pages,
+    );
     validate_pdf_semantic_provenance(&semantic)?;
     validate_recovered_text_quality(&semantic)?;
+    ensure_document_not_canceled(document_id)?;
 
     let extraction_mode = if ocr_page_count > 0 {
         ExtractionMode::OcrFallback
@@ -230,10 +239,11 @@ where
         crate::logging::info(
             "document_extraction_degraded",
             format!(
-                "document={document_id} mode={} ocr_pages={} semantic_native_fallback_pages={}",
+                "document={document_id} mode={} ocr_pages={} semantic_native_fallback_pages={} recovery_context_pages={}",
                 extraction_mode.as_str(),
                 ocr_page_count,
-                recovery_plan.native_semantic_fallback_pages.len()
+                recovery_plan.native_semantic_fallback_pages.len(),
+                semantic_recovery_pages.len(),
             ),
         );
     }
@@ -325,7 +335,8 @@ where
     if candidates.is_empty() {
         return Ok(Vec::new());
     }
-    let provider = TesseractCliOcrProvider::new();
+    ensure_document_not_canceled(document_id)?;
+    let provider = TesseractCliOcrProvider::for_document(document_id);
     if let Err(error) = provider.ensure_available() {
         if requires_ocr_provider(candidates) {
             return Err(map_ocr_error(None, error));
@@ -356,6 +367,7 @@ where
         source_path,
         &page_numbers,
         |page_number, rendered| -> Result<(), CommandError> {
+            ensure_document_not_canceled(document_id)?;
             let candidate = candidates
                 .iter()
                 .find(|candidate| candidate.page_number == page_number)
@@ -418,6 +430,9 @@ where
                     return Err(map_ocr_error(Some(page_number), error));
                 }
                 Err(error) => {
+                    if pdf_ocr_backend::is_cancellation_error(&error) {
+                        return Err(map_ocr_error(Some(page_number), error));
+                    }
                     crate::logging::info(
                         "document_optional_ocr_page_failed",
                         format!(
@@ -443,7 +458,10 @@ where
                     ),
                 ));
             }
-            if !text.is_empty() && !quality.suspicious {
+            if !text.is_empty()
+                && !quality.suspicious
+                && (candidate.required || quality.substantive)
+            {
                 recovered.push(RecoveredPageText {
                     page_number,
                     text,
@@ -482,8 +500,48 @@ where
     }
 }
 
+fn expand_semantic_recovery_pages(
+    document: &ExtractedDocument,
+    recovered_pages: &[RecoveredPageText],
+    native_fallback_pages: &[usize],
+) -> Vec<usize> {
+    let mut pages = native_fallback_pages.iter().copied().collect::<BTreeSet<_>>();
+    pages.extend(recovered_pages.iter().map(|page| page.page_number));
+    if pages.is_empty() {
+        return Vec::new();
+    }
+
+    // A semantic chunk may cross page boundaries. If any page in that chunk is
+    // corrupt, keeping the chunk can leak bad text; deleting it without rebuilding
+    // its clean neighboring pages can silently lose source coverage. Expand to the
+    // transitive set of pages touched by affected chunks, then rebuild that bounded
+    // region from trustworthy page text/OCR text.
+    loop {
+        let before = pages.len();
+        for chunk in &document.chunks {
+            if chunk.page_numbers.iter().any(|page| pages.contains(page)) {
+                pages.extend(chunk.page_numbers.iter().copied());
+            }
+        }
+        if pages.len() == before {
+            break;
+        }
+    }
+    pages.into_iter().collect()
+}
+
 fn requires_ocr_provider(candidates: &[pdf_backend::OcrPageCandidate]) -> bool {
     candidates.iter().any(|candidate| candidate.required)
+}
+
+fn ensure_document_not_canceled(document_id: &str) -> Result<(), CommandError> {
+    if task_cancellation::is_document_task_canceled(document_id) {
+        return Err(CommandError::new(
+            "ai_request_canceled",
+            "The document generation request was canceled.",
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn update_ingestion_progress(
@@ -833,6 +891,12 @@ fn map_pdf_backend_error(error: PdfBackendError) -> CommandError {
 }
 
 fn map_ocr_error(page_number: Option<usize>, error: OcrError) -> CommandError {
+    if pdf_ocr_backend::is_cancellation_error(&error) {
+        return CommandError::new(
+            "ai_request_canceled",
+            "The document generation request was canceled.",
+        );
+    }
     let page = page_number
         .map(|page| format!(" page {page}"))
         .unwrap_or_default();
@@ -1015,5 +1079,62 @@ mod tests {
             reasons: vec!["private_use_unicode"],
         };
         assert!(requires_ocr_provider(&[optional, required]));
+    }
+
+    #[test]
+    fn semantic_recovery_expands_across_chunks_that_cross_corrupt_page_boundaries() {
+        let semantic = ExtractedDocument {
+            page_count: 3,
+            pages: vec![
+                pdf_backend::ExtractedTextPage {
+                    page_number: 1,
+                    text: "recovered page one".to_string(),
+                },
+                pdf_backend::ExtractedTextPage {
+                    page_number: 2,
+                    text: "clean page two".to_string(),
+                },
+                pdf_backend::ExtractedTextPage {
+                    page_number: 3,
+                    text: "clean page three".to_string(),
+                },
+            ],
+            elements: Vec::new(),
+            chunks: vec![
+                pdf_backend::ExtractedSemanticChunk {
+                    chunk_index: 0,
+                    text: "pages one and two".to_string(),
+                    full_text: "pages one and two".to_string(),
+                    page_numbers: vec![1, 2],
+                    bounding_boxes: Vec::new(),
+                    element_types: vec!["paragraph".to_string()],
+                    heading_context: None,
+                    token_estimate: 4,
+                    is_oversized: false,
+                },
+                pdf_backend::ExtractedSemanticChunk {
+                    chunk_index: 1,
+                    text: "pages two and three".to_string(),
+                    full_text: "pages two and three".to_string(),
+                    page_numbers: vec![2, 3],
+                    bounding_boxes: Vec::new(),
+                    element_types: vec!["paragraph".to_string()],
+                    heading_context: None,
+                    token_estimate: 4,
+                    is_oversized: false,
+                },
+            ],
+            native_text_failed_pages: Vec::new(),
+            semantic_analysis_degraded: false,
+        };
+        let recovered = [RecoveredPageText {
+            page_number: 1,
+            text: "recovered page one".to_string(),
+            confidence: 0.9,
+        }];
+        assert_eq!(
+            expand_semantic_recovery_pages(&semantic, &recovered, &[]),
+            vec![1, 2, 3]
+        );
     }
 }
