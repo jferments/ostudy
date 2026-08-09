@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Stages 4.3–4.6 now use one direct workflow: a selected PDF is copied into the managed Documents library, structurally extracted with oxidize-pdf, rendered with Pdfium, analyzed into a reusable global outline, processed in overlapping semantic windows, and committed as a normal deck after global relevance curation and canonical card validation.
+Stages 4.3–4.6 now use one direct workflow: a selected PDF is copied into the managed Documents library, structurally extracted with oxidize-pdf, rendered to PNG with the pure-Rust justpdf renderer, analyzed into a reusable global outline, processed in overlapping semantic windows, and committed as a normal deck after global relevance curation and canonical card validation.
 
 There is no generated-card approval queue, preview page, or raw JSON screen. Uploading a PDF starts generation directly; the resulting deck and cards are inspected, edited, or deleted afterward through the ordinary Decks and Search/Filter interfaces.
 
@@ -22,7 +22,7 @@ pnpm install
 
 On a fresh clone, shell scripts execute directly. Do not run `chmod +x` as normal setup. Project-manifest verification checks every tracked `scripts/*.sh` Git mode.
 
-`./scripts/check.sh` provisions the exact Pdfium 7881 runtime into a Git-ignored resource directory. The archive is cached under `~/.cache/ostudy/pdfium/`, and its SHA-256 digest is verified against the immutable GitHub release metadata before use.
+No Pdfium/Poppler/browser runtime must be installed or provisioned for PDF rendering. `justpdf`/`justpdf-render` is part of the locked Rust dependency graph and runs in-process.
 
 The automated suite covers:
 
@@ -31,8 +31,9 @@ The automated suite covers:
 - executable Git modes for repository shell scripts;
 - oxidize-pdf structured extraction through the backend boundary;
 - semantic element/chunk persistence and cross-page window construction;
-- Pdfium PNG rendering through the independent renderer boundary;
-- absence of justpdf and OCR/Tesseract dependencies;
+- pure-Rust PNG rendering through the independent renderer boundary;
+- absence of mandatory Pdfium and OCR/Tesseract dependencies;
+- page-evidence chunks for pages with no extractable structured text;
 - bounded managed source/page paths, signatures, sizes, and SHA-256 values;
 - relevance/outline/card schema validation;
 - deterministic native Cloze marker construction;
@@ -52,9 +53,10 @@ Use PDFs with headings, paragraphs, lists, tables, multi-column content, rotated
 3. semantic chunks retain page mappings and heading context;
 4. table/list/title elements are represented rather than flattened into an undifferentiated page string where the source permits recovery;
 5. semantic windows can span multiple pages and do not cut individual semantic chunks;
-6. source windows remain bounded by both estimated tokens and physical-page count.
+6. pages with no recoverable structure remain represented by visual-evidence chunks;
+7. source windows remain bounded by both estimated tokens and physical-page count.
 
-The active extraction backend ID should identify `oxidize-pdf-4.2.2-rag`; the active renderer should identify Pdfium 7881 independently.
+The active extraction backend ID should identify `oxidize-pdf-4.2.2-rag`; the active renderer should independently identify `justpdf-render-0.1.2/pure-rust`.
 
 ## Study-quality acceptance
 
@@ -97,9 +99,24 @@ A successful JSON response is not sufficient. Inspect generated content for educ
 
 Use a source where one concept is introduced on one page and completed on the next two pages, such as a physiological mechanism with causes, compensatory responses, and consequences. Verify generated cards can test the full relationship. A good result should not require each page to independently contain a complete question/answer pair.
 
-## Pdfium runtime failure test
+## Image-only PDF test
 
-In a disposable development checkout, temporarily point `OSTUDY_PDFIUM_LIBRARY` at an invalid file and ensure no usable system/bundled fallback exists. PDF processing should fail with the safe `pdf_renderer_unavailable` category rather than crashing. Restore the environment and rerun `./scripts/check.sh` to reprovision the verified runtime.
+Use a small scanned/image-only PDF with no usable text layer.
+
+1. With a text-only profile selected, upload or retry it. The task must fail safely with `document_requires_image_input`; it must not invent source text or create a partial deck.
+2. Select a llama.cpp profile whose current capability probe verifies image input.
+3. Retry the retained document.
+4. Confirm every physical page remains represented in semantic-window provenance even though extracted text is empty.
+5. Confirm card content is grounded in rendered-page evidence and no OCR transcript is stored as extracted source text.
+6. Confirm the generated deck still passes the same canonical card validation as text-derived decks.
+
+## Renderer portability and resource checks
+
+The default renderer has no separately provisioned native runtime. Validate builds on each supported target as those platform pipelines become available: Linux x86_64/aarch64, Windows x86_64, macOS x86_64/aarch64, Android, and iOS.
+
+For representative mobile hardware or emulators, observe peak memory while importing a multi-page PDF. Rendering is page-at-a-time, output is bounded per page, and page images are encoded at 144 DPI. Confirm a large document does not require all rendered bitmaps to reside in memory simultaneously.
+
+Keep a small compatibility corpus containing difficult fonts, transparency, clipping, rotated pages, vector diagrams, scanned pages, and complex tables. If a document renders incorrectly under justpdf-render, record it as renderer-compatibility evidence. Do not replace the portable default solely because one difficult desktop document exists; the renderer boundary permits a future optional compatibility backend.
 
 ## Failure and recovery checks
 
@@ -130,7 +147,7 @@ For a large textbook chapter or paper, record:
 - number and page spans of outline/generation windows;
 - outline quality;
 - generated-card count before/after global curation;
-- memory and provider latency;
+- peak memory and provider latency;
 - whether cross-page questions improve over page-isolated generation.
 
 Do not attach API keys, Authorization headers, raw provider responses, or copyrighted source PDFs to public reports.
