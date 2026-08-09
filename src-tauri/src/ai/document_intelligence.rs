@@ -33,7 +33,6 @@ const MAX_CLOZE_BLANK_CHARS: usize = 160;
 const MAX_OUTLINE_OBJECTIVES: usize = 96;
 const MAX_OUTLINE_CONCEPTS: usize = 160;
 const MAX_OUTLINE_SECTIONS: usize = 160;
-const MAX_OUTLINE_TEXT_CHARS: usize = 100_000;
 const MAX_REQUEST_JSON_BYTES: usize = 64 * 1024 * 1024;
 const MAX_COMPLETION_BYTES: usize = 2 * 1024 * 1024;
 const DEEPSEEK_STRICT_TOOL_NAME: &str = "submit_ostudy_document_result";
@@ -586,7 +585,11 @@ async fn synthesize_global_outline_context(
 }
 
 fn outline_completion_tokens(task: &DocumentTaskContext) -> usize {
-    match task.profile.provider_kind {
+    outline_completion_tokens_for_provider(task.profile.provider_kind)
+}
+
+fn outline_completion_tokens_for_provider(provider_kind: ProviderKind) -> usize {
+    match provider_kind {
         ProviderKind::Deepseek => 6_144,
         ProviderKind::LlamaCpp => 3_072,
         _ => 3_072,
@@ -1385,39 +1388,55 @@ fn normalize_outline_fragment(
 }
 
 fn global_outline_digest(outline: &DocumentOutline) -> String {
-    let section_count = outline.sections.len().max(1);
-    let section_budget = (MAX_GLOBAL_SYNTHESIS_INPUT_CHARS / section_count).clamp(120, 650);
+    // Reserve most of the bounded digest for section coverage so the whole
+    // document, including its tail, is represented. Objectives/concepts are
+    // useful global hints but must never crowd later sections out of the digest.
     let mut digest = String::new();
     digest.push_str("Native whole-document summary: ");
-    digest.push_str(&sanitize_outline_text(&outline.summary, 2_000, ""));
+    digest.push_str(&sanitize_outline_text(&outline.summary, 1_200, ""));
     digest.push_str("\nMajor objectives collected across fragments:\n");
-    for objective in outline.learning_objectives.iter().take(32) {
+    for objective in outline.learning_objectives.iter().take(8) {
         digest.push_str("- ");
-        digest.push_str(&sanitize_outline_text(objective, 280, ""));
+        digest.push_str(&sanitize_outline_text(objective, 180, ""));
         digest.push('\n');
     }
     digest.push_str("Major concepts collected across fragments:\n");
-    for concept in outline.key_concepts.iter().take(48) {
+    for concept in outline.key_concepts.iter().take(12) {
         digest.push_str("- ");
-        digest.push_str(&sanitize_outline_text(concept, 180, ""));
+        digest.push_str(&sanitize_outline_text(concept, 120, ""));
         digest.push('\n');
     }
     digest.push_str("Sections spanning the full document:\n");
+
+    let prefix_chars = digest.chars().count();
+    let remaining = MAX_GLOBAL_SYNTHESIS_INPUT_CHARS.saturating_sub(prefix_chars);
+    let section_count = outline.sections.len().max(1);
+    let line_budget = (remaining / section_count).max(40);
     for section in &outline.sections {
-        let title = sanitize_outline_text(&section.title, 160, "Section");
-        let summary_budget = section_budget.saturating_sub(title.chars().count()).max(40);
-        let summary = sanitize_outline_text(&section.summary, summary_budget, "");
-        digest.push_str(&format!(
-            "- pages {}–{} | {} | {}\n",
-            section.page_start, section.page_end, title, summary
-        ));
+        let fixed = format!("- pages {}–{} | ", section.page_start, section.page_end);
+        let fixed_chars = fixed.chars().count();
+        let body_budget = line_budget.saturating_sub(fixed_chars).max(12);
+        let title_budget = body_budget.min(100).max(8);
+        let title = sanitize_outline_text(&section.title, title_budget, "Section");
+        let used = title.chars().count().saturating_add(3);
+        let summary_budget = body_budget.saturating_sub(used);
+        digest.push_str(&fixed);
+        digest.push_str(&title);
+        if summary_budget >= 20 {
+            let summary = sanitize_outline_text(&section.summary, summary_budget, "");
+            if !summary.is_empty() {
+                digest.push_str(" | ");
+                digest.push_str(&summary);
+            }
+        }
+        digest.push('\n');
     }
+
     digest
         .chars()
         .take(MAX_GLOBAL_SYNTHESIS_INPUT_CHARS)
         .collect()
 }
-
 fn outline_context_for_window(
     outline: &DocumentOutline,
     window: &SemanticWindow,
@@ -2113,30 +2132,12 @@ mod tests {
             Some(MAX_FRAGMENT_SECTIONS as u64)
         );
         assert_eq!(
-            outline_completion_tokens(&DocumentTaskContext {
-                profile_id: "x".to_string(),
-                provider_kind: "deepseek".to_string(),
-                model_id: "m".to_string(),
-                profile_revision: 1,
-                credential_epoch: 0,
-                network_scope: "cloud".to_string(),
-                include_page_images: false,
-                profile: ProfileSnapshot {
-                    id: "x".to_string(),
-                    display_name: "x".to_string(),
-                    provider_kind: ProviderKind::Deepseek,
-                    base_url: "https://api.deepseek.com/".to_string(),
-                    model_id: "m".to_string(),
-                    auth_mode: super::super::catalog::AuthMode::Bearer,
-                    enabled: true,
-                    allow_insecure_http: false,
-                    request_timeout_ms: 60_000,
-                    revision: 1,
-                    credential_epoch: 0,
-                },
-                credential_storage: CredentialStorage::None,
-            }),
+            outline_completion_tokens_for_provider(ProviderKind::Deepseek),
             6_144
+        );
+        assert_eq!(
+            outline_completion_tokens_for_provider(ProviderKind::LlamaCpp),
+            3_072
         );
     }
 
