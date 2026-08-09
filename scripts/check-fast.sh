@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}\")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/versions.env"
@@ -57,7 +57,7 @@ cargo test \
   --all-features \
   --lib \
   database::tests::migrations_and_repairs_are_idempotent_and_reach_latest_schema \
-  --exact
+  -- --exact
 
 step "Forward-upgrade integrity contract"
 cargo test \
@@ -66,7 +66,7 @@ cargo test \
   --all-features \
   --lib \
   database::tests::released_schema_upgrades_forward_without_losing_integrity \
-  --exact
+  -- --exact
 
 ostudy_write_check_stamp fast
 trap - ERR
