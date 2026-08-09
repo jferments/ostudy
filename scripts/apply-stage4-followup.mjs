@@ -84,6 +84,74 @@ await patchFile("src-tauri/src/ai/document_intelligence.rs", (initial) => {
   source = source.replace(`                "reasoning_effort": "none",\n`, "");
   source = replaceRequired(
     source,
+    "llama compatibility response",
+    `    let response = runtime
+        .gateway
+        .post_json(
+            completion_endpoint(&task.profile)?,
+            bearer,
+            &body,
+            task.profile.request_timeout_ms,
+            MAX_COMPLETION_BYTES,
+        )
+        .await
+        .map_err(gateway_to_command)?;
+`,
+    `    let first_response = runtime
+        .gateway
+        .post_json(
+            completion_endpoint(&task.profile)?,
+            bearer,
+            &body,
+            task.profile.request_timeout_ms,
+            MAX_COMPLETION_BYTES,
+        )
+        .await;
+    let response = match first_response {
+        Ok(response) => Ok(response),
+        Err(first_error)
+            if task.profile.provider_kind == ProviderKind::LlamaCpp
+                && first_error.safe.code == "ai_http_bad_request" =>
+        {
+            // Older llama.cpp / llama-server builds can support OpenAI-style
+            // streaming and JSON output while rejecting newer schema/templating
+            // request extensions. Stay on the exact configured provider/model,
+            // fall back once to plain JSON-object output, and retain strict local
+            // deserialization/normalization as the authority.
+            let mut compatibility_body = body.clone();
+            if let Some(object) = compatibility_body.as_object_mut() {
+                object.remove("chat_template_kwargs");
+                object.insert(
+                    "response_format".to_string(),
+                    json!({ "type": "json_object" }),
+                );
+            }
+            let schema_text =
+                serde_json::to_string(request.schema).map_err(CommandError::serialization)?;
+            if let Some(system_content) = compatibility_body.pointer_mut("/messages/0/content") {
+                let original = system_content.as_str().unwrap_or_default().to_string();
+                *system_content = Value::String(format!(
+                    "{original}\\n\\nCompatibility mode: return exactly one JSON object matching this schema. Do not include Markdown fences or commentary. Schema:\\n{schema_text}"
+                ));
+            }
+            runtime
+                .gateway
+                .post_json(
+                    completion_endpoint(&task.profile)?,
+                    bearer,
+                    &compatibility_body,
+                    task.profile.request_timeout_ms,
+                    MAX_COMPLETION_BYTES,
+                )
+                .await
+        }
+        Err(error) => Err(error),
+    }
+    .map_err(gateway_to_command)?;
+`,
+  );
+  source = replaceRequired(
+    source,
     "prompt version test",
     `        assert!(prompt.contains("Returning zero cards is preferable"));
         assert!(prompt.contains("schema version: 3"));
