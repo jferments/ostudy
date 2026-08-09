@@ -379,11 +379,7 @@ async fn process_and_generate(
             )
         });
         while let Some(progress) = progress_receiver.recv().await {
-            document_ingestion::update_ingestion_progress(
-                database.inner(),
-                document_id,
-                progress,
-            )?;
+            document_ingestion::update_ingestion_progress(database.inner(), document_id, progress)?;
         }
         let processed = processing_task.await.map_err(|error| {
             CommandError::new(
