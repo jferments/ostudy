@@ -22,7 +22,7 @@ function profile(
     displayName: "Local vision model",
     providerKind: "llama_cpp",
     providerLabel: "llama.cpp / Unsloth GGUF",
-    modelId: "medical-vision-model",
+    modelId: "unsloth/Qwen3.6-27B-MTP-GGUF",
     enabled: true,
     networkScope: "local",
     credentialStatus: {
@@ -47,37 +47,24 @@ describe("DocumentsSection", () => {
     vi.mocked(aiProfiles.listAiProviderProfiles).mockResolvedValue([profile()]);
   });
 
-  it("shows the selected profile, model, and local destination before the document workflow", async () => {
+  it("shows only the current flashcard-generation model above Documents", async () => {
     render(<DocumentsSection refreshDecks={vi.fn()} showToast={vi.fn()} />);
 
-    expect(await screen.findByText("Local vision model")).toBeTruthy();
-    expect(screen.getByText(/medical-vision-model/u)).toBeTruthy();
-    expect(screen.getByText(/stay on this computer/u)).toBeTruthy();
+    expect(await screen.findByText("Current Flashcard Generation model")).toBeTruthy();
+    expect(screen.getByText("unsloth/Qwen3.6-27B-MTP-GGUF")).toBeTruthy();
+    expect(screen.queryByText("llama.cpp / Unsloth GGUF")).toBeNull();
+    expect(screen.queryByText(/stay on this computer/u)).toBeNull();
+    expect(screen.queryByText(/Local computer/u)).toBeNull();
     expect(screen.getByText("Document library content")).toBeTruthy();
   });
 
-  it("warns when selected PDF page content will be transmitted to a cloud provider", async () => {
-    vi.mocked(aiProfiles.listAiProviderProfiles).mockResolvedValue([
-      profile({
-        displayName: "Cloud flashcards",
-        providerKind: "deepseek",
-        providerLabel: "DeepSeek",
-        networkScope: "cloud",
-      }),
-    ]);
-    render(<DocumentsSection refreshDecks={vi.fn()} showToast={vi.fn()} />);
-
-    expect(await screen.findByText("Cloud flashcards")).toBeTruthy();
-    expect(screen.getByText(/will be transmitted to this cloud provider/u)).toBeTruthy();
-  });
-
-  it("explains how to configure the task when no generation default exists", async () => {
+  it("shows a compact unconfigured value when no generation model is selected", async () => {
     vi.mocked(aiProfiles.getAiTaskDefaults).mockResolvedValue({
       flashcardGenerationProfileId: null,
     });
     render(<DocumentsSection refreshDecks={vi.fn()} showToast={vi.fn()} />);
 
     expect(await screen.findByText("Not configured")).toBeTruthy();
-    expect(screen.getByText(/Settings → AI\/LLM/u)).toBeTruthy();
+    expect(screen.queryByText(/Settings → AI\/LLM/u)).toBeNull();
   });
 });
