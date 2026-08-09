@@ -11,6 +11,7 @@ use std::{
     path::Path,
 };
 
+use oxidize_pdf::{OcrError, OcrOptions, OcrProvider};
 use rusqlite::{params, TransactionBehavior};
 use sha2::{Digest, Sha256};
 
@@ -19,7 +20,10 @@ use crate::{
     document_domain::DocumentSourceDescriptor,
     error::CommandError,
     paths::AppPaths,
-    pdf_backend::{self, ExtractedDocument, PdfBackendError, PdfBackendErrorKind},
+    pdf_backend::{
+        self, ExtractedDocument, PdfBackendError, PdfBackendErrorKind, RecoveredPageText,
+    },
+    pdf_ocr_backend::TesseractCliOcrProvider,
     pdf_render_backend::{
         self, PdfRenderError, PdfRenderErrorKind, PdfRenderRuntime, RenderProcessError,
     },
@@ -30,6 +34,45 @@ const MAX_PAGE_TEXT_CHARS: usize = 200_000;
 const MAX_TOTAL_TEXT_BYTES: usize = 96 * 1024 * 1024;
 const MAX_SEMANTIC_TEXT_BYTES: usize = 128 * 1024 * 1024;
 const MAX_RENDER_BYTES: usize = 32 * 1024 * 1024;
+const MAX_OCR_RENDER_BYTES: usize = 64 * 1024 * 1024;
+const OCR_LANGUAGE: &str = "en";
+const OCR_TIMEOUT_SECONDS: u32 = 120;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ExtractionMode {
+    Native,
+    PageTextFallback,
+    OcrFallback,
+}
+
+impl ExtractionMode {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Native => "native",
+            Self::PageTextFallback => "page_text_fallback",
+            Self::OcrFallback => "ocr_fallback",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum IngestionProgress {
+    Rendering {
+        completed_units: usize,
+        total_units: usize,
+    },
+    Ocr {
+        completed_units: usize,
+        total_units: usize,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct OcrIngestionSummary {
+    pub page_count: usize,
+    pub mean_confidence: Option<f64>,
+    pub engine: String,
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct IngestedPage {
@@ -48,6 +91,8 @@ pub(crate) struct IngestedDocument {
     pub semantic: ExtractedDocument,
     pub extraction_backend: &'static str,
     pub render_backend: &'static str,
+    pub extraction_mode: ExtractionMode,
+    pub ocr: OcrIngestionSummary,
 }
 
 pub(crate) fn active_pdf_extraction_backend() -> &'static str {
@@ -67,9 +112,9 @@ pub(crate) fn ingest_pdf<F>(
     mut report_progress: F,
 ) -> Result<IngestedDocument, CommandError>
 where
-    F: FnMut(usize, usize) -> Result<(), CommandError>,
+    F: FnMut(IngestionProgress) -> Result<(), CommandError>,
 {
-    let semantic = pdf_backend::extract_document(source_path).map_err(map_pdf_backend_error)?;
+    let mut semantic = pdf_backend::extract_document(source_path).map_err(map_pdf_backend_error)?;
     if semantic.page_count == 0 || semantic.page_count > maximum_source_units {
         return Err(CommandError::new(
             "unsupported_document_unit_count",
@@ -79,6 +124,119 @@ where
         ));
     }
     validate_pdf_semantic_provenance(&semantic)?;
+    let recovery_plan = pdf_backend::plan_text_recovery(&semantic);
+    for candidate in &recovery_plan.ocr_pages {
+        crate::logging::info(
+            "document_ocr_fallback_detected",
+            format!(
+                "document={document_id} page={} required={} reasons={}",
+                candidate.page_number,
+                candidate.required,
+                candidate.reasons.join(",")
+            ),
+        );
+    }
+    for page in &mut semantic.pages {
+        page.text = normalize_page_text(&page.text);
+    }
+
+    report_progress(IngestionProgress::Rendering {
+        completed_units: 0,
+        total_units: semantic.page_count,
+    })?;
+    let page_directory = paths.document_pages_dir(document_id);
+    fs::create_dir_all(&page_directory).map_err(CommandError::io)?;
+    let mut rendered = Vec::<(usize, String, i64, String)>::new();
+    let render_result = pdf_render_backend::render_pages(
+        render_runtime,
+        source_path,
+        |page_number, png| -> Result<(), CommandError> {
+            if png.is_empty() || png.len() > MAX_RENDER_BYTES {
+                return Err(CommandError::new(
+                    "document_render_too_large",
+                    format!(
+                        "The rendered image for source page {page_number} exceeds ostudy's image limit."
+                    ),
+                ));
+            }
+            let relative = AppPaths::document_page_relative_path(
+                document_id,
+                i64::try_from(page_number).unwrap_or(i64::MAX),
+            );
+            write_replacing_file(&paths.resolve_relative(&relative), &png)?;
+            rendered.push((
+                page_number,
+                relative,
+                i64::try_from(png.len()).unwrap_or(i64::MAX),
+                sha256_hex(&png),
+            ));
+            report_progress(IngestionProgress::Rendering {
+                completed_units: rendered.len(),
+                total_units: semantic.page_count,
+            })?;
+            Ok(())
+        },
+    );
+    let rendered_count = match render_result {
+        Ok(count) => count,
+        Err(RenderProcessError::Visitor(error)) => return Err(error),
+        Err(RenderProcessError::Backend(error)) => return Err(map_pdf_render_error(error)),
+    };
+    if rendered_count != semantic.page_count {
+        return Err(CommandError::new(
+            "document_backend_unit_count_mismatch",
+            "The extraction and rendering adapters reported different source-unit counts.",
+        ));
+    }
+    sync_directory(&page_directory)?;
+
+    let recovered_pages = recover_ocr_pages(
+        render_runtime,
+        document_id,
+        source_path,
+        &recovery_plan.ocr_pages,
+        &mut report_progress,
+    )?;
+    let ocr_page_count = recovered_pages.len();
+    let ocr_mean_confidence = if recovered_pages.is_empty() {
+        None
+    } else {
+        Some(
+            recovered_pages
+                .iter()
+                .map(|page| page.confidence)
+                .sum::<f64>()
+                / recovered_pages.len() as f64,
+        )
+    };
+    pdf_backend::apply_text_recovery(
+        &mut semantic,
+        &recovered_pages,
+        &recovery_plan.native_semantic_fallback_pages,
+    );
+    validate_pdf_semantic_provenance(&semantic)?;
+    validate_recovered_text_quality(&semantic)?;
+
+    let extraction_mode = if ocr_page_count > 0 {
+        ExtractionMode::OcrFallback
+    } else if semantic.semantic_analysis_degraded
+        || !recovery_plan.native_semantic_fallback_pages.is_empty()
+    {
+        ExtractionMode::PageTextFallback
+    } else {
+        ExtractionMode::Native
+    };
+    if extraction_mode != ExtractionMode::Native {
+        crate::logging::info(
+            "document_extraction_degraded",
+            format!(
+                "document={document_id} mode={} ocr_pages={} semantic_native_fallback_pages={}",
+                extraction_mode.as_str(),
+                ocr_page_count,
+                recovery_plan.native_semantic_fallback_pages.len()
+            ),
+        );
+    }
 
     let mut total_text_bytes = 0_usize;
     let normalized_text = semantic
@@ -107,50 +265,6 @@ where
             "The structured document content exceeds ostudy's semantic-processing limit.",
         ));
     }
-
-    report_progress(0, semantic.page_count)?;
-    let page_directory = paths.document_pages_dir(document_id);
-    fs::create_dir_all(&page_directory).map_err(CommandError::io)?;
-    let mut rendered = Vec::<(usize, String, i64, String)>::new();
-    let render_result = pdf_render_backend::render_pages(
-        render_runtime,
-        source_path,
-        |page_number, png| -> Result<(), CommandError> {
-            if png.is_empty() || png.len() > MAX_RENDER_BYTES {
-                return Err(CommandError::new(
-                    "document_render_too_large",
-                    format!(
-                        "The rendered image for source page {page_number} exceeds ostudy's image limit."
-                    ),
-                ));
-            }
-            let relative = AppPaths::document_page_relative_path(
-                document_id,
-                i64::try_from(page_number).unwrap_or(i64::MAX),
-            );
-            write_replacing_file(&paths.resolve_relative(&relative), &png)?;
-            rendered.push((
-                page_number,
-                relative,
-                i64::try_from(png.len()).unwrap_or(i64::MAX),
-                sha256_hex(&png),
-            ));
-            report_progress(rendered.len(), semantic.page_count)?;
-            Ok(())
-        },
-    );
-    let rendered_count = match render_result {
-        Ok(count) => count,
-        Err(RenderProcessError::Visitor(error)) => return Err(error),
-        Err(RenderProcessError::Backend(error)) => return Err(map_pdf_render_error(error)),
-    };
-    if rendered_count != semantic.page_count {
-        return Err(CommandError::new(
-            "document_backend_unit_count_mismatch",
-            "The extraction and rendering adapters reported different source-unit counts.",
-        ));
-    }
-    sync_directory(&page_directory)?;
 
     let mut pages = Vec::with_capacity(semantic.page_count);
     for page_number in 1..=semantic.page_count {
@@ -185,34 +299,186 @@ where
         semantic,
         extraction_backend: active_pdf_extraction_backend(),
         render_backend: active_pdf_render_backend(),
+        extraction_mode,
+        ocr: OcrIngestionSummary {
+            page_count: ocr_page_count,
+            mean_confidence: ocr_mean_confidence,
+            engine: if ocr_page_count == 0 {
+                String::new()
+            } else {
+                TesseractCliOcrProvider::new().engine_name().to_string()
+            },
+        },
     })
+}
+
+fn recover_ocr_pages<F>(
+    render_runtime: &PdfRenderRuntime,
+    document_id: &str,
+    source_path: &Path,
+    candidates: &[pdf_backend::OcrPageCandidate],
+    report_progress: &mut F,
+) -> Result<Vec<RecoveredPageText>, CommandError>
+where
+    F: FnMut(IngestionProgress) -> Result<(), CommandError>,
+{
+    if candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+    let provider = TesseractCliOcrProvider::new();
+    provider
+        .ensure_available()
+        .map_err(|error| map_ocr_error(None, error))?;
+    report_progress(IngestionProgress::Ocr {
+        completed_units: 0,
+        total_units: candidates.len(),
+    })?;
+
+    let page_numbers = candidates
+        .iter()
+        .map(|candidate| candidate.page_number)
+        .collect::<Vec<_>>();
+    let mut recovered = Vec::new();
+    let mut attempted = 0_usize;
+    let render_result = pdf_render_backend::render_ocr_pages(
+        render_runtime,
+        source_path,
+        &page_numbers,
+        |page_number, png| -> Result<(), CommandError> {
+            if png.is_empty() || png.len() > MAX_OCR_RENDER_BYTES {
+                return Err(CommandError::new(
+                    "document_ocr_render_too_large",
+                    format!(
+                        "The high-resolution OCR render for PDF page {page_number} exceeds ostudy's image safety limit."
+                    ),
+                ));
+            }
+            let candidate = candidates
+                .iter()
+                .find(|candidate| candidate.page_number == page_number)
+                .ok_or_else(|| {
+                    CommandError::new(
+                        "document_ocr_plan_changed",
+                        "The PDF OCR recovery plan changed while the page was being processed.",
+                    )
+                })?;
+            let mut options = OcrOptions::default();
+            options.language = OCR_LANGUAGE.to_string();
+            options.timeout_seconds = OCR_TIMEOUT_SECONDS;
+            options.debug_output = false;
+            let result = provider
+                .process_image(&png, &options)
+                .map_err(|error| map_ocr_error(Some(page_number), error))?;
+            let text = normalize_page_text(&result.text);
+            let quality = pdf_backend::assess_text_quality(&text);
+            if candidate.required && (text.is_empty() || quality.suspicious) {
+                return Err(CommandError::new(
+                    "document_ocr_text_unusable",
+                    format!(
+                        "The PDF text layer on page {page_number} is unreliable, and OCR could not recover trustworthy text from the rendered page. Try a cleaner/exported copy of the PDF or verify the source visually."
+                    ),
+                ));
+            }
+            if !text.is_empty() && !quality.suspicious {
+                recovered.push(RecoveredPageText {
+                    page_number,
+                    text,
+                    confidence: result.confidence.clamp(0.0, 1.0),
+                });
+                crate::logging::info(
+                    "document_ocr_page_recovered",
+                    format!(
+                        "document={document_id} page={page_number} confidence_milli={} required={}",
+                        confidence_milli(result.confidence),
+                        candidate.required
+                    ),
+                );
+            } else {
+                crate::logging::info(
+                    "document_ocr_sparse_page_kept_visual",
+                    format!("document={document_id} page={page_number}"),
+                );
+            }
+            attempted = attempted.saturating_add(1);
+            report_progress(IngestionProgress::Ocr {
+                completed_units: attempted,
+                total_units: candidates.len(),
+            })?;
+            Ok(())
+        },
+    );
+    match render_result {
+        Ok(count) if count == candidates.len() => Ok(recovered),
+        Ok(_) => Err(CommandError::new(
+            "document_ocr_render_incomplete",
+            "The PDF renderer did not return every page selected for OCR recovery.",
+        )),
+        Err(RenderProcessError::Visitor(error)) => Err(error),
+        Err(RenderProcessError::Backend(error)) => Err(map_pdf_render_error(error)),
+    }
 }
 
 pub(crate) fn update_ingestion_progress(
     database: &Database,
     document_id: &str,
-    completed_units: usize,
-    total_units: usize,
+    progress: IngestionProgress,
 ) -> Result<(), CommandError> {
-    let total = to_i64(total_units);
-    let completed = to_i64(completed_units).min(total);
     let now = unix_time_millis()?;
     database.with_connection(|connection| {
-        let changed = connection
-            .execute(
-                "UPDATE documents
-                 SET page_count = ?1, extracted_page_count = ?1,
-                     rendered_page_count = ?2, updated_at = ?3
-                 WHERE id = ?4 AND lifecycle_state = 'processing'",
-                params![total, completed, now, document_id],
-            )
-            .map_err(|error| {
-                CommandError::database_at(
-                    "document_ingestion_progress_failed",
-                    format!("document={document_id} completed={completed} total={total}"),
-                    error,
-                )
-            })?;
+        let changed = match progress {
+            IngestionProgress::Rendering {
+                completed_units,
+                total_units,
+            } => {
+                let total = to_i64(total_units);
+                let completed = to_i64(completed_units).min(total);
+                connection
+                    .execute(
+                        "UPDATE documents
+                         SET page_count = ?1, extracted_page_count = ?1,
+                             rendered_page_count = ?2,
+                             extraction_mode = 'native', ocr_page_count = 0,
+                             ocr_completed_page_count = 0, ocr_mean_confidence = NULL,
+                             ocr_engine = '', updated_at = ?3
+                         WHERE id = ?4 AND lifecycle_state = 'processing'",
+                        params![total, completed, now, document_id],
+                    )
+                    .map_err(|error| {
+                        CommandError::database_at(
+                            "document_ingestion_progress_failed",
+                            format!(
+                                "document={document_id} stage=render completed={completed} total={total}"
+                            ),
+                            error,
+                        )
+                    })?
+            }
+            IngestionProgress::Ocr {
+                completed_units,
+                total_units,
+            } => {
+                let total = to_i64(total_units);
+                let completed = to_i64(completed_units).min(total);
+                connection
+                    .execute(
+                        "UPDATE documents
+                         SET extraction_mode = 'ocr_fallback', ocr_page_count = ?1,
+                             ocr_completed_page_count = ?2, ocr_mean_confidence = NULL,
+                             ocr_engine = 'tesseract-cli', updated_at = ?3
+                         WHERE id = ?4 AND lifecycle_state = 'processing'",
+                        params![total, completed, now, document_id],
+                    )
+                    .map_err(|error| {
+                        CommandError::database_at(
+                            "document_ocr_progress_failed",
+                            format!(
+                                "document={document_id} completed={completed} total={total}"
+                            ),
+                            error,
+                        )
+                    })?
+            }
+        };
         if changed != 1 {
             return Err(CommandError::new(
                 "document_changed",
@@ -379,25 +645,33 @@ pub(crate) fn persist_ingested_document(
         }
 
         let unit_count = to_i64(processed.source.unit_count);
+        let ocr_page_count = to_i64(processed.ocr.page_count);
         let changed = transaction
             .execute(
                 "UPDATE documents
                  SET page_count = ?1, extracted_page_count = ?1, rendered_page_count = ?1,
                      source_format = ?2, source_unit_kind = ?3,
                      extraction_backend = ?4, render_backend = ?5,
-                     semantic_element_count = ?6, semantic_chunk_count = ?7,
+                     extraction_mode = ?6, ocr_page_count = ?7,
+                     ocr_completed_page_count = ?7, ocr_mean_confidence = ?8,
+                     ocr_engine = ?9,
+                     semantic_element_count = ?10, semantic_chunk_count = ?11,
                      scale_mode = 'standard', estimated_source_tokens = 0,
                      outline_window_count = 0, outline_completed_window_count = 0,
                      generation_window_count = 0, generation_completed_window_count = 0,
                      outline_state = 'pending', safe_error_code = '', safe_error_message = '',
-                     updated_at = ?8, revision = revision + 1
-                 WHERE id = ?9 AND lifecycle_state = 'processing'",
+                     updated_at = ?12, revision = revision + 1
+                 WHERE id = ?13 AND lifecycle_state = 'processing'",
                 params![
                     unit_count,
                     processed.source.format.as_str(),
                     processed.source.unit_kind.as_str(),
                     processed.extraction_backend,
                     processed.render_backend,
+                    processed.extraction_mode.as_str(),
+                    ocr_page_count,
+                    processed.ocr.mean_confidence,
+                    processed.ocr.engine,
                     to_i64(processed.semantic.elements.len()),
                     to_i64(processed.semantic.chunks.len()),
                     now,
@@ -460,6 +734,21 @@ fn validate_pdf_semantic_provenance(semantic: &ExtractedDocument) -> Result<(), 
     Ok(())
 }
 
+fn validate_recovered_text_quality(semantic: &ExtractedDocument) -> Result<(), CommandError> {
+    for chunk in &semantic.chunks {
+        if pdf_backend::assess_text_quality(&chunk.full_text).suspicious {
+            return Err(CommandError::new(
+                "document_text_layer_unreliable",
+                format!(
+                    "The PDF still contains an unreliable text mapping around source page {} after native/OCR recovery. ostudy stopped before sending corrupted text to the AI provider.",
+                    chunk.page_numbers.first().copied().unwrap_or_default()
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn map_pdf_backend_error(error: PdfBackendError) -> CommandError {
     let backend = active_pdf_extraction_backend();
     let page = error.page_number.unwrap_or_default();
@@ -472,9 +761,29 @@ fn map_pdf_backend_error(error: PdfBackendError) -> CommandError {
             "pdf_text_extraction_failed",
             format!("Text could not be extracted from PDF page {page} by {backend}: {error}"),
         ),
-        PdfBackendErrorKind::SemanticAnalysis => CommandError::new(
-            "pdf_semantic_analysis_failed",
-            format!("The PDF structure could not be analyzed by {backend}: {error}"),
+    }
+}
+
+fn map_ocr_error(page_number: Option<usize>, error: OcrError) -> CommandError {
+    let page = page_number
+        .map(|page| format!(" page {page}"))
+        .unwrap_or_default();
+    match error {
+        OcrError::ProviderNotAvailable(_) => CommandError::new(
+            "document_ocr_unavailable",
+            "The PDF text layer is unreliable and ostudy needs local OCR to recover it, but Tesseract OCR is not available. Install Tesseract with English trained data (or set OSTUDY_TESSERACT_PATH), then retry generation. The original PDF remains in Documents.",
+        ),
+        OcrError::LowConfidence(_) => CommandError::new(
+            "document_ocr_low_confidence",
+            format!(
+                "OCR confidence was too low to trust the recovered text for PDF{page}. The original PDF remains available for visual review."
+            ),
+        ),
+        other => CommandError::new(
+            "document_ocr_failed",
+            format!(
+                "The PDF text layer is unreliable and OCR failed for PDF{page}: {other}. The original PDF remains in Documents."
+            ),
         ),
     }
 }
@@ -531,6 +840,13 @@ fn normalize_semantic_text(value: &str, maximum: usize) -> String {
         .collect::<String>()
         .trim()
         .to_string()
+}
+
+fn confidence_milli(value: f64) -> usize {
+    if !value.is_finite() {
+        return 0;
+    }
+    (value.clamp(0.0, 1.0) * 1_000.0).round() as usize
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -595,5 +911,15 @@ mod tests {
             normalize_page_text(" line\r\none\0two\rthree "),
             "line\nonetwo\nthree"
         );
+    }
+
+    #[test]
+    fn extraction_modes_have_stable_database_values() {
+        assert_eq!(ExtractionMode::Native.as_str(), "native");
+        assert_eq!(
+            ExtractionMode::PageTextFallback.as_str(),
+            "page_text_fallback"
+        );
+        assert_eq!(ExtractionMode::OcrFallback.as_str(), "ocr_fallback");
     }
 }
