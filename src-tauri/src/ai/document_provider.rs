@@ -110,7 +110,8 @@ pub(crate) fn load_document_provider_capabilities(
         // DeepSeek document generation currently uses its strict tool contract,
         // which is stronger than the generic JSON-object capability reported by
         // the ordinary connection probe.
-        result.structured_output = structured_strategy(provider_kind).max_preference(result.structured_output);
+        result.structured_output =
+            structured_strategy(provider_kind).max_preference(result.structured_output);
         Ok(result)
     })
 }
@@ -128,7 +129,11 @@ impl StructuredOutputPreference for StructuredOutputStrategy {
             JsonSchema => 2,
             StrictTool => 3,
         };
-        if rank(self) >= rank(other) { self } else { other }
+        if rank(self) >= rank(other) {
+            self
+        } else {
+            other
+        }
     }
 }
 
@@ -188,7 +193,10 @@ mod tests {
     #[test]
     fn deepseek_document_strategy_is_strict_tool_output() {
         let capabilities = DocumentProviderCapabilities::conservative("deepseek", "model");
-        assert_eq!(capabilities.structured_output, StructuredOutputStrategy::StrictTool);
+        assert_eq!(
+            capabilities.structured_output,
+            StructuredOutputStrategy::StrictTool
+        );
     }
 
     #[test]
