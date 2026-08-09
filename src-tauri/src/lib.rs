@@ -173,7 +173,7 @@ pub fn run() {
             ai::probes::get_ai_provider_probe_result,
             documents::list_documents,
             document_operations::import_pdf_document,
-            document_operations::retry_pdf_flashcard_generation,
+            document_operations::run_pdf_flashcard_generation,
             document_operations::cancel_pdf_flashcard_generation,
             document_operations::open_document_source,
             document_operations::delete_pdf_document,
