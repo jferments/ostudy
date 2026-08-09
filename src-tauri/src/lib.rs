@@ -22,6 +22,7 @@ mod deletion_purge;
 mod diagnostics;
 mod document_backup;
 mod document_delete_reconciliation;
+mod document_more;
 mod document_operations;
 mod document_semantics;
 mod documents;
@@ -177,6 +178,7 @@ pub fn run() {
             documents::list_documents,
             document_operations::import_pdf_document,
             document_operations::run_pdf_flashcard_generation,
+            document_more::generate_more_pdf_flashcards,
             document_operations::cancel_pdf_flashcard_generation,
             document_operations::open_document_source,
             document_operations::delete_pdf_document,
