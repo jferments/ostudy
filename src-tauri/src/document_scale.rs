@@ -59,9 +59,9 @@ impl DocumentScalePlan {
         Self::for_provider(source_unit_count, "llama_cpp")
     }
 
-    /// Conservative provider defaults used when no current capability snapshot
-    /// is available. This preserves offline/test determinism and fails toward
-    /// smaller request windows rather than assuming a large advertised context.
+    /// Conservative provider defaults used by deterministic tests when no
+    /// current capability snapshot is available.
+    #[cfg(test)]
     pub(crate) fn for_provider(source_unit_count: usize, provider_kind: &str) -> Self {
         baseline_plan(source_unit_count, provider_kind)
     }
