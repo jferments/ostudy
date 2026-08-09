@@ -50,27 +50,27 @@ jobs:
       - name: Expose user-local tools
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Apply PR38 follow-up fixes and canonical rustfmt
+      - name: Apply PR38 follow-up postfix and canonical rustfmt
         id: format
         run: |
-          node ./scripts/apply-pr38-followup-fixes.mjs
+          node ./scripts/apply-pr38-followup-postfix.mjs
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           git diff --check
-          if git diff --quiet -- src src-tauri/src; then
+          if git diff --quiet -- src-tauri/src; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit PR38 follow-up fixes
+      - name: Commit PR38 follow-up postfix
         if: steps.format.outputs.changed == 'true'
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src src-tauri/src
-          git commit -m "fix: harden document generation follow-up behavior"
+          git add src-tauri/src
+          git commit -m "fix: finalize bounded global document synthesis"
           git push origin "HEAD:${HEAD_REF}"
 
   check:
