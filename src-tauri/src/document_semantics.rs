@@ -184,6 +184,10 @@ fn split_text_into_segments(value: &str, segment_count: usize) -> Vec<String> {
     let mut segments = Vec::with_capacity(segment_count);
     let mut start = 0_usize;
     for segment_index in 0..segment_count {
+        if start >= characters.len() {
+            segments.push(String::new());
+            continue;
+        }
         if segment_index + 1 == segment_count {
             segments.push(
                 characters[start..]
@@ -201,21 +205,18 @@ fn split_text_into_segments(value: &str, segment_count: usize) -> Vec<String> {
         let search_radius = (remaining_chars / remaining_segments / 4).max(32);
         let floor = target.saturating_sub(search_radius).max(start + 1);
         let ceiling = (target + search_radius).min(characters.len() - 1);
+        let before_end = target.min(ceiling);
 
-        let mut split = None;
-        for index in (floor..=target.min(ceiling)).rev() {
-            if characters[index].is_whitespace() {
-                split = Some(index + 1);
-                break;
-            }
-        }
+        let mut split = characters[floor..=before_end]
+            .iter()
+            .rposition(|character| character.is_whitespace())
+            .map(|offset| floor + offset + 1);
         if split.is_none() {
-            for index in target.min(ceiling)..=ceiling {
-                if characters[index].is_whitespace() {
-                    split = Some(index + 1);
-                    break;
-                }
-            }
+            let after_start = target.min(ceiling);
+            split = characters[after_start..=ceiling]
+                .iter()
+                .position(|character| character.is_whitespace())
+                .map(|offset| after_start + offset + 1);
         }
         let end = split.unwrap_or(target).clamp(start + 1, characters.len());
         segments.push(
