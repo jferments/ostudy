@@ -6,7 +6,7 @@
 //! future extraction engine can be swapped without changing durable document or
 //! AI contracts.
 
-use std::{fmt, path::Path};
+use std::{collections::HashSet, fmt, path::Path};
 
 use oxidize_pdf::{
     parser::PdfDocument,
@@ -109,9 +109,9 @@ pub(crate) fn active_backend_id() -> &'static str {
 ///
 /// `ExtractionProfile::Rag` preserves reading order, headings, tables, lists,
 /// geometry, and structure-aware chunks. OCR is intentionally not enabled by
-/// ostudy's Cargo feature set; image-only pages therefore have empty extracted
-/// text but remain available to the independent page renderer and multimodal
-/// provider path.
+/// ostudy's Cargo feature set. Pages without extractable structure receive a
+/// bounded page-evidence chunk so they remain represented in semantic windows;
+/// an image-capable provider can then use the independently rendered page.
 pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, PdfBackendError> {
     let document = PdfDocument::open(source_path).map_err(|error| {
         PdfBackendError::new(PdfBackendErrorKind::Open, None, error.to_string())
@@ -201,6 +201,7 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
         .map(|(chunk_index, hybrid)| RagChunk::from_hybrid_chunk(chunk_index, hybrid))
         .map(convert_chunk)
         .collect::<Vec<_>>();
+    let chunks = cover_unstructured_pages(chunks, &pages);
 
     Ok(ExtractedDocument {
         page_count,
@@ -241,6 +242,56 @@ fn convert_chunk(chunk: RagChunk) -> ExtractedSemanticChunk {
     }
 }
 
+fn cover_unstructured_pages(
+    mut chunks: Vec<ExtractedSemanticChunk>,
+    pages: &[ExtractedTextPage],
+) -> Vec<ExtractedSemanticChunk> {
+    let covered = chunks
+        .iter()
+        .flat_map(|chunk| chunk.page_numbers.iter().copied())
+        .collect::<HashSet<_>>();
+
+    for page in pages {
+        if covered.contains(&page.page_number) {
+            continue;
+        }
+        let extracted = page.text.trim();
+        let (text, element_type) = if extracted.is_empty() {
+            (
+                format!(
+                    "Rendered PDF page {} has no extractable structured text. Use an attached page image as source evidence when available; otherwise do not infer page content.",
+                    page.page_number
+                ),
+                "image".to_string(),
+            )
+        } else {
+            (extracted.to_string(), "paragraph".to_string())
+        };
+        chunks.push(ExtractedSemanticChunk {
+            chunk_index: chunks.len(),
+            text: text.clone(),
+            full_text: text.clone(),
+            page_numbers: vec![page.page_number],
+            bounding_boxes: Vec::new(),
+            element_types: vec![element_type],
+            heading_context: None,
+            token_estimate: (text.chars().count() / 4).max(1),
+            is_oversized: false,
+        });
+    }
+
+    chunks.sort_by_key(|chunk| {
+        (
+            chunk.page_numbers.first().copied().unwrap_or(usize::MAX),
+            chunk.chunk_index,
+        )
+    });
+    for (index, chunk) in chunks.iter_mut().enumerate() {
+        chunk.chunk_index = index;
+    }
+    chunks
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,5 +299,36 @@ mod tests {
     #[test]
     fn active_backend_identifies_structure_aware_oxidize_extraction() {
         assert_eq!(active_backend_id(), "oxidize-pdf-4.2.2-rag");
+    }
+
+    #[test]
+    fn unstructured_pages_remain_available_as_visual_evidence_chunks() {
+        let pages = vec![
+            ExtractedTextPage {
+                page_number: 1,
+                text: "Structured text".to_string(),
+            },
+            ExtractedTextPage {
+                page_number: 2,
+                text: String::new(),
+            },
+        ];
+        let chunks = vec![ExtractedSemanticChunk {
+            chunk_index: 0,
+            text: "Structured text".to_string(),
+            full_text: "Structured text".to_string(),
+            page_numbers: vec![1],
+            bounding_boxes: Vec::new(),
+            element_types: vec!["paragraph".to_string()],
+            heading_context: None,
+            token_estimate: 4,
+            is_oversized: false,
+        }];
+
+        let covered = cover_unstructured_pages(chunks, &pages);
+        assert_eq!(covered.len(), 2);
+        assert_eq!(covered[1].page_numbers, vec![2]);
+        assert_eq!(covered[1].element_types, vec!["image"]);
+        assert!(covered[1].full_text.contains("attached page image"));
     }
 }
