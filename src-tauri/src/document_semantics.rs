@@ -185,7 +185,13 @@ fn split_text_into_segments(value: &str, segment_count: usize) -> Vec<String> {
     let mut start = 0_usize;
     for segment_index in 0..segment_count {
         if segment_index + 1 == segment_count {
-            segments.push(characters[start..].iter().collect::<String>().trim().to_string());
+            segments.push(
+                characters[start..]
+                    .iter()
+                    .collect::<String>()
+                    .trim()
+                    .to_string(),
+            );
             break;
         }
 
@@ -212,7 +218,13 @@ fn split_text_into_segments(value: &str, segment_count: usize) -> Vec<String> {
             }
         }
         let end = split.unwrap_or(target).clamp(start + 1, characters.len());
-        segments.push(characters[start..end].iter().collect::<String>().trim().to_string());
+        segments.push(
+            characters[start..end]
+                .iter()
+                .collect::<String>()
+                .trim()
+                .to_string(),
+        );
         start = end;
         while start < characters.len() && characters[start].is_whitespace() {
             start += 1;
@@ -260,7 +272,11 @@ fn format_unit_for_model(unit: &SourceUnit<'_>) -> String {
         chunk.element_types.join(",")
     };
     let segment = if unit.segment_count > 1 {
-        format!(" segment=\"{}/{}\"", unit.segment_index + 1, unit.segment_count)
+        format!(
+            " segment=\"{}/{}\"",
+            unit.segment_index + 1,
+            unit.segment_count
+        )
     } else {
         String::new()
     };
@@ -340,7 +356,9 @@ mod tests {
         assert!(windows.len() > 4);
         assert!(windows.iter().all(|window| window.token_estimate <= 1_000));
         assert!(windows.iter().all(|window| window.page_numbers.len() <= 3));
-        assert!(windows.iter().any(|window| window.source_text.contains("segment=\"2/")));
+        assert!(windows
+            .iter()
+            .any(|window| window.source_text.contains("segment=\"2/")));
         assert!(windows.iter().any(|window| window.last_chunk_index == 1));
         assert!(windows
             .iter()
