@@ -84,14 +84,14 @@ if [[ "$document_only" == "1" ]]; then
     --all-features \
     --lib \
     database::tests::migrations_and_repairs_are_idempotent_and_reach_latest_schema \
-    --exact
+    -- --exact
   cargo test \
     --manifest-path src-tauri/Cargo.toml \
     --locked \
     --all-features \
     --lib \
     database::tests::released_schema_upgrades_forward_without_losing_integrity \
-    --exact
+    -- --exact
   exit 0
 fi
 
