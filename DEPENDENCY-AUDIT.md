@@ -30,9 +30,8 @@ No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is install
 - reqwest `0.13.4` with default features disabled and Rustls/JSON enabled
 - url `2.5.7`
 - base64 `0.22.1`
-- image `0.25.10` with PNG support
+- justpdf `0.1.2`, which exposes the pure-Rust justpdf-render `0.1.2` page renderer
 - oxidize-pdf `4.2.2`, default features disabled, with `compression` and `semantic`
-- pdfium-render `0.9.3` using the Pdfium 7881 API, image 0.25 integration, and serialized thread-safe binding access
 
 `rs-fsrs` remains isolated behind `src-tauri/src/scheduler.rs`; durable rows and IPC objects use ostudy-owned types.
 
@@ -46,21 +45,23 @@ No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is install
 
 `oxidize-pdf` is the native structured extraction backend. ostudy uses its RAG extraction profile to recover page text, reading order, headings, semantic elements, geometry, heading context, tables/lists, and structure-aware chunks. The crate is compiled with default features disabled. OCR/Tesseract integration is not enabled, and repository dependency checks explicitly reject `rusty-tesseract`.
 
-No oxidize-pdf type crosses the document boundary. `src-tauri/src/pdf_backend.rs` maps extraction results into ostudy-owned semantic page/element/chunk structures. This keeps the database, backup, AI, and UI layers independent of the concrete parser.
+No oxidize-pdf type crosses the document boundary. `src-tauri/src/pdf_backend.rs` maps extraction results into ostudy-owned semantic page/element/chunk structures. Pages without extractable text receive a bounded page-evidence chunk so image-only material remains represented in semantic windows without enabling an OCR runtime.
 
 ### Page rendering
 
-`pdfium-render` is isolated behind `src-tauri/src/pdf_render_backend.rs` and performs only page rasterization. It binds to Pdfium build 7881 and returns PNG bytes to the managed-document pipeline.
+`justpdf` is used only as the documented high-level facade around `justpdf-render` inside `src-tauri/src/pdf_render_backend.rs`. The renderer rasterizes pages to PNG at a bounded 144 DPI and returns bytes to the managed-document pipeline.
 
-`pdfium-render` does not itself contain Pdfium. `scripts/pdfium-runtime.sh` provisions the immutable `chromium/7881` release from `bblanchon/pdfium-binaries`, requires GitHub release metadata to contain a SHA-256 digest, verifies the downloaded archive, caches it outside the repository, and copies the target library into the ignored `src-tauri/resources/pdfium/` directory for Tauri bundling. Development and test runs expose the verified path as `OSTUDY_PDFIUM_LIBRARY`; packaged applications resolve the bundled resource.
+The default renderer is deliberately pure Rust. ostudy does not package Pdfium, Poppler, a headless browser, or another native PDF runtime, so the document pipeline does not require a different dynamic library artifact for Linux, Windows, macOS, Android, and iOS CPU targets. This is especially important for mobile packaging and for keeping runtime memory/process overhead bounded.
 
-The extraction and rendering backends are intentionally separate. A future parser or platform-native renderer can replace one without changing the other or changing managed document/card contracts.
+The extraction and rendering backends remain intentionally separate. If compatibility testing later finds PDFs that justpdf-render cannot faithfully rasterize, a Pdfium-backed desktop compatibility renderer can be introduced behind the same boundary without changing document storage, semantic extraction, provider requests, backups, or card authoring.
 
 No Python runtime, model weights, CUDA runtime, llama.cpp binary, Ollama binary, OCR runtime, or other local inference infrastructure is packaged by these stages.
 
 ## Document intelligence
 
-The document database stores engine-neutral semantic elements/chunks and a validated hierarchical document outline. Flashcard generation uses overlapping token/page-bounded semantic windows rather than one request per physical page. A final model-assisted relevance pass may reject low-value or redundant generated cards, but cannot rewrite or commit them directly. Canonical generated-card authoring remains authoritative for Markdown, Cloze syntax, tags, duplicate fingerprints, scheduling, and transactional persistence.
+The document database stores engine-neutral semantic elements/chunks and a validated hierarchical document outline. Flashcard generation uses overlapping token/page-bounded semantic windows rather than one request per physical page. Image-only pages are preserved as visual-evidence chunks; verified image-capable llama.cpp profiles can use their managed page renders during generation, while text-only profiles are prevented from treating missing text as source facts.
+
+A final model-assisted relevance pass may reject low-value or redundant generated cards, but cannot rewrite or commit them directly. Canonical generated-card authoring remains authoritative for Markdown, Cloze syntax, tags, duplicate fingerprints, scheduling, and transactional persistence.
 
 ## Managed files and backups
 
