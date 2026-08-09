@@ -73,9 +73,7 @@ pub(crate) fn persist_usage_observations_best_effort(
         return;
     }
     let result = database.with_connection(|connection| {
-        let transaction = connection
-            .transaction()
-            .map_err(CommandError::database)?;
+        let transaction = connection.transaction().map_err(CommandError::database)?;
         for observation in observations {
             let now = unix_time_millis()?;
             transaction
@@ -109,7 +107,12 @@ pub(crate) fn persist_usage_observations_best_effort(
     if let Err(error) = result {
         crate::logging::error(
             "document_usage_sample_write_failed",
-            format!("samples={} code={} detail={}", observations.len(), error.code, error.message),
+            format!(
+                "samples={} code={} detail={}",
+                observations.len(),
+                error.code,
+                error.message
+            ),
         );
     }
 }

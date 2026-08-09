@@ -117,7 +117,10 @@ impl SourceLocator {
         })
     }
 
-    pub(crate) fn pages(page_numbers: Vec<i64>, section_label: Option<String>) -> Result<Self, CommandError> {
+    pub(crate) fn pages(
+        page_numbers: Vec<i64>,
+        section_label: Option<String>,
+    ) -> Result<Self, CommandError> {
         Self::new(SourceUnitKind::Page, page_numbers, section_label)
     }
 
@@ -126,7 +129,10 @@ impl SourceLocator {
     }
 
     pub(crate) fn last(&self) -> i64 {
-        self.unit_numbers.last().copied().unwrap_or_else(|| self.first())
+        self.unit_numbers
+            .last()
+            .copied()
+            .unwrap_or_else(|| self.first())
     }
 
     pub(crate) fn validate_within(&self, source_unit_count: usize) -> Result<(), CommandError> {
@@ -207,7 +213,13 @@ mod tests {
         let pdf = DocumentSourceDescriptor::pdf(11);
         assert_eq!(pdf.format.as_str(), "pdf");
         assert_eq!(pdf.unit_kind.plural_label(), "pages");
-        assert_eq!(DocumentFormat::from_db("docx").unwrap(), DocumentFormat::Docx);
-        assert_eq!(SourceUnitKind::from_db("slide").unwrap(), SourceUnitKind::Slide);
+        assert_eq!(
+            DocumentFormat::from_db("docx").unwrap(),
+            DocumentFormat::Docx
+        );
+        assert_eq!(
+            SourceUnitKind::from_db("slide").unwrap(),
+            SourceUnitKind::Slide
+        );
     }
 }
