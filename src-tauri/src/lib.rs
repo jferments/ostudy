@@ -21,6 +21,7 @@ mod deletion_commands;
 mod deletion_purge;
 mod diagnostics;
 mod document_backup;
+mod document_delete_reconciliation;
 mod document_operations;
 mod document_semantics;
 mod documents;
@@ -86,6 +87,8 @@ pub fn run() {
             deletion_purge::purge_finalized_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
             asset_lifecycle::reconcile_startup(&database, &paths)
+                .map_err(|error| io::Error::other(error.message))?;
+            document_delete_reconciliation::restore_interrupted_deletions(&database, &paths)
                 .map_err(|error| io::Error::other(error.message))?;
             documents::reconcile_startup(&database, &paths)
                 .map_err(|error| io::Error::other(error.message))?;
