@@ -74,8 +74,11 @@ pub(crate) fn restore_interrupted_deletions(
 
 fn staged_document_id(name: &str) -> Option<String> {
     let document_id = name.split_once('-')?.0;
-    (document_id.len() == 32 && document_id.chars().all(|character| character.is_ascii_hexdigit()))
-        .then(|| document_id.to_ascii_lowercase())
+    (document_id.len() == 32
+        && document_id
+            .chars()
+            .all(|character| character.is_ascii_hexdigit()))
+    .then(|| document_id.to_ascii_lowercase())
 }
 
 #[cfg(unix)]
