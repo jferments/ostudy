@@ -250,19 +250,28 @@ pub(crate) fn load_document_task_context(
     })
 }
 
+pub(crate) struct OutlineBuildSources<'a> {
+    pub windows: &'a [SemanticWindow],
+    pub cached_fragments: &'a [Option<DocumentOutline>],
+    pub window_images: &'a [Vec<SourcePageImage>],
+}
+
 pub(crate) async fn build_document_outline<F>(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
     document_title: &str,
     page_count: i64,
-    windows: &[SemanticWindow],
-    cached_fragments: &[Option<DocumentOutline>],
-    window_images: &[Vec<SourcePageImage>],
+    sources: OutlineBuildSources<'_>,
     mut persist_fragment: F,
 ) -> Result<DocumentOutline, CommandError>
 where
     F: FnMut(&SemanticWindow, &DocumentOutline) -> Result<(), CommandError>,
 {
+    let OutlineBuildSources {
+        windows,
+        cached_fragments,
+        window_images,
+    } = sources;
     if windows.is_empty() {
         return Err(CommandError::new(
             "document_has_no_semantic_content",
@@ -1118,7 +1127,7 @@ fn parse_flashcards(value: Value, maximum_cards: usize) -> Result<Vec<Value>, Co
     let output: FlashcardOutput = serde_json::from_value(value).map_err(|_| {
         output_error("The model returned flashcards that did not match ostudy's generation schema.")
     })?;
-    let maximum_cards = maximum_cards.max(1).min(MAX_WINDOW_CARDS);
+    let maximum_cards = maximum_cards.clamp(1, MAX_WINDOW_CARDS);
     if output.cards.len() > maximum_cards {
         return Err(output_error(format!(
             "The model returned more than {maximum_cards} cards for this semantic source window."

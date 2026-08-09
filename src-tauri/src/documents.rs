@@ -25,7 +25,6 @@ use crate::{
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
-const MAX_PDF_PAGES: usize = 2_000;
 const MAX_PAGE_TEXT_CHARS: usize = 200_000;
 const MAX_TOTAL_TEXT_BYTES: usize = 96 * 1024 * 1024;
 const MAX_SEMANTIC_TEXT_BYTES: usize = 128 * 1024 * 1024;
@@ -36,13 +35,6 @@ const MAX_DOCUMENTS_RETURNED: i64 = 500;
 // Keep each provider request comfortably below common local llama-server
 // context allocations. Large documents are handled by more semantic windows,
 // not by making individual prompts approach the model's advertised maximum.
-const OUTLINE_WINDOW_MAX_TOKENS: usize = 3_200;
-const OUTLINE_WINDOW_MAX_PAGES: usize = 8;
-const OUTLINE_WINDOW_OVERLAP_TOKENS: usize = 350;
-const GENERATION_WINDOW_MAX_TOKENS: usize = 5_000;
-const GENERATION_WINDOW_MAX_PAGES: usize = 10;
-const GENERATION_WINDOW_OVERLAP_TOKENS: usize = 700;
-const MAX_IMAGES_PER_GENERATION_WINDOW: usize = 6;
 
 const INTERRUPTED_ERROR_CODE: &str = "document_generation_interrupted";
 const INTERRUPTED_ERROR_MESSAGE: &str =
@@ -456,11 +448,13 @@ async fn process_and_generate(
             database.inner(),
             document_id,
             plan,
-            estimated_source_tokens,
-            outline_windows.len(),
-            outline_windows.len(),
-            generation_windows.len(),
-            0,
+            DocumentAiProgressPlan {
+                estimated_source_tokens,
+                outline_window_count: outline_windows.len(),
+                outline_completed_window_count: outline_windows.len(),
+                generation_window_count: generation_windows.len(),
+                generation_completed_window_count: 0,
+            },
         )?;
         crate::logging::info(
             "document_final_outline_reused",
@@ -488,11 +482,13 @@ async fn process_and_generate(
             database.inner(),
             document_id,
             plan,
-            estimated_source_tokens,
-            outline_windows.len(),
-            outline_completed,
-            generation_windows.len(),
-            0,
+            DocumentAiProgressPlan {
+                estimated_source_tokens,
+                outline_window_count: outline_windows.len(),
+                outline_completed_window_count: outline_completed,
+                generation_window_count: generation_windows.len(),
+                generation_completed_window_count: 0,
+            },
         )?;
         mark_outline_building(database.inner(), document_id)?;
         let outline = document_intelligence::build_document_outline(
@@ -564,7 +560,7 @@ async fn process_and_generate(
         &generation_windows,
     )?;
     let mut generated_cards = Vec::new();
-    for (window, cached_cards) in generation_windows.iter().zip(cached_generation.into_iter()) {
+    for (window, cached_cards) in generation_windows.iter().zip(cached_generation) {
         let cards = if let Some(cards) = cached_cards {
             crate::logging::info(
                 "document_generation_window_reused",
@@ -1216,16 +1212,28 @@ fn persist_outline(
     })
 }
 
-fn initialize_document_ai_plan(
-    database: &Database,
-    document_id: &str,
-    plan: DocumentScalePlan,
+#[derive(Clone, Copy, Debug)]
+struct DocumentAiProgressPlan {
     estimated_source_tokens: usize,
     outline_window_count: usize,
     outline_completed_window_count: usize,
     generation_window_count: usize,
     generation_completed_window_count: usize,
+}
+
+fn initialize_document_ai_plan(
+    database: &Database,
+    document_id: &str,
+    plan: DocumentScalePlan,
+    progress: DocumentAiProgressPlan,
 ) -> Result<(), CommandError> {
+    let DocumentAiProgressPlan {
+        estimated_source_tokens,
+        outline_window_count,
+        outline_completed_window_count,
+        generation_window_count,
+        generation_completed_window_count,
+    } = progress;
     let now = unix_time_millis()?;
     database.with_connection(|connection| {
         connection

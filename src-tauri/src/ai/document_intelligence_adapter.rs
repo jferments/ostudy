@@ -7,7 +7,8 @@ mod implementation;
 
 pub(crate) use implementation::{
     curate_document_cards, generate_window_flashcards, load_document_task_context, DocumentOutline,
-    DocumentTaskContext, SourcePageImage, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
+    DocumentTaskContext, OutlineBuildSources, SourcePageImage, OUTLINE_PROMPT_VERSION,
+    OUTLINE_SCHEMA_VERSION,
 };
 
 const VISUAL_ONLY_MARKER: &str = "has no extractable structured text";
@@ -62,9 +63,11 @@ where
         task,
         document_title,
         page_count,
-        windows,
-        cached_fragments,
-        &images,
+        OutlineBuildSources {
+            windows,
+            cached_fragments,
+            window_images: &images,
+        },
         persist_fragment,
     )
     .await

@@ -50,6 +50,7 @@ impl DocumentScalePlan {
     /// Compatibility helper for provider-neutral tests and callers. Large
     /// provider jobs should use `for_provider` so cloud and local runtimes can
     /// make different context/overhead tradeoffs.
+    #[cfg(test)]
     pub(crate) fn for_page_count(page_count: usize) -> Self {
         Self::for_provider(page_count, "llama_cpp")
     }

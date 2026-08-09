@@ -27,10 +27,6 @@ use crate::{
 // Additional passes use the same conservative provider boundary as initial
 // generation. Reusing a persisted outline must not reintroduce the old large
 // source-window context risk.
-const GENERATION_WINDOW_MAX_TOKENS: usize = 5_000;
-const GENERATION_WINDOW_MAX_PAGES: usize = 10;
-const GENERATION_WINDOW_OVERLAP_TOKENS: usize = 700;
-const MAX_IMAGES_PER_GENERATION_WINDOW: usize = 6;
 const MAX_RENDER_BYTES: usize = 32 * 1024 * 1024;
 const MAX_GENERATED_CARDS: usize = 10_000;
 const MAX_EXISTING_COVERAGE_CHARS: usize = 36_000;
