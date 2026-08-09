@@ -1,8 +1,10 @@
 //! Task-scoped cancellation for long-running document AI work.
 //!
 //! Cancellation is intentionally process-local. Durable document/job state
-//! remains in SQLite; this module only binds one running async document task to
-//! an in-memory signal so the native HTTP gateway can abort that exact stream.
+//! remains in SQLite; this module binds one running document task to an in-memory
+//! signal. Async provider traffic uses the Tokio task-local signal, while
+//! blocking extraction/render/OCR workers can query the same registry by exact
+//! document id.
 
 use std::{
     collections::HashMap,
@@ -100,6 +102,17 @@ impl ActiveDocumentTasks {
             .map(|tasks| tasks.contains_key(document_id))
             .unwrap_or(false)
     }
+
+    fn is_canceled(&self, document_id: &str) -> bool {
+        self.tasks
+            .lock()
+            .map(|tasks| {
+                tasks
+                    .get(document_id)
+                    .is_some_and(CancellationSignal::is_canceled)
+            })
+            .unwrap_or(false)
+    }
 }
 
 static ACTIVE_DOCUMENT_TASKS: LazyLock<ActiveDocumentTasks> =
@@ -131,6 +144,13 @@ pub(crate) fn is_document_task_active(document_id: &str) -> bool {
     ACTIVE_DOCUMENT_TASKS.is_active(document_id)
 }
 
+/// Blocking extraction/render/OCR workers do not inherit Tokio task-local
+/// storage. They use this exact-document registry query to observe the same Stop
+/// action without introducing a second cancellation authority.
+pub(crate) fn is_document_task_canceled(document_id: &str) -> bool {
+    ACTIVE_DOCUMENT_TASKS.is_canceled(document_id)
+}
+
 fn registry_error() -> CommandError {
     CommandError::new(
         "document_task_registry_unavailable",
@@ -156,11 +176,13 @@ mod tests {
         cancel_document_task(first_id).expect("first task should cancel");
         first.canceled().await;
         assert!(first.is_canceled());
+        assert!(is_document_task_canceled(first_id));
         assert!(!second.is_canceled());
+        assert!(!is_document_task_canceled(second_id));
 
         ACTIVE_DOCUMENT_TASKS.finish(first_id);
         ACTIVE_DOCUMENT_TASKS.finish(second_id);
         assert!(!is_document_task_active(first_id));
-        assert!(!is_document_task_active(second_id));
+        assert!(!is_document_task_canceled(first_id));
     }
 }
