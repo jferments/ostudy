@@ -15,6 +15,37 @@ pnpm install
 ./run-app.sh
 ```
 
+## Provider-enforced structured output
+
+Document generation must not depend on prose alone to produce parseable card objects.
+
+### llama.cpp / Unsloth
+
+The normal request uses llama-server's schema-constrained JSON response format. The JSON Schema is lowered by llama-server into its constrained sampling grammar. If an older llama-server rejects that request shape, ostudy retries once against the **same provider and model** using the server's top-level JSON-Schema compatibility field. The retry remains grammar/schema constrained; it must never fall back to unconstrained JSON plus prompt instructions.
+
+Retest the same kind of ~11-page PDF that previously failed with `The AI provider rejected the request.` and also the large ~138-page source that previously reached generation but ended with an ostudy contract error.
+
+Confirm:
+
+- the server accepts either the normal schema request or the one schema-constrained compatibility retry;
+- no provider/model fallback occurs;
+- the model cannot add unknown card fields or unsupported card types outside the supplied schema;
+- if an individual candidate is structurally valid but fails a narrower ostudy semantic rule (for example an invalid Cloze blank), that candidate is dropped instead of causing the entire source window to be regenerated twice;
+- canonical card authoring still performs its independent local validation before persistence.
+
+### DeepSeek
+
+Document tasks use DeepSeek's Beta **strict Function Calling** mode rather than ordinary JSON Output. The function is forced, `strict: true` is enabled, and ostudy supplies a DeepSeek-compatible JSON Schema. The strict schema adapter converts the internal schema to DeepSeek's supported subset (including `anyOf` variants and all-properties-required objects) while local Rust validation retains the tighter length/count rules that the provider's strict schema does not support.
+
+Retest the large ~138-page source that previously failed with `The AI provider twice returned flashcards that did not match ostudy's contract.`
+
+Confirm:
+
+- outline, card-generation, and curation calls return forced structured tool arguments;
+- the task proceeds through multiple generation windows without prose/Markdown responses leaking into the JSON path;
+- one bad semantic candidate does not invalidate otherwise useful cards from the same window;
+- no provider fallback occurs.
+
 ## Card direction acceptance
 
 Use a successful text-heavy PDF generation with either DeepSeek or llama.cpp / Unsloth.
@@ -31,12 +62,10 @@ A provider cannot set Basic `reverseEnabled`; Rust owns the final direction rule
 
 ## Small Unsloth compatibility acceptance
 
-Retest the same kind of ~11-page PDF that previously failed with `The AI provider rejected the request.`
-
 1. Start the configured llama.cpp / Unsloth server and verify the saved profile/model.
 2. Upload the PDF.
 3. Confirm the server accepts the streamed request and generation begins.
-4. If the server rejects the normal JSON-Schema request as unsupported, confirm ostudy retries once against the **same** provider/model in JSON-object compatibility mode.
+4. If the server rejects the normal schema request as unsupported, confirm ostudy retries once against the **same** provider/model with another schema-constrained llama-server request shape.
 5. Confirm the task either generates a valid deck or produces a specific safe compatibility/model error rather than the previous generic rejection.
 6. Verify no cloud/provider fallback occurred.
 
@@ -59,10 +88,21 @@ Confirm:
 - the PDF does not fail merely because parser metadata contains long heading paths/font names or unusual/non-finite geometry;
 - local semantic metadata is bounded before SQLite persistence;
 - the job proceeds into outline/generation when local processing succeeds;
+- provider output stays inside the enforced structured-output boundary during long multi-window generation;
 - a real PDF rendering/extraction failure, if one occurs, reports a PDF-specific safe error instead of an opaque database error;
 - Stop generation remains available once the document is in an active cancellable generation task.
 
 If this exact source still produces a database error, capture the **ostudy diagnostic log entry/code around the failure**; do not include provider credentials or the copyrighted source file in a public report. That would identify which remaining SQLite boundary is involved.
+
+## Documents UI acceptance
+
+The Documents header should stay deliberately compact:
+
+- it displays only **Current Flashcard Generation model** and the configured model name;
+- it does not repeat provider kind, network scope, or provider-transmission explanatory text;
+- selecting a PDF shows the toast **Large documents can take several minutes.**;
+- the document row does not contain the old persistent long-running-generation paragraph;
+- the small processing phase label remains visible during active work.
 
 ## Generate more cards acceptance
 
