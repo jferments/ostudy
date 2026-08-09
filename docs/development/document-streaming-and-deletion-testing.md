@@ -15,7 +15,7 @@ pnpm install
 ./scripts/check.sh
 ```
 
-The automated suite verifies typed IPC parity, SSE parsing/bounds, task-local cancellation isolation, Documents Stop/Delete controls, destructive confirmation, Default AI model wording, dependency pins, Rust/React builds, and native smoke tests.
+The automated suite verifies typed IPC parity, SSE parsing/bounds, task-local cancellation isolation, Documents Stop/Delete controls, destructive confirmation, Default AI model wording, dependency pins, Rust/React builds, interrupted-delete reconciliation, and native smoke tests.
 
 ## Long-running llama.cpp / Unsloth acceptance
 
@@ -85,6 +85,12 @@ Confirm the operating system opens the managed source PDF and no `opener.open_pa
 10. Verify ordinary practice, scheduling, search, and analytics for the surviving cards still work.
 
 Deletion must be disabled while generation is running. If the deck description is too long to preserve any textual source reference safely, deletion should fail rather than truncate user-authored description text or silently lose source identity.
+
+### Interrupted deletion recovery
+
+Permanent deletion deliberately has a filesystem/SQLite boundary: the managed document directory is renamed into application-controlled delete staging before the database transaction commits. The automated suite covers the pre-commit crash case. On startup, if the durable document row still exists and its normal source directory is missing, ostudy restores the staged directory **before** ordinary document reconciliation can mark the source missing. If the document row is already gone, delete-staging is unreachable residue and startup removes it.
+
+For a manual fault-injection build, terminate ostudy after the directory rename but before the database delete commits, then restart. The document and source PDF should recover rather than disappear. The opposite case—database delete committed but final staged-directory cleanup interrupted—should keep the document deleted and remove the unreachable staging residue on restart.
 
 ## Archive versus delete
 
