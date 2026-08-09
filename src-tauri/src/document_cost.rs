@@ -1,35 +1,20 @@
-//! Empirical document-AI usage calibration.
+//! Empirical document-AI cost calibration.
 //!
-//! Provider-declared context limits remain hard constraints. This module only
-//! learns conservative planning multipliers from safe aggregate usage metadata
-//! reported by successful provider calls. No source text, prompts, responses,
-//! credentials, or reasoning content are persisted.
+//! Provider-declared context limits remain hard constraints. Curated calibration
+//! rows may tighten prompt/image overhead estimates, while raw acceptance-test
+//! observations live in a committed benchmark fixture and are analyzed from safe
+//! diagnostic aggregates. Benchmark evidence never automatically widens a model
+//! context or overrides provider capability facts.
 
 use rusqlite::{params, OptionalExtension};
 
-use crate::{database::Database, error::CommandError, util::unix_time_millis};
+use crate::{database::Database, error::CommandError};
 
 const MAX_RECENT_SAMPLES: i64 = 96;
 const DEFAULT_PROMPT_MULTIPLIER_MILLI: usize = 1_600;
 const MIN_PROMPT_MULTIPLIER_MILLI: usize = 1_000;
 const MAX_PROMPT_MULTIPLIER_MILLI: usize = 8_000;
 const MAX_IMAGE_PROMPT_TOKENS: usize = 8_192;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct DocumentUsageObservation {
-    pub provider_kind: String,
-    pub model_id: String,
-    pub task_kind: String,
-    pub source_format: String,
-    pub source_unit_count: usize,
-    pub source_text_chars: usize,
-    pub estimated_source_tokens: usize,
-    pub image_count: usize,
-    pub max_output_tokens: usize,
-    pub prompt_tokens: usize,
-    pub completion_tokens: usize,
-    pub reasoning_tokens: usize,
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct DocumentCostCalibration {
@@ -62,58 +47,6 @@ impl DocumentCostCalibration {
             .saturating_mul(self.prompt_multiplier_milli)
             .div_ceil(1_000)
             .saturating_add(image_count.saturating_mul(self.image_prompt_tokens))
-    }
-}
-
-pub(crate) fn persist_usage_observations_best_effort(
-    database: &Database,
-    observations: &[DocumentUsageObservation],
-) {
-    if observations.is_empty() {
-        return;
-    }
-    let result = database.with_connection(|connection| {
-        let transaction = connection.transaction().map_err(CommandError::database)?;
-        for observation in observations {
-            let now = unix_time_millis()?;
-            transaction
-                .execute(
-                    "INSERT INTO ai_document_usage_samples (
-                         provider_kind, model_id, task_kind, source_format,
-                         source_unit_count, source_text_chars, estimated_source_tokens,
-                         image_count, max_output_tokens, prompt_tokens,
-                         completion_tokens, reasoning_tokens, created_at
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                    params![
-                        observation.provider_kind,
-                        observation.model_id,
-                        observation.task_kind,
-                        observation.source_format,
-                        to_i64(observation.source_unit_count),
-                        to_i64(observation.source_text_chars),
-                        to_i64(observation.estimated_source_tokens),
-                        to_i64(observation.image_count),
-                        to_i64(observation.max_output_tokens),
-                        to_i64(observation.prompt_tokens),
-                        to_i64(observation.completion_tokens),
-                        to_i64(observation.reasoning_tokens),
-                        now,
-                    ],
-                )
-                .map_err(CommandError::database)?;
-        }
-        transaction.commit().map_err(CommandError::database)
-    });
-    if let Err(error) = result {
-        crate::logging::error(
-            "document_usage_sample_write_failed",
-            format!(
-                "samples={} code={} detail={}",
-                observations.len(),
-                error.code,
-                error.message
-            ),
-        );
     }
 }
 
@@ -224,13 +157,40 @@ fn median(values: &mut [usize]) -> Option<usize> {
     }
 }
 
-fn to_i64(value: usize) -> i64 {
-    i64::try_from(value).unwrap_or(i64::MAX)
-}
-
 #[cfg(test)]
 mod tests {
+    use serde::Deserialize;
+
     use super::*;
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct BaselineCorpus {
+        format_version: i64,
+        observations: Vec<BaselineObservation>,
+        required_benchmark_scenarios: Vec<BenchmarkScenario>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct BaselineObservation {
+        id: String,
+        provider_kind: String,
+        source_format: String,
+        source_unit_count: usize,
+        image_input: bool,
+        aggregate_tokens_approx: usize,
+        outcome: String,
+        provenance: String,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct BenchmarkScenario {
+        id: String,
+        source_unit_class: String,
+        image_input: bool,
+    }
 
     #[test]
     fn calibration_scales_text_and_image_cost_without_becoming_a_hard_limit() {
@@ -252,5 +212,35 @@ mod tests {
     fn ratio_uses_integer_ceiling_and_rejects_negative_values() {
         assert_eq!(ratio_milli(1_501, 1_000), Some(1_501));
         assert_eq!(ratio_milli(-1, 1_000), None);
+    }
+
+    #[test]
+    fn empirical_baseline_corpus_preserves_real_stage4_observations_and_matrix() {
+        let corpus: BaselineCorpus = serde_json::from_str(include_str!(
+            "../tests/fixtures/document-generation/usage-baselines.json"
+        ))
+        .expect("document usage baseline corpus should parse");
+        assert_eq!(corpus.format_version, 1);
+        assert!(corpus.observations.iter().any(|observation| {
+            observation.id == "deepseek-small-pdf-pr38"
+                && observation.provider_kind == "deepseek"
+                && observation.source_format == "pdf"
+                && observation.source_unit_count == 11
+                && !observation.image_input
+                && observation.aggregate_tokens_approx == 45_000
+                && observation.outcome == "succeeded"
+                && !observation.provenance.is_empty()
+        }));
+        assert!(corpus.observations.iter().any(|observation| {
+            observation.id == "deepseek-large-pdf-pre-pr39"
+                && observation.source_unit_count == 138
+                && observation.aggregate_tokens_approx == 1_450_000
+                && observation.outcome == "failed_late_truncation"
+        }));
+        assert!(corpus.required_benchmark_scenarios.iter().any(|scenario| {
+            scenario.id == "small-multimodal"
+                && scenario.source_unit_class == "small"
+                && scenario.image_input
+        }));
     }
 }
