@@ -684,8 +684,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use crate::{
-        document_scale::DocumentScalePlan,
-        document_semantics::build_partitioned_semantic_windows,
+        document_scale::DocumentScalePlan, document_semantics::build_partitioned_semantic_windows,
     };
 
     fn chunk(index: i64, page: i64) -> SemanticChunk {
