@@ -42,7 +42,7 @@ CREATE TABLE document_outline_checkpoints (
     fragment_json     TEXT NOT NULL CHECK(length(fragment_json) <= 1048576),
     created_at        INTEGER NOT NULL,
     updated_at        INTEGER NOT NULL,
-    PRIMARY KEY(document_id, contract_key, source_sha256)
+    PRIMARY KEY(document_id, contract_key, window_index)
 ) STRICT;
 
 CREATE INDEX document_outline_checkpoints_order_idx
@@ -62,7 +62,7 @@ CREATE TABLE document_generation_checkpoints (
     card_count        INTEGER NOT NULL CHECK(card_count >= 0),
     created_at        INTEGER NOT NULL,
     updated_at        INTEGER NOT NULL,
-    PRIMARY KEY(document_id, contract_key, source_sha256)
+    PRIMARY KEY(document_id, contract_key, window_index)
 ) STRICT;
 
 CREATE INDEX document_generation_checkpoints_order_idx
