@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File, OpenOptions},
-    io::{Read, Seek, Write},
+    io::Write,
     path::Path,
 };
 
@@ -23,7 +23,6 @@ use crate::{
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
-const MAX_PDF_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_PDF_PAGES: usize = 2_000;
 const MAX_PAGE_TEXT_CHARS: usize = 200_000;
 const MAX_TOTAL_TEXT_BYTES: usize = 96 * 1024 * 1024;
@@ -147,30 +146,6 @@ pub fn get_document_source_path(
         ));
     }
     Ok(source.to_string_lossy().into_owned())
-}
-
-#[tauri::command]
-pub async fn import_pdf_and_generate_flashcards(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    runtime: State<'_, AiRuntimeState>,
-    render_runtime: State<'_, PdfRenderRuntime>,
-    input: ImportPdfDocumentInput,
-) -> Result<DocumentGenerationResultDto, CommandError> {
-    let document_id = import_managed_pdf(database.inner(), paths.inner(), &input.source_path)?;
-    let result = process_and_generate(
-        database.clone(),
-        paths.clone(),
-        runtime.clone(),
-        render_runtime.inner().clone(),
-        &document_id,
-        false,
-    )
-    .await;
-    if let Err(error) = &result {
-        record_document_failure(database.inner(), &document_id, error);
-    }
-    result
 }
 
 #[tauri::command]
@@ -533,104 +508,6 @@ async fn process_and_generate(
         created_card_count: result.created_card_count,
         skipped_duplicate_count: result.skipped_duplicate_count,
     })
-}
-
-fn import_managed_pdf(
-    database: &Database,
-    paths: &AppPaths,
-    source_path: &str,
-) -> Result<String, CommandError> {
-    let source = fs::canonicalize(source_path).map_err(CommandError::io)?;
-    if !source.is_file() {
-        return Err(CommandError::new("invalid_pdf", "Select a PDF file."));
-    }
-    let metadata = fs::metadata(&source).map_err(CommandError::io)?;
-    if metadata.len() == 0 || metadata.len() > MAX_PDF_BYTES {
-        return Err(CommandError::new(
-            "invalid_pdf_size",
-            "The PDF is empty or exceeds the 512 MB document limit.",
-        ));
-    }
-    let original_filename = validate_pdf_filename(
-        source
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or_default(),
-    )?;
-    let title = validate_document_title(
-        Path::new(&original_filename)
-            .file_stem()
-            .and_then(|value| value.to_str())
-            .unwrap_or("Imported PDF"),
-    )?;
-    let document_id = database.with_connection(|connection| generate_id(connection))?;
-    let staged_relative = AppPaths::staged_document_relative_path(&document_id);
-    let staged_path = paths.resolve_relative(&staged_relative);
-    let (byte_size, sha256) = copy_pdf_with_hash(&source, &staged_path)?;
-
-    let duplicate = database.with_connection(|connection| {
-        connection
-            .query_row(
-                "SELECT id FROM documents WHERE sha256 = ?1 LIMIT 1",
-                [sha256.as_str()],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(CommandError::database)
-    })?;
-    if duplicate.is_some() {
-        let _ = fs::remove_file(&staged_path);
-        return Err(CommandError::new(
-            "document_already_imported",
-            "This exact PDF is already in the document library.",
-        ));
-    }
-
-    let source_relative = AppPaths::document_source_relative_path(&document_id);
-    let destination = paths.resolve_relative(&source_relative);
-    let directory = destination.parent().ok_or_else(|| {
-        CommandError::new(
-            "invalid_document_path",
-            "The managed document path is invalid.",
-        )
-    })?;
-    fs::create_dir_all(directory).map_err(CommandError::io)?;
-    fs::rename(&staged_path, &destination).map_err(CommandError::io)?;
-    sync_file(&destination)?;
-    sync_directory(directory)?;
-
-    let now = unix_time_millis()?;
-    let insert_result = database.with_connection(|connection| {
-        connection
-            .execute(
-                "INSERT INTO documents (
-                     id, title, original_filename, mime_type, byte_size, sha256,
-                     source_relative_path, staged_relative_path, lifecycle_state,
-                     extraction_backend, render_backend, outline_state,
-                     created_at, updated_at, revision
-                 ) VALUES (
-                     ?1, ?2, ?3, 'application/pdf', ?4, ?5,
-                     ?6, NULL, 'processing', 'pending', 'pending', 'pending',
-                     ?7, ?7, 1
-                 )",
-                params![
-                    document_id,
-                    title,
-                    original_filename,
-                    byte_size,
-                    sha256,
-                    source_relative,
-                    now,
-                ],
-            )
-            .map_err(CommandError::database)?;
-        Ok(())
-    });
-    if let Err(error) = insert_result {
-        let _ = fs::remove_dir_all(directory);
-        return Err(error);
-    }
-    Ok(document_id)
 }
 
 fn extract_and_render_pdf(
@@ -1518,85 +1395,6 @@ fn normalize_semantic_text(value: &str, maximum: usize) -> String {
         .to_string()
 }
 
-fn copy_pdf_with_hash(source: &Path, destination: &Path) -> Result<(i64, String), CommandError> {
-    let mut input = File::open(source).map_err(CommandError::io)?;
-    let mut signature = [0_u8; 5];
-    input.read_exact(&mut signature).map_err(CommandError::io)?;
-    if &signature != b"%PDF-" {
-        return Err(CommandError::new(
-            "invalid_pdf",
-            "The selected file does not have a valid PDF signature.",
-        ));
-    }
-    input.rewind().map_err(CommandError::io)?;
-    let parent = destination.parent().ok_or_else(|| {
-        CommandError::new(
-            "invalid_document_path",
-            "The document staging path is invalid.",
-        )
-    })?;
-    fs::create_dir_all(parent).map_err(CommandError::io)?;
-    let mut output = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(destination)
-        .map_err(CommandError::io)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0_u8; 1024 * 1024];
-    let mut total = 0_u64;
-    loop {
-        let read = input.read(&mut buffer).map_err(CommandError::io)?;
-        if read == 0 {
-            break;
-        }
-        total = total.saturating_add(read as u64);
-        if total > MAX_PDF_BYTES {
-            let _ = fs::remove_file(destination);
-            return Err(CommandError::new(
-                "invalid_pdf_size",
-                "The PDF exceeds the 512 MB document limit.",
-            ));
-        }
-        hasher.update(&buffer[..read]);
-        output
-            .write_all(&buffer[..read])
-            .map_err(CommandError::io)?;
-    }
-    output.sync_all().map_err(CommandError::io)?;
-    Ok((
-        i64::try_from(total).unwrap_or(i64::MAX),
-        format!("{:x}", hasher.finalize()),
-    ))
-}
-
-fn validate_pdf_filename(value: &str) -> Result<String, CommandError> {
-    let trimmed = value.trim();
-    let valid = !trimmed.is_empty()
-        && trimmed.chars().count() <= 255
-        && !trimmed
-            .chars()
-            .any(|character| character.is_control() || matches!(character, '/' | '\\' | '\0'))
-        && trimmed.to_ascii_lowercase().ends_with(".pdf");
-    if !valid {
-        return Err(CommandError::new(
-            "invalid_pdf_name",
-            "Select a PDF with a valid filename.",
-        ));
-    }
-    Ok(trimmed.to_string())
-}
-
-fn validate_document_title(value: &str) -> Result<String, CommandError> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() || trimmed.chars().count() > 200 {
-        return Err(CommandError::new(
-            "invalid_document_title",
-            "The PDF title must contain 1 to 200 characters.",
-        ));
-    }
-    Ok(trimmed.to_string())
-}
-
 fn bounded_error(value: &str, maximum: usize) -> String {
     value.chars().take(maximum).collect()
 }
@@ -1658,20 +1456,6 @@ mod tests {
         assert_eq!(
             normalize_page_text(" line\r\none\0two\rthree "),
             "line\nonetwo\nthree"
-        );
-    }
-
-    #[test]
-    fn validates_pdf_names_and_titles() {
-        assert!(validate_pdf_filename("../unsafe.pdf").is_err());
-        assert!(validate_pdf_filename("notes.txt").is_err());
-        assert_eq!(
-            validate_pdf_filename("Lecture Notes.PDF").unwrap(),
-            "Lecture Notes.PDF"
-        );
-        assert_eq!(
-            validate_document_title(" Lecture Notes ").unwrap(),
-            "Lecture Notes"
         );
     }
 
