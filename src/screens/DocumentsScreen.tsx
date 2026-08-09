@@ -84,6 +84,7 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
     });
     if (typeof selected !== "string") return;
 
+    showToast("info", "Large documents can take several minutes.");
     setIsUploading(true);
     setErrorMessage(null);
     try {
@@ -343,13 +344,6 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                       <dd>{formatDate(document.updatedAt)}</dd>
                     </div>
                   </dl>
-                  {document.lifecycleState === "processing" ? (
-                    <p className={styles.progress}>
-                      {canceling
-                        ? "Stopping the current AI request. The PDF will remain available to retry."
-                        : "Large documents can take several minutes. Once the provider accepts a streamed request, ostudy does not impose a completion deadline."}
-                    </p>
-                  ) : null}
                   {document.safeErrorMessage ? (
                     <p className={styles.documentError}>{document.safeErrorMessage}</p>
                   ) : null}
