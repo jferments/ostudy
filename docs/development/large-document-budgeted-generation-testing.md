@@ -33,7 +33,7 @@ Confirm:
 
 - the document remains on the standard/conservative local policy;
 - extraction/rendering and generation succeed;
-- 96-DPI page evidence is adequate for diagrams/tables/equations when image input is enabled;
+- 120-DPI page evidence is adequate for diagrams/tables/equations when image input is enabled;
 - local inference never silently falls back to a cloud provider.
 
 ## 138-page DeepSeek acceptance
@@ -113,7 +113,7 @@ Verify a document beyond the automatic page/source ceiling is retained in Docume
 
 No expensive outline sequence should begin after the whole-job budget guard rejects the plan.
 
-## 96-DPI visual derivative
+## 120-DPI visual derivative
 
 Use a PDF containing small labels, equations, a table, and a diagram with a verified image-capable llama.cpp profile.
 
