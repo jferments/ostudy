@@ -58,12 +58,12 @@ fn structured_extraction_and_pure_rust_rendering_process_a_real_fixture() {
         assert!(png.len() > 100);
         Ok::<(), ()>(())
     })
-    .expect("the pure-Rust justpdf renderer should render the fixture");
+    .expect("the bounded parallel pure-Rust justpdf renderer should render the fixture");
     assert_eq!(page_count, 1);
     assert_eq!(rendered, 1);
     assert_eq!(
         pdf_render_backend::active_backend_id(),
-        "justpdf-render-0.1.2/pure-rust"
+        "justpdf-render-0.1.2/pure-rust-parallel-v1"
     );
 
     fs::remove_dir_all(paths.app_data_dir()).expect("temporary fixture root should clean up");
