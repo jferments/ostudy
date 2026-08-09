@@ -5,10 +5,12 @@
 //! pipeline does not require a platform-specific native PDF runtime. CPU-heavy
 //! page rasterization runs across a bounded worker pool; completed PNGs are
 //! delivered to the document subsystem in physical page order so persistence
-//! and error handling remain deterministic.
+//! and error handling remain deterministic. Suspect text pages can also be
+//! rendered selectively at OCR resolution without changing the durable 120-DPI
+//! page-derivative contract.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt,
     path::PathBuf,
     sync::{
@@ -21,9 +23,12 @@ use justpdf::Document;
 
 // 120 DPI keeps a US-letter page near 1020x1320 pixels: enough for most tables,
 // equations, and diagrams while using about 31% fewer pixels than the previous
-// 144-DPI render. Text extraction remains authoritative; these renders are
-// selective visual grounding rather than page-scanned OCR input.
+// 144-DPI render. These are durable selective-visual-grounding derivatives.
 const PAGE_RENDER_DPI: f64 = 120.0;
+// OCR is intentionally rendered separately at higher resolution. The resulting
+// PNG exists only long enough to run OCR and is never persisted in addition to
+// the normal 120-DPI derivative.
+pub(crate) const OCR_RENDER_DPI: f64 = 300.0;
 const MAX_RENDER_WORKERS: usize = 16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -61,14 +66,6 @@ impl fmt::Display for PdfRenderError {
     }
 }
 
-/// Runtime renderer configuration.
-///
-/// The resource-directory argument remains accepted so the document/Tauri
-/// boundary is stable across renderer implementations. The active pure-Rust
-/// renderer needs no packaged resource or dynamic library. Keeping the active
-/// backend identity in runtime state also makes a stale runtime/backend pairing
-/// fail closed if the application ever gains a selectable compatibility
-/// renderer.
 #[derive(Clone, Debug)]
 pub(crate) struct PdfRenderRuntime {
     backend_id: &'static str,
@@ -100,21 +97,8 @@ pub(crate) fn render_pages<E, F>(
 where
     F: FnMut(usize, Vec<u8>) -> Result<(), E>,
 {
-    if runtime.backend_id != active_backend_id() {
-        return Err(RenderProcessError::Backend(PdfRenderError::new(
-            PdfRenderErrorKind::Bind,
-            None,
-            "The PDF renderer runtime does not match the active renderer backend.",
-        )));
-    }
-
-    let document = Arc::new(Document::open(source_path).map_err(|error| {
-        RenderProcessError::Backend(PdfRenderError::new(
-            PdfRenderErrorKind::Open,
-            None,
-            error.to_string(),
-        ))
-    })?);
+    validate_runtime(runtime)?;
+    let document = Arc::new(open_document(source_path)?);
     let page_count = document.page_count();
     if page_count == 0 {
         return Ok(0);
@@ -137,7 +121,7 @@ where
                     if index >= page_count {
                         break;
                     }
-                    let result = render_page(&document, index);
+                    let result = render_page_at_dpi(&document, index, PAGE_RENDER_DPI);
                     let failed = result.is_err();
                     if sender.send((index, result)).is_err() {
                         break;
@@ -184,7 +168,66 @@ where
     })
 }
 
-fn render_page(document: &Document, index: usize) -> Result<Vec<u8>, PdfRenderError> {
+pub(crate) fn render_ocr_pages<E, F>(
+    runtime: &PdfRenderRuntime,
+    source_path: &std::path::Path,
+    page_numbers: &[usize],
+    mut visitor: F,
+) -> Result<usize, RenderProcessError<E>>
+where
+    F: FnMut(usize, Vec<u8>) -> Result<(), E>,
+{
+    validate_runtime(runtime)?;
+    let document = open_document(source_path)?;
+    let page_count = document.page_count();
+    let requested = page_numbers.iter().copied().collect::<BTreeSet<_>>();
+    for page_number in &requested {
+        if *page_number == 0 || *page_number > page_count {
+            return Err(RenderProcessError::Backend(PdfRenderError::new(
+                PdfRenderErrorKind::RenderPage,
+                Some(*page_number),
+                "The OCR fallback requested a page outside the PDF page range.",
+            )));
+        }
+    }
+
+    let mut completed = 0_usize;
+    for page_number in requested {
+        let png = render_page_at_dpi(&document, page_number - 1, OCR_RENDER_DPI)
+            .map_err(RenderProcessError::Backend)?;
+        visitor(page_number, png).map_err(RenderProcessError::Visitor)?;
+        completed = completed.saturating_add(1);
+    }
+    Ok(completed)
+}
+
+fn validate_runtime<E>(runtime: &PdfRenderRuntime) -> Result<(), RenderProcessError<E>> {
+    if runtime.backend_id == active_backend_id() {
+        Ok(())
+    } else {
+        Err(RenderProcessError::Backend(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            "The PDF renderer runtime does not match the active renderer backend.",
+        )))
+    }
+}
+
+fn open_document<E>(source_path: &std::path::Path) -> Result<Document, RenderProcessError<E>> {
+    Document::open(source_path).map_err(|error| {
+        RenderProcessError::Backend(PdfRenderError::new(
+            PdfRenderErrorKind::Open,
+            None,
+            error.to_string(),
+        ))
+    })
+}
+
+fn render_page_at_dpi(
+    document: &Document,
+    index: usize,
+    dpi: f64,
+) -> Result<Vec<u8>, PdfRenderError> {
     let page_number = index + 1;
     let page = document.page(index).map_err(|error| {
         PdfRenderError::new(
@@ -193,7 +236,7 @@ fn render_page(document: &Document, index: usize) -> Result<Vec<u8>, PdfRenderEr
             error.to_string(),
         )
     })?;
-    page.render_png(PAGE_RENDER_DPI).map_err(|error| {
+    page.render_png(dpi).map_err(|error| {
         PdfRenderError::new(
             PdfRenderErrorKind::EncodePage,
             Some(page_number),
@@ -229,6 +272,7 @@ mod tests {
             "justpdf-render-0.1.2/pure-rust-parallel-v2-120dpi"
         );
         assert_eq!(PAGE_RENDER_DPI, 120.0);
+        assert_eq!(OCR_RENDER_DPI, 300.0);
         assert!(render_worker_count(1) == 1);
         assert!((1..=MAX_RENDER_WORKERS).contains(&render_worker_count(10_000)));
     }
