@@ -29,5 +29,6 @@ check_crate justpdf "$JUSTPDF_VERSION"
 check_crate justpdf-render "$JUSTPDF_VERSION"
 check_crate oxidize-pdf "$OXIDIZE_PDF_VERSION"
 check_crate rs-fsrs "$RS_FSRS_VERSION"
+check_crate tokio "$TOKIO_VERSION"
 check_absent pdfium-render
 check_absent rusty-tesseract

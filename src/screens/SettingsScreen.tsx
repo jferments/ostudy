@@ -7,6 +7,8 @@ import { saveSettings, type AppSettings } from "../ipc/settings";
 import { Tabs, type TabDefinition } from "../ui/primitives/Tabs";
 import { AiLlmSettings } from "./settings/AiLlmSettings";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
+import { DefaultAiModelSettings } from "./settings/DefaultAiModelSettings";
+import aiModelStyles from "./settings/DefaultAiModelSettings.module.css";
 import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
 import { StorageBackupSettings } from "./settings/StorageBackupSettings";
 
@@ -124,7 +126,12 @@ export function SettingsScreen({
     {
       value: "ai",
       label: "AI/LLM",
-      panel: <AiLlmSettings controller={aiController} />,
+      panel: (
+        <div className={aiModelStyles.shell}>
+          <DefaultAiModelSettings controller={aiController} />
+          <AiLlmSettings controller={aiController} />
+        </div>
+      ),
     },
     {
       value: "review",

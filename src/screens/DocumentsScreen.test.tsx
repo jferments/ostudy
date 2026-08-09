@@ -1,22 +1,27 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as documentIpc from "../ipc/documents";
 import * as platformFiles from "../platform/files";
+import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "./DocumentsScreen";
 
-vi.mock("../platform/files", () => ({ openFile: vi.fn(), openLocalPath: vi.fn() }));
+vi.mock("../platform/files", () => ({ openFile: vi.fn() }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
   importPdfAndGenerateFlashcards: vi.fn(),
   retryPdfFlashcardGeneration: vi.fn(),
-  getDocumentSourcePath: vi.fn(),
+  cancelPdfFlashcardGeneration: vi.fn(),
+  openDocumentSource: vi.fn(),
+  deletePdfDocument: vi.fn(),
   setDocumentArchived: vi.fn(),
 }));
 vi.mock("../ipc/common", async (importOriginal) => {
   const original = await importOriginal<typeof import("../ipc/common")>();
   return {
     ...original,
+    getErrorCode: (error: unknown) =>
+      error && typeof error === "object" && "code" in error ? String(error.code) : "unknown",
     getErrorMessage: (error: unknown) =>
       error instanceof Error ? error.message : "Unexpected document error",
   };
@@ -52,7 +57,11 @@ function makeDocument(
 }
 
 function renderDocuments(showToast = vi.fn(), refreshDecks = vi.fn().mockResolvedValue([])) {
-  render(<DocumentsScreen refreshDecks={refreshDecks} showToast={showToast} />);
+  render(
+    <OverlayProvider>
+      <DocumentsScreen refreshDecks={refreshDecks} showToast={showToast} />
+    </OverlayProvider>,
+  );
   return { showToast, refreshDecks };
 }
 
@@ -60,9 +69,9 @@ describe("DocumentsScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(platformFiles.openFile).mockResolvedValue(null);
-    vi.mocked(platformFiles.openLocalPath).mockResolvedValue(undefined);
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([]);
-    vi.mocked(documentIpc.getDocumentSourcePath).mockResolvedValue("/managed/source.pdf");
+    vi.mocked(documentIpc.openDocumentSource).mockResolvedValue(undefined);
+    vi.mocked(documentIpc.cancelPdfFlashcardGeneration).mockResolvedValue(undefined);
   });
 
   it("shows a simple upload-first empty state", async () => {
@@ -108,8 +117,8 @@ describe("DocumentsScreen", () => {
       generatedDeckId: null,
       generatedNoteCount: 0,
       generatedCardCount: 0,
-      safeErrorCode: "ai_request_timeout",
-      safeErrorMessage: "The AI provider did not respond before the configured timeout.",
+      safeErrorCode: "ai_initial_response_timeout",
+      safeErrorMessage: "The provider never acknowledged the streamed request.",
     });
     const completed = makeDocument();
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([failed]);
@@ -131,6 +140,27 @@ describe("DocumentsScreen", () => {
     });
   });
 
+  it("offers an exact stop action while a document generation task is processing", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([
+      makeDocument({
+        lifecycleState: "processing",
+        generatedDeckId: null,
+        completedAt: null,
+      }),
+    ]);
+    const { showToast } = renderDocuments();
+
+    expect(await screen.findByRole("button", { name: "Stop generation" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Stop generation" }));
+
+    await waitFor(() => {
+      expect(documentIpc.cancelPdfFlashcardGeneration).toHaveBeenCalledWith(documentId);
+      expect(showToast).toHaveBeenCalledWith("info", "Stopping the current AI request…");
+    });
+    expect(screen.getByRole("button", { name: "Stopping…" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Delete PDF" })).toBeNull();
+  });
+
   it("offers regeneration when the previously generated deck was deleted", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([
       makeDocument({ generatedDeckId: null, lifecycleState: "ready" }),
@@ -142,7 +172,7 @@ describe("DocumentsScreen", () => {
     expect(screen.getByText(/previous generated deck was deleted/u)).toBeTruthy();
   });
 
-  it("opens the managed PDF through the platform boundary", async () => {
+  it("opens the managed PDF through the native document command", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
     renderDocuments();
 
@@ -150,8 +180,32 @@ describe("DocumentsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open PDF" }));
 
     await waitFor(() => {
-      expect(documentIpc.getDocumentSourcePath).toHaveBeenCalledWith(documentId);
-      expect(platformFiles.openLocalPath).toHaveBeenCalledWith("/managed/source.pdf");
+      expect(documentIpc.openDocumentSource).toHaveBeenCalledWith(documentId);
+    });
+  });
+
+  it("permanently deletes a PDF only after confirmation and preserves deck citations", async () => {
+    vi.mocked(documentIpc.listDocuments)
+      .mockResolvedValueOnce([makeDocument()])
+      .mockResolvedValue([]);
+    vi.mocked(documentIpc.deletePdfDocument).mockResolvedValue({
+      documentId,
+      preservedDeckCitationCount: 1,
+    });
+    const { showToast, refreshDecks } = renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    fireEvent.click(screen.getByRole("button", { name: "Delete PDF" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete this PDF permanently?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete PDF" }));
+
+    await waitFor(() => {
+      expect(documentIpc.deletePdfDocument).toHaveBeenCalledWith(documentId, 2);
+      expect(refreshDecks).toHaveBeenCalled();
+      expect(showToast).toHaveBeenCalledWith(
+        "success",
+        "PDF deleted. Preserved text source citations in 1 generated deck.",
+      );
     });
   });
 });

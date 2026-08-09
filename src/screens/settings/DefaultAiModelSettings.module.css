@@ -1,0 +1,69 @@
+.shell {
+  min-width: 0;
+}
+
+/* AiLlmSettings still owns the provider-detail workflow. Its historical
+   second-to-last section is the superseded default-task card; keep that one
+   out of layout while this shell presents the setting at the top-left. */
+.shell > div > main > section:nth-last-child(2) {
+  display: none;
+}
+
+.card {
+  width: min(100%, 280px);
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.card h2 {
+  margin: 0 0 14px;
+  font-size: 1.05rem;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 720;
+}
+
+.field select {
+  width: 100%;
+  min-width: 0;
+}
+
+.note,
+.timeoutNote {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.timeoutNote {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+@media (max-width: 980px) and (min-width: 761px) {
+  .card {
+    width: min(100%, 220px);
+  }
+}
+
+@media (max-width: 760px) {
+  .card {
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .card {
+    border-radius: 12px;
+  }
+}

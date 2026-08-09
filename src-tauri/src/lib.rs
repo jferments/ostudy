@@ -21,6 +21,7 @@ mod deletion_commands;
 mod deletion_purge;
 mod diagnostics;
 mod document_backup;
+mod document_operations;
 mod document_semantics;
 mod documents;
 mod error;
@@ -38,6 +39,7 @@ mod settings;
 mod study_calendar;
 mod studyability;
 mod studydeck;
+mod task_cancellation;
 mod util;
 mod workload;
 
@@ -86,6 +88,8 @@ pub fn run() {
             asset_lifecycle::reconcile_startup(&database, &paths)
                 .map_err(|error| io::Error::other(error.message))?;
             documents::reconcile_startup(&database, &paths)
+                .map_err(|error| io::Error::other(error.message))?;
+            document_operations::reconcile_deleted_document_trash(&paths)
                 .map_err(|error| io::Error::other(error.message))?;
             if let Some(restore) = pending_restore {
                 restore.commit();
@@ -168,9 +172,11 @@ pub fn run() {
             ai::probes::test_ai_provider_profile,
             ai::probes::get_ai_provider_probe_result,
             documents::list_documents,
-            documents::get_document_source_path,
-            documents::import_pdf_and_generate_flashcards,
-            documents::retry_pdf_flashcard_generation,
+            document_operations::import_pdf_document,
+            document_operations::retry_pdf_flashcard_generation,
+            document_operations::cancel_pdf_flashcard_generation,
+            document_operations::open_document_source,
+            document_operations::delete_pdf_document,
             documents::set_document_archived,
             library_backup::export_library_backup,
             library_backup::prepare_library_restore,

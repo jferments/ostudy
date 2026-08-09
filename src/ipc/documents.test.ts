@@ -2,9 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  getDocumentSourcePath,
+  cancelPdfFlashcardGeneration,
+  deletePdfDocument,
   importPdfAndGenerateFlashcards,
   listDocuments,
+  openDocumentSource,
   retryPdfFlashcardGeneration,
   setDocumentArchived,
 } from "./documents";
@@ -24,22 +26,40 @@ describe("document IPC", () => {
     expect(invoke).toHaveBeenCalledWith("list_documents", { includeArchived: true });
   });
 
-  it("starts the complete PDF-to-deck workflow with only a selected source path", async () => {
+  it("establishes document identity before starting cancellable PDF generation", async () => {
+    vi.mocked(invoke)
+      .mockResolvedValueOnce({ documentId })
+      .mockResolvedValueOnce({ deckId: "b".repeat(32) });
+
     await importPdfAndGenerateFlashcards("/tmp/chapter.pdf");
-    expect(invoke).toHaveBeenCalledWith("import_pdf_and_generate_flashcards", {
+
+    expect(invoke).toHaveBeenNthCalledWith(1, "import_pdf_document", {
       input: { sourcePath: "/tmp/chapter.pdf" },
+    });
+    expect(invoke).toHaveBeenNthCalledWith(2, "retry_pdf_flashcard_generation", {
+      input: { documentId },
     });
   });
 
-  it("uses narrow retry, source-path, and archive commands", async () => {
+  it("uses narrow retry, cancel, native-open, deletion, and archive commands", async () => {
     await retryPdfFlashcardGeneration(documentId);
     expect(invoke).toHaveBeenCalledWith("retry_pdf_flashcard_generation", {
       input: { documentId },
     });
 
     vi.mocked(invoke).mockClear();
-    await getDocumentSourcePath(documentId);
-    expect(invoke).toHaveBeenCalledWith("get_document_source_path", { documentId });
+    await cancelPdfFlashcardGeneration(documentId);
+    expect(invoke).toHaveBeenCalledWith("cancel_pdf_flashcard_generation", { documentId });
+
+    vi.mocked(invoke).mockClear();
+    await openDocumentSource(documentId);
+    expect(invoke).toHaveBeenCalledWith("open_document_source", { documentId });
+
+    vi.mocked(invoke).mockClear();
+    await deletePdfDocument(documentId, 4);
+    expect(invoke).toHaveBeenCalledWith("delete_pdf_document", {
+      input: { documentId, revision: 4 },
+    });
 
     vi.mocked(invoke).mockClear();
     await setDocumentArchived(documentId, 4, true);

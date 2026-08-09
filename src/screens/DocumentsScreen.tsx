@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { ShowToast } from "../components/Toast";
-import { getErrorMessage } from "../ipc/common";
+import { getErrorCode, getErrorMessage } from "../ipc/common";
 import {
-  getDocumentSourcePath,
+  cancelPdfFlashcardGeneration,
+  deletePdfDocument,
   importPdfAndGenerateFlashcards,
   listDocuments,
+  openDocumentSource,
   retryPdfFlashcardGeneration,
   setDocumentArchived,
   type DocumentSummary,
 } from "../ipc/documents";
-import { openFile, openLocalPath } from "../platform/files";
+import { openFile } from "../platform/files";
+import { useConfirm } from "../ui/overlays/overlayContext";
 import styles from "./DocumentsScreen.module.css";
 
 interface DocumentsScreenProps {
@@ -24,7 +27,10 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [busyDocumentId, setBusyDocumentId] = useState<string | null>(null);
+  const [cancelingDocumentId, setCancelingDocumentId] = useState<string | null>(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const hasProcessingDocument = useMemo(
     () => documents.some((document) => document.lifecycleState === "processing"),
@@ -61,8 +67,16 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
     return () => window.clearInterval(timer);
   }, [busyDocumentId, hasProcessingDocument, isUploading, refreshDocuments]);
 
+  useEffect(() => {
+    if (!cancelingDocumentId) return;
+    const current = documents.find((document) => document.id === cancelingDocumentId);
+    if (!current || current.lifecycleState !== "processing") {
+      setCancelingDocumentId(null);
+    }
+  }, [cancelingDocumentId, documents]);
+
   async function uploadPdf(): Promise<void> {
-    if (isUploading || busyDocumentId) return;
+    if (isUploading || busyDocumentId || deletingDocumentId) return;
     const selected = await openFile({
       title: "Upload PDF",
       filters: [{ name: "PDF documents", extensions: ["pdf"] }],
@@ -79,17 +93,14 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
         `Created ${result.createdCardCount} flashcard${result.createdCardCount === 1 ? "" : "s"} in a new deck.`,
       );
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      setErrorMessage(message);
-      showToast("error", message);
-      await refreshDocuments().catch(() => undefined);
+      await handleGenerationFailure(error);
     } finally {
       setIsUploading(false);
     }
   }
 
   async function retry(document: DocumentSummary): Promise<void> {
-    if (isUploading || busyDocumentId) return;
+    if (isUploading || busyDocumentId || deletingDocumentId) return;
     setBusyDocumentId(document.id);
     setErrorMessage(null);
     try {
@@ -100,26 +111,95 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
         `Created ${result.createdCardCount} flashcard${result.createdCardCount === 1 ? "" : "s"} in a new deck.`,
       );
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      setErrorMessage(message);
-      showToast("error", message);
-      await refreshDocuments().catch(() => undefined);
+      await handleGenerationFailure(error);
     } finally {
       setBusyDocumentId(null);
     }
   }
 
+  async function handleGenerationFailure(error: unknown): Promise<void> {
+    const code = getErrorCode(error);
+    if (code === "document_generation_canceled" || code === "ai_request_canceled") {
+      showToast("info", "Generation stopped. The PDF is still available to retry.");
+      setErrorMessage(null);
+    } else {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast("error", message);
+    }
+    await refreshDocuments().catch(() => undefined);
+  }
+
+  async function stopGeneration(document: DocumentSummary): Promise<void> {
+    if (cancelingDocumentId) return;
+    setCancelingDocumentId(document.id);
+    try {
+      await cancelPdfFlashcardGeneration(document.id);
+      showToast("info", "Stopping the current AI request…");
+    } catch (error: unknown) {
+      setCancelingDocumentId(null);
+      const code = getErrorCode(error);
+      if (code !== "document_generation_not_running") {
+        showToast("error", getErrorMessage(error));
+      }
+      await refreshDocuments().catch(() => undefined);
+    }
+  }
+
   async function openPdf(document: DocumentSummary): Promise<void> {
     try {
-      const sourcePath = await getDocumentSourcePath(document.id);
-      await openLocalPath(sourcePath);
+      await openDocumentSource(document.id);
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
     }
   }
 
+  async function deleteDocument(document: DocumentSummary): Promise<void> {
+    if (
+      isUploading ||
+      busyDocumentId ||
+      deletingDocumentId ||
+      document.lifecycleState === "processing"
+    ) {
+      return;
+    }
+    const accepted = await confirm({
+      title: "Delete this PDF permanently?",
+      description:
+        "The managed source PDF, rendered pages, extracted structure, outline, and generation history for this document will be removed. Generated flashcards and decks will remain; their source will be preserved as a text citation instead of a file link. This cannot be undone.",
+      confirmLabel: "Delete PDF",
+      destructive: true,
+    });
+    if (!accepted) return;
+
+    setDeletingDocumentId(document.id);
+    try {
+      const result = await deletePdfDocument(document.id, document.revision);
+      await Promise.all([refreshDocuments(), refreshDecks()]);
+      showToast(
+        "success",
+        result.preservedDeckCitationCount > 0
+          ? `PDF deleted. Preserved text source citations in ${result.preservedDeckCitationCount} generated deck${result.preservedDeckCitationCount === 1 ? "" : "s"}.`
+          : "PDF deleted from Documents.",
+      );
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      showToast("error", message);
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  }
+
   async function toggleArchived(document: DocumentSummary): Promise<void> {
-    if (isUploading || busyDocumentId || document.lifecycleState === "processing") return;
+    if (
+      isUploading ||
+      busyDocumentId ||
+      deletingDocumentId ||
+      document.lifecycleState === "processing"
+    ) {
+      return;
+    }
     setBusyDocumentId(document.id);
     try {
       await setDocumentArchived(document.id, document.revision, document.archivedAt === null);
@@ -151,7 +231,7 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
         <button
           type="button"
           className="primary-button"
-          disabled={isUploading || busyDocumentId !== null}
+          disabled={isUploading || busyDocumentId !== null || deletingDocumentId !== null}
           onClick={() => void uploadPdf()}
         >
           {isUploading ? "Processing PDF…" : "Upload PDF"}
@@ -192,7 +272,8 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
       ) : (
         <div className={styles.list}>
           {documents.map((document) => {
-            const busy = busyDocumentId === document.id;
+            const busy = busyDocumentId === document.id || deletingDocumentId === document.id;
+            const canceling = cancelingDocumentId === document.id;
             const canRetry =
               document.generatedDeckId === null &&
               document.lifecycleState !== "processing" &&
@@ -229,8 +310,9 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                   </dl>
                   {document.lifecycleState === "processing" ? (
                     <p className={styles.progress} aria-live="polite">
-                      Extracting text, rendering pages, and generating flashcards. Large PDFs may
-                      take several minutes.
+                      {canceling
+                        ? "Stopping the current AI request. The PDF will remain available to retry."
+                        : "Extracting structure, rendering pages, and generating flashcards. Once the provider acknowledges a streamed request, generation may run as long as the model needs."}
                     </p>
                   ) : null}
                   {document.safeErrorMessage ? (
@@ -257,6 +339,16 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                   >
                     Open PDF
                   </button>
+                  {document.lifecycleState === "processing" ? (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={canceling}
+                      onClick={() => void stopGeneration(document)}
+                    >
+                      {canceling ? "Stopping…" : "Stop generation"}
+                    </button>
+                  ) : null}
                   {canRetry ? (
                     <button
                       type="button"
@@ -264,7 +356,7 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                       disabled={busy || isUploading}
                       onClick={() => void retry(document)}
                     >
-                      {busy ? "Retrying…" : "Retry generation"}
+                      {busyDocumentId === document.id ? "Retrying…" : "Retry generation"}
                     </button>
                   ) : null}
                   <button
@@ -275,6 +367,16 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                   >
                     {document.archivedAt === null ? "Archive" : "Restore"}
                   </button>
+                  {document.lifecycleState !== "processing" ? (
+                    <button
+                      type="button"
+                      className="danger-button"
+                      disabled={busy || isUploading}
+                      onClick={() => void deleteDocument(document)}
+                    >
+                      {deletingDocumentId === document.id ? "Deleting…" : "Delete PDF"}
+                    </button>
+                  ) : null}
                 </div>
               </article>
             );
@@ -287,6 +389,12 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
 
 function statusLabel(document: DocumentSummary): string {
   if (document.archivedAt !== null) return "Archived";
+  if (
+    document.safeErrorCode === "document_generation_canceled" ||
+    document.safeErrorCode === "ai_request_canceled"
+  ) {
+    return "Stopped";
+  }
   switch (document.lifecycleState) {
     case "processing":
       return "Processing";

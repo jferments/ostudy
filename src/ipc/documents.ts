@@ -32,6 +32,15 @@ export interface DocumentGenerationResult {
   skippedDuplicateCount: number;
 }
 
+export interface DeletePdfDocumentResult {
+  documentId: string;
+  preservedDeckCitationCount: number;
+}
+
+interface ImportedPdfDocument {
+  documentId: string;
+}
+
 export async function listDocuments(includeArchived = false): Promise<DocumentSummary[]> {
   return invoke<DocumentSummary[]>("list_documents", { includeArchived });
 }
@@ -39,9 +48,13 @@ export async function listDocuments(includeArchived = false): Promise<DocumentSu
 export async function importPdfAndGenerateFlashcards(
   sourcePath: string,
 ): Promise<DocumentGenerationResult> {
-  return invoke<DocumentGenerationResult>("import_pdf_and_generate_flashcards", {
+  // Establish a durable document identity before the long-running provider
+  // request begins. That lets Documents expose an exact Stop action while the
+  // retry command remains in flight.
+  const imported = await invoke<ImportedPdfDocument>("import_pdf_document", {
     input: { sourcePath },
   });
+  return retryPdfFlashcardGeneration(imported.documentId);
 }
 
 export async function retryPdfFlashcardGeneration(
@@ -52,8 +65,21 @@ export async function retryPdfFlashcardGeneration(
   });
 }
 
-export async function getDocumentSourcePath(documentId: string): Promise<string> {
-  return invoke<string>("get_document_source_path", { documentId });
+export async function cancelPdfFlashcardGeneration(documentId: string): Promise<void> {
+  await invoke("cancel_pdf_flashcard_generation", { documentId });
+}
+
+export async function openDocumentSource(documentId: string): Promise<void> {
+  await invoke("open_document_source", { documentId });
+}
+
+export async function deletePdfDocument(
+  documentId: string,
+  revision: number,
+): Promise<DeletePdfDocumentResult> {
+  return invoke<DeletePdfDocumentResult>("delete_pdf_document", {
+    input: { documentId, revision },
+  });
 }
 
 export async function setDocumentArchived(
