@@ -344,9 +344,7 @@ pub(crate) fn load_generation_cards_best_effort(
             return None;
         }
     };
-    let Some((stored_sha, json, count)) = row else {
-        return None;
-    };
+    let (stored_sha, json, count) = row?;
     if stored_sha != source_sha256(window) {
         return None;
     }
