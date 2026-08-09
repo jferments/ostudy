@@ -1416,7 +1416,7 @@ fn global_outline_digest(outline: &DocumentOutline) -> String {
         let fixed = format!("- pages {}–{} | ", section.page_start, section.page_end);
         let fixed_chars = fixed.chars().count();
         let body_budget = line_budget.saturating_sub(fixed_chars).max(12);
-        let title_budget = body_budget.min(100).max(8);
+        let title_budget = body_budget.clamp(8, 100);
         let title = sanitize_outline_text(&section.title, title_budget, "Section");
         let used = title.chars().count().saturating_add(3);
         let summary_budget = body_budget.saturating_sub(used);
