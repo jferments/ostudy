@@ -13,7 +13,7 @@ if (paths.length === 0) {
 
 const records = [];
 const usagePattern = /document_provider_usage.*provider=([^\s]+)\s+model=([^\s]+)\s+prompt_tokens=(\d+)\s+completion_tokens=(\d+)\s+cache_hit_tokens=(\d+)\s+cache_miss_tokens=(\d+)\s+reasoning_tokens=(\d+)/;
-const planPattern = /document_ai_(additional_)?scale_plan.*document=([^\s]+).*provider=([^\s]+).*scale=([^\s]+).*?(?:pages|units)=(\d+).*source_tokens=(\d+).*generation_windows=(\d+).*estimated_job_tokens=(\d+).*ceiling=(\d+)(?:.*context=([^\s]+))?(?:.*calibration_samples=(\d+))?/;
+const planPattern = /document_ai_(additional_)?scale_plan.*document=([^\s]+).*provider=([^\s]+).*scale=([^\s]+).*?(?:pages|units)=(\d+).*source_tokens=(\d+).*generation_windows=(\d+).*estimated_job_tokens=(\d+).*ceiling=([^\s]+)(?:.*context=([^\s]+))?(?:.*calibration_samples=(\d+))?/;
 
 for (const path of paths) {
   const text = fs.readFileSync(path, "utf8");
@@ -35,6 +35,8 @@ for (const path of paths) {
     }
     const plan = line.match(planPattern);
     if (plan) {
+      const ceilingLabel = plan[9];
+      const ceilingTokens = /^\d+$/.test(ceilingLabel) ? Number(ceilingLabel) : null;
       records.push({
         type: "plan",
         path,
@@ -46,7 +48,8 @@ for (const path of paths) {
         estimatedSourceTokens: Number(plan[6]),
         generationWindowCount: Number(plan[7]),
         estimatedJobTokens: Number(plan[8]),
-        ceilingTokens: Number(plan[9]),
+        ceilingTokens,
+        aggregateBudgetMode: ceilingTokens === null ? ceilingLabel : "capped",
         contextWindowTokens: plan[10] && plan[10] !== "unknown" ? Number(plan[10]) : null,
         calibrationSampleCount: plan[11] ? Number(plan[11]) : 0,
       });
@@ -100,11 +103,13 @@ if (jsonOutput) {
 if (plans.length > 0) {
   console.log("Document AI plans:");
   for (const plan of plans) {
+    const budget = plan.ceilingTokens === null
+      ? `${plan.estimatedJobTokens} aggregate tokens, ${plan.aggregateBudgetMode} execution`
+      : `estimated ${plan.estimatedJobTokens}/${plan.ceilingTokens} aggregate tokens`;
     console.log(
       `  ${plan.pass} ${plan.providerKind} ${plan.scaleMode}: ` +
         `${plan.sourceUnitCount} units, ~${plan.estimatedSourceTokens} source tokens, ` +
-        `${plan.generationWindowCount} generation windows, ` +
-        `estimated ${plan.estimatedJobTokens}/${plan.ceilingTokens} aggregate tokens, ` +
+        `${plan.generationWindowCount} generation windows, ${budget}, ` +
         `context=${plan.contextWindowTokens ?? "unknown"}, calibrationSamples=${plan.calibrationSampleCount}`,
     );
   }
