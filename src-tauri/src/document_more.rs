@@ -381,7 +381,7 @@ fn load_semantic_chunks(
                  WHERE document_id = ?1 ORDER BY chunk_index",
             )
             .map_err(CommandError::database)?;
-        statement
+        let chunks = statement
             .query_map([document_id], |row| {
                 let pages_json: String = row.get(3)?;
                 let types_json: String = row.get(4)?;
@@ -412,7 +412,8 @@ fn load_semantic_chunks(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)
+            .map_err(CommandError::database)?;
+        Ok(chunks)
     })
 }
 
@@ -489,7 +490,7 @@ fn load_page_renders(
                  FROM document_pages WHERE document_id = ?1 ORDER BY page_number",
             )
             .map_err(CommandError::database)?;
-        statement
+        let pages = statement
             .query_map([document_id], |row| {
                 Ok(PageRenderRecord {
                     page_number: row.get(0)?,
@@ -500,7 +501,8 @@ fn load_page_renders(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)
+            .map_err(CommandError::database)?;
+        Ok(pages)
     })
 }
 
