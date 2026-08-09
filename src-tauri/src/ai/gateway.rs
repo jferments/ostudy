@@ -80,14 +80,7 @@ impl AiGateway {
         // and model discovery retain their ordinary bounded request behavior.
         if let Some(cancellation) = current_signal() {
             return self
-                .post_sse_chat_json(
-                    url,
-                    bearer,
-                    body,
-                    timeout_ms,
-                    maximum_bytes,
-                    &cancellation,
-                )
+                .post_sse_chat_json(url, bearer, body, timeout_ms, maximum_bytes, &cancellation)
                 .await;
         }
         self.request_json(
@@ -602,9 +595,7 @@ mod tests {
         stream
             .push_bytes(b"data: {\"choices\":[{\"delta\":{\"content\":\"hel")
             .unwrap();
-        stream
-            .push_bytes(b"lo\"}}]}\n\ndata: [DONE]\n\n")
-            .unwrap();
+        stream.push_bytes(b"lo\"}}]}\n\ndata: [DONE]\n\n").unwrap();
         stream.finish().unwrap();
         assert_eq!(stream.content, "hello");
         assert!(stream.done);

@@ -109,10 +109,7 @@ tokio::task_local! {
     static CURRENT_DOCUMENT_SIGNAL: CancellationSignal;
 }
 
-pub(crate) async fn run_document_task<T, F>(
-    document_id: &str,
-    future: F,
-) -> Result<T, CommandError>
+pub(crate) async fn run_document_task<T, F>(document_id: &str, future: F) -> Result<T, CommandError>
 where
     F: Future<Output = Result<T, CommandError>>,
 {

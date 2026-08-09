@@ -19,7 +19,9 @@ use tauri_plugin_opener::OpenerExt;
 use crate::{
     ai::AiRuntimeState,
     database::Database,
-    documents::{self, DocumentGenerationResultDto, ImportPdfDocumentInput, RetryPdfGenerationInput},
+    documents::{
+        self, DocumentGenerationResultDto, ImportPdfDocumentInput, RetryPdfGenerationInput,
+    },
     error::CommandError,
     paths::AppPaths,
     pdf_render_backend::PdfRenderRuntime,
@@ -80,13 +82,7 @@ pub async fn retry_pdf_flashcard_generation(
     let database_after = database.clone();
     let result = run_document_task(
         &document_id,
-        documents::retry_pdf_flashcard_generation(
-            database,
-            paths,
-            runtime,
-            render_runtime,
-            input,
-        ),
+        documents::retry_pdf_flashcard_generation(database, paths, runtime, render_runtime, input),
     )
     .await;
     match result {
@@ -264,12 +260,8 @@ pub fn delete_pdf_document(
 
         let mut citation_count = 0_i64;
         for (deck_id, description) in generated_decks {
-            let preserved = preserve_deleted_pdf_citation(
-                &description,
-                &citation,
-                &title,
-                &original_filename,
-            )?;
+            let preserved =
+                preserve_deleted_pdf_citation(&description, &citation, &title, &original_filename)?;
             if preserved != description {
                 transaction
                     .execute(
@@ -636,16 +628,11 @@ mod tests {
         let description =
             "AI-generated flashcards from chapter.pdf. Edit or delete these cards through the normal deck tools.";
         let citation = deleted_pdf_citation("Chapter", "chapter.pdf", 10);
-        let preserved = preserve_deleted_pdf_citation(
-            description,
-            &citation,
-            "Chapter",
-            "chapter.pdf",
-        )
-        .expect("automatic citation should fit");
-        assert!(preserved.contains(
-            "Source PDF (deleted from Documents): Chapter (chapter.pdf), 10 PDF pages."
-        ));
+        let preserved =
+            preserve_deleted_pdf_citation(description, &citation, "Chapter", "chapter.pdf")
+                .expect("automatic citation should fit");
+        assert!(preserved
+            .contains("Source PDF (deleted from Documents): Chapter (chapter.pdf), 10 PDF pages."));
         assert!(!preserved.contains("AI-generated flashcards from chapter.pdf."));
     }
 
@@ -653,13 +640,9 @@ mod tests {
     fn deletion_never_truncates_a_user_description_that_already_names_the_source() {
         let description = format!("{} chapter.pdf", "x".repeat(1_980));
         let citation = deleted_pdf_citation("Chapter", "chapter.pdf", 10);
-        let preserved = preserve_deleted_pdf_citation(
-            &description,
-            &citation,
-            "Chapter",
-            "chapter.pdf",
-        )
-        .expect("existing text source reference is sufficient");
+        let preserved =
+            preserve_deleted_pdf_citation(&description, &citation, "Chapter", "chapter.pdf")
+                .expect("existing text source reference is sufficient");
         assert_eq!(preserved, description);
     }
 }
