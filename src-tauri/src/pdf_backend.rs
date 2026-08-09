@@ -1,12 +1,17 @@
 //! Native structured PDF extraction boundary.
 //!
 //! The document subsystem owns storage, limits, hashing, persistence, AI calls,
-//! and retry behavior. This module owns only PDF interpretation. It converts the
-//! active parser's types into ostudy-owned page/element/chunk structures so a
-//! future extraction engine can be swapped without changing durable document or
-//! AI contracts.
+//! and retry behavior. This module owns PDF interpretation plus extraction-
+//! quality assessment. A visually valid PDF may contain a missing, malformed, or
+//! intentionally obfuscated font-to-Unicode map; those pages must never be
+//! treated as trustworthy model input merely because the parser returned a
+//! non-empty string.
 
-use std::{collections::HashSet, fmt, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashSet},
+    fmt,
+    path::Path,
+};
 
 use oxidize_pdf::{
     parser::PdfDocument,
@@ -22,13 +27,15 @@ const MAX_CHUNK_BOUNDING_BOXES: usize = 512;
 const MAX_CHUNK_ELEMENT_TYPES: usize = 128;
 const MAX_CHUNK_ELEMENT_TYPE_CHARS: usize = 80;
 const MAX_HEADING_CONTEXT_CHARS: usize = 2_000;
+const MIN_SUBSTANTIVE_NONSPACE_CHARS: usize = 24;
+const MIN_SUBSTANTIVE_ALPHA_CHARS: usize = 8;
+const MIN_SUBSTITUTION_ALPHA_CHARS: usize = 48;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PdfBackendErrorKind {
     Open,
     PageCount,
     ExtractText,
-    SemanticAnalysis,
 }
 
 #[derive(Debug)]
@@ -108,25 +115,54 @@ pub(crate) struct ExtractedDocument {
     pub pages: Vec<ExtractedTextPage>,
     pub elements: Vec<ExtractedSemanticElement>,
     pub chunks: Vec<ExtractedSemanticChunk>,
+    pub native_text_failed_pages: Vec<usize>,
+    pub semantic_analysis_degraded: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct OcrPageCandidate {
+    pub page_number: usize,
+    /// A required candidate had non-empty but untrustworthy native text or an
+    /// extraction exception. Empty/sparse candidates are opportunistic: an
+    /// empty OCR result may simply mean the page was intentionally blank.
+    pub required: bool,
+    pub reasons: Vec<&'static str>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ExtractionRecoveryPlan {
+    pub ocr_pages: Vec<OcrPageCandidate>,
+    /// Pages whose raw page text is trustworthy but whose structured semantic
+    /// representation is not. Rebuild these from native page text rather than
+    /// paying an OCR quality penalty.
+    pub native_semantic_fallback_pages: Vec<usize>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct RecoveredPageText {
+    pub page_number: usize,
+    pub text: String,
+    pub confidence: f64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TextQualityAssessment {
+    pub suspicious: bool,
+    pub substantive: bool,
+    pub reasons: Vec<&'static str>,
 }
 
 pub(crate) fn active_backend_id() -> &'static str {
-    "oxidize-pdf-4.2.2-rag"
+    "oxidize-pdf-4.2.2-rag-quality-ocr-v1"
 }
 
 /// Parse one immutable source PDF into ostudy-owned structured data.
 ///
-/// `ExtractionProfile::Rag` preserves reading order, headings, tables, lists,
-/// geometry, and structure-aware chunks. OCR is intentionally not enabled by
-/// ostudy's Cargo feature set. Pages without extractable structure receive a
-/// bounded page-evidence chunk so they remain represented in semantic windows;
-/// an image-capable provider can then use the independently rendered page.
-///
-/// Third-party semantic metadata is normalized at this boundary to the durable
-/// database contract. Complex textbooks can contain extremely long heading
-/// paths, thousands of geometry fragments, unusual font names, or non-finite
-/// numeric metadata. Those are useful hints but must never be able to turn an
-/// otherwise valid PDF into an opaque SQLite constraint failure.
+/// Native page-text failures and structural-partition failures are deliberately
+/// recoverable here. The ingestion layer independently renders the source and
+/// can route affected pages through OCR. Keeping the original PDF readable is
+/// more important than failing the entire document because one embedded font or
+/// content stream is malformed.
 pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, PdfBackendError> {
     let document = PdfDocument::open(source_path).map_err(|error| {
         PdfBackendError::new(PdfBackendErrorKind::Open, None, error.to_string())
@@ -143,38 +179,41 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
     })?;
 
     let mut pages = Vec::with_capacity(page_count);
+    let mut native_text_failed_pages = Vec::new();
     for page_index in 0..page_count {
+        let page_number = page_index + 1;
         let page_index_u32 = u32::try_from(page_index).map_err(|_| {
             PdfBackendError::new(
                 PdfBackendErrorKind::ExtractText,
-                Some(page_index + 1),
+                Some(page_number),
                 "PDF page index exceeded the supported range.",
             )
         })?;
-        let extracted = document
-            .extract_text_from_page(page_index_u32)
-            .map_err(|error| {
-                PdfBackendError::new(
-                    PdfBackendErrorKind::ExtractText,
-                    Some(page_index + 1),
-                    error.to_string(),
-                )
-            })?;
-        pages.push(ExtractedTextPage {
-            page_number: page_index + 1,
-            text: extracted.text,
-        });
+        let text = match document.extract_text_from_page(page_index_u32) {
+            Ok(extracted) => extracted.text,
+            Err(error) => {
+                native_text_failed_pages.push(page_number);
+                crate::logging::info(
+                    "pdf_native_text_page_failed",
+                    format!("page={page_number} detail={}", bounded_text(&error.to_string(), 400)),
+                );
+                String::new()
+            }
+        };
+        pages.push(ExtractedTextPage { page_number, text });
     }
 
-    let elements = document
-        .partition_with_profile(ExtractionProfile::Rag)
-        .map_err(|error| {
-            PdfBackendError::new(
-                PdfBackendErrorKind::SemanticAnalysis,
-                None,
-                error.to_string(),
-            )
-        })?;
+    let partitioned = document.partition_with_profile(ExtractionProfile::Rag);
+    let (elements, semantic_analysis_degraded) = match partitioned {
+        Ok(elements) => (elements, false),
+        Err(error) => {
+            crate::logging::info(
+                "pdf_semantic_analysis_native_fallback",
+                format!("detail={}", bounded_text(&error.to_string(), 400)),
+            );
+            (Vec::new(), true)
+        }
+    };
 
     let semantic_elements = elements
         .iter()
@@ -218,16 +257,18 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
         })
         .collect::<Vec<_>>();
 
-    // Build chunks from the exact same partitioned elements instead of asking
-    // oxidize-pdf to partition the document a second time.
-    let chunker = HybridChunker::default();
-    let hybrid_chunks = chunker.chunk(&elements);
-    let chunks = hybrid_chunks
-        .iter()
-        .enumerate()
-        .map(|(chunk_index, hybrid)| RagChunk::from_hybrid_chunk(chunk_index, hybrid))
-        .map(convert_chunk)
-        .collect::<Vec<_>>();
+    let chunks = if elements.is_empty() {
+        Vec::new()
+    } else {
+        let chunker = HybridChunker::default();
+        chunker
+            .chunk(&elements)
+            .iter()
+            .enumerate()
+            .map(|(chunk_index, hybrid)| RagChunk::from_hybrid_chunk(chunk_index, hybrid))
+            .map(convert_chunk)
+            .collect::<Vec<_>>()
+    };
     let chunks = cover_unstructured_pages(chunks, &pages);
 
     Ok(ExtractedDocument {
@@ -235,7 +276,258 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
         pages,
         elements: semantic_elements,
         chunks,
+        native_text_failed_pages,
+        semantic_analysis_degraded,
     })
+}
+
+pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionRecoveryPlan {
+    let failed_pages = document
+        .native_text_failed_pages
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>();
+    let mut semantic_suspicious = BTreeSet::<usize>::new();
+    let mut semantic_good = BTreeSet::<usize>::new();
+
+    for element in &document.elements {
+        let assessment = assess_text_quality(&element.text);
+        if assessment.suspicious {
+            semantic_suspicious.insert(element.page_number);
+        } else if assessment.substantive {
+            semantic_good.insert(element.page_number);
+        }
+        if element
+            .parent_heading
+            .as_deref()
+            .is_some_and(|value| assess_text_quality(value).suspicious)
+            || element
+                .heading_path
+                .iter()
+                .any(|value| assess_text_quality(value).suspicious)
+        {
+            semantic_suspicious.insert(element.page_number);
+        }
+    }
+    for chunk in &document.chunks {
+        let suspicious = assess_text_quality(&chunk.text).suspicious
+            || assess_text_quality(&chunk.full_text).suspicious
+            || chunk
+                .heading_context
+                .as_deref()
+                .is_some_and(|value| assess_text_quality(value).suspicious);
+        if suspicious {
+            semantic_suspicious.extend(chunk.page_numbers.iter().copied());
+        }
+    }
+
+    let mut ocr_pages = Vec::new();
+    let mut native_semantic_fallback_pages = BTreeSet::new();
+    for page in &document.pages {
+        let raw = assess_text_quality(&page.text);
+        let extraction_failed = failed_pages.contains(&page.page_number);
+        let structured_is_suspicious = semantic_suspicious.contains(&page.page_number);
+        let has_good_semantic = semantic_good.contains(&page.page_number);
+
+        if extraction_failed || raw.suspicious {
+            let mut reasons = raw.reasons.clone();
+            if extraction_failed {
+                reasons.push("native_extraction_failed");
+            }
+            reasons.sort_unstable();
+            reasons.dedup();
+            ocr_pages.push(OcrPageCandidate {
+                page_number: page.page_number,
+                required: true,
+                reasons,
+            });
+            continue;
+        }
+
+        if !raw.substantive && !has_good_semantic {
+            ocr_pages.push(OcrPageCandidate {
+                page_number: page.page_number,
+                required: false,
+                reasons: vec!["sparse_or_missing_text"],
+            });
+            continue;
+        }
+
+        if structured_is_suspicious || document.semantic_analysis_degraded {
+            native_semantic_fallback_pages.insert(page.page_number);
+        }
+    }
+
+    ExtractionRecoveryPlan {
+        ocr_pages,
+        native_semantic_fallback_pages: native_semantic_fallback_pages.into_iter().collect(),
+    }
+}
+
+pub(crate) fn assess_text_quality(text: &str) -> TextQualityAssessment {
+    let mut nonspace = 0_usize;
+    let mut alphabetic = 0_usize;
+    let mut ascii_alphabetic = 0_usize;
+    let mut latin1_alphabetic = 0_usize;
+    let mut private_use = 0_usize;
+    let mut replacement = 0_usize;
+    let mut invalid_controls = 0_usize;
+
+    for character in text.chars() {
+        if !character.is_whitespace() {
+            nonspace = nonspace.saturating_add(1);
+        }
+        if character.is_alphabetic() {
+            alphabetic = alphabetic.saturating_add(1);
+            if character.is_ascii_alphabetic() {
+                ascii_alphabetic = ascii_alphabetic.saturating_add(1);
+            } else if ('\u{00C0}'..='\u{00FF}').contains(&character) {
+                latin1_alphabetic = latin1_alphabetic.saturating_add(1);
+            }
+        }
+        if is_private_use(character) {
+            private_use = private_use.saturating_add(1);
+        }
+        if character == '\u{FFFD}' {
+            replacement = replacement.saturating_add(1);
+        }
+        if character.is_control() && !matches!(character, '\n' | '\r' | '\t') {
+            invalid_controls = invalid_controls.saturating_add(1);
+        }
+    }
+
+    let mut reasons = Vec::new();
+    if private_use >= 2
+        && (nonspace < 50 || private_use.saturating_mul(100) >= nonspace.saturating_mul(1))
+    {
+        reasons.push("private_use_unicode");
+    }
+    if replacement > 0 {
+        reasons.push("unicode_replacement_character");
+    }
+    if invalid_controls > 0 {
+        reasons.push("invalid_control_characters");
+    }
+    if alphabetic >= MIN_SUBSTITUTION_ALPHA_CHARS
+        && latin1_alphabetic.saturating_mul(100) >= alphabetic.saturating_mul(55)
+        && ascii_alphabetic.saturating_mul(100) <= alphabetic.saturating_mul(25)
+    {
+        reasons.push("probable_font_substitution");
+    }
+
+    TextQualityAssessment {
+        suspicious: !reasons.is_empty(),
+        substantive: nonspace >= MIN_SUBSTANTIVE_NONSPACE_CHARS
+            && alphabetic >= MIN_SUBSTANTIVE_ALPHA_CHARS,
+        reasons,
+    }
+}
+
+pub(crate) fn apply_text_recovery(
+    document: &mut ExtractedDocument,
+    recovered_pages: &[RecoveredPageText],
+    native_semantic_fallback_pages: &[usize],
+) {
+    let recovered = recovered_pages
+        .iter()
+        .map(|page| (page.page_number, page))
+        .collect::<BTreeMap<_, _>>();
+    for page in &mut document.pages {
+        if let Some(replacement) = recovered.get(&page.page_number) {
+            page.text = replacement.text.clone();
+        }
+    }
+
+    let mut rebuilt_pages = native_semantic_fallback_pages
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    rebuilt_pages.extend(recovered.keys().copied());
+    if rebuilt_pages.is_empty() {
+        return;
+    }
+
+    document
+        .elements
+        .retain(|element| !rebuilt_pages.contains(&element.page_number));
+    document.chunks.retain(|chunk| {
+        !chunk
+            .page_numbers
+            .iter()
+            .any(|page| rebuilt_pages.contains(page))
+    });
+
+    for page_number in &rebuilt_pages {
+        let Some(page) = document
+            .pages
+            .iter()
+            .find(|page| page.page_number == *page_number)
+        else {
+            continue;
+        };
+        let text = page.text.trim();
+        if text.is_empty() {
+            continue;
+        }
+        let is_ocr = recovered.contains_key(page_number);
+        let confidence = recovered
+            .get(page_number)
+            .map_or(1.0, |page| page.confidence.clamp(0.0, 1.0));
+        let element_type = if is_ocr {
+            "ocr_text"
+        } else {
+            "page_text_fallback"
+        };
+        document.elements.push(ExtractedSemanticElement {
+            element_index: document.elements.len(),
+            page_number: *page_number,
+            element_type: element_type.to_string(),
+            text: text.to_string(),
+            parent_heading: None,
+            heading_path: Vec::new(),
+            bbox: SemanticBBox {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+            },
+            confidence,
+            font_name: None,
+            font_size: None,
+            is_bold: false,
+            is_italic: false,
+        });
+        document.chunks.push(ExtractedSemanticChunk {
+            chunk_index: document.chunks.len(),
+            text: text.to_string(),
+            full_text: text.to_string(),
+            page_numbers: vec![*page_number],
+            bounding_boxes: Vec::new(),
+            element_types: vec![element_type.to_string()],
+            heading_context: None,
+            token_estimate: text.chars().count().div_ceil(4).max(1),
+            is_oversized: false,
+        });
+    }
+
+    document.elements.sort_by_key(|element| {
+        (
+            element.page_number,
+            element.element_index,
+            element.element_type.clone(),
+        )
+    });
+    for (index, element) in document.elements.iter_mut().enumerate() {
+        element.element_index = index;
+    }
+    document.chunks = cover_unstructured_pages(std::mem::take(&mut document.chunks), &document.pages);
+}
+
+fn is_private_use(character: char) -> bool {
+    matches!(
+        character as u32,
+        0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD
+    )
 }
 
 fn convert_chunk(chunk: RagChunk) -> ExtractedSemanticChunk {
@@ -314,7 +606,7 @@ fn cover_unstructured_pages(
             bounding_boxes: Vec::new(),
             element_types: vec![element_type],
             heading_context: None,
-            token_estimate: (text.chars().count() / 4).max(1),
+            token_estimate: text.chars().count().div_ceil(4).max(1),
             is_oversized: false,
         });
     }
@@ -368,9 +660,106 @@ fn bounded_text(value: &str, maximum: usize) -> String {
 mod tests {
     use super::*;
 
+    fn base_document(page_text: &str, semantic_text: &str) -> ExtractedDocument {
+        ExtractedDocument {
+            page_count: 1,
+            pages: vec![ExtractedTextPage {
+                page_number: 1,
+                text: page_text.to_string(),
+            }],
+            elements: vec![ExtractedSemanticElement {
+                element_index: 0,
+                page_number: 1,
+                element_type: "paragraph".to_string(),
+                text: semantic_text.to_string(),
+                parent_heading: None,
+                heading_path: Vec::new(),
+                bbox: SemanticBBox {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
+                confidence: 1.0,
+                font_name: None,
+                font_size: None,
+                is_bold: false,
+                is_italic: false,
+            }],
+            chunks: vec![ExtractedSemanticChunk {
+                chunk_index: 0,
+                text: semantic_text.to_string(),
+                full_text: semantic_text.to_string(),
+                page_numbers: vec![1],
+                bounding_boxes: Vec::new(),
+                element_types: vec!["paragraph".to_string()],
+                heading_context: None,
+                token_estimate: 20,
+                is_oversized: false,
+            }],
+            native_text_failed_pages: Vec::new(),
+            semantic_analysis_degraded: false,
+        }
+    }
+
     #[test]
-    fn active_backend_identifies_structure_aware_oxidize_extraction() {
-        assert_eq!(active_backend_id(), "oxidize-pdf-4.2.2-rag");
+    fn active_backend_identifies_quality_checked_oxidize_extraction() {
+        assert_eq!(
+            active_backend_id(),
+            "oxidize-pdf-4.2.2-rag-quality-ocr-v1"
+        );
+    }
+
+    #[test]
+    fn private_use_font_mapping_is_detected_as_corrupt_text() {
+        let assessment = assess_text_quality("Th\u{e01c} purp\u{e01d}\u{e01e}\u{e01c} of HDL\u{e01e} appears to transport cholesterol.");
+        assert!(assessment.suspicious);
+        assert!(assessment.reasons.contains(&"private_use_unicode"));
+    }
+
+    #[test]
+    fn latin1_glyph_substitution_is_detected_without_flagging_normal_accents() {
+        let corrupt = assess_text_quality(
+            "Õâóïáäèå ÖîããóÛó îì ÖèïÝáîãîÛ× èåÝ çôó Õâóïáäèå ëóèïç Õííîäáèçáîå ñðæãáíôóÝ åóØ ÛðáÝóãáåóí",
+        );
+        assert!(corrupt.suspicious);
+        assert!(corrupt.reasons.contains(&"probable_font_substitution"));
+
+        let normal = assess_text_quality(
+            "L'étude cardiovasculaire évalue la pression artérielle et l'activité physique régulière.",
+        );
+        assert!(!normal.suspicious);
+    }
+
+    #[test]
+    fn corrupt_semantics_with_good_raw_text_use_native_page_fallback_not_ocr() {
+        let document = base_document(
+            "The American College of Cardiology published updated clinical guidelines.",
+            "Õâóïáäèå ÖîããóÛó îì ÖèïÝáîãîÛ× ñðæãáíôóÝ åóØ ÛðáÝóãáåóí",
+        );
+        let plan = plan_text_recovery(&document);
+        assert!(plan.ocr_pages.is_empty());
+        assert_eq!(plan.native_semantic_fallback_pages, vec![1]);
+    }
+
+    #[test]
+    fn recovered_ocr_text_replaces_corrupt_page_and_semantic_content() {
+        let mut document = base_document(
+            "Õâóïáäèå ÖîããóÛó îì ÖèïÝáîãîÛ× ñðæãáíôóÝ åóØ ÛðáÝóãáåóí",
+            "Õâóïáäèå ÖîããóÛó îì ÖèïÝáîãîÛ× ñðæãáíôóÝ åóØ ÛðáÝóãáåóí",
+        );
+        let recovered = RecoveredPageText {
+            page_number: 1,
+            text: "The American College of Cardiology published updated clinical guidelines."
+                .to_string(),
+            confidence: 0.93,
+        };
+        apply_text_recovery(&mut document, &[recovered], &[]);
+        assert!(document.pages[0].text.starts_with("The American"));
+        assert_eq!(document.elements.len(), 1);
+        assert_eq!(document.elements[0].element_type, "ocr_text");
+        assert!(document.chunks[0].full_text.starts_with("The American"));
+        assert!(!document.chunks[0].full_text.contains('Õ'));
     }
 
     #[test]
