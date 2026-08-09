@@ -5,6 +5,7 @@ import { getErrorCode, getErrorMessage } from "../ipc/common";
 import {
   cancelPdfFlashcardGeneration,
   deletePdfDocument,
+  generateMorePdfFlashcards,
   importPdfAndGenerateFlashcards,
   listDocuments,
   openDocumentSource,
@@ -117,10 +118,35 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
     }
   }
 
+  async function generateMore(document: DocumentSummary): Promise<void> {
+    if (isUploading || busyDocumentId || deletingDocumentId || !document.generatedDeckId) return;
+    setBusyDocumentId(document.id);
+    setErrorMessage(null);
+    try {
+      const result = await generateMorePdfFlashcards(document.id);
+      await Promise.all([refreshDocuments(), refreshDecks()]);
+      if (result.createdCardCount === 0) {
+        showToast("info", "The second pass did not find any additional non-duplicate cards to add.");
+      } else {
+        showToast(
+          "success",
+          `Added ${result.createdCardCount} new flashcard${result.createdCardCount === 1 ? "" : "s"} to the existing deck.`,
+        );
+      }
+    } catch (error: unknown) {
+      await handleGenerationFailure(error);
+    } finally {
+      setBusyDocumentId(null);
+    }
+  }
+
   async function handleGenerationFailure(error: unknown): Promise<void> {
     const code = getErrorCode(error);
     if (code === "document_generation_canceled" || code === "ai_request_canceled") {
       showToast("info", "Generation stopped. The PDF is still available to retry.");
+      setErrorMessage(null);
+    } else if (code === "document_no_additional_cards") {
+      showToast("info", getErrorMessage(error));
       setErrorMessage(null);
     } else {
       const message = getErrorMessage(error);
@@ -278,6 +304,10 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
               document.generatedDeckId === null &&
               document.lifecycleState !== "processing" &&
               document.archivedAt === null;
+            const canGenerateMore =
+              document.generatedDeckId !== null &&
+              document.lifecycleState === "ready" &&
+              document.archivedAt === null;
             return (
               <article key={document.id} className={styles.card}>
                 <div className={styles.cardMain}>
@@ -286,6 +316,11 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                     <span className={styles.status} data-state={document.lifecycleState}>
                       {statusLabel(document)}
                     </span>
+                    {document.lifecycleState === "processing" ? (
+                      <span className={styles.processingPhase} aria-live="polite">
+                        {processingPhaseLabel(document, canceling)}
+                      </span>
+                    ) : null}
                   </div>
                   <p className={styles.filename}>{document.originalFilename}</p>
                   <dl className={styles.metrics}>
@@ -309,10 +344,10 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                     </div>
                   </dl>
                   {document.lifecycleState === "processing" ? (
-                    <p className={styles.progress} aria-live="polite">
+                    <p className={styles.progress}>
                       {canceling
                         ? "Stopping the current AI request. The PDF will remain available to retry."
-                        : "Extracting structure, rendering pages, and generating flashcards. Once the provider acknowledges a streamed request, generation may run as long as the model needs."}
+                        : "Large documents can take several minutes. Once the provider accepts a streamed request, ostudy does not impose a completion deadline."}
                     </p>
                   ) : null}
                   {document.safeErrorMessage ? (
@@ -357,6 +392,16 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                       onClick={() => void retry(document)}
                     >
                       {busyDocumentId === document.id ? "Retrying…" : "Retry generation"}
+                    </button>
+                  ) : null}
+                  {canGenerateMore ? (
+                    <button
+                      type="button"
+                      className="primary-button"
+                      disabled={busy || isUploading}
+                      onClick={() => void generateMore(document)}
+                    >
+                      {busyDocumentId === document.id ? "Generating…" : "Generate more cards"}
                     </button>
                   ) : null}
                   <button
@@ -405,6 +450,16 @@ function statusLabel(document: DocumentSummary): string {
     default:
       return document.lifecycleState;
   }
+}
+
+function processingPhaseLabel(document: DocumentSummary, canceling: boolean): string {
+  if (canceling) return "Stopping";
+  if (document.generatedDeckId !== null) return "Generating additional cards";
+  if (document.pageCount === 0 || document.renderedPageCount === 0) {
+    return "Extracting text / rendering pages";
+  }
+  if (document.renderedPageCount < document.pageCount) return "Rendering pages";
+  return "Building outline / generating cards";
 }
 
 function formatBytes(bytes: number): string {
