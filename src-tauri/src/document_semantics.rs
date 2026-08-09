@@ -24,7 +24,6 @@ pub(crate) struct SemanticChunk {
 pub(crate) struct SemanticPartition {
     pub partition_index: usize,
     pub title: String,
-    pub page_start: i64,
     chunk_start: usize,
     chunk_end: usize,
 }
@@ -136,7 +135,6 @@ pub(crate) fn build_semantic_partitions(
 
         if end == start {
             let chunk = &chunks[start];
-            token_total = effective_chunk_tokens(chunk);
             pages.extend(chunk.page_numbers.iter().copied());
             title = title.or_else(|| partition_heading(chunk));
             end = start + 1;
@@ -149,7 +147,6 @@ pub(crate) fn build_semantic_partitions(
         partitions.push(SemanticPartition {
             partition_index: partitions.len(),
             title,
-            page_start,
             chunk_start: start,
             chunk_end: end,
         });
@@ -588,7 +585,10 @@ mod tests {
         assert_eq!(partitions.len(), 2);
         assert_eq!(partitions[0].title, "Chapter 1");
         assert_eq!(partitions[1].title, "Chapter 2");
-        assert_eq!(partitions[1].page_start, 7);
+        let windows = build_partitioned_semantic_windows(&chunks, plan, 2_000, 4, 0);
+        assert!(windows
+            .iter()
+            .any(|window| window.partition_index == 1 && window.page_start == 7));
     }
 
     #[test]
