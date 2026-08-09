@@ -50,30 +50,31 @@ jobs:
       - name: Expose user-local tools
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Resolve and format canonical Rust sources
+      - name: Apply follow-up source normalization
         id: normalize
         run: |
+          node ./scripts/apply-stage4-followup.mjs
           cargo metadata \
             --manifest-path src-tauri/Cargo.toml \
             --format-version 1 \
             > /dev/null
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           git diff --check
-          if git diff --quiet -- src-tauri/Cargo.lock '*.rs'; then
+          if git diff --quiet -- src-tauri/Cargo.lock '*.rs' '*.tsx'; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit Rust normalization
+      - name: Commit follow-up normalization
         if: steps.normalize.outputs.changed == 'true'
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src-tauri/Cargo.lock -- '*.rs'
-          git commit -m "chore: normalize Rust source and lockfile"
+          git add src-tauri/Cargo.lock -- '*.rs' '*.tsx'
+          git commit -m "chore: normalize stage 4 follow-up sources"
           git push origin "HEAD:${HEAD_REF}"
 
   check:
