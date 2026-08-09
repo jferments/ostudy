@@ -56,7 +56,6 @@
 
 .count,
 .filename,
-.progress,
 .deckNote {
   color: var(--muted);
 }
@@ -168,7 +167,6 @@
   overflow-wrap: anywhere;
 }
 
-.progress,
 .deckNote {
   margin: 0.85rem 0 0;
   line-height: 1.45;
