@@ -83,7 +83,7 @@ describe("DocumentsScreen", () => {
     expect(screen.queryByText(/JSON/u)).toBeNull();
   });
 
-  it("uploads one PDF and immediately creates a normal deck without a review step", async () => {
+  it("uploads one PDF, gives the short long-document toast, and creates a normal deck", async () => {
     const completed = makeDocument();
     vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/cardiac-physiology.pdf");
     vi.mocked(documentIpc.importPdfAndGenerateFlashcards).mockResolvedValue({
@@ -101,6 +101,7 @@ describe("DocumentsScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Upload PDF" }));
 
+    expect(showToast).toHaveBeenCalledWith("info", "Large documents can take several minutes.");
     await waitFor(() => {
       expect(documentIpc.importPdfAndGenerateFlashcards).toHaveBeenCalledWith(
         "/tmp/cardiac-physiology.pdf",
@@ -110,6 +111,7 @@ describe("DocumentsScreen", () => {
     });
     expect(await screen.findByRole("heading", { name: "Cardiac physiology" })).toBeTruthy();
     expect(screen.getByText(/normal editing, scheduling, archive, and deletion tools/u)).toBeTruthy();
+    expect(screen.queryByText(/does not impose a completion deadline/u)).toBeNull();
   });
 
   it("keeps a failed PDF in the library and offers a direct retry", async () => {
@@ -157,6 +159,7 @@ describe("DocumentsScreen", () => {
 
     expect(await screen.findByText("Processing")).toBeTruthy();
     expect(screen.getByText("Extracting text / rendering pages")).toBeTruthy();
+    expect(screen.queryByText(/does not impose a completion deadline/u)).toBeNull();
   });
 
   it("offers an exact stop action while a document generation task is processing", async () => {
