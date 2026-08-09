@@ -280,6 +280,7 @@ pub(crate) fn create_generation_job(
                 )
             })?;
         for window in windows {
+            let locator = window.source_locator();
             transaction
                 .execute(
                     "INSERT INTO document_generation_windows (
@@ -292,9 +293,9 @@ pub(crate) fn create_generation_job(
                         to_i64(window.window_index),
                         window.first_chunk_index,
                         window.last_chunk_index,
-                        window.source_locator.first(),
-                        window.source_locator.last(),
-                        serde_json::to_string(&window.source_locator.unit_numbers)
+                        locator.first(),
+                        locator.last(),
+                        serde_json::to_string(&locator.unit_numbers)
                             .map_err(CommandError::serialization)?,
                         to_i64(window.token_estimate),
                         now,
@@ -307,7 +308,7 @@ pub(crate) fn create_generation_job(
                             "document={document_id} job={job_id} window={} partition={} locator={}",
                             window.window_index,
                             window.partition_index,
-                            window.source_locator.stable_identity()
+                            locator.stable_identity()
                         ),
                         error,
                     )
@@ -409,6 +410,7 @@ pub(crate) fn mark_window_complete(
             "document_window_changed",
             "The generation window changed before completion could be recorded.",
         )?;
+        let locator = window.source_locator();
         let job_changed = transaction
             .execute(
                 "UPDATE document_generation_jobs
@@ -419,7 +421,7 @@ pub(crate) fn mark_window_complete(
                      ),
                      updated_at = ?3
                  WHERE id = ?2 AND state = 'generating'",
-                params![window.source_locator.last(), job_id, now],
+                params![locator.last(), job_id, now],
             )
             .map_err(|error| {
                 db_error_with_job(
@@ -682,7 +684,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use crate::{
-        document_domain::SourceLocator, document_scale::DocumentScalePlan,
+        document_scale::DocumentScalePlan,
         document_semantics::build_partitioned_semantic_windows,
     };
 
@@ -781,7 +783,6 @@ mod tests {
             partition_title: "Chapter".to_string(),
             first_chunk_index: 0,
             last_chunk_index: 0,
-            source_locator: SourceLocator::pages(vec![1], None).unwrap(),
             page_numbers: vec![1],
             visual_page_numbers: Vec::new(),
             page_start: 1,
