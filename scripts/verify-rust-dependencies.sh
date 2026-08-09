@@ -25,9 +25,9 @@ check_crate serde_json "$SERDE_JSON_VERSION"
 check_crate tauri-plugin-dialog "$TAURI_DIALOG_VERSION"
 check_crate tauri-plugin-opener "$TAURI_OPENER_VERSION"
 check_crate chrono "$CHRONO_VERSION"
-check_crate image "$IMAGE_VERSION"
+check_crate justpdf "$JUSTPDF_VERSION"
+check_crate justpdf-render "$JUSTPDF_VERSION"
 check_crate oxidize-pdf "$OXIDIZE_PDF_VERSION"
-check_crate pdfium-render "$PDFIUM_RENDER_VERSION"
 check_crate rs-fsrs "$RS_FSRS_VERSION"
-check_absent justpdf
+check_absent pdfium-render
 check_absent rusty-tesseract
