@@ -53,7 +53,6 @@ jobs:
       - name: Resolve and format canonical Rust sources
         id: normalize
         run: |
-          node ./scripts/fix-document-more-lifetimes.mjs
           cargo metadata \
             --manifest-path src-tauri/Cargo.toml \
             --format-version 1 \
