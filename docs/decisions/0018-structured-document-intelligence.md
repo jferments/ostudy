@@ -10,6 +10,8 @@ The first Stage 4.3–4.6 implementation extracted a page-level string and rende
 
 The document layer is intended to support more than flashcards. Study-guide generation, quizzes, document search, and interactive tutoring all need the same reusable understanding of sections, headings, paragraphs, tables, lists, geometry, reading order, and cross-page concepts.
 
+ostudy also targets Linux, Windows, macOS, Android, and iOS. A mandatory renderer that requires a separately packaged native library per operating system and CPU architecture creates disproportionate release and mobile-porting cost for a capability that can be isolated behind a narrow page-to-PNG boundary.
+
 ## Decision
 
 ### Extraction and rendering are separate capabilities
@@ -20,9 +22,9 @@ ostudy no longer has one concrete PDF engine embedded in document lifecycle code
 - `src-tauri/src/pdf_render_backend.rs` is the raster page-rendering boundary.
 - `src-tauri/src/documents.rs` owns limits, managed paths, hashing, SQLite state, retries, AI orchestration, and canonical authoring.
 
-The active structured extractor is **oxidize-pdf 4.2.2** with the `Rag` extraction profile. OCR features are explicitly disabled. The active renderer is **Pdfium build 7881** through `pdfium-render 0.9.3`.
+The active structured extractor is **oxidize-pdf 4.2.2** with the `Rag` extraction profile. OCR features are explicitly disabled. The active renderer is the **pure-Rust justpdf-render 0.1.2 renderer**, accessed through the pinned justpdf 0.1.2 high-level page API.
 
-This split permits future replacement of either capability independently. For example, a platform-native renderer can replace Pdfium without changing extraction or document intelligence, and another structured extractor can replace oxidize-pdf without changing rendering, persistence, provider adapters, or card authoring.
+This split permits future replacement of either capability independently. If compatibility testing discovers PDFs that the pure-Rust renderer cannot faithfully rasterize, a Pdfium-backed compatibility renderer can be added behind the same interface without changing extraction, document intelligence, persistence, provider adapters, backups, or card authoring.
 
 ### Semantic intermediate representation
 
@@ -35,7 +37,7 @@ The immutable source PDF remains the durable source of truth. Derived semantic d
 - font/format signals where available;
 - structure-aware semantic chunks with page mappings, element types, heading context, token estimates, and bounding boxes.
 
-The backend identity is recorded with the derived data. Retry rebuilds semantics when the active extraction/render backend changes.
+Pages for which oxidize-pdf yields no structured text receive a bounded page-evidence chunk. This keeps image-only pages represented in semantic windows without pretending that OCR has occurred. The backend identity is recorded with the derived data. Retry rebuilds semantics when the active extraction/render backend changes.
 
 ### Semantic windows, not page prompts
 
@@ -57,30 +59,35 @@ The final durable outline contains:
 - section hierarchy with page spans;
 - per-section summary, objectives, and concepts.
 
+For a fully image-only PDF, a text-only model is not asked to invent semantic structure from placeholder text. Generation requires a previously verified image-capable llama.cpp profile and uses a conservative visual-source outline; rendered page images remain the authoritative evidence for card generation.
+
 The outline is stored independently of the generated cards so later study-guide, quiz, search, and tutoring tasks can reuse it instead of reinterpreting flattened PDF text.
 
 ### Outline-guided flashcards and global curation
 
-Every flashcard-generation window receives both its local structured source and the validated global document outline. The prompt instructs the model to judge local details against global learning objectives and to create cross-page/integrative questions when supported.
+Every flashcard-generation window receives both its local structured source and the validated global document outline. When the selected llama.cpp profile has verified image input, bounded rendered-page samples are attached so diagrams, tables, equations, and image-only content can contribute evidence. The prompt instructs the model to judge local details against global learning objectives and to create cross-page/integrative questions when supported.
 
 After all windows return locally valid cards, a final bounded relevance pass selects which cards remain. It removes globally minor/hyperspecific material, bibliography/citation artifacts, redundant coverage, and near-duplicates while preserving broad learning-objective coverage and pedagogical variety. The curation model may select or reject a card but cannot rewrite it.
 
 The resulting cards still pass the canonical generated-import validators and are committed directly into an ordinary deck; no review queue is introduced.
 
-### Pdfium runtime provenance
+### Pure-Rust rendering is the portable default
 
-`pdfium-render` is only a binding layer and does not contain Pdfium. Build/test/release scripts therefore provision the exact **chromium/7881** Pdfium release from `bblanchon/pdfium-binaries`. The archive is cached outside Git and accepted only when GitHub's immutable release metadata supplies a matching SHA-256 digest.
+The renderer rasterizes source pages to PNG at a bounded 144 DPI. It runs in-process and requires no Pdfium, Poppler, headless browser, or platform-specific dynamic library resource.
 
-The verified platform library is copied into `src-tauri/resources/pdfium/` for Tauri bundling. That generated directory is Git-ignored. Packaged applications resolve the bundled resource; development runs also expose its exact path through `OSTUDY_PDFIUM_LIBRARY`.
+This is the default because it keeps the five-platform architecture uniform and avoids maintaining a matrix of native renderer binaries for desktop and mobile CPU targets. Renderer output is still bounded by ostudy's per-page byte limit and is persisted with size and SHA-256 metadata before it may be sent to an image-capable provider.
+
+Pdfium remains a plausible optional compatibility backend for difficult desktop PDFs because the renderer boundary is intentionally engine-neutral. It is not a mandatory runtime dependency.
 
 ### OCR remains out of scope
 
-oxidize-pdf is built with default features disabled and only `compression` plus `semantic` enabled. `rusty-tesseract` is prohibited by dependency verification. Image-only pages can still be rendered and may later participate in an image-first analysis path, but ostudy does not silently store model transcription as extracted source text.
+oxidize-pdf is built with default features disabled and only `compression` plus `semantic` enabled. `rusty-tesseract` is prohibited by dependency verification. Image-only pages are represented by their rendered page evidence instead of silently storing model transcription as extracted source text.
 
 ## Consequences
 
-- Document understanding now survives page boundaries and retains substantially more structure than the previous page-string model.
+- Document understanding survives page boundaries and retains substantially more structure than the previous page-string model.
 - AI generation requires an outline pass plus a global curation pass, increasing model calls but improving global relevance and creating a reusable artifact for later features.
-- Pdfium adds a target-specific native runtime, but the runtime is deterministic, checksummed, bundled, and isolated behind a renderer interface.
-- Existing managed PDFs created by the earlier PR #38 implementation are automatically re-extracted on retry because their recorded backend identity is `legacy`/`justpdf` rather than the current backend IDs.
+- The default PDF path has no platform-specific native rendering runtime, reducing Linux/Windows/macOS/Android/iOS packaging complexity and making resource-constrained mobile deployment more practical.
+- Difficult PDFs may expose rendering gaps that a mature native engine would handle better; the renderer interface preserves the option of an explicit future Pdfium compatibility backend.
+- Existing managed PDFs created by the earlier PR #38 implementation are automatically re-extracted on retry because their recorded backend identities differ from the active oxidize-pdf / justpdf-render IDs.
 - Full-library backup continues to require only the database plus source/render managed files; semantic elements, chunks, outlines, and generation-window state are already in SQLite.
