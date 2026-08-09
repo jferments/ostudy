@@ -32,6 +32,7 @@ jobs:
           node ./scripts/apply-stage47-ai.mjs
           node ./scripts/apply-stage47-pipeline.mjs
           node ./scripts/apply-stage47-more.mjs
+          node ./scripts/finalize-stage47-policy.mjs
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           git diff --check
       - name: Commit Stage 4.7 source patches
