@@ -10,9 +10,9 @@ use crate::{
 
 /// Persisted, engine-neutral semantic chunk used by all document-aware AI tasks.
 ///
-/// `page_numbers` is currently the persistence bridge for the PDF adapter. The
-/// format-neutral planning/generation identity is the `SourceLocator` carried by
-/// each `SemanticWindow`, so future adapters do not need to invent PDF pages.
+/// `page_numbers` is the current PDF adapter's persisted source-unit projection.
+/// The rest of the document platform consumes `SemanticWindow::source_locator()`
+/// rather than depending directly on PDF terminology.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SemanticChunk {
@@ -35,9 +35,9 @@ pub(crate) struct SemanticPartition {
 
 /// A contiguous, overlapping semantic source window.
 ///
-/// `source_locator` is authoritative provenance. The page projections remain
-/// only while PDF is the sole ingestion adapter and are not used for checkpoint
-/// or planner identity.
+/// The legacy page fields remain a compatibility projection while PDF is the
+/// only ingestion adapter. Generic consumers must use `source_locator()` for
+/// identity, validation, persistence, and diagnostics.
 #[derive(Clone, Debug)]
 pub(crate) struct SemanticWindow {
     pub window_index: usize,
@@ -45,13 +45,22 @@ pub(crate) struct SemanticWindow {
     pub partition_title: String,
     pub first_chunk_index: i64,
     pub last_chunk_index: i64,
-    pub source_locator: SourceLocator,
     pub page_numbers: Vec<i64>,
     pub visual_page_numbers: Vec<i64>,
     pub page_start: i64,
     pub page_end: i64,
     pub token_estimate: usize,
     pub source_text: String,
+}
+
+impl SemanticWindow {
+    pub(crate) fn source_locator(&self) -> SourceLocator {
+        SourceLocator::pages(
+            self.page_numbers.clone(),
+            Some(self.partition_title.clone()),
+        )
+        .expect("semantic PDF source windows are normalized to positive source units")
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -123,13 +132,14 @@ pub(crate) fn validate_semantic_windows(
                 "A semantic source window has no bounded source content.",
             ));
         }
-        if window.source_locator.unit_kind != source.unit_kind {
+        let locator = window.source_locator();
+        if locator.unit_kind != source.unit_kind {
             return Err(CommandError::new(
                 "invalid_document_source_locator",
                 "A semantic source window uses the wrong source-unit kind for this document.",
             ));
         }
-        window.source_locator.validate_within(source.unit_count)?;
+        locator.validate_within(source.unit_count)?;
     }
     Ok(())
 }
@@ -269,9 +279,6 @@ fn build_semantic_windows_internal(
         }
         let page_start = page_numbers.first().copied().unwrap_or(1);
         let page_end = page_numbers.last().copied().unwrap_or(page_start);
-        let source_locator =
-            SourceLocator::pages(page_numbers.clone(), Some(partition_title.to_string()))
-                .expect("semantic source units are normalized to positive PDF page numbers");
         let visual_page_numbers = selected
             .iter()
             .filter(|unit| chunk_needs_visual_grounding(unit.chunk))
@@ -300,7 +307,6 @@ fn build_semantic_windows_internal(
             partition_title: partition_title.to_string(),
             first_chunk_index: selected.first().map_or(0, |unit| unit.chunk.chunk_index),
             last_chunk_index: selected.last().map_or(0, |unit| unit.chunk.chunk_index),
-            source_locator,
             page_numbers,
             visual_page_numbers,
             page_start,
@@ -390,8 +396,7 @@ fn build_source_units<'a>(
                 .get(segment_index)
                 .cloned()
                 .unwrap_or_default();
-            let page_numbers =
-                segment_source_units(&chunk.page_numbers, segment_index, segment_count);
+            let page_numbers = segment_source_units(&chunk.page_numbers, segment_index, segment_count);
             let distributed_estimate = source_token_estimate.div_ceil(segment_count);
             let segment_estimate = text.chars().count().div_ceil(4).max(distributed_estimate);
             units.push(SourceUnit {
@@ -562,7 +567,7 @@ mod tests {
         ];
         let windows = build_semantic_windows(&chunks, 2_000, 20, 0);
         assert_eq!(windows.len(), 1);
-        assert_eq!(windows[0].source_locator.unit_numbers, vec![1, 2, 3, 4]);
+        assert_eq!(windows[0].source_locator().unit_numbers, vec![1, 2, 3, 4]);
         assert!(windows[0].source_text.contains("Section 0"));
         assert!(windows[0].source_text.contains("Section 2"));
     }
@@ -577,7 +582,7 @@ mod tests {
         assert!(windows.iter().all(|window| window.token_estimate <= 1_500));
         assert!(windows
             .iter()
-            .all(|window| window.source_locator.unit_numbers.len() <= 3));
+            .all(|window| window.source_locator().unit_numbers.len() <= 3));
         assert_eq!(windows[0].last_chunk_index, windows[1].first_chunk_index);
     }
 
@@ -594,7 +599,7 @@ mod tests {
         assert!(windows.iter().all(|window| window.token_estimate <= 1_000));
         assert!(windows
             .iter()
-            .all(|window| window.source_locator.unit_numbers.len() <= 3));
+            .all(|window| window.source_locator().unit_numbers.len() <= 3));
         assert!(windows
             .iter()
             .any(|window| window.source_text.contains("segment=\"2/")));
@@ -636,7 +641,7 @@ mod tests {
         let windows = build_partitioned_semantic_windows(&chunks, plan, 2_000, 4, 0);
         assert!(windows
             .iter()
-            .any(|window| window.partition_index == 1 && window.source_locator.first() == 7));
+            .any(|window| window.partition_index == 1 && window.source_locator().first() == 7));
     }
 
     #[test]
@@ -673,8 +678,8 @@ mod tests {
         let plan = DocumentScalePlan::for_unit_count(11);
         let mut windows = build_partitioned_semantic_windows(&chunks, plan, 10_000, 10, 0);
         windows[1].window_index = 0;
-        let error =
-            validate_semantic_windows(&windows, &DocumentSourceDescriptor::pdf(11)).unwrap_err();
+        let error = validate_semantic_windows(&windows, &DocumentSourceDescriptor::pdf(11))
+            .unwrap_err();
         assert_eq!(error.code, "invalid_document_window_identity");
     }
 
@@ -701,9 +706,9 @@ mod tests {
         assert!(windows
             .iter()
             .any(|window| window.partition_title == "Chapter B"));
-        assert!(windows.iter().all(
-            |window| !(window.source_locator.first() <= 4 && window.source_locator.last() >= 5)
-        ));
+        assert!(windows.iter().all(|window| {
+            !(window.source_locator().first() <= 4 && window.source_locator().last() >= 5)
+        }));
         assert!(windows
             .iter()
             .any(|window| window.visual_page_numbers.contains(&6)));
