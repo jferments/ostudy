@@ -201,3 +201,25 @@ import { registerPracticeExitHandler } from "../controllers/practiceExitGuard";
   );
   return source;
 });
+
+await patchFile("src-tauri/src/document_more.rs", (initial) => {
+  let source = initial;
+  source = source.replace(`use std::{collections::HashSet, fs};\n`, `use std::fs;\n`);
+  source = source.replace(
+    `                        pages_json.len(),\n                        rusqlite::types::Type::Text,`,
+    `                        3,\n                        rusqlite::types::Type::Text,`,
+  );
+  source = source.replace(
+    `                        types_json.len(),\n                        rusqlite::types::Type::Text,`,
+    `                        4,\n                        rusqlite::types::Type::Text,`,
+  );
+  source = source.replace(
+    `            [..] if ids.is_empty() => Err(CommandError::new(`,
+    `            [] => Err(CommandError::new(`,
+  );
+  source = source.replace(
+    `        assert_eq!(selected.iter().collect::<HashSet<_>>().len(), 6);`,
+    `        assert_eq!(selected.iter().collect::<std::collections::HashSet<_>>().len(), 6);`,
+  );
+  return source;
+});
