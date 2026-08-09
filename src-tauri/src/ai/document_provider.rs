@@ -4,7 +4,6 @@
 //! formats. Provider adapters/probes are responsible for discovering concrete
 //! limits and features; the planner consumes only normalized capability facts.
 
-use rusqlite::OptionalExtension;
 use sha2::{Digest, Sha256};
 
 use crate::{database::Database, error::CommandError};
@@ -13,7 +12,6 @@ use crate::{database::Database, error::CommandError};
 pub(crate) enum StructuredOutputStrategy {
     JsonSchema,
     StrictTool,
-    JsonObject,
     Unknown,
 }
 
@@ -22,7 +20,6 @@ impl StructuredOutputStrategy {
         match self {
             Self::JsonSchema => "json_schema",
             Self::StrictTool => "strict_tool",
-            Self::JsonObject => "json_object",
             Self::Unknown => "unknown",
         }
     }
@@ -107,34 +104,14 @@ pub(crate) fn load_document_provider_capabilities(
             }
         }
 
-        // DeepSeek document generation currently uses its strict tool contract,
-        // which is stronger than the generic JSON-object capability reported by
-        // the ordinary connection probe.
-        result.structured_output =
-            structured_strategy(provider_kind).max_preference(result.structured_output);
+        // The document service currently uses DeepSeek strict tool calling even
+        // though its generic connection probe describes JSON-object support.
+        // Provider wire details remain here rather than leaking into planners.
+        if provider_kind == "deepseek" {
+            result.structured_output = StructuredOutputStrategy::StrictTool;
+        }
         Ok(result)
     })
-}
-
-trait StructuredOutputPreference {
-    fn max_preference(self, other: Self) -> Self;
-}
-
-impl StructuredOutputPreference for StructuredOutputStrategy {
-    fn max_preference(self, other: Self) -> Self {
-        use StructuredOutputStrategy::{JsonObject, JsonSchema, StrictTool, Unknown};
-        let rank = |value| match value {
-            Unknown => 0,
-            JsonObject => 1,
-            JsonSchema => 2,
-            StrictTool => 3,
-        };
-        if rank(self) >= rank(other) {
-            self
-        } else {
-            other
-        }
-    }
 }
 
 fn structured_strategy(provider_kind: &str) -> StructuredOutputStrategy {
@@ -148,27 +125,10 @@ fn structured_strategy(provider_kind: &str) -> StructuredOutputStrategy {
 fn parse_positive_usize(value_json: &str) -> Option<usize> {
     let value = serde_json::from_str::<serde_json::Value>(value_json).ok()?;
     let value = value.as_i64()?;
-    (value > 0).then(|| usize::try_from(value).ok()).flatten()
-}
-
-pub(crate) fn load_context_window_capability(
-    database: &Database,
-    profile_id: &str,
-) -> Result<Option<usize>, CommandError> {
-    database.with_connection(|connection| {
-        let value_json = connection
-            .query_row(
-                "SELECT value_json FROM ai_provider_capabilities
-                 WHERE profile_id = ?1
-                   AND capability_key = 'context_window_tokens'
-                   AND status = 'supported'",
-                [profile_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(CommandError::database)?;
-        Ok(value_json.as_deref().and_then(parse_positive_usize))
-    })
+    if value <= 0 {
+        return None;
+    }
+    usize::try_from(value).ok()
 }
 
 #[cfg(test)]
