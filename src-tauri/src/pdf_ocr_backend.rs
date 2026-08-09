@@ -8,7 +8,7 @@
 
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Command, Stdio},
     sync::atomic::{AtomicU64, Ordering},
     thread,
@@ -155,28 +155,17 @@ impl OcrProvider for TesseractCliOcrProvider {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 struct ParsedTsv {
     text: String,
-    confidence_milli: usize,
-    confidence_samples: usize,
+    confidence: f64,
 }
 
-impl ParsedTsv {
-    fn confidence(&self) -> f64 {
-        if self.confidence_samples == 0 {
-            return 0.0;
-        }
-        (self.confidence_milli as f64 / self.confidence_samples as f64 / 100_000.0)
-            .clamp(0.0, 1.0)
-    }
-}
-
-fn parse_tesseract_tsv(tsv: &str) -> ParsedTsvResult {
+fn parse_tesseract_tsv(tsv: &str) -> ParsedTsv {
     let mut output_lines = Vec::<String>::new();
     let mut current_line_key = None::<(i64, i64, i64)>;
     let mut current_words = Vec::<String>::new();
-    let mut confidence_milli = 0_usize;
+    let mut confidence_sum = 0.0_f64;
     let mut confidence_samples = 0_usize;
 
     for line in tsv.lines().skip(1) {
@@ -202,10 +191,7 @@ fn parse_tesseract_tsv(tsv: &str) -> ParsedTsvResult {
 
         if let Ok(confidence) = fields[10].parse::<f64>() {
             if confidence.is_finite() && confidence >= 0.0 {
-                let normalized = confidence.clamp(0.0, 100.0);
-                confidence_milli = confidence_milli.saturating_add(
-                    usize::try_from((normalized * 1_000.0).round() as u64).unwrap_or(usize::MAX),
-                );
+                confidence_sum += confidence.clamp(0.0, 100.0);
                 confidence_samples = confidence_samples.saturating_add(1);
             }
         }
@@ -214,26 +200,14 @@ fn parse_tesseract_tsv(tsv: &str) -> ParsedTsvResult {
         output_lines.push(current_words.join(" "));
     }
 
-    ParsedTsvResult(ParsedTsv {
+    let confidence = if confidence_samples == 0 {
+        0.0
+    } else {
+        (confidence_sum / confidence_samples as f64 / 100.0).clamp(0.0, 1.0)
+    };
+    ParsedTsv {
         text: output_lines.join("\n"),
-        confidence_milli,
-        confidence_samples,
-    })
-}
-
-struct ParsedTsvResult(ParsedTsv);
-
-impl ParsedTsvResult {
-    fn text(&self) -> &str {
-        &self.0.text
-    }
-}
-
-impl std::ops::Deref for ParsedTsvResult {
-    type Target = ParsedTsv;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+        confidence,
     }
 }
 
@@ -326,8 +300,8 @@ mod tests {
             "5\t1\t1\t1\t2\t2\t0\t0\t10\t10\t60.0\tHDLs\n"
         );
         let parsed = parse_tesseract_tsv(tsv);
-        assert_eq!(parsed.text(), "The purpose\nof HDLs");
-        assert!((parsed.confidence() - 0.75).abs() < 0.0001);
+        assert_eq!(parsed.text, "The purpose\nof HDLs");
+        assert!((parsed.confidence - 0.75).abs() < 0.0001);
     }
 
     #[test]
