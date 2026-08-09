@@ -17,7 +17,7 @@ fn temporary_paths(label: &str) -> AppPaths {
 }
 
 #[test]
-fn structured_extraction_and_pdfium_rendering_process_a_real_fixture() {
+fn structured_extraction_and_pure_rust_rendering_process_a_real_fixture() {
     let paths = temporary_paths("extract-render");
     let source = paths.app_data_dir().join("simple-text.pdf");
     fs::write(
@@ -58,10 +58,13 @@ fn structured_extraction_and_pdfium_rendering_process_a_real_fixture() {
         assert!(png.len() > 100);
         Ok::<(), ()>(())
     })
-    .expect("Pdfium should render the fixture");
+    .expect("the pure-Rust justpdf renderer should render the fixture");
     assert_eq!(page_count, 1);
     assert_eq!(rendered, 1);
-    assert!(pdf_render_backend::active_backend_id().starts_with("pdfium-7881/"));
+    assert_eq!(
+        pdf_render_backend::active_backend_id(),
+        "justpdf-render-0.1.2/pure-rust"
+    );
 
     fs::remove_dir_all(paths.app_data_dir()).expect("temporary fixture root should clean up");
 }
