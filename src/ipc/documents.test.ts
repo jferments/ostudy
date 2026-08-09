@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cancelPdfFlashcardGeneration,
   deletePdfDocument,
+  generateMorePdfFlashcards,
   importPdfAndGenerateFlashcards,
   listDocuments,
   openDocumentSource,
@@ -41,9 +42,15 @@ describe("document IPC", () => {
     });
   });
 
-  it("uses narrow generation, cancel, native-open, deletion, and archive commands", async () => {
+  it("uses narrow generation, additional-pass, cancel, native-open, deletion, and archive commands", async () => {
     await retryPdfFlashcardGeneration(documentId);
     expect(invoke).toHaveBeenCalledWith("run_pdf_flashcard_generation", {
+      input: { documentId },
+    });
+
+    vi.mocked(invoke).mockClear();
+    await generateMorePdfFlashcards(documentId);
+    expect(invoke).toHaveBeenCalledWith("generate_more_pdf_flashcards", {
       input: { documentId },
     });
 
