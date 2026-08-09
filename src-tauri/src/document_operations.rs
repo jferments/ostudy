@@ -317,13 +317,15 @@ fn load_surviving_generated_decks(
              ORDER BY deck.id",
         )
         .map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map([document_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })
-        .map_err(CommandError::database)?
+        .map_err(CommandError::database)?;
+    let decks = rows
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(decks)
 }
 
 pub(crate) fn reconcile_deleted_document_trash(paths: &AppPaths) -> Result<(), CommandError> {

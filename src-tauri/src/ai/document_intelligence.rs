@@ -2114,7 +2114,7 @@ mod tests {
     #[test]
     fn schemas_cover_all_generation_forms() {
         let flashcards = serde_json::to_string(&flashcard_schema()).unwrap();
-        let outline = serde_json::to_string(&outline_schema()).unwrap();
+        let outline = serde_json::to_string(&outline_fragment_schema()).unwrap();
         assert!(flashcards.contains("multiple_choice"));
         assert!(flashcards.contains("critical_thinking"));
         assert!(flashcards.contains("cloze"));
