@@ -7,7 +7,7 @@ ostudy keeps AI integration native-only. React requests narrow domain tasks; it 
 Managed PDFs are local durable sources. PDF interpretation is split into two independent native capabilities:
 
 - `pdf_backend.rs`: structure-aware extraction through oxidize-pdf;
-- `pdf_render_backend.rs`: bounded raster page rendering through Pdfium.
+- `pdf_render_backend.rs`: bounded raster page rendering through pure-Rust justpdf-render.
 
 The extraction boundary maps third-party parser output into an ostudy-owned semantic intermediate representation containing page text, typed semantic elements, geometry, heading relationships, and structure-aware chunks. The renderer only returns PNG page bytes. Neither backend can mutate cards, contact an AI provider, or own database lifecycle state.
 
@@ -20,6 +20,8 @@ A physical PDF page is provenance/layout, not a semantic reasoning boundary. Doc
 Before card generation, ostudy creates a durable hierarchical document outline. Large documents are analyzed in bounded semantic windows and their validated outline fragments are recursively merged. The final outline contains a global summary, major learning objectives, key concepts, and sections with page spans and per-section learning objectives.
 
 That outline is a reusable document artifact. Flashcard generation consumes it today; future study-guide, quiz, search, and tutoring tasks should consume the same stored outline and semantic chunks instead of independently flattening/reinterpreting the source PDF.
+
+Pages with no recoverable text/structure remain represented by explicit page-evidence chunks. A text-only profile cannot treat those markers as source facts. A fully image-only PDF requires a verified image-capable llama.cpp task profile; rendered pages are then the authoritative evidence and no OCR transcript is inserted into the extracted-text store.
 
 ### Outline-guided flashcard generation
 
@@ -45,10 +47,10 @@ Credentials, Authorization headers, raw provider responses, and reasoning conten
 
 ## OCR policy
 
-ostudy does not enable oxidize-pdf's OCR/Tesseract integration. The direct dependency uses `default-features = false` with only `compression` and `semantic`. Dependency qualification fails if `rusty-tesseract` enters the graph. Image-only pages remain renderable, but model-derived transcription is not silently substituted for extracted source text.
+ostudy does not enable oxidize-pdf's OCR/Tesseract integration. The direct dependency uses `default-features = false` with only `compression` and `semantic`. Dependency qualification fails if `rusty-tesseract` enters the graph. Image-only pages remain renderable and available to verified multimodal providers, but model-derived transcription is not silently substituted for extracted source text.
 
-## Pdfium runtime
+## Portable page rendering
 
-Pdfium is a native rendering runtime rather than local AI infrastructure. Build/test/release scripts provision the fixed Pdfium 7881 binary from the immutable `bblanchon/pdfium-binaries` release, verify the GitHub-supplied SHA-256 digest, cache it outside Git, and stage it as a Tauri resource. Development runs expose the staged library via `OSTUDY_PDFIUM_LIBRARY`; packaged applications resolve the bundled resource.
+The active raster backend uses justpdf 0.1.2 / justpdf-render 0.1.2 at a bounded 144 DPI. It is an in-process Rust dependency rather than a separately distributed native PDF runtime. Builds therefore do not need to provision or bundle Pdfium/Poppler/browser binaries for each desktop and mobile CPU target.
 
-The extraction and rendering interfaces remain swappable so future platform support can change either engine without changing the document schema or AI task contracts.
+This portable renderer is the default for Linux, Windows, macOS, Android, and iOS. The boundary remains swappable: if a compatibility corpus demonstrates rendering gaps on difficult PDFs, a future optional Pdfium desktop backend can be introduced without changing semantic extraction, durable document storage, provider contracts, backups, or card authoring.
