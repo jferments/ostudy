@@ -175,7 +175,7 @@ pub(crate) fn render_ocr_pages<E, F>(
     mut visitor: F,
 ) -> Result<usize, RenderProcessError<E>>
 where
-    F: FnMut(usize, Vec<u8>) -> Result<(), E>,
+    F: FnMut(usize, Result<Vec<u8>, PdfRenderError>) -> Result<(), E>,
 {
     validate_runtime(runtime)?;
     let document = open_document(source_path)?;
@@ -191,14 +191,13 @@ where
         }
     }
 
-    let mut completed = 0_usize;
+    let mut attempted = 0_usize;
     for page_number in requested {
-        let png = render_page_at_dpi(&document, page_number - 1, OCR_RENDER_DPI)
-            .map_err(RenderProcessError::Backend)?;
-        visitor(page_number, png).map_err(RenderProcessError::Visitor)?;
-        completed = completed.saturating_add(1);
+        let rendered = render_page_at_dpi(&document, page_number - 1, OCR_RENDER_DPI);
+        visitor(page_number, rendered).map_err(RenderProcessError::Visitor)?;
+        attempted = attempted.saturating_add(1);
     }
-    Ok(completed)
+    Ok(attempted)
 }
 
 fn validate_runtime<E>(runtime: &PdfRenderRuntime) -> Result<(), RenderProcessError<E>> {
