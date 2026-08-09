@@ -68,6 +68,7 @@ impl SourceUnitKind {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn plural_label(self) -> &'static str {
         match self {
             Self::Page => "pages",
