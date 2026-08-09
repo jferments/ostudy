@@ -50,9 +50,10 @@ jobs:
       - name: Expose user-local tools
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Apply canonical rustfmt
+      - name: Apply consistent document windows and canonical rustfmt
         id: format
         run: |
+          node ./scripts/apply-document-window-consistency.mjs
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           git diff --check
           if git diff --quiet -- '*.rs'; then
@@ -61,7 +62,7 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit rustfmt normalization
+      - name: Commit document-window normalization
         if: steps.format.outputs.changed == 'true'
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -69,7 +70,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- '*.rs'
-          git commit -m "chore: apply canonical rustfmt"
+          git commit -m "fix: align document AI window bounds"
           git push origin "HEAD:${HEAD_REF}"
 
   check:
