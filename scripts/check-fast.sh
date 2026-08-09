@@ -50,6 +50,14 @@ cargo test \
   --lib \
   document_
 
+step "PDF extraction, rendering, and OCR contracts"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  pdf_
+
 step "Latest-schema migration contract"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
