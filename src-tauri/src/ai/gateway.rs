@@ -3,7 +3,7 @@ use std::time::Duration;
 use reqwest::{redirect::Policy, Client, Method, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::time::{timeout, Instant};
+use tokio::time::timeout;
 use url::Url;
 
 use crate::task_cancellation::{current_signal, CancellationSignal};
@@ -11,7 +11,6 @@ use crate::task_cancellation::{current_signal, CancellationSignal};
 const CONNECT_TIMEOUT_SECONDS: u64 = 10;
 const MAX_ERROR_BODY_BYTES: usize = 32 * 1024;
 const STREAM_WIRE_MULTIPLIER: usize = 16;
-const DOCUMENT_SSE_PING_SECONDS: i64 = 5;
 
 #[derive(Clone)]
 pub struct AiGateway {
@@ -42,11 +41,12 @@ impl AiGateway {
             .build()
             .map_err(|error| format!("Could not initialize the AI HTTP client: {error}"))?;
         // Long document-generation requests deliberately have no reqwest-wide
-        // timeout. Their configured timeout applies only until the provider
-        // sends the first response-body activity; after that, the stream stays
-        // alive until inference finishes or the user cancels it.
+        // timeout. Their configured timeout covers connection establishment and
+        // waiting for provider response headers only. Once the provider accepts
+        // the request, inference may continue until completion or user cancel.
         let streaming_client = Client::builder()
             .redirect(Policy::none())
+            .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECONDS))
             .user_agent(concat!("ostudy/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|error| format!("Could not initialize the AI streaming client: {error}"))?;
@@ -96,27 +96,28 @@ impl AiGateway {
 
     /// POST one Chat Completions request as an SSE stream.
     ///
-    /// `initial_activity_timeout_ms` is intentionally *not* a job deadline. It
-    /// covers connection establishment, response headers, and the wait for the
-    /// first body bytes only. Once the provider has acknowledged the stream,
-    /// inference may continue indefinitely until it completes, fails, or the
-    /// caller cancels the exact task. Dropping the response on cancellation
-    /// closes the HTTP stream, which is the portable cancellation primitive for
-    /// the currently implemented chat-completion providers.
+    /// `initial_response_timeout_ms` is intentionally *not* a job deadline. It
+    /// covers connection establishment and receipt of provider response headers.
+    /// Successful headers are the provider acknowledgment boundary. After that,
+    /// ostudy waits for streamed completion content without a wall-clock limit,
+    /// while still enforcing response-size bounds and exact-task cancellation.
+    /// This deliberately avoids optional llama.cpp progress/ping request fields
+    /// so older compatible llama-server/Unsloth builds are not rejected merely
+    /// because they do not recognize newer transport extensions.
     async fn post_sse_chat_json(
         &self,
         url: Url,
         bearer: Option<&str>,
         body: &Value,
-        initial_activity_timeout_ms: i64,
+        initial_response_timeout_ms: i64,
         maximum_content_bytes: usize,
         cancellation: &CancellationSignal,
     ) -> Result<Value, AiGatewayError> {
         if cancellation.is_canceled() {
             return Err(canceled_error());
         }
-        let initial_timeout = Duration::from_millis(initial_activity_timeout_ms.max(1) as u64);
-        let deadline = Instant::now() + initial_timeout;
+        let initial_timeout =
+            Duration::from_millis(initial_response_timeout_ms.max(1) as u64);
         let mut streaming_body = body.clone();
         let object = streaming_body.as_object_mut().ok_or_else(|| {
             error(
@@ -127,18 +128,6 @@ impl AiGateway {
             )
         })?;
         object.insert("stream".to_string(), Value::Bool(true));
-        // llama.cpp accepts its /completion progress controls through
-        // /v1/chat/completions. `chat_template_kwargs` is already a llama-only
-        // request field, so this wire-level discriminator avoids sending these
-        // optional llama controls to DeepSeek. DeepSeek emits its own SSE
-        // keep-alive comments while a streamed request is queued.
-        if object.contains_key("chat_template_kwargs") {
-            object.insert("return_progress".to_string(), Value::Bool(true));
-            object.insert(
-                "sse_ping_interval".to_string(),
-                Value::Number(DOCUMENT_SSE_PING_SECONDS.into()),
-            );
-        }
 
         let mut request = self
             .streaming_client
@@ -151,7 +140,7 @@ impl AiGateway {
         }
 
         let mut response = wait_initial(
-            deadline,
+            initial_timeout,
             cancellation,
             request.send(),
             "The AI provider did not accept the request before the configured initial-response timeout.",
@@ -177,17 +166,14 @@ impl AiGateway {
             return Err(classify_http_status(status.as_u16(), retry_after_seconds));
         }
 
-        let first_chunk = wait_initial(
-            deadline,
-            cancellation,
-            response.chunk(),
-            "The AI provider connected but did not acknowledge or begin processing the request before the configured initial-response timeout.",
-        )
-        .await?;
+        let first_chunk = tokio::select! {
+            _ = cancellation.canceled() => return Err(canceled_error()),
+            result = response.chunk() => result.map_err(classify_reqwest_error)?,
+        };
         let first_chunk = first_chunk.ok_or_else(|| {
             error(
                 "ai_provider_protocol_error",
-                "The AI provider closed the streaming response before acknowledging the request.",
+                "The AI provider accepted the request but closed the streaming response without content.",
                 true,
                 None,
             )
@@ -317,7 +303,7 @@ impl AiGateway {
 }
 
 async fn wait_initial<F, T>(
-    deadline: Instant,
+    timeout_duration: Duration,
     cancellation: &CancellationSignal,
     future: F,
     timeout_message: &'static str,
@@ -325,13 +311,9 @@ async fn wait_initial<F, T>(
 where
     F: std::future::Future<Output = Result<T, reqwest::Error>>,
 {
-    let remaining = deadline.saturating_duration_since(Instant::now());
-    if remaining.is_zero() {
-        return Err(initial_timeout_error(timeout_message));
-    }
     tokio::select! {
         _ = cancellation.canceled() => Err(canceled_error()),
-        result = timeout(remaining, future) => match result {
+        result = timeout(timeout_duration, future) => match result {
             Ok(value) => value.map_err(classify_reqwest_error),
             Err(_) => Err(initial_timeout_error(timeout_message)),
         },
@@ -514,6 +496,12 @@ fn classify_reqwest_error(error_value: reqwest::Error) -> AiGatewayError {
 
 fn classify_http_status(status: u16, retry_after_seconds: Option<u64>) -> AiGatewayError {
     match status {
+        400 | 422 => error(
+            "ai_http_bad_request",
+            "The AI provider rejected this request as unsupported or invalid. Verify the selected model and provider/server version, then retry.",
+            false,
+            retry_after_seconds,
+        ),
         401 => error(
             "ai_http_unauthorized",
             "The AI provider rejected this credential.",
@@ -584,6 +572,13 @@ mod tests {
         let failure = classify_http_status(429, Some(17));
         assert_eq!(failure.safe.code, "ai_http_rate_limited");
         assert_eq!(failure.safe.retry_after_seconds, Some(17));
+    }
+
+    #[test]
+    fn classifies_bad_requests_as_provider_compatibility_errors() {
+        let failure = classify_http_status(400, None);
+        assert_eq!(failure.safe.code, "ai_http_bad_request");
+        assert!(failure.safe.message.contains("server version"));
     }
 
     #[test]
