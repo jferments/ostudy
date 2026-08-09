@@ -32,6 +32,14 @@ export interface DocumentGenerationResult {
   skippedDuplicateCount: number;
 }
 
+export interface AdditionalDocumentGenerationResult {
+  documentId: string;
+  deckId: string;
+  createdNoteCount: number;
+  createdCardCount: number;
+  skippedDuplicateCount: number;
+}
+
 export interface DeletePdfDocumentResult {
   documentId: string;
   preservedDeckCitationCount: number;
@@ -61,6 +69,14 @@ export async function retryPdfFlashcardGeneration(
   documentId: string,
 ): Promise<DocumentGenerationResult> {
   return invoke<DocumentGenerationResult>("run_pdf_flashcard_generation", {
+    input: { documentId },
+  });
+}
+
+export async function generateMorePdfFlashcards(
+  documentId: string,
+): Promise<AdditionalDocumentGenerationResult> {
+  return invoke<AdditionalDocumentGenerationResult>("generate_more_pdf_flashcards", {
     input: { documentId },
   });
 }
