@@ -13,19 +13,22 @@ Real-provider acceptance established an important asymmetry:
 
 The old first-pass architecture did split a PDF into semantic windows, but the bounds were still too large for a portable provider contract: outline windows allowed about 32,000 estimated source tokens / 48 pages and generation windows allowed about 20,000 source tokens / 40 pages. Large documents then required additional model calls that merged up to eight complete outline fragments at a time. Finally, the entire resulting global outline was copied into every later generation request.
 
+One additional loophole made those limits soft: a single semantic chunk larger than the configured window could remain intact. Complex PDFs can produce oversized table/text chunks, so a nominally bounded pipeline could still emit one unexpectedly large provider request.
+
 This created several large-document-only failure surfaces:
 
 1. a local llama-server can have a smaller configured runtime context than the model's advertised native context;
 2. the model-generated outline merge could itself become a large prompt/large structured result;
 3. large global outline JSON inflated every later flashcard request;
-4. a structurally valid provider outline could be rejected because of recoverable semantic imperfections such as a reversed or slightly out-of-window page range;
-5. streaming completion `finish_reason` was discarded, making output truncation look like generic schema drift.
+4. an individually oversized semantic chunk could bypass the nominal window cap;
+5. a structurally valid provider outline could be rejected because of recoverable semantic imperfections such as a reversed or slightly out-of-window page range;
+6. streaming completion `finish_reason` was discarded, making output truncation look like generic schema drift.
 
 The PDF rasterizer also rendered pages serially, leaving multicore desktop systems underutilized during long local preprocessing.
 
 ## Decision
 
-### Small semantic provider windows
+### Hard-bounded semantic provider windows
 
 Document intelligence uses conservative, provider-independent source limits:
 
@@ -34,7 +37,9 @@ Document intelligence uses conservative, provider-independent source limits:
 
 These are source-content limits rather than claims about an exact tokenizer. The point is to keep provider requests comfortably below common local server context allocations after system instructions, JSON Schema, compact outline context, images, and completion allowance are included.
 
-Large documents scale by creating **more bounded requests**, not by increasing individual prompt size.
+When a persisted semantic chunk is individually larger than a provider window, ostudy splits only that pathological chunk into bounded continuation source units. Continuations retain the original chunk identity/page provenance and are marked as segments in the model-facing source. Normal semantic chunks remain intact.
+
+Large documents therefore scale by creating **more bounded requests**, not by increasing individual prompt size.
 
 ### Hierarchical first pass without a model-generated global merge
 
@@ -54,7 +59,7 @@ This is intentionally more robust than making detected chapters the only process
 
 ### Compact relevant outline context during generation
 
-A flashcard generation request receives:
+A flashcard-generation request receives:
 
 - a bounded global document summary;
 - a bounded subset of global objectives and concepts;
@@ -72,7 +77,7 @@ Document intelligence treats at least these cases separately:
 - `content_filter` → `ai_document_output_filtered`;
 - `insufficient_system_resource` → `ai_provider_resource_exhausted`.
 
-A genuine outer-object decode/contract failure still uses `ai_document_output_invalid`, but its retry failure now includes a bounded final validation detail.
+A genuine outer-object decode/contract failure still uses `ai_document_output_invalid`, but its retry failure includes a bounded final validation detail.
 
 Outline errors additionally identify the exact source-window number, total window count, PDF page range, and estimated source-token count. Safe diagnostic logging records the same bounded metadata without raw source text, raw provider response bodies, credentials, or Authorization headers.
 
@@ -107,6 +112,7 @@ A document generated with the previous renderer identity is treated as having st
 
 - The 138-page and 11-page documents use the same bounded architecture; large files simply produce more requests.
 - Local llama-server runtime context configuration matters less because ostudy no longer attempts 20k–32k source windows.
+- Pathological parser chunks cannot silently bypass the provider-window cap.
 - Chapter/section information improves organization without becoming a brittle hard dependency.
 - There is no model-generated outline-of-outlines merge to overflow or drift.
 - Later generation requests do not grow linearly with total document outline size.
@@ -116,6 +122,6 @@ A document generated with the previous renderer identity is treated as having st
 
 ## Validation
 
-Automated coverage verifies bounded semantic-window behavior, deterministic outline fragment normalization/assembly, relevant-section filtering, streamed finish-reason retention, separate truncation errors, provider-enforced schema paths, parallel renderer worker bounds, a real PDF extraction/render smoke, the full Rust/frontend suite, and native Tauri smoke tests.
+Automated coverage verifies hard semantic-window bounds (including oversized continuation chunks), deterministic outline-fragment normalization/assembly, relevant-section filtering, streamed finish-reason retention, separate truncation errors, provider-enforced schema paths, parallel renderer worker bounds, a real PDF extraction/render smoke, the full Rust/frontend suite, and native Tauri smoke tests.
 
 Real-provider acceptance must still retest the representative large PDF with DeepSeek and the configured llama.cpp / Unsloth server. Performance acceptance should compare large-document render elapsed time and CPU utilization with the previous serial build; exact speedup is workload and hardware dependent.
