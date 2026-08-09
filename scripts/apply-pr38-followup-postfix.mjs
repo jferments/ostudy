@@ -75,7 +75,7 @@ const digestEnd = source.indexOf("\nfn outline_context_for_window(", digestStart
 if (digestStart < 0 || digestEnd < 0) {
   throw new Error("Could not find global outline digest function");
 }
-const digestReplacement = `fn global_outline_digest(outline: &DocumentOutline) -> String {
+const digestReplacement = String.raw`fn global_outline_digest(outline: &DocumentOutline) -> String {
     // Reserve most of the bounded digest for section coverage so the whole
     // document, including its tail, is represented. Objectives/concepts are
     // useful global hints but must never crowd later sections out of the digest.
