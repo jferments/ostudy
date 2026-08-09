@@ -116,8 +116,7 @@ impl AiGateway {
         if cancellation.is_canceled() {
             return Err(canceled_error());
         }
-        let initial_timeout =
-            Duration::from_millis(initial_response_timeout_ms.max(1) as u64);
+        let initial_timeout = Duration::from_millis(initial_response_timeout_ms.max(1) as u64);
         let mut streaming_body = body.clone();
         let object = streaming_body.as_object_mut().ok_or_else(|| {
             error(
