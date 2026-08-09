@@ -5,6 +5,8 @@
 //! provider-declared hard limit. Large sources scale through more bounded
 //! semantic windows rather than ever-growing requests.
 
+use std::fmt;
+
 use crate::{
     ai::document_provider::DocumentProviderCapabilities, document_cost::DocumentCostCalibration,
     error::CommandError,
@@ -12,9 +14,11 @@ use crate::{
 
 pub(crate) const LARGE_DOCUMENT_UNIT_THRESHOLD: usize = 50;
 pub(crate) const MAX_SUPPORTED_SOURCE_UNITS: usize = 300;
+/// Aggregate source-token guard for metered/remote providers. Local llama.cpp
+/// jobs deliberately do not use a whole-document token cap because each actual
+/// provider request is already bounded by semantic-window and context limits.
 pub(crate) const MAX_AUTOMATIC_SOURCE_TOKENS: usize = 250_000;
 const DEEPSEEK_JOB_TOKEN_CEILING: usize = 650_000;
-const LOCAL_JOB_TOKEN_CEILING: usize = 1_200_000;
 const DEFAULT_CLOUD_JOB_TOKEN_CEILING: usize = 650_000;
 const OUTLINE_FIXED_PROMPT_RESERVE: usize = 1_200;
 const GENERATION_FIXED_PROMPT_RESERVE: usize = 1_800;
@@ -25,6 +29,34 @@ const MIN_GENERATION_SOURCE_TOKENS: usize = 800;
 pub(crate) enum DocumentScaleClass {
     Standard,
     Large,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AggregateTokenCeiling {
+    /// Local/unmetered execution: the document may require any number of
+    /// sequential bounded provider windows. Only per-request context is hard.
+    Windowed,
+    /// Metered/remote execution: reject a conservatively excessive whole job
+    /// before spending provider tokens.
+    Capped(usize),
+}
+
+impl AggregateTokenCeiling {
+    fn enforced_tokens(self) -> Option<usize> {
+        match self {
+            Self::Windowed => None,
+            Self::Capped(tokens) => Some(tokens),
+        }
+    }
+}
+
+impl fmt::Display for AggregateTokenCeiling {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Windowed => formatter.write_str("windowed"),
+            Self::Capped(tokens) => write!(formatter, "{tokens}"),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -47,7 +79,7 @@ pub(crate) struct DocumentScalePlan {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct DocumentJobBudget {
     pub estimated_tokens: usize,
-    pub ceiling_tokens: usize,
+    pub ceiling_tokens: AggregateTokenCeiling,
     pub generation_card_capacity: usize,
     pub context_window_tokens: Option<usize>,
     pub calibration_sample_count: usize,
@@ -222,6 +254,18 @@ fn generation_completion_reserve(maximum_cards: usize) -> usize {
         .clamp(1_536, 5_120)
 }
 
+fn aggregate_token_ceiling(provider_kind: &str) -> AggregateTokenCeiling {
+    match provider_kind {
+        // llama.cpp/Unsloth is local and unmetered from ostudy's perspective.
+        // Large sources are already decomposed into context-bounded outline and
+        // generation windows, so a whole-job ceiling would only reject work that
+        // can safely continue sequentially.
+        "llama_cpp" => AggregateTokenCeiling::Windowed,
+        "deepseek" => AggregateTokenCeiling::Capped(DEEPSEEK_JOB_TOKEN_CEILING),
+        _ => AggregateTokenCeiling::Capped(DEFAULT_CLOUD_JOB_TOKEN_CEILING),
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn validate_automatic_job(
     source_unit_count: usize,
@@ -259,20 +303,17 @@ pub(crate) fn validate_automatic_job_calibrated(
             ),
         ));
     }
-    if source_tokens > MAX_AUTOMATIC_SOURCE_TOKENS {
+
+    let ceiling_tokens = aggregate_token_ceiling(&capabilities.provider_kind);
+    if ceiling_tokens.enforced_tokens().is_some() && source_tokens > MAX_AUTOMATIC_SOURCE_TOKENS {
         return Err(CommandError::new(
             "document_generation_source_limit",
             format!(
-                "This document contains too much extracted source material for one automatic generation job. Split it at chapter or section boundaries so each part stays below about {MAX_AUTOMATIC_SOURCE_TOKENS} estimated source tokens."
+                "This document contains too much extracted source material for one metered provider job. Split it at chapter or section boundaries so each part stays below about {MAX_AUTOMATIC_SOURCE_TOKENS} estimated source tokens, or use a local llama.cpp profile to process it through bounded windows."
             ),
         ));
     }
 
-    let ceiling_tokens = match capabilities.provider_kind.as_str() {
-        "llama_cpp" => LOCAL_JOB_TOKEN_CEILING,
-        "deepseek" => DEEPSEEK_JOB_TOKEN_CEILING,
-        _ => DEFAULT_CLOUD_JOB_TOKEN_CEILING,
-    };
     let generation_card_capacity = generation_window_count
         .saturating_mul(plan.max_cards_per_window)
         .min(10_000);
@@ -307,13 +348,15 @@ pub(crate) fn validate_automatic_job_calibrated(
         .saturating_add(curation_reserve)
         .saturating_add(global_synthesis_reserve);
 
-    if estimated_tokens > ceiling_tokens {
-        return Err(CommandError::new(
-            "document_ai_budget_exceeded",
-            format!(
-                "This document's conservative AI-job estimate is about {estimated_tokens} tokens, above the automatic {ceiling_tokens}-token safety ceiling for the selected provider. Split the source at chapter or section boundaries; completed local extraction remains available in Documents."
-            ),
-        ));
+    if let Some(enforced_ceiling) = ceiling_tokens.enforced_tokens() {
+        if estimated_tokens > enforced_ceiling {
+            return Err(CommandError::new(
+                "document_ai_budget_exceeded",
+                format!(
+                    "This document's conservative AI-job estimate is about {estimated_tokens} tokens, above the automatic {enforced_ceiling}-token safety ceiling for the selected metered provider. Split the source at chapter or section boundaries or use a local llama.cpp profile, which processes large sources through bounded windows."
+                ),
+            ));
+        }
     }
 
     Ok(DocumentJobBudget {
@@ -386,7 +429,11 @@ mod tests {
         assert_eq!(plan.max_cards_per_window, 16);
         let budget = validate_automatic_job(138, 100_000, plan, 8, 18, "deepseek").unwrap();
         assert_eq!(budget.generation_card_capacity, 288);
-        assert!(budget.estimated_tokens < budget.ceiling_tokens);
+        let ceiling = budget
+            .ceiling_tokens
+            .enforced_tokens()
+            .expect("DeepSeek should retain an aggregate ceiling");
+        assert!(budget.estimated_tokens < ceiling);
     }
 
     #[test]
@@ -399,6 +446,30 @@ mod tests {
     }
 
     #[test]
+    fn local_138_page_job_continues_through_windows_past_the_old_aggregate_ceiling() {
+        let plan = DocumentScalePlan::for_provider(138, "llama_cpp");
+        let budget = validate_automatic_job(138, 220_000, plan, 50, 80, "llama_cpp")
+            .expect("large local jobs should be window-bounded, not job-bounded");
+        assert!(budget.estimated_tokens > 1_200_000);
+        assert_eq!(budget.ceiling_tokens, AggregateTokenCeiling::Windowed);
+    }
+
+    #[test]
+    fn local_source_above_cloud_token_guard_scales_through_more_windows() {
+        let plan = DocumentScalePlan::for_provider(300, "llama_cpp");
+        let budget = validate_automatic_job(
+            300,
+            MAX_AUTOMATIC_SOURCE_TOKENS + 100_000,
+            plan,
+            80,
+            100,
+            "llama_cpp",
+        )
+        .expect("local source totals should not be rejected when requests remain window-bounded");
+        assert_eq!(budget.ceiling_tokens, AggregateTokenCeiling::Windowed);
+    }
+
+    #[test]
     fn whole_job_budget_fails_before_an_excessive_cloud_run() {
         let plan = DocumentScalePlan::for_provider(250, "deepseek");
         let error = validate_automatic_job(250, 220_000, plan, 20, 40, "deepseek").unwrap_err();
@@ -406,10 +477,10 @@ mod tests {
     }
 
     #[test]
-    fn automatic_source_and_unit_limits_are_explicit() {
-        let plan = DocumentScalePlan::for_provider(301, "deepseek");
+    fn source_unit_limit_is_global_but_source_token_limit_is_metered_only() {
+        let plan = DocumentScalePlan::for_provider(301, "llama_cpp");
         assert_eq!(
-            validate_automatic_job(301, 10_000, plan, 1, 1, "deepseek")
+            validate_automatic_job(301, 10_000, plan, 1, 1, "llama_cpp")
                 .unwrap_err()
                 .code,
             "document_generation_unit_limit"
