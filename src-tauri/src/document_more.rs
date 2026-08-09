@@ -5,7 +5,7 @@
 //! generated deck, asks the configured model for materially different coverage,
 //! and appends through the canonical generated-import boundary.
 
-use std::{collections::HashSet, fs};
+use std::fs;
 
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -388,14 +388,14 @@ fn load_semantic_chunks(
                 let token_estimate: i64 = row.get(6)?;
                 let page_numbers = serde_json::from_str(&pages_json).map_err(|error| {
                     rusqlite::Error::FromSqlConversionFailure(
-                        pages_json.len(),
+                        3,
                         rusqlite::types::Type::Text,
                         Box::new(error),
                     )
                 })?;
                 let element_types = serde_json::from_str(&types_json).map_err(|error| {
                     rusqlite::Error::FromSqlConversionFailure(
-                        types_json.len(),
+                        4,
                         rusqlite::types::Type::Text,
                         Box::new(error),
                     )
@@ -757,7 +757,7 @@ fn ensure_exact_append_destination(
             .map_err(CommandError::database)?;
         match ids.as_slice() {
             [only] if only == expected_deck_id => Ok(()),
-            [..] if ids.is_empty() => Err(CommandError::new(
+            [] => Err(CommandError::new(
                 "document_generated_deck_missing",
                 "The generated deck is no longer available for additional cards.",
             )),
@@ -854,6 +854,12 @@ mod tests {
         assert_eq!(selected.len(), 6);
         assert_eq!(selected.first(), Some(&1));
         assert_eq!(selected.last(), Some(&40));
-        assert_eq!(selected.iter().collect::<HashSet<_>>().len(), 6);
+        assert_eq!(
+            selected
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            6
+        );
     }
 }
