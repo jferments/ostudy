@@ -19,7 +19,11 @@ use std::{
 
 use justpdf::Document;
 
-const PAGE_RENDER_DPI: f64 = 144.0;
+// 120 DPI keeps a US-letter page near 1020x1320 pixels: enough for most tables,
+// equations, and diagrams while using about 31% fewer pixels than the previous
+// 144-DPI render. Text extraction remains authoritative; these renders are
+// selective visual grounding rather than page-scanned OCR input.
+const PAGE_RENDER_DPI: f64 = 120.0;
 const MAX_RENDER_WORKERS: usize = 16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -85,7 +89,7 @@ impl PdfRenderRuntime {
 }
 
 pub(crate) fn active_backend_id() -> &'static str {
-    "justpdf-render-0.1.2/pure-rust-parallel-v1"
+    "justpdf-render-0.1.2/pure-rust-parallel-v2-120dpi"
 }
 
 pub(crate) fn render_pages<E, F>(
@@ -217,14 +221,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn active_renderer_is_pure_rust_parallel_and_versioned() {
+    fn active_renderer_is_pure_rust_parallel_bounded_and_versioned() {
         let runtime = PdfRenderRuntime::new(None);
         assert_eq!(runtime.backend_id, active_backend_id());
         assert_eq!(
             active_backend_id(),
-            "justpdf-render-0.1.2/pure-rust-parallel-v1"
+            "justpdf-render-0.1.2/pure-rust-parallel-v2-120dpi"
         );
-        assert_eq!(PAGE_RENDER_DPI, 144.0);
+        assert_eq!(PAGE_RENDER_DPI, 120.0);
         assert!(render_worker_count(1) == 1);
         assert!((1..=MAX_RENDER_WORKERS).contains(&render_worker_count(10_000)));
     }
