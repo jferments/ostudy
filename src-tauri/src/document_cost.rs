@@ -150,7 +150,7 @@ fn median(values: &mut [usize]) -> Option<usize> {
     }
     values.sort_unstable();
     let middle = values.len() / 2;
-    if values.len() % 2 == 0 {
+    if values.len().is_multiple_of(2) {
         Some(values[middle - 1].saturating_add(values[middle]) / 2)
     } else {
         Some(values[middle])
