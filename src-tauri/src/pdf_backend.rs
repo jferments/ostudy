@@ -195,7 +195,10 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
                 native_text_failed_pages.push(page_number);
                 crate::logging::info(
                     "pdf_native_text_page_failed",
-                    format!("page={page_number} detail={}", bounded_text(&error.to_string(), 400)),
+                    format!(
+                        "page={page_number} detail={}",
+                        bounded_text(&error.to_string(), 400)
+                    ),
                 );
                 String::new()
             }
@@ -473,15 +476,19 @@ pub(crate) fn apply_text_recovery(
         let confidence = recovered
             .get(page_number)
             .map_or(1.0, |page| page.confidence.clamp(0.0, 1.0));
-        let element_type = if is_ocr {
+        let source_kind = if is_ocr {
             "ocr_text"
         } else {
             "page_text_fallback"
         };
+        // `document_semantic_elements.element_type` is an immutable released
+        // schema enum. Recovered prose therefore remains a normal paragraph;
+        // OCR provenance is carried by document-level extraction metadata and
+        // may additionally appear in chunk metadata without widening old rows.
         document.elements.push(ExtractedSemanticElement {
             element_index: document.elements.len(),
             page_number: *page_number,
-            element_type: element_type.to_string(),
+            element_type: "paragraph".to_string(),
             text: text.to_string(),
             parent_heading: None,
             heading_path: Vec::new(),
@@ -503,7 +510,7 @@ pub(crate) fn apply_text_recovery(
             full_text: text.to_string(),
             page_numbers: vec![*page_number],
             bounding_boxes: Vec::new(),
-            element_types: vec![element_type.to_string()],
+            element_types: vec![source_kind.to_string()],
             heading_context: None,
             token_estimate: text.chars().count().div_ceil(4).max(1),
             is_oversized: false,
@@ -520,7 +527,8 @@ pub(crate) fn apply_text_recovery(
     for (index, element) in document.elements.iter_mut().enumerate() {
         element.element_index = index;
     }
-    document.chunks = cover_unstructured_pages(std::mem::take(&mut document.chunks), &document.pages);
+    document.chunks =
+        cover_unstructured_pages(std::mem::take(&mut document.chunks), &document.pages);
 }
 
 fn is_private_use(character: char) -> bool {
@@ -712,7 +720,9 @@ mod tests {
 
     #[test]
     fn private_use_font_mapping_is_detected_as_corrupt_text() {
-        let assessment = assess_text_quality("Th\u{e01c} purp\u{e01d}\u{e01e}\u{e01c} of HDL\u{e01e} appears to transport cholesterol.");
+        let assessment = assess_text_quality(
+            "Th\u{e01c} purp\u{e01d}\u{e01e}\u{e01c} of HDL\u{e01e} appears to transport cholesterol.",
+        );
         assert!(assessment.suspicious);
         assert!(assessment.reasons.contains(&"private_use_unicode"));
     }
@@ -757,7 +767,8 @@ mod tests {
         apply_text_recovery(&mut document, &[recovered], &[]);
         assert!(document.pages[0].text.starts_with("The American"));
         assert_eq!(document.elements.len(), 1);
-        assert_eq!(document.elements[0].element_type, "ocr_text");
+        assert_eq!(document.elements[0].element_type, "paragraph");
+        assert_eq!(document.chunks[0].element_types, vec!["ocr_text"]);
         assert!(document.chunks[0].full_text.starts_with("The American"));
         assert!(!document.chunks[0].full_text.contains('Õ'));
     }
