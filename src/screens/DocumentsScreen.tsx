@@ -190,10 +190,12 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
     ) {
       return;
     }
+    const hasSurvivingGeneratedDeck = document.generatedDeckId !== null;
     const accepted = await confirm({
       title: "Delete this PDF permanently?",
-      description:
-        "The managed source PDF, rendered pages, extracted structure, outline, and generation history for this document will be removed. Generated flashcards and decks will remain; their source will be preserved as a text citation instead of a file link. This cannot be undone.",
+      description: hasSurvivingGeneratedDeck
+        ? "The managed source PDF, rendered pages, extracted structure, outline, and generation history for this document will be removed. The surviving generated deck will remain and its source will be preserved as a text citation instead of a file link. This cannot be undone."
+        : "The managed source PDF, rendered pages, extracted structure, outline, and generation history for this document will be removed. No active generated deck remains, so no source citation will be preserved. This cannot be undone.",
       confirmLabel: "Delete PDF",
       destructive: true,
     });
@@ -449,9 +451,7 @@ function statusLabel(document: DocumentSummary): string {
 function processingPhaseLabel(document: DocumentSummary, canceling: boolean): string {
   if (canceling) return "Stopping";
   if (document.generatedDeckId !== null) return "Generating additional cards";
-  if (document.pageCount === 0 || document.renderedPageCount === 0) {
-    return "Extracting text / rendering pages";
-  }
+  if (document.pageCount === 0) return "Extracting text";
   if (document.renderedPageCount < document.pageCount) return "Rendering pages";
   return "Building outline / generating cards";
 }

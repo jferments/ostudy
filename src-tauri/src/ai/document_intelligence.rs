@@ -17,7 +17,7 @@ use super::{
     AiRuntimeState,
 };
 
-const OUTLINE_PROMPT_VERSION: i64 = 2;
+const OUTLINE_PROMPT_VERSION: i64 = 3;
 const OUTLINE_SCHEMA_VERSION: i64 = 1;
 const FLASHCARD_PROMPT_VERSION: i64 = 4;
 const FLASHCARD_SCHEMA_VERSION: i64 = 4;
@@ -39,6 +39,12 @@ const MAX_COMPLETION_BYTES: usize = 2 * 1024 * 1024;
 const DEEPSEEK_STRICT_TOOL_NAME: &str = "submit_ostudy_document_result";
 const MAX_CURATE_CARDS_PER_BATCH: usize = 80;
 const MAX_INLINE_IMAGES: usize = 6;
+const MAX_FRAGMENT_OBJECTIVES: usize = 10;
+const MAX_FRAGMENT_CONCEPTS: usize = 16;
+const MAX_FRAGMENT_SECTIONS: usize = 10;
+const MAX_FRAGMENT_SECTION_OBJECTIVES: usize = 6;
+const MAX_FRAGMENT_SECTION_CONCEPTS: usize = 10;
+const MAX_GLOBAL_SYNTHESIS_INPUT_CHARS: usize = 12_000;
 
 #[derive(Clone, Debug)]
 pub(crate) struct DocumentTaskContext {
@@ -93,6 +99,14 @@ struct OutlineSourceBounds {
     page_start: i64,
     page_end: i64,
     page_count: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GlobalOutlineSynthesis {
+    summary: String,
+    learning_objectives: Vec<String>,
+    key_concepts: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -331,7 +345,45 @@ pub(crate) async fn build_document_outline(
         });
     }
 
-    let outline = assemble_outline_fragments(document_title, page_count, fragments);
+    let mut outline = assemble_outline_fragments(document_title, page_count, fragments);
+    match synthesize_global_outline_context(runtime, task, document_title, page_count, &outline)
+        .await
+    {
+        Ok(global) => {
+            outline.summary = sanitize_outline_text(&global.summary, 8_000, &outline.summary);
+            let objectives = normalize_outline_items(global.learning_objectives, 24, 1_200);
+            if !objectives.is_empty() {
+                outline.learning_objectives = objectives;
+            }
+            let concepts = normalize_outline_items(global.key_concepts, 40, 700);
+            if !concepts.is_empty() {
+                outline.key_concepts = concepts;
+            }
+            crate::logging::info(
+                "document_global_outline_synthesized",
+                format!(
+                    "sections={} objectives={} concepts={} pages={}",
+                    outline.sections.len(),
+                    outline.learning_objectives.len(),
+                    outline.key_concepts.len(),
+                    page_count,
+                ),
+            );
+        }
+        Err(error) => {
+            // Native assembly is already a valid whole-document context. The
+            // global LLM synthesis improves semantic prioritization but is never
+            // allowed to make document processing brittle.
+            crate::logging::info(
+                "document_global_outline_synthesis_skipped",
+                format!(
+                    "code={} detail={}",
+                    error.code,
+                    bounded_diagnostic(&error.message, 400)
+                ),
+            );
+        }
+    }
     crate::logging::info(
         "document_outline_assembled",
         format!(
@@ -421,7 +473,8 @@ async fn request_outline_fragment(
     let user = format!(
         "Document: {document_title}\nTotal PDF pages: {page_count}\nCurrent source window: pages {}–{}\n\n\
          <ostudy-source-window>\n{}\n</ostudy-source-window>\n\n\
-         Build an outline fragment for the educationally meaningful content in this bounded source window. Preserve section/chapter hierarchy and page spans that are actually supported by this window. \
+         Build a CONCISE outline fragment for the educationally meaningful content in this bounded source window. Preserve section/chapter hierarchy and page spans actually supported by this window. \
+         Return at most 10 learning objectives, 16 key concepts, and 10 sections. Keep the fragment summary to roughly 3–6 sentences; each section should have a short summary, at most 6 learning objectives, and at most 10 key concepts. \
          If rendered pages are attached, use them as source evidence for diagrams, tables, equations, and pages with little extractable text. \
          Exclude bibliography/reference material, legal/publishing scaffolding, indexes/navigation, and incidental trivia.",
         window.page_start,
@@ -451,7 +504,7 @@ async fn request_outline_with_retry(
     images: &[SourcePageImage],
     bounds: OutlineSourceBounds,
 ) -> Result<DocumentOutline, CommandError> {
-    let schema = outline_schema();
+    let schema = outline_fragment_schema();
     let first = request_json(
         runtime,
         task,
@@ -459,7 +512,7 @@ async fn request_outline_with_retry(
             system_prompt: system,
             user_text: user,
             schema: &schema,
-            max_tokens: 3_072,
+            max_tokens: outline_completion_tokens(task),
             images,
         },
     )
@@ -481,7 +534,7 @@ async fn request_outline_with_retry(
                     system_prompt: system,
                     user_text: &repaired,
                     schema: &schema,
-                    max_tokens: 3_072,
+                    max_tokens: outline_completion_tokens(task),
                     images,
                 },
             )
@@ -492,6 +545,51 @@ async fn request_outline_with_retry(
             .map_err(|retry_error| collapse_contract_error(retry_error, "outline fragment"))
         }
         Err(error) => Err(error),
+    }
+}
+
+async fn synthesize_global_outline_context(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    document_title: &str,
+    page_count: i64,
+    outline: &DocumentOutline,
+) -> Result<GlobalOutlineSynthesis, CommandError> {
+    let digest = global_outline_digest(outline);
+    let schema = global_outline_schema();
+    let system = format!(
+        "You are ostudy's bounded whole-document learning planner. The supplied digest was assembled from every validated local outline fragment in the document. Synthesize a concise GLOBAL learning view for later flashcard generation. Do not recreate section hierarchy, invent source facts, or expand minor details. Return only the required structured result. Outline prompt version: {OUTLINE_PROMPT_VERSION}."
+    );
+    let user = format!(
+        "Document: {document_title}\nTotal PDF pages: {page_count}\n\n<ostudy-whole-document-digest>\n{digest}\n</ostudy-whole-document-digest>\n\nProduce one concise whole-document summary, at most 16 major learning objectives, and at most 24 key concepts. These fields must represent the document as a whole rather than only its beginning."
+    );
+    request_json(
+        runtime,
+        task,
+        JsonTaskRequest {
+            system_prompt: &system,
+            user_text: &user,
+            schema: &schema,
+            max_tokens: 2_048,
+            images: &[],
+        },
+    )
+    .await
+    .and_then(|value| {
+        serde_json::from_value(value).map_err(|error| {
+            output_error(format!(
+                "The provider returned a global outline synthesis that could not be decoded: {}",
+                bounded_diagnostic(&error.to_string(), 320)
+            ))
+        })
+    })
+}
+
+fn outline_completion_tokens(task: &DocumentTaskContext) -> usize {
+    match task.profile.provider_kind {
+        ProviderKind::Deepseek => 6_144,
+        ProviderKind::LlamaCpp => 3_072,
+        _ => 3_072,
     }
 }
 
@@ -1232,12 +1330,13 @@ fn normalize_outline_fragment(
     let fallback_summary =
         format!("Educational material from PDF pages {source_start}–{source_end}.");
     let summary = sanitize_outline_text(&outline.summary, 8_000, &fallback_summary);
-    let learning_objectives = normalize_outline_items(outline.learning_objectives, 24, 1_200);
-    let key_concepts = normalize_outline_items(outline.key_concepts, 40, 700);
+    let learning_objectives =
+        normalize_outline_items(outline.learning_objectives, MAX_FRAGMENT_OBJECTIVES, 1_000);
+    let key_concepts = normalize_outline_items(outline.key_concepts, MAX_FRAGMENT_CONCEPTS, 600);
     let mut sections = outline
         .sections
         .into_iter()
-        .take(48)
+        .take(MAX_FRAGMENT_SECTIONS)
         .map(|section| {
             let mut start = section.page_start.clamp(source_start, source_end);
             let mut end = section.page_end.clamp(source_start, source_end);
@@ -1254,10 +1353,14 @@ fn normalize_outline_fragment(
                 summary,
                 learning_objectives: normalize_outline_items(
                     section.learning_objectives,
-                    12,
-                    1_000,
+                    MAX_FRAGMENT_SECTION_OBJECTIVES,
+                    900,
                 ),
-                key_concepts: normalize_outline_items(section.key_concepts, 18, 600),
+                key_concepts: normalize_outline_items(
+                    section.key_concepts,
+                    MAX_FRAGMENT_SECTION_CONCEPTS,
+                    500,
+                ),
             }
         })
         .collect::<Vec<_>>();
@@ -1279,6 +1382,40 @@ fn normalize_outline_fragment(
         key_concepts,
         sections,
     }
+}
+
+fn global_outline_digest(outline: &DocumentOutline) -> String {
+    let section_count = outline.sections.len().max(1);
+    let section_budget = (MAX_GLOBAL_SYNTHESIS_INPUT_CHARS / section_count).clamp(120, 650);
+    let mut digest = String::new();
+    digest.push_str("Native whole-document summary: ");
+    digest.push_str(&sanitize_outline_text(&outline.summary, 2_000, ""));
+    digest.push_str("\nMajor objectives collected across fragments:\n");
+    for objective in outline.learning_objectives.iter().take(32) {
+        digest.push_str("- ");
+        digest.push_str(&sanitize_outline_text(objective, 280, ""));
+        digest.push('\n');
+    }
+    digest.push_str("Major concepts collected across fragments:\n");
+    for concept in outline.key_concepts.iter().take(48) {
+        digest.push_str("- ");
+        digest.push_str(&sanitize_outline_text(concept, 180, ""));
+        digest.push('\n');
+    }
+    digest.push_str("Sections spanning the full document:\n");
+    for section in &outline.sections {
+        let title = sanitize_outline_text(&section.title, 160, "Section");
+        let summary_budget = section_budget.saturating_sub(title.chars().count()).max(40);
+        let summary = sanitize_outline_text(&section.summary, summary_budget, "");
+        digest.push_str(&format!(
+            "- pages {}–{} | {} | {}\n",
+            section.page_start, section.page_end, title, summary
+        ));
+    }
+    digest
+        .chars()
+        .take(MAX_GLOBAL_SYNTHESIS_INPUT_CHARS)
+        .collect()
 }
 
 fn outline_context_for_window(
@@ -1432,18 +1569,18 @@ fn flashcard_system_prompt() -> String {
     )
 }
 
-fn outline_schema() -> Value {
+fn outline_fragment_schema() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
         "required": ["summary", "learningObjectives", "keyConcepts", "sections"],
         "properties": {
-            "summary": string_schema(MAX_OUTLINE_TEXT_CHARS),
-            "learningObjectives": string_array_schema(MAX_OUTLINE_OBJECTIVES, 2_000),
-            "keyConcepts": string_array_schema(MAX_OUTLINE_CONCEPTS, 1_000),
+            "summary": string_schema(4_000),
+            "learningObjectives": string_array_schema(MAX_FRAGMENT_OBJECTIVES, 1_200),
+            "keyConcepts": string_array_schema(MAX_FRAGMENT_CONCEPTS, 700),
             "sections": {
                 "type": "array",
-                "maxItems": MAX_OUTLINE_SECTIONS,
+                "maxItems": MAX_FRAGMENT_SECTIONS,
                 "items": {
                     "type": "object",
                     "additionalProperties": false,
@@ -1456,15 +1593,28 @@ fn outline_schema() -> Value {
                         "keyConcepts"
                     ],
                     "properties": {
-                        "title": string_schema(2_000),
+                        "title": string_schema(500),
                         "pageStart": { "type": "integer", "minimum": 1 },
                         "pageEnd": { "type": "integer", "minimum": 1 },
-                        "summary": string_schema(10_000),
-                        "learningObjectives": string_array_schema(32, 2_000),
-                        "keyConcepts": string_array_schema(48, 1_000)
+                        "summary": string_schema(2_500),
+                        "learningObjectives": string_array_schema(MAX_FRAGMENT_SECTION_OBJECTIVES, 1_000),
+                        "keyConcepts": string_array_schema(MAX_FRAGMENT_SECTION_CONCEPTS, 600)
                     }
                 }
             }
+        }
+    })
+}
+
+fn global_outline_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["summary", "learningObjectives", "keyConcepts"],
+        "properties": {
+            "summary": string_schema(8_000),
+            "learningObjectives": string_array_schema(16, 1_200),
+            "keyConcepts": string_array_schema(24, 700)
         }
     })
 }
@@ -1951,5 +2101,74 @@ mod tests {
         assert!(flashcards.contains("cloze"));
         assert!(!flashcards.contains("reverseEnabled"));
         assert!(outline.contains("learningObjectives"));
+    }
+
+    #[test]
+    fn outline_fragment_schema_is_deliberately_small() {
+        let schema = outline_fragment_schema();
+        assert_eq!(
+            schema
+                .pointer("/properties/sections/maxItems")
+                .and_then(Value::as_u64),
+            Some(MAX_FRAGMENT_SECTIONS as u64)
+        );
+        assert_eq!(
+            outline_completion_tokens(&DocumentTaskContext {
+                profile_id: "x".to_string(),
+                provider_kind: "deepseek".to_string(),
+                model_id: "m".to_string(),
+                profile_revision: 1,
+                credential_epoch: 0,
+                network_scope: "cloud".to_string(),
+                include_page_images: false,
+                profile: ProfileSnapshot {
+                    id: "x".to_string(),
+                    display_name: "x".to_string(),
+                    provider_kind: ProviderKind::Deepseek,
+                    base_url: "https://api.deepseek.com/".to_string(),
+                    model_id: "m".to_string(),
+                    auth_mode: super::super::catalog::AuthMode::Bearer,
+                    enabled: true,
+                    allow_insecure_http: false,
+                    request_timeout_ms: 60_000,
+                    revision: 1,
+                    credential_epoch: 0,
+                },
+                credential_storage: CredentialStorage::None,
+            }),
+            6_144
+        );
+    }
+
+    #[test]
+    fn global_outline_digest_reaches_the_end_of_the_document() {
+        let outline = DocumentOutline {
+            summary: "Whole document".to_string(),
+            learning_objectives: vec!["Global objective".to_string()],
+            key_concepts: vec!["Global concept".to_string()],
+            sections: vec![
+                OutlineSection {
+                    title: "Beginning".to_string(),
+                    page_start: 1,
+                    page_end: 5,
+                    summary: "Opening concepts".to_string(),
+                    learning_objectives: Vec::new(),
+                    key_concepts: Vec::new(),
+                },
+                OutlineSection {
+                    title: "Ending".to_string(),
+                    page_start: 130,
+                    page_end: 138,
+                    summary: "Final concepts".to_string(),
+                    learning_objectives: Vec::new(),
+                    key_concepts: Vec::new(),
+                },
+            ],
+        };
+        let digest = global_outline_digest(&outline);
+        assert!(digest.contains("Beginning"));
+        assert!(digest.contains("Ending"));
+        assert!(digest.contains("130–138"));
+        assert!(digest.chars().count() <= MAX_GLOBAL_SYNTHESIS_INPUT_CHARS);
     }
 }

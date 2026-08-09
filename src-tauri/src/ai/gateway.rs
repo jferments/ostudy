@@ -205,9 +205,12 @@ impl AiGateway {
         stream.finish()?;
 
         if stream.content.trim().is_empty() && stream.tool_arguments.trim().is_empty() {
+            let finish = stream.finish_reason.as_deref().unwrap_or("not provided");
             return Err(error(
                 "ai_empty_response",
-                "The model returned no final document-task content.",
+                &format!(
+                    "The provider ended the streamed document request with finish_reason={finish}, but returned no final content or structured tool arguments."
+                ),
                 true,
                 None,
             ));
@@ -460,15 +463,23 @@ impl SseChatAccumulator {
             .and_then(|delta| delta.get("content"))
             .and_then(Value::as_str)
         {
-            if self.content.len().saturating_add(content.len()) > self.maximum_content_bytes {
-                return Err(error(
-                    "ai_response_too_large",
-                    "The AI provider returned more generated content than ostudy accepts.",
-                    false,
-                    None,
-                ));
-            }
-            self.content.push_str(content);
+            self.append_compat_content(content)?;
+        } else if let Some(content) = choice
+            .and_then(|choice| choice.get("message"))
+            .and_then(|message| message.get("content"))
+            .and_then(Value::as_str)
+            .or_else(|| {
+                choice
+                    .and_then(|choice| choice.get("text"))
+                    .and_then(Value::as_str)
+            })
+            .or_else(|| value.get("content").and_then(Value::as_str))
+        {
+            // Some llama.cpp/Unsloth-compatible streaming builds emit a final
+            // full message, completion text, or native top-level content field
+            // instead of OpenAI delta.content chunks. Accept those safe text
+            // variants without duplicating a final full message after deltas.
+            self.append_compat_content(content)?;
         }
         if let Some(tool_call) = delta
             .and_then(|delta| delta.get("tool_calls"))
@@ -516,6 +527,27 @@ impl SseChatAccumulator {
                 self.tool_arguments.push_str(arguments);
             }
         }
+        Ok(())
+    }
+
+    fn append_compat_content(&mut self, content: &str) -> Result<(), AiGatewayError> {
+        if content.is_empty() {
+            return Ok(());
+        }
+        if !self.content.is_empty() && content.starts_with(&self.content) {
+            // A provider may emit one final full-message snapshot after already
+            // streaming its deltas. In that case the snapshot adds no new text.
+            return Ok(());
+        }
+        if self.content.len().saturating_add(content.len()) > self.maximum_content_bytes {
+            return Err(error(
+                "ai_response_too_large",
+                "The AI provider returned more generated content than ostudy accepts.",
+                false,
+                None,
+            ));
+        }
+        self.content.push_str(content);
         Ok(())
     }
 }
@@ -717,5 +749,38 @@ data: [DONE]
             .push_bytes(b"data: {\"choices\":[{\"delta\":{\"content\":\"four\"}}]}\n")
             .expect_err("oversized streamed content should fail");
         assert_eq!(failure.safe.code, "ai_response_too_large");
+    }
+
+    #[test]
+    fn sse_accumulator_accepts_llama_full_message_compatibility_events() {
+        let mut stream = SseChatAccumulator::new(2048, 8192);
+        stream
+            .push_bytes(
+                br#"data: {"choices":[{"message":{"content":"{\"summary\":\"ok\"}"},"finish_reason":"stop"}]}
+
+data: [DONE]
+"#,
+            )
+            .unwrap();
+        stream.finish().unwrap();
+        assert_eq!(stream.content, "{\"summary\":\"ok\"}");
+        assert_eq!(stream.finish_reason.as_deref(), Some("stop"));
+    }
+
+    #[test]
+    fn sse_accumulator_accepts_llama_native_top_level_content() {
+        let mut stream = SseChatAccumulator::new(2048, 8192);
+        stream
+            .push_bytes(
+                br#"data: {"content":"{\"summary\":"}
+
+data: {"content":"\"ok\"}"}
+
+data: [DONE]
+"#,
+            )
+            .unwrap();
+        stream.finish().unwrap();
+        assert_eq!(stream.content, "{\"summary\":\"ok\"}");
     }
 }

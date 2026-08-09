@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
 import type {
   AiCapability,
@@ -15,9 +17,10 @@ import styles from "./Settings.module.css";
 
 interface AiLlmSettingsProps {
   controller: AiProfilesController;
+  sidebarTop?: ReactNode;
 }
 
-export function AiLlmSettings({ controller }: AiLlmSettingsProps) {
+export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
   const confirm = useConfirm();
   const availableProviders = controller.catalog.filter(
     (provider) => provider.implementationStatus === "available",
@@ -86,7 +89,9 @@ export function AiLlmSettings({ controller }: AiLlmSettingsProps) {
         <div className={`${styles.fullWidth} inline-alert error-alert`}>{controller.errorMessage}</div>
       ) : null}
 
-      <aside className={styles.aiSidebar} aria-label="AI provider profiles">
+      <div className={styles.aiSidebarStack}>
+        {sidebarTop}
+        <aside className={styles.aiSidebar} aria-label="AI provider profiles">
         <div className={styles.sectionHeading}>
           <div>
             <h2>Provider profiles</h2>
@@ -133,7 +138,8 @@ export function AiLlmSettings({ controller }: AiLlmSettingsProps) {
             <p className={styles.emptyCopy}>No AI provider profiles have been configured.</p>
           ) : null}
         </div>
-      </aside>
+        </aside>
+      </div>
 
       <main className={styles.aiDetail}>
         {controller.draft ? (

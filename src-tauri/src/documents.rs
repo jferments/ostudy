@@ -34,9 +34,9 @@ const MAX_DOCUMENTS_RETURNED: i64 = 500;
 // Keep each provider request comfortably below common local llama-server
 // context allocations. Large documents are handled by more semantic windows,
 // not by making individual prompts approach the model's advertised maximum.
-const OUTLINE_WINDOW_MAX_TOKENS: usize = 5_000;
-const OUTLINE_WINDOW_MAX_PAGES: usize = 10;
-const OUTLINE_WINDOW_OVERLAP_TOKENS: usize = 500;
+const OUTLINE_WINDOW_MAX_TOKENS: usize = 3_200;
+const OUTLINE_WINDOW_MAX_PAGES: usize = 8;
+const OUTLINE_WINDOW_OVERLAP_TOKENS: usize = 350;
 const GENERATION_WINDOW_MAX_TOKENS: usize = 5_000;
 const GENERATION_WINDOW_MAX_PAGES: usize = 10;
 const GENERATION_WINDOW_OVERLAP_TOKENS: usize = 700;
@@ -340,11 +340,28 @@ async fn process_and_generate(
         let paths_owned = paths.inner().clone();
         let source_owned = source_path.clone();
         let id_owned = document_id.to_string();
-        let processed = tauri::async_runtime::spawn_blocking(move || {
-            extract_and_render_pdf(&paths_owned, &render_runtime, &id_owned, &source_owned)
-        })
-        .await
-        .map_err(|error| {
+        let (progress_sender, mut progress_receiver) =
+            tokio::sync::mpsc::unbounded_channel::<(usize, usize)>();
+        let processing_task = tauri::async_runtime::spawn_blocking(move || {
+            extract_and_render_pdf(
+                &paths_owned,
+                &render_runtime,
+                &id_owned,
+                &source_owned,
+                |completed, total| {
+                    progress_sender.send((completed, total)).map_err(|_| {
+                        CommandError::new(
+                            "document_processing_stopped",
+                            "The PDF processing progress channel closed unexpectedly.",
+                        )
+                    })
+                },
+            )
+        });
+        while let Some((completed, total)) = progress_receiver.recv().await {
+            update_render_progress(database.inner(), document_id, completed, total)?;
+        }
+        let processed = processing_task.await.map_err(|error| {
             CommandError::new(
                 "document_processing_failed",
                 format!("The PDF processing task stopped unexpectedly: {error}"),
@@ -513,12 +530,16 @@ async fn process_and_generate(
     })
 }
 
-fn extract_and_render_pdf(
+fn extract_and_render_pdf<F>(
     paths: &AppPaths,
     render_runtime: &PdfRenderRuntime,
     document_id: &str,
     source_path: &Path,
-) -> Result<ProcessedDocument, CommandError> {
+    mut report_progress: F,
+) -> Result<ProcessedDocument, CommandError>
+where
+    F: FnMut(usize, usize) -> Result<(), CommandError>,
+{
     let semantic = pdf_backend::extract_document(source_path).map_err(map_pdf_backend_error)?;
     if semantic.page_count == 0 || semantic.page_count > MAX_PDF_PAGES {
         return Err(CommandError::new(
@@ -555,6 +576,8 @@ fn extract_and_render_pdf(
         ));
     }
 
+    report_progress(0, semantic.page_count)?;
+
     let page_directory = paths.document_pages_dir(document_id);
     fs::create_dir_all(&page_directory).map_err(CommandError::io)?;
     let mut rendered = Vec::<(usize, String, i64, String)>::new();
@@ -581,6 +604,7 @@ fn extract_and_render_pdf(
                 i64::try_from(png.len()).unwrap_or(i64::MAX),
                 sha256_hex(&png),
             ));
+            report_progress(rendered.len(), semantic.page_count)?;
             Ok(())
         },
     );
@@ -624,6 +648,37 @@ fn extract_and_render_pdf(
         });
     }
     Ok(ProcessedDocument { pages, semantic })
+}
+
+fn update_render_progress(
+    database: &Database,
+    document_id: &str,
+    rendered_pages: usize,
+    total_pages: usize,
+) -> Result<(), CommandError> {
+    let total = i64::try_from(total_pages).unwrap_or(i64::MAX);
+    let rendered = i64::try_from(rendered_pages).unwrap_or(i64::MAX).min(total);
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        let changed = connection
+            .execute(
+                "UPDATE documents
+                 SET page_count = ?1,
+                     extracted_page_count = ?1,
+                     rendered_page_count = ?2,
+                     updated_at = ?3
+                 WHERE id = ?4 AND lifecycle_state = 'processing'",
+                params![total, rendered, now, document_id],
+            )
+            .map_err(CommandError::database)?;
+        if changed != 1 {
+            return Err(CommandError::new(
+                "document_changed",
+                "The document changed while PDF rendering progress was being recorded.",
+            ));
+        }
+        Ok(())
+    })
 }
 
 fn persist_processed_document(

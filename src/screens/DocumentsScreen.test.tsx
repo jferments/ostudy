@@ -158,8 +158,26 @@ describe("DocumentsScreen", () => {
     renderDocuments();
 
     expect(await screen.findByText("Processing")).toBeTruthy();
-    expect(screen.getByText("Extracting text / rendering pages")).toBeTruthy();
+    expect(screen.getByText("Extracting text")).toBeTruthy();
     expect(screen.queryByText(/does not impose a completion deadline/u)).toBeNull();
+  });
+
+  it("shows live rendered-page progress once the total page count is known", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([
+      makeDocument({
+        lifecycleState: "processing",
+        pageCount: 11,
+        extractedPageCount: 11,
+        renderedPageCount: 4,
+        generatedDeckId: null,
+        generatedCardCount: 0,
+        completedAt: null,
+      }),
+    ]);
+    renderDocuments();
+
+    expect(await screen.findByText("4/11 rendered")).toBeTruthy();
+    expect(screen.getByText("Rendering pages")).toBeTruthy();
   });
 
   it("offers an exact stop action while a document generation task is processing", async () => {
@@ -258,4 +276,33 @@ describe("DocumentsScreen", () => {
       );
     });
   });
+
+  it("does not claim citation preservation after the only generated deck was deleted", async () => {
+    const withoutDeck = makeDocument({
+      generatedDeckId: null,
+      lifecycleState: "ready",
+      generatedCardCount: 7,
+    });
+    vi.mocked(documentIpc.listDocuments)
+      .mockResolvedValueOnce([withoutDeck])
+      .mockResolvedValue([]);
+    vi.mocked(documentIpc.deletePdfDocument).mockResolvedValue({
+      documentId,
+      preservedDeckCitationCount: 0,
+    });
+    const { showToast } = renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    fireEvent.click(screen.getByRole("button", { name: "Delete PDF" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Delete this PDF permanently?",
+    });
+    expect(within(dialog).getByText(/No active generated deck remains/u)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete PDF" }));
+
+    await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith("success", "PDF deleted from Documents.");
+    });
+  });
+
 });

@@ -10,7 +10,7 @@ use std::{
     path::Path,
 };
 
-use rusqlite::{params, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, State};
@@ -241,22 +241,7 @@ pub fn delete_pdf_document(
             ));
         }
 
-        let mut deck_statement = transaction
-            .prepare(
-                "SELECT DISTINCT deck.id, deck.description
-                 FROM document_decks provenance
-                 JOIN decks deck ON deck.id = provenance.deck_id
-                 WHERE provenance.document_id = ?1",
-            )
-            .map_err(CommandError::database)?;
-        let generated_decks = deck_statement
-            .query_map([input.document_id.as_str()], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })
-            .map_err(CommandError::database)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        drop(deck_statement);
+        let generated_decks = load_surviving_generated_decks(&transaction, &input.document_id)?;
 
         let mut citation_count = 0_i64;
         for (deck_id, description) in generated_decks {
@@ -316,6 +301,29 @@ pub fn delete_pdf_document(
         document_id: input.document_id,
         preserved_deck_citation_count: citation_count,
     })
+}
+
+fn load_surviving_generated_decks(
+    connection: &Connection,
+    document_id: &str,
+) -> Result<Vec<(String, String)>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT DISTINCT deck.id, deck.description
+             FROM document_decks provenance
+             JOIN decks deck ON deck.id = provenance.deck_id
+             WHERE provenance.document_id = ?1
+               AND deck.deleted_at IS NULL
+             ORDER BY deck.id",
+        )
+        .map_err(CommandError::database)?;
+    statement
+        .query_map([document_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
 }
 
 pub(crate) fn reconcile_deleted_document_trash(paths: &AppPaths) -> Result<(), CommandError> {
@@ -644,5 +652,36 @@ mod tests {
             preserve_deleted_pdf_citation(&description, &citation, "Chapter", "chapter.pdf")
                 .expect("existing text source reference is sufficient");
         assert_eq!(preserved, description);
+    }
+
+    #[test]
+    fn soft_deleted_generated_decks_are_not_counted_for_document_citation_preservation() {
+        let connection = Connection::open_in_memory().expect("fixture database should open");
+        connection
+            .execute_batch(
+                "CREATE TABLE decks (
+                     id TEXT PRIMARY KEY,
+                     description TEXT NOT NULL,
+                     deleted_at INTEGER
+                 );
+                 CREATE TABLE document_decks (
+                     document_id TEXT NOT NULL,
+                     deck_id TEXT NOT NULL
+                 );
+                 INSERT INTO decks (id, description, deleted_at) VALUES
+                     ('active', 'active deck', NULL),
+                     ('deleted', 'deleted deck', 123);
+                 INSERT INTO document_decks (document_id, deck_id) VALUES
+                     ('document', 'active'),
+                     ('document', 'deleted');",
+            )
+            .expect("fixture schema should initialize");
+
+        let decks = load_surviving_generated_decks(&connection, "document")
+            .expect("surviving deck lookup should succeed");
+        assert_eq!(
+            decks,
+            vec![("active".to_string(), "active deck".to_string())]
+        );
     }
 }
