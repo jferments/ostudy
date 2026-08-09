@@ -60,7 +60,7 @@ pub(crate) async fn execute_generation_windows(
                     window.window_index + 1,
                     input.windows.len(),
                     window.partition_index + 1,
-                    window.source_locator.stable_identity(),
+                    window.source_locator().stable_identity(),
                     cards.len(),
                 ),
             );
@@ -93,18 +93,10 @@ pub(crate) async fn execute_generation_windows(
                 input.diagnostic_prefix,
             )
             .await?;
-            if let (Some(contract), false) = (input.checkpoint_contract, cards.is_empty()) {
-                document_checkpoints::persist_generation_cards_best_effort(
-                    input.database,
-                    input.document_id,
-                    contract,
-                    window,
-                    &cards,
-                );
-            } else if let Some(contract) = input.checkpoint_contract {
-                // Empty output is still a completed result and is safe to cache;
-                // retaining it prevents repeatedly paying for a source window
-                // whose correct answer is no cards.
+            if let Some(contract) = input.checkpoint_contract {
+                // Empty output is also a completed result. Caching it avoids
+                // repeatedly paying for a source window whose correct answer is
+                // no cards.
                 document_checkpoints::persist_generation_cards_best_effort(
                     input.database,
                     input.document_id,
@@ -175,7 +167,7 @@ pub(crate) async fn generate_window_with_recovery(
                     "path={diagnostic_prefix} window={} partition={} locator={} old_budget={} new_budget={} code={}",
                     window.window_index + 1,
                     window.partition_index + 1,
-                    window.source_locator.stable_identity(),
+                    window.source_locator().stable_identity(),
                     maximum_cards,
                     reduced_budget,
                     error.code,
