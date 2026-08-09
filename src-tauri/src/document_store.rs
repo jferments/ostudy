@@ -528,7 +528,9 @@ pub(crate) fn load_semantic_chunks(
             })
             .map_err(|error| db_error("document_semantic_chunks_query_failed", document_id, error))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| db_error("document_semantic_chunks_decode_failed", document_id, error))?;
+            .map_err(|error| {
+                db_error("document_semantic_chunks_decode_failed", document_id, error)
+            })?;
         Ok(chunks)
     })
 }
