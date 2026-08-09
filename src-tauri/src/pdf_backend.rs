@@ -14,6 +14,15 @@ use oxidize_pdf::{
 };
 use serde::{Deserialize, Serialize};
 
+const MAX_PARENT_HEADING_CHARS: usize = 1_000;
+const MAX_HEADING_PATH_ITEMS: usize = 32;
+const MAX_HEADING_PATH_ITEM_CHARS: usize = 400;
+const MAX_FONT_NAME_CHARS: usize = 500;
+const MAX_CHUNK_BOUNDING_BOXES: usize = 512;
+const MAX_CHUNK_ELEMENT_TYPES: usize = 128;
+const MAX_CHUNK_ELEMENT_TYPE_CHARS: usize = 80;
+const MAX_HEADING_CONTEXT_CHARS: usize = 2_000;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PdfBackendErrorKind {
     Open,
@@ -112,6 +121,12 @@ pub(crate) fn active_backend_id() -> &'static str {
 /// ostudy's Cargo feature set. Pages without extractable structure receive a
 /// bounded page-evidence chunk so they remain represented in semantic windows;
 /// an image-capable provider can then use the independently rendered page.
+///
+/// Third-party semantic metadata is normalized at this boundary to the durable
+/// database contract. Complex textbooks can contain extremely long heading
+/// paths, thousands of geometry fragments, unusual font names, or non-finite
+/// numeric metadata. Those are useful hints but must never be able to turn an
+/// otherwise valid PDF into an opaque SQLite constraint failure.
 pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, PdfBackendError> {
     let document = PdfDocument::open(source_path).map_err(|error| {
         PdfBackendError::new(PdfBackendErrorKind::Open, None, error.to_string())
@@ -174,17 +189,29 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
                     .saturating_add(1),
                 element_type: element.type_name().to_string(),
                 text: element.display_text(),
-                parent_heading: metadata.parent_heading.clone(),
-                heading_path: metadata.heading_path.clone(),
-                bbox: SemanticBBox {
+                parent_heading: bounded_optional_text(
+                    metadata.parent_heading.as_deref(),
+                    MAX_PARENT_HEADING_CHARS,
+                ),
+                heading_path: metadata
+                    .heading_path
+                    .iter()
+                    .take(MAX_HEADING_PATH_ITEMS)
+                    .map(|value| bounded_text(value, MAX_HEADING_PATH_ITEM_CHARS))
+                    .filter(|value| !value.is_empty())
+                    .collect(),
+                bbox: sanitize_bbox(SemanticBBox {
                     x: bbox.x,
                     y: bbox.y,
                     width: bbox.width,
                     height: bbox.height,
-                },
-                confidence: metadata.confidence.clamp(0.0, 1.0),
-                font_name: metadata.font_name.clone(),
-                font_size: metadata.font_size,
+                }),
+                confidence: finite_or(metadata.confidence, 0.0).clamp(0.0, 1.0),
+                font_name: bounded_optional_text(
+                    metadata.font_name.as_deref(),
+                    MAX_FONT_NAME_CHARS,
+                ),
+                font_size: metadata.font_size.filter(|value| value.is_finite()),
                 is_bold: metadata.is_bold,
                 is_italic: metadata.is_italic,
             }
@@ -228,15 +255,27 @@ fn convert_chunk(chunk: RagChunk) -> ExtractedSemanticChunk {
         bounding_boxes: chunk
             .bounding_boxes
             .into_iter()
-            .map(|bbox| SemanticBBox {
-                x: bbox.x,
-                y: bbox.y,
-                width: bbox.width,
-                height: bbox.height,
+            .take(MAX_CHUNK_BOUNDING_BOXES)
+            .map(|bbox| {
+                sanitize_bbox(SemanticBBox {
+                    x: bbox.x,
+                    y: bbox.y,
+                    width: bbox.width,
+                    height: bbox.height,
+                })
             })
             .collect(),
-        element_types: chunk.element_types,
-        heading_context: chunk.heading_context,
+        element_types: chunk
+            .element_types
+            .into_iter()
+            .take(MAX_CHUNK_ELEMENT_TYPES)
+            .map(|value| bounded_text(&value, MAX_CHUNK_ELEMENT_TYPE_CHARS))
+            .filter(|value| !value.is_empty())
+            .collect(),
+        heading_context: bounded_optional_text(
+            chunk.heading_context.as_deref(),
+            MAX_HEADING_CONTEXT_CHARS,
+        ),
         token_estimate: chunk.token_estimate,
         is_oversized: chunk.is_oversized,
     }
@@ -292,6 +331,39 @@ fn cover_unstructured_pages(
     chunks
 }
 
+fn sanitize_bbox(bbox: SemanticBBox) -> SemanticBBox {
+    SemanticBBox {
+        x: finite_or(bbox.x, 0.0),
+        y: finite_or(bbox.y, 0.0),
+        width: finite_or(bbox.width, 0.0).max(0.0),
+        height: finite_or(bbox.height, 0.0).max(0.0),
+    }
+}
+
+fn finite_or(value: f64, fallback: f64) -> f64 {
+    if value.is_finite() {
+        value
+    } else {
+        fallback
+    }
+}
+
+fn bounded_optional_text(value: Option<&str>, maximum: usize) -> Option<String> {
+    value
+        .map(|value| bounded_text(value, maximum))
+        .filter(|value| !value.is_empty())
+}
+
+fn bounded_text(value: &str, maximum: usize) -> String {
+    value
+        .chars()
+        .filter(|character| !character.is_control() || matches!(character, '\n' | '\t'))
+        .take(maximum)
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,5 +402,23 @@ mod tests {
         assert_eq!(covered[1].page_numbers, vec![2]);
         assert_eq!(covered[1].element_types, vec!["image"]);
         assert!(covered[1].full_text.contains("attached page image"));
+    }
+
+    #[test]
+    fn semantic_metadata_is_bounded_and_finite_before_sqlite() {
+        let bounded = bounded_optional_text(Some(&"x".repeat(5_000)), 1_000).unwrap();
+        assert_eq!(bounded.chars().count(), 1_000);
+        assert_eq!(finite_or(f64::NAN, 0.0), 0.0);
+        assert_eq!(finite_or(f64::INFINITY, 7.0), 7.0);
+        let bbox = sanitize_bbox(SemanticBBox {
+            x: f64::NAN,
+            y: f64::INFINITY,
+            width: -4.0,
+            height: 12.0,
+        });
+        assert_eq!(bbox.x, 0.0);
+        assert_eq!(bbox.y, 0.0);
+        assert_eq!(bbox.width, 0.0);
+        assert_eq!(bbox.height, 12.0);
     }
 }
