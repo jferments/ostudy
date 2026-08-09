@@ -2,6 +2,8 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
+use crate::document_scale::DocumentScalePlan;
+
 /// Persisted, engine-neutral semantic chunk used by all document-aware AI tasks.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,6 +17,23 @@ pub(crate) struct SemanticChunk {
     pub token_estimate: usize,
 }
 
+/// A local, heading-aware document partition. Partitions are never sent as one
+/// unbounded prompt: they define independent semantic/checkpoint boundaries,
+/// and each partition is further divided into hard-bounded provider windows.
+#[derive(Clone, Debug)]
+pub(crate) struct SemanticPartition {
+    pub partition_index: usize,
+    pub title: String,
+    pub first_chunk_index: i64,
+    pub last_chunk_index: i64,
+    pub page_numbers: Vec<i64>,
+    pub page_start: i64,
+    pub page_end: i64,
+    pub token_estimate: usize,
+    chunk_start: usize,
+    chunk_end: usize,
+}
+
 /// A contiguous, overlapping semantic source window. Windows are bounded both
 /// by estimated tokens and by distinct physical pages, so dense textbooks do
 /// not overflow smaller local models while sparse slide decks can span several
@@ -22,9 +41,12 @@ pub(crate) struct SemanticChunk {
 #[derive(Clone, Debug)]
 pub(crate) struct SemanticWindow {
     pub window_index: usize,
+    pub partition_index: usize,
+    pub partition_title: String,
     pub first_chunk_index: i64,
     pub last_chunk_index: i64,
     pub page_numbers: Vec<i64>,
+    pub visual_page_numbers: Vec<i64>,
     pub page_start: i64,
     pub page_end: i64,
     pub token_estimate: usize,
@@ -41,11 +63,140 @@ struct SourceUnit<'a> {
     token_estimate: usize,
 }
 
+pub(crate) fn build_partitioned_semantic_windows(
+    chunks: &[SemanticChunk],
+    plan: DocumentScalePlan,
+    max_tokens: usize,
+    max_pages: usize,
+    overlap_tokens: usize,
+) -> Vec<SemanticWindow> {
+    let partitions = build_semantic_partitions(chunks, plan);
+    let mut windows = Vec::new();
+    for partition in partitions {
+        let mut partition_windows = build_semantic_windows_internal(
+            &chunks[partition.chunk_start..partition.chunk_end],
+            max_tokens,
+            max_pages,
+            overlap_tokens,
+            partition.partition_index,
+            &partition.title,
+        );
+        for window in &mut partition_windows {
+            window.window_index = windows.len();
+        }
+        windows.extend(partition_windows);
+    }
+    windows
+}
+
+pub(crate) fn build_semantic_partitions(
+    chunks: &[SemanticChunk],
+    plan: DocumentScalePlan,
+) -> Vec<SemanticPartition> {
+    if chunks.is_empty() {
+        return Vec::new();
+    }
+
+    let mut partitions = Vec::new();
+    let mut start = 0_usize;
+    while start < chunks.len() {
+        let mut end = start;
+        let mut token_total = 0_usize;
+        let mut pages = BTreeSet::new();
+        let mut title = partition_heading(&chunks[start]);
+
+        while end < chunks.len() {
+            let chunk = &chunks[end];
+            let next_heading = partition_heading(chunk);
+            let chunk_tokens = effective_chunk_tokens(chunk);
+            let next_tokens = token_total.saturating_add(chunk_tokens);
+            let mut next_pages = pages.clone();
+            next_pages.extend(chunk.page_numbers.iter().copied());
+
+            let exceeds_hard_boundary = end > start
+                && (next_tokens > plan.partition_max_tokens
+                    || next_pages.len() > plan.partition_max_pages);
+            let heading_changed = end > start
+                && title.is_some()
+                && next_heading.is_some()
+                && title != next_heading;
+            let enough_for_semantic_split = token_total
+                >= plan.partition_target_tokens.saturating_div(3).max(1_500)
+                || pages.len() >= plan.partition_target_pages.saturating_div(3).max(4);
+            let reached_target = token_total >= plan.partition_target_tokens
+                || pages.len() >= plan.partition_target_pages;
+
+            if exceeds_hard_boundary
+                || (heading_changed && enough_for_semantic_split)
+                || (end > start && reached_target)
+            {
+                break;
+            }
+
+            if title.is_none() {
+                title = next_heading;
+            }
+            token_total = next_tokens;
+            pages = next_pages;
+            end += 1;
+        }
+
+        if end == start {
+            let chunk = &chunks[start];
+            token_total = effective_chunk_tokens(chunk);
+            pages.extend(chunk.page_numbers.iter().copied());
+            title = title.or_else(|| partition_heading(chunk));
+            end = start + 1;
+        }
+
+        let page_numbers = pages.into_iter().collect::<Vec<_>>();
+        let page_start = page_numbers.first().copied().unwrap_or(1);
+        let page_end = page_numbers.last().copied().unwrap_or(page_start);
+        let title = title.unwrap_or_else(|| format!("PDF pages {page_start}–{page_end}"));
+        partitions.push(SemanticPartition {
+            partition_index: partitions.len(),
+            title,
+            first_chunk_index: chunks[start].chunk_index,
+            last_chunk_index: chunks[end - 1].chunk_index,
+            page_numbers,
+            page_start,
+            page_end,
+            token_estimate: token_total,
+            chunk_start: start,
+            chunk_end: end,
+        });
+        start = end;
+    }
+    partitions
+}
+
 pub(crate) fn build_semantic_windows(
     chunks: &[SemanticChunk],
     max_tokens: usize,
     max_pages: usize,
     overlap_tokens: usize,
+) -> Vec<SemanticWindow> {
+    let title = chunks
+        .iter()
+        .find_map(partition_heading)
+        .unwrap_or_else(|| "Document source".to_string());
+    build_semantic_windows_internal(
+        chunks,
+        max_tokens,
+        max_pages,
+        overlap_tokens,
+        0,
+        &title,
+    )
+}
+
+fn build_semantic_windows_internal(
+    chunks: &[SemanticChunk],
+    max_tokens: usize,
+    max_pages: usize,
+    overlap_tokens: usize,
+    partition_index: usize,
+    partition_title: &str,
 ) -> Vec<SemanticWindow> {
     if chunks.is_empty() || max_tokens == 0 || max_pages == 0 {
         return Vec::new();
@@ -95,17 +246,35 @@ pub(crate) fn build_semantic_windows(
         let page_numbers = pages.into_iter().collect::<Vec<_>>();
         let page_start = page_numbers.first().copied().unwrap_or(1);
         let page_end = page_numbers.last().copied().unwrap_or(page_start);
-        let source_text = selected
+        let visual_page_numbers = selected
+            .iter()
+            .filter(|unit| chunk_needs_visual_grounding(unit.chunk))
+            .flat_map(|unit| unit.page_numbers.iter().copied())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let chunks_text = selected
             .iter()
             .map(format_unit_for_model)
             .collect::<Vec<_>>()
             .join("\n\n");
+        let source_text = format!(
+            "<ostudy-partition index=\"{}\" title=\"{}\" pages=\"{}-{}\">\n{}\n</ostudy-partition>",
+            partition_index,
+            escape_attribute(partition_title),
+            page_start,
+            page_end,
+            chunks_text
+        );
 
         windows.push(SemanticWindow {
             window_index: windows.len(),
+            partition_index,
+            partition_title: partition_title.to_string(),
             first_chunk_index: selected.first().map_or(0, |unit| unit.chunk.chunk_index),
             last_chunk_index: selected.last().map_or(0, |unit| unit.chunk.chunk_index),
             page_numbers,
+            visual_page_numbers,
             page_start,
             page_end,
             token_estimate: token_total.min(max_tokens),
@@ -133,6 +302,42 @@ pub(crate) fn build_semantic_windows(
     }
 
     windows
+}
+
+fn effective_chunk_tokens(chunk: &SemanticChunk) -> usize {
+    chunk
+        .token_estimate
+        .max(chunk.full_text.chars().count().div_ceil(4))
+        .max(1)
+}
+
+fn partition_heading(chunk: &SemanticChunk) -> Option<String> {
+    let heading = chunk.heading_context.as_deref()?.trim();
+    if heading.is_empty() {
+        return None;
+    }
+    let first_line = heading.lines().find(|line| !line.trim().is_empty())?.trim();
+    let root = [" > ", " › ", " :: ", " / ", " | "]
+        .iter()
+        .filter_map(|separator| first_line.split_once(separator).map(|(left, _)| left.trim()))
+        .find(|value| !value.is_empty())
+        .unwrap_or(first_line);
+    let bounded = root
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(180)
+        .collect::<String>()
+        .trim()
+        .to_string();
+    (!bounded.is_empty()).then_some(bounded)
+}
+
+fn chunk_needs_visual_grounding(chunk: &SemanticChunk) -> bool {
+    chunk.element_types.iter().any(|element_type| {
+        matches!(element_type.as_str(), "image" | "table" | "key_value")
+    }) || chunk
+        .full_text
+        .contains("has no extractable structured text")
 }
 
 fn build_source_units<'a>(
@@ -376,5 +581,52 @@ mod tests {
         assert!(segments.first().unwrap().contains("word-0"));
         assert!(segments.last().unwrap().contains("word-999"));
         assert!(segments.iter().all(|segment| !segment.is_empty()));
+    }
+
+    #[test]
+    fn heading_changes_create_local_partitions_before_hard_limits() {
+        let mut chunks = Vec::new();
+        for index in 0..12 {
+            let mut value = chunk(index, &[index + 1], 900);
+            value.heading_context = Some(if index < 6 {
+                "Chapter 1 > Topic".to_string()
+            } else {
+                "Chapter 2 > Topic".to_string()
+            });
+            chunks.push(value);
+        }
+        let plan = DocumentScalePlan::for_page_count(138);
+        let partitions = build_semantic_partitions(&chunks, plan);
+        assert_eq!(partitions.len(), 2);
+        assert_eq!(partitions[0].title, "Chapter 1");
+        assert_eq!(partitions[1].title, "Chapter 2");
+        assert_eq!(partitions[1].page_start, 7);
+    }
+
+    #[test]
+    fn partitioned_windows_do_not_overlap_across_chapters() {
+        let mut chunks = Vec::new();
+        for index in 0..8 {
+            let mut value = chunk(index, &[index + 1], 700);
+            value.heading_context = Some(if index < 4 {
+                "Chapter A".to_string()
+            } else {
+                "Chapter B".to_string()
+            });
+            if index == 5 {
+                value.element_types = vec!["image".to_string()];
+            }
+            chunks.push(value);
+        }
+        let plan = DocumentScalePlan::for_page_count(138);
+        let windows = build_partitioned_semantic_windows(&chunks, plan, 1_400, 2, 300);
+        assert!(windows.iter().any(|window| window.partition_title == "Chapter A"));
+        assert!(windows.iter().any(|window| window.partition_title == "Chapter B"));
+        assert!(windows
+            .iter()
+            .all(|window| !(window.page_start <= 4 && window.page_end >= 5)));
+        assert!(windows
+            .iter()
+            .any(|window| window.visual_page_numbers.contains(&6)));
     }
 }
