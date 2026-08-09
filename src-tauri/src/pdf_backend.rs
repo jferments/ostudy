@@ -712,10 +712,7 @@ mod tests {
 
     #[test]
     fn active_backend_identifies_quality_checked_oxidize_extraction() {
-        assert_eq!(
-            active_backend_id(),
-            "oxidize-pdf-4.2.2-rag-quality-ocr-v1"
-        );
+        assert_eq!(active_backend_id(), "oxidize-pdf-4.2.2-rag-quality-ocr-v1");
     }
 
     #[test]
