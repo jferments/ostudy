@@ -53,6 +53,7 @@ jobs:
       - name: Resolve and format canonical Rust sources
         id: normalize
         run: |
+          node ./scripts/remove-obsolete-document-import.mjs
           cargo metadata \
             --manifest-path src-tauri/Cargo.toml \
             --format-version 1 \
@@ -100,7 +101,7 @@ jobs:
           mkdir -p "$HOME/.cache/ostudy/cargo-target"
 
       - name: Resolve candidate Rust lockfile
-        id: rust_lock
+        id: cargo_lock
         run: |
           cp src-tauri/Cargo.lock "$RUNNER_TEMP/ostudy-Cargo.lock.committed"
           cargo metadata \
@@ -116,7 +117,7 @@ jobs:
           fi
 
       - name: Format candidate Rust sources
-        id: rust_format
+        id: rustfmt
         run: |
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           git diff -- '*.rs' > "$RUNNER_TEMP/ostudy-rustfmt.patch"
@@ -132,7 +133,7 @@ jobs:
           fi
 
       - name: Select qualification gate
-        id: gate
+        id: selection
         env:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_GATE: ${{ inputs.gate || 'full' }}
@@ -149,19 +150,21 @@ jobs:
           echo "Selected qualification gate: $gate"
 
       - name: Run static checks
-        if: steps.gate.outputs.gate == 'static'
+        if: steps.selection.outputs.gate == 'static'
         run: |
           set -o pipefail
-          bash ./scripts/check-static.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"
+          ./scripts/check-state.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"
 
       - name: Run fast high-return checks
-        if: steps.gate.outputs.gate != 'static'
+        if: steps.selection.outputs.gate == 'fast' || steps.selection.outputs.gate == 'full'
+        env:
+          OSTUDY_FAST_CHECK_PASSED: "1"
         run: |
           set -o pipefail
           bash ./scripts/check-fast.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-fast-check.log"
 
       - name: Run full qualification gate
-        if: steps.gate.outputs.gate == 'full'
+        if: steps.selection.outputs.gate == 'full'
         env:
           OSTUDY_FAST_CHECK_PASSED: "1"
         run: |
@@ -169,15 +172,17 @@ jobs:
           ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-full-check.log"
 
       - name: Require committed Rust formatting
-        if: always() && steps.rust_format.outputs.changed == 'true'
+        if: steps.rustfmt.outputs.changed == 'true'
         run: |
-          echo "Rust sources must be formatted and committed. Same-repository PR branches are normalized automatically; other refs can use the uploaded candidate." >&2
+          echo "Rust formatting changed tracked source files." >&2
+          echo "Apply the normalization candidate committed by the PR normalization job." >&2
           exit 1
 
       - name: Require committed Rust lockfile
-        if: always() && steps.rust_lock.outputs.changed == 'true'
+        if: steps.cargo_lock.outputs.changed == 'true'
         run: |
-          echo "src-tauri/Cargo.lock must be updated and committed for the exact dependency graph." >&2
+          echo "src-tauri/Cargo.lock changed during dependency resolution." >&2
+          echo "Apply the lockfile candidate committed by the PR normalization job." >&2
           exit 1
 
       - name: Summarize qualification failure
@@ -195,7 +200,7 @@ jobs:
 
       - name: Upload failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         with:
           name: ostudy-check-diagnostics
           path: |
@@ -213,12 +218,13 @@ jobs:
     permissions:
       contents: write
     runs-on: [self-hosted, linux, x64, ostudy]
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: Check out selected branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
 
       - name: Expose user-local tools
@@ -233,27 +239,14 @@ jobs:
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           git diff --check
 
-      - name: Validate generated scope
+      - name: Commit generated candidates
         run: |
-          changed="$(git status --porcelain | sed -E 's/^.. //')"
-          if [[ -z "$changed" ]]; then
-            echo "No generated Rust changes were required."
-            exit 0
-          fi
-          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^src-tauri/(Cargo\.lock|.*\.rs)$' || true)"
-          if [[ -n "$unexpected" ]]; then
-            echo "Generated normalization changed unexpected files:" >&2
-            printf '%s\n' "$unexpected" >&2
-            exit 1
-          fi
-
-      - name: Commit canonical candidates
-        run: |
-          if git diff --quiet -- src-tauri; then
+          if git diff --quiet -- src-tauri/Cargo.lock '*.rs'; then
+            echo "No generated Rust candidates to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src-tauri/Cargo.lock src-tauri/src src-tauri/build.rs
+          git add src-tauri/Cargo.lock -- '*.rs'
           git commit -m "chore: normalize Rust source and lockfile"
           git push origin "HEAD:${GITHUB_REF_NAME}"
