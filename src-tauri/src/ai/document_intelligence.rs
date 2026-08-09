@@ -1114,13 +1114,14 @@ fn parse_outline_fragment(
     ))
 }
 
-fn parse_flashcards(value: Value) -> Result<Vec<Value>, CommandError> {
+fn parse_flashcards(value: Value, maximum_cards: usize) -> Result<Vec<Value>, CommandError> {
     let output: FlashcardOutput = serde_json::from_value(value).map_err(|_| {
         output_error("The model returned flashcards that did not match ostudy's generation schema.")
     })?;
-    if output.cards.len() > MAX_WINDOW_CARDS {
+    let maximum_cards = maximum_cards.max(1).min(MAX_WINDOW_CARDS);
+    if output.cards.len() > maximum_cards {
         return Err(output_error(format!(
-            "The model returned more than {MAX_WINDOW_CARDS} cards for one semantic source window."
+            "The model returned more than {maximum_cards} cards for this semantic source window."
         )));
     }
     let mut accepted = Vec::with_capacity(output.cards.len());
@@ -2288,6 +2289,23 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.code, "ai_document_output_truncated");
         assert!(error.message.contains("completion limit"));
+    }
+
+    #[test]
+    fn dynamic_generation_card_limit_is_enforced() {
+        let cards = (0..3)
+            .map(|index| {
+                json!({
+                    "type": "basic",
+                    "front": format!("Question {index}"),
+                    "back": format!("Answer {index}"),
+                    "tags": []
+                })
+            })
+            .collect::<Vec<_>>();
+        let error = parse_flashcards(json!({ "cards": cards }), 2).unwrap_err();
+        assert_eq!(error.code, "ai_document_output_invalid");
+        assert!(error.message.contains("more than 2 cards"));
     }
 
     #[test]
