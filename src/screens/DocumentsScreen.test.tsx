@@ -43,6 +43,12 @@ function makeDocument(
     pageCount: 10,
     extractedPageCount: 10,
     renderedPageCount: 10,
+    scaleMode: "standard",
+    estimatedSourceTokens: 0,
+    outlineWindowCount: 0,
+    outlineCompletedWindowCount: 0,
+    generationWindowCount: 0,
+    generationCompletedWindowCount: 0,
     generatedNoteCount: 6,
     generatedCardCount: 7,
     generatedDeckId: "b".repeat(32),
@@ -304,5 +310,4 @@ describe("DocumentsScreen", () => {
       expect(showToast).toHaveBeenCalledWith("success", "PDF deleted from Documents.");
     });
   });
-
 });
