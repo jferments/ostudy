@@ -130,9 +130,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "80dc940f7018b6a754d440cbf5c3b287150b2dfb4def096539c4ff1f14d5fc66",
         sql: include_str!("../migrations/0019_resumable_large_document_generation.sql"),
     },
+    Migration {
+        version: 20,
+        name: "document_platform_generalization",
+        checksum: "ad25bb267ff0061d7dea31f1bac0d7376be5c5af225854b329c31ec6caf29e32",
+        sql: include_str!("../migrations/0020_document_platform_generalization.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 19;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 20;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -273,7 +279,7 @@ fn apply_migration_range(
         }
 
         let applied_at = unix_time_millis().map_err(|error| error.message)?;
-        if migration.version == 13 {
+        if matches!(migration.version, 13 | 20) {
             apply_foreign_key_disabled_migration(connection, migration, applied_at)?;
         } else {
             apply_transactional_migration(connection, migration, applied_at)?;
@@ -460,6 +466,7 @@ mod tests {
                     "ai_task_defaults",
                     "ai_provider_probe_results",
                     "ai_provider_capabilities",
+                    "ai_document_usage_samples",
                     "documents",
                     "document_pages",
                     "document_generation_jobs",
@@ -469,6 +476,8 @@ mod tests {
                     "document_semantic_chunks",
                     "document_outlines",
                     "document_generation_windows",
+                    "document_outline_checkpoints",
+                    "document_generation_checkpoints",
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -479,6 +488,16 @@ mod tests {
                         .map_err(CommandError::database)?;
                     assert_eq!(exists, 1, "missing table {table}");
                 }
+                let metadata: (String, String) = connection
+                    .query_row(
+                        "SELECT source_format, source_unit_kind FROM documents LIMIT 1",
+                        [],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .optional()
+                    .map_err(CommandError::database)?
+                    .unwrap_or_else(|| ("pdf".to_string(), "page".to_string()));
+                assert_eq!(metadata, ("pdf".to_string(), "page".to_string()));
                 Ok(())
             })
             .expect("canonical reopen should not write");
@@ -504,5 +523,27 @@ mod tests {
             })
             .expect("foreign key check should run");
         assert_eq!(foreign_key_errors, 0);
+    }
+
+    #[test]
+    fn provider_adapter_keys_are_not_closed_sqlite_enums() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO ai_provider_profiles (
+                             id, display_name, normalized_name, provider_kind, base_url,
+                             auth_mode, enabled, allow_insecure_http, request_timeout_ms,
+                             credential_storage, credential_epoch, revision, created_at, updated_at
+                         ) VALUES (?1, 'Future adapter', 'future adapter', 'future_adapter',
+                                   'https://example.invalid/', 'bearer', 1, 0, 60000,
+                                   'session', 0, 1, 1, 1)",
+                        ["0123456789abcdef0123456789abcdef"],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .expect("future adapter key should fit generalized durable schema");
     }
 }
