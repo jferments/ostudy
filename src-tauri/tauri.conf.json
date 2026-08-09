@@ -39,9 +39,6 @@
     "category": "Education",
     "shortDescription": "Local-first flashcards and study tools",
     "longDescription": "A free, local-first flashcard and study application.",
-    "resources": [
-      "resources/pdfium/*"
-    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
