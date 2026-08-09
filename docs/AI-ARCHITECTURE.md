@@ -1,146 +1,184 @@
-# ostudy AI architecture
+# AI architecture
 
-## Purpose
+ostudy keeps AI integration native-only. React requests narrow domain tasks; it never receives provider credentials, raw provider responses, PDF page bytes, or arbitrary model completions. Provider profiles, credential isolation, endpoint trust policy, model discovery, capability evidence, bounded HTTP/SSE transport, and task defaults are implemented under `src-tauri/src/ai/`.
 
-ostudy's AI platform connects study features to model servers and cloud APIs that the user already operates or explicitly configures. The application does not install model weights, Python, CUDA, llama.cpp, Ollama, or any other model-serving infrastructure.
+There is no generic prompt IPC command and no silent provider fallback.
 
-The architectural goal is to make future document ingestion, flashcard generation, tutoring, quizzes, and learning analytics share one secure native provider boundary rather than embedding provider logic in individual screens.
+## Document intelligence
 
-## Layering
+Managed PDFs are local durable sources. PDF interpretation is split into independent native capabilities:
 
-The Stage 4.1/4.2 path follows the same architecture established during Stage 3:
+- `pdf_backend.rs`: structure-aware extraction through oxidize-pdf;
+- `pdf_render_backend.rs`: bounded pure-Rust page rasterization through justpdf/justpdf-render;
+- `document_semantics.rs`: ostudy-owned semantic chunks and hard-bounded provider windows;
+- `ai/document_intelligence.rs`: provider-enforced local outline/generation/curation tasks, deterministic native hierarchy assembly, and a bounded optional whole-document synthesis.
 
-```text
-React Settings / future feature views
-  -> frontend AI profile controller
-  -> typed AI IPC wrappers
-  -> narrow Tauri commands
-  -> Rust AI profile / secret / probe services
-  -> provider-neutral gateway
-  -> provider adapter
-  -> bounded native HTTP transport
-```
+The extraction boundary maps third-party parser output into an ostudy-owned semantic intermediate representation containing page text, typed elements, geometry, heading relationships, and structure-aware chunks. Semantic metadata is sanitized/bounded before SQLite insertion. The renderer only returns PNG bytes. Neither PDF backend can contact an AI provider or mutate cards.
 
-React never owns provider networking or persisted credentials. `reqwest` is confined to the native AI subsystem, and the WebView CSP does not need provider network access.
+Derived text, semantic chunks, outline data, and rendered pages are rebuildable from the immutable managed source PDF. SQLite records extraction/render backend identities so retry can rebuild stale derivatives after an implementation upgrade.
 
-There is intentionally no generic `send_ai_prompt` IPC command. Future features call task-specific native workflows so prompt construction, grounding, output schemas, local validation, and commit authority remain controlled by ostudy rather than arbitrary frontend messages.
+### Hard-bounded semantic source windows
 
-## Provider profiles
+A physical PDF page is provenance/layout, not necessarily a semantic reasoning boundary. Document-aware AI therefore consumes overlapping semantic windows derived from structure-aware chunks.
 
-A provider profile is a durable, nonsecret description of one trust boundary. It contains the provider kind, normalized endpoint, selected API model ID, authentication mode, timeout, enablement state, revision, and credential epoch.
+Provider source windows are deliberately conservative:
 
-Credentials are not part of profile metadata. They are stored in the operating-system credential store or, when explicitly selected, held only in native process memory for the current session. SQLite records only nonsecret credential-storage intent (`none`, `secure`, or `session`) so the runtime knows which secret boundary is authoritative. Credentials are excluded from backups, diagnostics, operation records, logs, and frontend read DTOs.
+- initial outline: about **3,200 estimated source tokens**, at most **8 physical pages**, with about 350 tokens of semantic overlap;
+- flashcard generation: about **5,000 estimated source tokens**, at most **10 physical pages**, with about 700 tokens of semantic overlap;
+- Generate more cards: the same 5,000-token / 10-page generation boundary.
 
-A session-only profile never falls through to an old secure credential after restart.
+The token estimate is an application-side source bound rather than a claim that it exactly matches every provider tokenizer. The design keeps room for system instructions, JSON Schema/tool definitions, compact outline context, images, and completion tokens. Large documents scale through **more small requests**, not larger individual prompts.
 
-## Setup order and automatic discovery
+Normal semantic chunks remain intact. If a third-party extractor produces one chunk that is individually larger than the provider boundary, ostudy splits only that pathological chunk into bounded continuation source units. Continuations retain the original chunk identity and page provenance and are marked as segments in the model-facing source. This makes the request bound hard rather than advisory.
 
-Settings follows the dependency order required by real provider APIs:
+### Hierarchical first pass and whole-document view
 
-1. **Provider connection** — create/save the provider identity and trusted endpoint.
-2. **API credential** — submit a credential when the provider requires authentication.
-3. **Available model** — as soon as the saved endpoint and credential state are sufficient, ostudy automatically performs native provider model discovery.
-4. **Model selection** — the dropdown contains only model IDs returned by the current provider response. The user saves the desired API routing ID.
-5. **Connection and capabilities** — verification runs against the saved endpoint, credential, and selected model.
+Before card generation, ostudy asks the configured provider for one concise schema-constrained outline fragment per bounded source window. Each fragment can contain a summary, learning objectives, concepts, and section/chapter-like page spans. Fragment output is deliberately capped so a 3,200-token source window cannot produce an unbounded outline object.
 
-Nothing that the provider can report reliably should require manual transcription. For a no-auth llama.cpp profile, model discovery can run immediately after the endpoint is saved. For authenticated providers such as DeepSeek, discovery waits until the API credential has crossed the native secret boundary. Opening an already-configured profile refreshes its model list automatically when credential state permits the request. A manual refresh remains available for retry/update, but is not the primary setup mechanism.
+The section hierarchy is assembled **deterministically in Rust**. Native assembly:
 
-A stale saved model that is not present in the latest provider response is shown as stale configuration; it is not inserted into the current provider-backed dropdown.
+- bounds and sanitizes fragment content;
+- clamps section ranges to their source window/document;
+- repairs reversed page ranges;
+- deduplicates objectives and concepts;
+- orders sections by physical page position;
+- stitches adjacent/overlapping sections with the same normalized title;
+- creates a bounded fallback section when a fragment omits sections.
 
-## Initial provider adapters
+ostudy does **not** send several complete outline objects to another model for a recursive “outline of outlines” merge. That former design could itself overflow or drift on large documents.
 
-### llama.cpp / Unsloth GGUF
+The model still receives a global semantic view. After deterministic hierarchy assembly, ostudy builds a bounded whole-document digest that deliberately samples the summary, global objectives/concepts, and section coverage from the beginning through the end of the source. One optional schema-constrained **global synthesis** request turns that digest into a concise whole-document summary, major learning objectives, and key concepts. The provider cannot rewrite section/page hierarchy in this step.
 
-Unsloth describes how a model was trained/exported; the runtime protocol is the llama.cpp server API. ostudy therefore configures these models as llama.cpp provider profiles.
+Global synthesis is an enhancement rather than a single point of failure. If that bounded request is rejected, truncated, or otherwise fails validation, ostudy logs the safe reason and continues with the already-valid native whole-document aggregate. This provides global semantic prioritization without making successful document processing depend on one large merge request.
 
-For a normal single-model llama.cpp server, ostudy uses the OpenAI-compatible routes:
+The design is therefore chapter/section aware without making chapter detection a brittle prerequisite. Imperfect or missing section boundaries cannot prevent processing; later tasks still use bounded semantic source windows.
 
-- `GET /v1/models` for the loaded API model identity;
-- `POST /v1/chat/completions` for text and structured-output probes.
+The persisted outline remains reusable document intelligence for flashcards today and later study-guide, quiz, search, and tutoring tasks.
 
-A saved base URL may be the server root or may end in `/v1/`; adapter route construction normalizes both without producing a duplicate `/v1/v1/...` path.
+### Outline-guided flashcard generation
 
-Current llama.cpp also has a bare `GET /models` catalog when the server is running in router mode. That router catalog is a different endpoint with different semantics: it can enumerate models available to the router, including unloaded models. Stage 4.2's ordinary llama.cpp profile targets the OpenAI-compatible loaded-model contract at `/v1/models`; it must not assume the router-only catalog exists on every server. A non-router web/UI response at bare `/models` therefore cannot break standard model discovery.
+Every generation request receives:
 
-llama.cpp may return the GGUF file path as the model ID unless the server was started with an explicit `--alias`. The API-reported ID is the routing identity ostudy should save and send back to that server.
+- the bounded whole-document summary;
+- a bounded subset of global objectives/concepts;
+- only outline sections overlapping that semantic source window;
+- the bounded structured semantic source window;
+- selected rendered pages when the configured llama.cpp profile has current image-input capability evidence.
 
-`GET /props?model=<id>` is optional metadata. If it is absent or returns non-JSON through a proxy/router, that does not invalidate otherwise successful model discovery, text generation, or schema-constrained output. When properties are available, ostudy records only bounded capability metadata and a hash of the server/model chat template; it never persists the template itself.
+The full global outline is **not** copied into every request. This prevents prompt size from growing with total document outline size while still letting each local generation decision be ranked against global learning goals.
 
-The server/model remains responsible for tokenizer-level chat formatting. ostudy does not maintain hand-written Jinja/ChatML templates.
+The task prompt prefers durable concepts, mechanisms, comparisons, applications, and cross-page relationships when supported by the source. It suppresses bibliography/reference lists, legal/publishing scaffolding, navigation/index content, citation metadata, and hyperspecific trivia that does not contribute to understanding.
+
+Generated forms include Basic conceptual questions, definitions, four-option multiple choice with explanation, critical-thinking/application/scenario questions, and Cloze. Definition/MCQ/critical-thinking forms normalize into existing safe Basic cards; Rust constructs Cloze markers from validated exact substrings.
+
+After source windows complete, a bounded curation task selects which cards remain. It cannot rewrite cards. Curation receives a compact global learning summary rather than the complete outline hierarchy.
+
+Selected cards pass through canonical generated-card authoring for restricted Markdown/content validation, Cloze syntax, tags, duplicate fingerprints, fresh schedules, and transactional deck/card creation. There is no generated-card review queue.
+
+`Generate more cards` reuses the persisted outline and current deck coverage. That means a successful Generate-more pass on an already processed document tests the later generation path; it does **not** exercise initial outline construction.
+
+## Provider-enforced structured output
+
+Prompts describe educational intent, but prompt prose is not the structural guarantee.
+
+### llama.cpp / Unsloth
+
+llama-server receives the task JSON Schema through schema-constrained JSON output. Current llama-server converts JSON Schema to a sampling grammar. If an older compatible server rejects the primary response-format representation, ostudy retries once against the exact same endpoint/profile/model using llama-server's top-level `json_schema` compatibility field. The retry remains grammar/schema constrained; it never degrades into prompt-only JSON and never changes provider.
+
+The document SSE gateway accepts the ordinary OpenAI-compatible `choices[].delta.content` stream and a small set of llama-server compatibility forms used by some builds (`choices[].message.content`, completion `text`, or native top-level `content`). A final full-message snapshot is not duplicated if content deltas were already received. Empty final output now reports the provider `finish_reason` when available instead of collapsing immediately to an unexplained “no content” error.
+
+The server owns the model chat template. ostudy does not construct tokenizer-specific chat templates in the WebView or document feature.
 
 ### DeepSeek
 
-DeepSeek uses its fixed official HTTPS API endpoint and bearer authentication. Model discovery uses the provider's `/models` endpoint after the API key has been saved.
+DeepSeek document tasks use the Beta **strict Function Calling** interface rather than ordinary JSON Output as the schema guarantee. Each request forces one result function, enables `strict: true`, and supplies a DeepSeek-compatible JSON Schema.
 
-Connectivity probes intentionally disable thinking and streaming so a tiny test verifies final-answer generation rather than consuming its bounded output budget on reasoning. This is a connectivity policy only; later learning tasks may explicitly enable reasoning when appropriate.
+DeepSeek strict mode supports a narrower schema subset than ostudy's local contracts. The native adapter converts internal schemas to the supported subset (for example `oneOf` to `anyOf`, every object property required, `additionalProperties: false`, and omission of unsupported string/array length keywords). Native Rust then enforces the tighter length/count/semantic constraints after the provider returns schema-constrained tool arguments.
 
-DeepSeek structured output uses JSON Object mode. ostudy then applies strict local Rust deserialization and semantic validation. Provider-side JSON Schema is therefore represented as **not offered**, while **Local validation** records the guarantee ostudy actually enforces.
+Initial DeepSeek outline fragments receive a larger completion allowance than llama.cpp while the source window and requested outline shape are kept smaller. This separates source-context pressure from structured-output completion pressure.
 
-## Native gateway and transport
+### Native validation remains authoritative
 
-The gateway owns:
+Provider structure is necessary but not sufficient. Rust still validates:
 
-- endpoint normalization and Local/LAN/Cloud policy;
-- bearer attachment only after endpoint validation;
-- bounded request and response sizes;
-- connect/request timeouts;
-- disabled redirects;
-- Rustls TLS;
-- no cookie store;
-- no raw request/response body logging;
-- provider-specific error normalization.
+- text/tag/card count bounds;
+- generated-card direction rules;
+- MCQ option count/uniqueness and correct answer index;
+- Cloze mode and exact blank placement;
+- outline page-range normalization;
+- curation indices;
+- restricted Markdown and canonical card-document structure;
+- duplicate detection and fresh scheduling.
 
-The gateway returns normalized safe errors rather than arbitrary provider bodies. This lets UI and future task services reason about authentication, rate limits, missing models, timeouts, protocol errors, malformed structured output, and unsupported capabilities without exposing secret or model content.
+A structurally valid response can contain one semantically unusable card. Such a candidate may be dropped while valid cards from the same bounded window continue. A malformed outer task object still fails the request.
 
-## Capability probes
+## Long-running requests, finish reasons, and cancellation
 
-A profile test is explicit; it never runs automatically on app startup or merely because a credential was entered. The probe checks:
+Document AI uses streamed Chat Completions. Model discovery and explicit connection probes keep their ordinary bounded request behavior.
 
-1. saved profile validity;
-2. credential availability;
-3. provider model discovery;
-4. selected-model availability;
-5. optional server/model metadata where supported;
-6. minimal text completion;
-7. minimal structured output;
-8. local structural and semantic validation;
-9. normalized capability synthesis.
+For a document task, the selected profile timeout covers request establishment and receipt of successful provider **response headers**. Those headers are the acknowledgement boundary. After acknowledgement, ostudy does not impose a fixed wall-clock first-token/completion deadline; explicit Stop, transport failure, provider termination, and output-size limits still apply.
 
-Capability evidence distinguishes `declared` from `probed` and `supported`, `unsupported`, and `unknown`.
+The SSE gateway accumulates ordinary content and streamed strict-tool arguments. It also preserves provider `finish_reason`, allowing document intelligence to distinguish at least:
 
-Probe results are bound to the profile revision, credential epoch, model ID, adapter revision, and result-schema version. If configuration changes during an in-flight request, the result cannot replace current capability evidence.
+- `length` → structured result was truncated (`ai_document_output_truncated`);
+- provider content filtering;
+- provider inference-resource exhaustion;
+- genuine malformed/invalid task output.
 
-Persisted probe records contain no raw prompt, response, reasoning, credential, Authorization header, or complete chat template.
+This matters because output truncation or context exhaustion should not be mislabeled as a generic schema mismatch.
 
-## Plaintext connection diagnostics
+Outline failures identify the bounded source-window number, total window count, PDF page range, approximate source-token count, safe error code, and a bounded final validation detail. The `document_outline_window_failed` diagnostic event records the same safe metadata. It does not record raw PDF text, raw provider response bodies, credentials, Authorization headers, or model reasoning.
 
-After Test connection, Settings renders a selectable plaintext **Connection diagnostic log**. It records safe operational facts such as provider, normalized endpoint, destination scope, configured/tested model ID, attempted routes, adapter/result versions, phase status, latency, normalized error codes, and a bounded model-list preview.
+The running document task owns a process-local cancellation signal keyed by document ID. **Stop generation** cancels only that task and drops its exact HTTP response stream. A stopped document remains durable/retryable and the durable job is recorded as canceled rather than succeeded.
 
-For ordinary llama.cpp diagnostics, the required OpenAI-compatible discovery route is shown as `/v1/models`; `/props` is explicitly identified as optional metadata.
+Cancellation state is intentionally not restored after application restart. Startup reconciliation marks interrupted work retryable and never resumes provider transmission automatically.
 
-The transcript deliberately excludes credentials, Authorization headers, raw prompts, raw provider responses, reasoning content, and full chat templates. It is intended to be safe to paste into a bug report.
+## Portable multicore page rendering and progress
 
-## No fallback and no provider authority over data
+The active raster backend uses justpdf 0.1.2 / justpdf-render 0.1.2 at bounded 144 DPI. It is an in-process Rust dependency rather than a platform-specific Pdfium/Poppler/browser runtime.
 
-There is no automatic provider fallback. A failed local profile will never silently cause study content to be sent to a cloud provider.
+CPU-heavy page rasterization uses a bounded worker pool:
 
-Provider adapters also have no direct authority to create, edit, or delete cards. Future AI generation flows must produce validated candidate data that is reviewed/committed through canonical authoring services.
+```text
+min(available logical CPU parallelism, PDF page count, 16)
+```
 
-## Extension rules
+Different physical pages render concurrently. Results are sent to a coordinator and reordered by page number before the existing managed-file/SQLite persistence visitor executes. This raises multicore utilization while keeping durable page persistence deterministic and avoiding concurrent SQLite/file-ledger mutation.
 
-Adding Ollama, OpenAI, Gemini, Claude, or another provider requires:
+The structure extraction step determines the physical page count before rasterization begins. ostudy writes that total into the document projection immediately, then updates `rendered_page_count` as ordered rendered pages are committed to managed storage. The Documents screen polls active jobs, so the UI advances through values such as `0/138`, `17/138`, and `138/138` instead of remaining `0/—` until the end.
 
-- a catalog entry and explicit adapter;
-- endpoint/authentication policy;
-- model-discovery behavior where the provider exposes it;
-- provider-specific structured-output lowering;
-- deterministic contract fixtures;
-- local output validation;
-- safe normalized errors and capability evidence;
-- UI driven by provider metadata rather than provider-specific network calls.
+The active renderer identity is versioned as `justpdf-render-0.1.2/pure-rust-parallel-v1`. Retry rebuilds derivatives when a document records an older render backend identity.
 
-Provider name alone must never be treated as proof of a capability. Capability data is declared or probed and remains versioned/redacted.
+The renderer boundary remains swappable. A future compatibility backend could be introduced without changing semantic extraction, durable storage, provider contracts, backup format, or card authoring.
 
-## Later document and task services
+## Image-only pages and OCR policy
 
-Stages after 4.2 can build on this provider foundation with managed immutable documents, PDF extraction/rendering, FTS retrieval, source-evidence references, durable AI jobs, candidate review, and task-specific schemas. Those layers should not weaken the provider/secret boundaries established here.
+Pages with no recoverable text/structure remain represented by explicit page-evidence chunks. A text-only profile cannot treat those markers as source facts. A fully image-only PDF requires a verified image-capable llama.cpp task profile; rendered pages are then the source evidence.
+
+ostudy does not enable oxidize-pdf OCR/Tesseract integration. The dependency uses a restricted feature set and dependency qualification fails if `rusty-tesseract` enters the graph. Model-derived transcription is not silently written into the extracted source-text store.
+
+## Managed document lifetime
+
+Archiving a document is reversible and keeps source PDF, derivatives, and generated deck provenance. Permanent deletion is supported when no generation task is active.
+
+Deletion removes the managed PDF, rendered pages, structured extraction, outline, generation jobs, and document-library provenance. Generated decks/cards remain ordinary study content. Before document deletion, ostudy preserves a human-readable detached source citation **only in surviving generated decks whose `deleted_at` is still null**. Soft-deleted decks may still have provenance rows until normal purge/cascade cleanup, but they are not treated as citation destinations and do not increase `preservedDeckCitationCount`.
+
+The delete workflow stages the managed document directory into application-controlled trash before the SQLite transaction. A database failure restores the directory. After a successful transaction, filesystem cleanup is best-effort and startup reconciliation removes unreachable delete-staging residue.
+
+## Privacy and trust
+
+PDF import, extraction, semantic chunking, native outline assembly, bounded global synthesis, outline persistence, and page rendering are local except for the explicitly configured provider requests. No provider fallback is automatic. Source material is treated as untrusted data and cannot replace system/task instructions.
+
+Credentials, Authorization headers, raw provider responses, and reasoning content are not persisted. Provider requests run outside SQLite transactions. The original PDF is not uploaded as an opaque file; bounded source context and selected page images are transmitted according to the configured provider/capability.
+
+The WebView never receives a managed PDF path merely to open it. `open_document_source` validates document identity/path in Rust and invokes the operating-system opener natively, so the frontend does not require generic filesystem opener authority.
+
+## Backup
+
+Complete library backups preserve the coherent SQLite snapshot, managed card images, retained source PDFs, rendered pages, and document-intelligence state. AI credentials remain excluded.
+
+Backups are blocked while a document is actively processing so the database and managed files are captured as one coherent library state.
+
+## Extension rule
+
+Future study guides, quizzes, tutoring, document search, and learning-analysis features should reuse the managed document/semantic/outline platform rather than adding feature-specific PDF parsers or generic prompt IPC. New providers must implement the native provider boundary and explicit capability/contract tests; task code must never silently substitute another provider.

@@ -2,9 +2,9 @@
 //!
 //! Startup resolves the managed application paths, opens and migrates SQLite,
 //! finalizes expired deletion recovery windows, purges finalized card-owned
-//! history, and reconciles the asset ledger with the managed filesystem before
-//! publishing any Tauri state. A failed durable initialization therefore stops
-//! startup instead of exposing commands to a partially reconciled library.
+//! history, reconciles managed images and PDFs, then publishes Tauri state. A
+//! failed durable initialization therefore stops startup instead of exposing
+//! commands to a partially reconciled library.
 
 mod ai;
 mod analytics;
@@ -20,10 +20,18 @@ mod deletion;
 mod deletion_commands;
 mod deletion_purge;
 mod diagnostics;
+mod document_backup;
+mod document_delete_reconciliation;
+mod document_more;
+mod document_operations;
+mod document_semantics;
+mod documents;
 mod error;
 mod library_backup;
 mod logging;
 mod paths;
+mod pdf_backend;
+mod pdf_render_backend;
 mod practice;
 mod practice_selection;
 mod projections;
@@ -33,9 +41,14 @@ mod settings;
 mod study_calendar;
 mod studyability;
 mod studydeck;
+mod task_cancellation;
 mod util;
 mod workload;
 
+#[cfg(test)]
+mod document_backup_tests;
+#[cfg(test)]
+mod document_pdf_tests;
 #[cfg(test)]
 mod regression_tests;
 #[cfg(test)]
@@ -48,6 +61,7 @@ use std::io;
 use ai::AiRuntimeState;
 use database::Database;
 use paths::AppPaths;
+use pdf_render_backend::PdfRenderRuntime;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -61,17 +75,25 @@ pub fn run() {
                     "Could not resolve the application data directory: {error}"
                 ))
             })?;
+            let resource_directory = app.path().resource_dir().ok();
             let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
             let pending_restore =
                 library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
             let ai_runtime = AiRuntimeState::new().map_err(io::Error::other)?;
+            let pdf_render_runtime = PdfRenderRuntime::new(resource_directory);
 
             deletion::finalize_expired_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
             deletion_purge::purge_finalized_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
             asset_lifecycle::reconcile_startup(&database, &paths)
+                .map_err(|error| io::Error::other(error.message))?;
+            document_delete_reconciliation::restore_interrupted_deletions(&database, &paths)
+                .map_err(|error| io::Error::other(error.message))?;
+            documents::reconcile_startup(&database, &paths)
+                .map_err(|error| io::Error::other(error.message))?;
+            document_operations::reconcile_deleted_document_trash(&paths)
                 .map_err(|error| io::Error::other(error.message))?;
             if let Some(restore) = pending_restore {
                 restore.commit();
@@ -84,17 +106,20 @@ pub fn run() {
                 return Err(io::Error::other("The database state was already initialized.").into());
             }
             if !app.manage(ai_runtime) {
-                return Err(
-                    io::Error::other("The AI runtime state was already initialized.").into(),
-                );
+                return Err(io::Error::other("The AI runtime state was already initialized.").into());
+            }
+            if !app.manage(pdf_render_runtime) {
+                return Err(io::Error::other("The PDF renderer state was already initialized.").into());
             }
 
             logging::info(
                 "application_started",
                 format!(
-                    "data_directory={} database={} asset_reconciliation=complete ai_gateway=ready",
+                    "data_directory={} database={} asset_reconciliation=complete document_reconciliation=complete ai_gateway=ready pdf_extraction={} pdf_renderer={}",
                     paths.app_data_dir().display(),
-                    paths.database_path().display()
+                    paths.database_path().display(),
+                    pdf_backend::active_backend_id(),
+                    pdf_render_backend::active_backend_id()
                 ),
             );
             Ok(())
@@ -150,6 +175,14 @@ pub fn run() {
             ai::probes::list_ai_provider_models,
             ai::probes::test_ai_provider_profile,
             ai::probes::get_ai_provider_probe_result,
+            documents::list_documents,
+            document_operations::import_pdf_document,
+            document_operations::run_pdf_flashcard_generation,
+            document_more::generate_more_pdf_flashcards,
+            document_operations::cancel_pdf_flashcard_generation,
+            document_operations::open_document_source,
+            document_operations::delete_pdf_document,
+            documents::set_document_archived,
             library_backup::export_library_backup,
             library_backup::prepare_library_restore,
             practice_selection::get_practice_workload,

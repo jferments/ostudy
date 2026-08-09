@@ -112,9 +112,21 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "12b4ec2518478a9798a19e87577f440a89943d06abfe7cb725f56727a854b75a",
         sql: include_str!("../migrations/0016_ai_provider_probe_capabilities.sql"),
     },
+    Migration {
+        version: 17,
+        name: "document_flashcard_generation",
+        checksum: "6f503141d0a99e0e603fc465c18ae456f18a9c7c66d16b3289b4d5cd4ed7baaa",
+        sql: include_str!("../migrations/0017_document_flashcard_generation.sql"),
+    },
+    Migration {
+        version: 18,
+        name: "document_semantics_and_outline",
+        checksum: "06b0023711038b8f9ea2c90c17c5ffb9dda8b286c01e34c4881a0596e96a1c7e",
+        sql: include_str!("../migrations/0018_document_semantics_and_outline.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 16;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 18;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -442,6 +454,15 @@ mod tests {
                     "ai_task_defaults",
                     "ai_provider_probe_results",
                     "ai_provider_capabilities",
+                    "documents",
+                    "document_pages",
+                    "document_generation_jobs",
+                    "document_generation_units",
+                    "document_decks",
+                    "document_semantic_elements",
+                    "document_semantic_chunks",
+                    "document_outlines",
+                    "document_generation_windows",
                 ] {
                     let exists: i64 = connection
                         .query_row(

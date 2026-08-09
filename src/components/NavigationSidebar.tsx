@@ -12,6 +12,7 @@ interface NavigationSidebarProps {
 
 const ITEMS: ReadonlyArray<{ section: AppSection; icon: string; label: string }> = [
   { section: "decks", icon: "▤", label: "Decks" },
+  { section: "documents", icon: "▣", label: "Documents" },
   { section: "cards", icon: "⌕", label: "Search/Filter" },
   { section: "templates", icon: "▧", label: "Templates" },
   { section: "practice", icon: "▶", label: "Practice" },

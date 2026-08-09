@@ -1,11 +1,12 @@
 [package]
 name = "ostudy"
 version = "0.1.0"
-description = "A local-first flashcard and study application"
-authors = ["ostudy contributors"]
+description = "Local-first flashcards and study tools"
+authors = ["jferments"]
 edition = "2021"
+rust-version = "1.97"
 license = "MIT"
-rust-version = "1.97.1"
+publish = false
 
 [lib]
 name = "ostudy_lib"
@@ -15,8 +16,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
+base64 = "=0.22.1"
 chrono = "=0.4.45"
+justpdf = "=0.1.2"
 keyring = "=4.1.6"
+oxidize-pdf = { version = "=4.2.2", default-features = false, features = ["compression", "semantic"] }
 reqwest = { version = "=0.13.4", default-features = false, features = ["json", "rustls"] }
 rs-fsrs = "=1.2.1"
 rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled", "backup", "trace"] }
@@ -26,4 +30,5 @@ sha2 = "=0.10.9"
 tauri-plugin-dialog = "=2.7.2"
 tauri-plugin-opener = "=2.5.4"
 tauri = { version = "=2.11.5", features = ["protocol-asset"] }
+tokio = { version = "=1.53.1", features = ["macros", "rt", "sync", "time"] }
 url = "=2.5.7"

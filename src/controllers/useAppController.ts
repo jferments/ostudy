@@ -6,10 +6,15 @@ import { getErrorMessage } from "../ipc/common";
 import { listDecks, type DeckSummary } from "../ipc/decks";
 import { getSettings, type AppSettings } from "../ipc/settings";
 import { useConfirm } from "../ui/overlays/overlayContext";
+import {
+  hasActivePracticeSession,
+  terminateActivePracticeSession,
+} from "./practiceExitGuard";
 import { useRequestLane } from "./requestLane";
 
 export type AppSection =
   | "decks"
+  | "documents"
   | "cards"
   | "templates"
   | "practice"
@@ -156,6 +161,28 @@ export function useAppController() {
     return confirmDiscardSettings();
   }
 
+  async function confirmPracticeTermination(next: AppSection): Promise<boolean> {
+    if (section !== "practice" || next === "practice" || !hasActivePracticeSession()) {
+      return true;
+    }
+    const accepted = await confirm({
+      title: "Terminate this practice session?",
+      description:
+        "Cards you already reviewed are saved and will keep their updated schedules and review history. Leaving now ends this session without opening post-review analytics.",
+      confirmLabel: "Yes, terminate",
+      destructive: true,
+    });
+    if (!accepted) return false;
+    const terminated = await terminateActivePracticeSession();
+    if (!terminated) {
+      showToast(
+        "error",
+        "The practice session could not be ended safely. Resolve the practice error before leaving.",
+      );
+    }
+    return terminated;
+  }
+
   function nextPracticeRequest(
     deckIds: string[],
     tagIds: string[],
@@ -169,6 +196,7 @@ export function useAppController() {
 
   async function navigate(next: AppSection): Promise<void> {
     if (next === section && next !== "practice") return;
+    if (!(await confirmPracticeTermination(next))) return;
     if (!(await canLeaveCurrentSection())) return;
     if (next === "practice") nextPracticeRequest([], [], [], false);
     if (next === "analytics") {

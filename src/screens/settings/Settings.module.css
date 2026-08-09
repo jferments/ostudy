@@ -328,6 +328,13 @@
   gap: 18px;
 }
 
+.aiSidebarStack {
+  display: grid;
+  min-width: 0;
+  align-self: start;
+  gap: 18px;
+}
+
 .aiSidebar {
   position: sticky;
   top: 14px;

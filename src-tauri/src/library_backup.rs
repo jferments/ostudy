@@ -1,12 +1,11 @@
 //! Complete local-library backup and restart-safe restoration.
 //!
-//! A backup contains one coherent SQLite snapshot plus every ready managed image.
-//! Because analytics is derived from review events, practice sessions, schedules,
-//! tags, and current card state, preserving the database snapshot preserves the
-//! complete review and analytics history without inventing a second analytics
-//! format. Restore is prepared while ostudy is running and applied before the
-//! database opens on the next launch, allowing an atomic filesystem rollback if
-//! the restored database cannot be opened or migrated.
+//! A backup contains one coherent SQLite snapshot, every ready managed card
+//! image, and every immutable managed PDF source and rendered document page.
+//! Credentials remain outside SQLite and are never part of the package. Restore
+//! is prepared while ostudy is running and applied before the database opens on
+//! the next launch, allowing an atomic filesystem rollback if the restored
+//! library cannot be opened, migrated, or reconciled.
 
 use std::{
     fs::{self, File, OpenOptions},
@@ -22,13 +21,15 @@ use tauri::State;
 use crate::{
     assets::detect_image_bytes,
     database::{Database, LATEST_SCHEMA_VERSION},
+    document_backup,
     error::CommandError,
     paths::AppPaths,
     util::unix_time_millis,
 };
 
 const BACKUP_FORMAT: &str = "ostudy-library-backup";
-const BACKUP_VERSION: i64 = 1;
+const BACKUP_VERSION: i64 = 2;
+const MIN_SUPPORTED_BACKUP_VERSION: i64 = 1;
 const MAX_BACKUP_FILE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const MAX_DATABASE_SNAPSHOT_BYTES: usize = 1_500 * 1024 * 1024;
 const MAX_SINGLE_ASSET_BYTES: usize = 25 * 1024 * 1024;
@@ -48,6 +49,18 @@ CREATE TABLE asset_files (
     mime_type TEXT NOT NULL,
     byte_size INTEGER NOT NULL CHECK(byte_size > 0),
     data BLOB NOT NULL
+) STRICT;
+CREATE TABLE document_files (
+    file_key TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL CHECK(length(document_id) = 32),
+    page_number INTEGER CHECK(page_number IS NULL OR page_number >= 1),
+    file_kind TEXT NOT NULL CHECK(file_kind IN ('source_pdf', 'page_render')),
+    relative_path TEXT NOT NULL UNIQUE,
+    mime_type TEXT NOT NULL CHECK(mime_type IN ('application/pdf', 'image/png')),
+    byte_size INTEGER NOT NULL CHECK(byte_size > 0),
+    sha256 TEXT NOT NULL CHECK(length(sha256) = 64),
+    data BLOB NOT NULL,
+    CHECK((file_kind = 'source_pdf') = (page_number IS NULL))
 ) STRICT;
 "#;
 
@@ -94,8 +107,10 @@ struct BackupSummary {
 pub(crate) struct PendingRestoreGuard {
     database_path: PathBuf,
     assets_path: PathBuf,
+    documents_path: PathBuf,
     rollback_database: Option<PathBuf>,
     rollback_assets: Option<PathBuf>,
+    rollback_documents: Option<PathBuf>,
     pending_package: PathBuf,
     staging_root: PathBuf,
     committed: bool,
@@ -103,15 +118,17 @@ pub(crate) struct PendingRestoreGuard {
 
 impl PendingRestoreGuard {
     pub(crate) fn commit(mut self) {
-        // Once the restored database has opened and migrated successfully, a
+        // Once the restored database has opened and reconciled successfully, a
         // cleanup failure must never invoke Drop's rollback against that live
-        // connection. Mark the guard committed first and treat stale rollback
-        // files as conservative cleanup residue for the next maintenance pass.
+        // connection. Mark the guard committed first and clean conservatively.
         self.committed = true;
         if let Some(path) = self.rollback_database.take() {
             let _ = remove_file_if_exists(&path);
         }
         if let Some(path) = self.rollback_assets.take() {
+            let _ = remove_dir_if_exists(&path);
+        }
+        if let Some(path) = self.rollback_documents.take() {
             let _ = remove_dir_if_exists(&path);
         }
         let _ = remove_file_if_exists(&self.pending_package);
@@ -126,11 +143,15 @@ impl Drop for PendingRestoreGuard {
         }
         let _ = remove_file_if_exists(&self.database_path);
         let _ = remove_dir_if_exists(&self.assets_path);
+        let _ = remove_dir_if_exists(&self.documents_path);
         if let Some(path) = self.rollback_database.take() {
             let _ = fs::rename(path, &self.database_path);
         }
         if let Some(path) = self.rollback_assets.take() {
             let _ = fs::rename(path, &self.assets_path);
+        }
+        if let Some(path) = self.rollback_documents.take() {
+            let _ = fs::rename(path, &self.documents_path);
         }
     }
 }
@@ -182,20 +203,26 @@ pub(crate) fn apply_pending_restore(
         .map_err(|error| format!("Could not create restore staging: {error}"))?;
     let staged_database = staging_root.join("library.sqlite3");
     let staged_assets = staging_root.join("assets");
+    let staged_documents = staging_root.join("documents");
     extract_backup_package(&pending, &staged_database, &staged_assets)
         .map_err(|error| error.message)?;
 
     let database_path = paths.database_path().to_path_buf();
     let assets_path = paths.app_data_dir().join("assets");
+    let documents_path = paths.app_data_dir().join("documents");
     let rollback_database = paths.app_data_dir().join("library.sqlite3.pre-restore");
     let rollback_assets = paths.app_data_dir().join("assets.pre-restore");
+    let rollback_documents = paths.app_data_dir().join("documents.pre-restore");
     remove_file_if_exists(&rollback_database)
         .map_err(|error| format!("Could not clear database rollback path: {error}"))?;
     remove_dir_if_exists(&rollback_assets)
-        .map_err(|error| format!("Could not clear asset rollback path: {error}"))?;
+        .map_err(|error| format!("Could not clear image rollback path: {error}"))?;
+    remove_dir_if_exists(&rollback_documents)
+        .map_err(|error| format!("Could not clear document rollback path: {error}"))?;
 
     let had_database = database_path.exists();
     let had_assets = assets_path.exists();
+    let had_documents = documents_path.exists();
     if had_database {
         fs::rename(&database_path, &rollback_database).map_err(|error| {
             format!("Could not stage the current database for rollback: {error}")
@@ -211,36 +238,88 @@ pub(crate) fn apply_pending_restore(
             ));
         }
     }
+    if had_documents {
+        if let Err(error) = fs::rename(&documents_path, &rollback_documents) {
+            if had_assets {
+                let _ = fs::rename(&rollback_assets, &assets_path);
+            }
+            if had_database {
+                let _ = fs::rename(&rollback_database, &database_path);
+            }
+            return Err(format!(
+                "Could not stage current documents for rollback: {error}"
+            ));
+        }
+    }
+
     if let Err(error) = fs::rename(&staged_database, &database_path) {
-        if had_assets {
-            let _ = fs::rename(&rollback_assets, &assets_path);
-        }
-        if had_database {
-            let _ = fs::rename(&rollback_database, &database_path);
-        }
+        restore_previous_filesystem(
+            &database_path,
+            &assets_path,
+            &documents_path,
+            had_database.then_some(&rollback_database),
+            had_assets.then_some(&rollback_assets),
+            had_documents.then_some(&rollback_documents),
+        );
         return Err(format!("Could not install the restored database: {error}"));
     }
     if let Err(error) = fs::rename(&staged_assets, &assets_path) {
-        let _ = fs::remove_file(&database_path);
-        if had_database {
-            let _ = fs::rename(&rollback_database, &database_path);
-        }
-        if had_assets {
-            let _ = fs::rename(&rollback_assets, &assets_path);
-        }
+        restore_previous_filesystem(
+            &database_path,
+            &assets_path,
+            &documents_path,
+            had_database.then_some(&rollback_database),
+            had_assets.then_some(&rollback_assets),
+            had_documents.then_some(&rollback_documents),
+        );
         return Err(format!("Could not install the restored images: {error}"));
+    }
+    if let Err(error) = fs::rename(&staged_documents, &documents_path) {
+        restore_previous_filesystem(
+            &database_path,
+            &assets_path,
+            &documents_path,
+            had_database.then_some(&rollback_database),
+            had_assets.then_some(&rollback_assets),
+            had_documents.then_some(&rollback_documents),
+        );
+        return Err(format!("Could not install the restored documents: {error}"));
     }
     sync_directory(paths.app_data_dir()).map_err(|error| error.message)?;
 
     Ok(Some(PendingRestoreGuard {
         database_path,
         assets_path,
+        documents_path,
         rollback_database: had_database.then_some(rollback_database),
         rollback_assets: had_assets.then_some(rollback_assets),
+        rollback_documents: had_documents.then_some(rollback_documents),
         pending_package: pending,
         staging_root,
         committed: false,
     }))
+}
+
+fn restore_previous_filesystem(
+    database_path: &Path,
+    assets_path: &Path,
+    documents_path: &Path,
+    rollback_database: Option<&PathBuf>,
+    rollback_assets: Option<&PathBuf>,
+    rollback_documents: Option<&PathBuf>,
+) {
+    let _ = remove_file_if_exists(database_path);
+    let _ = remove_dir_if_exists(assets_path);
+    let _ = remove_dir_if_exists(documents_path);
+    if let Some(path) = rollback_database {
+        let _ = fs::rename(path, database_path);
+    }
+    if let Some(path) = rollback_assets {
+        let _ = fs::rename(path, assets_path);
+    }
+    if let Some(path) = rollback_documents {
+        let _ = fs::rename(path, documents_path);
+    }
 }
 
 fn export_backup(
@@ -257,20 +336,38 @@ fn export_backup(
             "The selected backup folder no longer exists.",
         ));
     }
-    let active_drafts = database.with_connection(|connection| {
-        connection
+    let (active_drafts, processing_documents) = database.with_connection(|connection| {
+        let active_drafts = connection
             .query_row(
                 "SELECT COUNT(*) FROM asset_drafts
                  WHERE committed_at IS NULL AND canceled_at IS NULL",
                 [],
                 |row| row.get::<_, i64>(0),
             )
-            .map_err(CommandError::database)
+            .map_err(CommandError::database)?;
+        let processing_documents = if document_backup::table_exists(connection, "documents")? {
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM documents WHERE lifecycle_state = 'processing'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(CommandError::database)?
+        } else {
+            0
+        };
+        Ok((active_drafts, processing_documents))
     })?;
     if active_drafts > 0 {
         return Err(CommandError::new(
             "active_asset_draft",
             "Finish or cancel the open card, template, or import before backing up the library.",
+        ));
+    }
+    if processing_documents > 0 {
+        return Err(CommandError::new(
+            "document_processing_active",
+            "Finish PDF extraction and flashcard generation before backing up the library.",
         ));
     }
 
@@ -342,6 +439,55 @@ fn export_backup(
         )
         .map_err(CommandError::database)?;
 
+    export_asset_files(&snapshot, paths, &transaction)?;
+    let document_file_count =
+        document_backup::export_document_files(&snapshot, paths, &transaction)?;
+    transaction
+        .execute(
+            "INSERT INTO backup_metadata (key, value) VALUES ('documentFileCount', ?1)",
+            [document_file_count.to_string()],
+        )
+        .map_err(CommandError::database)?;
+    transaction.commit().map_err(CommandError::database)?;
+
+    let integrity: String = package
+        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+        .map_err(CommandError::database)?;
+    if integrity != "ok" {
+        return Err(CommandError::new(
+            "backup_validation_failed",
+            "The completed backup failed its integrity check.",
+        ));
+    }
+    drop(package);
+    let package_size = fs::metadata(&temporary).map_err(CommandError::io)?.len();
+    if package_size == 0 || package_size > MAX_BACKUP_FILE_BYTES {
+        return Err(CommandError::new(
+            "backup_too_large",
+            "The completed backup exceeds ostudy's supported size limit.",
+        ));
+    }
+    OpenOptions::new()
+        .read(true)
+        .open(&temporary)
+        .and_then(|file| file.sync_all())
+        .map_err(CommandError::io)?;
+    replace_file(&temporary, destination)?;
+    remove_dir_if_exists(&scratch).map_err(CommandError::io)?;
+    Ok(LibraryBackupResultDto {
+        destination_path: destination.to_string_lossy().into_owned(),
+        deck_count: summary.deck_count,
+        template_count: summary.template_count,
+        review_count: summary.review_count,
+        asset_count: summary.asset_count,
+    })
+}
+
+fn export_asset_files(
+    snapshot: &Connection,
+    paths: &AppPaths,
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<(), CommandError> {
     let mut statement = snapshot
         .prepare(
             "SELECT id, relative_path, mime_type, byte_size
@@ -395,31 +541,7 @@ fn export_backup(
             )
             .map_err(CommandError::database)?;
     }
-    transaction.commit().map_err(CommandError::database)?;
-    let integrity: String = package
-        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
-        .map_err(CommandError::database)?;
-    if integrity != "ok" {
-        return Err(CommandError::new(
-            "backup_validation_failed",
-            "The completed backup failed its integrity check.",
-        ));
-    }
-    drop(package);
-    OpenOptions::new()
-        .read(true)
-        .open(&temporary)
-        .and_then(|file| file.sync_all())
-        .map_err(CommandError::io)?;
-    replace_file(&temporary, destination)?;
-    remove_dir_if_exists(&scratch).map_err(CommandError::io)?;
-    Ok(LibraryBackupResultDto {
-        destination_path: destination.to_string_lossy().into_owned(),
-        deck_count: summary.deck_count,
-        template_count: summary.template_count,
-        review_count: summary.review_count,
-        asset_count: summary.asset_count,
-    })
+    Ok(())
 }
 
 fn validate_backup_package(
@@ -452,9 +574,10 @@ fn validate_backup_package(
     let integrity: String = package
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .map_err(CommandError::database)?;
+    let version = backup_version(&package)?;
     if integrity != "ok"
         || backup_metadata(&package, "format")? != BACKUP_FORMAT
-        || backup_metadata(&package, "formatVersion")? != BACKUP_VERSION.to_string()
+        || !(MIN_SUPPORTED_BACKUP_VERSION..=BACKUP_VERSION).contains(&version)
     {
         return Err(CommandError::new(
             "invalid_backup",
@@ -489,6 +612,21 @@ fn validate_backup_package(
         .map_err(CommandError::database)?;
     validate_snapshot_database(&snapshot)?;
     validate_backup_assets(&package, &snapshot, None)?;
+    if version >= 2 {
+        document_backup::validate_document_files(&package, &snapshot, None)?;
+    } else if document_backup::table_exists(&snapshot, "documents")?
+        && snapshot
+            .query_row("SELECT COUNT(*) FROM documents", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map_err(CommandError::database)?
+            > 0
+    {
+        return Err(CommandError::new(
+            "invalid_backup",
+            "This legacy backup version cannot contain managed PDF documents.",
+        ));
+    }
     let summary = snapshot_summary(&snapshot)?;
     drop(snapshot);
     if extract_database_to.is_none() {
@@ -505,23 +643,28 @@ fn extract_backup_package(
     let summary = validate_backup_package(source, Some(database_path))?;
     let package = Connection::open_with_flags(source, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(CommandError::database)?;
+    let version = backup_version(&package)?;
     let snapshot = Connection::open_with_flags(database_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(CommandError::database)?;
+    let extraction_root = assets_path.parent().ok_or_else(|| {
+        CommandError::new(
+            "invalid_restore_path",
+            "The restore staging path is invalid.",
+        )
+    })?;
+    let documents_path = extraction_root.join("documents");
     remove_dir_if_exists(assets_path).map_err(CommandError::io)?;
+    remove_dir_if_exists(&documents_path).map_err(CommandError::io)?;
     fs::create_dir_all(assets_path.join("images")).map_err(CommandError::io)?;
     fs::create_dir_all(assets_path.join("staging")).map_err(CommandError::io)?;
     fs::create_dir_all(assets_path.join("quarantine")).map_err(CommandError::io)?;
-    validate_backup_assets(
-        &package,
-        &snapshot,
-        Some(assets_path.parent().ok_or_else(|| {
-            CommandError::new(
-                "invalid_restore_path",
-                "The restore staging path is invalid.",
-            )
-        })?),
-    )?;
+    fs::create_dir_all(documents_path.join("staging")).map_err(CommandError::io)?;
+    validate_backup_assets(&package, &snapshot, Some(extraction_root))?;
+    if version >= 2 {
+        document_backup::validate_document_files(&package, &snapshot, Some(extraction_root))?;
+    }
     sync_directory(assets_path)?;
+    sync_directory(&documents_path)?;
     Ok(summary)
 }
 
@@ -673,6 +816,12 @@ fn backup_metadata(connection: &Connection, key: &str) -> Result<String, Command
         .optional()
         .map_err(CommandError::database)?
         .ok_or_else(|| CommandError::new("invalid_backup", "The backup metadata is incomplete."))
+}
+
+fn backup_version(connection: &Connection) -> Result<i64, CommandError> {
+    backup_metadata(connection, "formatVersion")?
+        .parse::<i64>()
+        .map_err(|_| CommandError::new("invalid_backup", "The backup version is invalid."))
 }
 
 fn normalize_backup_path(value: &str) -> Result<PathBuf, CommandError> {

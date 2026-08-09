@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { PracticeLaunchRequest } from "../App";
 import { PracticeController } from "../controllers/practiceController";
+import { registerPracticeExitHandler } from "../controllers/practiceExitGuard";
 import {
   createMutationId,
   createOperationId,
@@ -111,6 +112,33 @@ export function PracticeScreen({
   const current = sessionCards[position] ?? null;
   const confirm = useConfirm();
   const experience = useExperience();
+
+  useEffect(() => {
+    if (!session || completed) return registerPracticeExitHandler(null);
+    const activeSessionId = session.id;
+    return registerPracticeExitHandler(async () => {
+      if (pendingReviewRef.current) {
+        setErrorMessage(
+          "Finish or safely retry the pending rating before leaving this practice session.",
+        );
+        return false;
+      }
+      if (endingRef.current) return false;
+      endingRef.current = true;
+      setIsEnding(true);
+      setErrorMessage(null);
+      try {
+        await controller.complete(activeSessionId);
+        return true;
+      } catch (error: unknown) {
+        setErrorMessage(getErrorMessage(error));
+        return false;
+      } finally {
+        endingRef.current = false;
+        setIsEnding(false);
+      }
+    });
+  }, [completed, controller, session]);
 
   useEffect(() => () => controller.invalidate(), [controller]);
 

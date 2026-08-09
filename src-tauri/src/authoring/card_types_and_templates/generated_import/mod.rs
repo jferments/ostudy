@@ -39,10 +39,8 @@ struct PreparedImport {
 mod apply;
 mod prepare;
 
-use apply::import_prepared_flashcards;
-use prepare::prepare_flashcard_import;
-#[cfg(test)]
-use prepare::prepare_flashcard_import_bytes;
+use apply::{import_prepared_flashcards, import_prepared_flashcards_with_commit};
+use prepare::{prepare_flashcard_import, prepare_flashcard_import_bytes};
 
 #[tauri::command]
 pub fn import_generated_flashcards(
@@ -51,6 +49,20 @@ pub fn import_generated_flashcards(
 ) -> Result<FlashcardImportResultDto, CommandError> {
     let prepared = prepare_flashcard_import(&source_path)?;
     database.with_connection(|connection| import_prepared_flashcards(connection, prepared))
+}
+
+pub(crate) fn import_generated_flashcards_bytes_with_commit<F>(
+    database: &Database,
+    bytes: &[u8],
+    before_commit: F,
+) -> Result<FlashcardImportResultDto, CommandError>
+where
+    F: FnOnce(&rusqlite::Connection, &FlashcardImportResultDto, i64) -> Result<(), CommandError>,
+{
+    let prepared = prepare_flashcard_import_bytes(bytes)?;
+    database.with_connection(|connection| {
+        import_prepared_flashcards_with_commit(connection, prepared, before_commit)
+    })
 }
 
 mod markdown;
@@ -250,6 +262,40 @@ mod generated_import_tests {
             })
             .expect_err("ambiguous append destination should fail");
         assert_eq!(ambiguous.code, "generated_import_deck_ambiguous");
+    }
+
+    #[test]
+    fn commit_hook_failure_rolls_back_generated_cards_and_deck() {
+        let database = Database::open_in_memory().expect("database should open");
+        let error = import_generated_flashcards_bytes_with_commit(
+            &database,
+            &generated_file("create", "Atomic generation", "Question", "Answer"),
+            |_, _, _| {
+                Err(CommandError::new(
+                    "test_commit_hook_failed",
+                    "The test provenance write failed.",
+                ))
+            },
+        )
+        .expect_err("hook failure should abort the whole authoring transaction");
+        assert_eq!(error.code, "test_commit_hook_failed");
+        database
+            .with_connection(|connection| {
+                let deck_count: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM decks WHERE name = 'Atomic generation'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                let note_count: i64 = connection
+                    .query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0))
+                    .map_err(CommandError::database)?;
+                assert_eq!(deck_count, 0);
+                assert_eq!(note_count, 0);
+                Ok(())
+            })
+            .expect("rolled-back authoring state should be readable");
     }
 
     #[test]

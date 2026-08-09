@@ -1,10 +1,13 @@
-//! AI provider configuration, credential isolation, and provider gateway.
+//! AI provider configuration, credential isolation, provider gateway, and
+//! task-specific generation services.
 //!
-//! This subsystem is deliberately separate from authoring. Provider networking
-//! is available only through narrow profile/model/probe commands here; future
-//! learning tasks call the internal gateway from task-specific services.
+//! Provider networking remains native-only. Feature services call narrow Rust
+//! tasks that own prompts, source grounding, output schemas, and validation;
+//! React never receives credentials or arbitrary provider completions.
 
 mod catalog;
+#[path = "document_intelligence_adapter.rs"]
+pub(crate) mod document_intelligence;
 mod endpoint_policy;
 mod gateway;
 pub(crate) mod probes;

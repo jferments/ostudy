@@ -10,6 +10,9 @@ import { LoadingState } from "./ui/primitives/EmptyState";
 const DecksScreen = lazy(() =>
   import("./screens/DecksScreen").then((module) => ({ default: module.DecksScreen })),
 );
+const DocumentsSection = lazy(() =>
+  import("./screens/DocumentsSection").then((module) => ({ default: module.DocumentsSection })),
+);
 const CardsScreen = lazy(() =>
   import("./screens/CardsScreen").then((module) => ({ default: module.CardsScreen })),
 );
@@ -75,6 +78,12 @@ function App() {
                 refreshDecks={controller.refreshDecks}
                 onPracticeDeck={controller.practiceDeck}
                 onDirtyChange={controller.setHasUnsavedCard}
+                showToast={controller.showToast}
+              />
+            ) : null}
+            {controller.section === "documents" ? (
+              <DocumentsSection
+                refreshDecks={controller.refreshDecks}
                 showToast={controller.showToast}
               />
             ) : null}

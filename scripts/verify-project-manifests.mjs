@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -106,10 +107,13 @@ for (const [label, needle] of [
   ["Rust toolchain", `channel = "${env.get("RUST_VERSION")}"`],
   ["tauri", `version = "=${env.get("TAURI_RUST_VERSION")}"`],
   ["tauri-build", `version = "=${env.get("TAURI_BUILD_VERSION")}"`],
+  ["base64", `base64 = "=${env.get("BASE64_VERSION")}"`],
   ["rusqlite", `version = "=${env.get("RUSQLITE_VERSION")}"`],
   ["serde", `version = "=${env.get("SERDE_VERSION")}"`],
   ["serde_json", `serde_json = "=${env.get("SERDE_JSON_VERSION")}"`],
   ["chrono", `chrono = "=${env.get("CHRONO_VERSION")}"`],
+  ["justpdf", `justpdf = "=${env.get("JUSTPDF_VERSION")}"`],
+  ["oxidize-pdf", `version = "=${env.get("OXIDIZE_PDF_VERSION")}"`],
   ["keyring", `keyring = "=${env.get("KEYRING_VERSION")}"`],
   ["reqwest", `version = "=${env.get("REQWEST_VERSION")}"`],
   ["rs-fsrs", `rs-fsrs = "=${env.get("RS_FSRS_VERSION")}"`],
@@ -118,6 +122,13 @@ for (const [label, needle] of [
   const source = label === "Rust toolchain" ? toolchain : cargo;
   if (!source.includes(needle)) failures.push(`${label} exact pin missing`);
 }
+if (cargo.includes("pdfium-render")) failures.push("pdfium-render must not be a mandatory dependency");
+if (cargo.includes("rusty-tesseract")) failures.push("OCR/Tesseract must not be a mandatory dependency");
+requireText("oxidize-pdf feature policy", cargo, [
+  'oxidize-pdf = { version = "=',
+  'default-features = false',
+  'features = ["compression", "semantic"]',
+]);
 
 for (const required of [
   "strictDepBuilds: true",
@@ -136,13 +147,34 @@ if (!(tauri.app?.security?.csp ?? "").includes("asset:")) failures.push("CSP doe
 for (const permission of ["core:default", "dialog:default", "opener:default"]) {
   if (!capability.permissions?.includes(permission)) failures.push(`capability missing ${permission}`);
 }
+if (Array.isArray(tauri.bundle?.resources) && tauri.bundle.resources.some((resource) => String(resource).includes("pdfium"))) {
+  failures.push("Tauri bundle must not require a platform-specific Pdfium runtime");
+}
+
+const trackedScriptEntries = execFileSync("git", ["ls-files", "-s", "scripts"], {
+  cwd: root,
+  encoding: "utf8",
+})
+  .trim()
+  .split(/\r?\n/u)
+  .filter(Boolean);
+for (const entry of trackedScriptEntries) {
+  const match = entry.match(/^(\d{6})\s+[0-9a-f]+\s+\d+\t(.+)$/u);
+  if (!match) {
+    failures.push(`Could not parse tracked script entry: ${entry}`);
+    continue;
+  }
+  const [, mode, path] = match;
+  if (path.endsWith(".sh") && mode !== "100755") {
+    failures.push(`${path} must be committed executable (100755), found ${mode}`);
+  }
+}
 
 const migrationDirectory = join(root, "src-tauri", "migrations");
 const migrationFiles = (await readdir(migrationDirectory))
   .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
   .sort();
 const registry = new Map();
-// Parse explicit Migration struct literals without depending on line wrapping.
 for (const match of database.matchAll(/Migration\s*\{([\s\S]*?)\},/gu)) {
   const body = match[1];
   const version = Number(body.match(/version:\s*(\d+)/u)?.[1]);
@@ -197,13 +229,12 @@ requireText("check-changed.sh", checkChanged, ["vitest run --changed", "cargo te
 requireText("check workflow", checkWorkflow, [
   "runs-on: [self-hosted, linux, x64, ostudy]",
   "OSTUDY_CARGO_TARGET_DIR",
+  "cargo metadata",
+  "git add src-tauri/Cargo.lock",
   "check-fast.sh",
   "check.sh",
 ]);
-requireText("release workflow", releaseWorkflow, [
-  "runs-on: [self-hosted, linux, x64, ostudy]",
-  "./scripts/release.sh",
-]);
+requireText("release workflow", releaseWorkflow, ["runs-on: [self-hosted, linux, x64, ostudy]", "./scripts/release.sh"]);
 if (!pullRequestTemplate.includes("Acceptance criteria") || !pullRequestTemplate.includes("./scripts/check.sh")) {
   failures.push("pull request template is missing acceptance criteria or full validation");
 }
@@ -230,8 +261,19 @@ for (const requiredPath of [
   "tests/scripts/test_log_run.py",
   "src/ipc/diagnostics.ts",
   "src/ipc/diagnostics.test.ts",
+  "src/ipc/documents.ts",
+  "src/screens/DocumentsScreen.tsx",
   "src-tauri/src/diagnostics.rs",
+  "src-tauri/src/documents.rs",
+  "src-tauri/src/document_semantics.rs",
+  "src-tauri/src/pdf_backend.rs",
+  "src-tauri/src/pdf_render_backend.rs",
+  "src-tauri/src/document_backup.rs",
+  "src-tauri/src/ai/document_intelligence.rs",
   "src-tauri/tests/fixtures/v0.1.0.sql",
+  "src-tauri/tests/fixtures/document-generation/simple-text.pdf",
+  "docs/decisions/0017-managed-pdf-flashcard-generation.md",
+  "docs/decisions/0018-structured-document-intelligence.md",
 ]) {
   try {
     await access(join(root, requiredPath));
@@ -246,7 +288,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, and tiered qualification manifests are consistent.`,
+  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, executable script modes, portable structured PDF dependencies, and tiered qualification manifests are consistent.`,
 );
 
 function parseEnv(text) {
