@@ -42,6 +42,9 @@ pnpm test
 step "Rust compile check"
 cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
 
+step "Document cross-layer contracts"
+bash "$SCRIPT_DIR/check-document.sh"
+
 ostudy_write_check_stamp fast
 trap - ERR
 printf '\n\033[1;32mFast ostudy checks passed.\033[0m\n'
