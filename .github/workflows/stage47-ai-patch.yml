@@ -28,6 +28,7 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: Apply Stage 4.7 source patches and format
         run: |
+          node ./scripts/bootstrap-stage47-patches.mjs
           node ./scripts/apply-stage47-ai.mjs
           node ./scripts/apply-stage47-pipeline.mjs
           node ./scripts/apply-stage47-more.mjs
