@@ -1,5 +1,5 @@
 # ostudy
-
+![Ostudy v0.10](assets/images/github_banner.png)
 **ostudy** is a free, local-first desktop flashcard application. It runs without an account or application server and keeps decks, cards, documents, images, review history, settings, search indexes, and analytics on the user's computer.
 
 ## What it can do
