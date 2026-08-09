@@ -50,7 +50,7 @@ export async function importPdfAndGenerateFlashcards(
 ): Promise<DocumentGenerationResult> {
   // Establish a durable document identity before the long-running provider
   // request begins. That lets Documents expose an exact Stop action while the
-  // retry command remains in flight.
+  // generation command remains in flight.
   const imported = await invoke<ImportedPdfDocument>("import_pdf_document", {
     input: { sourcePath },
   });
@@ -60,7 +60,7 @@ export async function importPdfAndGenerateFlashcards(
 export async function retryPdfFlashcardGeneration(
   documentId: string,
 ): Promise<DocumentGenerationResult> {
-  return invoke<DocumentGenerationResult>("retry_pdf_flashcard_generation", {
+  return invoke<DocumentGenerationResult>("run_pdf_flashcard_generation", {
     input: { documentId },
   });
 }

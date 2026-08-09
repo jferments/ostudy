@@ -71,7 +71,7 @@ pub fn import_pdf_document(
 /// Every provider POST made by the pipeline is therefore upgraded by the native
 /// gateway to an observable SSE stream with initial-activity timeout semantics.
 #[tauri::command]
-pub async fn retry_pdf_flashcard_generation(
+pub async fn run_pdf_flashcard_generation(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     runtime: State<'_, AiRuntimeState>,

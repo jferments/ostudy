@@ -36,14 +36,14 @@ describe("document IPC", () => {
     expect(invoke).toHaveBeenNthCalledWith(1, "import_pdf_document", {
       input: { sourcePath: "/tmp/chapter.pdf" },
     });
-    expect(invoke).toHaveBeenNthCalledWith(2, "retry_pdf_flashcard_generation", {
+    expect(invoke).toHaveBeenNthCalledWith(2, "run_pdf_flashcard_generation", {
       input: { documentId },
     });
   });
 
-  it("uses narrow retry, cancel, native-open, deletion, and archive commands", async () => {
+  it("uses narrow generation, cancel, native-open, deletion, and archive commands", async () => {
     await retryPdfFlashcardGeneration(documentId);
-    expect(invoke).toHaveBeenCalledWith("retry_pdf_flashcard_generation", {
+    expect(invoke).toHaveBeenCalledWith("run_pdf_flashcard_generation", {
       input: { documentId },
     });
 
