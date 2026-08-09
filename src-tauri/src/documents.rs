@@ -1,4 +1,7 @@
-use std::{cell::Cell, fs};
+use std::{
+    fs,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -291,13 +294,14 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                     error,
                 )
             })?;
-        statement
+        let managed_sources = statement
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)
+            .map_err(CommandError::database)?;
+        Ok(managed_sources)
     })?;
     for (document_id, relative_path) in managed_sources {
         if !paths.resolve_relative(&relative_path).is_file() {
@@ -532,7 +536,7 @@ async fn process_and_generate(
             },
         )?;
         document_store::mark_outline_building(database.inner(), document_id)?;
-        let generated_count = Cell::new(0_usize);
+        let generated_count = AtomicUsize::new(0);
         let outline = document_intelligence::build_document_outline(
             runtime.inner(),
             &task,
@@ -548,11 +552,13 @@ async fn process_and_generate(
                     window,
                     fragment,
                 );
-                generated_count.set(generated_count.get().saturating_add(1));
+                let generated_count = generated_count
+                    .fetch_add(1, Ordering::Relaxed)
+                    .saturating_add(1);
                 document_store::update_outline_progress(
                     database.inner(),
                     document_id,
-                    cached_count.saturating_add(generated_count.get()),
+                    cached_count.saturating_add(generated_count),
                 )
             },
         )
@@ -932,7 +938,7 @@ fn list_document_rows(
              LIMIT ?2",
         )
         .map_err(CommandError::database)?;
-    statement
+    let documents = statement
         .query_map(
             params![
                 if include_archived { 1_i64 } else { 0_i64 },
@@ -942,7 +948,8 @@ fn list_document_rows(
         )
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(documents)
 }
 
 fn load_document(
