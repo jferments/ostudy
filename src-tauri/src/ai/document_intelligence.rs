@@ -36,6 +36,7 @@ const MAX_OUTLINE_SECTIONS: usize = 160;
 const MAX_OUTLINE_TEXT_CHARS: usize = 100_000;
 const MAX_REQUEST_JSON_BYTES: usize = 64 * 1024 * 1024;
 const MAX_COMPLETION_BYTES: usize = 2 * 1024 * 1024;
+const DEEPSEEK_STRICT_TOOL_NAME: &str = "submit_ostudy_document_result";
 const MAX_OUTLINES_PER_MERGE: usize = 8;
 const MAX_CURATE_CARDS_PER_BATCH: usize = 80;
 const MAX_INLINE_IMAGES: usize = 6;
@@ -539,7 +540,7 @@ async fn request_json(
         .map(|secret| secret.as_utf8())
         .transpose()?;
 
-    let body = match task.profile.provider_kind {
+    let (url, body) = match task.profile.provider_kind {
         ProviderKind::LlamaCpp => {
             let mut parts = vec![json!({ "type": "text", "text": request.user_text })];
             for image in request.images.iter().take(MAX_INLINE_IMAGES) {
@@ -560,46 +561,55 @@ async fn request_json(
                     }
                 }));
             }
-            json!({
-                "model": task.profile.model_id,
-                "messages": [
-                    { "role": "system", "content": request.system_prompt },
-                    { "role": "user", "content": parts }
-                ],
-                "temperature": 0.12,
-                "max_tokens": request.max_tokens,
-                "stream": false,
-                "chat_template_kwargs": { "enable_thinking": false },
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": request.schema_name,
-                        "strict": true,
+            (
+                completion_endpoint(&task.profile)?,
+                json!({
+                    "model": task.profile.model_id,
+                    "messages": [
+                        { "role": "system", "content": request.system_prompt },
+                        { "role": "user", "content": parts }
+                    ],
+                    "temperature": 0.12,
+                    "max_tokens": request.max_tokens,
+                    "stream": false,
+                    "chat_template_kwargs": { "enable_thinking": false },
+                    "response_format": {
+                        "type": "json_object",
                         "schema": request.schema
                     }
-                }
-            })
+                }),
+            )
         }
-        ProviderKind::Deepseek => json!({
-            "model": task.profile.model_id,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": format!(
-                        "{}\n\nReturn exactly one JSON object satisfying this JSON Schema. Do not include Markdown fences or commentary. Schema:\n{}",
-                        request.system_prompt,
-                        serde_json::to_string(request.schema)
-                            .map_err(CommandError::serialization)?
-                    )
-                },
-                { "role": "user", "content": request.user_text }
-            ],
-            "temperature": 0.12,
-            "max_tokens": request.max_tokens,
-            "stream": false,
-            "thinking": { "type": "disabled" },
-            "response_format": { "type": "json_object" }
-        }),
+        ProviderKind::Deepseek => {
+            let strict_schema = deepseek_strict_schema(request.schema);
+            (
+                deepseek_strict_completion_endpoint(&task.profile)?,
+                json!({
+                    "model": task.profile.model_id,
+                    "messages": [
+                        { "role": "system", "content": request.system_prompt },
+                        { "role": "user", "content": request.user_text }
+                    ],
+                    "temperature": 0.12,
+                    "max_tokens": request.max_tokens,
+                    "stream": false,
+                    "thinking": { "type": "disabled" },
+                    "tools": [{
+                        "type": "function",
+                        "function": {
+                            "name": DEEPSEEK_STRICT_TOOL_NAME,
+                            "description": "Submit the exact structured ostudy document-task result.",
+                            "strict": true,
+                            "parameters": strict_schema
+                        }
+                    }],
+                    "tool_choice": {
+                        "type": "function",
+                        "function": { "name": DEEPSEEK_STRICT_TOOL_NAME }
+                    }
+                }),
+            )
+        }
         _ => {
             return Err(CommandError::new(
                 "ai_provider_not_implemented",
@@ -622,7 +632,7 @@ async fn request_json(
     let first_response = runtime
         .gateway
         .post_json(
-            completion_endpoint(&task.profile)?,
+            url.clone(),
             bearer,
             &body,
             task.profile.request_timeout_ms,
@@ -635,31 +645,19 @@ async fn request_json(
             if task.profile.provider_kind == ProviderKind::LlamaCpp
                 && first_error.safe.code == "ai_http_bad_request" =>
         {
-            // Older llama.cpp / llama-server builds can support OpenAI-style
-            // streaming and JSON output while rejecting newer schema/templating
-            // request extensions. Stay on the exact configured provider/model,
-            // fall back once to plain JSON-object output, and retain strict local
-            // deserialization/normalization as the authority.
+            // Keep structured generation enforced on compatibility retry. Older
+            // llama-server builds vary in which schema request shape they accept,
+            // but top-level json_schema is still compiled into a sampling grammar.
             let mut compatibility_body = body.clone();
             if let Some(object) = compatibility_body.as_object_mut() {
                 object.remove("chat_template_kwargs");
-                object.insert(
-                    "response_format".to_string(),
-                    json!({ "type": "json_object" }),
-                );
-            }
-            let schema_text =
-                serde_json::to_string(request.schema).map_err(CommandError::serialization)?;
-            if let Some(system_content) = compatibility_body.pointer_mut("/messages/0/content") {
-                let original = system_content.as_str().unwrap_or_default().to_string();
-                *system_content = Value::String(format!(
-                    "{original}\n\nCompatibility mode: return exactly one JSON object matching this schema. Do not include Markdown fences or commentary. Schema:\n{schema_text}"
-                ));
+                object.remove("response_format");
+                object.insert("json_schema".to_string(), request.schema.clone());
             }
             runtime
                 .gateway
                 .post_json(
-                    completion_endpoint(&task.profile)?,
+                    url,
                     bearer,
                     &compatibility_body,
                     task.profile.request_timeout_ms,
@@ -670,13 +668,89 @@ async fn request_json(
         Err(error) => Err(error),
     }
     .map_err(gateway_to_command)?;
-    let content = parse_completion_content(&response)?;
-    serde_json::from_str(normalize_json_content(content)).map_err(|_| {
-        CommandError::new(
-            "ai_document_output_invalid",
-            "The AI provider returned content that was not valid JSON for the document task.",
-        )
-    })
+
+    match task.profile.provider_kind {
+        ProviderKind::Deepseek => parse_strict_tool_arguments(&response),
+        _ => {
+            let content = parse_completion_content(&response)?;
+            serde_json::from_str(normalize_json_content(content)).map_err(|_| {
+                CommandError::new(
+                    "ai_document_output_invalid",
+                    "The AI provider returned content that was not valid JSON for the document task.",
+                )
+            })
+        }
+    }
+}
+
+fn deepseek_strict_completion_endpoint(profile: &ProfileSnapshot) -> Result<Url, CommandError> {
+    join_endpoint(&profile.base_url, "beta/chat/completions")
+}
+
+fn parse_strict_tool_arguments(value: &Value) -> Result<Value, CommandError> {
+    let function = value
+        .pointer("/choices/0/message/tool_calls/0/function")
+        .ok_or_else(|| {
+            output_error("DeepSeek did not return the required schema-constrained tool result.")
+        })?;
+    if function.get("name").and_then(Value::as_str) != Some(DEEPSEEK_STRICT_TOOL_NAME) {
+        return Err(output_error(
+            "DeepSeek returned an unexpected structured-output tool name.",
+        ));
+    }
+    let arguments = function
+        .get("arguments")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| output_error("DeepSeek returned empty structured-output arguments."))?;
+    serde_json::from_str(arguments)
+        .map_err(|_| output_error("DeepSeek returned tool arguments that were not valid JSON."))
+}
+
+fn deepseek_strict_schema(value: &Value) -> Value {
+    match value {
+        Value::Array(values) => Value::Array(values.iter().map(deepseek_strict_schema).collect()),
+        Value::Object(object) => {
+            if let Some(constant) = object.get("const") {
+                let value_type = match constant {
+                    Value::String(_) => "string",
+                    Value::Number(number) if number.is_i64() || number.is_u64() => "integer",
+                    Value::Number(_) => "number",
+                    Value::Bool(_) => "boolean",
+                    _ => "string",
+                };
+                return json!({
+                    "type": value_type,
+                    "enum": [constant.clone()]
+                });
+            }
+
+            let mut normalized = serde_json::Map::new();
+            for (key, child) in object {
+                match key.as_str() {
+                    "minLength" | "maxLength" | "minItems" | "maxItems" | "required" => {}
+                    "oneOf" => {
+                        normalized.insert("anyOf".to_string(), deepseek_strict_schema(child));
+                    }
+                    _ => {
+                        normalized.insert(key.clone(), deepseek_strict_schema(child));
+                    }
+                }
+            }
+
+            if let Some(properties) = normalized.get("properties").and_then(Value::as_object) {
+                let required = properties
+                    .keys()
+                    .cloned()
+                    .map(Value::String)
+                    .collect::<Vec<_>>();
+                normalized.insert("required".to_string(), Value::Array(required));
+                normalized.insert("additionalProperties".to_string(), Value::Bool(false));
+            }
+            Value::Object(normalized)
+        }
+        _ => value.clone(),
+    }
 }
 
 fn parse_outline(value: Value) -> Result<DocumentOutline, CommandError> {
@@ -752,12 +826,21 @@ fn parse_flashcards(value: Value) -> Result<Vec<Value>, CommandError> {
             "The model returned more than {MAX_WINDOW_CARDS} cards for one semantic source window."
         )));
     }
-    output
-        .cards
-        .into_iter()
-        .enumerate()
-        .map(|(index, card)| normalize_generated_card(index, card))
-        .collect()
+    let mut accepted = Vec::with_capacity(output.cards.len());
+    let mut rejected = 0_usize;
+    for (index, card) in output.cards.into_iter().enumerate() {
+        match normalize_generated_card(index, card) {
+            Ok(card) => accepted.push(card),
+            Err(_) => rejected = rejected.saturating_add(1),
+        }
+    }
+    if rejected > 0 {
+        crate::logging::info(
+            "document_flashcards_filtered",
+            format!("accepted={} rejected={rejected}", accepted.len()),
+        );
+    }
+    Ok(accepted)
 }
 
 fn normalize_generated_card(index: usize, card: GeneratedStudyCard) -> Result<Value, CommandError> {
@@ -1272,7 +1355,7 @@ fn completion_endpoint(profile: &ProfileSnapshot) -> Result<Url, CommandError> {
                 },
             )
         }
-        ProviderKind::Deepseek => join_endpoint(&profile.base_url, "chat/completions"),
+        ProviderKind::Deepseek => deepseek_strict_completion_endpoint(profile),
         _ => Err(CommandError::new(
             "ai_provider_not_implemented",
             "The selected AI provider cannot analyze PDF documents in this ostudy build.",
@@ -1397,6 +1480,45 @@ mod tests {
         assert_eq!(
             parse_curation(json!({ "keepIndices": [1] }), 2).unwrap(),
             vec![1]
+        );
+    }
+
+    #[test]
+    fn deepseek_strict_schema_uses_supported_required_shapes() {
+        let schema = deepseek_strict_schema(&flashcard_schema());
+        let serialized = serde_json::to_string(&schema).unwrap();
+        assert!(serialized.contains("\"anyOf\""));
+        assert!(!serialized.contains("\"oneOf\""));
+        assert!(!serialized.contains("maxLength"));
+        assert!(!serialized.contains("maxItems"));
+        let card_properties = schema
+            .pointer("/properties/cards/items/anyOf/0/properties")
+            .and_then(Value::as_object)
+            .unwrap();
+        let required = schema
+            .pointer("/properties/cards/items/anyOf/0/required")
+            .and_then(Value::as_array)
+            .unwrap();
+        assert_eq!(required.len(), card_properties.len());
+    }
+
+    #[test]
+    fn strict_tool_arguments_parse_without_prompt_schema_repair() {
+        let value = json!({
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {
+                            "name": DEEPSEEK_STRICT_TOOL_NAME,
+                            "arguments": "{\"cards\":[]}"
+                        }
+                    }]
+                }
+            }]
+        });
+        assert_eq!(
+            parse_strict_tool_arguments(&value).unwrap(),
+            json!({ "cards": [] })
         );
     }
 

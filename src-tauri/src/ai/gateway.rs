@@ -204,7 +204,7 @@ impl AiGateway {
         }
         stream.finish()?;
 
-        if stream.content.trim().is_empty() {
+        if stream.content.trim().is_empty() && stream.tool_arguments.trim().is_empty() {
             return Err(error(
                 "ai_empty_response",
                 "The model returned no final document-task content.",
@@ -212,11 +212,21 @@ impl AiGateway {
                 None,
             ));
         }
-        Ok(json!({
-            "choices": [{
-                "message": { "content": stream.content }
-            }]
-        }))
+        let message = if stream.tool_arguments.trim().is_empty() {
+            json!({ "content": stream.content })
+        } else {
+            json!({
+                "content": if stream.content.trim().is_empty() { Value::Null } else { Value::String(stream.content) },
+                "tool_calls": [{
+                    "type": "function",
+                    "function": {
+                        "name": stream.tool_name.unwrap_or_default(),
+                        "arguments": stream.tool_arguments
+                    }
+                }]
+            })
+        };
+        Ok(json!({ "choices": [{ "message": message }] }))
     }
 
     async fn request_json(
@@ -349,6 +359,8 @@ async fn read_bounded_body(
 struct SseChatAccumulator {
     pending: Vec<u8>,
     content: String,
+    tool_name: Option<String>,
+    tool_arguments: String,
     wire_bytes: usize,
     maximum_content_bytes: usize,
     maximum_wire_bytes: usize,
@@ -360,6 +372,8 @@ impl SseChatAccumulator {
         Self {
             pending: Vec::new(),
             content: String::new(),
+            tool_name: None,
+            tool_arguments: String::new(),
             wire_bytes: 0,
             maximum_content_bytes,
             maximum_wire_bytes,
@@ -423,11 +437,12 @@ impl SseChatAccumulator {
                 None,
             )
         })?;
-        if let Some(content) = value
+        let delta = value
             .get("choices")
             .and_then(Value::as_array)
             .and_then(|choices| choices.first())
-            .and_then(|choice| choice.get("delta"))
+            .and_then(|choice| choice.get("delta"));
+        if let Some(content) = delta
             .and_then(|delta| delta.get("content"))
             .and_then(Value::as_str)
         {
@@ -440,6 +455,52 @@ impl SseChatAccumulator {
                 ));
             }
             self.content.push_str(content);
+        }
+        if let Some(tool_call) = delta
+            .and_then(|delta| delta.get("tool_calls"))
+            .and_then(Value::as_array)
+            .and_then(|calls| calls.first())
+        {
+            if let Some(name) = tool_call
+                .get("function")
+                .and_then(|function| function.get("name"))
+                .and_then(Value::as_str)
+                .filter(|name| !name.is_empty())
+            {
+                match self.tool_name.as_deref() {
+                    Some(existing) if existing != name => {
+                        return Err(error(
+                            "ai_provider_protocol_error",
+                            "The AI provider changed structured-output tool names mid-stream.",
+                            false,
+                            None,
+                        ));
+                    }
+                    None => self.tool_name = Some(name.to_string()),
+                    _ => {}
+                }
+            }
+            if let Some(arguments) = tool_call
+                .get("function")
+                .and_then(|function| function.get("arguments"))
+                .and_then(Value::as_str)
+            {
+                if self
+                    .content
+                    .len()
+                    .saturating_add(self.tool_arguments.len())
+                    .saturating_add(arguments.len())
+                    > self.maximum_content_bytes
+                {
+                    return Err(error(
+                        "ai_response_too_large",
+                        "The AI provider returned more structured output than ostudy accepts.",
+                        false,
+                        None,
+                    ));
+                }
+                self.tool_arguments.push_str(arguments);
+            }
         }
         Ok(())
     }
@@ -592,6 +653,33 @@ mod tests {
         stream.push_bytes(b"lo\"}}]}\n\ndata: [DONE]\n\n").unwrap();
         stream.finish().unwrap();
         assert_eq!(stream.content, "hello");
+        assert!(stream.done);
+    }
+
+    #[test]
+    fn sse_accumulator_collects_streamed_tool_arguments() {
+        let mut stream = SseChatAccumulator::new(2048, 8192);
+        stream
+            .push_bytes(
+                br#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"submit_ostudy_document_result","arguments":"{\"cards\":["}}]}}]}
+"#,
+            )
+            .unwrap();
+        stream
+            .push_bytes(
+                br#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"]}"}}]}}]}
+
+data: [DONE]
+
+"#,
+            )
+            .unwrap();
+        stream.finish().unwrap();
+        assert_eq!(
+            stream.tool_name.as_deref(),
+            Some("submit_ostudy_document_result")
+        );
+        assert_eq!(stream.tool_arguments, "{\"cards\":[]}");
         assert!(stream.done);
     }
 
