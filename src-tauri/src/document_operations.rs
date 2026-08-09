@@ -1,8 +1,9 @@
-//! Narrow document lifecycle commands layered around the Stage 4.3–4.6 core.
+//! Narrow document lifecycle commands layered around the Stage 4 document core.
 //!
-//! This module owns user-controlled import start, cancellable generation,
-//! operating-system opening, and permanent managed-PDF deletion. The document
-//! core continues to own extraction/rendering/generation internals.
+//! This module owns the current PDF-specific acquisition/lifecycle edge: user-
+//! controlled import start, cancellable generation, operating-system opening,
+//! and permanent managed-PDF deletion. Once a PDF is acquired, format-neutral
+//! document services own extraction planning, AI execution, and persistence.
 
 use std::{
     fs::{self, File, OpenOptions},
@@ -19,6 +20,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::{
     ai::AiRuntimeState,
     database::Database,
+    document_domain::{DocumentFormat, SourceUnitKind},
     documents::{
         self, DocumentGenerationResultDto, ImportPdfDocumentInput, RetryPdfGenerationInput,
     },
@@ -458,12 +460,13 @@ fn import_managed_pdf(
                 "INSERT INTO documents (
                      id, title, original_filename, mime_type, byte_size, sha256,
                      source_relative_path, staged_relative_path, lifecycle_state,
+                     source_format, source_unit_kind,
                      extraction_backend, render_backend, outline_state,
                      created_at, updated_at, revision
                  ) VALUES (
                      ?1, ?2, ?3, 'application/pdf', ?4, ?5,
-                     ?6, NULL, 'processing', 'pending', 'pending', 'pending',
-                     ?7, ?7, 1
+                     ?6, NULL, 'processing', ?7, ?8,
+                     'pending', 'pending', 'pending', ?9, ?9, 1
                  )",
                 params![
                     document_id,
@@ -472,10 +475,18 @@ fn import_managed_pdf(
                     byte_size,
                     sha256,
                     source_relative,
+                    DocumentFormat::Pdf.as_str(),
+                    SourceUnitKind::Page.as_str(),
                     now,
                 ],
             )
-            .map_err(CommandError::database)?;
+            .map_err(|error| {
+                CommandError::database_at(
+                    "document_import_insert_failed",
+                    format!("document={document_id} format=pdf"),
+                    error,
+                )
+            })?;
         Ok(())
     });
     if let Err(error) = insert_result {
