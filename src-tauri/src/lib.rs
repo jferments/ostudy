@@ -38,6 +38,7 @@ mod library_backup;
 mod logging;
 mod paths;
 mod pdf_backend;
+mod pdf_ocr_backend;
 mod pdf_render_backend;
 mod practice;
 mod practice_selection;
