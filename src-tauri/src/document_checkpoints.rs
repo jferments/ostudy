@@ -154,13 +154,14 @@ pub(crate) fn generation_contract_key(
 }
 
 pub(crate) fn source_sha256(window: &SemanticWindow) -> String {
+    let locator = window.source_locator();
     hash_text(&format!(
         "partition={}|title={}|chunks={}-{}|locator={}|tokens={}|source={}",
         window.partition_index,
         window.partition_title,
         window.first_chunk_index,
         window.last_chunk_index,
-        window.source_locator.stable_identity(),
+        locator.stable_identity(),
         window.token_estimate,
         window.source_text,
     ))
@@ -256,6 +257,7 @@ pub(crate) fn persist_outline_fragment_best_effort(
             return false;
         }
     };
+    let locator = window.source_locator();
     let result = database.with_connection(|connection| {
         connection
             .execute(
@@ -280,8 +282,8 @@ pub(crate) fn persist_outline_fragment_best_effort(
                     to_i64(window.window_index),
                     to_i64(window.partition_index),
                     window.partition_title,
-                    window.source_locator.first(),
-                    window.source_locator.last(),
+                    locator.first(),
+                    locator.last(),
                     to_i64(window.token_estimate),
                     json,
                     now,
@@ -404,6 +406,7 @@ pub(crate) fn persist_generation_cards_best_effort(
             return false;
         }
     };
+    let locator = window.source_locator();
     let result = database.with_connection(|connection| {
         connection
             .execute(
@@ -429,8 +432,8 @@ pub(crate) fn persist_generation_cards_best_effort(
                     to_i64(window.window_index),
                     to_i64(window.partition_index),
                     window.partition_title,
-                    window.source_locator.first(),
-                    window.source_locator.last(),
+                    locator.first(),
+                    locator.last(),
                     to_i64(window.token_estimate),
                     json,
                     to_i64(cards.len()),
@@ -488,7 +491,6 @@ fn to_i64(value: usize) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{document_domain::SourceLocator, document_semantics::SemanticWindow};
 
     fn window() -> SemanticWindow {
         SemanticWindow {
@@ -497,8 +499,6 @@ mod tests {
             partition_title: "Chapter 3".to_string(),
             first_chunk_index: 10,
             last_chunk_index: 12,
-            source_locator: SourceLocator::pages(vec![21, 22], Some("Chapter 3".to_string()))
-                .unwrap(),
             page_numbers: vec![21, 22],
             visual_page_numbers: vec![22],
             page_start: 21,
@@ -512,8 +512,9 @@ mod tests {
     fn window_hash_changes_when_semantic_locator_changes() {
         let first = window();
         let mut second = first.clone();
-        second.source_locator =
-            SourceLocator::pages(vec![22, 23], Some("Chapter 3".to_string())).unwrap();
+        second.page_numbers = vec![22, 23];
+        second.page_start = 22;
+        second.page_end = 23;
         assert_ne!(source_sha256(&first), source_sha256(&second));
     }
 
