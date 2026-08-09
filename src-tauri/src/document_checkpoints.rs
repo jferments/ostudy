@@ -24,6 +24,52 @@ const OUTLINE_CHECKPOINT_CONTRACT: &str = "stage47-outline-v1";
 const GENERATION_CHECKPOINT_CONTRACT: &str = "stage47-generation-v1";
 const MAX_CHECKPOINT_CARDS: usize = 32;
 
+pub(crate) fn load_final_outline(
+    database: &Database,
+    document_id: &str,
+    task: &DocumentTaskContext,
+) -> Result<Option<DocumentOutline>, CommandError> {
+    let outline_json = database.with_connection(|connection| {
+        connection
+            .query_row(
+                "SELECT outline_json
+                 FROM document_outlines
+                 WHERE document_id = ?1
+                   AND profile_id = ?2
+                   AND provider_kind = ?3
+                   AND model_id = ?4
+                   AND profile_revision = ?5
+                   AND credential_epoch = ?6
+                   AND extraction_backend = ?7",
+                params![
+                    document_id,
+                    task.profile_id,
+                    task.provider_kind,
+                    task.model_id,
+                    task.profile_revision,
+                    task.credential_epoch,
+                    pdf_backend::active_backend_id(),
+                ],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(CommandError::database)
+    })?;
+    let Some(json) = outline_json else {
+        return Ok(None);
+    };
+    match serde_json::from_str::<DocumentOutline>(&json) {
+        Ok(outline) => Ok(Some(outline)),
+        Err(_) => {
+            crate::logging::info(
+                "document_final_outline_cache_invalid",
+                format!("document={document_id}"),
+            );
+            Ok(None)
+        }
+    }
+}
+
 pub(crate) fn outline_contract_key(task: &DocumentTaskContext, plan: DocumentScalePlan) -> String {
     hash_text(&format!(
         "{OUTLINE_CHECKPOINT_CONTRACT}|provider={}|profile={}|model={}|revision={}|credential={}|extractor={}|scale={}|outline_tokens={}|outline_pages={}|outline_overlap={}",

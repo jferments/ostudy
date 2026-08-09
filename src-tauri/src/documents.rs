@@ -449,73 +449,85 @@ async fn process_and_generate(
     );
 
     let outline_contract = document_checkpoints::outline_contract_key(&task, plan);
-    let cached_outline = document_checkpoints::load_outline_fragments(
-        database.inner(),
-        document_id,
-        &outline_contract,
-        &outline_windows,
-    )?;
-    let outline_completed = cached_outline
-        .iter()
-        .filter(|value| value.is_some())
-        .count();
-    initialize_document_ai_plan(
-        database.inner(),
-        document_id,
-        plan,
-        estimated_source_tokens,
-        outline_windows.len(),
-        outline_completed,
-        generation_windows.len(),
-        0,
-    )?;
-    crate::logging::info(
-        "document_scale_plan_selected",
-        format!(
-            "document={} scale={} pages={} source_tokens={} outline_windows={} generation_windows={} max_cards_per_window={} max_images_per_window={}",
+    let reusable_final_outline =
+        document_checkpoints::load_final_outline(database.inner(), document_id, &task)?;
+    let outline = if let Some(outline) = reusable_final_outline {
+        initialize_document_ai_plan(
+            database.inner(),
             document_id,
-            plan.label(),
-            pages.len(),
+            plan,
             estimated_source_tokens,
             outline_windows.len(),
+            outline_windows.len(),
             generation_windows.len(),
-            plan.max_cards_per_window,
-            plan.max_images_per_window,
-        ),
-    );
-
-    mark_outline_building(database.inner(), document_id)?;
-    let outline = document_intelligence::build_document_outline(
-        runtime.inner(),
-        &task,
-        &stored.dto.title,
-        i64::try_from(pages.len()).unwrap_or(i64::MAX),
-        &outline_windows,
-        &cached_outline,
-        |window, fragment| {
-            document_checkpoints::persist_outline_fragment(
-                database.inner(),
+            0,
+        )?;
+        crate::logging::info(
+            "document_final_outline_reused",
+            format!(
+                "document={} provider={} model={} sections={}",
                 document_id,
-                &outline_contract,
-                window,
-                fragment,
-            )?;
-            let completed = document_checkpoints::count_outline_checkpoints(
-                database.inner(),
-                document_id,
-                &outline_contract,
-            )?;
-            update_outline_progress(database.inner(), document_id, completed)?;
-            Ok(())
-        },
-    )
-    .await?;
-    update_outline_progress(
-        database.inner(),
-        document_id,
-        i64::try_from(outline_windows.len()).unwrap_or(i64::MAX),
-    )?;
-    persist_outline(database.inner(), document_id, &task, &outline)?;
+                task.provider_kind,
+                task.model_id,
+                outline.sections.len(),
+            ),
+        );
+        outline
+    } else {
+        let cached_outline = document_checkpoints::load_outline_fragments(
+            database.inner(),
+            document_id,
+            &outline_contract,
+            &outline_windows,
+        )?;
+        let outline_completed = cached_outline
+            .iter()
+            .filter(|value| value.is_some())
+            .count();
+        initialize_document_ai_plan(
+            database.inner(),
+            document_id,
+            plan,
+            estimated_source_tokens,
+            outline_windows.len(),
+            outline_completed,
+            generation_windows.len(),
+            0,
+        )?;
+        mark_outline_building(database.inner(), document_id)?;
+        let outline = document_intelligence::build_document_outline(
+            runtime.inner(),
+            &task,
+            &stored.dto.title,
+            i64::try_from(pages.len()).unwrap_or(i64::MAX),
+            &outline_windows,
+            &cached_outline,
+            |window, fragment| {
+                document_checkpoints::persist_outline_fragment(
+                    database.inner(),
+                    document_id,
+                    &outline_contract,
+                    window,
+                    fragment,
+                )?;
+                let completed = document_checkpoints::count_outline_checkpoints(
+                    database.inner(),
+                    document_id,
+                    &outline_contract,
+                )?;
+                update_outline_progress(database.inner(), document_id, completed)?;
+                Ok(())
+            },
+        )
+        .await?;
+        update_outline_progress(
+            database.inner(),
+            document_id,
+            i64::try_from(outline_windows.len()).unwrap_or(i64::MAX),
+        )?;
+        persist_outline(database.inner(), document_id, &task, &outline)?;
+        outline
+    };
 
     let generation_contract = document_checkpoints::generation_contract_key(
         &task,
