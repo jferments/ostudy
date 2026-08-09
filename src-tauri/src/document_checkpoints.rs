@@ -11,7 +11,9 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ai::document_intelligence::{DocumentOutline, DocumentTaskContext, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION},
+    ai::document_intelligence::{
+        DocumentOutline, DocumentTaskContext, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
+    },
     database::Database,
     document_scale::DocumentScalePlan,
     document_semantics::SemanticWindow,
@@ -106,7 +108,10 @@ pub(crate) fn load_final_outline_best_effort(
             cache_log(
                 "document_checkpoint_read_failed",
                 document_id,
-                format!("stage=final_outline code={} detail={}", error.code, error.message),
+                format!(
+                    "stage=final_outline code={} detail={}",
+                    error.code, error.message
+                ),
             );
             None
         }
@@ -188,8 +193,12 @@ pub(crate) fn load_outline_fragments_best_effort(
             .map_err(crate::error::CommandError::database)?;
         for row in rows {
             let (index, stored_sha, json) = row.map_err(crate::error::CommandError::database)?;
-            let Ok(index) = usize::try_from(index) else { continue };
-            let Some(window) = windows.get(index) else { continue };
+            let Ok(index) = usize::try_from(index) else {
+                continue;
+            };
+            let Some(window) = windows.get(index) else {
+                continue;
+            };
             if stored_sha != source_sha256(window) {
                 continue;
             }
@@ -225,7 +234,10 @@ pub(crate) fn persist_outline_fragment_best_effort(
             cache_log(
                 "document_checkpoint_write_failed",
                 document_id,
-                format!("stage=outline window={} serialize={error}", window.window_index),
+                format!(
+                    "stage=outline window={} serialize={error}",
+                    window.window_index
+                ),
             );
             return false;
         }
@@ -236,7 +248,10 @@ pub(crate) fn persist_outline_fragment_best_effort(
             cache_log(
                 "document_checkpoint_write_failed",
                 document_id,
-                format!("stage=outline window={} clock={}", window.window_index, error.message),
+                format!(
+                    "stage=outline window={} clock={}",
+                    window.window_index, error.message
+                ),
             );
             return false;
         }
@@ -279,7 +294,10 @@ pub(crate) fn persist_outline_fragment_best_effort(
         cache_log(
             "document_checkpoint_write_failed",
             document_id,
-            format!("stage=outline window={} code={} detail={}", window.window_index, error.code, error.message),
+            format!(
+                "stage=outline window={} code={} detail={}",
+                window.window_index, error.code, error.message
+            ),
         );
         return false;
     }
@@ -316,16 +334,23 @@ pub(crate) fn load_generation_cards_best_effort(
             cache_log(
                 "document_checkpoint_read_failed",
                 document_id,
-                format!("stage=generation window={} code={} detail={}", window.window_index, error.code, error.message),
+                format!(
+                    "stage=generation window={} code={} detail={}",
+                    window.window_index, error.code, error.message
+                ),
             );
             return None;
         }
     };
-    let Some((stored_sha, json, count)) = row else { return None };
+    let Some((stored_sha, json, count)) = row else {
+        return None;
+    };
     if stored_sha != source_sha256(window) {
         return None;
     }
-    let Ok(cards) = serde_json::from_str::<Vec<Value>>(&json) else { return None };
+    let Ok(cards) = serde_json::from_str::<Vec<Value>>(&json) else {
+        return None;
+    };
     if cards.len() > MAX_CHECKPOINT_CARDS || to_i64(cards.len()) != count {
         return None;
     }
@@ -343,7 +368,11 @@ pub(crate) fn persist_generation_cards_best_effort(
         cache_log(
             "document_checkpoint_write_failed",
             document_id,
-            format!("stage=generation window={} too_many_cards={}", window.window_index, cards.len()),
+            format!(
+                "stage=generation window={} too_many_cards={}",
+                window.window_index,
+                cards.len()
+            ),
         );
         return false;
     }
@@ -353,7 +382,10 @@ pub(crate) fn persist_generation_cards_best_effort(
             cache_log(
                 "document_checkpoint_write_failed",
                 document_id,
-                format!("stage=generation window={} serialize={error}", window.window_index),
+                format!(
+                    "stage=generation window={} serialize={error}",
+                    window.window_index
+                ),
             );
             return false;
         }
@@ -364,7 +396,10 @@ pub(crate) fn persist_generation_cards_best_effort(
             cache_log(
                 "document_checkpoint_write_failed",
                 document_id,
-                format!("stage=generation window={} clock={}", window.window_index, error.message),
+                format!(
+                    "stage=generation window={} clock={}",
+                    window.window_index, error.message
+                ),
             );
             return false;
         }
@@ -409,7 +444,10 @@ pub(crate) fn persist_generation_cards_best_effort(
         cache_log(
             "document_checkpoint_write_failed",
             document_id,
-            format!("stage=generation window={} code={} detail={}", window.window_index, error.code, error.message),
+            format!(
+                "stage=generation window={} code={} detail={}",
+                window.window_index, error.code, error.message
+            ),
         );
         return false;
     }
@@ -419,7 +457,10 @@ pub(crate) fn persist_generation_cards_best_effort(
 pub(crate) fn clear_generation_checkpoints_best_effort(database: &Database, document_id: &str) {
     let result = database.with_connection(|connection| {
         connection
-            .execute("DELETE FROM document_generation_checkpoints WHERE document_id = ?1", [document_id])
+            .execute(
+                "DELETE FROM document_generation_checkpoints WHERE document_id = ?1",
+                [document_id],
+            )
             .map_err(crate::error::CommandError::database)?;
         Ok(())
     });
@@ -447,10 +488,7 @@ fn to_i64(value: usize) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        document_domain::SourceLocator,
-        document_semantics::SemanticWindow,
-    };
+    use crate::{document_domain::SourceLocator, document_semantics::SemanticWindow};
 
     fn window() -> SemanticWindow {
         SemanticWindow {
@@ -459,7 +497,8 @@ mod tests {
             partition_title: "Chapter 3".to_string(),
             first_chunk_index: 10,
             last_chunk_index: 12,
-            source_locator: SourceLocator::pages(vec![21, 22], Some("Chapter 3".to_string())).unwrap(),
+            source_locator: SourceLocator::pages(vec![21, 22], Some("Chapter 3".to_string()))
+                .unwrap(),
             page_numbers: vec![21, 22],
             visual_page_numbers: vec![22],
             page_start: 21,
@@ -473,7 +512,8 @@ mod tests {
     fn window_hash_changes_when_semantic_locator_changes() {
         let first = window();
         let mut second = first.clone();
-        second.source_locator = SourceLocator::pages(vec![22, 23], Some("Chapter 3".to_string())).unwrap();
+        second.source_locator =
+            SourceLocator::pages(vec![22, 23], Some("Chapter 3".to_string())).unwrap();
         assert_ne!(source_sha256(&first), source_sha256(&second));
     }
 
