@@ -1,0 +1,41 @@
+name: Stage47 Outline Contract Version
+
+on:
+  push:
+    branches:
+      - agent/stage-4-7-large-document-resilience
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage47-outline-contract-version
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/stage-4-7-large-document-resilience
+          fetch-depth: 0
+      - name: Expose tools
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Apply outline contract fix
+        run: |
+          node ./scripts/fix-stage47-outline-contract-version.mjs
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          git diff --check
+      - name: Commit outline contract fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/src/ai/document_intelligence.rs src-tauri/src/document_checkpoints.rs src-tauri/src/documents.rs
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "fix: version final outline cache contract"
+          git push origin HEAD:agent/stage-4-7-large-document-resilience
