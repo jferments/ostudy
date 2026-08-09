@@ -75,8 +75,9 @@ pub(crate) fn build_partitioned_semantic_windows(
             partition.partition_index,
             &partition.title,
         );
-        for window in &mut partition_windows {
-            window.window_index = windows.len();
+        let base_index = windows.len();
+        for (offset, window) in partition_windows.iter_mut().enumerate() {
+            window.window_index = base_index + offset;
         }
         windows.extend(partition_windows);
     }
@@ -593,6 +594,30 @@ mod tests {
         assert!(windows
             .iter()
             .any(|window| window.partition_index == 1 && window.page_start == 7));
+    }
+
+    #[test]
+    fn partitioned_windows_receive_unique_global_indices_within_one_partition() {
+        let mut chunks = (0..11)
+            .map(|index| chunk(index, &[index + 1], 100))
+            .collect::<Vec<_>>();
+        for value in &mut chunks {
+            value.heading_context = Some("Chapter A".to_string());
+        }
+
+        let plan = DocumentScalePlan::for_page_count(11);
+        let windows = build_partitioned_semantic_windows(&chunks, plan, 10_000, 10, 0);
+
+        assert_eq!(windows.len(), 2);
+        assert_eq!(
+            windows
+                .iter()
+                .map(|window| window.window_index)
+                .collect::<Vec<_>>(),
+            vec![0, 1]
+        );
+        assert_eq!(windows[0].partition_index, 0);
+        assert_eq!(windows[1].partition_index, 0);
     }
 
     #[test]
