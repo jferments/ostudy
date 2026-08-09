@@ -1,37 +1,69 @@
-//! Durable, validated checkpoints for long document AI jobs.
+//! Rebuildable, validated checkpoints for long document-AI jobs.
 //!
-//! Only task outputs that have already passed the provider schema and ostudy's
-//! native parser are stored here. Raw provider responses, credentials, prompts,
-//! or reasoning content are never persisted. Contract keys bind a checkpoint to
-//! the exact provider profile revision, model, extraction backend, scale policy,
-//! and task contract so stale results fail closed.
+//! Checkpoints are acceleration data, not canonical learner data. Provider
+//! results enter this store only after native validation. A cache read/write
+//! failure is logged and degrades to recomputation; it must not discard an
+//! otherwise valid model result. Contract identity includes only inputs that can
+//! change semantics, not credential rotation or unrelated profile revisions.
 
 use rusqlite::{params, OptionalExtension};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ai::document_intelligence::{
-        DocumentOutline, DocumentTaskContext, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
-    },
+    ai::document_intelligence::{DocumentOutline, DocumentTaskContext, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION},
     database::Database,
     document_scale::DocumentScalePlan,
     document_semantics::SemanticWindow,
-    error::CommandError,
-    pdf_backend,
     util::unix_time_millis,
 };
 
-const OUTLINE_CHECKPOINT_CONTRACT: &str = "stage47-outline-v1";
-const GENERATION_CHECKPOINT_CONTRACT: &str = "stage47-generation-v1";
-const MAX_CHECKPOINT_CARDS: usize = 32;
+const OUTLINE_CHECKPOINT_CONTRACT: &str = "document-outline-v2";
+const GENERATION_CHECKPOINT_CONTRACT: &str = "document-generation-v2";
+const MAX_CHECKPOINT_CARDS: usize = 16;
 
-pub(crate) fn load_final_outline(
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CheckpointIdentity {
+    pub provider_kind: String,
+    pub profile_id: String,
+    pub model_id: String,
+    pub extraction_backend: String,
+    pub provider_capability_fingerprint: String,
+}
+
+impl CheckpointIdentity {
+    pub(crate) fn from_task(
+        task: &DocumentTaskContext,
+        extraction_backend: &str,
+        provider_capability_fingerprint: &str,
+    ) -> Self {
+        Self {
+            provider_kind: task.provider_kind.clone(),
+            profile_id: task.profile_id.clone(),
+            model_id: task.model_id.clone(),
+            extraction_backend: extraction_backend.to_string(),
+            provider_capability_fingerprint: provider_capability_fingerprint.to_string(),
+        }
+    }
+
+    fn material(&self) -> String {
+        format!(
+            "provider={}|profile={}|model={}|extractor={}|capabilities={}",
+            self.provider_kind,
+            self.profile_id,
+            self.model_id,
+            self.extraction_backend,
+            self.provider_capability_fingerprint,
+        )
+    }
+}
+
+pub(crate) fn load_final_outline_best_effort(
     database: &Database,
     document_id: &str,
-    task: &DocumentTaskContext,
-) -> Result<Option<DocumentOutline>, CommandError> {
-    let outline_json = database.with_connection(|connection| {
+    identity: &CheckpointIdentity,
+) -> Option<DocumentOutline> {
+    let result = database.with_connection(|connection| {
         connection
             .query_row(
                 "SELECT outline_json
@@ -40,101 +72,102 @@ pub(crate) fn load_final_outline(
                    AND profile_id = ?2
                    AND provider_kind = ?3
                    AND model_id = ?4
-                   AND profile_revision = ?5
-                   AND credential_epoch = ?6
-                   AND extraction_backend = ?7
-                   AND schema_version = ?8
-                   AND prompt_version = ?9",
+                   AND extraction_backend = ?5
+                   AND schema_version = ?6
+                   AND prompt_version = ?7",
                 params![
                     document_id,
-                    task.profile_id,
-                    task.provider_kind,
-                    task.model_id,
-                    task.profile_revision,
-                    task.credential_epoch,
-                    pdf_backend::active_backend_id(),
+                    identity.profile_id,
+                    identity.provider_kind,
+                    identity.model_id,
+                    identity.extraction_backend,
                     OUTLINE_SCHEMA_VERSION,
                     OUTLINE_PROMPT_VERSION,
                 ],
                 |row| row.get::<_, String>(0),
             )
             .optional()
-            .map_err(CommandError::database)
-    })?;
-    let Some(json) = outline_json else {
-        return Ok(None);
-    };
-    match serde_json::from_str::<DocumentOutline>(&json) {
-        Ok(outline) => Ok(Some(outline)),
-        Err(_) => {
-            crate::logging::info(
-                "document_final_outline_cache_invalid",
-                format!("document={document_id}"),
+            .map_err(crate::error::CommandError::database)
+    });
+    match result {
+        Ok(Some(json)) => match serde_json::from_str::<DocumentOutline>(&json) {
+            Ok(outline) => Some(outline),
+            Err(error) => {
+                cache_log(
+                    "document_final_outline_cache_invalid",
+                    document_id,
+                    format!("decode={error}"),
+                );
+                None
+            }
+        },
+        Ok(None) => None,
+        Err(error) => {
+            cache_log(
+                "document_checkpoint_read_failed",
+                document_id,
+                format!("stage=final_outline code={} detail={}", error.code, error.message),
             );
-            Ok(None)
+            None
         }
     }
 }
 
-pub(crate) fn outline_contract_key(task: &DocumentTaskContext, plan: DocumentScalePlan) -> String {
+pub(crate) fn outline_contract_key(
+    identity: &CheckpointIdentity,
+    plan: DocumentScalePlan,
+) -> String {
     hash_text(&format!(
-        "{OUTLINE_CHECKPOINT_CONTRACT}|provider={}|profile={}|model={}|revision={}|credential={}|extractor={}|scale={}|outline_tokens={}|outline_pages={}|outline_overlap={}",
-        task.provider_kind,
-        task.profile_id,
-        task.model_id,
-        task.profile_revision,
-        task.credential_epoch,
-        pdf_backend::active_backend_id(),
-        plan.label(),
-        plan.outline_window_max_tokens,
-        plan.outline_window_max_pages,
-        plan.outline_window_overlap_tokens,
+        "{OUTLINE_CHECKPOINT_CONTRACT}|{}|{}|outline_schema={OUTLINE_SCHEMA_VERSION}|outline_prompt={OUTLINE_PROMPT_VERSION}",
+        identity.material(),
+        plan.planning_fingerprint(),
     ))
 }
 
 pub(crate) fn generation_contract_key(
-    task: &DocumentTaskContext,
+    identity: &CheckpointIdentity,
     plan: DocumentScalePlan,
     outline: &DocumentOutline,
     maximum_cards: usize,
-) -> Result<String, CommandError> {
-    let outline_json = serde_json::to_string(outline).map_err(CommandError::serialization)?;
-    Ok(hash_text(&format!(
-        "{GENERATION_CHECKPOINT_CONTRACT}|provider={}|profile={}|model={}|revision={}|credential={}|extractor={}|scale={}|generation_tokens={}|generation_pages={}|generation_overlap={}|max_cards={maximum_cards}|outline={}",
-        task.provider_kind,
-        task.profile_id,
-        task.model_id,
-        task.profile_revision,
-        task.credential_epoch,
-        pdf_backend::active_backend_id(),
-        plan.label(),
-        plan.generation_window_max_tokens,
-        plan.generation_window_max_pages,
-        plan.generation_window_overlap_tokens,
+) -> Option<String> {
+    let outline_json = match serde_json::to_string(outline) {
+        Ok(value) => value,
+        Err(error) => {
+            crate::logging::error(
+                "document_checkpoint_contract_failed",
+                format!("stage=generation_outline detail={error}"),
+            );
+            return None;
+        }
+    };
+    Some(hash_text(&format!(
+        "{GENERATION_CHECKPOINT_CONTRACT}|{}|{}|max_cards={maximum_cards}|outline={}",
+        identity.material(),
+        plan.planning_fingerprint(),
         hash_text(&outline_json),
     )))
 }
 
 pub(crate) fn source_sha256(window: &SemanticWindow) -> String {
     hash_text(&format!(
-        "partition={}|title={}|chunks={}-{}|pages={:?}|tokens={}|source={}",
+        "partition={}|title={}|chunks={}-{}|locator={}|tokens={}|source={}",
         window.partition_index,
         window.partition_title,
         window.first_chunk_index,
         window.last_chunk_index,
-        window.page_numbers,
+        window.source_locator.stable_identity(),
         window.token_estimate,
         window.source_text,
     ))
 }
 
-pub(crate) fn load_outline_fragments(
+pub(crate) fn load_outline_fragments_best_effort(
     database: &Database,
     document_id: &str,
     contract_key: &str,
     windows: &[SemanticWindow],
-) -> Result<Vec<Option<DocumentOutline>>, CommandError> {
-    database.with_connection(|connection| {
+) -> Vec<Option<DocumentOutline>> {
+    let result = database.with_connection(|connection| {
         let mut cached = vec![None; windows.len()];
         let mut statement = connection
             .prepare(
@@ -143,7 +176,7 @@ pub(crate) fn load_outline_fragments(
                  WHERE document_id = ?1 AND contract_key = ?2
                  ORDER BY window_index",
             )
-            .map_err(CommandError::database)?;
+            .map_err(crate::error::CommandError::database)?;
         let rows = statement
             .query_map(params![document_id, contract_key], |row| {
                 Ok((
@@ -152,15 +185,11 @@ pub(crate) fn load_outline_fragments(
                     row.get::<_, String>(2)?,
                 ))
             })
-            .map_err(CommandError::database)?;
+            .map_err(crate::error::CommandError::database)?;
         for row in rows {
-            let (index, stored_sha, json) = row.map_err(CommandError::database)?;
-            let Ok(index) = usize::try_from(index) else {
-                continue;
-            };
-            let Some(window) = windows.get(index) else {
-                continue;
-            };
+            let (index, stored_sha, json) = row.map_err(crate::error::CommandError::database)?;
+            let Ok(index) = usize::try_from(index) else { continue };
+            let Some(window) = windows.get(index) else { continue };
             if stored_sha != source_sha256(window) {
                 continue;
             }
@@ -169,19 +198,50 @@ pub(crate) fn load_outline_fragments(
             }
         }
         Ok(cached)
-    })
+    });
+    match result {
+        Ok(cached) => cached,
+        Err(error) => {
+            cache_log(
+                "document_checkpoint_read_failed",
+                document_id,
+                format!("stage=outline code={} detail={}", error.code, error.message),
+            );
+            vec![None; windows.len()]
+        }
+    }
 }
 
-pub(crate) fn persist_outline_fragment(
+pub(crate) fn persist_outline_fragment_best_effort(
     database: &Database,
     document_id: &str,
     contract_key: &str,
     window: &SemanticWindow,
     fragment: &DocumentOutline,
-) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    let json = serde_json::to_string(fragment).map_err(CommandError::serialization)?;
-    database.with_connection(|connection| {
+) -> bool {
+    let json = match serde_json::to_string(fragment) {
+        Ok(value) => value,
+        Err(error) => {
+            cache_log(
+                "document_checkpoint_write_failed",
+                document_id,
+                format!("stage=outline window={} serialize={error}", window.window_index),
+            );
+            return false;
+        }
+    };
+    let now = match unix_time_millis() {
+        Ok(value) => value,
+        Err(error) => {
+            cache_log(
+                "document_checkpoint_write_failed",
+                document_id,
+                format!("stage=outline window={} clock={}", window.window_index, error.message),
+            );
+            return false;
+        }
+    };
+    let result = database.with_connection(|connection| {
         connection
             .execute(
                 "INSERT INTO document_outline_checkpoints (
@@ -202,38 +262,43 @@ pub(crate) fn persist_outline_fragment(
                     document_id,
                     contract_key,
                     source_sha256(window),
-                    i64::try_from(window.window_index).unwrap_or(i64::MAX),
-                    i64::try_from(window.partition_index).unwrap_or(i64::MAX),
+                    to_i64(window.window_index),
+                    to_i64(window.partition_index),
                     window.partition_title,
-                    window.page_start,
-                    window.page_end,
-                    i64::try_from(window.token_estimate).unwrap_or(i64::MAX),
+                    window.source_locator.first(),
+                    window.source_locator.last(),
+                    to_i64(window.token_estimate),
                     json,
                     now,
                 ],
             )
-            .map_err(CommandError::database)?;
+            .map_err(crate::error::CommandError::database)?;
         Ok(())
-    })
+    });
+    if let Err(error) = result {
+        cache_log(
+            "document_checkpoint_write_failed",
+            document_id,
+            format!("stage=outline window={} code={} detail={}", window.window_index, error.code, error.message),
+        );
+        return false;
+    }
+    true
 }
 
-pub(crate) fn load_generation_cards(
+pub(crate) fn load_generation_cards_best_effort(
     database: &Database,
     document_id: &str,
     contract_key: &str,
     window: &SemanticWindow,
-) -> Result<Option<Vec<Value>>, CommandError> {
-    let row = database.with_connection(|connection| {
+) -> Option<Vec<Value>> {
+    let result = database.with_connection(|connection| {
         connection
             .query_row(
                 "SELECT source_sha256, cards_json, card_count
                  FROM document_generation_checkpoints
                  WHERE document_id = ?1 AND contract_key = ?2 AND window_index = ?3",
-                params![
-                    document_id,
-                    contract_key,
-                    i64::try_from(window.window_index).unwrap_or(i64::MAX),
-                ],
+                params![document_id, contract_key, to_i64(window.window_index)],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -243,40 +308,68 @@ pub(crate) fn load_generation_cards(
                 },
             )
             .optional()
-            .map_err(CommandError::database)
-    })?;
-    let Some((stored_sha, json, count)) = row else {
-        return Ok(None);
+            .map_err(crate::error::CommandError::database)
+    });
+    let row = match result {
+        Ok(value) => value,
+        Err(error) => {
+            cache_log(
+                "document_checkpoint_read_failed",
+                document_id,
+                format!("stage=generation window={} code={} detail={}", window.window_index, error.code, error.message),
+            );
+            return None;
+        }
     };
+    let Some((stored_sha, json, count)) = row else { return None };
     if stored_sha != source_sha256(window) {
-        return Ok(None);
+        return None;
     }
-    let Ok(cards) = serde_json::from_str::<Vec<Value>>(&json) else {
-        return Ok(None);
-    };
-    if cards.len() > MAX_CHECKPOINT_CARDS || i64::try_from(cards.len()).unwrap_or(i64::MAX) != count
-    {
-        return Ok(None);
+    let Ok(cards) = serde_json::from_str::<Vec<Value>>(&json) else { return None };
+    if cards.len() > MAX_CHECKPOINT_CARDS || to_i64(cards.len()) != count {
+        return None;
     }
-    Ok(Some(cards))
+    Some(cards)
 }
 
-pub(crate) fn persist_generation_cards(
+pub(crate) fn persist_generation_cards_best_effort(
     database: &Database,
     document_id: &str,
     contract_key: &str,
     window: &SemanticWindow,
     cards: &[Value],
-) -> Result<(), CommandError> {
+) -> bool {
     if cards.len() > MAX_CHECKPOINT_CARDS {
-        return Err(CommandError::new(
-            "document_checkpoint_invalid",
-            "A generation window produced too many validated cards to checkpoint safely.",
-        ));
+        cache_log(
+            "document_checkpoint_write_failed",
+            document_id,
+            format!("stage=generation window={} too_many_cards={}", window.window_index, cards.len()),
+        );
+        return false;
     }
-    let now = unix_time_millis()?;
-    let json = serde_json::to_string(cards).map_err(CommandError::serialization)?;
-    database.with_connection(|connection| {
+    let json = match serde_json::to_string(cards) {
+        Ok(value) => value,
+        Err(error) => {
+            cache_log(
+                "document_checkpoint_write_failed",
+                document_id,
+                format!("stage=generation window={} serialize={error}", window.window_index),
+            );
+            return false;
+        }
+    };
+    let now = match unix_time_millis() {
+        Ok(value) => value,
+        Err(error) => {
+            cache_log(
+                "document_checkpoint_write_failed",
+                document_id,
+                format!("stage=generation window={} clock={}", window.window_index, error.message),
+            );
+            return false;
+        }
+    };
+    let result = database.with_connection(|connection| {
         connection
             .execute(
                 "INSERT INTO document_generation_checkpoints (
@@ -298,94 +391,66 @@ pub(crate) fn persist_generation_cards(
                     document_id,
                     contract_key,
                     source_sha256(window),
-                    i64::try_from(window.window_index).unwrap_or(i64::MAX),
-                    i64::try_from(window.partition_index).unwrap_or(i64::MAX),
+                    to_i64(window.window_index),
+                    to_i64(window.partition_index),
                     window.partition_title,
-                    window.page_start,
-                    window.page_end,
-                    i64::try_from(window.token_estimate).unwrap_or(i64::MAX),
+                    window.source_locator.first(),
+                    window.source_locator.last(),
+                    to_i64(window.token_estimate),
                     json,
-                    i64::try_from(cards.len()).unwrap_or(i64::MAX),
+                    to_i64(cards.len()),
                     now,
                 ],
             )
-            .map_err(CommandError::database)?;
+            .map_err(crate::error::CommandError::database)?;
         Ok(())
-    })
+    });
+    if let Err(error) = result {
+        cache_log(
+            "document_checkpoint_write_failed",
+            document_id,
+            format!("stage=generation window={} code={} detail={}", window.window_index, error.code, error.message),
+        );
+        return false;
+    }
+    true
 }
 
-pub(crate) fn clear_generation_checkpoints(
-    database: &Database,
-    document_id: &str,
-) -> Result<(), CommandError> {
-    database.with_connection(|connection| {
+pub(crate) fn clear_generation_checkpoints_best_effort(database: &Database, document_id: &str) {
+    let result = database.with_connection(|connection| {
         connection
-            .execute(
-                "DELETE FROM document_generation_checkpoints WHERE document_id = ?1",
-                [document_id],
-            )
-            .map_err(CommandError::database)?;
+            .execute("DELETE FROM document_generation_checkpoints WHERE document_id = ?1", [document_id])
+            .map_err(crate::error::CommandError::database)?;
         Ok(())
-    })
+    });
+    if let Err(error) = result {
+        cache_log(
+            "document_checkpoint_cleanup_failed",
+            document_id,
+            format!("code={} detail={}", error.code, error.message),
+        );
+    }
 }
 
-pub(crate) fn count_outline_checkpoints(
-    database: &Database,
-    document_id: &str,
-    contract_key: &str,
-) -> Result<i64, CommandError> {
-    count_checkpoints(
-        database,
-        "document_outline_checkpoints",
-        document_id,
-        contract_key,
-    )
-}
-
-pub(crate) fn count_generation_checkpoints(
-    database: &Database,
-    document_id: &str,
-    contract_key: &str,
-) -> Result<i64, CommandError> {
-    count_checkpoints(
-        database,
-        "document_generation_checkpoints",
-        document_id,
-        contract_key,
-    )
-}
-
-fn count_checkpoints(
-    database: &Database,
-    table: &str,
-    document_id: &str,
-    contract_key: &str,
-) -> Result<i64, CommandError> {
-    debug_assert!(matches!(
-        table,
-        "document_outline_checkpoints" | "document_generation_checkpoints"
-    ));
-    database.with_connection(|connection| {
-        connection
-            .query_row(
-                &format!(
-                    "SELECT COUNT(*) FROM {table} WHERE document_id = ?1 AND contract_key = ?2"
-                ),
-                params![document_id, contract_key],
-                |row| row.get(0),
-            )
-            .map_err(CommandError::database)
-    })
+fn cache_log(event: &str, document_id: &str, detail: String) {
+    crate::logging::error(event, format!("document={document_id} {detail}"));
 }
 
 fn hash_text(value: &str) -> String {
     format!("{:x}", Sha256::digest(value.as_bytes()))
 }
 
+fn to_i64(value: usize) -> i64 {
+    i64::try_from(value).unwrap_or(i64::MAX)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document_semantics::SemanticWindow;
+    use crate::{
+        document_domain::SourceLocator,
+        document_semantics::SemanticWindow,
+    };
 
     fn window() -> SemanticWindow {
         SemanticWindow {
@@ -394,6 +459,7 @@ mod tests {
             partition_title: "Chapter 3".to_string(),
             first_chunk_index: 10,
             last_chunk_index: 12,
+            source_locator: SourceLocator::pages(vec![21, 22], Some("Chapter 3".to_string())).unwrap(),
             page_numbers: vec![21, 22],
             visual_page_numbers: vec![22],
             page_start: 21,
@@ -404,10 +470,25 @@ mod tests {
     }
 
     #[test]
-    fn window_hash_changes_when_partition_identity_changes() {
+    fn window_hash_changes_when_semantic_locator_changes() {
         let first = window();
         let mut second = first.clone();
-        second.partition_title = "Chapter 4".to_string();
+        second.source_locator = SourceLocator::pages(vec![22, 23], Some("Chapter 3".to_string())).unwrap();
         assert_ne!(source_sha256(&first), source_sha256(&second));
+    }
+
+    #[test]
+    fn checkpoint_identity_excludes_credential_epoch_and_profile_revision_by_design() {
+        let identity = CheckpointIdentity {
+            provider_kind: "llama_cpp".to_string(),
+            profile_id: "profile".to_string(),
+            model_id: "model".to_string(),
+            extraction_backend: "extractor-v1".to_string(),
+            provider_capability_fingerprint: "caps".to_string(),
+        };
+        let material = identity.material();
+        assert!(!material.contains("credential"));
+        assert!(!material.contains("revision"));
+        assert!(material.contains("model=model"));
     }
 }
