@@ -19,73 +19,137 @@ function replaceRequired(source, label, search, replacement) {
 }
 
 await patchFile("src-tauri/src/ai/document_intelligence.rs", (initial) => {
-  if (initial.includes("const FLASHCARD_PROMPT_VERSION: i64 = 4;")) return initial;
   let source = initial;
-  source = replaceRequired(
-    source,
-    "flashcard prompt version",
-    "const FLASHCARD_PROMPT_VERSION: i64 = 3;",
-    "const FLASHCARD_PROMPT_VERSION: i64 = 4;",
-  );
-  source = replaceRequired(
-    source,
-    "flashcard schema version",
-    "const FLASHCARD_SCHEMA_VERSION: i64 = 3;",
-    "const FLASHCARD_SCHEMA_VERSION: i64 = 4;",
-  );
-  source = replaceRequired(
-    source,
-    "basic reverse field",
-    `        #[serde(default, rename = "reverseEnabled")]
+  if (!source.includes("const FLASHCARD_PROMPT_VERSION: i64 = 4;")) {
+    source = replaceRequired(
+      source,
+      "flashcard prompt version",
+      "const FLASHCARD_PROMPT_VERSION: i64 = 3;",
+      "const FLASHCARD_PROMPT_VERSION: i64 = 4;",
+    );
+    source = replaceRequired(
+      source,
+      "flashcard schema version",
+      "const FLASHCARD_SCHEMA_VERSION: i64 = 3;",
+      "const FLASHCARD_SCHEMA_VERSION: i64 = 4;",
+    );
+    source = replaceRequired(
+      source,
+      "basic reverse field",
+      `        #[serde(default, rename = "reverseEnabled")]
         reverse_enabled: bool,
 `,
-    "",
-  );
-  source = replaceRequired(
-    source,
-    "basic reverse destructuring",
-    `            reverse_enabled,
+      "",
+    );
+    source = replaceRequired(
+      source,
+      "basic reverse destructuring",
+      `            reverse_enabled,
 `,
-    "",
-  );
-  source = replaceRequired(
-    source,
-    "basic reverse normalization",
-    `                "reverseEnabled": reverse_enabled,
+      "",
+    );
+    source = replaceRequired(
+      source,
+      "basic reverse normalization",
+      `                "reverseEnabled": reverse_enabled,
 `,
-    `                "reverseEnabled": false,
+      `                "reverseEnabled": false,
 `,
-  );
-  source = replaceRequired(
-    source,
-    "definition normalization",
-    `                "front": format!("What is {}?", term.trim()),
+    );
+    source = replaceRequired(
+      source,
+      "definition normalization",
+      `                "front": format!("What is {}?", term.trim()),
                 "back": definition,
                 "reverseEnabled": false,
 `,
-    `                "front": term,
+      `                "front": term,
                 "back": definition,
                 "reverseEnabled": true,
 `,
-  );
-  source = replaceRequired(
-    source,
-    "basic schema reverse field",
-    `            "reverseEnabled": { "type": "boolean" },
+    );
+    source = replaceRequired(
+      source,
+      "basic schema reverse field",
+      `            "reverseEnabled": { "type": "boolean" },
 `,
-    "",
-  );
-  source = replaceRequired(
-    source,
-    "direction prompt anchor",
-    "Each card should test one coherent learning objective and be self-contained without the PDF. Use a meaningful variety when supported: basic conceptual questions, definition pairs, four-option multiple choice with one best answer and explanation, critical-thinking/application/scenario questions, and cloze fill-in-the-blank. ",
-    "Each card should test one coherent learning objective and be self-contained without the PDF. Card direction is strict: use the `definition` type only for a straightforward term/definition pair that remains meaningful in both directions. Ordinary basic question/answer cards, multiple-choice cards, and critical-thinking/application cards are one-way question-to-answer cards and are never reversible. Never put an explanatory answer or descriptive passage on the question side with its question on the answer side. Use a meaningful variety when supported: basic conceptual questions, definition pairs, four-option multiple choice with one best answer and explanation, critical-thinking/application/scenario questions, and cloze fill-in-the-blank. ",
-  );
-  source = source.replace(`                "reasoning_effort": "none",\n`, "");
-  source = replaceRequired(
-    source,
-    "llama compatibility response",
-    `    let response = runtime
+      "",
+    );
+    source = replaceRequired(
+      source,
+      "direction prompt anchor",
+      "Each card should test one coherent learning objective and be self-contained without the PDF. Use a meaningful variety when supported: basic conceptual questions, definition pairs, four-option multiple choice with one best answer and explanation, critical-thinking/application/scenario questions, and cloze fill-in-the-blank. ",
+      "Each card should test one coherent learning objective and be self-contained without the PDF. Card direction is strict: use the `definition` type only for a straightforward term/definition pair that remains meaningful in both directions. Ordinary basic question/answer cards, multiple-choice cards, and critical-thinking/application cards are one-way question-to-answer cards and are never reversible. Never put an explanatory answer or descriptive passage on the question side with its question on the answer side. Use a meaningful variety when supported: basic conceptual questions, definition pairs, four-option multiple choice with one best answer and explanation, critical-thinking/application/scenario questions, and cloze fill-in-the-blank. ",
+    );
+    source = source.replace(`                "reasoning_effort": "none",\n`, "");
+    source = replaceRequired(
+      source,
+      "prompt version test",
+      `        assert!(prompt.contains("Returning zero cards is preferable"));
+        assert!(prompt.contains("schema version: 3"));
+`,
+      `        assert!(prompt.contains("Returning zero cards is preferable"));
+        assert!(prompt.contains("never reversible"));
+        assert!(prompt.contains("question side"));
+        assert!(prompt.contains("schema version: 4"));
+`,
+    );
+    source = replaceRequired(
+      source,
+      "schema direction test anchor",
+      `        assert!(flashcards.contains("cloze"));
+        assert!(outline.contains("learningObjectives"));
+`,
+      `        assert!(flashcards.contains("cloze"));
+        assert!(!flashcards.contains("reverseEnabled"));
+        assert!(outline.contains("learningObjectives"));
+`,
+    );
+    source = replaceRequired(
+      source,
+      "cloze test anchor",
+      `    #[test]
+    fn cloze_blanks_are_constructed_by_rust() {
+`,
+      `    #[test]
+    fn only_definition_cards_normalize_as_reversible() {
+        let basic = normalize_generated_card(
+            0,
+            GeneratedStudyCard::Basic {
+                front: "What causes hypoxic pulmonary vasoconstriction?".to_string(),
+                back: "Low alveolar oxygen triggers local pulmonary arteriolar constriction.".to_string(),
+                tags: Vec::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(basic["reverseEnabled"], false);
+        assert!(basic["front"].as_str().unwrap().starts_with("What causes"));
+
+        let definition = normalize_generated_card(
+            1,
+            GeneratedStudyCard::Definition {
+                term: "Shunt".to_string(),
+                definition: "Perfusion without ventilation.".to_string(),
+                tags: Vec::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(definition["front"], "Shunt");
+        assert_eq!(definition["back"], "Perfusion without ventilation.");
+        assert_eq!(definition["reverseEnabled"], true);
+    }
+
+    #[test]
+    fn cloze_blanks_are_constructed_by_rust() {
+`,
+    );
+  }
+
+  if (!source.includes("Compatibility mode: return exactly one JSON object")) {
+    source = replaceRequired(
+      source,
+      "llama compatibility response",
+      `    let response = runtime
         .gateway
         .post_json(
             completion_endpoint(&task.profile)?,
@@ -97,7 +161,7 @@ await patchFile("src-tauri/src/ai/document_intelligence.rs", (initial) => {
         .await
         .map_err(gateway_to_command)?;
 `,
-    `    let first_response = runtime
+      `    let first_response = runtime
         .gateway
         .post_json(
             completion_endpoint(&task.profile)?,
@@ -149,68 +213,8 @@ await patchFile("src-tauri/src/ai/document_intelligence.rs", (initial) => {
     }
     .map_err(gateway_to_command)?;
 `,
-  );
-  source = replaceRequired(
-    source,
-    "prompt version test",
-    `        assert!(prompt.contains("Returning zero cards is preferable"));
-        assert!(prompt.contains("schema version: 3"));
-`,
-    `        assert!(prompt.contains("Returning zero cards is preferable"));
-        assert!(prompt.contains("never reversible"));
-        assert!(prompt.contains("question side"));
-        assert!(prompt.contains("schema version: 4"));
-`,
-  );
-  source = replaceRequired(
-    source,
-    "schema direction test anchor",
-    `        assert!(flashcards.contains("cloze"));
-        assert!(outline.contains("learningObjectives"));
-`,
-    `        assert!(flashcards.contains("cloze"));
-        assert!(!flashcards.contains("reverseEnabled"));
-        assert!(outline.contains("learningObjectives"));
-`,
-  );
-  source = replaceRequired(
-    source,
-    "cloze test anchor",
-    `    #[test]
-    fn cloze_blanks_are_constructed_by_rust() {
-`,
-    `    #[test]
-    fn only_definition_cards_normalize_as_reversible() {
-        let basic = normalize_generated_card(
-            0,
-            GeneratedStudyCard::Basic {
-                front: "What causes hypoxic pulmonary vasoconstriction?".to_string(),
-                back: "Low alveolar oxygen triggers local pulmonary arteriolar constriction.".to_string(),
-                tags: Vec::new(),
-            },
-        )
-        .unwrap();
-        assert_eq!(basic["reverseEnabled"], false);
-        assert!(basic["front"].as_str().unwrap().starts_with("What causes"));
-
-        let definition = normalize_generated_card(
-            1,
-            GeneratedStudyCard::Definition {
-                term: "Shunt".to_string(),
-                definition: "Perfusion without ventilation.".to_string(),
-                tags: Vec::new(),
-            },
-        )
-        .unwrap();
-        assert_eq!(definition["front"], "Shunt");
-        assert_eq!(definition["back"], "Perfusion without ventilation.");
-        assert_eq!(definition["reverseEnabled"], true);
-    }
-
-    #[test]
-    fn cloze_blanks_are_constructed_by_rust() {
-`,
-  );
+    );
+  }
   return source;
 });
 
