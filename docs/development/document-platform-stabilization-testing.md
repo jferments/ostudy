@@ -10,10 +10,10 @@ During document-platform iteration:
 ./scripts/check-changed.sh
 ```
 
-Run the focused cross-layer document contract directly when changing ingestion, semantic planning, checkpoints, budget logic, migrations, or generation persistence:
+The fast gate contains the focused cross-layer document/domain/persistence and migration contracts:
 
 ```bash
-./scripts/check-document.sh
+./scripts/check-fast.sh
 ```
 
 Before requesting merge review:
@@ -36,11 +36,14 @@ The automated document lane must prove all of the following:
 5. Invalid window identity is rejected before a generation job row is inserted.
 6. Provider-reported context can only shrink conservative source windows.
 7. A provider context too small for schema/task/output reserves fails locally before traffic.
-8. Checkpoint contract identity changes with semantic model/capability/planning/source changes but not credential rotation alone.
-9. Checkpoint cache write/read failures are non-canonical and degrade to recomputation.
-10. Migration 20 upgrades old schemas while preserving foreign-key integrity.
-11. Durable provider adapter keys are no longer closed SQLite enums.
-12. PDF ingestion explicitly records `source_format=pdf` and `source_unit_kind=page`.
+8. A 138-page-style llama.cpp plan whose aggregate estimate exceeds the former 1.2M local ceiling is accepted and remains window-bounded.
+9. llama.cpp source totals above the cloud-only 250k source-token guard are accepted when the source-unit and per-window limits remain valid.
+10. DeepSeek/current metered providers still reject conservatively excessive aggregate jobs before provider traffic.
+11. Checkpoint contract identity changes with semantic model/capability/planning/source changes but not credential rotation alone.
+12. Checkpoint cache write/read failures are non-canonical and degrade to recomputation.
+13. Migration 20 upgrades old schemas while preserving foreign-key integrity.
+14. Durable provider adapter keys are no longer closed SQLite enums.
+15. PDF ingestion explicitly records `source_format=pdf` and `source_unit_kind=page`.
 
 ## Empirical usage benchmark
 
@@ -73,7 +76,8 @@ For every benchmark run, record externally in the acceptance notes:
 - text-only versus multimodal;
 - planner source-token estimate;
 - outline/generation window counts;
-- planner aggregate estimate and safety ceiling;
+- planner aggregate estimate;
+- aggregate budget mode (`windowed` for local llama.cpp or the numeric ceiling for metered providers);
 - actual aggregate prompt/completion tokens reported by the provider;
 - reasoning/cache token details when available;
 - success/failure and the exact safe failure code.
@@ -88,7 +92,7 @@ At minimum collect repeatable observations for:
 - small multimodal source;
 - medium multimodal source.
 
-Prefer multiple runs for a provider/model before modifying calibration defaults. Treat provider-declared context as a hard constraint regardless of empirical observations.
+Prefer multiple runs for a provider/model before modifying calibration defaults. Treat provider-declared context as a hard per-request constraint regardless of empirical observations.
 
 ## PR #39 real-provider acceptance order
 
@@ -118,7 +122,7 @@ Compare:
 - any cache-hit behavior;
 - final card count/quality.
 
-A large unexplained regression should block the expensive large-source test.
+A large unexplained regression should block the expensive large-source tests.
 
 ### 3. Medium local-model source
 
@@ -131,24 +135,44 @@ Verify:
 - no runaway retry loop;
 - interruption can be retried without redoing validated retained work unnecessarily.
 
-### 4. Large DeepSeek source
+### 4. Large local-model source
 
-Only after steps 1-3 pass, re-run the ~138-page source that previously consumed roughly 1.45M aggregate tokens before late truncation.
+Re-run the ~138-page llama.cpp/Unsloth source that previously failed only because its conservative aggregate estimate (~1.86M in the observed run) exceeded the old 1.2M local whole-job ceiling.
 
 Expected behavior:
 
-- either the planner rejects the job locally under the configured safety ceiling, or the bounded/resumable run completes without the previous token explosion;
+- **do not reject the document because its aggregate estimate exceeds 1.2M**;
+- diagnostics report `ceiling=windowed`;
+- the source is processed as multiple bounded outline and generation windows;
+- each provider request remains within the conservative/live context-aware window limit;
+- completed outline/generation checkpoints are reusable after interruption;
+- no recursive compact-retry loop;
+- final global outline synthesis remains bounded to the compact digest;
+- curation remains bounded in small batches;
+- successful generation commits one canonical deck for the original document.
+
+This is now a required acceptance regression: aggregate local work may be large because it is executed sequentially, but no individual local request may become unbounded.
+
+### 5. Large DeepSeek source
+
+Only after the cheaper cases pass, re-run the ~138-page source that previously consumed roughly 1.45M aggregate DeepSeek tokens before late truncation.
+
+Expected behavior:
+
+- the metered-provider aggregate safety ceiling remains active;
+- the planner may reject the job locally before another runaway paid sequence, or a bounded plan that falls below the ceiling may complete;
 - completed outline/generation windows can be reused after interruption;
 - no recursive compact-retry loop;
 - diagnostics provide partition/window/source-unit context without raw source text.
 
-### 5. Generate More
+### 6. Generate More
 
 On a successfully generated document:
 
 - Generate More appends to the exact existing deck;
 - it reuses the retained final outline;
 - it uses the same shared generation executor/state transition rules as initial generation;
+- large local documents remain window-bounded rather than aggregate-job-bounded on the second pass too;
 - it does not create a replacement deck;
 - failure/cancellation leaves existing cards intact.
 
@@ -168,4 +192,4 @@ Re-test:
 
 ## Merge criteria
 
-PR #39 should remain draft until the focused/fast gates pass. Mark it ready only when the code is stable enough for the full qualification gate. Do not merge until the 11-page llama.cpp/Unsloth regression and representative DeepSeek/local acceptance tests pass in addition to automated qualification.
+PR #39 should remain draft until the fast and full automated gates pass. Mark it ready only when the code is stable enough for the full qualification gate. Do not merge until the 11-page llama.cpp/Unsloth regression, the 138-page windowed local regression, and representative DeepSeek/local acceptance tests pass in addition to automated qualification.
