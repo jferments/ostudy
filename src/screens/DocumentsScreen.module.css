@@ -102,7 +102,7 @@
 
 .titleRow {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   flex-wrap: wrap;
   gap: 0.65rem;
 }
@@ -130,6 +130,13 @@
 
 .status[data-state="failed"] {
   border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+}
+
+.processingPhase {
+  color: var(--muted);
+  font-size: 0.73rem;
+  font-weight: 520;
+  letter-spacing: 0.01em;
 }
 
 .filename {
