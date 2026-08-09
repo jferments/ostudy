@@ -36,6 +36,17 @@ pub(crate) struct GenerationExecution<'a> {
     pub diagnostic_prefix: &'a str,
 }
 
+struct WindowGenerationRequest<'a> {
+    runtime: &'a AiRuntimeState,
+    task: &'a document_intelligence::DocumentTaskContext,
+    document_title: &'a str,
+    outline: &'a document_intelligence::DocumentOutline,
+    window: &'a SemanticWindow,
+    images: &'a [document_intelligence::SourcePageImage],
+    maximum_cards: usize,
+    diagnostic_prefix: &'a str,
+}
+
 pub(crate) async fn execute_generation_windows(
     input: GenerationExecution<'_>,
 ) -> Result<Vec<Value>, CommandError> {
@@ -82,16 +93,16 @@ pub(crate) async fn execute_generation_windows(
             } else {
                 Vec::new()
             };
-            let cards = generate_window_with_recovery(
-                input.runtime,
-                input.task,
-                input.document_title,
-                input.outline,
+            let cards = generate_window_with_recovery(WindowGenerationRequest {
+                runtime: input.runtime,
+                task: input.task,
+                document_title: input.document_title,
+                outline: input.outline,
                 window,
-                &images,
-                input.plan.max_cards_per_window,
-                input.diagnostic_prefix,
-            )
+                images: &images,
+                maximum_cards: input.plan.max_cards_per_window,
+                diagnostic_prefix: input.diagnostic_prefix,
+            })
             .await?;
             if let Some(contract) = input.checkpoint_contract {
                 // Empty output is also a completed result. Caching it avoids
@@ -133,53 +144,47 @@ pub(crate) async fn execute_generation_windows(
     Ok(generated)
 }
 
-pub(crate) async fn generate_window_with_recovery(
-    runtime: &AiRuntimeState,
-    task: &document_intelligence::DocumentTaskContext,
-    document_title: &str,
-    outline: &document_intelligence::DocumentOutline,
-    window: &SemanticWindow,
-    images: &[document_intelligence::SourcePageImage],
-    maximum_cards: usize,
-    diagnostic_prefix: &str,
+async fn generate_window_with_recovery(
+    input: WindowGenerationRequest<'_>,
 ) -> Result<Vec<Value>, CommandError> {
     let first = document_intelligence::generate_window_flashcards(
-        runtime,
-        task,
-        document_title,
-        outline,
-        window,
-        images,
-        maximum_cards.max(1),
+        input.runtime,
+        input.task,
+        input.document_title,
+        input.outline,
+        input.window,
+        input.images,
+        input.maximum_cards.max(1),
     )
     .await;
     match first {
         Err(error)
-            if maximum_cards > 2
+            if input.maximum_cards > 2
                 && (error.code == "ai_document_output_truncated"
                     || (error.code == "ai_document_output_invalid"
                         && error.message.contains("more than"))) =>
         {
-            let reduced_budget = (maximum_cards / 2).max(2);
+            let reduced_budget = (input.maximum_cards / 2).max(2);
             crate::logging::info(
                 "document_generation_window_compact_retry",
                 format!(
-                    "path={diagnostic_prefix} window={} partition={} locator={} old_budget={} new_budget={} code={}",
-                    window.window_index + 1,
-                    window.partition_index + 1,
-                    window.source_locator().stable_identity(),
-                    maximum_cards,
+                    "path={} window={} partition={} locator={} old_budget={} new_budget={} code={}",
+                    input.diagnostic_prefix,
+                    input.window.window_index + 1,
+                    input.window.partition_index + 1,
+                    input.window.source_locator().stable_identity(),
+                    input.maximum_cards,
                     reduced_budget,
                     error.code,
                 ),
             );
             document_intelligence::generate_window_flashcards(
-                runtime,
-                task,
-                document_title,
-                outline,
-                window,
-                images,
+                input.runtime,
+                input.task,
+                input.document_title,
+                input.outline,
+                input.window,
+                input.images,
                 reduced_budget,
             )
             .await
