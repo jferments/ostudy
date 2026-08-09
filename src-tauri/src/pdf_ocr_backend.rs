@@ -218,12 +218,14 @@ fn png_dimensions(image_data: &[u8]) -> OcrResult<(u32, u32)> {
             "ostudy OCR expects a rendered PNG page.".to_string(),
         ));
     }
-    let width = u32::from_be_bytes(image_data[16..20].try_into().map_err(|_| {
-        OcrError::InvalidImageData("PNG width header is truncated.".to_string())
-    })?);
-    let height = u32::from_be_bytes(image_data[20..24].try_into().map_err(|_| {
-        OcrError::InvalidImageData("PNG height header is truncated.".to_string())
-    })?);
+    let width =
+        u32::from_be_bytes(image_data[16..20].try_into().map_err(|_| {
+            OcrError::InvalidImageData("PNG width header is truncated.".to_string())
+        })?);
+    let height =
+        u32::from_be_bytes(image_data[20..24].try_into().map_err(|_| {
+            OcrError::InvalidImageData("PNG height header is truncated.".to_string())
+        })?);
     if width == 0 || height == 0 {
         return Err(OcrError::InvalidImageData(
             "Rendered OCR page has zero image dimensions.".to_string(),
