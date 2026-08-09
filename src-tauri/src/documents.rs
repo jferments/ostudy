@@ -14,7 +14,7 @@ use crate::{
     authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit,
     database::Database,
     document_checkpoints,
-    document_scale::{DocumentScalePlan, MAX_SUPPORTED_PDF_PAGES},
+    document_scale::{self, DocumentScalePlan, MAX_SUPPORTED_PDF_PAGES},
     document_semantics::{build_partitioned_semantic_windows, SemanticChunk, SemanticWindow},
     error::CommandError,
     paths::AppPaths,
@@ -393,7 +393,8 @@ async fn process_and_generate(
         ));
     }
 
-    let plan = DocumentScalePlan::for_page_count(pages.len());
+    let task = document_intelligence::load_document_task_context(database.inner())?;
+    let plan = DocumentScalePlan::for_provider(pages.len(), &task.provider_kind);
     let estimated_source_tokens = chunks.iter().fold(0_usize, |total, chunk| {
         total.saturating_add(
             chunk
@@ -401,7 +402,6 @@ async fn process_and_generate(
                 .max(chunk.full_text.chars().count().div_ceil(4)),
         )
     });
-    let task = document_intelligence::load_document_task_context(database.inner())?;
     let outline_windows = build_partitioned_semantic_windows(
         &chunks,
         plan,
@@ -422,6 +422,31 @@ async fn process_and_generate(
             "The PDF did not contain bounded semantic source windows for document analysis.",
         ));
     }
+
+    let budget = document_scale::validate_automatic_job(
+        pages.len(),
+        estimated_source_tokens,
+        plan,
+        outline_windows.len(),
+        generation_windows.len(),
+        &task.provider_kind,
+    )?;
+    crate::logging::info(
+        "document_ai_scale_plan",
+        format!(
+            "document={} provider={} scale={} pages={} source_tokens={} outline_windows={} generation_windows={} card_capacity={} estimated_job_tokens={} ceiling={}",
+            document_id,
+            task.provider_kind,
+            plan.label(),
+            pages.len(),
+            estimated_source_tokens,
+            outline_windows.len(),
+            generation_windows.len(),
+            budget.generation_card_capacity,
+            budget.estimated_tokens,
+            budget.ceiling_tokens,
+        ),
+    );
 
     let outline_contract = document_checkpoints::outline_contract_key(&task, plan);
     let cached_outline = document_checkpoints::load_outline_fragments(
@@ -683,43 +708,51 @@ async fn generate_window_with_recovery(
     images: &[document_intelligence::SourcePageImage],
     maximum_cards: usize,
 ) -> Result<Vec<serde_json::Value>, CommandError> {
-    let mut card_budget = maximum_cards.max(1);
-    loop {
-        let result = document_intelligence::generate_window_flashcards(
-            runtime,
-            task,
-            document_title,
-            outline,
-            window,
-            images,
-            card_budget,
-        )
-        .await;
-        match result {
-            Err(error)
-                if card_budget > 2
-                    && (error.code == "ai_document_output_truncated"
-                        || (error.code == "ai_document_output_invalid"
-                            && error.message.contains("more than"))) =>
-            {
-                let next_budget = (card_budget / 2).max(2);
-                crate::logging::info(
-                    "document_generation_window_budget_reduced",
-                    format!(
-                        "window={} partition={} pages={}-{} old_budget={} new_budget={} code={}",
-                        window.window_index + 1,
-                        window.partition_index + 1,
-                        window.page_start,
-                        window.page_end,
-                        card_budget,
-                        next_budget,
-                        error.code,
-                    ),
-                );
-                card_budget = next_budget;
-            }
-            other => return other,
+    let first = document_intelligence::generate_window_flashcards(
+        runtime,
+        task,
+        document_title,
+        outline,
+        window,
+        images,
+        maximum_cards.max(1),
+    )
+    .await;
+    match first {
+        Err(error)
+            if maximum_cards > 2
+                && (error.code == "ai_document_output_truncated"
+                    || (error.code == "ai_document_output_invalid"
+                        && error.message.contains("more than"))) =>
+        {
+            // One reduced retry only. Never recursively keep halving and
+            // spending provider tokens after a completion/context failure.
+            let reduced_budget = (maximum_cards / 2).max(2);
+            crate::logging::info(
+                "document_generation_window_compact_retry",
+                format!(
+                    "window={} partition={} pages={}-{} old_budget={} new_budget={} code={}",
+                    window.window_index + 1,
+                    window.partition_index + 1,
+                    window.page_start,
+                    window.page_end,
+                    maximum_cards,
+                    reduced_budget,
+                    error.code,
+                ),
+            );
+            document_intelligence::generate_window_flashcards(
+                runtime,
+                task,
+                document_title,
+                outline,
+                window,
+                images,
+                reduced_budget,
+            )
+            .await
         }
+        other => other,
     }
 }
 
