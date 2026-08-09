@@ -16,7 +16,8 @@ use crate::{
     ai::{document_intelligence, AiRuntimeState},
     authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit,
     database::Database,
-    document_semantics::{build_semantic_windows, SemanticChunk, SemanticWindow},
+    document_scale::DocumentScalePlan,
+    document_semantics::{build_partitioned_semantic_windows, SemanticChunk, SemanticWindow},
     error::CommandError,
     paths::AppPaths,
     task_cancellation::run_document_task,
@@ -134,11 +135,14 @@ async fn generate_more_impl(
             "The retained PDF has no semantic source chunks available for another generation pass.",
         ));
     }
-    let windows = build_semantic_windows(
+    let page_count = usize::try_from(context.page_count).unwrap_or(usize::MAX);
+    let plan = DocumentScalePlan::for_page_count(page_count);
+    let windows = build_partitioned_semantic_windows(
         &chunks,
-        GENERATION_WINDOW_MAX_TOKENS,
-        GENERATION_WINDOW_MAX_PAGES,
-        GENERATION_WINDOW_OVERLAP_TOKENS,
+        plan,
+        plan.generation_window_max_tokens,
+        plan.generation_window_max_pages,
+        plan.generation_window_overlap_tokens,
     );
     if windows.is_empty() {
         return Err(CommandError::new(
@@ -147,6 +151,7 @@ async fn generate_more_impl(
         ));
     }
 
+    initialize_additional_progress(database.inner(), &input.document_id, plan, windows.len())?;
     let task = document_intelligence::load_document_task_context(database.inner())?;
     let pages = if task.include_page_images {
         load_page_renders(database.inner(), &input.document_id)?
@@ -165,17 +170,18 @@ async fn generate_more_impl(
     for window in &windows {
         mark_window_running(database.inner(), &job_id, window.window_index)?;
         let images = if task.include_page_images {
-            load_window_images(paths.inner(), &pages, window)?
+            load_window_images(paths.inner(), &pages, window, plan.max_images_per_window)?
         } else {
             Vec::new()
         };
-        let cards = document_intelligence::generate_window_flashcards(
+        let cards = generate_window_with_recovery(
             runtime.inner(),
             &task,
             &context.title,
             &second_pass_outline,
             window,
             &images,
+            plan.max_cards_per_window,
         )
         .await?;
         if generated.len().saturating_add(cards.len()) > MAX_GENERATED_CARDS {
@@ -187,6 +193,11 @@ async fn generate_more_impl(
             ));
         }
         mark_window_complete(database.inner(), &job_id, window, cards.len())?;
+        update_additional_progress(
+            database.inner(),
+            &input.document_id,
+            i64::try_from(window.window_index + 1).unwrap_or(i64::MAX),
+        )?;
         generated.extend(cards);
     }
 
@@ -229,6 +240,7 @@ async fn generate_more_impl(
                      SET lifecycle_state = 'ready',
                          generated_note_count = generated_note_count + ?1,
                          generated_card_count = generated_card_count + ?2,
+                         generation_completed_window_count = generation_window_count,
                          safe_error_code = '', safe_error_message = '',
                          updated_at = ?3, completed_at = ?3, revision = revision + 1
                      WHERE id = ?4 AND generated_deck_id = ?5",
@@ -513,8 +525,12 @@ fn load_window_images(
     paths: &AppPaths,
     pages: &[PageRenderRecord],
     window: &SemanticWindow,
+    maximum: usize,
 ) -> Result<Vec<document_intelligence::SourcePageImage>, CommandError> {
-    let selected = select_image_pages(&window.page_numbers, MAX_IMAGES_PER_GENERATION_WINDOW);
+    if window.visual_page_numbers.is_empty() || maximum == 0 {
+        return Ok(Vec::new());
+    }
+    let selected = select_image_pages(&window.visual_page_numbers, maximum);
     let mut images = Vec::with_capacity(selected.len());
     for page_number in selected {
         let page = pages
@@ -541,6 +557,101 @@ fn load_window_images(
         images.push(document_intelligence::SourcePageImage { page_number, bytes });
     }
     Ok(images)
+}
+
+async fn generate_window_with_recovery(
+    runtime: &AiRuntimeState,
+    task: &document_intelligence::DocumentTaskContext,
+    document_title: &str,
+    outline: &document_intelligence::DocumentOutline,
+    window: &SemanticWindow,
+    images: &[document_intelligence::SourcePageImage],
+    maximum_cards: usize,
+) -> Result<Vec<Value>, CommandError> {
+    let mut card_budget = maximum_cards.max(1);
+    loop {
+        let result = document_intelligence::generate_window_flashcards(
+            runtime,
+            task,
+            document_title,
+            outline,
+            window,
+            images,
+            card_budget,
+        )
+        .await;
+        match result {
+            Err(error)
+                if card_budget > 2
+                    && (error.code == "ai_document_output_truncated"
+                        || (error.code == "ai_document_output_invalid"
+                            && error.message.contains("more than"))) =>
+            {
+                let next_budget = (card_budget / 2).max(2);
+                crate::logging::info(
+                    "document_additional_window_budget_reduced",
+                    format!(
+                        "window={} partition={} pages={}-{} old_budget={} new_budget={} code={}",
+                        window.window_index + 1,
+                        window.partition_index + 1,
+                        window.page_start,
+                        window.page_end,
+                        card_budget,
+                        next_budget,
+                        error.code,
+                    ),
+                );
+                card_budget = next_budget;
+            }
+            other => return other,
+        }
+    }
+}
+
+fn initialize_additional_progress(
+    database: &Database,
+    document_id: &str,
+    plan: DocumentScalePlan,
+    window_count: usize,
+) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE documents
+                 SET scale_mode = ?1, generation_window_count = ?2,
+                     generation_completed_window_count = 0, updated_at = ?3
+                 WHERE id = ?4 AND lifecycle_state = 'processing'",
+                params![
+                    plan.label(),
+                    i64::try_from(window_count).unwrap_or(i64::MAX),
+                    now,
+                    document_id,
+                ],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
+    })
+}
+
+fn update_additional_progress(
+    database: &Database,
+    document_id: &str,
+    completed: i64,
+) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE documents
+                 SET generation_completed_window_count = MIN(generation_window_count, MAX(0, ?1)),
+                     updated_at = ?2
+                 WHERE id = ?3 AND lifecycle_state = 'processing'",
+                params![completed, now, document_id],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
+    })
 }
 
 fn create_additional_job(
@@ -855,8 +966,8 @@ mod tests {
     #[test]
     fn image_sampling_covers_a_large_window_without_duplicate_pages() {
         let pages = (1..=40).collect::<Vec<_>>();
-        let selected = select_image_pages(&pages, 6);
-        assert_eq!(selected.len(), 6);
+        let selected = select_image_pages(&pages, 3);
+        assert_eq!(selected.len(), 3);
         assert_eq!(selected.first(), Some(&1));
         assert_eq!(selected.last(), Some(&40));
         assert_eq!(
@@ -864,7 +975,7 @@ mod tests {
                 .iter()
                 .collect::<std::collections::HashSet<_>>()
                 .len(),
-            6
+            3
         );
     }
 }

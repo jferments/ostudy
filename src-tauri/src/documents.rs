@@ -13,7 +13,9 @@ use crate::{
     ai::{document_intelligence, AiRuntimeState},
     authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit,
     database::Database,
-    document_semantics::{build_semantic_windows, SemanticChunk, SemanticWindow},
+    document_checkpoints,
+    document_scale::{DocumentScalePlan, MAX_SUPPORTED_PDF_PAGES},
+    document_semantics::{build_partitioned_semantic_windows, SemanticChunk, SemanticWindow},
     error::CommandError,
     paths::AppPaths,
     pdf_backend::{self, ExtractedDocument, PdfBackendError, PdfBackendErrorKind},
@@ -78,6 +80,12 @@ pub struct DocumentDto {
     pub page_count: i64,
     pub extracted_page_count: i64,
     pub rendered_page_count: i64,
+    pub scale_mode: String,
+    pub estimated_source_tokens: i64,
+    pub outline_window_count: i64,
+    pub outline_completed_window_count: i64,
+    pub generation_window_count: i64,
+    pub generation_completed_window_count: i64,
     pub generated_note_count: i64,
     pub generated_card_count: i64,
     pub generated_deck_id: Option<String>,
@@ -181,7 +189,7 @@ pub async fn retry_pdf_flashcard_generation(
         runtime.clone(),
         render_runtime.inner().clone(),
         &input.document_id,
-        true,
+        false,
     )
     .await;
     if let Err(error) = &result {
@@ -385,13 +393,72 @@ async fn process_and_generate(
         ));
     }
 
+    let plan = DocumentScalePlan::for_page_count(pages.len());
+    let estimated_source_tokens = chunks.iter().fold(0_usize, |total, chunk| {
+        total.saturating_add(
+            chunk
+                .token_estimate
+                .max(chunk.full_text.chars().count().div_ceil(4)),
+        )
+    });
     let task = document_intelligence::load_document_task_context(database.inner())?;
-    let outline_windows = build_semantic_windows(
+    let outline_windows = build_partitioned_semantic_windows(
         &chunks,
-        OUTLINE_WINDOW_MAX_TOKENS,
-        OUTLINE_WINDOW_MAX_PAGES,
-        OUTLINE_WINDOW_OVERLAP_TOKENS,
+        plan,
+        plan.outline_window_max_tokens,
+        plan.outline_window_max_pages,
+        plan.outline_window_overlap_tokens,
     );
+    let generation_windows = build_partitioned_semantic_windows(
+        &chunks,
+        plan,
+        plan.generation_window_max_tokens,
+        plan.generation_window_max_pages,
+        plan.generation_window_overlap_tokens,
+    );
+    if outline_windows.is_empty() || generation_windows.is_empty() {
+        return Err(CommandError::new(
+            "document_has_no_semantic_content",
+            "The PDF did not contain bounded semantic source windows for document analysis.",
+        ));
+    }
+
+    let outline_contract = document_checkpoints::outline_contract_key(&task, plan);
+    let cached_outline = document_checkpoints::load_outline_fragments(
+        database.inner(),
+        document_id,
+        &outline_contract,
+        &outline_windows,
+    )?;
+    let outline_completed = cached_outline
+        .iter()
+        .filter(|value| value.is_some())
+        .count();
+    initialize_document_ai_plan(
+        database.inner(),
+        document_id,
+        plan,
+        estimated_source_tokens,
+        outline_windows.len(),
+        outline_completed,
+        generation_windows.len(),
+        0,
+    )?;
+    crate::logging::info(
+        "document_scale_plan_selected",
+        format!(
+            "document={} scale={} pages={} source_tokens={} outline_windows={} generation_windows={} max_cards_per_window={} max_images_per_window={}",
+            document_id,
+            plan.label(),
+            pages.len(),
+            estimated_source_tokens,
+            outline_windows.len(),
+            generation_windows.len(),
+            plan.max_cards_per_window,
+            plan.max_images_per_window,
+        ),
+    );
+
     mark_outline_building(database.inner(), document_id)?;
     let outline = document_intelligence::build_document_outline(
         runtime.inner(),
@@ -399,22 +466,58 @@ async fn process_and_generate(
         &stored.dto.title,
         i64::try_from(pages.len()).unwrap_or(i64::MAX),
         &outline_windows,
+        &cached_outline,
+        |window, fragment| {
+            document_checkpoints::persist_outline_fragment(
+                database.inner(),
+                document_id,
+                &outline_contract,
+                window,
+                fragment,
+            )?;
+            let completed = document_checkpoints::count_outline_checkpoints(
+                database.inner(),
+                document_id,
+                &outline_contract,
+            )?;
+            update_outline_progress(database.inner(), document_id, completed)?;
+            Ok(())
+        },
     )
     .await?;
+    update_outline_progress(
+        database.inner(),
+        document_id,
+        i64::try_from(outline_windows.len()).unwrap_or(i64::MAX),
+    )?;
     persist_outline(database.inner(), document_id, &task, &outline)?;
 
-    let generation_windows = build_semantic_windows(
-        &chunks,
-        GENERATION_WINDOW_MAX_TOKENS,
-        GENERATION_WINDOW_MAX_PAGES,
-        GENERATION_WINDOW_OVERLAP_TOKENS,
-    );
-    if generation_windows.is_empty() {
-        return Err(CommandError::new(
-            "document_has_no_semantic_content",
-            "The PDF did not contain semantic source windows for flashcard generation.",
-        ));
-    }
+    let generation_contract = document_checkpoints::generation_contract_key(
+        &task,
+        plan,
+        &outline,
+        plan.max_cards_per_window,
+    )?;
+    let cached_generation = generation_windows
+        .iter()
+        .map(|window| {
+            document_checkpoints::load_generation_cards(
+                database.inner(),
+                document_id,
+                &generation_contract,
+                window,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let generation_completed = cached_generation
+        .iter()
+        .filter(|value| value.is_some())
+        .count();
+    update_generation_progress(
+        database.inner(),
+        document_id,
+        i64::try_from(generation_completed).unwrap_or(i64::MAX),
+    )?;
 
     let job_id = create_generation_job(
         database.inner(),
@@ -424,22 +527,53 @@ async fn process_and_generate(
         &generation_windows,
     )?;
     let mut generated_cards = Vec::new();
-    for window in &generation_windows {
-        mark_window_running(database.inner(), &job_id, window.window_index)?;
-        let images = if task.include_page_images {
-            load_window_images(paths.inner(), &pages, window)?
+    for (window, cached_cards) in generation_windows.iter().zip(cached_generation.into_iter()) {
+        let cards = if let Some(cards) = cached_cards {
+            crate::logging::info(
+                "document_generation_window_reused",
+                format!(
+                    "window={}/{} partition={} pages={}-{} cards={}",
+                    window.window_index + 1,
+                    generation_windows.len(),
+                    window.partition_index + 1,
+                    window.page_start,
+                    window.page_end,
+                    cards.len(),
+                ),
+            );
+            cards
         } else {
-            Vec::new()
+            mark_window_running(database.inner(), &job_id, window.window_index)?;
+            let images = if task.include_page_images {
+                load_window_images(paths.inner(), &pages, window, plan.max_images_per_window)?
+            } else {
+                Vec::new()
+            };
+            let cards = generate_window_with_recovery(
+                runtime.inner(),
+                &task,
+                &stored.dto.title,
+                &outline,
+                window,
+                &images,
+                plan.max_cards_per_window,
+            )
+            .await?;
+            document_checkpoints::persist_generation_cards(
+                database.inner(),
+                document_id,
+                &generation_contract,
+                window,
+                &cards,
+            )?;
+            let completed = document_checkpoints::count_generation_checkpoints(
+                database.inner(),
+                document_id,
+                &generation_contract,
+            )?;
+            update_generation_progress(database.inner(), document_id, completed)?;
+            cards
         };
-        let cards = document_intelligence::generate_window_flashcards(
-            runtime.inner(),
-            &task,
-            &stored.dto.title,
-            &outline,
-            window,
-            &images,
-        )
-        .await?;
         if generated_cards.len().saturating_add(cards.len()) > MAX_GENERATED_CARDS {
             return Err(CommandError::new(
                 "too_many_generated_cards",
@@ -449,6 +583,11 @@ async fn process_and_generate(
         mark_window_complete(database.inner(), &job_id, window, cards.len())?;
         generated_cards.extend(cards);
     }
+    update_generation_progress(
+        database.inner(),
+        document_id,
+        i64::try_from(generation_windows.len()).unwrap_or(i64::MAX),
+    )?;
 
     if generated_cards.is_empty() {
         return Err(CommandError::new(
@@ -488,6 +627,8 @@ async fn process_and_generate(
                     "UPDATE documents
                      SET lifecycle_state = 'ready', generated_note_count = ?1,
                          generated_card_count = ?2, generated_deck_id = ?3,
+                         outline_completed_window_count = outline_window_count,
+                         generation_completed_window_count = generation_window_count,
                          safe_error_code = '', safe_error_message = '',
                          updated_at = ?4, completed_at = ?4, revision = revision + 1
                      WHERE id = ?5",
@@ -518,6 +659,9 @@ async fn process_and_generate(
             Ok(())
         },
     )?;
+    // Checkpoints are required until the canonical deck transaction succeeds.
+    // Their cleanup is rebuildable/best-effort and cannot roll back the deck.
+    let _ = document_checkpoints::clear_generation_checkpoints(database.inner(), document_id);
     let document = database
         .with_connection(|connection| load_document(connection, document_id))?
         .dto;
@@ -528,6 +672,55 @@ async fn process_and_generate(
         created_card_count: result.created_card_count,
         skipped_duplicate_count: result.skipped_duplicate_count,
     })
+}
+
+async fn generate_window_with_recovery(
+    runtime: &AiRuntimeState,
+    task: &document_intelligence::DocumentTaskContext,
+    document_title: &str,
+    outline: &document_intelligence::DocumentOutline,
+    window: &SemanticWindow,
+    images: &[document_intelligence::SourcePageImage],
+    maximum_cards: usize,
+) -> Result<Vec<serde_json::Value>, CommandError> {
+    let mut card_budget = maximum_cards.max(1);
+    loop {
+        let result = document_intelligence::generate_window_flashcards(
+            runtime,
+            task,
+            document_title,
+            outline,
+            window,
+            images,
+            card_budget,
+        )
+        .await;
+        match result {
+            Err(error)
+                if card_budget > 2
+                    && (error.code == "ai_document_output_truncated"
+                        || (error.code == "ai_document_output_invalid"
+                            && error.message.contains("more than"))) =>
+            {
+                let next_budget = (card_budget / 2).max(2);
+                crate::logging::info(
+                    "document_generation_window_budget_reduced",
+                    format!(
+                        "window={} partition={} pages={}-{} old_budget={} new_budget={} code={}",
+                        window.window_index + 1,
+                        window.partition_index + 1,
+                        window.page_start,
+                        window.page_end,
+                        card_budget,
+                        next_budget,
+                        error.code,
+                    ),
+                );
+                card_budget = next_budget;
+            }
+            other => return other,
+        }
+    }
 }
 
 fn extract_and_render_pdf<F>(
@@ -541,10 +734,10 @@ where
     F: FnMut(usize, usize) -> Result<(), CommandError>,
 {
     let semantic = pdf_backend::extract_document(source_path).map_err(map_pdf_backend_error)?;
-    if semantic.page_count == 0 || semantic.page_count > MAX_PDF_PAGES {
+    if semantic.page_count == 0 || semantic.page_count > MAX_SUPPORTED_PDF_PAGES {
         return Err(CommandError::new(
             "unsupported_pdf_page_count",
-            format!("PDFs must contain between 1 and {MAX_PDF_PAGES} pages."),
+            format!("PDFs must contain between 1 and {MAX_SUPPORTED_PDF_PAGES} pages."),
         ));
     }
 
@@ -696,6 +889,8 @@ fn persist_processed_document(
             "document_semantic_elements",
             "document_semantic_chunks",
             "document_outlines",
+            "document_outline_checkpoints",
+            "document_generation_checkpoints",
         ] {
             transaction
                 .execute(
@@ -810,6 +1005,9 @@ fn persist_processed_document(
                  SET page_count = ?1, extracted_page_count = ?1, rendered_page_count = ?1,
                      extraction_backend = ?2, render_backend = ?3,
                      semantic_element_count = ?4, semantic_chunk_count = ?5,
+                     scale_mode = 'standard', estimated_source_tokens = 0,
+                     outline_window_count = 0, outline_completed_window_count = 0,
+                     generation_window_count = 0, generation_completed_window_count = 0,
                      outline_state = 'pending', safe_error_code = '', safe_error_message = '',
                      updated_at = ?6, revision = revision + 1
                  WHERE id = ?7",
@@ -934,7 +1132,7 @@ fn persist_outline(
                      document_id, schema_version, prompt_version, profile_id,
                      provider_kind, model_id, profile_revision, credential_epoch,
                      extraction_backend, outline_json, summary_text, created_at, updated_at
-                 ) VALUES (?1, 1, 2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
+                 ) VALUES (?1, 1, 4, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
                  ON CONFLICT(document_id) DO UPDATE SET
                      schema_version = excluded.schema_version,
                      prompt_version = excluded.prompt_version,
@@ -968,6 +1166,82 @@ fn persist_outline(
             )
             .map_err(CommandError::database)?;
         transaction.commit().map_err(CommandError::database)
+    })
+}
+
+fn initialize_document_ai_plan(
+    database: &Database,
+    document_id: &str,
+    plan: DocumentScalePlan,
+    estimated_source_tokens: usize,
+    outline_window_count: usize,
+    outline_completed_window_count: usize,
+    generation_window_count: usize,
+    generation_completed_window_count: usize,
+) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE documents
+                 SET scale_mode = ?1, estimated_source_tokens = ?2,
+                     outline_window_count = ?3, outline_completed_window_count = ?4,
+                     generation_window_count = ?5, generation_completed_window_count = ?6,
+                     updated_at = ?7
+                 WHERE id = ?8 AND lifecycle_state = 'processing'",
+                params![
+                    plan.label(),
+                    i64::try_from(estimated_source_tokens).unwrap_or(i64::MAX),
+                    i64::try_from(outline_window_count).unwrap_or(i64::MAX),
+                    i64::try_from(outline_completed_window_count).unwrap_or(i64::MAX),
+                    i64::try_from(generation_window_count).unwrap_or(i64::MAX),
+                    i64::try_from(generation_completed_window_count).unwrap_or(i64::MAX),
+                    now,
+                    document_id,
+                ],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
+    })
+}
+
+fn update_outline_progress(
+    database: &Database,
+    document_id: &str,
+    completed: i64,
+) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE documents
+                 SET outline_completed_window_count = MIN(outline_window_count, MAX(0, ?1)),
+                     updated_at = ?2
+                 WHERE id = ?3 AND lifecycle_state = 'processing'",
+                params![completed, now, document_id],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
+    })
+}
+
+fn update_generation_progress(
+    database: &Database,
+    document_id: &str,
+    completed: i64,
+) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE documents
+                 SET generation_completed_window_count = MIN(generation_window_count, MAX(0, ?1)),
+                     updated_at = ?2
+                 WHERE id = ?3 AND lifecycle_state = 'processing'",
+                params![completed, now, document_id],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
     })
 }
 
@@ -1193,8 +1467,12 @@ fn load_window_images(
     paths: &AppPaths,
     pages: &[PageRecord],
     window: &SemanticWindow,
+    maximum: usize,
 ) -> Result<Vec<document_intelligence::SourcePageImage>, CommandError> {
-    let selected = select_image_pages(&window.page_numbers, MAX_IMAGES_PER_GENERATION_WINDOW);
+    if window.visual_page_numbers.is_empty() || maximum == 0 {
+        return Ok(Vec::new());
+    }
+    let selected = select_image_pages(&window.visual_page_numbers, maximum);
     let mut images = Vec::with_capacity(selected.len());
     for page_number in selected {
         let page = pages
@@ -1271,6 +1549,9 @@ fn list_document_rows(
         .prepare(
             "SELECT id, title, original_filename, byte_size, sha256, lifecycle_state,
                     page_count, extracted_page_count, rendered_page_count,
+                    scale_mode, estimated_source_tokens,
+                    outline_window_count, outline_completed_window_count,
+                    generation_window_count, generation_completed_window_count,
                     generated_note_count, generated_card_count,
                     CASE WHEN EXISTS (
                         SELECT 1 FROM decks deck
@@ -1306,6 +1587,9 @@ fn load_document(
         .query_row(
             "SELECT id, title, original_filename, byte_size, sha256, lifecycle_state,
                     page_count, extracted_page_count, rendered_page_count,
+                    scale_mode, estimated_source_tokens,
+                    outline_window_count, outline_completed_window_count,
+                    generation_window_count, generation_completed_window_count,
                     generated_note_count, generated_card_count,
                     CASE WHEN EXISTS (
                         SELECT 1 FROM decks deck
@@ -1319,10 +1603,10 @@ fn load_document(
             |row| {
                 Ok(StoredDocument {
                     dto: document_row(row)?,
-                    source_relative_path: row.get(19)?,
-                    extraction_backend: row.get(20)?,
-                    render_backend: row.get(21)?,
-                    semantic_chunk_count: row.get(22)?,
+                    source_relative_path: row.get(25)?,
+                    extraction_backend: row.get(26)?,
+                    render_backend: row.get(27)?,
+                    semantic_chunk_count: row.get(28)?,
                 })
             },
         )
@@ -1347,16 +1631,22 @@ fn document_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentDto> {
         page_count: row.get(6)?,
         extracted_page_count: row.get(7)?,
         rendered_page_count: row.get(8)?,
-        generated_note_count: row.get(9)?,
-        generated_card_count: row.get(10)?,
-        generated_deck_id: row.get(11)?,
-        safe_error_code: row.get(12)?,
-        safe_error_message: row.get(13)?,
-        created_at: row.get(14)?,
-        updated_at: row.get(15)?,
-        completed_at: row.get(16)?,
-        archived_at: row.get(17)?,
-        revision: row.get(18)?,
+        scale_mode: row.get(9)?,
+        estimated_source_tokens: row.get(10)?,
+        outline_window_count: row.get(11)?,
+        outline_completed_window_count: row.get(12)?,
+        generation_window_count: row.get(13)?,
+        generation_completed_window_count: row.get(14)?,
+        generated_note_count: row.get(15)?,
+        generated_card_count: row.get(16)?,
+        generated_deck_id: row.get(17)?,
+        safe_error_code: row.get(18)?,
+        safe_error_message: row.get(19)?,
+        created_at: row.get(20)?,
+        updated_at: row.get(21)?,
+        completed_at: row.get(22)?,
+        archived_at: row.get(23)?,
+        revision: row.get(24)?,
     })
 }
 
@@ -1405,7 +1695,7 @@ fn map_pdf_render_error(error: PdfRenderError) -> CommandError {
     match error.kind {
         PdfRenderErrorKind::Bind => CommandError::new(
             "pdf_renderer_unavailable",
-            format!("The Pdfium page renderer ({backend}) could not be loaded: {error}"),
+            format!("The PDF page renderer ({backend}) could not be loaded: {error}"),
         ),
         PdfRenderErrorKind::Open => CommandError::new(
             "pdf_render_open_failed",
@@ -1538,6 +1828,12 @@ mod tests {
             page_count: 1,
             extracted_page_count: 1,
             rendered_page_count: 1,
+            scale_mode: "standard".to_string(),
+            estimated_source_tokens: 100,
+            outline_window_count: 1,
+            outline_completed_window_count: 1,
+            generation_window_count: 1,
+            generation_completed_window_count: 1,
             generated_note_count: 0,
             generated_card_count: 0,
             generated_deck_id: None,

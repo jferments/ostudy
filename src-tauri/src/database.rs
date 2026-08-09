@@ -124,9 +124,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "06b0023711038b8f9ea2c90c17c5ffb9dda8b286c01e34c4881a0596e96a1c7e",
         sql: include_str!("../migrations/0018_document_semantics_and_outline.sql"),
     },
+    Migration {
+        version: 19,
+        name: "resumable_large_document_generation",
+        checksum: "80dc940f7018b6a754d440cbf5c3b287150b2dfb4def096539c4ff1f14d5fc66",
+        sql: include_str!("../migrations/0019_resumable_large_document_generation.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 18;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 19;
 
 pub struct Database {
     connection: Mutex<Connection>,

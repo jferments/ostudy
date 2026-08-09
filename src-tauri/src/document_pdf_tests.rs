@@ -63,7 +63,7 @@ fn structured_extraction_and_pure_rust_rendering_process_a_real_fixture() {
     assert_eq!(rendered, 1);
     assert_eq!(
         pdf_render_backend::active_backend_id(),
-        "justpdf-render-0.1.2/pure-rust-parallel-v1"
+        "justpdf-render-0.1.2/pure-rust-parallel-v2-120dpi"
     );
 
     fs::remove_dir_all(paths.app_data_dir()).expect("temporary fixture root should clean up");

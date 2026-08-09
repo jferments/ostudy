@@ -21,6 +21,7 @@ mod deletion_commands;
 mod deletion_purge;
 mod diagnostics;
 mod document_backup;
+mod document_checkpoints;
 mod document_delete_reconciliation;
 mod document_more;
 mod document_operations;

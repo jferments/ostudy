@@ -24,10 +24,7 @@ const OUTLINE_CHECKPOINT_CONTRACT: &str = "stage47-outline-v1";
 const GENERATION_CHECKPOINT_CONTRACT: &str = "stage47-generation-v1";
 const MAX_CHECKPOINT_CARDS: usize = 32;
 
-pub(crate) fn outline_contract_key(
-    task: &DocumentTaskContext,
-    plan: DocumentScalePlan,
-) -> String {
+pub(crate) fn outline_contract_key(task: &DocumentTaskContext, plan: DocumentScalePlan) -> String {
     hash_text(&format!(
         "{OUTLINE_CHECKPOINT_CONTRACT}|provider={}|profile={}|model={}|revision={}|credential={}|extractor={}|scale={}|outline_tokens={}|outline_pages={}|outline_overlap={}",
         task.provider_kind,
@@ -205,8 +202,7 @@ pub(crate) fn load_generation_cards(
     let Ok(cards) = serde_json::from_str::<Vec<Value>>(&json) else {
         return Ok(None);
     };
-    if cards.len() > MAX_CHECKPOINT_CARDS
-        || i64::try_from(cards.len()).unwrap_or(i64::MAX) != count
+    if cards.len() > MAX_CHECKPOINT_CARDS || i64::try_from(cards.len()).unwrap_or(i64::MAX) != count
     {
         return Ok(None);
     }
