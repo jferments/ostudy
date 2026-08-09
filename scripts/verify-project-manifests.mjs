@@ -112,9 +112,8 @@ for (const [label, needle] of [
   ["serde", `version = "=${env.get("SERDE_VERSION")}"`],
   ["serde_json", `serde_json = "=${env.get("SERDE_JSON_VERSION")}"`],
   ["chrono", `chrono = "=${env.get("CHRONO_VERSION")}"`],
-  ["image", `version = "=${env.get("IMAGE_VERSION")}"`],
+  ["justpdf", `justpdf = "=${env.get("JUSTPDF_VERSION")}"`],
   ["oxidize-pdf", `version = "=${env.get("OXIDIZE_PDF_VERSION")}"`],
-  ["pdfium-render", `version = "=${env.get("PDFIUM_RENDER_VERSION")}"`],
   ["keyring", `keyring = "=${env.get("KEYRING_VERSION")}"`],
   ["reqwest", `version = "=${env.get("REQWEST_VERSION")}"`],
   ["rs-fsrs", `rs-fsrs = "=${env.get("RS_FSRS_VERSION")}"`],
@@ -123,13 +122,13 @@ for (const [label, needle] of [
   const source = label === "Rust toolchain" ? toolchain : cargo;
   if (!source.includes(needle)) failures.push(`${label} exact pin missing`);
 }
-if (cargo.includes("justpdf")) failures.push("justpdf must not remain in Cargo.toml");
+if (cargo.includes("pdfium-render")) failures.push("pdfium-render must not be a mandatory dependency");
+if (cargo.includes("rusty-tesseract")) failures.push("OCR/Tesseract must not be a mandatory dependency");
 requireText("oxidize-pdf feature policy", cargo, [
   'oxidize-pdf = { version = "=',
   'default-features = false',
   'features = ["compression", "semantic"]',
 ]);
-requireText("pdfium-render feature policy", cargo, ["pdfium_7881", "image_025", "thread_safe"]);
 
 for (const required of [
   "strictDepBuilds: true",
@@ -148,8 +147,8 @@ if (!(tauri.app?.security?.csp ?? "").includes("asset:")) failures.push("CSP doe
 for (const permission of ["core:default", "dialog:default", "opener:default"]) {
   if (!capability.permissions?.includes(permission)) failures.push(`capability missing ${permission}`);
 }
-if (!Array.isArray(tauri.bundle?.resources) || !tauri.bundle.resources.includes("resources/pdfium/*")) {
-  failures.push("Tauri bundle must package the prepared Pdfium runtime");
+if (Array.isArray(tauri.bundle?.resources) && tauri.bundle.resources.some((resource) => String(resource).includes("pdfium"))) {
+  failures.push("Tauri bundle must not require a platform-specific Pdfium runtime");
 }
 
 const trackedScriptEntries = execFileSync("git", ["ls-files", "-s", "scripts"], {
@@ -225,7 +224,7 @@ requireText("check-static.sh", checkStatic, [
   "cargo fmt",
 ]);
 requireText("check-fast.sh", checkFast, ["check-static.sh", "pnpm test", "cargo check"]);
-requireText("check.sh", checkFull, ["pdfium-runtime.sh", "pnpm run build", "cargo clippy", "cargo test", "smoke-native.sh"]);
+requireText("check.sh", checkFull, ["pnpm run build", "cargo clippy", "cargo test", "smoke-native.sh"]);
 requireText("check-changed.sh", checkChanged, ["vitest run --changed", "cargo test", "check-fast.sh", "iteration aid"]);
 requireText("check workflow", checkWorkflow, [
   "runs-on: [self-hosted, linux, x64, ostudy]",
@@ -256,7 +255,6 @@ for (const requiredPath of [
   "scripts/check-fast.sh",
   "scripts/check.sh",
   "scripts/check-changed.sh",
-  "scripts/pdfium-runtime.sh",
   "scripts/verify-ipc-contract.mjs",
   "scripts/verify-repository-policy.mjs",
   "scripts/log-run.py",
@@ -275,6 +273,7 @@ for (const requiredPath of [
   "src-tauri/tests/fixtures/v0.1.0.sql",
   "src-tauri/tests/fixtures/document-generation/simple-text.pdf",
   "docs/decisions/0017-managed-pdf-flashcard-generation.md",
+  "docs/decisions/0018-structured-document-intelligence.md",
 ]) {
   try {
     await access(join(root, requiredPath));
@@ -289,7 +288,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, executable script modes, structured PDF dependencies, and tiered qualification manifests are consistent.`,
+  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, executable script modes, portable structured PDF dependencies, and tiered qualification manifests are consistent.`,
 );
 
 function parseEnv(text) {
