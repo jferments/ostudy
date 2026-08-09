@@ -59,7 +59,7 @@ for path in "${CHANGED[@]}"; do
   if [[ ! "$path" =~ ^src-tauri/src/.*\.rs$ ]]; then
     is_rust_only=0
   fi
-  if [[ ! "$path" =~ ^(src-tauri/src/(documents\.rs|document_.*\.rs|ai/document_.*\.rs)|src-tauri/migrations/00(17|18|19|20)_.*\.sql|src-tauri/tests/fixtures/document-generation/|scripts/analyze-document-usage\.mjs|docs/(AI-ARCHITECTURE\.md|decisions/002[0-9]-.*|development/.*document.*)) ]]; then
+  if [[ ! "$path" =~ ^(src-tauri/src/(documents\.rs|document_.*\.rs|pdf_.*\.rs|ai/document_.*\.rs)|src-tauri/migrations/00(17|18|19|20|21)_.*\.sql|src-tauri/tests/fixtures/document-generation/|scripts/analyze-document-usage\.mjs|docs/(AI-ARCHITECTURE\.md|decisions/002[0-9]-.*|development/.*document.*)) ]]; then
     document_only=0
   fi
   if [[ "$path" =~ ^(scripts/|\.github/|src-tauri/migrations/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|versions\.env$|src-tauri/Cargo\.toml$|src-tauri/Cargo\.lock$|src-tauri/tauri\.conf\.json$|src-tauri/build\.rs$) ]]; then
@@ -78,6 +78,7 @@ if [[ "$document_only" == "1" ]]; then
   prepare_cargo_target "$ROOT_DIR"
   cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
   cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_
+  cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib pdf_
   cargo test \
     --manifest-path src-tauri/Cargo.toml \
     --locked \
