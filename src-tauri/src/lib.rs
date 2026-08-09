@@ -24,6 +24,7 @@ mod document_backup;
 mod document_delete_reconciliation;
 mod document_more;
 mod document_operations;
+mod document_scale;
 mod document_semantics;
 mod documents;
 mod error;
