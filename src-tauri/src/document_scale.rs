@@ -222,6 +222,7 @@ fn generation_completion_reserve(maximum_cards: usize) -> usize {
         .clamp(1_536, 5_120)
 }
 
+#[cfg(test)]
 pub(crate) fn validate_automatic_job(
     source_unit_count: usize,
     source_tokens: usize,
@@ -276,8 +277,9 @@ pub(crate) fn validate_automatic_job_calibrated(
         .saturating_mul(plan.max_cards_per_window)
         .min(10_000);
 
-    let outline_source_estimate = source_tokens
-        .saturating_add(outline_window_count.saturating_mul(plan.outline_window_overlap_tokens));
+    let outline_source_estimate = source_tokens.saturating_add(
+        outline_window_count.saturating_mul(plan.outline_window_overlap_tokens),
+    );
     let outline_prompt = calibration.calibrated_prompt_tokens(outline_source_estimate, 0);
     let outline_fixed = outline_window_count.saturating_mul(
         1_500_usize.saturating_add(outline_completion_reserve(&capabilities.provider_kind)),
@@ -415,9 +417,16 @@ mod tests {
         );
         let plan = DocumentScalePlan::for_provider(100, "deepseek");
         assert_eq!(
-            validate_automatic_job(100, MAX_AUTOMATIC_SOURCE_TOKENS + 1, plan, 1, 1, "deepseek")
-                .unwrap_err()
-                .code,
+            validate_automatic_job(
+                100,
+                MAX_AUTOMATIC_SOURCE_TOKENS + 1,
+                plan,
+                1,
+                1,
+                "deepseek"
+            )
+            .unwrap_err()
+            .code,
             "document_generation_source_limit"
         );
     }
