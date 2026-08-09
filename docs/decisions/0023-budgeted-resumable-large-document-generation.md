@@ -121,7 +121,7 @@ The safe diagnostic event `document_ai_scale_plan` records provider/model, page/
 
 ### Reduced rendered-page derivative
 
-The AI raster derivative is reduced from 144 DPI to 96 DPI and receives a new renderer-backend identity so stale derivatives are rebuilt. This reduces raster work, managed image size, and multimodal image context for compatible local llama.cpp models while leaving the original PDF unchanged.
+The AI raster derivative is reduced from 144 DPI to **120 DPI** and receives a new renderer-backend identity so stale derivatives are rebuilt. A US-letter page is about 1020×1320 pixels at this resolution, which materially reduces raster work and multimodal image context while preserving more small-label/table legibility than an aggressive mobile-thumbnail resolution.
 
 DeepSeek receives extracted text rather than rendered page images, so the DPI change does not reduce DeepSeek text-token usage.
 
