@@ -196,7 +196,9 @@ describe("DocumentsScreen", () => {
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
     fireEvent.click(screen.getByRole("button", { name: "Delete PDF" }));
-    const dialog = await screen.findByRole("dialog", { name: "Delete this PDF permanently?" });
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Delete this PDF permanently?",
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete PDF" }));
 
     await waitFor(() => {

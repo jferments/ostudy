@@ -39,11 +39,31 @@ After all semantic windows complete, a bounded global curation task selects whic
 
 Selected cards then pass through the canonical generated-card authoring path for Markdown/content validation, Cloze syntax, tags, duplicate fingerprints, fresh schedules, and transactional deck creation. There is no generated-card review queue.
 
+### Long-running requests, activity timeout, and cancellation
+
+Document AI uses streamed Chat Completions rather than treating the profile timeout as a total generation deadline. Model discovery and explicit connection probes keep their ordinary bounded request behavior.
+
+For a document task, the selected profile's timeout is an **initial-response/activity timeout**. It covers connection establishment, response headers, and the wait for the first streamed response bytes. llama.cpp requests enable prompt-progress/SSE ping events where supported; DeepSeek streamed requests can supply provider keep-alive comments. Once any provider stream activity is received, ostudy does not impose a fixed wall-clock completion deadline. A slow local model may therefore continue generating as long as the stream remains open.
+
+The running document task owns a process-local cancellation signal keyed by document ID. **Stop generation** cancels only that task and drops its exact HTTP response stream. This is the common cancellation boundary for the implemented Chat Completions providers; ostudy does not invent a provider-side job ID, status-poll API, or undocumented cancellation endpoint. A stopped document remains durable and retryable, and the durable job is recorded as canceled rather than succeeded.
+
+Cancellation state is intentionally not restored after application restart. Startup reconciliation marks interrupted work retryable and never resumes provider transmission automatically.
+
+## Managed document lifetime
+
+Archiving a document is reversible and keeps the source PDF, derived data, and generated deck provenance. Permanent deletion is also supported when no generation task is active.
+
+Deletion removes the managed PDF, rendered pages, structured extraction, outline, generation jobs, and document-library provenance. Generated decks/cards remain ordinary study content. Before the document row is removed, ostudy preserves the source as a human-readable text citation in every surviving generated deck description. The file-dependent provenance rows can then cascade safely without leaving surviving study content dependent on a path that no longer exists.
+
+The delete workflow stages the managed document directory into an application-controlled trash path before the SQLite transaction. A database failure restores the directory. After a successful transaction, filesystem cleanup is best-effort and startup reconciliation removes unreachable delete-staging residue.
+
 ## Privacy and trust
 
 PDF import, extraction, semantic chunking, outline persistence, and page rendering are local. Provider networking begins only when a configured AI task runs. No provider fallback is automatic. The source material is always treated as untrusted data and cannot replace system/task instructions.
 
 Credentials, Authorization headers, raw provider responses, and reasoning content are not persisted. Provider requests run outside SQLite transactions. The original PDF is not uploaded as an opaque file; bounded source text/structure and selected page images are sent according to the configured provider capability and network scope.
+
+The WebView never receives a managed PDF filesystem path merely to open it. `open_document_source` validates the document identity/path in Rust and invokes the operating-system opener from the native side, so the frontend does not require a generic `opener:allow-open-path` capability.
 
 ## OCR policy
 
