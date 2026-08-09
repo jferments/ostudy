@@ -22,15 +22,17 @@ The automated suite verifies typed IPC parity, SSE parsing/bounds, task-local ca
 1. In Settings → AI/LLM, select the llama.cpp / Unsloth profile as **Default AI model** for Flashcard generation.
 2. Set that profile's request timeout to a deliberately short but reasonable value, such as 30 seconds.
 3. Upload a PDF/model combination known to require substantially longer than 30 seconds to complete an outline or card-generation call.
-4. Confirm the provider begins streamed activity within the configured timeout.
-5. Confirm ostudy does **not** fail merely because total inference exceeds 30 seconds.
+4. Confirm the server accepts the request and returns successful HTTP response headers within the configured timeout.
+5. Confirm ostudy does **not** fail merely because the first token or complete inference arrives later than 30 seconds.
 6. Leave the job running until it completes and confirm the generated deck commits normally.
 
-For llama.cpp, the streamed document request asks for prompt-progress/SSE ping activity. Those events are transport liveness only and must not appear in generated card JSON or persisted content.
+The document transport does not require llama.cpp-specific prompt-progress or ping request extensions. This intentionally keeps the request compatible with older llama-server / Unsloth deployments that support OpenAI-style streamed Chat Completions but reject newer optional request fields.
+
+If a llama.cpp server rejects the normal structured request with HTTP 400/422, ostudy performs one same-provider/same-model compatibility retry using JSON-object output plus the exact schema in the system instructions. Strict local deserialization and normalization remain authoritative; this is not provider fallback.
 
 ## Initial-response timeout acceptance
 
-Test a profile that cannot acknowledge the request within its configured timeout (for example, an unreachable endpoint or a server that accepts the TCP connection but never returns response-body activity).
+Test a profile that cannot acknowledge the request within its configured timeout—for example, an unreachable endpoint or a server that accepts the socket but never returns response headers.
 
 Confirm:
 
@@ -39,7 +41,7 @@ Confirm:
 - the managed PDF remains in Documents;
 - **Retry generation** remains available.
 
-The timeout must not be interpreted as a maximum total inference duration after the first streamed activity.
+The configured timeout covers request establishment and response headers. After successful response headers, it is **not** a first-token timeout and is not a maximum total inference duration.
 
 ## Stop generation acceptance
 
@@ -61,7 +63,7 @@ Confirm:
 
 - document outline/generation/curation use streamed responses;
 - provider keep-alive SSE comments do not become generated content;
-- total inference may exceed the configured initial-response timeout after the stream is acknowledged;
+- total inference and time-to-first-token may exceed the configured timeout after successful response headers;
 - Stop generation returns control to ostudy without provider fallback;
 - a later Retry uses the same explicitly configured profile unless the user changes the default.
 
@@ -76,7 +78,7 @@ Confirm the operating system opens the managed source PDF and no `opener.open_pa
 1. Generate a deck successfully from a PDF.
 2. Inspect the generated deck description and note its source filename.
 3. In Documents choose **Delete PDF**.
-4. Confirm a destructive dialog explains that the source PDF, rendered pages, extracted structure, outline, and generation history will be deleted while generated study content remains.
+4. Confirm a destructive dialog explains that the source PDF, rendered pages, extracted structure, outline, and generation history for this document will be deleted while generated study content remains.
 5. Confirm deletion.
 6. Verify the PDF disappears from Documents and **Open PDF** is no longer available for it.
 7. Verify its managed `documents/<id>/` source/render directory is removed.
