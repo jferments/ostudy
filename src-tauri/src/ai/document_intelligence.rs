@@ -17,8 +17,8 @@ use super::{
     AiRuntimeState,
 };
 
-const OUTLINE_PROMPT_VERSION: i64 = 3;
-const OUTLINE_SCHEMA_VERSION: i64 = 1;
+pub(crate) const OUTLINE_PROMPT_VERSION: i64 = 4;
+pub(crate) const OUTLINE_SCHEMA_VERSION: i64 = 1;
 const FLASHCARD_PROMPT_VERSION: i64 = 4;
 const FLASHCARD_SCHEMA_VERSION: i64 = 4;
 const CURATION_PROMPT_VERSION: i64 = 1;

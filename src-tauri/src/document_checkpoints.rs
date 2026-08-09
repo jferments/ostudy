@@ -11,7 +11,9 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ai::document_intelligence::{DocumentOutline, DocumentTaskContext},
+    ai::document_intelligence::{
+        DocumentOutline, DocumentTaskContext, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
+    },
     database::Database,
     document_scale::DocumentScalePlan,
     document_semantics::SemanticWindow,
@@ -40,7 +42,9 @@ pub(crate) fn load_final_outline(
                    AND model_id = ?4
                    AND profile_revision = ?5
                    AND credential_epoch = ?6
-                   AND extraction_backend = ?7",
+                   AND extraction_backend = ?7
+                   AND schema_version = ?8
+                   AND prompt_version = ?9",
                 params![
                     document_id,
                     task.profile_id,
@@ -49,6 +53,8 @@ pub(crate) fn load_final_outline(
                     task.profile_revision,
                     task.credential_epoch,
                     pdf_backend::active_backend_id(),
+                    OUTLINE_SCHEMA_VERSION,
+                    OUTLINE_PROMPT_VERSION,
                 ],
                 |row| row.get::<_, String>(0),
             )

@@ -1177,7 +1177,7 @@ fn persist_outline(
                      document_id, schema_version, prompt_version, profile_id,
                      provider_kind, model_id, profile_revision, credential_epoch,
                      extraction_backend, outline_json, summary_text, created_at, updated_at
-                 ) VALUES (?1, 1, 4, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
                  ON CONFLICT(document_id) DO UPDATE SET
                      schema_version = excluded.schema_version,
                      prompt_version = excluded.prompt_version,
@@ -1192,6 +1192,8 @@ fn persist_outline(
                      updated_at = excluded.updated_at",
                 params![
                     document_id,
+                    document_intelligence::OUTLINE_SCHEMA_VERSION,
+                    document_intelligence::OUTLINE_PROMPT_VERSION,
                     task.profile_id,
                     task.provider_kind,
                     task.model_id,
