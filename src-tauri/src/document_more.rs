@@ -118,8 +118,11 @@ async fn generate_more_impl(
     mark_additional_processing(database.inner(), &input.document_id)?;
 
     let outline = load_outline(database.inner(), &input.document_id)?;
-    let existing_coverage =
-        load_existing_coverage(database.inner(), &context.deck_id, MAX_EXISTING_COVERAGE_CHARS)?;
+    let existing_coverage = load_existing_coverage(
+        database.inner(),
+        &context.deck_id,
+        MAX_EXISTING_COVERAGE_CHARS,
+    )?;
     let second_pass_outline = second_pass_outline(outline, &existing_coverage);
     let chunks = load_semantic_chunks(database.inner(), &input.document_id)?;
     if chunks.is_empty() {
@@ -293,7 +296,15 @@ fn load_context(
                 )
             })
             .and_then(
-                |(title, page_count, deck_id, document_archived, deck_name, deck_deleted, deck_archived)| {
+                |(
+                    title,
+                    page_count,
+                    deck_id,
+                    document_archived,
+                    deck_name,
+                    deck_deleted,
+                    deck_archived,
+                )| {
                     if document_archived.is_some() {
                         return Err(CommandError::new(
                             "document_archived",
@@ -432,8 +443,15 @@ fn load_existing_coverage(
                 compact_text(&front, 360),
                 compact_text(&back, 500)
             );
-            if summary.chars().count().saturating_add(entry.chars().count()) > maximum_chars {
-                summary.push_str("- Additional existing cards omitted from this bounded coverage summary.\n");
+            if summary
+                .chars()
+                .count()
+                .saturating_add(entry.chars().count())
+                > maximum_chars
+            {
+                summary.push_str(
+                    "- Additional existing cards omitted from this bounded coverage summary.\n",
+                );
                 break;
             }
             summary.push_str(&entry);
@@ -684,12 +702,7 @@ fn mark_job_committing(
     })
 }
 
-fn record_additional_failure(
-    database: &Database,
-    document_id: &str,
-    code: &str,
-    message: &str,
-) {
+fn record_additional_failure(database: &Database, document_id: &str, code: &str, message: &str) {
     let now = unix_time_millis().unwrap_or_default();
     let _ = database.with_connection(|connection| {
         let transaction = connection
@@ -827,7 +840,9 @@ mod tests {
             outline(),
             "- Already tested: What is V/Q matching? => Relationship of ventilation to perfusion.\n",
         );
-        assert!(augmented.summary.contains("SECOND-PASS FLASHCARD CONSTRAINT"));
+        assert!(augmented
+            .summary
+            .contains("SECOND-PASS FLASHCARD CONSTRAINT"));
         assert!(augmented.summary.contains("Already tested"));
         assert!(augmented.learning_objectives[0].contains("coverage gaps"));
     }
