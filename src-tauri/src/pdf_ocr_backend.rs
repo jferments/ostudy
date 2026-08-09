@@ -8,7 +8,7 @@
 
 use std::{
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::atomic::{AtomicU64, Ordering},
     thread,
@@ -20,15 +20,20 @@ use oxidize_pdf::{
     OcrResult,
 };
 
+use crate::task_cancellation;
+
 const ENGINE_NAME: &str = "Tesseract CLI via oxidize-pdf OcrProvider";
 const DEFAULT_EXECUTABLE: &str = "tesseract";
 const EXECUTABLE_ENV: &str = "OSTUDY_TESSERACT_PATH";
 const WAIT_INTERVAL_MS: u64 = 25;
+const OCR_CANCELED_MARKER: &str = "ostudy_document_ocr_canceled";
+const MAX_TSV_BYTES: u64 = 16 * 1024 * 1024;
 static WORKSPACE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug)]
 pub(crate) struct TesseractCliOcrProvider {
     executable: String,
+    document_id: Option<String>,
 }
 
 impl Default for TesseractCliOcrProvider {
@@ -43,7 +48,16 @@ impl TesseractCliOcrProvider {
             .ok()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_EXECUTABLE.to_string());
-        Self { executable }
+        Self {
+            executable,
+            document_id: None,
+        }
+    }
+
+    pub(crate) fn for_document(document_id: &str) -> Self {
+        let mut provider = Self::new();
+        provider.document_id = Some(document_id.to_string());
+        provider
     }
 
     pub(crate) fn ensure_available(&self) -> OcrResult<()> {
@@ -67,6 +81,12 @@ impl TesseractCliOcrProvider {
             )))
         }
     }
+
+    fn is_canceled(&self) -> bool {
+        self.document_id
+            .as_deref()
+            .is_some_and(task_cancellation::is_document_task_canceled)
+    }
 }
 
 impl OcrProvider for TesseractCliOcrProvider {
@@ -76,7 +96,9 @@ impl OcrProvider for TesseractCliOcrProvider {
         options: &OcrOptions,
     ) -> OcrResult<OcrProcessingResult> {
         self.validate_image_data(image_data)?;
-        self.ensure_available()?;
+        if self.is_canceled() {
+            return Err(canceled_ocr_error());
+        }
         let dimensions = png_dimensions(image_data)?;
         let workspace = TempOcrWorkspace::create()?;
         let input = workspace.path.join("page.png");
@@ -105,6 +127,11 @@ impl OcrProvider for TesseractCliOcrProvider {
 
         let timeout = Duration::from_secs(u64::from(options.timeout_seconds.max(1)));
         let status = loop {
+            if self.is_canceled() {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(canceled_ocr_error());
+            }
             if let Some(status) = child.try_wait()? {
                 break status;
             }
@@ -123,8 +150,23 @@ impl OcrProvider for TesseractCliOcrProvider {
                 "Tesseract exited with status {status}. Verify that the '{language}' trained data is installed."
             )));
         }
+        if self.is_canceled() {
+            return Err(canceled_ocr_error());
+        }
 
         let tsv_path = output_base.with_extension("tsv");
+        let tsv_size = fs::metadata(&tsv_path)
+            .map_err(|error| {
+                OcrError::ProcessingFailed(format!(
+                    "Tesseract completed without a readable TSV result: {error}"
+                ))
+            })?
+            .len();
+        if tsv_size > MAX_TSV_BYTES {
+            return Err(OcrError::ProcessingFailed(format!(
+                "Tesseract produced an unexpectedly large OCR result ({tsv_size} bytes)."
+            )));
+        }
         let tsv = fs::read_to_string(&tsv_path).map_err(|error| {
             OcrError::ProcessingFailed(format!(
                 "Tesseract completed without a readable TSV result: {error}"
@@ -153,6 +195,14 @@ impl OcrProvider for TesseractCliOcrProvider {
     fn engine_type(&self) -> OcrEngine {
         OcrEngine::Tesseract
     }
+}
+
+pub(crate) fn is_cancellation_error(error: &OcrError) -> bool {
+    matches!(error, OcrError::ProcessingFailed(detail) if detail == OCR_CANCELED_MARKER)
+}
+
+fn canceled_ocr_error() -> OcrError {
+    OcrError::ProcessingFailed(OCR_CANCELED_MARKER.to_string())
 }
 
 #[derive(Debug, PartialEq)]
@@ -248,6 +298,21 @@ fn tesseract_language(language: &str) -> String {
     }
 }
 
+fn create_private_directory(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+
+        let mut builder = fs::DirBuilder::new();
+        builder.mode(0o700);
+        builder.create(path)
+    }
+    #[cfg(not(unix))]
+    {
+        fs::create_dir(path)
+    }
+}
+
 struct TempOcrWorkspace {
     path: PathBuf,
 }
@@ -263,7 +328,7 @@ impl TempOcrWorkspace {
         for _ in 0..32 {
             let sequence = WORKSPACE_COUNTER.fetch_add(1, Ordering::Relaxed);
             let path = root.join(format!("ostudy-ocr-{process}-{nanos}-{sequence}"));
-            match fs::create_dir(&path) {
+            match create_private_directory(&path) {
                 Ok(()) => return Ok(Self { path }),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(error) => return Err(OcrError::Io(error)),
@@ -307,7 +372,28 @@ mod tests {
     }
 
     #[test]
+    fn cancellation_marker_is_distinct_from_provider_failures() {
+        assert!(is_cancellation_error(&canceled_ocr_error()));
+        assert!(!is_cancellation_error(&OcrError::ProcessingFailed(
+            "ordinary OCR failure".to_string()
+        )));
+    }
+
+    #[test]
     fn png_dimensions_rejects_non_png_data() {
         assert!(png_dimensions(b"not-a-png").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn temporary_ocr_workspace_is_private_to_the_current_user() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let workspace = TempOcrWorkspace::create().expect("OCR workspace should be created");
+        let mode = fs::metadata(&workspace.path)
+            .expect("OCR workspace metadata should be readable")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o077, 0);
     }
 }
