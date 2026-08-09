@@ -256,16 +256,9 @@ mod tests {
         );
         let plan = DocumentScalePlan::for_provider(100, "deepseek");
         assert_eq!(
-            validate_automatic_job(
-                100,
-                MAX_AUTOMATIC_SOURCE_TOKENS + 1,
-                plan,
-                1,
-                1,
-                "deepseek"
-            )
-            .unwrap_err()
-            .code,
+            validate_automatic_job(100, MAX_AUTOMATIC_SOURCE_TOKENS + 1, plan, 1, 1, "deepseek")
+                .unwrap_err()
+                .code,
             "document_generation_source_limit"
         );
     }
