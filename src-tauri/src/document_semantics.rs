@@ -112,14 +112,18 @@ pub(crate) fn build_semantic_partitions(
                     || next_pages.len() > plan.partition_max_pages);
             let heading_changed =
                 end > start && title.is_some() && next_heading.is_some() && title != next_heading;
-            let enough_for_semantic_split = token_total
-                >= plan.partition_target_tokens.saturating_div(3).max(1_500)
-                || pages.len() >= plan.partition_target_pages.saturating_div(3).max(4);
+            // A real top-level heading change is a stronger semantic boundary
+            // than the preferred partition size. Require a small amount of
+            // accumulated material so noisy one-line headings do not create
+            // pathological singleton partitions, but never carry a mature
+            // chapter across into the next chapter merely to hit a size target.
+            let meaningful_heading_boundary =
+                heading_changed && (token_total >= 1_000 || pages.len() >= 2);
             let reached_target = token_total >= plan.partition_target_tokens
                 || pages.len() >= plan.partition_target_pages;
 
             if exceeds_hard_boundary
-                || (heading_changed && enough_for_semantic_split)
+                || meaningful_heading_boundary
                 || (end > start && reached_target)
             {
                 break;
