@@ -63,6 +63,11 @@ pub struct DocumentDto {
     pub page_count: i64,
     pub extracted_page_count: i64,
     pub rendered_page_count: i64,
+    pub extraction_mode: String,
+    pub ocr_page_count: i64,
+    pub ocr_completed_page_count: i64,
+    pub ocr_mean_confidence: Option<f64>,
+    pub ocr_engine: String,
     pub scale_mode: String,
     pub estimated_source_tokens: i64,
     pub outline_window_count: i64,
@@ -355,7 +360,7 @@ async fn process_and_generate(
         let source_owned = source_path.clone();
         let id_owned = document_id.to_string();
         let (progress_sender, mut progress_receiver) =
-            tokio::sync::mpsc::unbounded_channel::<(usize, usize)>();
+            tokio::sync::mpsc::unbounded_channel::<document_ingestion::IngestionProgress>();
         let processing_task = tauri::async_runtime::spawn_blocking(move || {
             document_ingestion::ingest_pdf(
                 &paths_owned,
@@ -363,8 +368,8 @@ async fn process_and_generate(
                 &id_owned,
                 &source_owned,
                 MAX_SUPPORTED_SOURCE_UNITS,
-                |completed, total| {
-                    progress_sender.send((completed, total)).map_err(|_| {
+                |progress| {
+                    progress_sender.send(progress).map_err(|_| {
                         CommandError::new(
                             "document_processing_stopped",
                             "The document-processing progress channel closed unexpectedly.",
@@ -373,12 +378,11 @@ async fn process_and_generate(
                 },
             )
         });
-        while let Some((completed, total)) = progress_receiver.recv().await {
+        while let Some(progress) = progress_receiver.recv().await {
             document_ingestion::update_ingestion_progress(
                 database.inner(),
                 document_id,
-                completed,
-                total,
+                progress,
             )?;
         }
         let processed = processing_task.await.map_err(|error| {
@@ -737,7 +741,7 @@ async fn process_and_generate(
             if job_changed != 1 {
                 return Err(CommandError::new(
                     "document_job_changed",
-                    "The generation job changed before generated cards could be committed.",
+                    "The generation job changed before its commit completed.",
                 ));
             }
             Ok(())
@@ -922,6 +926,8 @@ fn list_document_rows(
         .prepare(
             "SELECT id, title, original_filename, byte_size, sha256, lifecycle_state,
                     page_count, extracted_page_count, rendered_page_count,
+                    extraction_mode, ocr_page_count, ocr_completed_page_count,
+                    ocr_mean_confidence, ocr_engine,
                     scale_mode, estimated_source_tokens,
                     outline_window_count, outline_completed_window_count,
                     generation_window_count, generation_completed_window_count,
@@ -960,6 +966,8 @@ fn load_document(
         .query_row(
             "SELECT id, title, original_filename, byte_size, sha256, lifecycle_state,
                     page_count, extracted_page_count, rendered_page_count,
+                    extraction_mode, ocr_page_count, ocr_completed_page_count,
+                    ocr_mean_confidence, ocr_engine,
                     scale_mode, estimated_source_tokens,
                     outline_window_count, outline_completed_window_count,
                     generation_window_count, generation_completed_window_count,
@@ -977,12 +985,12 @@ fn load_document(
             |row| {
                 Ok(StoredDocument {
                     dto: document_row(row)?,
-                    source_relative_path: row.get(25)?,
-                    extraction_backend: row.get(26)?,
-                    render_backend: row.get(27)?,
-                    semantic_chunk_count: row.get(28)?,
-                    source_format: row.get(29)?,
-                    source_unit_kind: row.get(30)?,
+                    source_relative_path: row.get(30)?,
+                    extraction_backend: row.get(31)?,
+                    render_backend: row.get(32)?,
+                    semantic_chunk_count: row.get(33)?,
+                    source_format: row.get(34)?,
+                    source_unit_kind: row.get(35)?,
                 })
             },
         )
@@ -1007,22 +1015,27 @@ fn document_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentDto> {
         page_count: row.get(6)?,
         extracted_page_count: row.get(7)?,
         rendered_page_count: row.get(8)?,
-        scale_mode: row.get(9)?,
-        estimated_source_tokens: row.get(10)?,
-        outline_window_count: row.get(11)?,
-        outline_completed_window_count: row.get(12)?,
-        generation_window_count: row.get(13)?,
-        generation_completed_window_count: row.get(14)?,
-        generated_note_count: row.get(15)?,
-        generated_card_count: row.get(16)?,
-        generated_deck_id: row.get(17)?,
-        safe_error_code: row.get(18)?,
-        safe_error_message: row.get(19)?,
-        created_at: row.get(20)?,
-        updated_at: row.get(21)?,
-        completed_at: row.get(22)?,
-        archived_at: row.get(23)?,
-        revision: row.get(24)?,
+        extraction_mode: row.get(9)?,
+        ocr_page_count: row.get(10)?,
+        ocr_completed_page_count: row.get(11)?,
+        ocr_mean_confidence: row.get(12)?,
+        ocr_engine: row.get(13)?,
+        scale_mode: row.get(14)?,
+        estimated_source_tokens: row.get(15)?,
+        outline_window_count: row.get(16)?,
+        outline_completed_window_count: row.get(17)?,
+        generation_window_count: row.get(18)?,
+        generation_completed_window_count: row.get(19)?,
+        generated_note_count: row.get(20)?,
+        generated_card_count: row.get(21)?,
+        generated_deck_id: row.get(22)?,
+        safe_error_code: row.get(23)?,
+        safe_error_message: row.get(24)?,
+        created_at: row.get(25)?,
+        updated_at: row.get(26)?,
+        completed_at: row.get(27)?,
+        archived_at: row.get(28)?,
+        revision: row.get(29)?,
     })
 }
 
@@ -1065,6 +1078,11 @@ mod tests {
                 page_count: 1,
                 extracted_page_count: 1,
                 rendered_page_count: 1,
+                extraction_mode: "native".to_string(),
+                ocr_page_count: 0,
+                ocr_completed_page_count: 0,
+                ocr_mean_confidence: None,
+                ocr_engine: String::new(),
                 scale_mode: "standard".to_string(),
                 estimated_source_tokens: 100,
                 outline_window_count: 1,
