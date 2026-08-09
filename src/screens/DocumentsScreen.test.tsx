@@ -101,8 +101,8 @@ describe("DocumentsScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Upload PDF" }));
 
-    expect(showToast).toHaveBeenCalledWith("info", "Large documents can take several minutes.");
     await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith("info", "Large documents can take several minutes.");
       expect(documentIpc.importPdfAndGenerateFlashcards).toHaveBeenCalledWith(
         "/tmp/cardiac-physiology.pdf",
       );
