@@ -14,9 +14,6 @@ const PAGE_RENDER_DPI: f64 = 144.0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PdfRenderErrorKind {
-    // Retained as part of the renderer-boundary error vocabulary so a future
-    // optional native renderer can report an unavailable runtime without
-    // changing the document domain's safe-error mapping.
     Bind,
     Open,
     RenderPage,
@@ -52,16 +49,28 @@ impl fmt::Display for PdfRenderError {
 
 /// Runtime renderer configuration.
 ///
-/// The argument remains accepted so the document/Tauri boundary is stable
-/// across renderer implementations. The pure-Rust renderer needs no packaged
-/// resource or dynamic library, which is important for Android/iOS and other
-/// constrained targets.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct PdfRenderRuntime;
+/// The resource-directory argument remains accepted so the document/Tauri
+/// boundary is stable across renderer implementations. The active pure-Rust
+/// renderer needs no packaged resource or dynamic library. Keeping the active
+/// backend identity in runtime state also makes a stale runtime/backend pairing
+/// fail closed if the application ever gains a selectable compatibility
+/// renderer.
+#[derive(Clone, Debug)]
+pub(crate) struct PdfRenderRuntime {
+    backend_id: &'static str,
+}
+
+impl Default for PdfRenderRuntime {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
 
 impl PdfRenderRuntime {
     pub(crate) fn new(_resource_dir: Option<PathBuf>) -> Self {
-        Self
+        Self {
+            backend_id: active_backend_id(),
+        }
     }
 }
 
@@ -70,13 +79,21 @@ pub(crate) fn active_backend_id() -> &'static str {
 }
 
 pub(crate) fn render_pages<E, F>(
-    _runtime: &PdfRenderRuntime,
+    runtime: &PdfRenderRuntime,
     source_path: &std::path::Path,
     mut visitor: F,
 ) -> Result<usize, RenderProcessError<E>>
 where
     F: FnMut(usize, Vec<u8>) -> Result<(), E>,
 {
+    if runtime.backend_id != active_backend_id() {
+        return Err(RenderProcessError::Backend(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            "The PDF renderer runtime does not match the active renderer backend.",
+        )));
+    }
+
     let document = Document::open(source_path).map_err(|error| {
         RenderProcessError::Backend(PdfRenderError::new(
             PdfRenderErrorKind::Open,
@@ -119,6 +136,8 @@ mod tests {
 
     #[test]
     fn active_renderer_is_pure_rust_and_versioned() {
+        let runtime = PdfRenderRuntime::new(None);
+        assert_eq!(runtime.backend_id, active_backend_id());
         assert_eq!(active_backend_id(), "justpdf-render-0.1.2/pure-rust");
         assert_eq!(PAGE_RENDER_DPI, 144.0);
     }
