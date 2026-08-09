@@ -136,9 +136,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "ad25bb267ff0061d7dea31f1bac0d7376be5c5af225854b329c31ec6caf29e32",
         sql: include_str!("../migrations/0020_document_platform_generalization.sql"),
     },
+    Migration {
+        version: 21,
+        name: "document_ocr_fallback",
+        checksum: "31466a2bec357f46ee1e05680f3b26d5a297445bf686bfc2afd5aef470206e5d",
+        sql: include_str!("../migrations/0021_document_ocr_fallback.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 20;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 21;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -211,7 +217,7 @@ fn initialize_migration_ledger(connection: &Connection) -> Result<(), String> {
                  applied_at  INTEGER NOT NULL\n\
              ) STRICT;",
         )
-        .map_err(|error| format!("Could not initialize the migration ledger: {error}"))
+        .map_err(|error| format!("Could not initialize migration ledger: {error}"))
 }
 
 #[cfg(test)]
@@ -498,6 +504,23 @@ mod tests {
                     .map_err(CommandError::database)?
                     .unwrap_or_else(|| ("pdf".to_string(), "page".to_string()));
                 assert_eq!(metadata, ("pdf".to_string(), "page".to_string()));
+
+                for column in [
+                    "extraction_mode",
+                    "ocr_page_count",
+                    "ocr_completed_page_count",
+                    "ocr_mean_confidence",
+                    "ocr_engine",
+                ] {
+                    let exists: i64 = connection
+                        .query_row(
+                            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('documents') WHERE name = ?1)",
+                            [column],
+                            |row| row.get(0),
+                        )
+                        .map_err(CommandError::database)?;
+                    assert_eq!(exists, 1, "missing OCR document column {column}");
+                }
                 Ok(())
             })
             .expect("canonical reopen should not write");
