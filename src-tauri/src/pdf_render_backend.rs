@@ -17,7 +17,6 @@ pub(crate) enum PdfRenderErrorKind {
     // Retained as part of the renderer-boundary error vocabulary so a future
     // optional native renderer can report an unavailable runtime without
     // changing the document domain's safe-error mapping.
-    #[allow(dead_code)]
     Bind,
     Open,
     RenderPage,
