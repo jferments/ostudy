@@ -69,7 +69,8 @@ mod tests {
 
     #[test]
     fn visual_only_marker_matches_extraction_fallback_contract() {
-        assert!("Rendered PDF page 2 has no extractable structured text."
-            .contains(VISUAL_ONLY_MARKER));
+        assert!(
+            "Rendered PDF page 2 has no extractable structured text.".contains(VISUAL_ONLY_MARKER)
+        );
     }
 }
