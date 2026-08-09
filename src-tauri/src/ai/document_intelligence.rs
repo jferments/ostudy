@@ -88,6 +88,13 @@ struct OutlineFragmentRecord {
     outline: DocumentOutline,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct OutlineSourceBounds {
+    page_start: i64,
+    page_end: i64,
+    page_count: i64,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FlashcardOutput {
@@ -427,9 +434,11 @@ async fn request_outline_fragment(
         &outline_system_prompt(),
         &user,
         images,
-        window.page_start,
-        window.page_end,
-        page_count,
+        OutlineSourceBounds {
+            page_start: window.page_start,
+            page_end: window.page_end,
+            page_count,
+        },
     )
     .await
 }
@@ -440,9 +449,7 @@ async fn request_outline_with_retry(
     system: &str,
     user: &str,
     images: &[SourcePageImage],
-    page_start: i64,
-    page_end: i64,
-    page_count: i64,
+    bounds: OutlineSourceBounds,
 ) -> Result<DocumentOutline, CommandError> {
     let schema = outline_schema();
     let first = request_json(
@@ -457,7 +464,9 @@ async fn request_outline_with_retry(
         },
     )
     .await
-    .and_then(|value| parse_outline_fragment(value, page_start, page_end, page_count));
+    .and_then(|value| {
+        parse_outline_fragment(value, bounds.page_start, bounds.page_end, bounds.page_count)
+    });
 
     match first {
         Ok(outline) => Ok(outline),
@@ -477,7 +486,9 @@ async fn request_outline_with_retry(
                 },
             )
             .await
-            .and_then(|value| parse_outline_fragment(value, page_start, page_end, page_count))
+            .and_then(|value| {
+                parse_outline_fragment(value, bounds.page_start, bounds.page_end, bounds.page_count)
+            })
             .map_err(|retry_error| collapse_contract_error(retry_error, "outline fragment"))
         }
         Err(error) => Err(error),
