@@ -1,11 +1,9 @@
 //! Additional flashcard generation for an already-generated managed document.
 //!
-//! A second pass never creates a replacement deck. It reuses the durable source
-//! semantics and outline, summarizes knowledge already tested by the exact
-//! generated deck, asks the configured model for materially different coverage,
-//! and appends through the canonical generated-import boundary.
-
-use std::fs;
+//! A second pass never creates a replacement deck. It reuses retained document
+//! semantics and the validated outline, summarizes knowledge already tested by
+//! the exact generated deck, and runs the same planner/window executor used by
+//! initial generation before appending through canonical authoring.
 
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -13,22 +11,21 @@ use serde_json::Value;
 use tauri::State;
 
 use crate::{
-    ai::{document_intelligence, AiRuntimeState},
+    ai::{document_intelligence, document_provider, AiRuntimeState},
     authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit,
     database::Database,
+    document_cost,
+    document_domain::{DocumentFormat, DocumentSourceDescriptor, SourceUnitKind},
+    document_generation::{self, GenerationExecution},
     document_scale::{self, DocumentScalePlan},
-    document_semantics::{build_partitioned_semantic_windows, SemanticChunk, SemanticWindow},
+    document_semantics::{build_partitioned_semantic_windows, validate_semantic_windows},
+    document_store::{self, GenerationJobIdentity},
     error::CommandError,
     paths::AppPaths,
     task_cancellation::run_document_task,
-    util::{generate_id, unix_time_millis, validate_entity_id},
+    util::{unix_time_millis, validate_entity_id},
 };
 
-// Additional passes use the same conservative provider boundary as initial
-// generation. Reusing a persisted outline must not reintroduce the old large
-// source-window context risk.
-const MAX_RENDER_BYTES: usize = 32 * 1024 * 1024;
-const MAX_GENERATED_CARDS: usize = 10_000;
 const MAX_EXISTING_COVERAGE_CHARS: usize = 36_000;
 const CANCELED_MESSAGE: &str =
     "Additional flashcard generation was stopped. Existing cards were not changed.";
@@ -54,15 +51,19 @@ struct AdditionalDocumentContext {
     title: String,
     deck_id: String,
     deck_name: String,
-    page_count: i64,
+    source_format: String,
+    source_unit_kind: String,
+    source_unit_count: usize,
 }
 
-#[derive(Clone, Debug)]
-struct PageRenderRecord {
-    page_number: i64,
-    render_relative_path: String,
-    render_byte_size: i64,
-    render_sha256: String,
+impl AdditionalDocumentContext {
+    fn source_descriptor(&self) -> Result<DocumentSourceDescriptor, CommandError> {
+        Ok(DocumentSourceDescriptor {
+            format: DocumentFormat::from_db(&self.source_format)?,
+            unit_kind: SourceUnitKind::from_db(&self.source_unit_kind)?,
+            unit_count: self.source_unit_count,
+        })
+    }
 }
 
 #[tauri::command]
@@ -115,8 +116,10 @@ async fn generate_more_impl(
 ) -> Result<GenerateMorePdfFlashcardsResultDto, CommandError> {
     let context = load_context(database.inner(), &input.document_id)?;
     ensure_exact_append_destination(database.inner(), &context.deck_id, &context.deck_name)?;
-    mark_additional_processing(database.inner(), &input.document_id)?;
+    document_store::mark_document_processing(database.inner(), &input.document_id)?;
 
+    let source = context.source_descriptor()?;
+    source.validate()?;
     let outline = load_outline(database.inner(), &input.document_id)?;
     let existing_coverage = load_existing_coverage(
         database.inner(),
@@ -124,29 +127,35 @@ async fn generate_more_impl(
         MAX_EXISTING_COVERAGE_CHARS,
     )?;
     let second_pass_outline = second_pass_outline(outline, &existing_coverage);
-    let chunks = load_semantic_chunks(database.inner(), &input.document_id)?;
+    let chunks = document_store::load_semantic_chunks(database.inner(), &input.document_id)?;
     if chunks.is_empty() {
         return Err(CommandError::new(
             "document_has_no_semantic_content",
-            "The retained PDF has no semantic source chunks available for another generation pass.",
+            "The retained document has no semantic source chunks available for another generation pass.",
         ));
     }
-    let page_count = usize::try_from(context.page_count).unwrap_or(usize::MAX);
+
     let task = document_intelligence::load_document_task_context(database.inner())?;
-    let plan = DocumentScalePlan::for_provider(page_count, &task.provider_kind);
+    let capabilities = document_provider::load_document_provider_capabilities(
+        database.inner(),
+        &task.profile_id,
+        &task.provider_kind,
+        &task.model_id,
+    )?;
+    let calibration = document_cost::load_cost_calibration(
+        database.inner(),
+        &task.provider_kind,
+        &task.model_id,
+    )?;
+    let plan = DocumentScalePlan::for_capabilities(source.unit_count, &capabilities, calibration)?;
     let windows = build_partitioned_semantic_windows(
         &chunks,
         plan,
         plan.generation_window_max_tokens,
-        plan.generation_window_max_pages,
+        plan.generation_window_max_units,
         plan.generation_window_overlap_tokens,
     );
-    if windows.is_empty() {
-        return Err(CommandError::new(
-            "document_has_no_semantic_content",
-            "The retained PDF has no source windows available for another generation pass.",
-        ));
-    }
+    validate_semantic_windows(&windows, &source)?;
 
     let estimated_source_tokens = chunks.iter().fold(0_usize, |total, chunk| {
         total.saturating_add(
@@ -155,78 +164,64 @@ async fn generate_more_impl(
                 .max(chunk.full_text.chars().count().div_ceil(4)),
         )
     });
-    let budget = document_scale::validate_automatic_job(
-        page_count,
+    let budget = document_scale::validate_automatic_job_calibrated(
+        source.unit_count,
         estimated_source_tokens,
         plan,
         0,
         windows.len(),
-        &task.provider_kind,
+        &capabilities,
+        calibration,
     )?;
     crate::logging::info(
         "document_ai_additional_scale_plan",
         format!(
-            "document={} provider={} scale={} pages={} source_tokens={} generation_windows={} card_capacity={} estimated_job_tokens={} ceiling={}",
+            "document={} format={} provider={} model={} scale={} units={} source_tokens={} generation_windows={} card_capacity={} estimated_job_tokens={} ceiling={} context={} calibration_samples={}",
             input.document_id,
+            source.format.as_str(),
             task.provider_kind,
+            task.model_id,
             plan.label(),
-            page_count,
+            source.unit_count,
             estimated_source_tokens,
             windows.len(),
             budget.generation_card_capacity,
             budget.estimated_tokens,
             budget.ceiling_tokens,
+            budget.context_window_tokens.map_or_else(|| "unknown".to_string(), |value| value.to_string()),
+            budget.calibration_sample_count,
         ),
     );
 
-    initialize_additional_progress(database.inner(), &input.document_id, plan, windows.len())?;
-    let pages = if task.include_page_images {
-        load_page_renders(database.inner(), &input.document_id)?
-    } else {
-        Vec::new()
-    };
-    let job_id = create_additional_job(
+    document_store::initialize_additional_progress(
         database.inner(),
         &input.document_id,
-        &task,
-        context.page_count,
+        plan.label(),
+        windows.len(),
+    )?;
+    let job_id = document_store::create_generation_job(
+        database.inner(),
+        &input.document_id,
+        &GenerationJobIdentity::from(&task),
+        &source,
         &windows,
     )?;
-
-    let mut generated = Vec::<Value>::new();
-    for window in &windows {
-        mark_window_running(database.inner(), &job_id, window.window_index)?;
-        let images = if task.include_page_images {
-            load_window_images(paths.inner(), &pages, window, plan.max_images_per_window)?
-        } else {
-            Vec::new()
-        };
-        let cards = generate_window_with_recovery(
-            runtime.inner(),
-            &task,
-            &context.title,
-            &second_pass_outline,
-            window,
-            &images,
-            plan.max_cards_per_window,
-        )
-        .await?;
-        if generated.len().saturating_add(cards.len()) > MAX_GENERATED_CARDS {
-            return Err(CommandError::new(
-                "too_many_generated_cards",
-                format!(
-                    "The additional pass generated more than {MAX_GENERATED_CARDS} candidates."
-                ),
-            ));
-        }
-        mark_window_complete(database.inner(), &job_id, window, cards.len())?;
-        update_additional_progress(
-            database.inner(),
-            &input.document_id,
-            i64::try_from(window.window_index + 1).unwrap_or(i64::MAX),
-        )?;
-        generated.extend(cards);
-    }
+    let generated = document_generation::execute_generation_windows(GenerationExecution {
+        database: database.inner(),
+        paths: paths.inner(),
+        runtime: runtime.inner(),
+        task: &task,
+        document_id: &input.document_id,
+        document_title: &context.title,
+        outline: &second_pass_outline,
+        plan,
+        windows: &windows,
+        job_id: &job_id,
+        cached_cards: Vec::new(),
+        checkpoint_contract: None,
+        diagnostic_prefix: "additional",
+    })
+    .await?;
 
     if generated.is_empty() {
         return Err(CommandError::new(
@@ -248,9 +243,14 @@ async fn generate_more_impl(
         ));
     }
 
-    mark_job_committing(database.inner(), &job_id, generated.len())?;
+    document_store::mark_job_committing(
+        database.inner(),
+        &input.document_id,
+        &job_id,
+        generated.len(),
+    )?;
     ensure_exact_append_destination(database.inner(), &context.deck_id, &context.deck_name)?;
-    let payload = build_append_payload(&context.deck_name, generated)?;
+    let payload = build_append_payload(&context.deck_name, &context.source_format, generated)?;
     let result = import_generated_flashcards_bytes_with_commit(
         database.inner(),
         payload.as_bytes(),
@@ -261,7 +261,7 @@ async fn generate_more_impl(
                     "The generated deck changed before additional cards could be committed. No cards were added.",
                 ));
             }
-            connection
+            let document_changed = connection
                 .execute(
                     "UPDATE documents
                      SET lifecycle_state = 'ready',
@@ -270,7 +270,7 @@ async fn generate_more_impl(
                          generation_completed_window_count = generation_window_count,
                          safe_error_code = '', safe_error_message = '',
                          updated_at = ?3, completed_at = ?3, revision = revision + 1
-                     WHERE id = ?4 AND generated_deck_id = ?5",
+                     WHERE id = ?4 AND generated_deck_id = ?5 AND lifecycle_state = 'processing'",
                     params![
                         import_result.created_note_count,
                         import_result.created_card_count,
@@ -279,17 +279,47 @@ async fn generate_more_impl(
                         context.deck_id,
                     ],
                 )
-                .map_err(CommandError::database)?;
-            connection
+                .map_err(|error| {
+                    CommandError::database_at(
+                        "document_additional_finalize_failed",
+                        format!("document={} job={job_id}", input.document_id),
+                        error,
+                    )
+                })?;
+            if document_changed != 1 {
+                return Err(CommandError::new(
+                    "document_changed",
+                    "The document changed before additional cards could be committed.",
+                ));
+            }
+            let job_changed = connection
                 .execute(
                     "UPDATE document_generation_jobs
-                     SET state = 'succeeded', generated_deck_id = ?1,
-                         safe_error_code = '', safe_error_message = '',
-                         updated_at = ?2, completed_at = ?2
-                     WHERE id = ?3",
-                    params![context.deck_id, now, job_id],
+                     SET state = 'succeeded', generated_candidate_count = ?1,
+                         generated_deck_id = ?2, safe_error_code = '',
+                         safe_error_message = '', updated_at = ?3, completed_at = ?3
+                     WHERE id = ?4 AND document_id = ?5 AND state = 'committing'",
+                    params![
+                        import_result.created_card_count,
+                        context.deck_id,
+                        now,
+                        job_id,
+                        input.document_id,
+                    ],
                 )
-                .map_err(CommandError::database)?;
+                .map_err(|error| {
+                    CommandError::database_at(
+                        "document_additional_job_finalize_failed",
+                        format!("document={} job={job_id}", input.document_id),
+                        error,
+                    )
+                })?;
+            if job_changed != 1 {
+                return Err(CommandError::new(
+                    "document_job_changed",
+                    "The additional generation job changed before its commit completed.",
+                ));
+            }
             Ok(())
         },
     )?;
@@ -311,6 +341,7 @@ fn load_context(
         connection
             .query_row(
                 "SELECT document.title, document.page_count,
+                        document.source_format, document.source_unit_kind,
                         document.generated_deck_id, document.archived_at,
                         deck.name, deck.deleted_at, deck.archived_at
                  FROM documents document
@@ -321,11 +352,13 @@ fn load_context(
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, i64>(1)?,
-                        row.get::<_, Option<String>>(2)?,
-                        row.get::<_, Option<i64>>(3)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
                         row.get::<_, Option<String>>(4)?,
                         row.get::<_, Option<i64>>(5)?,
-                        row.get::<_, Option<i64>>(6)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, Option<i64>>(7)?,
+                        row.get::<_, Option<i64>>(8)?,
                     ))
                 },
             )
@@ -334,13 +367,15 @@ fn load_context(
             .ok_or_else(|| {
                 CommandError::new(
                     "document_not_found",
-                    "That PDF is no longer in the document library.",
+                    "That document is no longer in the document library.",
                 )
             })
             .and_then(
                 |(
                     title,
-                    page_count,
+                    source_unit_count,
+                    source_format,
+                    source_unit_kind,
                     deck_id,
                     document_archived,
                     deck_name,
@@ -350,13 +385,13 @@ fn load_context(
                     if document_archived.is_some() {
                         return Err(CommandError::new(
                             "document_archived",
-                            "Restore this PDF before generating more flashcards from it.",
+                            "Restore this document before generating more flashcards from it.",
                         ));
                     }
                     let deck_id = deck_id.ok_or_else(|| {
                         CommandError::new(
                             "document_generated_deck_missing",
-                            "This PDF does not currently have a generated deck to extend.",
+                            "This document does not currently have a generated deck to extend.",
                         )
                     })?;
                     if deck_deleted.is_some() || deck_archived.is_some() {
@@ -371,11 +406,19 @@ fn load_context(
                             "The generated deck is no longer available.",
                         )
                     })?;
+                    let source_unit_count = usize::try_from(source_unit_count).map_err(|_| {
+                        CommandError::new(
+                            "invalid_document_source",
+                            "The saved document source-unit count is invalid.",
+                        )
+                    })?;
                     Ok(AdditionalDocumentContext {
                         title,
                         deck_id,
                         deck_name,
-                        page_count,
+                        source_format,
+                        source_unit_kind,
+                        source_unit_count,
                     })
                 },
             )
@@ -407,55 +450,6 @@ fn load_outline(
             "document_outline_invalid",
             "The retained document outline could not be read. Rebuild the document before requesting more cards.",
         )
-    })
-}
-
-fn load_semantic_chunks(
-    database: &Database,
-    document_id: &str,
-) -> Result<Vec<SemanticChunk>, CommandError> {
-    database.with_connection(|connection| {
-        let mut statement = connection
-            .prepare(
-                "SELECT chunk_index, text, full_text, page_numbers_json,
-                        element_types_json, heading_context, token_estimate
-                 FROM document_semantic_chunks
-                 WHERE document_id = ?1 ORDER BY chunk_index",
-            )
-            .map_err(CommandError::database)?;
-        let chunks = statement
-            .query_map([document_id], |row| {
-                let pages_json: String = row.get(3)?;
-                let types_json: String = row.get(4)?;
-                let token_estimate: i64 = row.get(6)?;
-                let page_numbers = serde_json::from_str(&pages_json).map_err(|error| {
-                    rusqlite::Error::FromSqlConversionFailure(
-                        3,
-                        rusqlite::types::Type::Text,
-                        Box::new(error),
-                    )
-                })?;
-                let element_types = serde_json::from_str(&types_json).map_err(|error| {
-                    rusqlite::Error::FromSqlConversionFailure(
-                        4,
-                        rusqlite::types::Type::Text,
-                        Box::new(error),
-                    )
-                })?;
-                Ok(SemanticChunk {
-                    chunk_index: row.get(0)?,
-                    text: row.get(1)?,
-                    full_text: row.get(2)?,
-                    page_numbers,
-                    element_types,
-                    heading_context: row.get(5)?,
-                    token_estimate: usize::try_from(token_estimate).unwrap_or(usize::MAX),
-                })
-            })
-            .map_err(CommandError::database)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        Ok(chunks)
     })
 }
 
@@ -521,336 +515,6 @@ fn second_pass_outline(
     outline
 }
 
-fn load_page_renders(
-    database: &Database,
-    document_id: &str,
-) -> Result<Vec<PageRenderRecord>, CommandError> {
-    database.with_connection(|connection| {
-        let mut statement = connection
-            .prepare(
-                "SELECT page_number, render_relative_path, render_byte_size, render_sha256
-                 FROM document_pages WHERE document_id = ?1 ORDER BY page_number",
-            )
-            .map_err(CommandError::database)?;
-        let pages = statement
-            .query_map([document_id], |row| {
-                Ok(PageRenderRecord {
-                    page_number: row.get(0)?,
-                    render_relative_path: row.get(1)?,
-                    render_byte_size: row.get(2)?,
-                    render_sha256: row.get(3)?,
-                })
-            })
-            .map_err(CommandError::database)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        Ok(pages)
-    })
-}
-
-fn load_window_images(
-    paths: &AppPaths,
-    pages: &[PageRenderRecord],
-    window: &SemanticWindow,
-    maximum: usize,
-) -> Result<Vec<document_intelligence::SourcePageImage>, CommandError> {
-    if window.visual_page_numbers.is_empty() || maximum == 0 {
-        return Ok(Vec::new());
-    }
-    let selected = select_image_pages(&window.visual_page_numbers, maximum);
-    let mut images = Vec::with_capacity(selected.len());
-    for page_number in selected {
-        let page = pages
-            .iter()
-            .find(|page| page.page_number == page_number)
-            .ok_or_else(|| {
-                CommandError::new(
-                    "document_render_missing",
-                    "A rendered page required by the additional pass is missing.",
-                )
-            })?;
-        let bytes = fs::read(paths.resolve_relative(&page.render_relative_path))
-            .map_err(CommandError::io)?;
-        if bytes.is_empty()
-            || bytes.len() > MAX_RENDER_BYTES
-            || i64::try_from(bytes.len()).unwrap_or(i64::MAX) != page.render_byte_size
-            || sha256_hex(&bytes) != page.render_sha256
-        {
-            return Err(CommandError::new(
-                "document_render_invalid",
-                "A retained rendered PDF page failed its integrity check. Rebuild the document before generating more cards.",
-            ));
-        }
-        images.push(document_intelligence::SourcePageImage { page_number, bytes });
-    }
-    Ok(images)
-}
-
-async fn generate_window_with_recovery(
-    runtime: &AiRuntimeState,
-    task: &document_intelligence::DocumentTaskContext,
-    document_title: &str,
-    outline: &document_intelligence::DocumentOutline,
-    window: &SemanticWindow,
-    images: &[document_intelligence::SourcePageImage],
-    maximum_cards: usize,
-) -> Result<Vec<Value>, CommandError> {
-    let first = document_intelligence::generate_window_flashcards(
-        runtime,
-        task,
-        document_title,
-        outline,
-        window,
-        images,
-        maximum_cards.max(1),
-    )
-    .await;
-    match first {
-        Err(error)
-            if maximum_cards > 2
-                && (error.code == "ai_document_output_truncated"
-                    || (error.code == "ai_document_output_invalid"
-                        && error.message.contains("more than"))) =>
-        {
-            let reduced_budget = (maximum_cards / 2).max(2);
-            crate::logging::info(
-                "document_additional_window_compact_retry",
-                format!(
-                    "window={} partition={} pages={}-{} old_budget={} new_budget={} code={}",
-                    window.window_index + 1,
-                    window.partition_index + 1,
-                    window.page_start,
-                    window.page_end,
-                    maximum_cards,
-                    reduced_budget,
-                    error.code,
-                ),
-            );
-            document_intelligence::generate_window_flashcards(
-                runtime,
-                task,
-                document_title,
-                outline,
-                window,
-                images,
-                reduced_budget,
-            )
-            .await
-        }
-        other => other,
-    }
-}
-
-fn initialize_additional_progress(
-    database: &Database,
-    document_id: &str,
-    plan: DocumentScalePlan,
-    window_count: usize,
-) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        connection
-            .execute(
-                "UPDATE documents
-                 SET scale_mode = ?1, generation_window_count = ?2,
-                     generation_completed_window_count = 0, updated_at = ?3
-                 WHERE id = ?4 AND lifecycle_state = 'processing'",
-                params![
-                    plan.label(),
-                    i64::try_from(window_count).unwrap_or(i64::MAX),
-                    now,
-                    document_id,
-                ],
-            )
-            .map_err(CommandError::database)?;
-        Ok(())
-    })
-}
-
-fn update_additional_progress(
-    database: &Database,
-    document_id: &str,
-    completed: i64,
-) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        connection
-            .execute(
-                "UPDATE documents
-                 SET generation_completed_window_count = MIN(generation_window_count, MAX(0, ?1)),
-                     updated_at = ?2
-                 WHERE id = ?3 AND lifecycle_state = 'processing'",
-                params![completed, now, document_id],
-            )
-            .map_err(CommandError::database)?;
-        Ok(())
-    })
-}
-
-fn create_additional_job(
-    database: &Database,
-    document_id: &str,
-    task: &document_intelligence::DocumentTaskContext,
-    page_count: i64,
-    windows: &[SemanticWindow],
-) -> Result<String, CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        let job_id = generate_id(&transaction)?;
-        transaction
-            .execute(
-                "INSERT INTO document_generation_jobs (
-                     id, document_id, profile_id, provider_kind, model_id,
-                     profile_revision, credential_epoch, network_scope, state,
-                     page_count, processed_page_count, generated_candidate_count,
-                     created_at, started_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'generating', ?9, 0, 0, ?10, ?10, ?10)",
-                params![
-                    job_id,
-                    document_id,
-                    task.profile_id,
-                    task.provider_kind,
-                    task.model_id,
-                    task.profile_revision,
-                    task.credential_epoch,
-                    task.network_scope,
-                    page_count,
-                    now,
-                ],
-            )
-            .map_err(CommandError::database)?;
-        for window in windows {
-            transaction
-                .execute(
-                    "INSERT INTO document_generation_windows (
-                         job_id, window_index, first_chunk_index, last_chunk_index,
-                         page_start, page_end, page_numbers_json, token_estimate,
-                         state, card_count, updated_at
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'pending', 0, ?9)",
-                    params![
-                        job_id,
-                        i64::try_from(window.window_index).unwrap_or(i64::MAX),
-                        window.first_chunk_index,
-                        window.last_chunk_index,
-                        window.page_start,
-                        window.page_end,
-                        serde_json::to_string(&window.page_numbers)
-                            .map_err(CommandError::serialization)?,
-                        i64::try_from(window.token_estimate).unwrap_or(i64::MAX),
-                        now,
-                    ],
-                )
-                .map_err(CommandError::database)?;
-        }
-        transaction.commit().map_err(CommandError::database)?;
-        Ok(job_id)
-    })
-}
-
-fn mark_additional_processing(database: &Database, document_id: &str) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        let changed = connection
-            .execute(
-                "UPDATE documents
-                 SET lifecycle_state = 'processing', safe_error_code = '', safe_error_message = '',
-                     updated_at = ?1, completed_at = NULL, revision = revision + 1
-                 WHERE id = ?2 AND archived_at IS NULL AND generated_deck_id IS NOT NULL",
-                params![now, document_id],
-            )
-            .map_err(CommandError::database)?;
-        if changed != 1 {
-            return Err(CommandError::new(
-                "document_changed",
-                "The PDF changed before additional generation could begin. Reload Documents and try again.",
-            ));
-        }
-        Ok(())
-    })
-}
-
-fn mark_window_running(
-    database: &Database,
-    job_id: &str,
-    window_index: usize,
-) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        connection
-            .execute(
-                "UPDATE document_generation_windows
-                 SET state = 'running', updated_at = ?1
-                 WHERE job_id = ?2 AND window_index = ?3",
-                params![now, job_id, i64::try_from(window_index).unwrap_or(i64::MAX)],
-            )
-            .map_err(CommandError::database)?;
-        Ok(())
-    })
-}
-
-fn mark_window_complete(
-    database: &Database,
-    job_id: &str,
-    window: &SemanticWindow,
-    card_count: usize,
-) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "UPDATE document_generation_windows
-                 SET state = ?1, card_count = ?2, safe_error_code = '', safe_error_message = '', updated_at = ?3
-                 WHERE job_id = ?4 AND window_index = ?5",
-                params![
-                    if card_count == 0 { "skipped" } else { "succeeded" },
-                    i64::try_from(card_count).unwrap_or(i64::MAX),
-                    now,
-                    job_id,
-                    i64::try_from(window.window_index).unwrap_or(i64::MAX),
-                ],
-            )
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "UPDATE document_generation_jobs
-                 SET processed_page_count = MAX(processed_page_count, ?1),
-                     generated_candidate_count = (
-                         SELECT COALESCE(SUM(card_count), 0)
-                         FROM document_generation_windows WHERE job_id = ?2
-                     ), updated_at = ?3
-                 WHERE id = ?2",
-                params![window.page_end, job_id, now],
-            )
-            .map_err(CommandError::database)?;
-        transaction.commit().map_err(CommandError::database)
-    })
-}
-
-fn mark_job_committing(
-    database: &Database,
-    job_id: &str,
-    card_count: usize,
-) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        connection
-            .execute(
-                "UPDATE document_generation_jobs
-                 SET state = 'committing', generated_candidate_count = ?1, updated_at = ?2
-                 WHERE id = ?3",
-                params![i64::try_from(card_count).unwrap_or(i64::MAX), now, job_id],
-            )
-            .map_err(CommandError::database)?;
-        Ok(())
-    })
-}
-
 fn record_additional_failure(database: &Database, document_id: &str, code: &str, message: &str) {
     let now = unix_time_millis().unwrap_or_default();
     let _ = database.with_connection(|connection| {
@@ -870,7 +534,13 @@ fn record_additional_failure(database: &Database, document_id: &str, code: &str,
                  WHERE id = ?4",
                 params![bounded(code, 80), bounded(message, 1000), now, document_id],
             )
-            .map_err(CommandError::database)?;
+            .map_err(|error| {
+                CommandError::database_at(
+                    "document_additional_failure_state_write_failed",
+                    format!("document={document_id} original_code={code}"),
+                    error,
+                )
+            })?;
         transaction
             .execute(
                 "UPDATE document_generation_jobs
@@ -918,7 +588,11 @@ fn ensure_exact_append_destination(
     })
 }
 
-fn build_append_payload(deck_name: &str, cards: Vec<Value>) -> Result<String, CommandError> {
+fn build_append_payload(
+    deck_name: &str,
+    source_format: &str,
+    cards: Vec<Value>,
+) -> Result<String, CommandError> {
     serde_json::to_string(&serde_json::json!({
         "format": "ostudy-flashcards",
         "formatVersion": 1,
@@ -926,29 +600,10 @@ fn build_append_payload(deck_name: &str, cards: Vec<Value>) -> Result<String, Co
             "mode": "append",
             "name": deck_name
         },
-        "defaultTags": ["AI generated", "PDF"],
+        "defaultTags": ["AI generated", source_format.to_ascii_uppercase()],
         "cards": cards
     }))
     .map_err(CommandError::serialization)
-}
-
-fn select_image_pages(page_numbers: &[i64], maximum: usize) -> Vec<i64> {
-    if maximum == 0 {
-        return Vec::new();
-    }
-    let mut unique = page_numbers.to_vec();
-    unique.sort_unstable();
-    unique.dedup();
-    if unique.len() <= maximum {
-        return unique;
-    }
-    if maximum == 1 {
-        return vec![unique[unique.len() / 2]];
-    }
-    let last = unique.len() - 1;
-    (0..maximum)
-        .map(|index| unique[index * last / (maximum - 1)])
-        .collect()
 }
 
 fn compact_text(value: &str, maximum: usize) -> String {
@@ -963,11 +618,6 @@ fn compact_text(value: &str, maximum: usize) -> String {
 
 fn bounded(value: &str, maximum: usize) -> String {
     value.chars().take(maximum).collect()
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    format!("{:x}", Sha256::digest(bytes))
 }
 
 #[cfg(test)]
@@ -997,18 +647,13 @@ mod tests {
     }
 
     #[test]
-    fn image_sampling_covers_a_large_window_without_duplicate_pages() {
-        let pages = (1..=40).collect::<Vec<_>>();
-        let selected = select_image_pages(&pages, 3);
-        assert_eq!(selected.len(), 3);
-        assert_eq!(selected.first(), Some(&1));
-        assert_eq!(selected.last(), Some(&40));
-        assert_eq!(
-            selected
-                .iter()
-                .collect::<std::collections::HashSet<_>>()
-                .len(),
-            3
-        );
+    fn append_payload_uses_format_neutral_source_tag_input() {
+        let payload = build_append_payload(
+            "Physiology",
+            "pdf",
+            vec![serde_json::json!({"type":"basic","front":"Q","back":"A","tags":[]})],
+        )
+        .unwrap();
+        assert!(payload.contains("\"PDF\""));
     }
 }
