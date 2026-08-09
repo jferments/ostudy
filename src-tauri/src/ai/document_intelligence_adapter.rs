@@ -7,7 +7,7 @@ mod implementation;
 
 pub(crate) use implementation::{
     curate_document_cards, generate_window_flashcards, load_document_task_context, DocumentOutline,
-    DocumentTaskContext, SourcePageImage,
+    DocumentTaskContext, SourcePageImage, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
 };
 
 const VISUAL_ONLY_MARKER: &str = "has no extractable structured text";
