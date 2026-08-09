@@ -2,8 +2,8 @@
 //!
 //! Startup resolves the managed application paths, opens and migrates SQLite,
 //! finalizes expired deletion recovery windows, purges finalized card-owned
-//! history, reconciles managed images and PDFs, then publishes Tauri state. A
-//! failed durable initialization therefore stops startup instead of exposing
+//! history, reconciles managed images and documents, then publishes Tauri state.
+//! A failed durable initialization therefore stops startup instead of exposing
 //! commands to a partially reconciled library.
 
 mod ai;
@@ -22,7 +22,9 @@ mod deletion_purge;
 mod diagnostics;
 mod document_backup;
 mod document_checkpoints;
+mod document_cost;
 mod document_delete_reconciliation;
+mod document_domain;
 mod document_more;
 mod document_operations;
 mod document_scale;
