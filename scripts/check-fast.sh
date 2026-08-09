@@ -42,8 +42,31 @@ pnpm test
 step "Rust compile check"
 cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
 
-step "Document cross-layer contracts"
-bash "$SCRIPT_DIR/check-document.sh"
+step "Document domain and persistence contracts"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  document_
+
+step "Latest-schema migration contract"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  database::tests::migrations_and_repairs_are_idempotent_and_reach_latest_schema \
+  --exact
+
+step "Forward-upgrade integrity contract"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  database::tests::released_schema_upgrades_forward_without_losing_integrity \
+  --exact
 
 ostudy_write_check_stamp fast
 trap - ERR
