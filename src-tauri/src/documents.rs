@@ -285,10 +285,16 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
         let mut statement = connection
             .prepare("SELECT id, source_relative_path FROM documents WHERE archived_at IS NULL")
             .map_err(|error| {
-                CommandError::database_at("document_reconcile_source_query_failed", "scope=startup", error)
+                CommandError::database_at(
+                    "document_reconcile_source_query_failed",
+                    "scope=startup",
+                    error,
+                )
             })?;
         statement
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(CommandError::database)
@@ -316,7 +322,8 @@ async fn process_and_generate(
     document_id: &str,
 ) -> Result<DocumentGenerationResultDto, CommandError> {
     document_store::mark_document_processing(database.inner(), document_id)?;
-    let mut stored = database.with_connection(|connection| load_document(connection, document_id))?;
+    let mut stored =
+        database.with_connection(|connection| load_document(connection, document_id))?;
     let source_path = paths.resolve_relative(&stored.source_relative_path);
     if !source_path.is_file() {
         return Err(CommandError::new(
@@ -332,7 +339,8 @@ async fn process_and_generate(
             "This ostudy build does not yet include an ingestion adapter for the saved document format.",
         ));
     }
-    let backend_changed = stored.extraction_backend != document_ingestion::active_pdf_extraction_backend()
+    let backend_changed = stored.extraction_backend
+        != document_ingestion::active_pdf_extraction_backend()
         || stored.render_backend != document_ingestion::active_pdf_render_backend();
     let incomplete_derivatives = stored.dto.page_count == 0
         || stored.dto.extracted_page_count != stored.dto.page_count
@@ -468,11 +476,8 @@ async fn process_and_generate(
     );
 
     let capability_fingerprint = capabilities.planning_fingerprint();
-    let checkpoint_identity = CheckpointIdentity::from_task(
-        &task,
-        &stored.extraction_backend,
-        &capability_fingerprint,
-    );
+    let checkpoint_identity =
+        CheckpointIdentity::from_task(&task, &stored.extraction_backend, &capability_fingerprint);
     let outline_contract = document_checkpoints::outline_contract_key(&checkpoint_identity, plan);
     let reusable_final_outline = document_checkpoints::load_final_outline_best_effort(
         database.inner(),
@@ -510,7 +515,10 @@ async fn process_and_generate(
             &outline_contract,
             &outline_windows,
         );
-        let cached_count = cached_outline.iter().filter(|value| value.is_some()).count();
+        let cached_count = cached_outline
+            .iter()
+            .filter(|value| value.is_some())
+            .count();
         document_store::initialize_ai_plan(
             database.inner(),
             document_id,
@@ -554,7 +562,13 @@ async fn process_and_generate(
             document_id,
             outline_windows.len(),
         )?;
-        persist_outline(database.inner(), document_id, &task, &stored.extraction_backend, &outline)?;
+        persist_outline(
+            database.inner(),
+            document_id,
+            &task,
+            &stored.extraction_backend,
+            &outline,
+        )?;
         outline
     };
 
@@ -577,8 +591,15 @@ async fn process_and_generate(
             })
         })
         .collect::<Vec<_>>();
-    let generation_completed = cached_generation.iter().filter(|value| value.is_some()).count();
-    document_store::update_generation_progress(database.inner(), document_id, generation_completed)?;
+    let generation_completed = cached_generation
+        .iter()
+        .filter(|value| value.is_some())
+        .count();
+    document_store::update_generation_progress(
+        database.inner(),
+        document_id,
+        generation_completed,
+    )?;
 
     let job_id = document_store::create_generation_job(
         database.inner(),
@@ -913,7 +934,10 @@ fn list_document_rows(
         .map_err(CommandError::database)?;
     statement
         .query_map(
-            params![if include_archived { 1_i64 } else { 0_i64 }, MAX_DOCUMENTS_RETURNED],
+            params![
+                if include_archived { 1_i64 } else { 0_i64 },
+                MAX_DOCUMENTS_RETURNED
+            ],
             document_row,
         )
         .map_err(CommandError::database)?
