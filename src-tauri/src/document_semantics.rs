@@ -116,10 +116,8 @@ pub(crate) fn build_semantic_partitions(
             let exceeds_hard_boundary = end > start
                 && (next_tokens > plan.partition_max_tokens
                     || next_pages.len() > plan.partition_max_pages);
-            let heading_changed = end > start
-                && title.is_some()
-                && next_heading.is_some()
-                && title != next_heading;
+            let heading_changed =
+                end > start && title.is_some() && next_heading.is_some() && title != next_heading;
             let enough_for_semantic_split = token_total
                 >= plan.partition_target_tokens.saturating_div(3).max(1_500)
                 || pages.len() >= plan.partition_target_pages.saturating_div(3).max(4);
@@ -180,14 +178,7 @@ pub(crate) fn build_semantic_windows(
         .iter()
         .find_map(partition_heading)
         .unwrap_or_else(|| "Document source".to_string());
-    build_semantic_windows_internal(
-        chunks,
-        max_tokens,
-        max_pages,
-        overlap_tokens,
-        0,
-        &title,
-    )
+    build_semantic_windows_internal(chunks, max_tokens, max_pages, overlap_tokens, 0, &title)
 }
 
 fn build_semantic_windows_internal(
@@ -319,7 +310,11 @@ fn partition_heading(chunk: &SemanticChunk) -> Option<String> {
     let first_line = heading.lines().find(|line| !line.trim().is_empty())?.trim();
     let root = [" > ", " › ", " :: ", " / ", " | "]
         .iter()
-        .filter_map(|separator| first_line.split_once(separator).map(|(left, _)| left.trim()))
+        .filter_map(|separator| {
+            first_line
+                .split_once(separator)
+                .map(|(left, _)| left.trim())
+        })
         .find(|value| !value.is_empty())
         .unwrap_or(first_line);
     let bounded = root
@@ -333,11 +328,13 @@ fn partition_heading(chunk: &SemanticChunk) -> Option<String> {
 }
 
 fn chunk_needs_visual_grounding(chunk: &SemanticChunk) -> bool {
-    chunk.element_types.iter().any(|element_type| {
-        matches!(element_type.as_str(), "image" | "table" | "key_value")
-    }) || chunk
-        .full_text
-        .contains("has no extractable structured text")
+    chunk
+        .element_types
+        .iter()
+        .any(|element_type| matches!(element_type.as_str(), "image" | "table" | "key_value"))
+        || chunk
+            .full_text
+            .contains("has no extractable structured text")
 }
 
 fn build_source_units<'a>(
@@ -620,8 +617,12 @@ mod tests {
         }
         let plan = DocumentScalePlan::for_page_count(138);
         let windows = build_partitioned_semantic_windows(&chunks, plan, 1_400, 2, 300);
-        assert!(windows.iter().any(|window| window.partition_title == "Chapter A"));
-        assert!(windows.iter().any(|window| window.partition_title == "Chapter B"));
+        assert!(windows
+            .iter()
+            .any(|window| window.partition_title == "Chapter A"));
+        assert!(windows
+            .iter()
+            .any(|window| window.partition_title == "Chapter B"));
         assert!(windows
             .iter()
             .all(|window| !(window.page_start <= 4 && window.page_end >= 5)));
