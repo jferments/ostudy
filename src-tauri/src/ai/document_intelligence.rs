@@ -2339,7 +2339,7 @@ mod tests {
         );
         assert_eq!(
             outline_completion_tokens_for_provider(ProviderKind::Deepseek),
-            6_144
+            3_072
         );
         assert_eq!(
             outline_completion_tokens_for_provider(ProviderKind::LlamaCpp),
