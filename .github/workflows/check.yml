@@ -50,26 +50,30 @@ jobs:
       - name: Expose user-local tools
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Apply canonical rustfmt
-        id: format
+      - name: Resolve and format canonical Rust sources
+        id: normalize
         run: |
+          cargo metadata \
+            --manifest-path src-tauri/Cargo.toml \
+            --format-version 1 \
+            > /dev/null
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           git diff --check
-          if git diff --quiet -- '*.rs'; then
+          if git diff --quiet -- src-tauri/Cargo.lock '*.rs'; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit rustfmt normalization
-        if: steps.format.outputs.changed == 'true'
+      - name: Commit Rust normalization
+        if: steps.normalize.outputs.changed == 'true'
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- '*.rs'
-          git commit -m "chore: apply canonical rustfmt"
+          git add src-tauri/Cargo.lock -- '*.rs'
+          git commit -m "chore: normalize Rust source and lockfile"
           git push origin "HEAD:${HEAD_REF}"
 
   check:
