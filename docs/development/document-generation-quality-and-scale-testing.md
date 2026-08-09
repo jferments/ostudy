@@ -46,6 +46,18 @@ Confirm:
 - one bad semantic candidate does not invalidate otherwise useful cards from the same window;
 - no provider fallback occurs.
 
+## Bounded hierarchical large-document analysis
+
+The initial outline pass is now intentionally different from the old large-request architecture.
+
+For the ~138-page document, verify that ostudy performs **many small outline fragments** rather than one or a few very large prompts. Each outline source window is capped at about 5,000 estimated source tokens and 10 pages. There should be no separate LLM call that sends several complete outline fragments back to the model for a global merge.
+
+The global document outline is assembled natively from those fragment objects. Chapter/section names and page spans should survive when the model identifies them, but bad or missing chapter boundaries must not make the document unprocessable. Later flashcard generation also uses roughly 5,000-token / 10-page semantic windows and receives only the global summary plus outline sections relevant to that page range.
+
+If outline generation fails, the surfaced error and diagnostic log should now identify the exact source window, total window count, PDF page range, approximate source-token count, provider error code, and bounded validation detail. A provider `finish_reason=length` should be reported as **`ai_document_output_truncated`**, not as a generic schema/contract mismatch.
+
+When comparing the 11-page and 138-page cases, remember that **Generate more cards** reuses a persisted outline. Its success is therefore a generation-path test, not a test of first-pass outline construction.
+
 ## Card direction acceptance
 
 Use a successful text-heavy PDF generation with either DeepSeek or llama.cpp / Unsloth.
@@ -73,7 +85,7 @@ The provider timeout ends when successful response headers arrive; slow first-to
 
 ## Large 138-page / complex-PDF acceptance
 
-Retest the same large PDF that previously ended with `The local database operation failed.` with both providers.
+Retest the same large PDF that previously ended with `The local database operation failed.` and later with the generic outline-contract message, using both providers.
 
 During local processing verify the Documents row displays a muted phase label such as:
 
@@ -87,12 +99,30 @@ Confirm:
 
 - the PDF does not fail merely because parser metadata contains long heading paths/font names or unusual/non-finite geometry;
 - local semantic metadata is bounded before SQLite persistence;
-- the job proceeds into outline/generation when local processing succeeds;
+- the job proceeds into many bounded outline fragments when local processing succeeds;
+- no model-generated outline-of-outlines merge occurs;
 - provider output stays inside the enforced structured-output boundary during long multi-window generation;
+- later generation requests use only relevant outline sections instead of embedding the entire global outline;
 - a real PDF rendering/extraction failure, if one occurs, reports a PDF-specific safe error instead of an opaque database error;
+- provider output truncation reports the dedicated truncation code/detail instead of `document outline did not match contract`;
 - Stop generation remains available once the document is in an active cancellable generation task.
 
-If this exact source still produces a database error, capture the **ostudy diagnostic log entry/code around the failure**; do not include provider credentials or the copyrighted source file in a public report. That would identify which remaining SQLite boundary is involved.
+If the exact source still fails, capture the safe error text plus the `document_outline_window_failed` diagnostic event. That event should identify the failing pages/window without including raw PDF text, provider response bodies, or credentials.
+
+## Parallel rendering acceptance
+
+Retry the large PDF with the new renderer backend. Because the renderer backend identity changed, existing page derivatives should be rebuilt automatically.
+
+Compare the local extraction/render phase with the previous serial build:
+
+1. Observe overall CPU utilization while pages are rasterizing.
+2. Confirm several CPU cores are busy rather than one core doing all page rasterization.
+3. Record elapsed time from upload/retry until page rendering completes.
+4. Confirm the finished document still reports every physical page rendered exactly once and in the correct order.
+5. Open the managed PDF and inspect several generated cards/images after processing to ensure concurrency did not affect page identity.
+6. Exercise Stop/failure/retry afterward to confirm ordered persistence and derivative integrity remain intact.
+
+The rasterizer uses at most `min(logical CPU availability, page count, 16)` workers. PNG rasterization is concurrent, while the existing page-file/SQLite persistence visitor remains ordered. Do not expect exactly 100% CPU usage on every PDF: image decoding, memory bandwidth, filesystem work, and the complexity of individual pages can still limit scaling.
 
 ## Documents UI acceptance
 
