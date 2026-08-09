@@ -31,12 +31,15 @@ const MAX_RENDER_BYTES: usize = 32 * 1024 * 1024;
 const MAX_GENERATED_CARDS: usize = 10_000;
 const MAX_DOCUMENTS_RETURNED: i64 = 500;
 
-const OUTLINE_WINDOW_MAX_TOKENS: usize = 32_000;
-const OUTLINE_WINDOW_MAX_PAGES: usize = 48;
-const OUTLINE_WINDOW_OVERLAP_TOKENS: usize = 2_000;
-const GENERATION_WINDOW_MAX_TOKENS: usize = 20_000;
-const GENERATION_WINDOW_MAX_PAGES: usize = 40;
-const GENERATION_WINDOW_OVERLAP_TOKENS: usize = 2_000;
+// Keep each provider request comfortably below common local llama-server
+// context allocations. Large documents are handled by more semantic windows,
+// not by making individual prompts approach the model's advertised maximum.
+const OUTLINE_WINDOW_MAX_TOKENS: usize = 5_000;
+const OUTLINE_WINDOW_MAX_PAGES: usize = 10;
+const OUTLINE_WINDOW_OVERLAP_TOKENS: usize = 500;
+const GENERATION_WINDOW_MAX_TOKENS: usize = 5_000;
+const GENERATION_WINDOW_MAX_PAGES: usize = 10;
+const GENERATION_WINDOW_OVERLAP_TOKENS: usize = 700;
 const MAX_IMAGES_PER_GENERATION_WINDOW: usize = 6;
 
 const INTERRUPTED_ERROR_CODE: &str = "document_generation_interrupted";

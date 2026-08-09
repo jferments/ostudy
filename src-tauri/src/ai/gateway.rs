@@ -226,7 +226,12 @@ impl AiGateway {
                 }]
             })
         };
-        Ok(json!({ "choices": [{ "message": message }] }))
+        Ok(json!({
+            "choices": [{
+                "message": message,
+                "finish_reason": stream.finish_reason
+            }]
+        }))
     }
 
     async fn request_json(
@@ -361,6 +366,7 @@ struct SseChatAccumulator {
     content: String,
     tool_name: Option<String>,
     tool_arguments: String,
+    finish_reason: Option<String>,
     wire_bytes: usize,
     maximum_content_bytes: usize,
     maximum_wire_bytes: usize,
@@ -374,6 +380,7 @@ impl SseChatAccumulator {
             content: String::new(),
             tool_name: None,
             tool_arguments: String::new(),
+            finish_reason: None,
             wire_bytes: 0,
             maximum_content_bytes,
             maximum_wire_bytes,
@@ -437,11 +444,18 @@ impl SseChatAccumulator {
                 None,
             )
         })?;
-        let delta = value
+        let choice = value
             .get("choices")
             .and_then(Value::as_array)
-            .and_then(|choices| choices.first())
-            .and_then(|choice| choice.get("delta"));
+            .and_then(|choices| choices.first());
+        if let Some(reason) = choice
+            .and_then(|choice| choice.get("finish_reason"))
+            .and_then(Value::as_str)
+            .filter(|reason| !reason.is_empty())
+        {
+            self.finish_reason = Some(reason.to_string());
+        }
+        let delta = choice.and_then(|choice| choice.get("delta"));
         if let Some(content) = delta
             .and_then(|delta| delta.get("content"))
             .and_then(Value::as_str)
@@ -681,6 +695,19 @@ data: [DONE]
         );
         assert_eq!(stream.tool_arguments, "{\"cards\":[]}");
         assert!(stream.done);
+    }
+
+    #[test]
+    fn sse_accumulator_preserves_finish_reason() {
+        let mut stream = SseChatAccumulator::new(1024, 4096);
+        stream
+            .push_bytes(
+                b"data: {\"choices\":[{\"delta\":{\"content\":\"{}\"},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n\n",
+            )
+            .unwrap();
+        stream.finish().unwrap();
+        assert_eq!(stream.content, "{}");
+        assert_eq!(stream.finish_reason.as_deref(), Some("length"));
     }
 
     #[test]
