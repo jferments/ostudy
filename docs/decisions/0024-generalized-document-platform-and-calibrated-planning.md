@@ -6,9 +6,9 @@
 
 ## Context
 
-PR #38 established managed PDF ingestion, structured extraction, bounded document AI, canonical card authoring, cancellation, backup/restore, citations, and second-pass generation. PR #39 added large-document partitions, resumable validated checkpoints, and whole-job budget guards after a 138-page DeepSeek run consumed roughly 1.45 million aggregate tokens before a late truncated completion.
+PR #38 established managed PDF ingestion, structured extraction, bounded document AI, canonical card authoring, cancellation, backup/restore, citations, and second-pass generation. PR #39 added large-document partitions, resumable validated checkpoints, and metered-provider whole-job budget guards after a 138-page DeepSeek run consumed roughly 1.45 million aggregate tokens before a late truncated completion.
 
-Real acceptance testing exposed a cross-layer defect: partitioned semantic windows were locally numbered inside one partition, so an 11-page llama.cpp source could produce multiple windows with the same `window_index`. SQLite correctly rejected the duplicate `(job_id, window_index)` primary key even though component-level tests and a clean CI database passed. The same development cycle also accumulated repeated provider/PDF assumptions, duplicated generation paths, mutable CI normalization commits, and checkpoint writes that were too capable of aborting otherwise valid inference.
+Real acceptance testing exposed a cross-layer defect: partitioned semantic windows were locally numbered inside one partition, so an 11-page llama.cpp source could produce multiple windows with the same `window_index`. SQLite correctly rejected the duplicate `(job_id, window_index)` primary key even though component-level tests and a clean CI database passed. After that defect was fixed, a second acceptance finding showed that applying a 1.2M aggregate-token ceiling to local llama.cpp was conceptually wrong: a 138-page source was already decomposed into safe bounded requests, but the planner rejected the job only because the sum of those requests was large.
 
 Stage 4 must be stabilized before adding OpenAI, Claude, Gemini, Z.ai, DOCX, PPTX, or Google export acquisition.
 
@@ -82,12 +82,39 @@ A provider-reported context size is a hard upper bound. It may shrink ostudy's c
 
 Provider keys in durable document/profile/job/outline tables are bounded strings rather than repeated closed SQLite enums. Application provider registries still reject unsupported adapters at runtime, but adding a future adapter does not require rebuilding every historical document table just to admit a new string literal.
 
+### Large local jobs are window-bounded, not job-bounded
+
+A whole-document token estimate is useful for diagnostics, but it is not a safety boundary for local llama.cpp/Unsloth execution. Local inference has no ostudy-managed per-token billing exposure, and the document pipeline already provides the correct safety mechanism: every outline and generation call is a bounded semantic window constrained by the model's reported context when available.
+
+Therefore llama.cpp uses `AggregateTokenCeiling::Windowed`:
+
+- no 1.2M aggregate-job rejection;
+- no 250k total extracted-source-token rejection;
+- the existing 300-source-unit ingestion limit remains a separate document-processing bound;
+- large sources simply produce more heading-aware partitions and bounded semantic windows;
+- outline windows execute sequentially and are checkpointed;
+- generation windows execute sequentially through the shared executor and are checkpointed for initial generation;
+- whole-document outline synthesis consumes only a compact bounded digest;
+- final curation already operates in bounded batches.
+
+This means a 138-page local source with an estimated aggregate cost above the former 1.2M ceiling is expected to continue through its bounded windows rather than asking the user to split the file manually.
+
+### Metered providers retain aggregate cost circuit breakers
+
+Remote/metered providers retain aggregate safeguards because a long request sequence can create real external cost even when every individual request is context-safe. Current policy keeps:
+
+- approximately 250k estimated extracted source tokens per automatic metered job;
+- approximately 650k conservative aggregate tokens for DeepSeek/current default cloud adapters.
+
+If a metered provider exceeds those bounds, ostudy may fail before provider traffic with a safe split/use-local message. This policy is independent from per-request context enforcement.
+
 ### Empirical usage complements declared limits
 
 A committed benchmark corpus records only real acceptance observations and a required scenario matrix. Diagnostic-log analysis reduces real runs to safe aggregates such as:
 
 - source-unit count;
-- planner estimate and ceiling;
+- planner aggregate estimate;
+- aggregate budget mode (`windowed` for local or a numeric metered ceiling);
 - provider/model;
 - prompt/completion/reasoning tokens;
 - cache hit/miss tokens;
@@ -132,7 +159,7 @@ Database diagnostics use operation-specific event names and safe identifiers (do
 
 Ordinary PR qualification no longer auto-commits rustfmt changes to the branch. Draft PRs use the fast gate; ready PRs use the full gate. Generated rustfmt/lockfile application remains an explicit manual workflow action.
 
-The fast gate includes a focused document contract lane that compiles the complete Rust lib test target and executes high-value document/migration invariants. `check-changed.sh` routes document-platform-only diffs to that lane rather than always paying for the complete native smoke suite.
+The fast gate includes focused document contract tests that compile the complete Rust lib test target and execute high-value document/migration invariants. `check-changed.sh` routes document-platform-only diffs to the narrowest useful document/Rust path rather than always paying for the complete native smoke suite.
 
 This reduces branch races/noise while catching planner-to-SQLite defects earlier.
 
@@ -142,6 +169,8 @@ This reduces branch races/noise while catching planner-to-SQLite defects earlier
 - Adding a provider later requires capability/transport integration, not provider-specific branching throughout document orchestration.
 - Existing PDF IPC/UI remains stable during this architecture change.
 - The planner becomes safer on local models whose actual context is smaller than a generic default.
+- Large local documents scale by number of bounded requests instead of being rejected by an arbitrary aggregate token total.
+- Metered providers still have an early runaway-cost circuit breaker.
 - Empirical cost data becomes reproducible and reviewable rather than anecdotal.
 - Resume caches can become unavailable without destroying completed inference.
 - SQLite failures carry enough safe operation context to diagnose cross-layer bugs.
@@ -158,10 +187,12 @@ The architecture is protected by:
 - source descriptor/locator unit tests;
 - semantic-window identity/bounds tests;
 - an 11-page one-partition multi-window SQLite integration regression;
+- a 138-page-style local budget regression that must continue when its aggregate estimate exceeds the former 1.2M ceiling;
+- a local-source regression above the cloud-only 250k source-token guard;
+- metered-provider aggregate-budget rejection tests;
 - provider-capability/context planning tests;
 - checkpoint semantic-identity tests;
 - empirical usage baseline corpus parsing;
 - latest-schema and forward-upgrade migration tests;
-- focused `scripts/check-document.sh` qualification;
 - canonical fast/full gates;
 - required real-provider acceptance on the representative small, medium, and large sources before PR #39 is merged.
