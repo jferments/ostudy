@@ -6,76 +6,136 @@ There is no generic prompt IPC command and no silent provider fallback.
 
 ## Document intelligence
 
-Managed PDFs are local durable sources. PDF interpretation is split into independent native capabilities:
+Managed documents are durable local sources. The active PDF adapter is deliberately split into independent native capabilities:
 
-- `pdf_backend.rs`: structure-aware extraction through oxidize-pdf;
-- `pdf_render_backend.rs`: bounded pure-Rust page rasterization through justpdf/justpdf-render;
+- `pdf_backend.rs`: native text and structure extraction through oxidize-pdf;
+- `pdf_render_backend.rs`: visible-page rasterization through PDFium on desktop;
+- `pdf_ocr_backend.rs`: platform-aware OCR provider contract, with Tesseract as the current desktop implementation;
+- `document_ingestion.rs`: extraction-quality validation, selective OCR recovery, derivative persistence, and progress;
 - `document_semantics.rs`: ostudy-owned semantic chunks and hard-bounded provider windows;
-- `ai/document_intelligence.rs`: provider-enforced local outline/generation/curation tasks, deterministic native hierarchy assembly, and a bounded optional whole-document synthesis.
+- `ai/document_intelligence.rs`: provider-enforced outline/generation/curation tasks plus deterministic native hierarchy assembly.
 
-The extraction boundary maps third-party parser output into an ostudy-owned semantic intermediate representation containing page text, typed elements, geometry, heading relationships, and structure-aware chunks. Semantic metadata is sanitized/bounded before SQLite insertion. The renderer only returns PNG bytes. Neither PDF backend can contact an AI provider or mutate cards.
+No parser, renderer, or OCR library type crosses the document boundary. Those adapters return ostudy-owned text pages, semantic elements/chunks, PNG bytes, OCR text/confidence, and safe provenance. They have no authority to contact an AI provider or author cards.
 
-Derived text, semantic chunks, outline data, and rendered pages are rebuildable from the immutable managed source PDF. SQLite records extraction/render backend identities so retry can rebuild stale derivatives after an implementation upgrade.
+Derived text, semantic chunks, outline data, OCR recovery, and rendered pages are rebuildable from the immutable managed source. SQLite records extraction/render backend identities so Retry rebuilds stale derivatives after an implementation upgrade.
 
-### Hard-bounded semantic source windows
+### Why extraction and rendering use different engines
 
-A physical PDF page is provenance/layout, not necessarily a semantic reasoning boundary. Document-aware AI therefore consumes overlapping semantic windows derived from structure-aware chunks.
+A PDF may render perfectly while its embedded font-to-Unicode map is broken or deliberately obfuscated. Text extraction therefore asks a different question from visual rendering.
 
-Provider source windows are deliberately conservative:
+The desktop pipeline uses:
 
-- initial outline: about **3,200 estimated source tokens**, at most **8 physical pages**, with about 350 tokens of semantic overlap;
-- flashcard generation: about **5,000 estimated source tokens**, at most **10 physical pages**, with about 700 tokens of semantic overlap;
-- Generate more cards: the same 5,000-token / 10-page generation boundary.
+```text
+immutable PDF
+    │
+    ├── oxidize-pdf ──> text + semantic structure
+    │                       │
+    │                       └── extraction-quality gate
+    │                                   │
+    └── PDFium ───────> faithful page raster
+                                    │
+                                    └── Tesseract OCR when native text is unreliable
+```
 
-The token estimate is an application-side source bound rather than a claim that it exactly matches every provider tokenizer. The design keeps room for system instructions, JSON Schema/tool definitions, compact outline context, images, and completion tokens. Large documents scale through **more small requests**, not larger individual prompts.
+This separation is intentional. oxidize-pdf remains useful for RAG-oriented semantic structure even when one font mapping is corrupt, while PDFium provides a Chromium-grade raster source for visual grounding and OCR.
 
-Normal semantic chunks remain intact. If a third-party extractor produces one chunk that is individually larger than the provider boundary, ostudy splits only that pathological chunk into bounded continuation source units. Continuations retain the original chunk identity and page provenance and are marked as segments in the model-facing source. This makes the request bound hard rather than advisory.
+## PDF extraction and malformed-text recovery
 
-### Hierarchical first pass and whole-document view
+Raw per-page text extraction runs through oxidize-pdf. Independent physical pages may be extracted in parallel with up to 16 workers; each worker opens its own parser document rather than sharing one parser handle. The canonical structure-aware `ExtractionProfile::Rag` partition/chunk pass remains sequential so concurrency cannot reorder headings or semantic relationships.
 
-Before card generation, ostudy asks the configured provider for one concise schema-constrained outline fragment per bounded source window. Each fragment can contain a summary, learning objectives, concepts, and section/chapter-like page spans. Fragment output is deliberately capped so a 3,200-token source window cannot produce an unbounded outline object.
+Extracted text is untrusted until it passes quality validation. The validator detects at least:
 
-The section hierarchy is assembled **deterministically in Rust**. Native assembly:
+- Unicode Private Use Area mappings;
+- Unicode replacement characters;
+- invalid embedded control characters;
+- pathological high-Latin substitution patterns observed in malformed textbook fonts;
+- native page extraction exceptions;
+- sparse/missing page text;
+- corrupt structured semantics even when raw page text remains readable.
 
-- bounds and sanitizes fragment content;
-- clamps section ranges to their source window/document;
-- repairs reversed page ranges;
-- deduplicates objectives and concepts;
-- orders sections by physical page position;
-- stitches adjacent/overlapping sections with the same normalized title;
-- creates a bounded fallback section when a fragment omits sections.
+Good raw page text with bad semantic structure uses a page-text semantic fallback instead of OCR. Corrupt non-empty raw text requires trustworthy OCR before any provider request. Blank/image-only pages may remain visual evidence when no text is recoverable.
 
-ostudy does **not** send several complete outline objects to another model for a recursive “outline of outlines” merge. That former design could itself overflow or drift on large documents.
+Recovered text passes the same quality boundary again. ostudy does not hard-code a substitution alphabet for a particular PDF/font.
 
-The model still receives a global semantic view. After deterministic hierarchy assembly, ostudy builds a bounded whole-document digest that deliberately samples the summary, global objectives/concepts, and section coverage from the beginning through the end of the source. One optional schema-constrained **global synthesis** request turns that digest into a concise whole-document summary, major learning objectives, and key concepts. The provider cannot rewrite section/page hierarchy in this step.
+## PDFium rendering
 
-Global synthesis is an enhancement rather than a single point of failure. If that bounded request is rejected, truncated, or otherwise fails validation, ostudy logs the safe reason and continues with the already-valid native whole-document aggregate. This provides global semantic prioritization without making successful document processing depend on one large merge request.
+Desktop rendering uses `pdfium-bundled 0.1.1+pdfium-7881`, which resolves `pdfium-render 0.9.3` and PDFium build `7881`.
 
-The design is therefore chapter/section aware without making chapter detection a brittle prerequisite. Imperfect or missing section boundaries cannot prevent processing; later tasks still use bounded semantic source windows.
+The `bundled` build path provisions the target-specific PDFium shared library during Cargo compilation, embeds it, and binds the extracted local copy at runtime. A normal desktop ostudy install therefore does not require a separately installed system PDFium library or runtime PDFium download. Controlled/offline builds can provide the exact library through `PDFIUM_BUNDLE_LIB`.
 
-The persisted outline remains reusable document intelligence for flashcards today and later study-guide, quiz, search, and tutoring tasks.
+Two raster classes exist:
 
-### Outline-guided flashcard generation
+- **120 DPI durable pages** for visual grounding, backup, and provider image context;
+- **300 DPI temporary OCR pages** used only while recognition is running.
 
-Every generation request receives:
+PDFium rendering is kept serialized within the process. Upstream PDFium does not guarantee concurrent use; pdfium-render's thread-safe mode serializes calls behind a mutex, so wrapping one Pdfium instance in many page threads would not provide meaningful renderer parallelism.
 
-- the bounded whole-document summary;
-- a bounded subset of global objectives/concepts;
-- only outline sections overlapping that semantic source window;
-- the bounded structured semantic source window;
-- selected rendered pages when the configured llama.cpp profile has current image-input capability evidence.
+The render backend identity is versioned as a PDFium identity. Retry automatically rebuilds derivatives that were created by the former justpdf renderer.
 
-The full global outline is **not** copied into every request. This prevents prompt size from growing with total document outline size while still letting each local generation decision be ranked against global learning goals.
+## Parallel OCR
 
-The task prompt prefers durable concepts, mechanisms, comparisons, applications, and cross-page relationships when supported by the source. It suppresses bibliography/reference lists, legal/publishing scaffolding, navigation/index content, citation metadata, and hyperspecific trivia that does not contribute to understanding.
+Desktop OCR uses Tesseract only after the extraction-quality gate selects affected pages. Normal PDFs never require the OCR runtime.
+
+OCR is pipelined rather than serial:
+
+```text
+PDFium 300-DPI producer
+          │
+          ▼
+ bounded high-resolution queue
+          │
+   ┌──────┼────────┐
+   ▼      ▼        ▼
+Tesseract Tesseract Tesseract ...
+worker 1 worker 2 worker N
+```
+
+The worker count is bounded by candidate pages and available CPU parallelism, with a maximum of eight concurrent page workers. PDFium can continue rasterizing while previous pages are recognized, but the queue is deliberately small so a large document cannot accumulate hundreds of 300-DPI PNGs in memory.
+
+Each Tesseract worker has its own provider instance and temporary workspace. Recognition uses explicit 300-DPI input and begins with page-segmentation mode 3. Weak/sparse output can retry with PSM 6 and PSM 11 inside the same bounded page timeout. The best result is selected using substantive text coverage and confidence, then revalidated before semantic reconstruction.
+
+OCR output, PDF source text, provider prompts, credentials, and raw provider responses are not written to diagnostics. Safe metrics may include page number, selected PSM, confidence bucket, recognized-character counts, and whether a fallback layout was used.
+
+Cancellation is exact-document scoped. Stop generation terminates active Tesseract children and prevents partial recovered text from being committed.
+
+### Mobile OCR and rendering
+
+The document core depends on rendering/OCR contracts rather than desktop subprocess assumptions.
+
+- Android: planned native Tauri/Kotlin rendering/OCR adapters; the preferred OCR engine is bundled/offline ML Kit Text Recognition v2.
+- iOS: planned native Tauri/Swift rendering/OCR adapters; the preferred OCR engine is Apple Vision.
+
+The mobile projects are not initialized yet. Current Android/iOS cfg branches therefore fail locally before corrupted source reaches an AI provider rather than pretending desktop PDFium/Tesseract binaries are available.
+
+## Hard-bounded semantic source windows
+
+A physical PDF page is provenance/layout, not necessarily a semantic reasoning boundary. Document-aware AI consumes overlapping semantic windows derived from structure-aware chunks.
+
+Provider source windows are deliberately conservative. Large documents scale through **more bounded requests**, not larger individual prompts. A pathological semantic chunk larger than the provider boundary is split into bounded continuation units while retaining original source/page provenance.
+
+Local llama.cpp/Unsloth jobs are **window-bounded, not aggregate-job-bounded**. The former whole-job 1.2M-token ceiling and cloud-only source-token guard do not apply to local execution. Individual requests remain constrained by the configured/reported model context. Metered/cloud providers retain conservative aggregate runaway-cost protection.
+
+## Hierarchical first pass and whole-document view
+
+Before card generation, ostudy requests one concise schema-constrained outline fragment per bounded source window. Fragments contain a summary, learning objectives, concepts, and section/chapter-like source spans.
+
+The hierarchy is assembled deterministically in Rust. Native assembly bounds/sanitizes content, clamps source ranges, repairs reversed ranges, deduplicates objectives/concepts, orders sections by physical position, stitches compatible adjacent sections, and creates a bounded fallback when a fragment omits sections.
+
+ostudy does not recursively send complete outline objects back through an unbounded model merge. A bounded whole-document digest samples coverage from beginning through end; optional schema-constrained global synthesis can improve the summary/objectives/concepts but cannot rewrite source hierarchy. If global synthesis fails, the already-valid native aggregate remains authoritative.
+
+The persisted outline is reusable document intelligence for flashcards today and later study-guide, quiz, search, and tutoring tasks.
+
+## Outline-guided flashcard generation
+
+Every generation request receives a bounded whole-document summary, bounded global objectives/concepts, only the outline sections relevant to the current source window, the bounded structured semantic source, and selected rendered pages when the configured provider has verified image capability.
+
+The task prompt favors durable concepts, mechanisms, comparisons, applications, and supported cross-page relationships. It suppresses bibliography/reference lists, legal/publishing scaffolding, navigation/index content, citation metadata, and low-value trivia.
 
 Generated forms include Basic conceptual questions, definitions, four-option multiple choice with explanation, critical-thinking/application/scenario questions, and Cloze. Definition/MCQ/critical-thinking forms normalize into existing safe Basic cards; Rust constructs Cloze markers from validated exact substrings.
 
-After source windows complete, a bounded curation task selects which cards remain. It cannot rewrite cards. Curation receives a compact global learning summary rather than the complete outline hierarchy.
+After source windows complete, a bounded curation task selects which cards remain. It cannot rewrite cards. Selected cards pass through canonical generated-card authoring for restricted Markdown/content validation, Cloze syntax, tags, duplicate fingerprints, fresh schedules, and transactional deck/card creation. There is no generated-card review queue.
 
-Selected cards pass through canonical generated-card authoring for restricted Markdown/content validation, Cloze syntax, tags, duplicate fingerprints, fresh schedules, and transactional deck/card creation. There is no generated-card review queue.
-
-`Generate more cards` reuses the persisted outline and current deck coverage. That means a successful Generate-more pass on an already processed document tests the later generation path; it does **not** exercise initial outline construction.
+`Generate more cards` reuses retained extraction/OCR derivatives, outline, and current deck coverage. It should not rerender or OCR an unchanged source.
 
 ## Provider-enforced structured output
 
@@ -83,102 +143,58 @@ Prompts describe educational intent, but prompt prose is not the structural guar
 
 ### llama.cpp / Unsloth
 
-llama-server receives the task JSON Schema through schema-constrained JSON output. Current llama-server converts JSON Schema to a sampling grammar. If an older compatible server rejects the primary response-format representation, ostudy retries once against the exact same endpoint/profile/model using llama-server's top-level `json_schema` compatibility field. The retry remains grammar/schema constrained; it never degrades into prompt-only JSON and never changes provider.
+llama-server receives task JSON Schema through schema-constrained JSON output. Compatible retry forms remain grammar/schema constrained and never silently change providers. The server owns the model chat template; ostudy does not construct tokenizer-specific chat templates in the WebView or document feature.
 
-The document SSE gateway accepts the ordinary OpenAI-compatible `choices[].delta.content` stream and a small set of llama-server compatibility forms used by some builds (`choices[].message.content`, completion `text`, or native top-level `content`). A final full-message snapshot is not duplicated if content deltas were already received. Empty final output now reports the provider `finish_reason` when available instead of collapsing immediately to an unexplained “no content” error.
-
-The server owns the model chat template. ostudy does not construct tokenizer-specific chat templates in the WebView or document feature.
+The document SSE gateway supports ordinary OpenAI-compatible streamed content plus the small compatibility forms required by supported llama-server versions. Output size and schema validation remain native responsibilities.
 
 ### DeepSeek
 
-DeepSeek document tasks use the Beta **strict Function Calling** interface rather than ordinary JSON Output as the schema guarantee. Each request forces one result function, enables `strict: true`, and supplies a DeepSeek-compatible JSON Schema.
-
-DeepSeek strict mode supports a narrower schema subset than ostudy's local contracts. The native adapter converts internal schemas to the supported subset (for example `oneOf` to `anyOf`, every object property required, `additionalProperties: false`, and omission of unsupported string/array length keywords). Native Rust then enforces the tighter length/count/semantic constraints after the provider returns schema-constrained tool arguments.
-
-Initial DeepSeek outline fragments receive a larger completion allowance than llama.cpp while the source window and requested outline shape are kept smaller. This separates source-context pressure from structured-output completion pressure.
+DeepSeek document tasks use strict Function Calling. The native adapter converts internal schemas to DeepSeek's supported strict subset and Rust then enforces tighter length/count/semantic rules. Metered-provider aggregate protection remains active.
 
 ### Native validation remains authoritative
 
-Provider structure is necessary but not sufficient. Rust still validates:
+Provider structure is necessary but not sufficient. Rust still validates text/tag/card bounds, card direction rules, MCQ options, Cloze exact blanks, outline source ranges, curation indices, restricted Markdown, canonical card structure, duplicates, and scheduling.
 
-- text/tag/card count bounds;
-- generated-card direction rules;
-- MCQ option count/uniqueness and correct answer index;
-- Cloze mode and exact blank placement;
-- outline page-range normalization;
-- curation indices;
-- restricted Markdown and canonical card-document structure;
-- duplicate detection and fresh scheduling.
+A structurally valid response can contain one semantically unusable card; that candidate may be dropped while valid cards from the same bounded window continue. A malformed outer task object fails the request.
 
-A structurally valid response can contain one semantically unusable card. Such a candidate may be dropped while valid cards from the same bounded window continue. A malformed outer task object still fails the request.
+## Long-running tasks, close protection, and cancellation
 
-## Long-running requests, finish reasons, and cancellation
+A running document task owns one process-local cancellation signal keyed by document ID. The same registry spans extraction, PDFium rendering, OCR, and provider execution.
 
-Document AI uses streamed Chat Completions. Model discovery and explicit connection probes keep their ordinary bounded request behavior.
+**Stop generation** cancels only that document task and drops its exact provider stream/active OCR work. Durable completed checkpoints remain reusable; canceled documents remain retryable.
 
-For a document task, the selected profile timeout covers request establishment and receipt of successful provider **response headers**. Those headers are the acknowledgement boundary. After acknowledgement, ostudy does not impose a fixed wall-clock first-token/completion deadline; explicit Stop, transport failure, provider termination, and output-size limits still apply.
+Application close is also guarded natively. If the main window receives `CloseRequested` while any document task is active, ostudy prevents the close and shows a native warning that the running request will be interrupted and uncommitted work may be lost. **Keep working** leaves the process/job running; **Close ostudy** proceeds with shutdown. No warning appears when no document job is active.
 
-The SSE gateway accumulates ordinary content and streamed strict-tool arguments. It also preserves provider `finish_reason`, allowing document intelligence to distinguish at least:
+Startup reconciliation marks interrupted durable state retryable and never resumes provider transmission automatically.
 
-- `length` → structured result was truncated (`ai_document_output_truncated`);
-- provider content filtering;
-- provider inference-resource exhaustion;
-- genuine malformed/invalid task output.
+## Progress and provenance
 
-This matters because output truncation or context exhaustion should not be mislabeled as a generic schema mismatch.
+The structure extraction step determines the physical page count before durable rasterization. Documents records total page count and updates rendered progress as page PNGs are committed. OCR has separate candidate/completed counts, extraction mode, engine identity, and mean confidence.
 
-Outline failures identify the bounded source-window number, total window count, PDF page range, approximate source-token count, safe error code, and a bounded final validation detail. The `document_outline_window_failed` diagnostic event records the same safe metadata. It does not record raw PDF text, raw provider response bodies, credentials, Authorization headers, or model reasoning.
-
-The running document task owns a process-local cancellation signal keyed by document ID. **Stop generation** cancels only that task and drops its exact HTTP response stream. A stopped document remains durable/retryable and the durable job is recorded as canceled rather than succeeded.
-
-Cancellation state is intentionally not restored after application restart. Startup reconciliation marks interrupted work retryable and never resumes provider transmission automatically.
-
-## Portable multicore page rendering and progress
-
-The active raster backend uses justpdf 0.1.2 / justpdf-render 0.1.2 at bounded 144 DPI. It is an in-process Rust dependency rather than a platform-specific Pdfium/Poppler/browser runtime.
-
-CPU-heavy page rasterization uses a bounded worker pool:
-
-```text
-min(available logical CPU parallelism, PDF page count, 16)
-```
-
-Different physical pages render concurrently. Results are sent to a coordinator and reordered by page number before the existing managed-file/SQLite persistence visitor executes. This raises multicore utilization while keeping durable page persistence deterministic and avoiding concurrent SQLite/file-ledger mutation.
-
-The structure extraction step determines the physical page count before rasterization begins. ostudy writes that total into the document projection immediately, then updates `rendered_page_count` as ordered rendered pages are committed to managed storage. The Documents screen polls active jobs, so the UI advances through values such as `0/138`, `17/138`, and `138/138` instead of remaining `0/—` until the end.
-
-The active renderer identity is versioned as `justpdf-render-0.1.2/pure-rust-parallel-v1`. Retry rebuilds derivatives when a document records an older render backend identity.
-
-The renderer boundary remains swappable. A future compatibility backend could be introduced without changing semantic extraction, durable storage, provider contracts, backup format, or card authoring.
-
-## Image-only pages and OCR policy
-
-Pages with no recoverable text/structure remain represented by explicit page-evidence chunks. A text-only profile cannot treat those markers as source facts. A fully image-only PDF requires a verified image-capable llama.cpp task profile; rendered pages are then the source evidence.
-
-ostudy does not enable oxidize-pdf OCR/Tesseract integration. The dependency uses a restricted feature set and dependency qualification fails if `rusty-tesseract` enters the graph. Model-derived transcription is not silently written into the extracted source-text store.
+The persistent successful-OCR warning appears only after OCR derivatives are committed: completed count must equal candidate count and committed confidence must exist. Failed/in-progress OCR never claims successful recovery.
 
 ## Managed document lifetime
 
 Archiving a document is reversible and keeps source PDF, derivatives, and generated deck provenance. Permanent deletion is supported when no generation task is active.
 
-Deletion removes the managed PDF, rendered pages, structured extraction, outline, generation jobs, and document-library provenance. Generated decks/cards remain ordinary study content. Before document deletion, ostudy preserves a human-readable detached source citation **only in surviving generated decks whose `deleted_at` is still null**. Soft-deleted decks may still have provenance rows until normal purge/cascade cleanup, but they are not treated as citation destinations and do not increase `preservedDeckCitationCount`.
+Deletion removes the managed PDF, rendered pages, structured extraction, outline, generation jobs, and document-library provenance. Surviving generated decks remain ordinary study content and retain a detached human-readable source citation when appropriate. Soft-deleted decks are not citation destinations.
 
-The delete workflow stages the managed document directory into application-controlled trash before the SQLite transaction. A database failure restores the directory. After a successful transaction, filesystem cleanup is best-effort and startup reconciliation removes unreachable delete-staging residue.
+The delete workflow stages the managed document directory before the SQLite transaction. A database failure restores it; post-commit filesystem cleanup is best-effort and startup reconciliation removes unreachable staging residue.
 
 ## Privacy and trust
 
-PDF import, extraction, semantic chunking, native outline assembly, bounded global synthesis, outline persistence, and page rendering are local except for the explicitly configured provider requests. No provider fallback is automatic. Source material is treated as untrusted data and cannot replace system/task instructions.
+PDF import, extraction, semantic chunking, PDFium rendering, OCR, native outline assembly, and checkpoint persistence are local. Only explicit provider requests cross the configured AI endpoint boundary. There is no automatic provider fallback.
 
-Credentials, Authorization headers, raw provider responses, and reasoning content are not persisted. Provider requests run outside SQLite transactions. The original PDF is not uploaded as an opaque file; bounded source context and selected page images are transmitted according to the configured provider/capability.
+Source material is untrusted data and cannot replace system/task instructions. Credentials, Authorization headers, raw provider responses, reasoning content, and OCR/source text are not written to diagnostics.
 
-The WebView never receives a managed PDF path merely to open it. `open_document_source` validates document identity/path in Rust and invokes the operating-system opener natively, so the frontend does not require generic filesystem opener authority.
+The original PDF is not uploaded as an opaque file. Bounded source context and selected rendered pages are transmitted according to configured provider capabilities.
 
 ## Backup
 
-Complete library backups preserve the coherent SQLite snapshot, managed card images, retained source PDFs, rendered pages, and document-intelligence state. AI credentials remain excluded.
+Complete library backups preserve the coherent SQLite snapshot, managed card images, retained source PDFs, rendered pages, semantic/OCR provenance, outlines, and document-intelligence state. AI credentials remain excluded.
 
-Backups are blocked while a document is actively processing so the database and managed files are captured as one coherent library state.
+Backups are blocked while a document is actively processing so the database and managed files are captured coherently.
 
 ## Extension rule
 
-Future study guides, quizzes, tutoring, document search, and learning-analysis features should reuse the managed document/semantic/outline platform rather than adding feature-specific PDF parsers or generic prompt IPC. New providers must implement the native provider boundary and explicit capability/contract tests; task code must never silently substitute another provider.
+Future study guides, quizzes, tutoring, document search, and learning-analysis features should reuse the managed document/semantic/outline platform rather than adding feature-specific PDF parsers or generic prompt IPC. New source formats supply ingestion adapters; new platforms supply renderer/OCR adapters; new providers implement the native provider boundary. Task code must never silently substitute another provider.
