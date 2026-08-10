@@ -667,8 +667,7 @@ fn ocr_worker_count(candidate_count: usize) -> usize {
 
 fn bounded_ocr_worker_count(candidate_count: usize, available: usize) -> usize {
     available
-        .max(1)
-        .min(MAX_OCR_WORKERS)
+        .clamp(1, MAX_OCR_WORKERS)
         .min(candidate_count.max(1))
 }
 
