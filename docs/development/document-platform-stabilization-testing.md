@@ -10,7 +10,7 @@ During document-platform iteration:
 ./scripts/check-changed.sh
 ```
 
-The fast gate contains the focused cross-layer document/domain/persistence and migration contracts:
+The fast gate contains focused frontend, document/domain/persistence, PDF extraction/render/OCR, and migration contracts:
 
 ```bash
 ./scripts/check-fast.sh
@@ -25,229 +25,208 @@ Before requesting merge review:
 
 Ordinary pull-request CI is read-only. Do not rely on CI to modify rustfmt output or `Cargo.lock`; if canonical generated Rust candidates are required, use the explicit workflow-dispatch action and review the resulting commit.
 
-## Optional OCR runtime
+## PDFium provisioning
 
-Normal PDFs do not require an OCR executable. If a PDF has a corrupt/obfuscated text layer, the current fallback needs local Tesseract with English trained data. On Ubuntu/Debian, install and verify it before running the malformed-font acceptance case:
+Desktop rendering uses the pinned `pdfium-bundled` / `pdfium-render` graph. There is no normal Ubuntu `libpdfium` prerequisite for ostudy development or an installed ostudy build.
+
+A normal build:
+
+```bash
+./scripts/build.sh
+```
+
+runs Cargo with the committed lockfile. The `pdfium-bundled` build helper obtains the target-specific pinned PDFium build (`7881`) when necessary and embeds it into the native application. At runtime `bind_bundled()` loads the local extracted copy. Runtime document processing does not download PDFium.
+
+The build machine needs the ordinary tools already checked by `scripts/doctor.sh`, including `curl` and `tar`.
+
+For controlled/offline builds, supply the exact PDFium library to Cargo through `PDFIUM_BUNDLE_LIB` before running `./scripts/build.sh`. For Ubuntu x86-64 the corresponding upstream archive for the pinned build is `pdfium-linux-x64.tgz`; for Ubuntu arm64 use `pdfium-linux-arm64.tgz`. The archive must match PDFium build `7881` used by `pdfium-render 0.9.3`.
+
+## Optional desktop OCR runtime
+
+Normal PDFs do not require an OCR executable. If a PDF has a corrupt/obfuscated text layer, desktop fallback needs local Tesseract with English trained data. On Ubuntu/Debian:
 
 ```bash
 sudo apt update
 sudo apt install tesseract-ocr tesseract-ocr-eng
 tesseract --version
+tesseract --list-langs
 ```
 
-If Tesseract is installed somewhere that is not on `PATH`, set `OSTUDY_TESSERACT_PATH` to the executable path before launching ostudy.
+`eng` must be present. If Tesseract is not on `PATH`, set `OSTUDY_TESSERACT_PATH` before launching ostudy.
 
-The current fallback uses English OCR (`eng`). Do not claim automatic multilingual OCR support in PR #39; automatic language selection remains future work.
+The current fallback uses English OCR. Automatic language selection remains future work.
 
-## Invariant regressions
+## Architecture invariants
 
-The automated document lane must prove all of the following:
+Automated coverage must prove at least the following:
 
-1. A source descriptor rejects zero source units.
-2. A source locator rejects zero/out-of-range/duplicate source-unit numbers.
-3. Semantic windows are globally numbered `0..N-1`, including multiple windows inside one partition.
-4. The 11-page/single-partition/two-window plan persists two distinct `document_generation_windows` rows.
-5. Invalid window identity is rejected before a generation job row is inserted.
-6. Provider-reported context can only shrink conservative source windows.
-7. A provider context too small for schema/task/output reserves fails locally before traffic.
-8. A 138-page-style llama.cpp plan whose aggregate estimate exceeds the former 1.2M local ceiling is accepted and remains window-bounded.
-9. llama.cpp source totals above the cloud-only 250k source-token guard are accepted when the source-unit and per-window limits remain valid.
-10. DeepSeek/current metered providers still reject conservatively excessive aggregate jobs before provider traffic.
-11. Checkpoint contract identity changes with semantic model/capability/planning/source changes but not credential rotation alone.
-12. Checkpoint cache write/read failures are non-canonical and degrade to recomputation.
-13. Migration 21 upgrades old schemas while preserving foreign-key integrity and exposes OCR extraction metadata.
-14. Durable provider adapter keys are no longer closed SQLite enums.
-15. PDF ingestion explicitly records `source_format=pdf` and `source_unit_kind=page`.
-16. Private Use Area characters are detected as unreliable extracted text.
-17. Extreme Latin-1 font substitution like the real `Õâó...` case is detected without flagging ordinary accented prose.
-18. Unicode replacement/control corruption is rejected before AI provider traffic.
-19. Corrupt structured semantics with trustworthy raw page text use page-text fallback instead of unnecessary OCR.
-20. OCR-recovered text replaces corrupt page/semantic content and retains page provenance.
-21. Tesseract TSV parsing preserves line boundaries and computes bounded mean word confidence.
-22. OCR page rendering uses temporary 300-DPI selected-page renders while durable page derivatives remain 120 DPI.
-23. A missing OCR executable produces a safe `document_ocr_unavailable` error only when fallback is actually needed.
+1. Source descriptors/locators reject invalid source-unit identities.
+2. Semantic windows have unique global identities before SQLite persistence.
+3. Local llama.cpp jobs are window-bounded, not rejected by the former aggregate 1.2M-token ceiling.
+4. Metered/cloud providers retain conservative aggregate runaway-cost protection.
+5. Checkpoint identity changes with semantic/planning/source changes but not credential rotation alone.
+6. PDF ingestion records `source_format=pdf` and `source_unit_kind=page`.
+7. oxidize-pdf is the structured extraction backend; raw page extraction worker count is bounded by CPU/page count and at most 16.
+8. PDFium is the desktop render backend; renderer identity includes pdfium-render `0.9.3` / PDFium `7881`.
+9. Durable page images remain 120 DPI and selected OCR images use temporary 300-DPI renders.
+10. PUA/replacement/control/high-Latin corruption is detected before provider traffic.
+11. Corrupt semantics with trustworthy raw text use native page-text fallback instead of unnecessary OCR.
+12. OCR text replaces corrupt semantic content only after post-OCR validation.
+13. Tesseract PSM fallback and TSV parsing retain bounded confidence/provenance.
+14. OCR worker count is bounded by available parallelism/candidate count and can schedule multiple independent pages concurrently.
+15. A missing Tesseract runtime fails only when required OCR is needed.
+16. Failed/in-progress OCR never displays the successful persistent OCR-recovery warning.
+17. The active document-task registry exposes whether any document work is running so native close protection can gate application shutdown.
+18. Migration 21 and forward upgrade preserve OCR provenance and database integrity.
 
-## Empirical usage benchmark
+## Why PDFium rendering is serialized
 
-The committed baseline corpus is:
+Do not interpret the absence of a PDFium page worker pool as a performance regression. Upstream PDFium does not guarantee thread-safe concurrent access. pdfium-render's thread-safe mode serializes library calls behind a mutex, so many Rust threads around one Pdfium instance do not create real renderer parallelism.
+
+Performance comes from pipelining independent work:
 
 ```text
-src-tauri/tests/fixtures/document-generation/usage-baselines.json
+oxidize raw page extraction: up to 16 independent parser workers
+                         │
+                         ▼
+PDFium rendering: one canonical process-local render lane
+                         │
+                bounded 300-DPI queue
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+     Tesseract       Tesseract      Tesseract ...
+     worker 1        worker 2       worker N
 ```
 
-It stores only observed aggregate acceptance facts and the required benchmark matrix. Do not add estimated values as if they were observations.
-
-After a real-provider acceptance run, analyze one or more diagnostic logs:
-
-```bash
-node scripts/analyze-document-usage.mjs /path/to/ostudy-diagnostic.log
-```
-
-Machine-readable form:
-
-```bash
-node scripts/analyze-document-usage.mjs --json /path/to/ostudy-diagnostic.log
-```
-
-For every benchmark run, record externally in the acceptance notes:
-
-- provider and exact model identifier;
-- configured/reported context limit if available;
-- source format;
-- source-unit count;
-- text-only versus multimodal;
-- extraction mode (`native`, `page_text_fallback`, or `ocr_fallback`);
-- OCR page count and mean confidence when applicable;
-- planner source-token estimate;
-- outline/generation window counts;
-- planner aggregate estimate;
-- aggregate budget mode (`windowed` for local llama.cpp or the numeric ceiling for metered providers);
-- actual aggregate prompt/completion tokens reported by the provider;
-- reasoning/cache token details when available;
-- success/failure and the exact safe failure code.
-
-### Required matrix before changing planner coefficients
-
-At minimum collect repeatable observations for:
-
-- small text-only source;
-- medium text-only source;
-- large text-only source;
-- small multimodal source;
-- medium multimodal source.
-
-Prefer multiple runs for a provider/model before modifying calibration defaults. Treat provider-declared context as a hard per-request constraint regardless of empirical observations.
+This avoids retaining every high-resolution page in memory while still allowing OCR to use multiple CPU cores.
 
 ## PR #39 real-provider acceptance order
 
 Run expensive tests only after cheaper representative tests pass.
 
-### 1. Normal 11-page llama.cpp / Unsloth regression
+### 1. Normal ~11-page llama.cpp / Unsloth regression
 
-Use the exact source/profile that previously produced the generic local database error but whose text layer extracts normally.
+Use the source/profile that previously produced the duplicate generation-window database error but whose text layer extracts normally.
 
 Expected:
 
 - no duplicate-window database error;
-- at least two generation windows are allowed when source/window bounds require them;
-- window identities remain unique;
+- unique generation window identities;
 - `extractionMode=native` and no OCR warning;
-- Tesseract is never required for this source;
-- generation proceeds through canonical authoring;
-- diagnostic output contains no `document_generation_window_insert_failed` event.
+- Tesseract is not required;
+- PDFium renders all source pages;
+- generation commits through canonical authoring.
 
-### 2. Malformed-font OCR fallback regression
+### 2. Malformed-font ~138-page PDFium + OCR regression
 
-Use the known 138-page Elsevier pharmacology source whose body text renders visually but previously extracted as Private Use Area characters in Poppler and `Õâó...` substitutions in oxidize-pdf.
+Use the known Elsevier pharmacology source whose body text renders visually but extracted as PUA/high-Latin substitutions.
+
+Because the render backend identity changed from justpdf to PDFium, Retry must rebuild retained rendered derivatives automatically.
 
 Expected:
 
-- Retry forces derivative rebuild because the extraction backend identity changed;
-- the native detector identifies suspect pages before any document source text is sent to the AI provider;
-- Documents switches from normal rendering progress to `Recovering text with OCR (X/Y pages)` when fallback begins;
-- only suspect/sparse pages are rendered again at OCR resolution;
-- accepted OCR text contains readable English rather than the known PUA/high-Latin substitution pattern;
-- `extractionMode=ocr_fallback`, `ocrPageCount > 0`, completed count reaches the candidate count, and mean confidence is persisted;
-- the Documents row retains the lower-quality OCR warning after completion/restart;
-- the success toast explicitly mentions OCR fallback;
-- the prompt/request viewer shows readable recovered English in affected semantic windows;
-- the local planner remains `ceiling=windowed`; the old 1.2M aggregate rejection must not return;
-- generation continues through bounded semantic windows and commits one canonical deck.
+- oxidize-pdf identifies unreliable native text before provider traffic;
+- PDFium renders all pages faithfully;
+- Documents progresses through normal rendering and then `Recovering text with OCR (X/Y pages)`;
+- 300-DPI OCR renders are produced only for selected pages;
+- several Tesseract page workers execute concurrently on a multi-page fallback (verify with `htop`, `ps`, or equivalent if desired);
+- accepted OCR text contains readable English rather than PUA/high-Latin substitution output;
+- completed OCR count reaches the selected page count and mean confidence is persisted;
+- the persistent lower-quality OCR warning appears only after successful recovery;
+- source windows in the llama.cpp/Unsloth request viewer contain readable recovered text;
+- local diagnostics remain `ceiling=windowed`; the old aggregate rejection does not return;
+- generation continues through bounded windows and commits one canonical deck.
 
-Also verify the negative dependency path once: temporarily run without Tesseract available, retry the corrupt source, and confirm ostudy returns the actionable `document_ocr_unavailable` message while retaining the PDF. Restore Tesseract before the full acceptance run.
+If OCR still rejects a page, capture only safe diagnostics such as `document_ocr_layout_selected`, `document_ocr_text_rejected`, and the PDFium render error/status. Do not add raw source/OCR text to diagnostic logs.
 
-### 3. Small DeepSeek baseline
+### 3. Application-close protection
 
-Re-run the ~11-page text source previously observed around ~45k aggregate tokens.
+Run a PDF generation and test close behavior during each long phase that is practical:
 
-Compare:
+- oxidize extraction;
+- PDFium rendering;
+- Tesseract OCR;
+- an active LLM request.
 
-- planner estimate;
-- actual aggregate token usage;
-- number of provider calls;
-- any cache-hit behavior;
-- final card count/quality.
+Expected whenever the exact-document task registry is active:
 
-A large unexplained regression should block the expensive large-source tests.
+- the normal close request is prevented;
+- a native warning titled `PDF processing is still running` appears;
+- the warning explains that the running request will be interrupted and uncommitted progress can be lost;
+- **Keep working** leaves the application and job running;
+- **Close ostudy** exits the application;
+- after a confirmed close, restart reconciliation marks interrupted durable state retryable and never resumes provider traffic automatically.
 
-### 4. Medium local-model source
+With no document job active, application close should remain normal and should not display the warning.
 
-Re-run the representative ~48-page llama.cpp/Unsloth source.
+### 4. Stop during parallel OCR
 
-Verify:
+During a many-page OCR fallback, click **Stop generation**.
 
-- conservative request windows;
-- current model-context capability is honored if available;
-- no runaway retry loop;
-- interruption can be retried without redoing validated retained work unnecessarily.
+Expected:
 
-### 5. Large local-model windowing/resume
+- active OCR workers observe the exact-document cancellation state;
+- active Tesseract children are terminated promptly;
+- no corrupt/partial OCR text is committed;
+- the retained PDF remains retryable.
 
-On the 138-page OCR-backed source, verify the large-job behavior independently of extraction:
+### 5. Small DeepSeek baseline
 
-- **do not reject the document because its aggregate estimate exceeds 1.2M**;
+Re-run the representative small text source. Compare planner estimate, actual aggregate usage, provider calls, final card quality, and any cache behavior. A large unexplained regression blocks the more expensive tests.
+
+### 6. Large local-model windowing/resume
+
+On the 138-page OCR-backed source:
+
+- do not reject because aggregate estimate exceeds the former 1.2M local ceiling;
+- each provider request remains within conservative/live context limits;
 - diagnostics report `ceiling=windowed`;
-- the source is processed as multiple bounded outline and generation windows;
-- each provider request remains within the conservative/live context-aware window limit;
-- completed outline/generation checkpoints are reusable after interruption;
-- no recursive compact-retry loop;
-- final global outline synthesis remains bounded to the compact digest;
-- curation remains bounded in small batches;
-- successful generation commits one canonical deck for the original document.
-
-Interrupt once after multiple windows have completed, retry, and verify already validated recovered document derivatives do not re-run OCR unless the extraction backend/source changed.
-
-### 6. Large DeepSeek source
-
-Only after the cheaper cases pass, re-run the ~138-page source that previously consumed roughly 1.45M aggregate DeepSeek tokens before late truncation.
-
-Expected behavior:
-
-- the metered-provider aggregate safety ceiling remains active;
-- the planner may reject the job locally before another runaway paid sequence, or a bounded plan that falls below the ceiling may complete;
-- completed outline/generation windows can be reused after interruption;
-- no recursive compact-retry loop;
-- diagnostics provide partition/window/source-unit context without raw source text.
+- completed checkpoints are reusable after interruption;
+- recovered PDFium/OCR derivatives are reused after a later AI interruption rather than OCR being repeated;
+- curation/global synthesis remain bounded;
+- one canonical deck is committed.
 
 ### 7. Generate More
 
 On a successfully generated document:
 
 - Generate More appends to the exact existing deck;
-- it reuses the retained final outline;
-- it uses the same shared generation executor/state transition rules as initial generation;
-- large local documents remain window-bounded rather than aggregate-job-bounded on the second pass too;
-- OCR-backed document semantics are reused as retained source data rather than re-OCRing the original PDF;
-- it does not create a replacement deck;
-- failure/cancellation leaves existing cards intact.
+- it reuses retained outline and OCR-backed semantics;
+- it does not rerender/re-OCR an unchanged source;
+- cancellation/failure leaves existing cards intact.
+
+### 8. Large DeepSeek source
+
+Only after cheaper cases pass, test the large metered provider case. The aggregate metered-provider safety ceiling must remain active.
 
 ## Malformed-PDF edge checks
 
-In addition to the known font-substitution file, exercise at least representative fixtures or unit cases for:
+Exercise representative cases for:
 
-- a blank/image-only page;
-- a page whose native text extractor throws while the file remains renderable;
-- corrupt structured metadata with good raw page text;
-- a structural partitioner failure with usable native page text;
-- U+FFFD replacement characters;
-- invalid embedded control characters;
-- a mixed PDF where only some pages need OCR;
-- a required OCR page whose OCR output remains empty/untrustworthy, which must fail before LLM traffic rather than silently passing corrupt content.
+- blank/image-only page;
+- native extraction exception while PDFium can still render the page;
+- corrupt semantic structure with good raw page text;
+- structural partition failure with usable native page text;
+- U+FFFD and invalid controls;
+- mixed PDF where only some pages need OCR;
+- required OCR page whose Tesseract output remains untrustworthy;
+- malformed font resources that oxidize cannot map but PDFium can visibly render;
+- page rotations/crop boxes and tables/figures where renderer fidelity matters.
 
 ## Lifecycle regression checks
 
 Re-test:
 
-- Stop generation;
-- Retry generation;
+- Stop / Retry generation;
 - Open source PDF;
 - Archive/restore document;
 - generated-deck deletion followed by regeneration;
 - permanent PDF deletion with preserved deck citation;
 - interrupted PDF deletion recovery;
-- complete backup/restore with source, rendered derivatives, recovered text, and OCR provenance;
+- backup/restore with source, PDFium page derivatives, recovered text, and OCR provenance;
 - Practice navigation from generated deck.
 
 ## Merge criteria
 
-PR #39 should remain draft until the fast and full automated gates pass. Mark it ready only when the code is stable enough for the full qualification gate. Do not merge until the normal 11-page llama.cpp/Unsloth regression, the malformed-font 138-page OCR regression, windowed local resume behavior, and representative DeepSeek/local acceptance tests pass in addition to automated qualification.
+PR #39 remains draft until both automated gates pass on the exact final head. Do not merge until the normal 11-page regression, malformed-font 138-page PDFium/OCR recovery, close warning, parallel OCR/cancellation, windowed local resume behavior, and representative provider acceptance tests pass.
