@@ -32,7 +32,10 @@ No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is install
 - base64 `0.22.1`
 - oxidize-pdf `4.2.2`, default features disabled, with `compression` and `semantic`
 - image `0.25.10` for PNG encoding of PDFium bitmaps on desktop
-- pdfium-bundled `0.1.1+pdfium-7881`, resolving pdfium-render `0.9.3` and PDFium build `7881` on desktop
+- pdfium-render `0.9.3`, compiled against PDFium API build `7881`
+- sysinfo `0.39.6` for cross-platform available-memory observation used by document concurrency planning
+
+`pdfium-bundled`, justpdf/justpdf-render, and rusty-tesseract are explicitly prohibited by repository dependency verification.
 
 `rs-fsrs` remains isolated behind `src-tauri/src/scheduler.rs`; durable rows and IPC objects use ostudy-owned types.
 
@@ -41,6 +44,31 @@ No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is install
 `reqwest` is isolated behind `src-tauri/src/ai/gateway.rs`. The client uses Rustls, disabled redirects, bounded response bodies, no cookies, and no raw provider-body logging. Provider adapters use ostudy-owned wire DTOs rather than provider SDKs. The `url` crate owns normalized endpoint parsing and loopback/LAN/cloud policy.
 
 `base64` is used only inside the native document-intelligence task to lower a verified local PNG page into an inline provider content part. The encoded page is transient request data. It is not stored in SQLite, logs, diagnostics, or frontend state.
+
+## Native dependency trust boundary
+
+PDF rendering and desktop OCR depend on native software that is intentionally **not downloaded by a Rust dependency or build script**. ostudy owns that provisioning layer under `scripts/` so sources, versions, hashes, target selection, and package-manager behavior are reviewable independently from Cargo.
+
+`scripts/native-deps-manifest.json` pins PDFium API build `7881`, the matching pdfium-render binding version, one immutable archive per supported target, and a SHA-256 digest for every archive. Automated tests verify the build, immutable release URL, expected desktop targets, and digest shapes.
+
+The default precompiled PDFium source is the established third-party `bblanchon/pdfium-binaries` distribution at immutable release `chromium/7881`. It is not represented as an official Google/Foxit distribution. A downloaded archive is never extracted until its SHA-256 matches the committed manifest. The extracted native library is stored under ignored `src-tauri/resources/native/pdfium/` with a local provenance record containing both archive and extracted-library hashes.
+
+Builders who do not want to use that binary distribution can provide their own compatible PDFium `7881` library through `OSTUDY_PDFIUM_PATH` or install PDFium system-wide. Building PDFium from the official source remains the highest-provenance option, but it uses Chromium's depot_tools/GN/Ninja build infrastructure and is therefore not the default developer setup path.
+
+### Platform installers
+
+- Linux/macOS: `scripts/install-native-deps.sh`
+- Windows PowerShell: `scripts/install-native-deps.ps1`
+
+`--pdfium-only` provisions only the audited PDFium runtime and is used by build/check/release automation. The default desktop setup also verifies or installs Tesseract.
+
+For Tesseract, ostudy prefers the established operating-system channels documented by the Tesseract project instead of maintaining its own ad-hoc executable bundle:
+
+- Debian/Ubuntu: `tesseract-ocr` + `tesseract-ocr-eng` through apt;
+- macOS: Homebrew or MacPorts;
+- Windows: the Tesseract-documented UB Mannheim distribution, installed through its winget package when available.
+
+Android/iOS do not use the desktop Tesseract subprocess. Their OCR implementations remain platform-native adapters (planned bundled/offline ML Kit on Android and Apple Vision on iOS).
 
 ## PDF processing boundary
 
@@ -54,29 +82,39 @@ No third-party PDF/OCR type crosses the document boundary. `pdf_backend.rs`, `pd
 
 ### Structured PDF extraction
 
-`oxidize-pdf` remains the native structured extraction backend. ostudy uses its RAG extraction profile for reading order, headings, semantic elements, geometry, tables/lists, and structure-aware chunks. Raw per-page text extraction is independent and parallelized with up to 16 workers; each worker opens its own parser document. The structure-aware partition/chunk pass remains canonical/sequential so parallel execution cannot reorder headings or semantic structure.
+`oxidize-pdf` remains the native structured extraction backend. ostudy uses its RAG extraction profile for reading order, headings, semantic elements, geometry, tables/lists, and structure-aware chunks.
 
-The crate is compiled with default features disabled. Its optional `rusty-tesseract` wrapper is not enabled and repository dependency checks explicitly reject it. OCR is owned by ostudy's platform OCR service instead.
+Raw per-page text extraction is independent and parallelized using the shared resource planner. Each worker opens its own parser document, while the canonical structure-aware partition/chunk pass remains sequential so parallel execution cannot reorder headings or semantic structure. Worker selection is bounded by task count, logical CPU count, available RAM, and the optional `OSTUDY_PDF_TEXT_WORKERS` operator cap. There is no hard-coded CPU-count ceiling.
+
+The crate is compiled with default features disabled. Its optional `rusty-tesseract` wrapper is not enabled; OCR is owned by ostudy's platform OCR service instead.
 
 ### PDFium page rendering
 
-Desktop page rendering uses Chromium PDFium through `pdfium-bundled`/`pdfium-render`. PDFium replaces the former justpdf renderer because real malformed-font acceptance documents demonstrated that the lightweight renderer was not a sufficiently faithful OCR raster source.
+Desktop rendering uses direct dynamic binding through `pdfium-render`. Runtime lookup order is:
 
-The desktop build enables `pdfium-bundled`'s bundled mode. During Cargo compilation the crate resolves the target-specific PDFium build, embeds the library in the ostudy binary, and `bind_bundled()` extracts/binds it from the local application cache at runtime. A normal installed ostudy desktop build therefore does not require a separate system `libpdfium` installation or a runtime network download.
+1. `OSTUDY_PDFIUM_PATH` when explicitly configured;
+2. the PDFium resource packaged with an installed ostudy build;
+3. the audited development runtime under `src-tauri/resources/native/pdfium/`;
+4. the application executable directory;
+5. the operating-system PDFium search path.
 
-Build-time automatic provisioning requires the normal development tools already enforced by `scripts/doctor.sh`, including `curl` and `tar`. Advanced/offline builders may supply the exact PDFium library through the crate's `PDFIUM_BUNDLE_LIB` build environment override rather than allowing the build helper to download it.
+Durable visual-grounding pages are rendered at 120 DPI. Temporary OCR pages are rendered independently at 300 DPI and are deleted after recognition. The renderer backend identity is versioned, so Retry rebuilds derivatives when the renderer contract changes.
 
-Durable visual-grounding pages are rendered at 120 DPI. Temporary OCR pages are rendered independently at 300 DPI and are deleted after recognition. The renderer backend identity is versioned, so Retry automatically rebuilds old justpdf derivatives through PDFium.
+PDFium calls remain serialized within one application process. pdfium-render's thread-safe mode serializes calls because upstream PDFium does not guarantee concurrent access. CPU scaling is instead applied to independent extraction and OCR work.
 
-PDFium calls remain serialized within one application process. pdfium-render's thread-safe mode serializes calls because upstream PDFium does not guarantee concurrent access, so pretending to parallelize one Pdfium instance would add synchronization without real renderer throughput. CPU scaling is instead applied to independent text extraction and OCR work.
+### Resource-aware OCR
 
-### OCR
+Normal PDFs do not require OCR. When native extracted text is corrupt or unusable, ostudy selects only affected pages and feeds their PDFium 300-DPI renders to the platform OCR service.
 
-Normal PDFs do not require OCR. When native extracted text is corrupt or unusable, ostudy selects only the affected pages and feeds their PDFium 300-DPI renders to the platform OCR service.
+Desktop Tesseract OCR uses a bounded producer/consumer pipeline, but there is no fixed `8`-worker ceiling. The shared resource planner calculates workers from:
 
-Desktop currently uses local Tesseract. Development builds discover `tesseract` from `PATH` or `OSTUDY_TESSERACT_PATH`; release packaging still needs a target-specific Tesseract/trained-data packaging step before desktop distribution is considered self-contained. OCR work is pipelined through a bounded multi-worker pool so several independent Tesseract processes can recognize different pages concurrently while PDFium produces the next renders.
+- selected OCR page count;
+- logical CPU count;
+- currently available RAM;
+- a conservative per-worker working-set estimate;
+- the optional `OSTUDY_OCR_WORKERS` operator cap.
 
-Android/iOS do not spawn the desktop executable. The planned adapters are bundled/offline ML Kit Text Recognition v2 on Android and Apple Vision on iOS, behind the same ostudy OCR contract. Until those native projects are implemented, mobile OCR fails locally before corrupt text can reach an AI provider.
+The planner reserves memory for the rest of the application/system and also sizes the high-resolution PNG queue from remaining RAM. This permits high-core/high-memory machines to exceed eight concurrent OCR workers without turning a large document into an unbounded memory allocation.
 
 ## Document intelligence
 
