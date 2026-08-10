@@ -32,6 +32,9 @@ else
   bash "$SCRIPT_DIR/check-static.sh"
 fi
 
+step "Provision audited PDFium runtime"
+"$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
+
 prepare_cargo_target "$ROOT_DIR"
 printf 'Cargo target: %s\n' "$CARGO_TARGET_DIR"
 printf 'Cargo parallel jobs: %s\n' "$CARGO_BUILD_JOBS"
