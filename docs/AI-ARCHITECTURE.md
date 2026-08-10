@@ -9,9 +9,10 @@ There is no generic prompt IPC command and no silent provider fallback.
 Managed documents are durable local sources. The active PDF adapter is deliberately split into independent native capabilities:
 
 - `pdf_backend.rs`: native text and structure extraction through oxidize-pdf;
-- `pdf_render_backend.rs`: visible-page rasterization through PDFium on desktop;
+- `pdf_render_backend.rs`: visible-page rasterization through externally provisioned PDFium on desktop;
 - `pdf_ocr_backend.rs`: platform-aware OCR provider contract, with Tesseract as the current desktop implementation;
 - `document_ingestion.rs`: extraction-quality validation, selective OCR recovery, derivative persistence, and progress;
+- `system_resources.rs`: CPU/RAM-aware concurrency planning for independent extraction/OCR work;
 - `document_semantics.rs`: ostudy-owned semantic chunks and hard-bounded provider windows;
 - `ai/document_intelligence.rs`: provider-enforced outline/generation/curation tasks plus deterministic native hierarchy assembly.
 
@@ -23,8 +24,6 @@ Derived text, semantic chunks, outline data, OCR recovery, and rendered pages ar
 
 A PDF may render perfectly while its embedded font-to-Unicode map is broken or deliberately obfuscated. Text extraction therefore asks a different question from visual rendering.
 
-The desktop pipeline uses:
-
 ```text
 immutable PDF
     │
@@ -34,55 +33,49 @@ immutable PDF
     │                                   │
     └── PDFium ───────> faithful page raster
                                     │
-                                    └── Tesseract OCR when native text is unreliable
+                                    └── platform OCR when native text is unreliable
 ```
 
 This separation is intentional. oxidize-pdf remains useful for RAG-oriented semantic structure even when one font mapping is corrupt, while PDFium provides a Chromium-grade raster source for visual grounding and OCR.
 
 ## PDF extraction and malformed-text recovery
 
-Raw per-page text extraction runs through oxidize-pdf. Independent physical pages may be extracted in parallel with up to 16 workers; each worker opens its own parser document rather than sharing one parser handle. The canonical structure-aware `ExtractionProfile::Rag` partition/chunk pass remains sequential so concurrency cannot reorder headings or semantic relationships.
+Raw per-page text extraction runs through oxidize-pdf. Independent physical pages may be extracted concurrently; each worker opens its own parser document rather than sharing one parser handle. Worker count is chosen from task count, logical CPUs, currently available RAM, a conservative 96 MiB per-worker estimate, and optional `OSTUDY_PDF_TEXT_WORKERS` cap. There is no hard-coded extraction worker ceiling.
 
-Extracted text is untrusted until it passes quality validation. The validator detects at least:
+The canonical structure-aware `ExtractionProfile::Rag` partition/chunk pass remains sequential so concurrency cannot reorder headings or semantic relationships.
 
-- Unicode Private Use Area mappings;
-- Unicode replacement characters;
-- invalid embedded control characters;
-- pathological high-Latin substitution patterns observed in malformed textbook fonts;
-- native page extraction exceptions;
-- sparse/missing page text;
-- corrupt structured semantics even when raw page text remains readable.
+Extracted text is untrusted until it passes quality validation. The validator detects at least Private Use Area mappings, replacement characters, invalid controls, the observed pathological high-Latin substitution pattern, native page extraction exceptions, sparse/missing page text, and corrupt structured semantics when raw page text remains readable.
 
-Good raw page text with bad semantic structure uses a page-text semantic fallback instead of OCR. Corrupt non-empty raw text requires trustworthy OCR before any provider request. Blank/image-only pages may remain visual evidence when no text is recoverable.
+Good raw page text with bad semantic structure uses page-text semantic fallback instead of OCR. Corrupt non-empty raw text requires trustworthy OCR before provider traffic. Blank/image-only pages may remain visual evidence when no text is recoverable. Recovered text passes the same quality boundary again; ostudy does not hard-code a substitution alphabet for one PDF/font.
 
-Recovered text passes the same quality boundary again. ostudy does not hard-code a substitution alphabet for a particular PDF/font.
+## PDFium rendering and native runtime trust
 
-## PDFium rendering
+Desktop rendering binds directly through `pdfium-render 0.9.3` against PDFium API build `7881`. The Rust dependency graph does **not** contain `pdfium-bundled` or another native-runtime downloader.
 
-Desktop rendering uses `pdfium-bundled 0.1.1+pdfium-7881`, which resolves `pdfium-render 0.9.3` and PDFium build `7881`.
+Native runtime acquisition belongs to reviewed ostudy scripts and the audited `scripts/native-deps-manifest.json`. The default binary path uses the immutable `bblanchon/pdfium-binaries` release `chromium/7881`, with a committed SHA-256 for every platform archive. An archive is not extracted until its digest matches the manifest. The staged native library is gitignored and has a provenance record containing the archive/source and extracted-library hash.
 
-The `bundled` build path provisions the target-specific PDFium shared library during Cargo compilation, embeds it, and binds the extracted local copy at runtime. A normal desktop ostudy install therefore does not require a separately installed system PDFium library or runtime PDFium download. Controlled/offline builds can provide the exact library through `PDFIUM_BUNDLE_LIB`.
+Builders can avoid the default binary distribution by setting `OSTUDY_PDFIUM_PATH` to a compatible system or self-built PDFium library. Runtime resolution also checks the packaged Tauri resource, the reviewed development staging directory, the executable directory, and finally the OS library search path.
+
+Official-source PDFium builds are supported operationally through `OSTUDY_PDFIUM_PATH`, but are not the default bootstrap because PDFium uses Chromium's depot_tools/gclient/GN/Ninja build infrastructure.
 
 Two raster classes exist:
 
 - **120 DPI durable pages** for visual grounding, backup, and provider image context;
 - **300 DPI temporary OCR pages** used only while recognition is running.
 
-PDFium rendering is kept serialized within the process. Upstream PDFium does not guarantee concurrent use; pdfium-render's thread-safe mode serializes calls behind a mutex, so wrapping one Pdfium instance in many page threads would not provide meaningful renderer parallelism.
+PDFium rendering stays serialized within the process. Upstream PDFium does not guarantee concurrent calls; pdfium-render's thread-safe mode serializes access. CPU scaling is instead applied to independent extraction and OCR tasks.
 
-The render backend identity is versioned as a PDFium identity. Retry automatically rebuilds derivatives that were created by the former justpdf renderer.
+The render backend identity is versioned as `pdfium-render-0.9.3/pdfium-api-7881-external-v2-120dpi`, so Retry rebuilds derivatives created by earlier render contracts.
 
-## Parallel OCR
+## Resource-aware parallel OCR
 
-Desktop OCR uses Tesseract only after the extraction-quality gate selects affected pages. Normal PDFs never require the OCR runtime.
-
-OCR is pipelined rather than serial:
+Desktop OCR uses Tesseract only after the extraction-quality gate selects affected pages. Normal PDFs never require OCR.
 
 ```text
 PDFium 300-DPI producer
           │
           ▼
- bounded high-resolution queue
+ RAM-bounded high-resolution queue
           │
    ┌──────┼────────┐
    ▼      ▼        ▼
@@ -90,22 +83,28 @@ Tesseract Tesseract Tesseract ...
 worker 1 worker 2 worker N
 ```
 
-The worker count is bounded by candidate pages and available CPU parallelism, with a maximum of eight concurrent page workers. PDFium can continue rasterizing while previous pages are recognized, but the queue is deliberately small so a large document cannot accumulate hundreds of 300-DPI PNGs in memory.
+There is no fixed eight-worker ceiling. The shared resource planner chooses `N` from candidate count, logical CPU count, available RAM, a conservative 384 MiB per-worker estimate, and the optional `OSTUDY_OCR_WORKERS` cap. It reserves memory for the application/system and sizes the high-resolution PNG queue from the remaining budget and the 64 MiB per-image safety limit. A high-core/high-memory workstation can therefore run more than eight OCR workers; a constrained machine automatically selects fewer.
 
 Each Tesseract worker has its own provider instance and temporary workspace. Recognition uses explicit 300-DPI input and begins with page-segmentation mode 3. Weak/sparse output can retry with PSM 6 and PSM 11 inside the same bounded page timeout. The best result is selected using substantive text coverage and confidence, then revalidated before semantic reconstruction.
 
-OCR output, PDF source text, provider prompts, credentials, and raw provider responses are not written to diagnostics. Safe metrics may include page number, selected PSM, confidence bucket, recognized-character counts, and whether a fallback layout was used.
+OCR/source text, provider prompts, credentials, and raw provider responses are not written to diagnostics. Safe metrics may include page number, selected PSM, confidence bucket, recognized-character counts, CPU/RAM planning inputs, selected worker count, and queue capacity.
 
 Cancellation is exact-document scoped. Stop generation terminates active Tesseract children and prevents partial recovered text from being committed.
+
+### Desktop native dependency installation
+
+Linux/macOS use `scripts/install-native-deps.sh`; Windows uses `scripts/install-native-deps.ps1`.
+
+PDFium is version/hash pinned by ostudy. Tesseract is intentionally installed through established platform channels instead of a custom ostudy binary bundle: apt on Debian/Ubuntu, Homebrew/MacPorts on macOS, and the Tesseract-documented UB Mannheim Windows distribution via winget when available. `OSTUDY_TESSERACT_PATH` supports non-PATH installations.
 
 ### Mobile OCR and rendering
 
 The document core depends on rendering/OCR contracts rather than desktop subprocess assumptions.
 
-- Android: planned native Tauri/Kotlin rendering/OCR adapters; the preferred OCR engine is bundled/offline ML Kit Text Recognition v2.
-- iOS: planned native Tauri/Swift rendering/OCR adapters; the preferred OCR engine is Apple Vision.
+- Android: planned native Tauri/Kotlin renderer/OCR adapters; preferred OCR engine is bundled/offline ML Kit Text Recognition v2.
+- iOS: planned native Tauri/Swift renderer/OCR adapters; preferred OCR engine is Apple Vision.
 
-The mobile projects are not initialized yet. Current Android/iOS cfg branches therefore fail locally before corrupted source reaches an AI provider rather than pretending desktop PDFium/Tesseract binaries are available.
+The native dependency manifest already records target-specific PDFium artifacts for future mobile packaging, but the mobile projects/adapters are not implemented yet. Current Android/iOS cfg branches therefore fail locally before corrupted source reaches an AI provider rather than pretending desktop PDFium/Tesseract runtime behavior is available.
 
 ## Hard-bounded semantic source windows
 
@@ -127,7 +126,7 @@ The persisted outline is reusable document intelligence for flashcards today and
 
 ## Outline-guided flashcard generation
 
-Every generation request receives a bounded whole-document summary, bounded global objectives/concepts, only the outline sections relevant to the current source window, the bounded structured semantic source, and selected rendered pages when the configured provider has verified image capability.
+Every generation request receives a bounded whole-document summary, bounded global objectives/concepts, only outline sections relevant to the current source window, the bounded structured semantic source, and selected rendered pages when the configured provider has verified image capability.
 
 The task prompt favors durable concepts, mechanisms, comparisons, applications, and supported cross-page relationships. It suppresses bibliography/reference lists, legal/publishing scaffolding, navigation/index content, citation metadata, and low-value trivia.
 
@@ -145,11 +144,9 @@ Prompts describe educational intent, but prompt prose is not the structural guar
 
 llama-server receives task JSON Schema through schema-constrained JSON output. Compatible retry forms remain grammar/schema constrained and never silently change providers. The server owns the model chat template; ostudy does not construct tokenizer-specific chat templates in the WebView or document feature.
 
-The document SSE gateway supports ordinary OpenAI-compatible streamed content plus the small compatibility forms required by supported llama-server versions. Output size and schema validation remain native responsibilities.
-
 ### DeepSeek
 
-DeepSeek document tasks use strict Function Calling. The native adapter converts internal schemas to DeepSeek's supported strict subset and Rust then enforces tighter length/count/semantic rules. Metered-provider aggregate protection remains active.
+DeepSeek document tasks use strict Function Calling. The native adapter converts internal schemas to DeepSeek's supported strict subset and Rust enforces tighter length/count/semantic rules afterward. Metered-provider aggregate protection remains active.
 
 ### Native validation remains authoritative
 
@@ -163,7 +160,7 @@ A running document task owns one process-local cancellation signal keyed by docu
 
 **Stop generation** cancels only that document task and drops its exact provider stream/active OCR work. Durable completed checkpoints remain reusable; canceled documents remain retryable.
 
-Application close is also guarded natively. If the main window receives `CloseRequested` while any document task is active, ostudy prevents the close and shows a native warning that the running request will be interrupted and uncommitted work may be lost. **Keep working** leaves the process/job running; **Close ostudy** proceeds with shutdown. No warning appears when no document job is active.
+Application close is guarded natively. If the main window receives `CloseRequested` while any document task is active, ostudy prevents the close and shows a native warning that the running request will be interrupted and uncommitted work may be lost. **Keep working** leaves the process/job running; **Close ostudy** proceeds with shutdown. No warning appears when no document job is active.
 
 Startup reconciliation marks interrupted durable state retryable and never resumes provider transmission automatically.
 
