@@ -35,7 +35,7 @@ const MAX_HEADING_CONTEXT_CHARS: usize = 2_000;
 const MIN_SUBSTANTIVE_NONSPACE_CHARS: usize = 24;
 const MIN_SUBSTANTIVE_ALPHA_CHARS: usize = 8;
 const MIN_SUBSTITUTION_ALPHA_CHARS: usize = 48;
-const MAX_TEXT_EXTRACTION_WORKERS: usize = 16;
+const TEXT_EXTRACTION_WORKER_MEMORY_BYTES: u64 = 96 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PdfBackendErrorKind {
@@ -259,7 +259,22 @@ fn extract_page_texts<R: Read + Seek>(
     if page_count == 0 {
         return Ok((Vec::new(), Vec::new()));
     }
-    let worker_count = text_extraction_worker_count(page_count);
+    let resource_plan = crate::system_resources::plan_parallel_workers(
+        page_count,
+        TEXT_EXTRACTION_WORKER_MEMORY_BYTES,
+        "OSTUDY_PDF_TEXT_WORKERS",
+    );
+    let worker_count = resource_plan.worker_count;
+    crate::logging::info(
+        "pdf_text_extraction_resources",
+        format!(
+            "pages={page_count} logical_cpus={} available_memory_mb={} working_budget_mb={} per_worker_mb={} workers={worker_count}",
+            resource_plan.logical_cpus,
+            resource_plan.available_memory_bytes / (1024 * 1024),
+            resource_plan.working_memory_budget_bytes / (1024 * 1024),
+            resource_plan.per_worker_memory_bytes / (1024 * 1024),
+        ),
+    );
     let next_index = Arc::new(AtomicUsize::new(0));
     let (sender, receiver) = mpsc::channel::<(usize, Result<String, String>)>();
     let mut results = (0..page_count)
@@ -359,19 +374,6 @@ fn extract_page_texts<R: Read + Seek>(
         ),
     );
     Ok((pages, failed_pages))
-}
-
-fn text_extraction_worker_count(page_count: usize) -> usize {
-    let available = std::thread::available_parallelism()
-        .map(std::num::NonZeroUsize::get)
-        .unwrap_or(1);
-    bounded_text_extraction_worker_count(page_count, available)
-}
-
-fn bounded_text_extraction_worker_count(page_count: usize, available: usize) -> usize {
-    available
-        .clamp(1, MAX_TEXT_EXTRACTION_WORKERS)
-        .min(page_count.max(1))
 }
 
 pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionRecoveryPlan {
@@ -802,15 +804,8 @@ mod tests {
     }
 
     #[test]
-    fn text_extraction_worker_count_is_bounded_by_pages_and_cpu() {
-        assert_eq!(bounded_text_extraction_worker_count(1, 64), 1);
-        assert_eq!(bounded_text_extraction_worker_count(5, 64), 5);
-        assert_eq!(
-            bounded_text_extraction_worker_count(100, 64),
-            MAX_TEXT_EXTRACTION_WORKERS
-        );
-        assert_eq!(bounded_text_extraction_worker_count(100, 4), 4);
-        assert_eq!(bounded_text_extraction_worker_count(100, 0), 1);
+    fn text_extraction_declares_a_conservative_per_worker_memory_estimate() {
+        assert_eq!(TEXT_EXTRACTION_WORKER_MEMORY_BYTES, 96 * 1024 * 1024);
     }
 
     #[test]

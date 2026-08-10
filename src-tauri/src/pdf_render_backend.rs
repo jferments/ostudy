@@ -316,9 +316,7 @@ fn validate_runtime<E>(runtime: &PdfRenderRuntime) -> Result<(), RenderProcessEr
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn page_count(
-    document: &pdfium_render::prelude::PdfDocument<'_>,
-) -> Result<usize, PdfRenderError> {
+fn page_count(document: &pdfium_render::prelude::PdfDocument<'_>) -> Result<usize, PdfRenderError> {
     usize::try_from(document.pages().len()).map_err(|_| {
         PdfRenderError::new(
             PdfRenderErrorKind::Open,

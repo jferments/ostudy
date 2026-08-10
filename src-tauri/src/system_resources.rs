@@ -106,10 +106,7 @@ fn calculate_parallel_workers(
     let mut worker_count = if task_count == 0 {
         0
     } else {
-        task_count
-            .min(logical_cpus)
-            .min(memory_worker_limit)
-            .max(1)
+        task_count.min(logical_cpus).min(memory_worker_limit).max(1)
     };
     if let Some(cap) = explicit_cap.filter(|cap| *cap > 0) {
         worker_count = worker_count.min(cap);
@@ -129,9 +126,7 @@ fn working_memory_budget(available_memory_bytes: u64) -> u64 {
         return 0;
     }
 
-    let percentage_reserve = available_memory_bytes
-        .saturating_mul(MEMORY_RESERVE_PERCENT)
-        / 100;
+    let percentage_reserve = available_memory_bytes.saturating_mul(MEMORY_RESERVE_PERCENT) / 100;
     // On small-memory systems, reserving a full 512 MiB could consume virtually
     // everything. Reserve at least 25%, and aim for 512 MiB only when doing so
     // still leaves at least half the currently available RAM for the workload.

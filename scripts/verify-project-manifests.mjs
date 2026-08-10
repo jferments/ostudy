@@ -114,7 +114,8 @@ for (const [label, needle] of [
   ["chrono", `chrono = "=${env.get("CHRONO_VERSION")}"`],
   ["image", `image = { version = "=${env.get("IMAGE_VERSION")}"`],
   ["oxidize-pdf", `version = "=${env.get("OXIDIZE_PDF_VERSION")}"`],
-  ["pdfium-bundled", `pdfium-bundled = { version = "=${env.get("PDFIUM_BUNDLED_REQUIREMENT")}"`],
+  ["pdfium-render", `pdfium-render = { version = "=${env.get("PDFIUM_RENDER_VERSION")}"`],
+  ["sysinfo", `sysinfo = { version = "=${env.get("SYSINFO_VERSION")}"`],
   ["keyring", `keyring = "=${env.get("KEYRING_VERSION")}"`],
   ["reqwest", `version = "=${env.get("REQWEST_VERSION")}"`],
   ["rs-fsrs", `rs-fsrs = "=${env.get("RS_FSRS_VERSION")}"`],
@@ -123,6 +124,7 @@ for (const [label, needle] of [
   const source = label === "Rust toolchain" ? toolchain : cargo;
   if (!source.includes(needle)) failures.push(`${label} exact pin missing`);
 }
+if (cargo.includes("pdfium-bundled")) failures.push("pdfium-bundled must not enter the dependency graph");
 if (cargo.includes("justpdf")) failures.push("justpdf must not remain in the renderer dependency graph");
 if (cargo.includes("rusty-tesseract")) failures.push("OCR/Tesseract wrapper must not be a mandatory dependency");
 requireText("oxidize-pdf feature policy", cargo, [
@@ -130,10 +132,12 @@ requireText("oxidize-pdf feature policy", cargo, [
   'default-features = false',
   'features = ["compression", "semantic"]',
 ]);
-requireText("PDFium bundled renderer policy", cargo, [
+requireText("PDFium external renderer policy", cargo, [
   "target_os = \"android\"",
   "target_os = \"ios\"",
-  `pdfium-bundled = { version = "=${env.get("PDFIUM_BUNDLED_REQUIREMENT")}", features = ["bundled"] }`,
+  `pdfium-render = { version = "=${env.get("PDFIUM_RENDER_VERSION")}"`,
+  '"pdfium_7881"',
+  '"thread_safe"',
 ]);
 
 for (const required of [
@@ -226,8 +230,8 @@ requireText("check-static.sh", checkStatic, [
   "pnpm exec tsc",
   "cargo fmt",
 ]);
-requireText("check-fast.sh", checkFast, ["check-static.sh", "pnpm test", "cargo check"]);
-requireText("check.sh", checkFull, ["pnpm run build", "cargo clippy", "cargo test", "smoke-native.sh"]);
+requireText("check-fast.sh", checkFast, ["check-static.sh", "install-native-deps.sh", "pnpm test", "cargo check"]);
+requireText("check.sh", checkFull, ["install-native-deps.sh", "pnpm run build", "cargo clippy", "cargo test", "smoke-native.sh"]);
 requireText("check-changed.sh", checkChanged, ["vitest run --changed", "cargo test", "check-fast.sh", "iteration aid"]);
 requireText("check workflow", checkWorkflow, [
   "runs-on: [self-hosted, linux, x64, ostudy]",
@@ -254,6 +258,9 @@ for (const [name, expected] of [
 
 for (const requiredPath of [
   "scripts/build.sh",
+  "scripts/install-native-deps.sh",
+  "scripts/install-native-deps.ps1",
+  "scripts/native-deps-manifest.json",
   "scripts/check-static.sh",
   "scripts/check-fast.sh",
   "scripts/check.sh",
@@ -271,6 +278,7 @@ for (const requiredPath of [
   "src-tauri/src/document_semantics.rs",
   "src-tauri/src/pdf_backend.rs",
   "src-tauri/src/pdf_render_backend.rs",
+  "src-tauri/src/system_resources.rs",
   "src-tauri/src/document_backup.rs",
   "src-tauri/src/ai/document_intelligence.rs",
   "src-tauri/tests/fixtures/v0.1.0.sql",
@@ -292,7 +300,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, executable script modes, PDFium rendering, portable structured extraction, and tiered qualification manifests are consistent.`,
+  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, audited native PDFium provisioning, resource-aware document concurrency, and tiered qualification manifests are consistent.`,
 );
 
 function parseEnv(text) {

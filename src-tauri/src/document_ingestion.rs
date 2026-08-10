@@ -43,7 +43,8 @@ const MAX_RENDER_BYTES: usize = 32 * 1024 * 1024;
 const MAX_OCR_RENDER_BYTES: usize = 64 * 1024 * 1024;
 const OCR_LANGUAGE: &str = "en";
 const OCR_TIMEOUT_SECONDS: u32 = 120;
-const MAX_OCR_WORKERS: usize = 8;
+const OCR_WORKER_MEMORY_BYTES: u64 = 384 * 1024 * 1024;
+const OCR_QUEUE_ITEM_MEMORY_BYTES: u64 = MAX_OCR_RENDER_BYTES as u64;
 const OCR_QUEUE_DEPTH_PER_WORKER: usize = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -374,15 +375,27 @@ where
         total_units: candidates.len(),
     })?;
 
-    let worker_count = ocr_worker_count(candidates.len());
-    let queue_capacity = worker_count
-        .saturating_mul(OCR_QUEUE_DEPTH_PER_WORKER)
-        .max(1);
+    let resource_plan = crate::system_resources::plan_parallel_workers(
+        candidates.len(),
+        OCR_WORKER_MEMORY_BYTES,
+        "OSTUDY_OCR_WORKERS",
+    );
+    let worker_count = resource_plan.worker_count;
+    let queue_capacity = crate::system_resources::queue_capacity(
+        resource_plan,
+        candidates.len(),
+        OCR_QUEUE_ITEM_MEMORY_BYTES,
+        OCR_QUEUE_DEPTH_PER_WORKER,
+    );
     crate::logging::info(
         "document_ocr_parallel_started",
         format!(
-            "document={document_id} pages={} workers={worker_count} queue_capacity={queue_capacity}",
-            candidates.len()
+            "document={document_id} pages={} logical_cpus={} available_memory_mb={} working_budget_mb={} per_worker_mb={} workers={worker_count} queue_capacity={queue_capacity}",
+            candidates.len(),
+            resource_plan.logical_cpus,
+            resource_plan.available_memory_bytes / (1024 * 1024),
+            resource_plan.working_memory_budget_bytes / (1024 * 1024),
+            resource_plan.per_worker_memory_bytes / (1024 * 1024),
         ),
     );
 
@@ -656,19 +669,6 @@ where
         completed_units: *completed,
         total_units: total,
     })
-}
-
-fn ocr_worker_count(candidate_count: usize) -> usize {
-    let available = std::thread::available_parallelism()
-        .map(std::num::NonZeroUsize::get)
-        .unwrap_or(1);
-    bounded_ocr_worker_count(candidate_count, available)
-}
-
-fn bounded_ocr_worker_count(candidate_count: usize, available: usize) -> usize {
-    available
-        .clamp(1, MAX_OCR_WORKERS)
-        .min(candidate_count.max(1))
 }
 
 fn expand_semantic_recovery_pages(
@@ -1234,12 +1234,9 @@ mod tests {
     }
 
     #[test]
-    fn ocr_worker_count_uses_multiple_cores_without_unbounded_fanout() {
-        assert_eq!(bounded_ocr_worker_count(1, 32), 1);
-        assert_eq!(bounded_ocr_worker_count(4, 32), 4);
-        assert_eq!(bounded_ocr_worker_count(100, 32), MAX_OCR_WORKERS);
-        assert_eq!(bounded_ocr_worker_count(100, 3), 3);
-        assert_eq!(bounded_ocr_worker_count(100, 0), 1);
+    fn ocr_memory_estimates_are_explicit_and_queue_items_are_bounded() {
+        assert_eq!(OCR_WORKER_MEMORY_BYTES, 384 * 1024 * 1024);
+        assert_eq!(OCR_QUEUE_ITEM_MEMORY_BYTES, 64 * 1024 * 1024);
     }
 
     #[test]
