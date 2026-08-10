@@ -10,6 +10,10 @@ use std::{
     fs::{self, File, OpenOptions},
     io::Write,
     path::Path,
+    sync::{
+        mpsc::{self, TryRecvError},
+        Arc, Mutex,
+    },
 };
 
 use oxidize_pdf::{OcrError, OcrOptions, OcrProvider};
@@ -39,6 +43,8 @@ const MAX_RENDER_BYTES: usize = 32 * 1024 * 1024;
 const MAX_OCR_RENDER_BYTES: usize = 64 * 1024 * 1024;
 const OCR_LANGUAGE: &str = "en";
 const OCR_TIMEOUT_SECONDS: u32 = 120;
+const MAX_OCR_WORKERS: usize = 8;
+const OCR_QUEUE_DEPTH_PER_WORKER: usize = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ExtractionMode {
@@ -95,6 +101,19 @@ pub(crate) struct IngestedDocument {
     pub render_backend: &'static str,
     pub extraction_mode: ExtractionMode,
     pub ocr: OcrIngestionSummary,
+}
+
+#[derive(Debug)]
+struct OcrWorkItem {
+    candidate: pdf_backend::OcrPageCandidate,
+    png: Vec<u8>,
+}
+
+#[derive(Debug)]
+enum OcrWorkResult {
+    Recovered(RecoveredPageText),
+    VisualOnly { page_number: usize },
+    Failed(CommandError),
 }
 
 pub(crate) fn active_pdf_extraction_backend() -> &'static str {
@@ -335,8 +354,8 @@ where
         return Ok(Vec::new());
     }
     ensure_document_not_canceled(document_id)?;
-    let provider = TesseractCliOcrProvider::for_document(document_id);
-    if let Err(error) = provider.ensure_available() {
+    let availability_probe = TesseractCliOcrProvider::for_document(document_id);
+    if let Err(error) = availability_probe.ensure_available() {
         if requires_ocr_provider(candidates) {
             return Err(map_ocr_error(None, error));
         }
@@ -355,150 +374,303 @@ where
         total_units: candidates.len(),
     })?;
 
+    let worker_count = ocr_worker_count(candidates.len());
+    let queue_capacity = worker_count.saturating_mul(OCR_QUEUE_DEPTH_PER_WORKER).max(1);
+    crate::logging::info(
+        "document_ocr_parallel_started",
+        format!(
+            "document={document_id} pages={} workers={worker_count} queue_capacity={queue_capacity}",
+            candidates.len()
+        ),
+    );
+
     let page_numbers = candidates
         .iter()
         .map(|candidate| candidate.page_number)
         .collect::<Vec<_>>();
+    let (work_sender, work_receiver) = mpsc::sync_channel::<OcrWorkItem>(queue_capacity);
+    let work_receiver = Arc::new(Mutex::new(work_receiver));
+    let (result_sender, result_receiver) = mpsc::channel::<OcrWorkResult>();
     let mut recovered = Vec::new();
-    let mut attempted = 0_usize;
-    let render_result = pdf_render_backend::render_ocr_pages(
-        render_runtime,
-        source_path,
-        &page_numbers,
-        |page_number, rendered| -> Result<(), CommandError> {
-            ensure_document_not_canceled(document_id)?;
-            let candidate = candidates
-                .iter()
-                .find(|candidate| candidate.page_number == page_number)
-                .ok_or_else(|| {
-                    CommandError::new(
-                        "document_ocr_plan_changed",
-                        "The PDF OCR recovery plan changed while the page was being processed.",
-                    )
-                })?;
-            let png = match rendered {
-                Ok(png) => png,
-                Err(error) if candidate.required => return Err(map_pdf_render_error(error)),
-                Err(error) => {
-                    crate::logging::info(
-                        "document_optional_ocr_render_failed",
-                        format!(
-                            "document={document_id} page={page_number} detail={}",
-                            bounded_diagnostic(&error.to_string(), 320)
-                        ),
-                    );
-                    attempted = attempted.saturating_add(1);
-                    report_progress(IngestionProgress::Ocr {
-                        completed_units: attempted,
-                        total_units: candidates.len(),
-                    })?;
-                    return Ok(());
-                }
-            };
-            if png.is_empty() || png.len() > MAX_OCR_RENDER_BYTES {
-                if candidate.required {
-                    return Err(CommandError::new(
-                        "document_ocr_render_too_large",
-                        format!(
-                            "The high-resolution OCR render for PDF page {page_number} exceeds ostudy's image safety limit."
-                        ),
-                    ));
-                }
-                crate::logging::info(
-                    "document_optional_ocr_render_skipped",
-                    format!(
-                        "document={document_id} page={page_number} bytes={}",
-                        png.len()
-                    ),
-                );
-                attempted = attempted.saturating_add(1);
-                report_progress(IngestionProgress::Ocr {
-                    completed_units: attempted,
-                    total_units: candidates.len(),
-                })?;
-                return Ok(());
-            }
+    let mut completed = 0_usize;
 
-            let options = OcrOptions {
-                language: OCR_LANGUAGE.to_string(),
-                timeout_seconds: OCR_TIMEOUT_SECONDS,
-                debug_output: false,
-                ..Default::default()
-            };
-            let result = match provider.process_image(&png, &options) {
-                Ok(result) => result,
-                Err(error) if candidate.required => {
-                    return Err(map_ocr_error(Some(page_number), error));
+    std::thread::scope(|scope| -> Result<Vec<RecoveredPageText>, CommandError> {
+        for _ in 0..worker_count {
+            let work_receiver = Arc::clone(&work_receiver);
+            let result_sender = result_sender.clone();
+            scope.spawn(move || {
+                let provider = TesseractCliOcrProvider::for_document(document_id);
+                loop {
+                    let item = {
+                        let receiver = match work_receiver.lock() {
+                            Ok(receiver) => receiver,
+                            Err(_) => break,
+                        };
+                        match receiver.recv() {
+                            Ok(item) => item,
+                            Err(_) => break,
+                        }
+                    };
+                    let outcome = process_ocr_work_item(&provider, document_id, item);
+                    if result_sender.send(outcome).is_err() {
+                        break;
+                    }
                 }
-                Err(error) => {
-                    if pdf_ocr_backend::is_cancellation_error(&error) {
-                        return Err(map_ocr_error(Some(page_number), error));
+            });
+        }
+        drop(result_sender);
+
+        let render_result = pdf_render_backend::render_ocr_pages(
+            render_runtime,
+            source_path,
+            &page_numbers,
+            |page_number, rendered| -> Result<(), CommandError> {
+                ensure_document_not_canceled(document_id)?;
+                drain_ocr_results(
+                    &result_receiver,
+                    &mut recovered,
+                    &mut completed,
+                    candidates.len(),
+                    report_progress,
+                )?;
+                let candidate = candidates
+                    .iter()
+                    .find(|candidate| candidate.page_number == page_number)
+                    .cloned()
+                    .ok_or_else(|| {
+                        CommandError::new(
+                            "document_ocr_plan_changed",
+                            "The PDF OCR recovery plan changed while the page was being processed.",
+                        )
+                    })?;
+                let png = match rendered {
+                    Ok(png) => png,
+                    Err(error) if candidate.required => return Err(map_pdf_render_error(error)),
+                    Err(error) => {
+                        crate::logging::info(
+                            "document_optional_ocr_render_failed",
+                            format!(
+                                "document={document_id} page={page_number} detail={}",
+                                bounded_diagnostic(&error.to_string(), 320)
+                            ),
+                        );
+                        completed = completed.saturating_add(1);
+                        report_progress(IngestionProgress::Ocr {
+                            completed_units: completed,
+                            total_units: candidates.len(),
+                        })?;
+                        return Ok(());
+                    }
+                };
+                if png.is_empty() || png.len() > MAX_OCR_RENDER_BYTES {
+                    if candidate.required {
+                        return Err(CommandError::new(
+                            "document_ocr_render_too_large",
+                            format!(
+                                "The high-resolution OCR render for PDF page {page_number} exceeds ostudy's image safety limit."
+                            ),
+                        ));
                     }
                     crate::logging::info(
-                        "document_optional_ocr_page_failed",
+                        "document_optional_ocr_render_skipped",
                         format!(
-                            "document={document_id} page={page_number} detail={}",
-                            bounded_diagnostic(&error.to_string(), 320)
+                            "document={document_id} page={page_number} bytes={}",
+                            png.len()
                         ),
                     );
-                    attempted = attempted.saturating_add(1);
+                    completed = completed.saturating_add(1);
                     report_progress(IngestionProgress::Ocr {
-                        completed_units: attempted,
+                        completed_units: completed,
                         total_units: candidates.len(),
                     })?;
                     return Ok(());
                 }
-            };
-            let text = normalize_page_text(&result.text);
-            let quality = pdf_backend::assess_text_quality(&text);
-            if candidate.required && (text.is_empty() || quality.suspicious) {
+                work_sender
+                    .send(OcrWorkItem { candidate, png })
+                    .map_err(|_| {
+                        CommandError::new(
+                            "document_ocr_worker_stopped",
+                            "The OCR worker pool stopped before all selected PDF pages were processed.",
+                        )
+                    })?;
+                drain_ocr_results(
+                    &result_receiver,
+                    &mut recovered,
+                    &mut completed,
+                    candidates.len(),
+                    report_progress,
+                )?;
+                Ok(())
+            },
+        );
+        drop(work_sender);
+
+        match render_result {
+            Ok(count) if count == candidates.len() => {}
+            Ok(_) => {
                 return Err(CommandError::new(
-                    "document_ocr_text_unusable",
-                    format!(
-                        "The PDF text layer on page {page_number} is unreliable, and OCR could not recover trustworthy text from the rendered page. Try a cleaner/exported copy of the PDF or verify the source visually."
-                    ),
+                    "document_ocr_render_incomplete",
+                    "The PDF renderer did not attempt every page selected for OCR recovery.",
                 ));
             }
-            if !text.is_empty()
-                && !quality.suspicious
-                && (candidate.required || quality.substantive)
-            {
-                recovered.push(RecoveredPageText {
-                    page_number,
-                    text,
-                    confidence: result.confidence.clamp(0.0, 1.0),
-                });
-                crate::logging::info(
-                    "document_ocr_page_recovered",
-                    format!(
-                        "document={document_id} page={page_number} confidence_milli={} required={}",
-                        confidence_milli(result.confidence),
-                        candidate.required
-                    ),
-                );
-            } else {
-                crate::logging::info(
-                    "document_ocr_sparse_page_kept_visual",
-                    format!("document={document_id} page={page_number}"),
-                );
+            Err(RenderProcessError::Visitor(error)) => return Err(error),
+            Err(RenderProcessError::Backend(error)) => return Err(map_pdf_render_error(error)),
+        }
+
+        for result in result_receiver {
+            apply_ocr_result(
+                result,
+                &mut recovered,
+                &mut completed,
+                candidates.len(),
+                report_progress,
+            )?;
+        }
+        if completed != candidates.len() {
+            return Err(CommandError::new(
+                "document_ocr_worker_incomplete",
+                "The OCR worker pool stopped before every selected PDF page reached a terminal result.",
+            ));
+        }
+        recovered.sort_by_key(|page| page.page_number);
+        Ok(recovered)
+    })
+}
+
+fn process_ocr_work_item(
+    provider: &TesseractCliOcrProvider,
+    document_id: &str,
+    item: OcrWorkItem,
+) -> OcrWorkResult {
+    let page_number = item.candidate.page_number;
+    let options = OcrOptions {
+        language: OCR_LANGUAGE.to_string(),
+        timeout_seconds: OCR_TIMEOUT_SECONDS,
+        debug_output: false,
+        ..Default::default()
+    };
+    let result = match provider.process_image(&item.png, &options) {
+        Ok(result) => result,
+        Err(error) if item.candidate.required => {
+            return OcrWorkResult::Failed(map_ocr_error(Some(page_number), error));
+        }
+        Err(error) => {
+            if pdf_ocr_backend::is_cancellation_error(&error) {
+                return OcrWorkResult::Failed(map_ocr_error(Some(page_number), error));
             }
-            attempted = attempted.saturating_add(1);
-            report_progress(IngestionProgress::Ocr {
-                completed_units: attempted,
-                total_units: candidates.len(),
-            })?;
-            Ok(())
-        },
-    );
-    match render_result {
-        Ok(count) if count == candidates.len() => Ok(recovered),
-        Ok(_) => Err(CommandError::new(
-            "document_ocr_render_incomplete",
-            "The PDF renderer did not attempt every page selected for OCR recovery.",
-        )),
-        Err(RenderProcessError::Visitor(error)) => Err(error),
-        Err(RenderProcessError::Backend(error)) => Err(map_pdf_render_error(error)),
+            crate::logging::info(
+                "document_optional_ocr_page_failed",
+                format!(
+                    "document={document_id} page={page_number} detail={}",
+                    bounded_diagnostic(&error.to_string(), 320)
+                ),
+            );
+            return OcrWorkResult::VisualOnly { page_number };
+        }
+    };
+    let text = normalize_page_text(&result.text);
+    let quality = pdf_backend::assess_text_quality(&text);
+    if item.candidate.required && (text.is_empty() || quality.suspicious) {
+        crate::logging::info(
+            "document_ocr_text_rejected",
+            format!(
+                "document={document_id} page={page_number} confidence_milli={} chars={} substantive={} reasons={}",
+                confidence_milli(result.confidence),
+                text.chars().count(),
+                quality.substantive,
+                quality.reasons.join(",")
+            ),
+        );
+        return OcrWorkResult::Failed(CommandError::new(
+            "document_ocr_text_unusable",
+            format!(
+                "The PDF text layer on page {page_number} is unreliable, and OCR could not recover trustworthy text from the PDFium-rendered page. The original PDF remains available for visual review."
+            ),
+        ));
     }
+    if !text.is_empty()
+        && !quality.suspicious
+        && (item.candidate.required || quality.substantive)
+    {
+        crate::logging::info(
+            "document_ocr_page_recovered",
+            format!(
+                "document={document_id} page={page_number} confidence_milli={} required={}",
+                confidence_milli(result.confidence),
+                item.candidate.required
+            ),
+        );
+        return OcrWorkResult::Recovered(RecoveredPageText {
+            page_number,
+            text,
+            confidence: result.confidence.clamp(0.0, 1.0),
+        });
+    }
+    crate::logging::info(
+        "document_ocr_sparse_page_kept_visual",
+        format!("document={document_id} page={page_number}"),
+    );
+    OcrWorkResult::VisualOnly { page_number }
+}
+
+fn drain_ocr_results<F>(
+    receiver: &mpsc::Receiver<OcrWorkResult>,
+    recovered: &mut Vec<RecoveredPageText>,
+    completed: &mut usize,
+    total: usize,
+    report_progress: &mut F,
+) -> Result<(), CommandError>
+where
+    F: FnMut(IngestionProgress) -> Result<(), CommandError>,
+{
+    loop {
+        match receiver.try_recv() {
+            Ok(result) => apply_ocr_result(result, recovered, completed, total, report_progress)?,
+            Err(TryRecvError::Empty) => return Ok(()),
+            Err(TryRecvError::Disconnected) => return Ok(()),
+        }
+    }
+}
+
+fn apply_ocr_result<F>(
+    result: OcrWorkResult,
+    recovered: &mut Vec<RecoveredPageText>,
+    completed: &mut usize,
+    total: usize,
+    report_progress: &mut F,
+) -> Result<(), CommandError>
+where
+    F: FnMut(IngestionProgress) -> Result<(), CommandError>,
+{
+    match result {
+        OcrWorkResult::Recovered(page) => recovered.push(page),
+        OcrWorkResult::VisualOnly { page_number } => {
+            crate::logging::info(
+                "document_ocr_page_visual_only",
+                format!("page={page_number}"),
+            );
+        }
+        OcrWorkResult::Failed(error) => return Err(error),
+    }
+    *completed = completed.saturating_add(1);
+    report_progress(IngestionProgress::Ocr {
+        completed_units: *completed,
+        total_units: total,
+    })
+}
+
+fn ocr_worker_count(candidate_count: usize) -> usize {
+    let available = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1);
+    bounded_ocr_worker_count(candidate_count, available)
+}
+
+fn bounded_ocr_worker_count(candidate_count: usize, available: usize) -> usize {
+    available
+        .max(1)
+        .min(MAX_OCR_WORKERS)
+        .min(candidate_count.max(1))
 }
 
 fn expand_semantic_recovery_pages(
@@ -515,11 +687,6 @@ fn expand_semantic_recovery_pages(
         return Vec::new();
     }
 
-    // A semantic chunk may cross page boundaries. If any page in that chunk is
-    // corrupt, keeping the chunk can leak bad text; deleting it without rebuilding
-    // its clean neighboring pages can silently lose source coverage. Expand to the
-    // transitive set of pages touched by affected chunks, then rebuild that bounded
-    // region from trustworthy page text/OCR text.
     loop {
         let before = pages.len();
         for chunk in &document.chunks {
@@ -1066,6 +1233,15 @@ mod tests {
             "page_text_fallback"
         );
         assert_eq!(ExtractionMode::OcrFallback.as_str(), "ocr_fallback");
+    }
+
+    #[test]
+    fn ocr_worker_count_uses_multiple_cores_without_unbounded_fanout() {
+        assert_eq!(bounded_ocr_worker_count(1, 32), 1);
+        assert_eq!(bounded_ocr_worker_count(4, 32), 4);
+        assert_eq!(bounded_ocr_worker_count(100, 32), MAX_OCR_WORKERS);
+        assert_eq!(bounded_ocr_worker_count(100, 3), 3);
+        assert_eq!(bounded_ocr_worker_count(100, 0), 1);
     }
 
     #[test]
