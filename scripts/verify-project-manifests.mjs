@@ -114,7 +114,7 @@ for (const [label, needle] of [
   ["chrono", `chrono = "=${env.get("CHRONO_VERSION")}"`],
   ["image", `image = { version = "=${env.get("IMAGE_VERSION")}"`],
   ["oxidize-pdf", `version = "=${env.get("OXIDIZE_PDF_VERSION")}"`],
-  ["pdfium-bundled", `pdfium-bundled = { version = "=${env.get("PDFIUM_BUNDLED_VERSION")}"`],
+  ["pdfium-bundled", `pdfium-bundled = { version = "=${env.get("PDFIUM_BUNDLED_REQUIREMENT")}"`],
   ["keyring", `keyring = "=${env.get("KEYRING_VERSION")}"`],
   ["reqwest", `version = "=${env.get("REQWEST_VERSION")}"`],
   ["rs-fsrs", `rs-fsrs = "=${env.get("RS_FSRS_VERSION")}"`],
@@ -133,7 +133,7 @@ requireText("oxidize-pdf feature policy", cargo, [
 requireText("PDFium bundled renderer policy", cargo, [
   "target_os = \"android\"",
   "target_os = \"ios\"",
-  `pdfium-bundled = { version = "=${env.get("PDFIUM_BUNDLED_VERSION")}", features = ["bundled"] }`,
+  `pdfium-bundled = { version = "=${env.get("PDFIUM_BUNDLED_REQUIREMENT")}", features = ["bundled"] }`,
 ]);
 
 for (const required of [
