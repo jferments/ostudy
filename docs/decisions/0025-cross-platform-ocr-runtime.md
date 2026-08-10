@@ -1,177 +1,170 @@
-# ADR 0025: Cross-platform OCR runtime, PDFium raster source, and platform-native mobile adapters
+# ADR 0025: Cross-platform PDF rendering, OCR runtimes, and audited native provisioning
 
 - **Status:** Accepted for the PR #39 document-platform stabilization
-- **Date:** 2026-08-09
-- **Updated:** 2026-08-10
-- **Scope:** OCR fallback portability and faithful PDF rendering across Linux, Windows, macOS, Android, and iOS
+- **Date:** 2026-08-10
+- **Scope:** PDF rendering/OCR portability and native dependency trust across Linux, Windows, macOS, Android, and iOS
 
 ## Context
 
-PR #39 added extraction-quality validation after real acceptance testing found a PDF whose visible glyphs were correct but whose text layer used malformed/private font-to-Unicode mappings. Native extraction and Poppler both returned corrupted text, so ostudy must render affected pages and recover text with OCR before any LLM request.
+PR #39 found a real PDF whose visible glyphs are correct but whose embedded font-to-Unicode mapping is malformed. Native extraction and Poppler both return corrupted text, so ostudy must render affected pages and recover text before any LLM request.
 
-The first recovery implementation used Tesseract against a justpdf raster. The OCR engine was functional, but real testing showed that a clean digital PDF could render correctly in ordinary readers while the lightweight raster path still produced pages from which Tesseract could not recover trustworthy text. OCR is only as good as the pixels it receives, so renderer fidelity is part of the recovery contract.
+The earlier lightweight renderer did not faithfully rasterize every malformed-font page, so desktop rendering moved to Chromium PDFium. A first PDFium implementation used a very new Rust convenience crate that downloaded/bundled PDFium automatically. That made native-runtime acquisition opaque inside the Rust dependency graph and did not meet ostudy's desired trust boundary.
 
-A Tesseract child-process architecture is also not an acceptable universal mobile contract. Tauri mobile applications integrate native functionality through Kotlin/Java on Android and Swift on iOS. The document pipeline therefore must depend on ostudy rendering/OCR contracts, not on one PDF renderer or the presence of a `tesseract` executable.
+OCR has the same portability problem if it is modeled as a universal command-line executable: desktop Tesseract is appropriate, while Android/iOS should use native on-device OCR APIs.
 
 ## Decision
 
-### Separate extraction, rendering, and OCR engines
+### Native binary acquisition is owned by ostudy, not Cargo dependencies
 
-The active desktop PDF pipeline intentionally uses different engines for different responsibilities:
+Rust dependencies may provide bindings, but they must not silently download or select the native PDF/OCR runtime.
 
-1. **oxidize-pdf** extracts native text and semantic structure;
-2. **PDFium** rasterizes the visible page;
-3. **Tesseract** recognizes text from a PDFium raster when native extraction is unreliable.
+Desktop PDFium uses the mature `pdfium-render` Rust bindings directly. The actual PDFium library is provisioned separately by ostudy's reviewed scripts or by the operator/system. Repository checks explicitly reject `pdfium-bundled`.
 
-These are adapters behind ostudy-owned contracts. Document identity, SQLite persistence, semantic planning, checkpoints, provider execution, and card authoring do not depend on a concrete parser/renderer/OCR vendor.
+The audited native manifest is:
 
-### PDFium is the canonical desktop raster source
+```text
+scripts/native-deps-manifest.json
+```
 
-Linux, Windows, and macOS use PDFium through `pdfium-bundled` / `pdfium-render` for both durable page renders and temporary OCR renders.
+It pins PDFium API build `7881`, pdfium-render `0.9.3`, one immutable archive name per supported target, a SHA-256 digest for every archive, and the expected native library path inside each archive.
 
-- durable page derivatives: 120 DPI;
-- temporary OCR derivatives: 300 DPI;
-- print-quality PDFium rendering with smoothing enabled;
-- PDFium native text-rendering optimization disabled so visible glyphs are rasterized by the normal PDFium page renderer rather than depending on an alternate native text path.
+The default precompiled source is the established third-party `bblanchon/pdfium-binaries` project at immutable release `chromium/7881`. It is deliberately documented as third-party, not as an official Google/Foxit binary distribution. ostudy verifies the committed SHA-256 before extracting anything.
 
-The renderer backend identity is versioned. A document that records the former justpdf backend automatically rebuilds derivatives from its immutable source PDF on Retry.
+For the strongest provenance, an operator may build PDFium from the official Google source and set `OSTUDY_PDFIUM_PATH`, or install a compatible system PDFium. The official PDFium build is Chromium-scale (depot_tools, gclient, GN, Ninja and target toolchains), so it is an optional high-assurance path rather than the default developer bootstrap.
 
-`pdfium-bundled` is compiled in bundled mode on supported desktop targets. Cargo's build helper obtains the pinned PDFium build (`7881`) at build time when it is not already supplied, embeds it, and `bind_bundled()` loads the extracted local copy at runtime. Runtime document processing therefore does not depend on a system PDFium package or a network connection.
+### Runtime lookup order
 
-The build environment already requires `curl` and `tar`. An offline/controlled builder may supply the exact shared library through `PDFIUM_BUNDLE_LIB` during compilation.
+Desktop `pdf_render_backend` binds PDFium in this order:
 
-### PDFium concurrency policy
+1. explicit `OSTUDY_PDFIUM_PATH` file/directory;
+2. the Tauri-bundled `native/pdfium` resource;
+3. the reviewed development runtime under `src-tauri/resources/native/pdfium`;
+4. the executable directory;
+5. the normal operating-system PDFium library search path.
 
-Pdfium itself does not guarantee concurrent access. pdfium-render's thread-safe mode serializes Pdfium calls, so running many threads against one process-local Pdfium instance does not provide meaningful render parallelism and can create false expectations about throughput.
+A missing/incompatible runtime fails locally with an actionable error before document processing proceeds.
 
-ostudy therefore keeps PDFium rendering bounded and serialized within a document. CPU scaling is applied around it:
+### Platform provisioning scripts
 
-- raw oxidize page text extraction uses independent parser documents across up to 16 workers;
-- selected 300-DPI PDFium pages flow into a bounded OCR queue;
-- up to 8 independent Tesseract worker processes recognize separate pages concurrently.
+Unix-like hosts use `scripts/install-native-deps.sh`. Windows uses `scripts/install-native-deps.ps1`.
 
-This producer/consumer design avoids retaining every high-resolution page in memory while still allowing OCR to occupy multiple CPU cores.
+The scripts support PDFium-only provisioning for CI/build/release and the desktop OCR setup path for end-user/developer machines. Downloaded PDFium archives are HTTPS-only, SHA-256 checked before extraction, and staged into a gitignored native-runtime directory. A local provenance file records the immutable source, archive digest, and extracted-library digest so repeated runs can verify and reuse the exact staged binary.
 
-### OCR is a platform service, not a Tesseract assumption
+### Tesseract desktop installation uses established OS channels
 
-The document ingestion layer owns these platform-neutral steps:
+ostudy does not maintain a custom Tesseract binary bundle.
+
+Desktop setup prefers the installation channels documented by the Tesseract project:
+
+- Debian/Ubuntu: apt (`tesseract-ocr`, `tesseract-ocr-eng`);
+- macOS: Homebrew or MacPorts;
+- Windows: the Tesseract-documented UB Mannheim distribution, installed through its winget package when available.
+
+`OSTUDY_TESSERACT_PATH` remains available when the executable is not on `PATH`.
+
+### Rendering and OCR are separate platform services
+
+The document ingestion layer owns the platform-neutral sequence:
 
 1. detect unreliable native text;
-2. choose only affected pages;
-3. request a high-fidelity OCR-resolution render;
-4. request OCR with language/options/cancellation context;
-5. receive normalized text, confidence, engine identity, and image dimensions;
-6. validate recovered text again;
-7. rebuild semantic coverage and persist extraction provenance;
+2. choose affected pages;
+3. render selected pages at OCR resolution;
+4. invoke a platform OCR provider;
+5. receive normalized text/confidence/engine identity;
+6. quality-check recovered text again;
+7. rebuild semantic coverage and persist provenance;
 8. stop before provider traffic if no trustworthy recovery exists.
 
-The OCR provider is replaceable behind that contract. PDF semantics, SQLite persistence, AI planning, checkpoints, and card generation must not branch on a particular OCR vendor.
+PDF semantics, SQLite persistence, AI planning, checkpoints, and card generation do not branch on a specific OCR vendor.
 
-### Desktop: Tesseract adapter
+### Desktop PDFium rendering
 
-Linux, Windows, and macOS use the current Tesseract adapter through oxidize-pdf's `OcrProvider` interface.
+Linux, Windows, and macOS use PDFium through `pdfium-render`.
 
-Development builds may discover `tesseract` from `PATH` or `OSTUDY_TESSERACT_PATH`. Release packaging should bundle a target-specific Tesseract sidecar plus required trained-data assets rather than making ordinary users install a system package manually.
+- durable visual derivatives: 120 DPI;
+- temporary OCR rasters: 300 DPI;
+- print-quality/text/image/path smoothing enabled;
+- native glyph rendering is used even when the PDF text mapping is corrupt.
 
-Desktop OCR keeps:
+PDFium calls remain serialized in one process. Upstream PDFium does not guarantee concurrent access, and pdfium-render's thread-safe mode serializes calls. Parallel CPU scaling is therefore placed where work is independent: raw text extraction and page OCR.
 
-- local/offline recognition;
-- selected 300-DPI PDFium page renders;
-- bounded multi-page worker concurrency;
-- bounded TSV output;
-- private temporary workspaces;
-- exact-document cancellation that kills active child processes promptly;
-- engine/confidence provenance;
-- multipass PSM 3/6/11 recognition within one bounded per-page timeout when the default layout pass is weak.
+### Resource-aware parallelism replaces fixed worker ceilings
 
-### Android: native bundled on-device recognizer
+There is no fixed `8`-worker OCR limit and no fixed extraction-thread maximum.
 
-Android must **not** spawn the desktop Tesseract executable.
+The shared Rust resource planner observes logical CPU count, currently available RAM, task/page count, a conservative per-worker working-memory estimate, and an optional operator cap. Worker count is the minimum of those real constraints. High-core/high-memory machines may use more than eight OCR workers. Lower-memory systems reduce concurrency before they swap or OOM.
 
-The intended Android adapter is a Tauri mobile plugin implemented in Kotlin, using a statically bundled on-device text-recognition SDK. The initial target is the bundled ML Kit Text Recognition v2 Latin model rather than the Google-Play-services/downloaded variant, because the recovery path must be available offline immediately and must not depend on Play Services being present.
+Current conservative estimates are:
 
-The Kotlin adapter will accept rendered page bytes from the Rust/document boundary and return the shared ostudy OCR result. It must preserve cancellation, text/confidence normalization, language/script identity, and bounded output semantics.
+- raw oxidize page extraction: 96 MiB per independent worker;
+- desktop Tesseract OCR: 384 MiB per worker;
+- queued OCR PNG: bounded by the existing 64 MiB page-image safety limit.
 
-If a future Android distribution cannot or should not include the bundled ML Kit dependency, the same contract may instead be backed by a linked native Tesseract/libtess implementation without changing document ingestion.
+The planner reserves system/application memory and sizes the producer queue from the remaining budget. Operator caps are available through `OSTUDY_OCR_WORKERS` and `OSTUDY_PDF_TEXT_WORKERS`. These values can lower concurrency for debugging/thermal/resource policies; they do not bypass RAM/task safety bounds.
 
-The mobile PDF renderer is a separate target concern. PR #39 does not force the desktop bundled-PDFium binary model onto Android.
+### Android
 
-### iOS: Apple Vision text recognition
+Android does not spawn the desktop Tesseract executable.
 
-iOS must **not** spawn or package a command-line Tesseract process.
+The intended OCR adapter is a Tauri mobile plugin implemented in Kotlin using the bundled/offline ML Kit Text Recognition v2 Latin model. A linked native Tesseract implementation remains an alternate future adapter if distribution constraints change.
 
-The intended iOS adapter is a Tauri mobile plugin implemented in Swift using Apple's Vision text-recognition API. Vision performs on-device image text recognition and returns recognized text observations with confidence information, fitting the existing ostudy OCR result contract without introducing an external executable.
+The native-dependency manifest already records pinned PDFium Android artifacts for future platform packaging, but PR #39 does not claim the Android renderer bridge is implemented. Mobile rendering/OCR must be qualified as part of the Android port before enabling corrupted-PDF recovery there.
 
-The Swift adapter will receive the same platform-rendered page input and return normalized text/confidence/provenance through the same Rust-facing OCR interface.
+### iOS
 
-The mobile PDF renderer is likewise target-specific; PR #39 does not claim the desktop PDFium bundle already provides an iOS renderer.
+iOS does not spawn a command-line Tesseract process.
 
-### Current PR #39 mobile behavior
+The intended OCR adapter is Swift + Apple Vision. The manifest records PDFium iOS device/simulator/catalyst artifacts for future renderer packaging, but the current Rust mobile renderer bridge remains pending until the iOS Tauri project exists.
 
-The repository does not yet contain initialized Android/iOS Tauri native projects, so PR #39 does not pretend those native SDK integrations already exist.
+### Engine identity and derivative invalidation
 
-Current target gating is explicit:
+A recovered document persists extraction mode, OCR page counts, confidence, OCR engine identity, extraction backend identity, and render backend identity.
 
-- desktop targets: bundled PDFium rendering + Tesseract CLI OCR;
-- Android/iOS targets: desktop PDFium/Tesseract subprocess assumptions are disabled and the missing native adapter reports a local configuration/unavailable error before any AI provider sees corrupted text.
+The active desktop render identity is:
 
-Adding the actual Kotlin/Swift renderer/OCR adapters belongs with the mobile platform port, when generated projects and target-specific CI lanes exist.
+```text
+pdfium-render-0.9.3/pdfium-api-7881-external-v2-120dpi
+```
 
-## Engine identity and derivative invalidation
-
-A recovered document persists extraction mode, OCR page counts, confidence, OCR engine identity, extraction backend identity, and render backend identity. A parser/renderer/OCR change that can alter recovered semantic text must bump the appropriate contract identity so retained derivatives/checkpoints are rebuilt instead of mixing output produced by different pipelines.
-
-Backups may legitimately carry already-recovered canonical document text from one platform to another. Re-OCR is required only when the active extraction/render contract changes or derivatives are incomplete/corrupt.
-
-## Application close policy
-
-An active document task spans local extraction, rendering, OCR, and provider execution. Closing the application interrupts the task and can invalidate work that has not reached a durable checkpoint.
-
-The native Tauri `CloseRequested` path checks the same exact-document task registry used by cancellation. If any document job is active, the close request is prevented and a native warning asks whether to close ostudy or keep working. Confirming close force-destroys the main window; declining leaves the document task running. Normal close behavior is unchanged when no document task is active.
-
-Startup reconciliation continues to mark any interrupted durable document/job state as retryable rather than automatically resuming provider traffic.
-
-## Language policy
-
-PR #39 uses English OCR for the acceptance source. The cross-platform contract carries language/script options, but automatic language detection is not part of this stage.
-
-Future platform adapters should expose a common language-capability layer rather than leaking Tesseract language codes, Apple Vision language identifiers, or ML Kit script SDK names into document ingestion.
+Changing rendering/extraction contracts invalidates stale derivatives so Retry rebuilds them instead of mixing output from old engines.
 
 ## Failure policy
 
-OCR is a recovery mechanism, never permission to send suspect text onward.
+OCR is recovery, never permission to send suspect text onward.
 
-- Corrupt non-empty native text requires trustworthy OCR recovery.
-- Blank/image-only pages may remain visual-only when OCR is unavailable.
-- A required OCR backend that is absent returns a platform-appropriate local error.
-- Recovered text is quality-checked again before semantic planning/provider traffic.
-- Diagnostics never contain source text or OCR text.
+- corrupt non-empty native text requires trustworthy OCR recovery;
+- blank/image-only pages may remain visual-only when OCR is unavailable;
+- missing native PDF/OCR runtimes return actionable local errors;
+- OCR output is quality-checked before semantic planning/provider traffic;
+- native artifacts are not used until their pinned digest is verified;
+- diagnostics never contain source or OCR text.
 
 ## Validation
 
 Before PR #39 merge:
 
 - fast and full desktop qualification must pass on the exact final head;
-- the malformed-font 138-page acceptance PDF must exercise real PDFium + Tesseract recovery on Linux;
-- a normal PDF must remain on native extraction without invoking OCR;
-- multiple Tesseract workers must execute concurrently on a many-page OCR fallback;
-- Stop during OCR must terminate active work promptly;
-- application close during local processing or provider execution must show the native warning and Keep working must preserve the running task;
-- accepted OCR source windows must contain readable text rather than PUA/high-Latin corruption.
+- repository checks must prove `pdfium-bundled`/justpdf/rusty-tesseract are absent;
+- native manifest tests must validate PDFium build, immutable source and SHA-256 pins;
+- a clean self-hosted runner must provision and bind the pinned external PDFium library;
+- the malformed-font 138-page acceptance PDF must complete PDFium + Tesseract recovery on Linux;
+- a normal PDF must remain on native extraction without OCR;
+- a many-page OCR run should use the CPU/RAM-selected worker count rather than a fixed ceiling;
+- Stop during OCR must terminate active child processes promptly;
+- closing ostudy during any active document job must show the native close warning.
 
 During Android/iOS porting:
 
 - add target-specific compile/build CI lanes;
-- add native rendering/OCR adapter tests using the same recovery fixtures;
-- prove corrupted source text never reaches an LLM when a native adapter is unavailable;
-- verify offline behavior and packaged model/framework availability;
-- benchmark OCR accuracy and memory on representative phone/tablet hardware before enabling large-document automatic OCR by default.
+- implement/qualify native renderer and OCR adapters;
+- prove corrupt source text never reaches an LLM when a native adapter is unavailable;
+- verify offline behavior and packaged runtime/model availability;
+- benchmark memory/thermal behavior on representative devices before enabling large automatic OCR jobs by default.
 
 ## Consequences
 
-- Document AI is less sensitive to malformed font/text-layer PDFs because visual rasterization is delegated to PDFium rather than the lightweight renderer.
-- The document core remains engine-neutral despite using three specialized desktop engines.
-- Parallel OCR uses real independent processes instead of pretending PDFium itself scales through threads.
-- Desktop builds provision the pinned PDFium runtime automatically at build time.
-- Android/iOS avoid an unnatural subprocess/sidecar model and remain free to use platform-native render/OCR engines.
-- The system fails safely on a platform whose native recovery adapter has not shipped yet.
+- The Rust graph contains only PDFium bindings, not a hidden native downloader.
+- Native runtime trust is explicit, versioned, checksum-audited, and independently replaceable.
+- Builders can choose audited precompiled artifacts, system packages, or official-source builds without changing document code.
+- OCR/extraction can use large workstations well while remaining RAM-aware on smaller systems.
+- Android/iOS remain free to use platform-native OCR rather than inheriting a desktop subprocess architecture.
