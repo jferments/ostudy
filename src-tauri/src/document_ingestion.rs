@@ -419,10 +419,12 @@ where
                 return Ok(());
             }
 
-            let mut options = OcrOptions::default();
-            options.language = OCR_LANGUAGE.to_string();
-            options.timeout_seconds = OCR_TIMEOUT_SECONDS;
-            options.debug_output = false;
+            let options = OcrOptions {
+                language: OCR_LANGUAGE.to_string(),
+                timeout_seconds: OCR_TIMEOUT_SECONDS,
+                debug_output: false,
+                ..Default::default()
+            };
             let result = match provider.process_image(&png, &options) {
                 Ok(result) => result,
                 Err(error) if candidate.required => {
