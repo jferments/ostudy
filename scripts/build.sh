@@ -32,6 +32,9 @@ pnpm run verify:versions
 [[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]] || \
   die "Expected esbuild $ESBUILD_VERSION, found $(pnpm exec esbuild --version)."
 
+log "Preparing pinned PDFium $PDFIUM_BUILD through the locked Rust dependency graph"
+printf 'pdfium-bundled %s will reuse its local build cache or provision/embed the target-specific PDFium runtime during Cargo compilation.\n' "$PDFIUM_BUNDLED_VERSION"
+
 log "Building the standalone ostudy application with $CARGO_BUILD_JOBS Cargo jobs"
 # Tauri forwards arguments after `--` to Cargo. `--locked` makes a stale or
 # inconsistent Cargo.lock fail explicitly instead of silently rewriting it.
