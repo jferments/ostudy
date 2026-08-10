@@ -87,10 +87,10 @@ impl PdfRenderRuntime {
                     format!("Could not initialize the bundled PDFium renderer: {error}"),
                 )
             })?;
-            return Ok(Self {
+            Ok(Self {
                 backend_id: active_backend_id(),
                 pdfium: Arc::new(pdfium),
-            });
+            })
         }
 
         #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -141,7 +141,7 @@ where
                 .map_err(RenderProcessError::Backend)?;
             visitor(index + 1, png).map_err(RenderProcessError::Visitor)?;
         }
-        return Ok(page_count);
+        Ok(page_count)
     }
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -196,7 +196,7 @@ where
             let rendered = render_page_at_dpi(&document, *page_number - 1, OCR_RENDER_DPI);
             visitor(*page_number, rendered).map_err(RenderProcessError::Visitor)?;
         }
-        return Ok(requested.len());
+        Ok(requested.len())
     }
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
