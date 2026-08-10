@@ -27,10 +27,11 @@ check_crate tauri-plugin-opener "$TAURI_OPENER_VERSION"
 check_crate chrono "$CHRONO_VERSION"
 check_crate image "$IMAGE_VERSION"
 check_crate oxidize-pdf "$OXIDIZE_PDF_VERSION"
-check_crate pdfium-bundled "$PDFIUM_BUNDLED_VERSION"
 check_crate pdfium-render "$PDFIUM_RENDER_VERSION"
+check_crate sysinfo "$SYSINFO_VERSION"
 check_crate rs-fsrs "$RS_FSRS_VERSION"
 check_crate tokio "$TOKIO_VERSION"
+check_absent pdfium-bundled
 check_absent justpdf
 check_absent justpdf-render
 check_absent rusty-tesseract
