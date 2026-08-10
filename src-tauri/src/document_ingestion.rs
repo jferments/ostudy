@@ -151,8 +151,10 @@ where
     let page_directory = paths.document_pages_dir(document_id);
     fs::create_dir_all(&page_directory).map_err(CommandError::io)?;
     let mut rendered = Vec::<(usize, String, i64, String)>::new();
-    let render_result =
-        pdf_render_backend::render_pages(render_runtime, source_path, |page_number, png| {
+    let render_result = pdf_render_backend::render_pages(
+        render_runtime,
+        source_path,
+        |page_number, png| {
             ensure_document_not_canceled(document_id)?;
             if png.is_empty() || png.len() > MAX_RENDER_BYTES {
                 return Err(CommandError::new(
@@ -178,7 +180,8 @@ where
                 total_units: semantic.page_count,
             })?;
             Ok(())
-        });
+        },
+    );
     let rendered_count = match render_result {
         Ok(count) => count,
         Err(RenderProcessError::Visitor(error)) => return Err(error),
@@ -217,11 +220,7 @@ where
         &recovered_pages,
         &recovery_plan.native_semantic_fallback_pages,
     );
-    pdf_backend::apply_text_recovery(
-        &mut semantic,
-        &recovered_pages,
-        &semantic_recovery_pages,
-    );
+    pdf_backend::apply_text_recovery(&mut semantic, &recovered_pages, &semantic_recovery_pages);
     validate_pdf_semantic_provenance(&semantic)?;
     validate_recovered_text_quality(&semantic)?;
     ensure_document_not_canceled(document_id)?;
@@ -505,7 +504,10 @@ fn expand_semantic_recovery_pages(
     recovered_pages: &[RecoveredPageText],
     native_fallback_pages: &[usize],
 ) -> Vec<usize> {
-    let mut pages = native_fallback_pages.iter().copied().collect::<BTreeSet<_>>();
+    let mut pages = native_fallback_pages
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
     pages.extend(recovered_pages.iter().map(|page| page.page_number));
     if pages.is_empty() {
         return Vec::new();
