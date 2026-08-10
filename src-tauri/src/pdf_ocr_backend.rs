@@ -44,47 +44,6 @@ const MAX_TSV_BYTES: u64 = 16 * 1024 * 1024;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 static WORKSPACE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum OcrPlatformFamily {
-    Desktop,
-    Android,
-    Ios,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct OcrBackendPolicy {
-    pub platform: OcrPlatformFamily,
-    pub subprocess_allowed: bool,
-    pub implemented_in_this_build: bool,
-}
-
-pub(crate) fn active_backend_policy() -> OcrBackendPolicy {
-    #[cfg(target_os = "android")]
-    {
-        OcrBackendPolicy {
-            platform: OcrPlatformFamily::Android,
-            subprocess_allowed: false,
-            implemented_in_this_build: false,
-        }
-    }
-    #[cfg(target_os = "ios")]
-    {
-        OcrBackendPolicy {
-            platform: OcrPlatformFamily::Ios,
-            subprocess_allowed: false,
-            implemented_in_this_build: false,
-        }
-    }
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        OcrBackendPolicy {
-            platform: OcrPlatformFamily::Desktop,
-            subprocess_allowed: true,
-            implemented_in_this_build: true,
-        }
-    }
-}
-
 /// Platform-neutral provider presented to document ingestion.
 ///
 /// The compatibility alias below keeps the PR #39 call site stable while the
@@ -469,24 +428,6 @@ impl Drop for TempOcrWorkspace {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn platform_policy_never_allows_subprocess_ocr_on_mobile() {
-        let android = OcrBackendPolicy {
-            platform: OcrPlatformFamily::Android,
-            subprocess_allowed: false,
-            implemented_in_this_build: false,
-        };
-        let ios = OcrBackendPolicy {
-            platform: OcrPlatformFamily::Ios,
-            subprocess_allowed: false,
-            implemented_in_this_build: false,
-        };
-        assert!(!android.subprocess_allowed);
-        assert!(!ios.subprocess_allowed);
-        assert!(active_backend_policy().subprocess_allowed);
-        assert!(active_backend_policy().implemented_in_this_build);
-    }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
