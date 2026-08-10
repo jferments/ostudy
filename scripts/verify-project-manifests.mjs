@@ -112,8 +112,9 @@ for (const [label, needle] of [
   ["serde", `version = "=${env.get("SERDE_VERSION")}"`],
   ["serde_json", `serde_json = "=${env.get("SERDE_JSON_VERSION")}"`],
   ["chrono", `chrono = "=${env.get("CHRONO_VERSION")}"`],
-  ["justpdf", `justpdf = "=${env.get("JUSTPDF_VERSION")}"`],
+  ["image", `image = { version = "=${env.get("IMAGE_VERSION")}"`],
   ["oxidize-pdf", `version = "=${env.get("OXIDIZE_PDF_VERSION")}"`],
+  ["pdfium-bundled", `pdfium-bundled = { version = "=${env.get("PDFIUM_BUNDLED_VERSION")}"`],
   ["keyring", `keyring = "=${env.get("KEYRING_VERSION")}"`],
   ["reqwest", `version = "=${env.get("REQWEST_VERSION")}"`],
   ["rs-fsrs", `rs-fsrs = "=${env.get("RS_FSRS_VERSION")}"`],
@@ -122,12 +123,17 @@ for (const [label, needle] of [
   const source = label === "Rust toolchain" ? toolchain : cargo;
   if (!source.includes(needle)) failures.push(`${label} exact pin missing`);
 }
-if (cargo.includes("pdfium-render")) failures.push("pdfium-render must not be a mandatory dependency");
-if (cargo.includes("rusty-tesseract")) failures.push("OCR/Tesseract must not be a mandatory dependency");
+if (cargo.includes("justpdf")) failures.push("justpdf must not remain in the renderer dependency graph");
+if (cargo.includes("rusty-tesseract")) failures.push("OCR/Tesseract wrapper must not be a mandatory dependency");
 requireText("oxidize-pdf feature policy", cargo, [
   'oxidize-pdf = { version = "=',
   'default-features = false',
   'features = ["compression", "semantic"]',
+]);
+requireText("PDFium bundled renderer policy", cargo, [
+  "target_os = \"android\"",
+  "target_os = \"ios\"",
+  `pdfium-bundled = { version = "=${env.get("PDFIUM_BUNDLED_VERSION")}", features = ["bundled"] }`,
 ]);
 
 for (const required of [
@@ -146,9 +152,6 @@ if (!tauri.app?.security?.assetProtocol?.enable) failures.push("asset protocol n
 if (!(tauri.app?.security?.csp ?? "").includes("asset:")) failures.push("CSP does not allow local asset images");
 for (const permission of ["core:default", "dialog:default", "opener:default"]) {
   if (!capability.permissions?.includes(permission)) failures.push(`capability missing ${permission}`);
-}
-if (Array.isArray(tauri.bundle?.resources) && tauri.bundle.resources.some((resource) => String(resource).includes("pdfium"))) {
-  failures.push("Tauri bundle must not require a platform-specific Pdfium runtime");
 }
 
 const trackedScriptEntries = execFileSync("git", ["ls-files", "-s", "scripts"], {
@@ -274,6 +277,7 @@ for (const requiredPath of [
   "src-tauri/tests/fixtures/document-generation/simple-text.pdf",
   "docs/decisions/0017-managed-pdf-flashcard-generation.md",
   "docs/decisions/0018-structured-document-intelligence.md",
+  "docs/decisions/0025-cross-platform-ocr-runtime.md",
 ]) {
   try {
     await access(join(root, requiredPath));
@@ -288,7 +292,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, executable script modes, portable structured PDF dependencies, and tiered qualification manifests are consistent.`,
+  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, executable script modes, PDFium rendering, portable structured extraction, and tiered qualification manifests are consistent.`,
 );
 
 function parseEnv(text) {
