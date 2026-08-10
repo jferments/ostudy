@@ -1,11 +1,20 @@
-//! Optional OCR provider used when the native PDF text layer is unreliable.
+//! Platform-aware OCR boundary used when the native PDF text layer is unreliable.
 //!
-//! `oxidize-pdf` deliberately exposes OCR as a provider trait. ostudy implements
-//! that trait against the local Tesseract command-line engine instead of taking
-//! the optional `rusty-tesseract` wrapper dependency. Normal PDFs never invoke
-//! this module; Tesseract is discovered only after extraction-quality checks
-//! decide that OCR is needed.
+//! ostudy owns the OCR contract rather than making document ingestion depend on
+//! one executable. Desktop currently adapts the oxidize-pdf `OcrProvider` trait
+//! to local Tesseract CLI. Android/iOS deliberately do not attempt subprocess
+//! execution; those targets are reserved for native Kotlin/Swift OCR adapters
+//! when the Tauri mobile projects are introduced. Until then they fail locally
+//! before model traffic instead of pretending a desktop sidecar can run there.
 
+use oxidize_pdf::{
+    graphics::ImageFormat, OcrEngine, OcrError, OcrOptions, OcrProcessingResult, OcrProvider,
+    OcrResult,
+};
+
+use crate::task_cancellation;
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -15,40 +24,98 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use oxidize_pdf::{
-    graphics::ImageFormat, OcrEngine, OcrError, OcrOptions, OcrProcessingResult, OcrProvider,
-    OcrResult,
-};
-
-use crate::task_cancellation;
-
-const ENGINE_NAME: &str = "Tesseract CLI via oxidize-pdf OcrProvider";
-const DEFAULT_EXECUTABLE: &str = "tesseract";
-const EXECUTABLE_ENV: &str = "OSTUDY_TESSERACT_PATH";
-const WAIT_INTERVAL_MS: u64 = 25;
 const OCR_CANCELED_MARKER: &str = "ostudy_document_ocr_canceled";
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const ENGINE_NAME: &str = "Tesseract CLI via ostudy platform OCR";
+#[cfg(target_os = "android")]
+const ENGINE_NAME: &str = "Android native OCR adapter";
+#[cfg(target_os = "ios")]
+const ENGINE_NAME: &str = "Apple Vision OCR adapter";
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const DEFAULT_EXECUTABLE: &str = "tesseract";
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const EXECUTABLE_ENV: &str = "OSTUDY_TESSERACT_PATH";
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const WAIT_INTERVAL_MS: u64 = 25;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 const MAX_TSV_BYTES: u64 = 16 * 1024 * 1024;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 static WORKSPACE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum OcrPlatformFamily {
+    Desktop,
+    Android,
+    Ios,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct OcrBackendPolicy {
+    pub platform: OcrPlatformFamily,
+    pub subprocess_allowed: bool,
+    pub implemented_in_this_build: bool,
+}
+
+pub(crate) fn active_backend_policy() -> OcrBackendPolicy {
+    #[cfg(target_os = "android")]
+    {
+        OcrBackendPolicy {
+            platform: OcrPlatformFamily::Android,
+            subprocess_allowed: false,
+            implemented_in_this_build: false,
+        }
+    }
+    #[cfg(target_os = "ios")]
+    {
+        OcrBackendPolicy {
+            platform: OcrPlatformFamily::Ios,
+            subprocess_allowed: false,
+            implemented_in_this_build: false,
+        }
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        OcrBackendPolicy {
+            platform: OcrPlatformFamily::Desktop,
+            subprocess_allowed: true,
+            implemented_in_this_build: true,
+        }
+    }
+}
+
+/// Platform-neutral provider presented to document ingestion.
+///
+/// The compatibility alias below keeps the PR #39 call site stable while the
+/// implementation is generalized. New code should reason about this type as a
+/// platform OCR provider, not as a guarantee that a Tesseract child process is
+/// available on every target.
 #[derive(Clone, Debug)]
-pub(crate) struct TesseractCliOcrProvider {
+pub(crate) struct PlatformOcrProvider {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     executable: String,
     document_id: Option<String>,
 }
 
-impl Default for TesseractCliOcrProvider {
+pub(crate) type TesseractCliOcrProvider = PlatformOcrProvider;
+
+impl Default for PlatformOcrProvider {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl TesseractCliOcrProvider {
+impl PlatformOcrProvider {
     pub(crate) fn new() -> Self {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let executable = std::env::var(EXECUTABLE_ENV)
             .ok()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_EXECUTABLE.to_string());
+
         Self {
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             executable,
             document_id: None,
         }
@@ -61,24 +128,45 @@ impl TesseractCliOcrProvider {
     }
 
     pub(crate) fn ensure_available(&self) -> OcrResult<()> {
-        let status = Command::new(&self.executable)
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map_err(|error| {
-                OcrError::ProviderNotAvailable(format!(
-                    "Could not start '{}': {error}",
+        if self.is_canceled() {
+            return Err(canceled_ocr_error());
+        }
+
+        #[cfg(target_os = "android")]
+        {
+            Err(OcrError::Configuration(
+                "This Android build does not yet include ostudy's native on-device OCR adapter. Corrupted PDF text will not be sent to an AI provider until that adapter is available."
+                    .to_string(),
+            ))
+        }
+        #[cfg(target_os = "ios")]
+        {
+            Err(OcrError::Configuration(
+                "This iOS build does not yet include ostudy's Apple Vision OCR adapter. Corrupted PDF text will not be sent to an AI provider until that adapter is available."
+                    .to_string(),
+            ))
+        }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            let status = Command::new(&self.executable)
+                .arg("--version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map_err(|error| {
+                    OcrError::ProviderNotAvailable(format!(
+                        "Could not start '{}': {error}",
+                        self.executable
+                    ))
+                })?;
+            if status.success() {
+                Ok(())
+            } else {
+                Err(OcrError::ProviderNotAvailable(format!(
+                    "'{} --version' exited with status {status}",
                     self.executable
-                ))
-            })?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(OcrError::ProviderNotAvailable(format!(
-                "'{} --version' exited with status {status}",
-                self.executable
-            )))
+                )))
+            }
         }
     }
 
@@ -87,18 +175,13 @@ impl TesseractCliOcrProvider {
             .as_deref()
             .is_some_and(task_cancellation::is_document_task_canceled)
     }
-}
 
-impl OcrProvider for TesseractCliOcrProvider {
-    fn process_image(
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn process_desktop_tesseract(
         &self,
         image_data: &[u8],
         options: &OcrOptions,
     ) -> OcrResult<OcrProcessingResult> {
-        self.validate_image_data(image_data)?;
-        if self.is_canceled() {
-            return Err(canceled_ocr_error());
-        }
         let dimensions = png_dimensions(image_data)?;
         let workspace = TempOcrWorkspace::create()?;
         let input = workspace.path.join("page.png");
@@ -183,6 +266,30 @@ impl OcrProvider for TesseractCliOcrProvider {
             dimensions,
         ))
     }
+}
+
+impl OcrProvider for PlatformOcrProvider {
+    fn process_image(
+        &self,
+        image_data: &[u8],
+        options: &OcrOptions,
+    ) -> OcrResult<OcrProcessingResult> {
+        self.validate_image_data(image_data)?;
+        if self.is_canceled() {
+            return Err(canceled_ocr_error());
+        }
+
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        {
+            let _ = options;
+            self.ensure_available()?;
+            unreachable!("mobile OCR availability cannot succeed before its native adapter is linked")
+        }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            self.process_desktop_tesseract(image_data, options)
+        }
+    }
 
     fn supported_formats(&self) -> Vec<ImageFormat> {
         vec![ImageFormat::Png]
@@ -193,6 +300,9 @@ impl OcrProvider for TesseractCliOcrProvider {
     }
 
     fn engine_type(&self) -> OcrEngine {
+        // oxidize-pdf 4.2.x has no generic/native-mobile engine discriminator.
+        // This value describes the implemented provider today; ostudy persists
+        // the more precise `engine_name` string for document provenance.
         OcrEngine::Tesseract
     }
 }
@@ -205,12 +315,14 @@ fn canceled_ocr_error() -> OcrError {
     OcrError::ProcessingFailed(OCR_CANCELED_MARKER.to_string())
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[derive(Debug, PartialEq)]
 struct ParsedTsv {
     text: String,
     confidence: f64,
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn parse_tesseract_tsv(tsv: &str) -> ParsedTsv {
     let mut output_lines = Vec::<String>::new();
     let mut current_line_key = None::<(i64, i64, i64)>;
@@ -261,6 +373,7 @@ fn parse_tesseract_tsv(tsv: &str) -> ParsedTsv {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn png_dimensions(image_data: &[u8]) -> OcrResult<(u32, u32)> {
     const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
     if image_data.len() < 24 || !image_data.starts_with(PNG_SIGNATURE) {
@@ -284,6 +397,7 @@ fn png_dimensions(image_data: &[u8]) -> OcrResult<(u32, u32)> {
     Ok((width, height))
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn tesseract_language(language: &str) -> String {
     match language.trim().to_ascii_lowercase().as_str() {
         "en" => "eng".to_string(),
@@ -298,6 +412,7 @@ fn tesseract_language(language: &str) -> String {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn create_private_directory(path: &Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {
@@ -313,10 +428,12 @@ fn create_private_directory(path: &Path) -> std::io::Result<()> {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct TempOcrWorkspace {
     path: PathBuf,
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl TempOcrWorkspace {
     fn create() -> OcrResult<Self> {
         let root = std::env::temp_dir();
@@ -340,6 +457,7 @@ impl TempOcrWorkspace {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl Drop for TempOcrWorkspace {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.path);
@@ -351,12 +469,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn platform_policy_never_allows_subprocess_ocr_on_mobile() {
+        let android = OcrBackendPolicy {
+            platform: OcrPlatformFamily::Android,
+            subprocess_allowed: false,
+            implemented_in_this_build: false,
+        };
+        let ios = OcrBackendPolicy {
+            platform: OcrPlatformFamily::Ios,
+            subprocess_allowed: false,
+            implemented_in_this_build: false,
+        };
+        assert!(!android.subprocess_allowed);
+        assert!(!ios.subprocess_allowed);
+        assert!(active_backend_policy().subprocess_allowed);
+        assert!(active_backend_policy().implemented_in_this_build);
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
     fn tesseract_language_maps_common_iso_codes() {
         assert_eq!(tesseract_language("en"), "eng");
         assert_eq!(tesseract_language("fr"), "fra");
         assert_eq!(tesseract_language("eng+spa"), "eng+spa");
     }
 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
     fn tsv_parser_preserves_lines_and_averages_word_confidence() {
         let tsv = concat!(
@@ -379,12 +517,13 @@ mod tests {
         )));
     }
 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
     fn png_dimensions_rejects_non_png_data() {
         assert!(png_dimensions(b"not-a-png").is_err());
     }
 
-    #[cfg(unix)]
+    #[cfg(all(unix, not(any(target_os = "android", target_os = "ios"))))]
     #[test]
     fn temporary_ocr_workspace_is_private_to_the_current_user() {
         use std::os::unix::fs::PermissionsExt;
