@@ -118,7 +118,7 @@ fn bind_external_pdfium(resource_dir: Option<&Path>) -> Result<Pdfium, PdfRender
     }
     if let Some(resource_dir) = resource_dir {
         candidates.push(Pdfium::pdfium_platform_library_name_at_path(
-            resource_dir.join("native/pdfium"),
+            &resource_dir.join("native/pdfium"),
         ));
     }
     if let Some(root) = std::env::var_os("OSTUDY_ROOT_DIR")
@@ -126,7 +126,7 @@ fn bind_external_pdfium(resource_dir: Option<&Path>) -> Result<Pdfium, PdfRender
         .map(PathBuf::from)
     {
         candidates.push(Pdfium::pdfium_platform_library_name_at_path(
-            root.join("src-tauri/resources/native/pdfium"),
+            &root.join("src-tauri/resources/native/pdfium"),
         ));
     }
     if let Ok(executable) = std::env::current_exe() {
@@ -190,7 +190,7 @@ fn bind_external_pdfium(resource_dir: Option<&Path>) -> Result<Pdfium, PdfRender
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn resolve_library_candidate(path: PathBuf) -> PathBuf {
     if path.is_dir() {
-        Pdfium::pdfium_platform_library_name_at_path(path)
+        Pdfium::pdfium_platform_library_name_at_path(&path)
     } else {
         path
     }
