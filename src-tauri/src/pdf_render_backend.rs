@@ -21,11 +21,7 @@ use pdfium_bundled::{
     pdfium_render::prelude::{PdfPageIndex, PdfRenderConfig, Pdfium},
 };
 
-// 120 DPI keeps a US-letter page near 1020x1320 pixels: enough for most tables,
-// equations, and diagrams while keeping durable visual-grounding derivatives
-// reasonably small.
 const PAGE_RENDER_DPI: f64 = 120.0;
-// OCR uses a separate high-resolution render that exists only while OCR runs.
 pub(crate) const OCR_RENDER_DPI: f64 = 300.0;
 const PDF_POINTS_PER_INCH: f64 = 72.0;
 
@@ -139,7 +135,7 @@ where
                     error.to_string(),
                 ))
             })?;
-        let page_count = page_count(&document)?;
+        let page_count = page_count(&document).map_err(RenderProcessError::Backend)?;
         for index in 0..page_count {
             let png = render_page_at_dpi(&document, index, PAGE_RENDER_DPI)
                 .map_err(RenderProcessError::Backend)?;
@@ -182,7 +178,7 @@ where
                     error.to_string(),
                 ))
             })?;
-        let page_count = page_count(&document)?;
+        let page_count = page_count(&document).map_err(RenderProcessError::Backend)?;
         let mut requested = page_numbers.to_vec();
         requested.sort_unstable();
         requested.dedup();
@@ -229,13 +225,13 @@ fn validate_runtime<E>(runtime: &PdfRenderRuntime) -> Result<(), RenderProcessEr
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn page_count(
     document: &pdfium_bundled::pdfium_render::prelude::PdfDocument<'_>,
-) -> Result<usize, RenderProcessError<std::convert::Infallible>> {
+) -> Result<usize, PdfRenderError> {
     usize::try_from(document.pages().len()).map_err(|_| {
-        RenderProcessError::Backend(PdfRenderError::new(
+        PdfRenderError::new(
             PdfRenderErrorKind::Open,
             None,
             "The PDF page count exceeded ostudy's supported platform range.",
-        ))
+        )
     })
 }
 
