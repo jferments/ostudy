@@ -64,13 +64,19 @@ mod stage34_35_regression_tests;
 #[cfg(test)]
 mod stage36_38_regression_tests;
 
-use std::io;
+use std::{
+    io,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use ai::AiRuntimeState;
 use database::Database;
 use paths::AppPaths;
 use pdf_render_backend::PdfRenderRuntime;
 use tauri::Manager;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+
+static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -89,7 +95,8 @@ pub fn run() {
                 library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
             let ai_runtime = AiRuntimeState::new().map_err(io::Error::other)?;
-            let pdf_render_runtime = PdfRenderRuntime::new(resource_directory);
+            let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
+                .map_err(|error| io::Error::other(error.to_string()))?;
 
             deletion::finalize_expired_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
@@ -131,6 +138,38 @@ pub fn run() {
                 ),
             );
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            let tauri::WindowEvent::CloseRequested { api, .. } = event else {
+                return;
+            };
+            if window.label() != "main" || !task_cancellation::has_active_document_tasks() {
+                return;
+            }
+
+            api.prevent_close();
+            if CLOSE_CONFIRMATION_OPEN.swap(true, Ordering::AcqRel) {
+                return;
+            }
+
+            let window = window.clone();
+            window
+                .dialog()
+                .message(
+                    "There is a current PDF processing job underway. If you close ostudy now, the running request will be interrupted and any progress that has not been committed will be lost. Are you sure you want to proceed?",
+                )
+                .title("PDF processing is still running")
+                .kind(MessageDialogKind::Warning)
+                .buttons(MessageDialogButtons::OkCancelCustom(
+                    "Close ostudy".to_string(),
+                    "Keep working".to_string(),
+                ))
+                .show(move |should_close| {
+                    CLOSE_CONFIRMATION_OPEN.store(false, Ordering::Release);
+                    if should_close {
+                        let _ = window.destroy();
+                    }
+                });
         })
         .invoke_handler(tauri::generate_handler![
             decks::list_decks,
