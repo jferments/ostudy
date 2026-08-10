@@ -343,7 +343,7 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                   {document.safeErrorMessage ? (
                     <p className={styles.documentError}>{document.safeErrorMessage}</p>
                   ) : null}
-                  {document.extractionMode === "ocr_fallback" && document.ocrPageCount > 0 ? (
+                  {hasCompletedOcrRecovery(document) ? (
                     <p className={styles.extractionWarning} role="status">
                       Native PDF text was unreliable on {document.ocrPageCount} page
                       {document.ocrPageCount === 1 ? "" : "s"}, so ostudy recovered those pages
@@ -438,13 +438,22 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
   );
 }
 
+function hasCompletedOcrRecovery(document: DocumentSummary): boolean {
+  return (
+    document.extractionMode === "ocr_fallback" &&
+    document.ocrPageCount > 0 &&
+    document.ocrCompletedPageCount === document.ocrPageCount &&
+    document.ocrMeanConfidence !== null
+  );
+}
+
 function showGenerationSuccess(
   document: DocumentSummary,
   createdCardCount: number,
   showToast: ShowToast,
 ): void {
   const cards = `Created ${createdCardCount} flashcard${createdCardCount === 1 ? "" : "s"} in a new deck.`;
-  if (document.extractionMode === "ocr_fallback" && document.ocrPageCount > 0) {
+  if (hasCompletedOcrRecovery(document)) {
     showToast(
       "success",
       `${cards} OCR fallback recovered ${document.ocrPageCount} page${document.ocrPageCount === 1 ? "" : "s"}; review cards against the source because OCR can be less accurate.`,
