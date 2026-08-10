@@ -4,7 +4,8 @@
 //! remains in SQLite; this module binds one running document task to an in-memory
 //! signal. Async provider traffic uses the Tokio task-local signal, while
 //! blocking extraction/render/OCR workers can query the same registry by exact
-//! document id.
+//! document id. The application close guard also reads this registry so it can
+//! warn before an in-flight document task is interrupted.
 
 use std::{
     collections::HashMap,
@@ -45,8 +46,6 @@ impl CancellationSignal {
 
     pub(crate) async fn canceled(&self) {
         loop {
-            // Register the waiter before re-checking the atomic flag so a
-            // cancellation racing this call cannot be missed by notify_waiters().
             let notified = self.notify.notified();
             if self.is_canceled() {
                 return;
@@ -103,6 +102,13 @@ impl ActiveDocumentTasks {
             .unwrap_or(false)
     }
 
+    fn has_any(&self) -> bool {
+        self.tasks
+            .lock()
+            .map(|tasks| !tasks.is_empty())
+            .unwrap_or(false)
+    }
+
     fn is_canceled(&self, document_id: &str) -> bool {
         self.tasks
             .lock()
@@ -144,9 +150,10 @@ pub(crate) fn is_document_task_active(document_id: &str) -> bool {
     ACTIVE_DOCUMENT_TASKS.is_active(document_id)
 }
 
-/// Blocking extraction/render/OCR workers do not inherit Tokio task-local
-/// storage. They use this exact-document registry query to observe the same Stop
-/// action without introducing a second cancellation authority.
+pub(crate) fn has_active_document_tasks() -> bool {
+    ACTIVE_DOCUMENT_TASKS.has_any()
+}
+
 pub(crate) fn is_document_task_canceled(document_id: &str) -> bool {
     ACTIVE_DOCUMENT_TASKS.is_canceled(document_id)
 }
@@ -184,5 +191,17 @@ mod tests {
         ACTIVE_DOCUMENT_TASKS.finish(second_id);
         assert!(!is_document_task_active(first_id));
         assert!(!is_document_task_canceled(first_id));
+    }
+
+    #[test]
+    fn active_document_registry_drives_close_protection() {
+        let document_id = "task-close-guard";
+        assert!(!has_active_document_tasks());
+        ACTIVE_DOCUMENT_TASKS
+            .begin(document_id)
+            .expect("task should register");
+        assert!(has_active_document_tasks());
+        ACTIVE_DOCUMENT_TASKS.finish(document_id);
+        assert!(!has_active_document_tasks());
     }
 }
