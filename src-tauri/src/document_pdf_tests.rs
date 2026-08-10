@@ -17,7 +17,7 @@ fn temporary_paths(label: &str) -> AppPaths {
 }
 
 #[test]
-fn structured_extraction_and_pure_rust_rendering_process_a_real_fixture() {
+fn structured_extraction_and_pdfium_rendering_process_a_real_fixture() {
     let paths = temporary_paths("extract-render");
     let source = paths.app_data_dir().join("simple-text.pdf");
     fs::write(
@@ -52,7 +52,7 @@ fn structured_extraction_and_pure_rust_rendering_process_a_real_fixture() {
         "oxidize-pdf-4.2.2-rag-quality-ocr-v1"
     );
 
-    let runtime = PdfRenderRuntime::new(None);
+    let runtime = PdfRenderRuntime::new(None).expect("bundled PDFium should initialize");
     let mut rendered = 0_usize;
     let page_count = pdf_render_backend::render_pages(&runtime, &source, |page_number, png| {
         rendered += 1;
@@ -61,12 +61,12 @@ fn structured_extraction_and_pure_rust_rendering_process_a_real_fixture() {
         assert!(png.len() > 100);
         Ok::<(), ()>(())
     })
-    .expect("the bounded parallel pure-Rust justpdf renderer should render the fixture");
+    .expect("the bundled PDFium renderer should render the fixture");
     assert_eq!(page_count, 1);
     assert_eq!(rendered, 1);
     assert_eq!(
         pdf_render_backend::active_backend_id(),
-        "justpdf-render-0.1.2/pure-rust-parallel-v2-120dpi"
+        "pdfium-render-0.9.3/pdfium-7881-bundled-v1-120dpi"
     );
 
     fs::remove_dir_all(paths.app_data_dir()).expect("temporary fixture root should clean up");
