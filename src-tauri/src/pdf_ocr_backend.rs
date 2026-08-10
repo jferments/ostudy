@@ -173,14 +173,8 @@ impl PlatformOcrProvider {
 
         if !selected.is_strong() {
             for psm in FALLBACK_PAGE_SEGMENTATION_MODES {
-                let candidate = self.run_tesseract_pass(
-                    &input,
-                    &workspace,
-                    &language,
-                    psm,
-                    started,
-                    timeout,
-                )?;
+                let candidate =
+                    self.run_tesseract_pass(&input, &workspace, &language, psm, started, timeout)?;
                 if candidate.score() > selected.score() {
                     selected = candidate;
                 }
@@ -430,8 +424,14 @@ fn parse_tesseract_tsv(tsv: &str, psm: u8) -> ParsedTsv {
     } else {
         (confidence_sum / confidence_samples as f64 / 100.0).clamp(0.0, 1.0)
     };
-    let nonspace_chars = text.chars().filter(|character| !character.is_whitespace()).count();
-    let alphabetic_chars = text.chars().filter(|character| character.is_alphabetic()).count();
+    let nonspace_chars = text
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .count();
+    let alphabetic_chars = text
+        .chars()
+        .filter(|character| character.is_alphabetic())
+        .count();
     ParsedTsv {
         text,
         confidence,
@@ -457,12 +457,14 @@ fn png_dimensions(image_data: &[u8]) -> OcrResult<(u32, u32)> {
             "ostudy OCR expects a rendered PNG page.".to_string(),
         ));
     }
-    let width = u32::from_be_bytes(image_data[16..20].try_into().map_err(|_| {
-        OcrError::InvalidImageData("PNG width header is truncated.".to_string())
-    })?);
-    let height = u32::from_be_bytes(image_data[20..24].try_into().map_err(|_| {
-        OcrError::InvalidImageData("PNG height header is truncated.".to_string())
-    })?);
+    let width =
+        u32::from_be_bytes(image_data[16..20].try_into().map_err(|_| {
+            OcrError::InvalidImageData("PNG width header is truncated.".to_string())
+        })?);
+    let height =
+        u32::from_be_bytes(image_data[20..24].try_into().map_err(|_| {
+            OcrError::InvalidImageData("PNG height header is truncated.".to_string())
+        })?);
     if width == 0 || height == 0 {
         return Err(OcrError::InvalidImageData(
             "Rendered OCR page has zero image dimensions.".to_string(),
