@@ -370,8 +370,7 @@ fn text_extraction_worker_count(page_count: usize) -> usize {
 
 fn bounded_text_extraction_worker_count(page_count: usize, available: usize) -> usize {
     available
-        .max(1)
-        .min(MAX_TEXT_EXTRACTION_WORKERS)
+        .clamp(1, MAX_TEXT_EXTRACTION_WORKERS)
         .min(page_count.max(1))
 }
 
