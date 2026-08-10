@@ -26,6 +26,7 @@ rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.145"
 sha2 = "=0.10.9"
+sysinfo = { version = "=0.39.6", default-features = false, features = ["system"] }
 tauri-plugin-dialog = "=2.7.2"
 tauri-plugin-opener = "=2.5.4"
 tauri = { version = "=2.11.5", features = ["protocol-asset"] }
@@ -34,4 +35,4 @@ url = "=2.5.7"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
-pdfium-bundled = { version = "=0.1.1", features = ["bundled"] }
+pdfium-render = { version = "=0.9.3", default-features = false, features = ["pdfium_7881", "image_025", "thread_safe"] }
