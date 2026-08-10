@@ -195,13 +195,12 @@ mod tests {
 
     #[test]
     fn active_document_registry_drives_close_protection() {
+        let registry = ActiveDocumentTasks::default();
         let document_id = "task-close-guard";
-        assert!(!has_active_document_tasks());
-        ACTIVE_DOCUMENT_TASKS
-            .begin(document_id)
-            .expect("task should register");
-        assert!(has_active_document_tasks());
-        ACTIVE_DOCUMENT_TASKS.finish(document_id);
-        assert!(!has_active_document_tasks());
+        assert!(!registry.has_any());
+        registry.begin(document_id).expect("task should register");
+        assert!(registry.has_any());
+        registry.finish(document_id);
+        assert!(!registry.has_any());
     }
 }
