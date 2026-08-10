@@ -34,4 +34,4 @@ url = "=2.5.7"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
-pdfium-bundled = { version = "=0.1.1", features = ["bundled"] }
+pdfium-bundled = { version = "=0.1.1+pdfium-7881", features = ["bundled"] }
