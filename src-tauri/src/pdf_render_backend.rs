@@ -275,13 +275,15 @@ fn render_page_at_dpi(
             )
         })?;
     let mut output = Cursor::new(Vec::new());
-    image.write_to(&mut output, ImageFormat::Png).map_err(|error| {
-        PdfRenderError::new(
-            PdfRenderErrorKind::EncodePage,
-            Some(page_number),
-            error.to_string(),
-        )
-    })?;
+    image
+        .write_to(&mut output, ImageFormat::Png)
+        .map_err(|error| {
+            PdfRenderError::new(
+                PdfRenderErrorKind::EncodePage,
+                Some(page_number),
+                error.to_string(),
+            )
+        })?;
     Ok(output.into_inner())
 }
 

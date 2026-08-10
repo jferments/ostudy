@@ -375,7 +375,9 @@ where
     })?;
 
     let worker_count = ocr_worker_count(candidates.len());
-    let queue_capacity = worker_count.saturating_mul(OCR_QUEUE_DEPTH_PER_WORKER).max(1);
+    let queue_capacity = worker_count
+        .saturating_mul(OCR_QUEUE_DEPTH_PER_WORKER)
+        .max(1);
     crate::logging::info(
         "document_ocr_parallel_started",
         format!(
@@ -588,10 +590,7 @@ fn process_ocr_work_item(
             ),
         ));
     }
-    if !text.is_empty()
-        && !quality.suspicious
-        && (item.candidate.required || quality.substantive)
-    {
+    if !text.is_empty() && !quality.suspicious && (item.candidate.required || quality.substantive) {
         crate::logging::info(
             "document_ocr_page_recovered",
             format!(

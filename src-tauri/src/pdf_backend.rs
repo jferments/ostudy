@@ -170,8 +170,7 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
         )
     })?;
 
-    let (pages, native_text_failed_pages) =
-        extract_page_texts(source_path, &document, page_count)?;
+    let (pages, native_text_failed_pages) = extract_page_texts(source_path, &document, page_count)?;
 
     let partitioned = document.partition_with_profile(ExtractionProfile::Rag);
     let (elements, semantic_analysis_degraded) = match partitioned {
@@ -343,10 +342,7 @@ fn extract_page_texts(
                 failed_pages.push(page_number);
                 crate::logging::info(
                     "pdf_native_text_page_failed",
-                    format!(
-                        "page={page_number} detail={}",
-                        bounded_text(&detail, 400)
-                    ),
+                    format!("page={page_number} detail={}", bounded_text(&detail, 400)),
                 );
                 String::new()
             }
