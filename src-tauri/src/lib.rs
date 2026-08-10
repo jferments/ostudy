@@ -49,6 +49,7 @@ mod settings;
 mod study_calendar;
 mod studyability;
 mod studydeck;
+mod system_resources;
 mod task_cancellation;
 mod util;
 mod workload;
