@@ -283,7 +283,9 @@ impl OcrProvider for PlatformOcrProvider {
         {
             let _ = options;
             self.ensure_available()?;
-            unreachable!("mobile OCR availability cannot succeed before its native adapter is linked")
+            unreachable!(
+                "mobile OCR availability cannot succeed before its native adapter is linked"
+            )
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
