@@ -11,6 +11,10 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     fmt,
     path::Path,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc, Arc,
+    },
 };
 
 use oxidize_pdf::{
@@ -30,6 +34,7 @@ const MAX_HEADING_CONTEXT_CHARS: usize = 2_000;
 const MIN_SUBSTANTIVE_NONSPACE_CHARS: usize = 24;
 const MIN_SUBSTANTIVE_ALPHA_CHARS: usize = 8;
 const MIN_SUBSTITUTION_ALPHA_CHARS: usize = 48;
+const MAX_TEXT_EXTRACTION_WORKERS: usize = 16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PdfBackendErrorKind {
@@ -122,9 +127,6 @@ pub(crate) struct ExtractedDocument {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct OcrPageCandidate {
     pub page_number: usize,
-    /// A required candidate had non-empty but untrustworthy native text or an
-    /// extraction exception. Empty/sparse candidates are opportunistic: an
-    /// empty OCR result may simply mean the page was intentionally blank.
     pub required: bool,
     pub reasons: Vec<&'static str>,
 }
@@ -132,9 +134,6 @@ pub(crate) struct OcrPageCandidate {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ExtractionRecoveryPlan {
     pub ocr_pages: Vec<OcrPageCandidate>,
-    /// Pages whose raw page text is trustworthy but whose structured semantic
-    /// representation is not. Rebuild these from native page text rather than
-    /// paying an OCR quality penalty.
     pub native_semantic_fallback_pages: Vec<usize>,
 }
 
@@ -156,13 +155,6 @@ pub(crate) fn active_backend_id() -> &'static str {
     "oxidize-pdf-4.2.2-rag-quality-ocr-v1"
 }
 
-/// Parse one immutable source PDF into ostudy-owned structured data.
-///
-/// Native page-text failures and structural-partition failures are deliberately
-/// recoverable here. The ingestion layer independently renders the source and
-/// can route affected pages through OCR. Keeping the original PDF readable is
-/// more important than failing the entire document because one embedded font or
-/// content stream is malformed.
 pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, PdfBackendError> {
     let document = PdfDocument::open(source_path).map_err(|error| {
         PdfBackendError::new(PdfBackendErrorKind::Open, None, error.to_string())
@@ -178,33 +170,8 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
         )
     })?;
 
-    let mut pages = Vec::with_capacity(page_count);
-    let mut native_text_failed_pages = Vec::new();
-    for page_index in 0..page_count {
-        let page_number = page_index + 1;
-        let page_index_u32 = u32::try_from(page_index).map_err(|_| {
-            PdfBackendError::new(
-                PdfBackendErrorKind::ExtractText,
-                Some(page_number),
-                "PDF page index exceeded the supported range.",
-            )
-        })?;
-        let text = match document.extract_text_from_page(page_index_u32) {
-            Ok(extracted) => extracted.text,
-            Err(error) => {
-                native_text_failed_pages.push(page_number);
-                crate::logging::info(
-                    "pdf_native_text_page_failed",
-                    format!(
-                        "page={page_number} detail={}",
-                        bounded_text(&error.to_string(), 400)
-                    ),
-                );
-                String::new()
-            }
-        };
-        pages.push(ExtractedTextPage { page_number, text });
-    }
+    let (pages, native_text_failed_pages) =
+        extract_page_texts(source_path, &document, page_count)?;
 
     let partitioned = document.partition_with_profile(ExtractionProfile::Rag);
     let (elements, semantic_analysis_degraded) = match partitioned {
@@ -282,6 +249,133 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
         native_text_failed_pages,
         semantic_analysis_degraded,
     })
+}
+
+fn extract_page_texts(
+    source_path: &Path,
+    canonical_document: &PdfDocument,
+    page_count: usize,
+) -> Result<(Vec<ExtractedTextPage>, Vec<usize>), PdfBackendError> {
+    if page_count == 0 {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let worker_count = text_extraction_worker_count(page_count);
+    let next_index = Arc::new(AtomicUsize::new(0));
+    let (sender, receiver) = mpsc::channel::<(usize, Result<String, String>)>();
+    let mut results = (0..page_count)
+        .map(|_| None::<Result<String, String>>)
+        .collect::<Vec<_>>();
+
+    std::thread::scope(|scope| {
+        for worker_index in 0..worker_count {
+            let sender = sender.clone();
+            let next_index = Arc::clone(&next_index);
+            scope.spawn(move || {
+                let worker_document = match PdfDocument::open(source_path) {
+                    Ok(document) => document,
+                    Err(error) => {
+                        crate::logging::info(
+                            "pdf_text_worker_open_failed",
+                            format!(
+                                "worker={worker_index} detail={}",
+                                bounded_text(&error.to_string(), 320)
+                            ),
+                        );
+                        return;
+                    }
+                };
+                loop {
+                    let page_index = next_index.fetch_add(1, Ordering::AcqRel);
+                    if page_index >= page_count {
+                        break;
+                    }
+                    let page_index_u32 = match u32::try_from(page_index) {
+                        Ok(value) => value,
+                        Err(_) => {
+                            let _ = sender.send((
+                                page_index,
+                                Err("PDF page index exceeded the supported range.".to_string()),
+                            ));
+                            continue;
+                        }
+                    };
+                    let result = worker_document
+                        .extract_text_from_page(page_index_u32)
+                        .map(|extracted| extracted.text)
+                        .map_err(|error| error.to_string());
+                    if sender.send((page_index, result)).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+        drop(sender);
+        for (page_index, result) in receiver {
+            if page_index < results.len() {
+                results[page_index] = Some(result);
+            }
+        }
+    });
+
+    let mut pages = Vec::with_capacity(page_count);
+    let mut failed_pages = Vec::new();
+    for (page_index, worker_result) in results.into_iter().enumerate() {
+        let page_number = page_index + 1;
+        let result = match worker_result {
+            Some(result) => result,
+            None => {
+                let page_index_u32 = u32::try_from(page_index).map_err(|_| {
+                    PdfBackendError::new(
+                        PdfBackendErrorKind::ExtractText,
+                        Some(page_number),
+                        "PDF page index exceeded the supported range.",
+                    )
+                })?;
+                canonical_document
+                    .extract_text_from_page(page_index_u32)
+                    .map(|extracted| extracted.text)
+                    .map_err(|error| error.to_string())
+            }
+        };
+        let text = match result {
+            Ok(text) => text,
+            Err(detail) => {
+                failed_pages.push(page_number);
+                crate::logging::info(
+                    "pdf_native_text_page_failed",
+                    format!(
+                        "page={page_number} detail={}",
+                        bounded_text(&detail, 400)
+                    ),
+                );
+                String::new()
+            }
+        };
+        pages.push(ExtractedTextPage { page_number, text });
+    }
+
+    crate::logging::info(
+        "pdf_text_extraction_parallel",
+        format!(
+            "pages={page_count} workers={worker_count} failed_pages={}",
+            failed_pages.len()
+        ),
+    );
+    Ok((pages, failed_pages))
+}
+
+fn text_extraction_worker_count(page_count: usize) -> usize {
+    let available = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1);
+    bounded_text_extraction_worker_count(page_count, available)
+}
+
+fn bounded_text_extraction_worker_count(page_count: usize, available: usize) -> usize {
+    available
+        .max(1)
+        .min(MAX_TEXT_EXTRACTION_WORKERS)
+        .min(page_count.max(1))
 }
 
 pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionRecoveryPlan {
@@ -481,10 +575,6 @@ pub(crate) fn apply_text_recovery(
         } else {
             "page_text_fallback"
         };
-        // `document_semantic_elements.element_type` is an immutable released
-        // schema enum. Recovered prose therefore remains a normal paragraph;
-        // OCR provenance is carried by document-level extraction metadata and
-        // may additionally appear in chunk metadata without widening old rows.
         document.elements.push(ExtractedSemanticElement {
             element_index: document.elements.len(),
             page_number: *page_number,
@@ -713,6 +803,18 @@ mod tests {
     #[test]
     fn active_backend_identifies_quality_checked_oxidize_extraction() {
         assert_eq!(active_backend_id(), "oxidize-pdf-4.2.2-rag-quality-ocr-v1");
+    }
+
+    #[test]
+    fn text_extraction_worker_count_is_bounded_by_pages_and_cpu() {
+        assert_eq!(bounded_text_extraction_worker_count(1, 64), 1);
+        assert_eq!(bounded_text_extraction_worker_count(5, 64), 5);
+        assert_eq!(
+            bounded_text_extraction_worker_count(100, 64),
+            MAX_TEXT_EXTRACTION_WORKERS
+        );
+        assert_eq!(bounded_text_extraction_worker_count(100, 4), 4);
+        assert_eq!(bounded_text_extraction_worker_count(100, 0), 1);
     }
 
     #[test]
