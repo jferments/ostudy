@@ -42,6 +42,18 @@ const WAIT_INTERVAL_MS: u64 = 25;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const MAX_TSV_BYTES: u64 = 16 * 1024 * 1024;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+const TESSERACT_INPUT_DPI: u16 = 300;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const PRIMARY_PAGE_SEGMENTATION_MODE: u8 = 3;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const FALLBACK_PAGE_SEGMENTATION_MODES: [u8; 2] = [6, 11];
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const STRONG_OCR_MIN_NONSPACE: usize = 24;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const STRONG_OCR_MIN_ALPHABETIC: usize = 8;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const STRONG_OCR_MIN_CONFIDENCE: f64 = 0.45;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 static WORKSPACE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Platform-neutral provider presented to document ingestion.
@@ -145,17 +157,95 @@ impl PlatformOcrProvider {
         let workspace = TempOcrWorkspace::create()?;
         let input = workspace.path.join("page.png");
         fs::write(&input, image_data)?;
-        let output_base = workspace.path.join("result");
         let language = tesseract_language(&options.language);
         let started = Instant::now();
+        let timeout = Duration::from_secs(u64::from(options.timeout_seconds.max(1)));
 
+        let primary = self.run_tesseract_pass(
+            &input,
+            &workspace,
+            &language,
+            PRIMARY_PAGE_SEGMENTATION_MODE,
+            started,
+            timeout,
+        )?;
+        let mut selected = primary;
+
+        if !selected.is_strong() {
+            for psm in FALLBACK_PAGE_SEGMENTATION_MODES {
+                let candidate = self.run_tesseract_pass(
+                    &input,
+                    &workspace,
+                    &language,
+                    psm,
+                    started,
+                    timeout,
+                )?;
+                if candidate.score() > selected.score() {
+                    selected = candidate;
+                }
+                if selected.is_strong() {
+                    break;
+                }
+            }
+        }
+
+        crate::logging::info(
+            "document_ocr_layout_selected",
+            format!(
+                "document={} psm={} confidence_milli={} nonspace={} alphabetic={} fallback_used={}",
+                self.document_id.as_deref().unwrap_or("unknown"),
+                selected.psm,
+                confidence_milli(selected.confidence),
+                selected.nonspace_chars,
+                selected.alphabetic_chars,
+                selected.psm != PRIMARY_PAGE_SEGMENTATION_MODE,
+            ),
+        );
+
+        Ok(OcrProcessingResult::new(
+            selected.text,
+            selected.confidence,
+            Vec::new(),
+            u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            format!("{ENGINE_NAME} psm={}", selected.psm),
+            language,
+            dimensions,
+        ))
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn run_tesseract_pass(
+        &self,
+        input: &Path,
+        workspace: &TempOcrWorkspace,
+        language: &str,
+        psm: u8,
+        started: Instant,
+        timeout: Duration,
+    ) -> OcrResult<ParsedTsv> {
+        if self.is_canceled() {
+            return Err(canceled_ocr_error());
+        }
+        if started.elapsed() >= timeout {
+            return Err(OcrError::ProcessingFailed(
+                "Tesseract exhausted the bounded OCR page timeout before a recovery pass could start."
+                    .to_string(),
+            ));
+        }
+
+        let output_base = workspace.path.join(format!("result-psm-{psm}"));
         let mut child = Command::new(&self.executable)
-            .arg(&input)
+            .arg(input)
             .arg(&output_base)
             .arg("-l")
-            .arg(&language)
+            .arg(language)
+            .arg("--dpi")
+            .arg(TESSERACT_INPUT_DPI.to_string())
             .arg("--psm")
-            .arg("3")
+            .arg(psm.to_string())
+            .arg("-c")
+            .arg("preserve_interword_spaces=1")
             .arg("tsv")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -167,7 +257,6 @@ impl PlatformOcrProvider {
                 ))
             })?;
 
-        let timeout = Duration::from_secs(u64::from(options.timeout_seconds.max(1)));
         let status = loop {
             if self.is_canceled() {
                 let _ = child.kill();
@@ -181,15 +270,15 @@ impl PlatformOcrProvider {
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(OcrError::ProcessingFailed(format!(
-                    "Tesseract exceeded the {} second OCR timeout.",
-                    options.timeout_seconds.max(1)
+                    "Tesseract exceeded the {} second total OCR page timeout.",
+                    timeout.as_secs()
                 )));
             }
             thread::sleep(Duration::from_millis(WAIT_INTERVAL_MS));
         };
         if !status.success() {
             return Err(OcrError::ProcessingFailed(format!(
-                "Tesseract exited with status {status}. Verify that the '{language}' trained data is installed."
+                "Tesseract exited with status {status} in page-segmentation mode {psm}. Verify that the '{language}' trained data is installed."
             )));
         }
         if self.is_canceled() {
@@ -214,16 +303,7 @@ impl PlatformOcrProvider {
                 "Tesseract completed without a readable TSV result: {error}"
             ))
         })?;
-        let parsed = parse_tesseract_tsv(&tsv);
-        Ok(OcrProcessingResult::new(
-            parsed.text,
-            parsed.confidence,
-            Vec::new(),
-            u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-            ENGINE_NAME.to_string(),
-            language,
-            dimensions,
-        ))
+        Ok(parse_tesseract_tsv(&tsv, psm))
     }
 }
 
@@ -281,10 +361,31 @@ fn canceled_ocr_error() -> OcrError {
 struct ParsedTsv {
     text: String,
     confidence: f64,
+    nonspace_chars: usize,
+    alphabetic_chars: usize,
+    psm: u8,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn parse_tesseract_tsv(tsv: &str) -> ParsedTsv {
+impl ParsedTsv {
+    fn is_strong(&self) -> bool {
+        self.nonspace_chars >= STRONG_OCR_MIN_NONSPACE
+            && self.alphabetic_chars >= STRONG_OCR_MIN_ALPHABETIC
+            && self.confidence >= STRONG_OCR_MIN_CONFIDENCE
+    }
+
+    fn score(&self) -> (bool, usize, usize, usize) {
+        (
+            self.is_strong(),
+            self.alphabetic_chars,
+            self.nonspace_chars,
+            confidence_milli(self.confidence),
+        )
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn parse_tesseract_tsv(tsv: &str, psm: u8) -> ParsedTsv {
     let mut output_lines = Vec::<String>::new();
     let mut current_line_key = None::<(i64, i64, i64)>;
     let mut current_words = Vec::<String>::new();
@@ -323,15 +424,29 @@ fn parse_tesseract_tsv(tsv: &str) -> ParsedTsv {
         output_lines.push(current_words.join(" "));
     }
 
+    let text = output_lines.join("\n");
     let confidence = if confidence_samples == 0 {
         0.0
     } else {
         (confidence_sum / confidence_samples as f64 / 100.0).clamp(0.0, 1.0)
     };
+    let nonspace_chars = text.chars().filter(|character| !character.is_whitespace()).count();
+    let alphabetic_chars = text.chars().filter(|character| character.is_alphabetic()).count();
     ParsedTsv {
-        text: output_lines.join("\n"),
+        text,
         confidence,
+        nonspace_chars,
+        alphabetic_chars,
+        psm,
     }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn confidence_milli(value: f64) -> usize {
+    if !value.is_finite() {
+        return 0;
+    }
+    (value.clamp(0.0, 1.0) * 1_000.0).round() as usize
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -342,14 +457,12 @@ fn png_dimensions(image_data: &[u8]) -> OcrResult<(u32, u32)> {
             "ostudy OCR expects a rendered PNG page.".to_string(),
         ));
     }
-    let width =
-        u32::from_be_bytes(image_data[16..20].try_into().map_err(|_| {
-            OcrError::InvalidImageData("PNG width header is truncated.".to_string())
-        })?);
-    let height =
-        u32::from_be_bytes(image_data[20..24].try_into().map_err(|_| {
-            OcrError::InvalidImageData("PNG height header is truncated.".to_string())
-        })?);
+    let width = u32::from_be_bytes(image_data[16..20].try_into().map_err(|_| {
+        OcrError::InvalidImageData("PNG width header is truncated.".to_string())
+    })?);
+    let height = u32::from_be_bytes(image_data[20..24].try_into().map_err(|_| {
+        OcrError::InvalidImageData("PNG height header is truncated.".to_string())
+    })?);
     if width == 0 || height == 0 {
         return Err(OcrError::InvalidImageData(
             "Rendered OCR page has zero image dimensions.".to_string(),
@@ -447,9 +560,33 @@ mod tests {
             "5\t1\t1\t1\t2\t1\t0\t0\t10\t10\t70.0\tof\n",
             "5\t1\t1\t1\t2\t2\t0\t0\t10\t10\t60.0\tHDLs\n"
         );
-        let parsed = parse_tesseract_tsv(tsv);
+        let parsed = parse_tesseract_tsv(tsv, 3);
         assert_eq!(parsed.text, "The purpose\nof HDLs");
         assert!((parsed.confidence - 0.75).abs() < 0.0001);
+        assert_eq!(parsed.psm, 3);
+        assert_eq!(parsed.alphabetic_chars, 16);
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn weak_primary_layout_can_be_outscored_by_substantive_fallback() {
+        let weak = ParsedTsv {
+            text: "21".to_string(),
+            confidence: 0.96,
+            nonspace_chars: 2,
+            alphabetic_chars: 0,
+            psm: 3,
+        };
+        let fallback = ParsedTsv {
+            text: "Drugs affecting the cardiovascular system".to_string(),
+            confidence: 0.88,
+            nonspace_chars: 37,
+            alphabetic_chars: 36,
+            psm: 11,
+        };
+        assert!(!weak.is_strong());
+        assert!(fallback.is_strong());
+        assert!(fallback.score() > weak.score());
     }
 
     #[test]
