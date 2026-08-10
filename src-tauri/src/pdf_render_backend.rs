@@ -1,29 +1,27 @@
 //! Swappable PDF page-rendering boundary.
 //!
 //! Structured extraction is handled independently by `pdf_backend`. Desktop
-//! rendering uses Chromium PDFium through the pinned `pdfium-bundled` adapter;
-//! the PDFium shared library is embedded at build time and extracted to a local
-//! cache on first use. Pdfium itself does not guarantee parallel execution, so
-//! this boundary deliberately renders one document in physical page order. OCR
-//! parallelism happens after each selected high-resolution page has been
-//! rasterized, where independent Tesseract processes can use multiple cores.
+//! rendering uses Chromium PDFium through the mature `pdfium-render` bindings,
+//! but ostudy does not delegate native-runtime acquisition to a Rust crate. A
+//! platform provisioning script stages an audited PDFium library, or an operator
+//! can supply a system/explicit library. Pdfium access stays serialized within
+//! one process; independent OCR workers provide the multicore recognition path.
 
 use std::{fmt, path::PathBuf};
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use std::{io::Cursor, sync::Arc};
+use std::{io::Cursor, path::Path, sync::Arc};
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use image::ImageFormat;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use pdfium_bundled::{
-    bind_bundled,
-    pdfium_render::prelude::{PdfPageIndex, PdfRenderConfig, Pdfium},
-};
+use pdfium_render::prelude::{PdfPageIndex, PdfRenderConfig, Pdfium};
 
 const PAGE_RENDER_DPI: f64 = 120.0;
 pub(crate) const OCR_RENDER_DPI: f64 = 300.0;
 const PDF_POINTS_PER_INCH: f64 = 72.0;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const PDFIUM_PATH_ENV: &str = "OSTUDY_PDFIUM_PATH";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PdfRenderErrorKind {
@@ -77,16 +75,10 @@ impl fmt::Debug for PdfRenderRuntime {
 }
 
 impl PdfRenderRuntime {
-    pub(crate) fn new(_resource_dir: Option<PathBuf>) -> Result<Self, PdfRenderError> {
+    pub(crate) fn new(resource_dir: Option<PathBuf>) -> Result<Self, PdfRenderError> {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
-            let pdfium = bind_bundled().map_err(|error| {
-                PdfRenderError::new(
-                    PdfRenderErrorKind::Bind,
-                    None,
-                    format!("Could not initialize the bundled PDFium renderer: {error}"),
-                )
-            })?;
+            let pdfium = bind_external_pdfium(resource_dir.as_deref())?;
             Ok(Self {
                 backend_id: active_backend_id(),
                 pdfium: Arc::new(pdfium),
@@ -95,6 +87,7 @@ impl PdfRenderRuntime {
 
         #[cfg(any(target_os = "android", target_os = "ios"))]
         {
+            let _ = resource_dir;
             Ok(Self {
                 backend_id: active_backend_id(),
             })
@@ -105,12 +98,112 @@ impl PdfRenderRuntime {
 pub(crate) fn active_backend_id() -> &'static str {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        "pdfium-render-0.9.3/pdfium-7881-bundled-v1-120dpi"
+        "pdfium-render-0.9.3/pdfium-api-7881-external-v2-120dpi"
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        "pdfium-mobile-render-adapter-pending-v1"
+        "pdfium-mobile-render-adapter-pending-v2"
     }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn bind_external_pdfium(resource_dir: Option<&Path>) -> Result<Pdfium, PdfRenderError> {
+    let mut candidates = Vec::<PathBuf>::new();
+
+    if let Some(explicit) = std::env::var_os(PDFIUM_PATH_ENV)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+    {
+        candidates.push(resolve_library_candidate(explicit));
+    }
+    if let Some(resource_dir) = resource_dir {
+        candidates.push(Pdfium::pdfium_platform_library_name_at_path(
+            resource_dir.join("native/pdfium"),
+        ));
+    }
+    if let Some(root) = std::env::var_os("OSTUDY_ROOT_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+    {
+        candidates.push(Pdfium::pdfium_platform_library_name_at_path(
+            root.join("src-tauri/resources/native/pdfium"),
+        ));
+    }
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            candidates.push(Pdfium::pdfium_platform_library_name_at_path(directory));
+        }
+    }
+
+    candidates.dedup();
+    let mut attempted_local = 0_usize;
+    for candidate in candidates {
+        if !candidate.is_file() {
+            continue;
+        }
+        attempted_local = attempted_local.saturating_add(1);
+        match Pdfium::bind_to_library(&candidate) {
+            Ok(bindings) => {
+                crate::logging::info(
+                    "pdfium_runtime_bound",
+                    format!(
+                        "source=explicit_or_managed attempted_local={attempted_local} library_name={}",
+                        candidate
+                            .file_name()
+                            .and_then(|value| value.to_str())
+                            .unwrap_or("pdfium")
+                    ),
+                );
+                return Ok(Pdfium::new(bindings));
+            }
+            Err(error) => {
+                crate::logging::info(
+                    "pdfium_runtime_candidate_rejected",
+                    format!(
+                        "attempt={attempted_local} detail={}",
+                        bounded_detail(&error.to_string(), 300)
+                    ),
+                );
+            }
+        }
+    }
+
+    match Pdfium::bind_to_system_library() {
+        Ok(bindings) => {
+            crate::logging::info(
+                "pdfium_runtime_bound",
+                format!("source=system attempted_local={attempted_local}"),
+            );
+            Ok(Pdfium::new(bindings))
+        }
+        Err(error) => Err(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            format!(
+                "Could not load a compatible PDFium runtime. Run ./scripts/install-native-deps.sh --pdfium-only, install PDFium system-wide, or set {PDFIUM_PATH_ENV} to a compatible PDFium 7881 library. Last bind error: {}",
+                bounded_detail(&error.to_string(), 300)
+            ),
+        )),
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn resolve_library_candidate(path: PathBuf) -> PathBuf {
+    if path.is_dir() {
+        Pdfium::pdfium_platform_library_name_at_path(path)
+    } else {
+        path
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn bounded_detail(value: &str, maximum: usize) -> String {
+    value
+        .chars()
+        .filter(|character| !character.is_control() || *character == '\n')
+        .take(maximum)
+        .collect::<String>()
+        .replace('\n', " ")
 }
 
 pub(crate) fn render_pages<E, F>(
@@ -224,7 +317,7 @@ fn validate_runtime<E>(runtime: &PdfRenderRuntime) -> Result<(), RenderProcessEr
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn page_count(
-    document: &pdfium_bundled::pdfium_render::prelude::PdfDocument<'_>,
+    document: &pdfium_render::prelude::PdfDocument<'_>,
 ) -> Result<usize, PdfRenderError> {
     usize::try_from(document.pages().len()).map_err(|_| {
         PdfRenderError::new(
@@ -237,7 +330,7 @@ fn page_count(
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn render_page_at_dpi(
-    document: &pdfium_bundled::pdfium_render::prelude::PdfDocument<'_>,
+    document: &pdfium_render::prelude::PdfDocument<'_>,
     index: usize,
     dpi: f64,
 ) -> Result<Vec<u8>, PdfRenderError> {
@@ -298,14 +391,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn active_renderer_is_pdfium_bundled_versioned() {
+    fn active_renderer_is_external_pdfium_versioned() {
         assert_eq!(PAGE_RENDER_DPI, 120.0);
         assert_eq!(OCR_RENDER_DPI, 300.0);
         assert_eq!(PDF_POINTS_PER_INCH, 72.0);
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         assert_eq!(
             active_backend_id(),
-            "pdfium-render-0.9.3/pdfium-7881-bundled-v1-120dpi"
+            "pdfium-render-0.9.3/pdfium-api-7881-external-v2-120dpi"
         );
     }
 
