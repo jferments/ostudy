@@ -10,6 +10,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     fmt,
+    io::{Read, Seek},
     path::Path,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -250,9 +251,9 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
     })
 }
 
-fn extract_page_texts(
+fn extract_page_texts<R: Read + Seek>(
     source_path: &Path,
-    canonical_document: &PdfDocument,
+    canonical_document: &PdfDocument<R>,
     page_count: usize,
 ) -> Result<(Vec<ExtractedTextPage>, Vec<usize>), PdfBackendError> {
     if page_count == 0 {
