@@ -293,7 +293,7 @@ fn tesseract_language(language: &str) -> String {
         "it" => "ita".to_string(),
         "pt" => "por".to_string(),
         "nl" => "nld".to_string(),
-        value if value.is_empty() => "eng".to_string(),
+        "" => "eng".to_string(),
         value => value.to_string(),
     }
 }
