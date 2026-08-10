@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "pdfium": {
+    "apiBuild": 7881,
+    "bindingCrateVersion": "0.9.3",
+    "binarySource": {
+      "repository": "bblanchon/pdfium-binaries",
+      "release": "chromium/7881",
+      "releaseBaseUrl": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F7881",
+      "note": "Precompiled distribution maintained independently from Google/Foxit; every asset is pinned here by SHA-256. Official PDFium source remains the high-assurance build alternative."
+    },
+    "officialSource": "https://pdfium.googlesource.com/pdfium/",
+    "artifacts": {
+      "linux-x64": { "archive": "pdfium-linux-x64.tgz", "sha256": "1470e21b8b4a3b4ad7f85684e2da11d94f3b69a86d81dee11b9b6709d927ac1d", "library": "lib/libpdfium.so" },
+      "linux-arm64": { "archive": "pdfium-linux-arm64.tgz", "sha256": "ee7f7b7d5468958336a818c1cd580bdd20972846b7377b13f9a923d92d1d4674", "library": "lib/libpdfium.so" },
+      "macos-x64": { "archive": "pdfium-mac-x64.tgz", "sha256": "6dedf83990e0e3d6b7c93c9e7589c5a126b0ae14b7464d76120cff7a26afb18b", "library": "lib/libpdfium.dylib" },
+      "macos-arm64": { "archive": "pdfium-mac-arm64.tgz", "sha256": "52e94ca5aa8847934330daf3f8150c190682c5ca93831468794f8b90d4392e40", "library": "lib/libpdfium.dylib" },
+      "macos-universal": { "archive": "pdfium-mac-univ.tgz", "sha256": "df451a413c3609585e84a4a91110a9bc889cff05fe3b2db0ed817c9e90c3f7d3", "library": "lib/libpdfium.dylib" },
+      "windows-x64": { "archive": "pdfium-win-x64.tgz", "sha256": "73cc0de638ac2095e7445bf56a38200a5b7c7ca0e9f4ba144598f2457377ac08", "library": "bin/pdfium.dll" },
+      "windows-arm64": { "archive": "pdfium-win-arm64.tgz", "sha256": "d3035d4d2cacac6ecd1a2ece197a3d702a1b2a58466276b9f870b8cb278a9d84", "library": "bin/pdfium.dll" },
+      "windows-x86": { "archive": "pdfium-win-x86.tgz", "sha256": "cf02980c66a93eef007cfff861fe79d291f3c3dcd43258abf6e3099b682e7ec6", "library": "bin/pdfium.dll" },
+      "android-arm64": { "archive": "pdfium-android-arm64.tgz", "sha256": "16d23bb86c4188d59326dc509938f59df3c417ecfdd3d2ca2f160dc5bd49a839", "library": "lib/libpdfium.so" },
+      "android-arm": { "archive": "pdfium-android-arm.tgz", "sha256": "57f7f5c349a3268f39b1737f830e50e271aa3116417abed2c30d0c0840b1b58b", "library": "lib/libpdfium.so" },
+      "android-x64": { "archive": "pdfium-android-x64.tgz", "sha256": "58bd708d6083173008c63860dbffa93396a2fee00dd76747cbd782bcf4ff9bd4", "library": "lib/libpdfium.so" },
+      "android-x86": { "archive": "pdfium-android-x86.tgz", "sha256": "55be706424a3276176642ae36f05d6ab89f84e2f149f5d7149a086850157cb23", "library": "lib/libpdfium.so" },
+      "ios-device-arm64": { "archive": "pdfium-ios-device-arm64.tgz", "sha256": "0f73152a94bbfb467dadedce745691e55b09792ed38cc9a6b0d11f2a9dc95ea7", "library": "lib/libpdfium.dylib" },
+      "ios-simulator-arm64": { "archive": "pdfium-ios-simulator-arm64.tgz", "sha256": "fcccdae4c81b39234398c102645490705da150d77bec43f75ed60738c2f50cd9", "library": "lib/libpdfium.dylib" },
+      "ios-simulator-x64": { "archive": "pdfium-ios-simulator-x64.tgz", "sha256": "7186c9ac94d4b25421b9cffd7716ac02e4153c8f27f955c831a98aab2ec107cd", "library": "lib/libpdfium.dylib" },
+      "ios-catalyst-arm64": { "archive": "pdfium-ios-catalyst-arm64.tgz", "sha256": "ee1c9310eed7ef47e4d8581544e023410a933c6086e63f96317f727ba643b3fb", "library": "lib/libpdfium.dylib" },
+      "ios-catalyst-x64": { "archive": "pdfium-ios-catalyst-x64.tgz", "sha256": "6dd91de184adbd3e9c659e4305badfdb8199c8e4a7337097d1f83faa25d292df", "library": "lib/libpdfium.dylib" }
+    }
+  },
+  "tesseract": {
+    "minimumMajor": 5,
+    "language": "eng",
+    "linuxDebianPackages": ["tesseract-ocr", "tesseract-ocr-eng"],
+    "macosHomebrewFormula": "tesseract",
+    "windowsWingetId": "UB-Mannheim.TesseractOCR",
+    "note": "Desktop installer uses established OS package channels documented by Tesseract rather than shipping an unaudited Rust-downloaded OCR executable. Android/iOS use native OCR adapters instead of the desktop CLI."
+  }
+}
