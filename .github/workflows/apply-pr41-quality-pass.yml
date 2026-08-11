@@ -1,6 +1,7 @@
 name: Apply PR41 quality pass
 
 # Temporary self-hosted applicator; removed by the successful run.
+# Retry after updating the direct workload regression caller.
 on:
   push:
     branches:
