@@ -258,6 +258,102 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
     assert_no_horizontal_overflow(session_id, "wide application shell")
 
 
+def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
+    """Regress the native-select intrinsic-width overlap shown in Bulk Add."""
+    deck_name = "Cardiology pharmacology respiratory physiology comprehensive review collection"
+    new_deck = webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//button[normalize-space(.)='New deck']",
+        deadline,
+    )
+    webdriver.click(session_id, new_deck)
+    webdriver.set_input_text(
+        session_id,
+        "css selector",
+        "input[placeholder='NCLEX Pharmacology']",
+        deck_name,
+        deadline,
+    )
+    create = webdriver.find_element(
+        session_id,
+        "xpath",
+        "//*[@role='dialog']//button[normalize-space(.)='Create deck']",
+        deadline,
+    )
+    webdriver.click(session_id, create)
+    webdriver.wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
+
+    back = webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//button[contains(normalize-space(.), 'All decks')]",
+        deadline,
+    )
+    webdriver.click(session_id, back)
+    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Decks", deadline)
+
+    bulk_add = webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//button[normalize-space(.)='Bulk add']",
+        deadline,
+    )
+    webdriver.click(session_id, bulk_add)
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        "//*[@role='dialog']//*[normalize-space(.)='Bulk add cards']",
+        deadline,
+    )
+
+    measurements = execute(
+        session_id,
+        """
+        const controls = document.querySelector('.bulk-entry-controls');
+        const select = controls?.querySelector('select');
+        const help = controls?.querySelector('p');
+        if (!(controls instanceof HTMLElement) || !(select instanceof HTMLElement) || !(help instanceof HTMLElement)) {
+          return null;
+        }
+        const c = controls.getBoundingClientRect();
+        const s = select.getBoundingClientRect();
+        const h = help.getBoundingClientRect();
+        return {
+          controlsLeft: c.left,
+          controlsRight: c.right,
+          selectLeft: s.left,
+          selectRight: s.right,
+          helpLeft: h.left,
+          helpRight: h.right,
+          selectMinWidth: getComputedStyle(select).minWidth,
+          selectMaxWidth: getComputedStyle(select).maxWidth
+        };
+        """,
+    )
+    if not isinstance(measurements, dict):
+        raise AssertionError(f"Could not measure Bulk Add controls: {measurements!r}")
+
+    controls_right = float(measurements["controlsRight"])
+    select_right = float(measurements["selectRight"])
+    help_left = float(measurements["helpLeft"])
+    help_right = float(measurements["helpRight"])
+    if select_right > help_left - 8:
+        raise AssertionError(
+            "Bulk Add destination selector overlaps explanatory text: "
+            f"selectRight={select_right:.1f}, helpLeft={help_left:.1f}, "
+            f"styles={measurements!r}"
+        )
+    if select_right > controls_right + 1 or help_right > controls_right + 1:
+        raise AssertionError(
+            f"Bulk Add controls escaped their container: {measurements!r}"
+        )
+    assert_no_horizontal_overflow(session_id, "Bulk Add dialog")
+
+    send_key(session_id, ESCAPE_KEY)
+    wait_for_absent(session_id, "css selector", "[role='dialog']", deadline)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--application", required=True, type=Path)
@@ -285,10 +381,11 @@ def main() -> int:
         verify_compact_navigation(session_id, deadline)
         verify_dialog_focus(session_id, deadline)
         verify_wide_navigation(session_id, deadline)
+        verify_bulk_add_containment(session_id, deadline)
         print(
             "Native UI platform smoke passed: compact/wide navigation, Decks workspace "
-            "destinations, no horizontal overflow, dialog focus containment, Escape "
-            "dismissal, and focus restoration."
+            "destinations, no horizontal overflow, Bulk Add control containment, dialog "
+            "focus containment, Escape dismissal, and focus restoration."
         )
         return 0
     except Exception:
