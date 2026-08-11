@@ -35,6 +35,9 @@ export interface DocumentSummary {
   completedAt: number | null;
   archivedAt: number | null;
   revision: number;
+  processingDurationMs: number | null;
+  apiTokenCount: number | null;
+  apiTokenUsageComplete: boolean;
 }
 
 export interface DocumentGenerationResult {

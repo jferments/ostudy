@@ -57,6 +57,7 @@ const settings: settingsIpc.AppSettings = {
   cardFont: "system",
   uiScale: 100,
   cardBaseSize: 18,
+  animationsEnabled: true,
   reduceMotion: false,
   confirmDeletions: false,
   practiceShuffle: true,

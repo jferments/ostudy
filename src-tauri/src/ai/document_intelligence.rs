@@ -1,4 +1,8 @@
-use std::{cmp::Reverse, collections::HashSet};
+use std::{
+    cmp::Reverse,
+    collections::HashSet,
+    sync::{Arc, Mutex},
+};
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use rusqlite::OptionalExtension;
@@ -56,6 +60,25 @@ pub(crate) struct DocumentTaskContext {
     pub include_page_images: bool,
     profile: ProfileSnapshot,
     credential_storage: CredentialStorage,
+    usage: Arc<Mutex<DocumentUsageAccumulator>>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct DocumentUsageAccumulator {
+    total_tokens: i64,
+    reported_requests: i64,
+    unreported_requests: i64,
+}
+
+impl DocumentTaskContext {
+    pub(crate) fn usage_summary(&self) -> (Option<i64>, bool) {
+        let Ok(usage) = self.usage.lock() else {
+            return (None, false);
+        };
+        let tokens = (usage.reported_requests > 0).then_some(usage.total_tokens);
+        let complete = usage.reported_requests > 0 && usage.unreported_requests == 0;
+        (tokens, complete)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -246,6 +269,7 @@ pub(crate) fn load_document_task_context(
             include_page_images,
             profile,
             credential_storage,
+            usage: Arc::new(Mutex::new(DocumentUsageAccumulator::default())),
         })
     })
 }
@@ -986,7 +1010,7 @@ async fn request_json(
     }
     .map_err(gateway_to_command)?;
 
-    log_document_usage(task, &response);
+    record_document_usage(task, &response);
     ensure_document_response_complete(&response)?;
 
     match task.profile.provider_kind {
@@ -1003,28 +1027,45 @@ async fn request_json(
     }
 }
 
-fn log_document_usage(task: &DocumentTaskContext, response: &Value) {
-    let Some(usage) = response.get("usage") else {
-        return;
-    };
+fn record_document_usage(task: &DocumentTaskContext, response: &Value) {
+    let usage = response.get("usage");
     let prompt = usage
-        .get("prompt_tokens")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
+        .and_then(|value| value.get("prompt_tokens"))
+        .and_then(Value::as_u64);
     let completion = usage
-        .get("completion_tokens")
+        .and_then(|value| value.get("completion_tokens"))
+        .and_then(Value::as_u64);
+    let reported_total = usage
+        .and_then(|value| value.get("total_tokens"))
         .and_then(Value::as_u64)
-        .unwrap_or(0);
+        .or_else(|| {
+            prompt
+                .zip(completion)
+                .map(|(prompt, completion)| prompt.saturating_add(completion))
+        });
+    if let Ok(mut accumulator) = task.usage.lock() {
+        if let Some(total) = reported_total {
+            accumulator.total_tokens = accumulator
+                .total_tokens
+                .saturating_add(i64::try_from(total).unwrap_or(i64::MAX));
+            accumulator.reported_requests = accumulator.reported_requests.saturating_add(1);
+        } else {
+            accumulator.unreported_requests = accumulator.unreported_requests.saturating_add(1);
+        }
+    }
+
+    let prompt = prompt.unwrap_or(0);
+    let completion = completion.unwrap_or(0);
     let cache_hit = usage
-        .get("prompt_cache_hit_tokens")
+        .and_then(|value| value.get("prompt_cache_hit_tokens"))
         .and_then(Value::as_u64)
         .unwrap_or(0);
     let cache_miss = usage
-        .get("prompt_cache_miss_tokens")
+        .and_then(|value| value.get("prompt_cache_miss_tokens"))
         .and_then(Value::as_u64)
         .unwrap_or(0);
     let reasoning = usage
-        .pointer("/completion_tokens_details/reasoning_tokens")
+        .and_then(|value| value.pointer("/completion_tokens_details/reasoning_tokens"))
         .and_then(Value::as_u64)
         .unwrap_or(0);
     crate::logging::info(

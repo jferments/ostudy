@@ -251,6 +251,7 @@ async fn generate_more_impl(
     )?;
     ensure_exact_append_destination(database.inner(), &context.deck_id, &context.deck_name)?;
     let payload = build_append_payload(&context.deck_name, &context.source_format, generated)?;
+    let (api_token_count, api_token_usage_complete) = task.usage_summary();
     let result = import_generated_flashcards_bytes_with_commit(
         database.inner(),
         payload.as_bytes(),
@@ -269,12 +270,23 @@ async fn generate_more_impl(
                          generated_card_count = generated_card_count + ?2,
                          generation_completed_window_count = generation_window_count,
                          safe_error_code = '', safe_error_message = '',
+                         processing_duration_ms = CASE
+                             WHEN processing_started_at IS NULL THEN NULL
+                             ELSE MAX(0, ?3 - processing_started_at)
+                         END,
+                         api_token_count = ?4, api_token_usage_complete = ?5,
                          updated_at = ?3, completed_at = ?3, revision = revision + 1
-                     WHERE id = ?4 AND generated_deck_id = ?5 AND lifecycle_state = 'processing'",
+                     WHERE id = ?6 AND generated_deck_id = ?7 AND lifecycle_state = 'processing'",
                     params![
                         import_result.created_note_count,
                         import_result.created_card_count,
                         now,
+                        api_token_count,
+                        if api_token_usage_complete {
+                            1_i64
+                        } else {
+                            0_i64
+                        },
                         input.document_id,
                         context.deck_id,
                     ],

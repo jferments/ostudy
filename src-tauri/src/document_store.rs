@@ -71,6 +71,8 @@ pub(crate) fn mark_document_processing(
             .execute(
                 "UPDATE documents
                  SET lifecycle_state = 'processing', safe_error_code = '', safe_error_message = '',
+                     processing_started_at = ?1, processing_duration_ms = NULL,
+                     api_token_count = NULL, api_token_usage_complete = 0,
                      updated_at = ?1, completed_at = NULL, revision = revision + 1
                  WHERE id = ?2 AND archived_at IS NULL",
                 params![now, document_id],

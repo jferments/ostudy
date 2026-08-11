@@ -53,6 +53,7 @@ export function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings 
     cardFont: "system",
     uiScale: 100,
     cardBaseSize: 18,
+    animationsEnabled: true,
     reduceMotion: false,
     confirmDeletions: true,
     practiceShuffle: true,

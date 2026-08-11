@@ -19,6 +19,7 @@ pub struct AppSettingsDto {
     pub card_font: String,
     pub ui_scale: i64,
     pub card_base_size: i64,
+    pub animations_enabled: bool,
     pub reduce_motion: bool,
     pub confirm_deletions: bool,
     pub practice_shuffle: bool,
@@ -79,6 +80,7 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         card_font: get_setting(connection, "cardFont", "system".to_string())?,
         ui_scale: get_setting(connection, "uiScale", 100_i64)?,
         card_base_size: get_setting(connection, "cardBaseSize", 18_i64)?,
+        animations_enabled: get_setting(connection, "animationsEnabled", true)?,
         reduce_motion: get_setting(connection, "reduceMotion", false)?,
         confirm_deletions: get_setting(connection, "confirmDeletions", true)?,
         practice_shuffle: get_setting(connection, "practiceShuffle", true)?,
@@ -120,6 +122,10 @@ fn save_settings_in_connection(
         (
             "cardBaseSize",
             serde_json::to_string(&settings.card_base_size),
+        ),
+        (
+            "animationsEnabled",
+            serde_json::to_string(&settings.animations_enabled),
         ),
         (
             "reduceMotion",

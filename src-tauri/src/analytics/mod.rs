@@ -33,6 +33,10 @@ pub struct AnalyticsQueryDto {
     #[serde(default)]
     pub tag_ids: Vec<String>,
     #[serde(default)]
+    pub custom_start_local_date: Option<String>,
+    #[serde(default)]
+    pub custom_end_local_date: Option<String>,
+    #[serde(default)]
     pub highlighted_session_id: Option<String>,
 }
 
@@ -260,6 +264,8 @@ pub fn get_recent_practice_reviews(
             range: "all".to_string(),
             deck_ids: Vec::new(),
             tag_ids: Vec::new(),
+            custom_start_local_date: None,
+            custom_end_local_date: None,
             highlighted_session_id: None,
         })?;
         recent::load_reviews(connection, &context)
@@ -320,6 +326,8 @@ mod tests {
                         range: default_range(),
                         deck_ids: Vec::new(),
                         tag_ids: Vec::new(),
+                        custom_start_local_date: None,
+                        custom_end_local_date: None,
                         highlighted_session_id: None,
                     },
                 )

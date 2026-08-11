@@ -195,3 +195,9 @@ New work should enter through the narrowest existing boundary:
 - a durable cross-module rule receives an Architecture Decision Record under [`../decisions/`](../decisions/).
 
 The purpose of these boundaries is not architectural ceremony. They make local ownership, recovery, platform expansion, and testing possible without allowing every feature to invent its own storage, network, or interaction model.
+
+## Cross-platform UI dependency boundary
+
+ostudy's product UI is intentionally platform-neutral. React screens, feature controllers, responsive layouts, and shared UI primitives must not branch on desktop/mobile operating-system identity. Native differences are exposed through typed IPC under `src/ipc/` or capability-focused adapters under `src/platform/`. Responsive presentation is selected from viewport, pointer, safe-area, and accessibility capabilities rather than user-agent strings.
+
+The dependency direction is one-way: shared UI primitives do not import feature controllers or IPC; feature screens may depend on controllers/shared UI; controllers may depend on typed IPC; direct Tauri imports are confined to the IPC/platform boundary. This lets Android, iOS, Windows, macOS, and Linux supply platform integrations without forking the study workflows themselves.

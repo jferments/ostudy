@@ -25,7 +25,7 @@ Write one main retrieval task per card. A precise question with a focused answer
 
 ## 3. Organize and find material
 
-Attach human-readable tags for concepts that cross deck boundaries. **Search/Filter** can query the whole library and narrow results by deck, tags, due state, or study history. Each scheduled presentation appears as its own result, so a forward and reverse card can be selected independently even though note-level actions such as tagging or moving apply to their shared source.
+Attach human-readable tags for concepts that cross deck boundaries. The **Search and filter cards** workspace at the bottom of **Decks** can query the whole library and narrow results by deck, tags, due state, or study history. Each scheduled presentation appears as its own result, so a forward and reverse card can be selected independently even though note-level actions such as tagging or moving apply to their shared source.
 
 Bulk entry is useful for a set of simple question-and-answer pairs. Exact duplicate detection prevents accidental repetition while allowing an explicit duplicate when the same wording is genuinely needed.
 
@@ -40,7 +40,7 @@ Open **Practice**, select the decks and session mode, and begin. After revealing
 | **Medium** | The answer was recalled correctly with normal effort. |
 | **Easy** | The answer was immediate and clearly known. |
 
-ostudy maps these choices to the FSRS scheduling engine and records an immutable review event together with the new current schedule. Interval previews show the effect of each choice before it is submitted.
+ostudy maps these choices to the FSRS scheduling engine and records an immutable review event together with the new current schedule. FSRS computes the next interval after each result; the rating buttons stay intentionally compact rather than repeating interval estimates. Press **Space** or **Enter** to reveal an answer, then **0**, **1**, **2**, or **3** for Wrong, Hard, Medium, or Easy.
 
 You can suspend cards that should leave normal circulation, bury them temporarily, reset a schedule, reschedule the next due time, and set daily limits. A **Needs more practice** classification identifies repeatedly missed material without changing the underlying review history.
 
@@ -78,7 +78,7 @@ Create a complete backup after meaningful authoring work and before testing a mi
 A useful first test of the application is:
 
 1. Create a small deck with five Basic cards, one Reverse note, and one Fill in the blank note.
-2. Add two tags and find the cards through Search/Filter.
+2. Add two tags and find the cards through the Search and filter cards workspace in Decks.
 3. Practice the deck and use more than one confidence response.
 4. Open Analytics and inspect the resulting session and review details.
 5. Export the deck, create a full backup, restart ostudy, and confirm the material remains available.

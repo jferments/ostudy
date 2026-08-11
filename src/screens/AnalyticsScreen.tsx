@@ -51,11 +51,12 @@ export function AnalyticsScreen({
   showToast,
 }: AnalyticsScreenProps) {
   const [range, setRange] = useState<AnalyticsRange>("7d");
+  const [customStartLocalDate, setCustomStartLocalDate] = useState(() => localDateDaysAgo(6));
+  const [customEndLocalDate, setCustomEndLocalDate] = useState(() => localDateDaysAgo(0));
   const [selectedDeckIds, setSelectedDeckIds] = useState<Set<string>>(new Set());
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [highlightedSessionId, setHighlightedSessionId] = useState<string | undefined>();
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
-  const [chartMetric, setChartMetric] = useState<"cards" | "time">("cards");
   const [showChartData, setShowChartData] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [practicingTagId, setPracticingTagId] = useState<string | null>(null);
@@ -76,6 +77,9 @@ export function AnalyticsScreen({
         range,
         deckIds,
         tagIds,
+        ...(range === "custom"
+          ? { customStartLocalDate, customEndLocalDate }
+          : {}),
         highlightedSessionId,
       });
       if (!result) return;
@@ -91,7 +95,16 @@ export function AnalyticsScreen({
       showToast("error", message);
       setIsLoading(false);
     }
-  }, [controller, deckIds, highlightedSessionId, range, showToast, tagIds]);
+  }, [
+    controller,
+    customEndLocalDate,
+    customStartLocalDate,
+    deckIds,
+    highlightedSessionId,
+    range,
+    showToast,
+    tagIds,
+  ]);
 
   useEffect(() => {
     void load();
@@ -141,6 +154,8 @@ export function AnalyticsScreen({
 
       <AnalyticsFilters
         range={range}
+        customStartLocalDate={customStartLocalDate}
+        customEndLocalDate={customEndLocalDate}
         selectedDeckIds={selectedDeckIds}
         selectedTagIds={selectedTagIds}
         highlightedSessionId={highlightedSessionId}
@@ -148,6 +163,8 @@ export function AnalyticsScreen({
         tagOptions={tagOptions}
         decks={decks}
         onRangeChange={setRange}
+        onCustomStartLocalDateChange={setCustomStartLocalDate}
+        onCustomEndLocalDateChange={setCustomEndLocalDate}
         onDeckIdsChange={setSelectedDeckIds}
         onTagIdsChange={setSelectedTagIds}
         onClearHighlightedSession={() => setHighlightedSessionId(undefined)}
@@ -177,24 +194,6 @@ export function AnalyticsScreen({
                 </p>
               </div>
               <div className="analytics-chart-actions">
-                <div className="segmented-control" role="group" aria-label="Chart volume metric">
-                  <button
-                    type="button"
-                    aria-pressed={chartMetric === "cards"}
-                    className={chartMetric === "cards" ? "active" : ""}
-                    onClick={() => setChartMetric("cards")}
-                  >
-                    Cards
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={chartMetric === "time"}
-                    className={chartMetric === "time" ? "active" : ""}
-                    onClick={() => setChartMetric("time")}
-                  >
-                    Study time
-                  </button>
-                </div>
                 <button
                   type="button"
                   className="text-button"
@@ -208,7 +207,6 @@ export function AnalyticsScreen({
             <ProgressChart
               buckets={analytics.timeline}
               range={analytics.scope.range}
-              metric={chartMetric}
               reduceMotion={settings.reduceMotion}
             />
             {showChartData ? <TimelineTable analytics={analytics} /> : null}
@@ -294,7 +292,7 @@ export function AnalyticsScreen({
                         <td>
                           <strong>{tag.tagName}</strong>
                           <small>
-                            {tag.generatedCardCount} generated · {tag.sourceNoteCount} source notes
+                            {tag.generatedCardCount} cards
                           </small>
                         </td>
                         <td>{formatLastPracticed(tag.lastPracticedAt)}</td>
@@ -601,4 +599,14 @@ function filteredSet(current: Set<string>, available: Set<string>): Set<string> 
 }
 function sameSet(left: Set<string>, right: Set<string>): boolean {
   return left.size === right.size && [...left].every((value) => right.has(value));
+}
+
+function localDateDaysAgo(days: number): string {
+  const value = new Date();
+  value.setHours(12, 0, 0, 0);
+  value.setDate(value.getDate() - days);
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return year + "-" + month + "-" + day;
 }

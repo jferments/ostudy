@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { ReviewOutcome } from "./practice";
 
-export type AnalyticsRange = "7d" | "30d" | "90d" | "1y" | "all";
+export type AnalyticsRange = "7d" | "30d" | "90d" | "1y" | "all" | "custom";
 export type TagAnalyticsStatus =
   | "building_data"
   | "needs_attention"
@@ -14,6 +14,8 @@ export interface AnalyticsQuery {
   range: AnalyticsRange;
   deckIds: string[];
   tagIds: string[];
+  customStartLocalDate?: string;
+  customEndLocalDate?: string;
   highlightedSessionId?: string;
 }
 

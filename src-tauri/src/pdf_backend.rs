@@ -153,7 +153,7 @@ pub(crate) struct TextQualityAssessment {
 }
 
 pub(crate) fn active_backend_id() -> &'static str {
-    "oxidize-pdf-4.2.2-rag-quality-ocr-v1"
+    "oxidize-pdf-4.2.2-rag-quality-ocr-v2"
 }
 
 pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, PdfBackendError> {
@@ -497,7 +497,7 @@ pub(crate) fn assess_text_quality(text: &str) -> TextQualityAssessment {
     {
         reasons.push("private_use_unicode");
     }
-    if replacement > 0 {
+    if replacement >= 3 && replacement.saturating_mul(100) >= nonspace.max(1) {
         reasons.push("unicode_replacement_character");
     }
     if invalid_controls > 0 {
@@ -800,7 +800,7 @@ mod tests {
 
     #[test]
     fn active_backend_identifies_quality_checked_oxidize_extraction() {
-        assert_eq!(active_backend_id(), "oxidize-pdf-4.2.2-rag-quality-ocr-v1");
+        assert_eq!(active_backend_id(), "oxidize-pdf-4.2.2-rag-quality-ocr-v2");
     }
 
     #[test]
@@ -829,6 +829,31 @@ mod tests {
             "L'étude cardiovasculaire évalue la pression artérielle et l'activité physique régulière.",
         );
         assert!(!normal.suspicious);
+    }
+
+    #[test]
+    fn isolated_replacement_glyph_does_not_force_ocr_on_readable_native_text() {
+        let assessment = assess_text_quality(
+            "A readable native text layer may contain one unsupported glyph � without making the page unusable for study.",
+        );
+        assert!(!assessment.suspicious);
+    }
+
+    #[test]
+    fn repeated_replacement_glyphs_still_fail_native_text_quality() {
+        let assessment = assess_text_quality("Cardiac �� �� �� �� �� physiology text");
+        assert!(assessment.suspicious);
+        assert!(assessment
+            .reasons
+            .contains(&"unicode_replacement_character"));
+    }
+
+    #[test]
+    fn empty_native_page_still_selects_ocr_recovery() {
+        let document = base_document("", "");
+        let plan = plan_text_recovery(&document);
+        assert_eq!(plan.ocr_pages.len(), 1);
+        assert_eq!(plan.ocr_pages[0].page_number, 1);
     }
 
     #[test]

@@ -76,6 +76,7 @@ const settings: settingsIpc.AppSettings = {
   cardFont: "system",
   uiScale: 100,
   cardBaseSize: 18,
+  animationsEnabled: true,
   reduceMotion: false,
   confirmDeletions: true,
   practiceShuffle: true,
@@ -190,7 +191,7 @@ async function startAndReveal(): Promise<void> {
   await screen.findByText("1 cards in the scheduled session");
   fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
   fireEvent.click(await screen.findByRole("button", { name: "Show answer" }));
-  await screen.findByRole("button", { name: /1 Hard, About 1 day/u });
+  await screen.findByRole("button", { name: /1 Hard/u });
 }
 
 describe("PracticeScreen", () => {
@@ -277,7 +278,7 @@ describe("PracticeScreen", () => {
     );
   });
 
-  it("shows FSRS interval previews and submits the preview revision", async () => {
+  it("submits the FSRS preview revision from the compact rating controls", async () => {
     renderPractice();
     await startAndReveal();
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));

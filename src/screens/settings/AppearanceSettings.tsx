@@ -58,8 +58,19 @@ export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
           </span>
           <input
             type="checkbox"
-            checked={!draft.reduceMotion}
-            onChange={(event) => update({ reduceMotion: !event.currentTarget.checked })}
+            checked={draft.animationsEnabled}
+            onChange={(event) => update({ animationsEnabled: event.currentTarget.checked })}
+          />
+        </label>
+        <label className={styles.switchRow}>
+          <span>
+            <strong>Reduce motion</strong>
+            <small>Minimize motion even when animations are enabled.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={draft.reduceMotion}
+            onChange={(event) => update({ reduceMotion: event.currentTarget.checked })}
           />
         </label>
       </section>
