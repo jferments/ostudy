@@ -69,9 +69,21 @@ jobs:
 
       - name: Publish validated product tree
         run: |
-          git rm scripts/finalize-ui-product-overhaul.mjs scripts/finalize-ui-product-overhaul-fixes.mjs
-          git add -A
-          git config user.name "ostudy CI"
-          git config user.email "actions@users.noreply.github.com"
-          git commit -m "refactor: complete responsive UI platform overhaul"
-          git push origin HEAD:agent/ui-platform-overhaul
+          set -o pipefail
+          {
+            git rm scripts/finalize-ui-product-overhaul.mjs scripts/finalize-ui-product-overhaul-fixes.mjs
+            git add -A
+            git config user.name "ostudy CI"
+            git config user.email "actions@users.noreply.github.com"
+            git commit -m "refactor: complete responsive UI platform overhaul"
+            git push origin HEAD:agent/ui-platform-overhaul
+          } 2>&1 | tee "$RUNNER_TEMP/ui-publish.log"
+
+      - name: Upload publish failure log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ui-publish-failure-${{ github.run_id }}
+          path: ${{ runner.temp }}/ui-publish.log
+          if-no-files-found: ignore
+          retention-days: 7
