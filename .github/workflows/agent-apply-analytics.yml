@@ -25,17 +25,18 @@ jobs:
         run: |
           gzip -dc .agent/apply_analytics.py.gz > .agent/apply_analytics.py
           python3 .agent/apply_analytics.py
+          rm -f .agent/apply_analytics.py
 
       - name: Format Rust changes
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
-
-      - name: Remove one-shot transformation
-        run: rm -f .agent/apply_analytics.py .agent/apply_analytics.py.gz .github/workflows/agent-apply-analytics.yml
 
       - name: Validate analytics and core UI changes
         run: |
           git diff --check
           ./scripts/check-fast.sh
+
+      - name: Remove one-shot transformation
+        run: rm -f .agent/apply_analytics.py.gz .github/workflows/agent-apply-analytics.yml
 
       - name: Commit source changes
         run: |
