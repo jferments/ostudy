@@ -7,7 +7,8 @@ mod implementation;
 
 pub(crate) use implementation::{
     curate_document_cards, generate_window_flashcards, load_document_task_context, DocumentOutline,
-    DocumentTaskContext, SourcePageImage,
+    DocumentTaskContext, OutlineBuildSources, SourcePageImage, OUTLINE_PROMPT_VERSION,
+    OUTLINE_SCHEMA_VERSION,
 };
 
 const VISUAL_ONLY_MARKER: &str = "has no extractable structured text";
@@ -19,13 +20,18 @@ const VISUAL_ONLY_MARKER: &str = "has no extractable structured text";
 /// placeholder text. When the configured llama.cpp profile has verified image
 /// input, generation proceeds with a conservative visual-source outline and the
 /// rendered page images provide the actual evidence to each generation window.
-pub(crate) async fn build_document_outline(
+pub(crate) async fn build_document_outline<F>(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
     document_title: &str,
     page_count: i64,
     windows: &[SemanticWindow],
-) -> Result<DocumentOutline, CommandError> {
+    cached_fragments: &[Option<DocumentOutline>],
+    persist_fragment: F,
+) -> Result<DocumentOutline, CommandError>
+where
+    F: FnMut(&SemanticWindow, &DocumentOutline) -> Result<(), CommandError>,
+{
     let visual_only = !windows.is_empty()
         && windows
             .iter()
@@ -57,8 +63,12 @@ pub(crate) async fn build_document_outline(
         task,
         document_title,
         page_count,
-        windows,
-        &images,
+        OutlineBuildSources {
+            windows,
+            cached_fragments,
+            window_images: &images,
+        },
+        persist_fragment,
     )
     .await
 }

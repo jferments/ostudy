@@ -46,6 +46,7 @@ printf '  %s\n' "${CHANGED[@]}"
 is_docs_only=1
 is_frontend_only=1
 is_rust_only=1
+document_only=1
 requires_fast=0
 
 for path in "${CHANGED[@]}"; do
@@ -58,6 +59,9 @@ for path in "${CHANGED[@]}"; do
   if [[ ! "$path" =~ ^src-tauri/src/.*\.rs$ ]]; then
     is_rust_only=0
   fi
+  if [[ ! "$path" =~ ^(src-tauri/src/(documents\.rs|document_.*\.rs|pdf_.*\.rs|ai/document_.*\.rs)|src-tauri/migrations/00(17|18|19|20|21)_.*\.sql|src-tauri/tests/fixtures/document-generation/|scripts/analyze-document-usage\.mjs|docs/(AI-ARCHITECTURE\.md|decisions/002[0-9]-.*|development/.*document.*)) ]]; then
+    document_only=0
+  fi
   if [[ "$path" =~ ^(scripts/|\.github/|src-tauri/migrations/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|versions\.env$|src-tauri/Cargo\.toml$|src-tauri/Cargo\.lock$|src-tauri/tauri\.conf\.json$|src-tauri/build\.rs$) ]]; then
     requires_fast=1
   fi
@@ -65,6 +69,30 @@ done
 
 if [[ "$is_docs_only" == "1" ]]; then
   printf '\nDocs-only change: no executable checks selected.\n'
+  exit 0
+fi
+
+if [[ "$document_only" == "1" ]]; then
+  printf '\nDocument-platform-only change detected; running focused cross-layer contracts.\n'
+  bash "$SCRIPT_DIR/check-static.sh"
+  prepare_cargo_target "$ROOT_DIR"
+  cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
+  cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_
+  cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib pdf_
+  cargo test \
+    --manifest-path src-tauri/Cargo.toml \
+    --locked \
+    --all-features \
+    --lib \
+    database::tests::migrations_and_repairs_are_idempotent_and_reach_latest_schema \
+    -- --exact
+  cargo test \
+    --manifest-path src-tauri/Cargo.toml \
+    --locked \
+    --all-features \
+    --lib \
+    database::tests::released_schema_upgrades_forward_without_losing_integrity \
+    -- --exact
   exit 0
 fi
 

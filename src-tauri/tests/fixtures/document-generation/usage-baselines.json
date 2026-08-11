@@ -1,0 +1,53 @@
+{
+  "formatVersion": 1,
+  "description": "Observed real-provider document-generation usage from Stage 4 acceptance testing. Approximate values are retained as ranges/labels instead of invented precision.",
+  "observations": [
+    {
+      "id": "deepseek-small-pdf-pr38",
+      "providerKind": "deepseek",
+      "sourceFormat": "pdf",
+      "sourceUnitCount": 11,
+      "imageInput": false,
+      "aggregateTokensApprox": 45000,
+      "outcome": "succeeded",
+      "provenance": "PR #39 acceptance checklist records the prior ~45k-token small-document baseline."
+    },
+    {
+      "id": "deepseek-large-pdf-pre-pr39",
+      "providerKind": "deepseek",
+      "sourceFormat": "pdf",
+      "sourceUnitCount": 138,
+      "imageInput": false,
+      "aggregateTokensApprox": 1450000,
+      "outcome": "failed_late_truncation",
+      "provenance": "PR #39 was opened after the 138-page run consumed roughly 1.45M aggregate tokens before late truncation."
+    }
+  ],
+  "requiredBenchmarkScenarios": [
+    {
+      "id": "small-text",
+      "sourceUnitClass": "small",
+      "imageInput": false
+    },
+    {
+      "id": "medium-text",
+      "sourceUnitClass": "medium",
+      "imageInput": false
+    },
+    {
+      "id": "large-text",
+      "sourceUnitClass": "large",
+      "imageInput": false
+    },
+    {
+      "id": "small-multimodal",
+      "sourceUnitClass": "small",
+      "imageInput": true
+    },
+    {
+      "id": "medium-multimodal",
+      "sourceUnitClass": "medium",
+      "imageInput": true
+    }
+  ]
+}

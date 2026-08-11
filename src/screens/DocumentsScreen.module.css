@@ -72,6 +72,15 @@
   margin: 0.85rem 0 0;
 }
 
+.extractionWarning {
+  margin: 0.85rem 0 0;
+  border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border));
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  padding: 0.8rem 1rem;
+  line-height: 1.45;
+}
+
 .empty {
   border: 1px dashed var(--border);
   border-radius: 0.85rem;

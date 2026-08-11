@@ -18,7 +18,7 @@ on:
           - fast
           - full
       apply_candidates:
-        description: Commit canonical Cargo.lock and rustfmt output to the selected branch
+        description: Explicitly commit canonical Cargo.lock and rustfmt output to the selected branch
         required: true
         default: false
         type: boolean
@@ -31,47 +31,6 @@ permissions:
   contents: read
 
 jobs:
-  normalize-rustfmt:
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    permissions:
-      contents: write
-    runs-on: [self-hosted, linux, x64, ostudy]
-    timeout-minutes: 10
-
-    steps:
-      - name: Check out PR head branch
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-
-      - name: Expose user-local tools
-        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
-      - name: Apply canonical rustfmt
-        id: format
-        run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all
-          git diff --check
-          if git diff --quiet -- '*.rs'; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Commit rustfmt normalization
-        if: steps.format.outputs.changed == 'true'
-        env:
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- '*.rs'
-          git commit -m "chore: apply canonical rustfmt"
-          git push origin "HEAD:${HEAD_REF}"
-
   check:
     if: github.event_name != 'workflow_dispatch' || inputs.apply_candidates != true
     runs-on: [self-hosted, linux, x64, ostudy]
@@ -95,37 +54,13 @@ jobs:
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.cache/ostudy/cargo-target"
 
-      - name: Resolve candidate Rust lockfile
-        id: rust_lock
+      - name: Require committed Rust dependency graph
         run: |
-          cp src-tauri/Cargo.lock "$RUNNER_TEMP/ostudy-Cargo.lock.committed"
           cargo metadata \
             --manifest-path src-tauri/Cargo.toml \
             --format-version 1 \
+            --locked \
             > /dev/null
-          if cmp -s src-tauri/Cargo.lock "$RUNNER_TEMP/ostudy-Cargo.lock.committed"; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            cp src-tauri/Cargo.lock "$RUNNER_TEMP/ostudy-Cargo.lock.generated"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Rust dependency resolution changed Cargo.lock. The generated candidate will be uploaded."
-          fi
-
-      - name: Format candidate Rust sources
-        id: rust_format
-        run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all
-          git diff -- '*.rs' > "$RUNNER_TEMP/ostudy-rustfmt.patch"
-          if [[ -s "$RUNNER_TEMP/ostudy-rustfmt.patch" ]]; then
-            git diff --name-only -- '*.rs' > "$RUNNER_TEMP/ostudy-rustfmt-files.txt"
-            tar -czf "$RUNNER_TEMP/ostudy-rustfmt-sources.tar.gz" \
-              -T "$RUNNER_TEMP/ostudy-rustfmt-files.txt"
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Rust formatting changed tracked sources. The formatted candidate will be uploaded."
-          else
-            rm -f "$RUNNER_TEMP/ostudy-rustfmt.patch"
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Select qualification gate
         id: gate
@@ -164,18 +99,6 @@ jobs:
           set -o pipefail
           ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-full-check.log"
 
-      - name: Require committed Rust formatting
-        if: always() && steps.rust_format.outputs.changed == 'true'
-        run: |
-          echo "Rust sources must be formatted and committed. Same-repository PR branches are normalized automatically; other refs can use the uploaded candidate." >&2
-          exit 1
-
-      - name: Require committed Rust lockfile
-        if: always() && steps.rust_lock.outputs.changed == 'true'
-        run: |
-          echo "src-tauri/Cargo.lock must be updated and committed for the exact dependency graph." >&2
-          exit 1
-
       - name: Summarize qualification failure
         if: failure()
         run: |
@@ -199,9 +122,6 @@ jobs:
             ${{ runner.temp }}/ostudy-static-check.log
             ${{ runner.temp }}/ostudy-fast-check.log
             ${{ runner.temp }}/ostudy-full-check.log
-            ${{ runner.temp }}/ostudy-Cargo.lock.generated
-            ${{ runner.temp }}/ostudy-rustfmt.patch
-            ${{ runner.temp }}/ostudy-rustfmt-sources.tar.gz
           if-no-files-found: ignore
 
   apply-generated-candidates:

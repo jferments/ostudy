@@ -1,6 +1,6 @@
 # Dependency audit
 
-ostudy requires no paid service, hosted database, account system, or cloud runtime. Direct application and development dependencies are pinned exactly. AI features connect only to endpoints that the learner explicitly configures; ostudy does not install or run a model server.
+ostudy requires no paid service, hosted database, account system, or cloud runtime. Direct application and development dependencies are pinned exactly. AI features connect only to endpoints that the learner explicitly configures; ostudy does not install or run an LLM server.
 
 ## Desktop and frontend
 
@@ -15,9 +15,9 @@ ostudy requires no paid service, hosted database, account system, or cloud runti
 
 The React testing dependencies run only during development and CI. The native smoke test uses Python's standard library with `tauri-driver`; it does not add a second JavaScript end-to-end framework.
 
-pnpm is configured to reject unreviewed dependency lifecycle scripts. Only the exact esbuild installation script is allowed. Tiptap packages are overridden to one patch version so the editor cannot resolve a mixed internal graph.
+pnpm rejects unreviewed dependency lifecycle scripts. Only the exact esbuild installation script is allowed. Tiptap packages are overridden to one patch version so the editor cannot resolve a mixed internal graph.
 
-No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is installed. Provider networking and PDF parsing are not available to the WebView.
+No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is installed. Provider networking and PDF parsing/rendering are not available to the WebView.
 
 ## Rust and local data
 
@@ -30,45 +30,104 @@ No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is install
 - reqwest `0.13.4` with default features disabled and Rustls/JSON enabled
 - url `2.5.7`
 - base64 `0.22.1`
-- justpdf `0.1.2`, which exposes the pure-Rust justpdf-render `0.1.2` page renderer
 - oxidize-pdf `4.2.2`, default features disabled, with `compression` and `semantic`
+- image `0.25.10` for PNG encoding of PDFium bitmaps on desktop
+- pdfium-render `0.9.3`, compiled against PDFium API build `7881`
+- sysinfo `0.39.6` for cross-platform available-memory observation used by document concurrency planning
+
+`pdfium-bundled`, justpdf/justpdf-render, and rusty-tesseract are explicitly prohibited by repository dependency verification.
 
 `rs-fsrs` remains isolated behind `src-tauri/src/scheduler.rs`; durable rows and IPC objects use ostudy-owned types.
 
 `keyring` is isolated behind `src-tauri/src/ai/secrets.rs`. It stores credential bytes in the operating-system credential service when available. SQLite stores only nonsecret provider metadata and credential epochs. An explicit session-only backend keeps a credential in native process memory and never writes it to disk.
 
-`reqwest` is isolated behind `src-tauri/src/ai/gateway.rs`. The client uses Rustls, disabled redirects, bounded timeouts and response bodies, no cookies, and no raw provider-body logging. Provider adapters use ostudy-owned wire DTOs rather than provider SDKs. The `url` crate owns normalized endpoint parsing and loopback/LAN/cloud policy.
+`reqwest` is isolated behind `src-tauri/src/ai/gateway.rs`. The client uses Rustls, disabled redirects, bounded response bodies, no cookies, and no raw provider-body logging. Provider adapters use ostudy-owned wire DTOs rather than provider SDKs. The `url` crate owns normalized endpoint parsing and loopback/LAN/cloud policy.
 
 `base64` is used only inside the native document-intelligence task to lower a verified local PNG page into an inline provider content part. The encoded page is transient request data. It is not stored in SQLite, logs, diagnostics, or frontend state.
 
+## Native dependency trust boundary
+
+PDF rendering and desktop OCR depend on native software that is intentionally **not downloaded by a Rust dependency or build script**. ostudy owns that provisioning layer under `scripts/` so sources, versions, hashes, target selection, and package-manager behavior are reviewable independently from Cargo.
+
+`scripts/native-deps-manifest.json` pins PDFium API build `7881`, the matching pdfium-render binding version, one immutable archive per supported target, and a SHA-256 digest for every archive. Automated tests verify the build, immutable release URL, expected desktop targets, and digest shapes.
+
+The default precompiled PDFium source is the established third-party `bblanchon/pdfium-binaries` distribution at immutable release `chromium/7881`. It is not represented as an official Google/Foxit distribution. A downloaded archive is never extracted until its SHA-256 matches the committed manifest. The extracted native library is stored under ignored `src-tauri/resources/native/pdfium/` with a local provenance record containing both archive and extracted-library hashes.
+
+Builders who do not want to use that binary distribution can provide their own compatible PDFium `7881` library through `OSTUDY_PDFIUM_PATH` or install PDFium system-wide. Building PDFium from the official source remains the highest-provenance option, but it uses Chromium's depot_tools/GN/Ninja build infrastructure and is therefore not the default developer setup path.
+
+### Platform installers
+
+- Linux/macOS: `scripts/install-native-deps.sh`
+- Windows PowerShell: `scripts/install-native-deps.ps1`
+
+`--pdfium-only` provisions only the audited PDFium runtime and is used by build/check/release automation. The default desktop setup also verifies or installs Tesseract.
+
+For Tesseract, ostudy prefers the established operating-system channels documented by the Tesseract project instead of maintaining its own ad-hoc executable bundle:
+
+- Debian/Ubuntu: `tesseract-ocr` + `tesseract-ocr-eng` through apt;
+- macOS: Homebrew or MacPorts;
+- Windows: the Tesseract-documented UB Mannheim distribution, installed through its winget package when available.
+
+Android/iOS do not use the desktop Tesseract subprocess. Their OCR implementations remain platform-native adapters (planned bundled/offline ML Kit on Android and Apple Vision on iOS).
+
+## PDF processing boundary
+
+PDF processing deliberately uses separate engines for separate jobs:
+
+1. **oxidize-pdf** parses and extracts text/semantic structure;
+2. **PDFium** renders the visible PDF into page images;
+3. **Tesseract** is the current desktop OCR engine when extracted text fails quality validation.
+
+No third-party PDF/OCR type crosses the document boundary. `pdf_backend.rs`, `pdf_render_backend.rs`, and `pdf_ocr_backend.rs` map those implementations into ostudy-owned pages, chunks, image bytes, OCR text/confidence, and safe error/provenance records.
+
 ### Structured PDF extraction
 
-`oxidize-pdf` is the native structured extraction backend. ostudy uses its RAG extraction profile to recover page text, reading order, headings, semantic elements, geometry, heading context, tables/lists, and structure-aware chunks. The crate is compiled with default features disabled. OCR/Tesseract integration is not enabled, and repository dependency checks explicitly reject `rusty-tesseract`.
+`oxidize-pdf` remains the native structured extraction backend. ostudy uses its RAG extraction profile for reading order, headings, semantic elements, geometry, tables/lists, and structure-aware chunks.
 
-No oxidize-pdf type crosses the document boundary. `src-tauri/src/pdf_backend.rs` maps extraction results into ostudy-owned semantic page/element/chunk structures. Pages without extractable text receive a bounded page-evidence chunk so image-only material remains represented in semantic windows without enabling an OCR runtime.
+Raw per-page text extraction is independent and parallelized using the shared resource planner. Each worker opens its own parser document, while the canonical structure-aware partition/chunk pass remains sequential so parallel execution cannot reorder headings or semantic structure. Worker selection is bounded by task count, logical CPU count, available RAM, and the optional `OSTUDY_PDF_TEXT_WORKERS` operator cap. There is no hard-coded CPU-count ceiling.
 
-### Page rendering
+The crate is compiled with default features disabled. Its optional `rusty-tesseract` wrapper is not enabled; OCR is owned by ostudy's platform OCR service instead.
 
-`justpdf` is used only as the documented high-level facade around `justpdf-render` inside `src-tauri/src/pdf_render_backend.rs`. The renderer rasterizes pages to PNG at a bounded 144 DPI and returns bytes to the managed-document pipeline.
+### PDFium page rendering
 
-The default renderer is deliberately pure Rust. ostudy does not package Pdfium, Poppler, a headless browser, or another native PDF runtime, so the document pipeline does not require a different dynamic library artifact for Linux, Windows, macOS, Android, and iOS CPU targets. This is especially important for mobile packaging and for keeping runtime memory/process overhead bounded.
+Desktop rendering uses direct dynamic binding through `pdfium-render`. Runtime lookup order is:
 
-The extraction and rendering backends remain intentionally separate. If compatibility testing later finds PDFs that justpdf-render cannot faithfully rasterize, a Pdfium-backed desktop compatibility renderer can be introduced behind the same boundary without changing document storage, semantic extraction, provider requests, backups, or card authoring.
+1. `OSTUDY_PDFIUM_PATH` when explicitly configured;
+2. the PDFium resource packaged with an installed ostudy build;
+3. the audited development runtime under `src-tauri/resources/native/pdfium/`;
+4. the application executable directory;
+5. the operating-system PDFium search path.
 
-No Python runtime, model weights, CUDA runtime, llama.cpp binary, Ollama binary, OCR runtime, or other local inference infrastructure is packaged by these stages.
+Durable visual-grounding pages are rendered at 120 DPI. Temporary OCR pages are rendered independently at 300 DPI and are deleted after recognition. The renderer backend identity is versioned, so Retry rebuilds derivatives when the renderer contract changes.
+
+PDFium calls remain serialized within one application process. pdfium-render's thread-safe mode serializes calls because upstream PDFium does not guarantee concurrent access. CPU scaling is instead applied to independent extraction and OCR work.
+
+### Resource-aware OCR
+
+Normal PDFs do not require OCR. When native extracted text is corrupt or unusable, ostudy selects only affected pages and feeds their PDFium 300-DPI renders to the platform OCR service.
+
+Desktop Tesseract OCR uses a bounded producer/consumer pipeline, but there is no fixed `8`-worker ceiling. The shared resource planner calculates workers from:
+
+- selected OCR page count;
+- logical CPU count;
+- currently available RAM;
+- a conservative per-worker working-set estimate;
+- the optional `OSTUDY_OCR_WORKERS` operator cap.
+
+The planner reserves memory for the rest of the application/system and also sizes the high-resolution PNG queue from remaining RAM. This permits high-core/high-memory machines to exceed eight concurrent OCR workers without turning a large document into an unbounded memory allocation.
 
 ## Document intelligence
 
-The document database stores engine-neutral semantic elements/chunks and a validated hierarchical document outline. Flashcard generation uses overlapping token/page-bounded semantic windows rather than one request per physical page. Image-only pages are preserved as visual-evidence chunks; verified image-capable llama.cpp profiles can use their managed page renders during generation, while text-only profiles are prevented from treating missing text as source facts.
+The document database stores engine-neutral semantic elements/chunks and a validated hierarchical document outline. Flashcard generation uses overlapping token/page-bounded semantic windows rather than one request per physical page. Image-only pages are preserved as visual-evidence chunks; verified image-capable llama.cpp profiles can use managed PDFium page renders during generation, while text-only profiles are prevented from treating missing text as source facts.
 
 A final model-assisted relevance pass may reject low-value or redundant generated cards, but cannot rewrite or commit them directly. Canonical generated-card authoring remains authoritative for Markdown, Cloze syntax, tags, duplicate fingerprints, scheduling, and transactional persistence.
 
 ## Managed files and backups
 
-Card images, immutable source PDFs, and rendered PDF pages live under application-controlled paths. SQLite records their relative paths, sizes, MIME types, and integrity metadata. Full-library backup version 2 validates and packages these managed files alongside one coherent SQLite snapshot. Semantic elements, semantic chunks, outlines, and generation-window state are already included in the SQLite snapshot. Credentials and provider request/response bodies remain excluded.
+Card images, immutable source PDFs, and rendered PDF pages live under application-controlled paths. SQLite records their relative paths, sizes, MIME types, and integrity metadata. Full-library backup version 2 validates and packages these managed files alongside one coherent SQLite snapshot. Semantic elements, semantic chunks, outlines, OCR provenance, and generation-window state are included in that snapshot. Credentials and provider request/response bodies remain excluded.
 
 ## Lockfile policy
 
 `pnpm-lock.yaml` and `src-tauri/Cargo.lock` are committed source-of-truth files. Normal setup, checks, and releases use frozen/locked dependency resolution. Dependency upgrades should be reviewed separately from feature behavior.
 
-The same-repository PR normalization job resolves the exact Cargo graph and applies canonical rustfmt before ordinary qualification. The gate still verifies that the resulting lockfile and source formatting are committed; normal qualification and release commands remain locked and format-clean.
+The explicit same-repository normalization action may resolve the exact Cargo graph and apply canonical rustfmt before ordinary qualification. Normal qualification and release commands remain locked and format-clean; ordinary CI is read-only.

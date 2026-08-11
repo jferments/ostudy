@@ -26,6 +26,9 @@ log "Checking the pinned development environment"
 node "$SCRIPT_DIR/verify-project-manifests.mjs"
 prepare_cargo_target "$ROOT_DIR"
 
+log "Provisioning and verifying pinned PDFium $PDFIUM_BUILD"
+"$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
+
 log "Installing JavaScript dependencies from pnpm-lock.yaml"
 pnpm install --frozen-lockfile
 pnpm run verify:versions

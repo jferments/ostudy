@@ -31,6 +31,9 @@ else
   bash "$SCRIPT_DIR/check-fast.sh"
 fi
 
+step "Verify audited PDFium runtime"
+"$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
+
 step "Native environment qualification"
 if [[ "${OSTUDY_SKIP_NATIVE_SMOKE:-0}" == "1" ]]; then
   "$SCRIPT_DIR/doctor.sh"

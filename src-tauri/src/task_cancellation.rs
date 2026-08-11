@@ -1,8 +1,11 @@
 //! Task-scoped cancellation for long-running document AI work.
 //!
 //! Cancellation is intentionally process-local. Durable document/job state
-//! remains in SQLite; this module only binds one running async document task to
-//! an in-memory signal so the native HTTP gateway can abort that exact stream.
+//! remains in SQLite; this module binds one running document task to an in-memory
+//! signal. Async provider traffic uses the Tokio task-local signal, while
+//! blocking extraction/render/OCR workers can query the same registry by exact
+//! document id. The application close guard also reads this registry so it can
+//! warn before an in-flight document task is interrupted.
 
 use std::{
     collections::HashMap,
@@ -43,8 +46,6 @@ impl CancellationSignal {
 
     pub(crate) async fn canceled(&self) {
         loop {
-            // Register the waiter before re-checking the atomic flag so a
-            // cancellation racing this call cannot be missed by notify_waiters().
             let notified = self.notify.notified();
             if self.is_canceled() {
                 return;
@@ -100,6 +101,24 @@ impl ActiveDocumentTasks {
             .map(|tasks| tasks.contains_key(document_id))
             .unwrap_or(false)
     }
+
+    fn has_any(&self) -> bool {
+        self.tasks
+            .lock()
+            .map(|tasks| !tasks.is_empty())
+            .unwrap_or(false)
+    }
+
+    fn is_canceled(&self, document_id: &str) -> bool {
+        self.tasks
+            .lock()
+            .map(|tasks| {
+                tasks
+                    .get(document_id)
+                    .is_some_and(CancellationSignal::is_canceled)
+            })
+            .unwrap_or(false)
+    }
 }
 
 static ACTIVE_DOCUMENT_TASKS: LazyLock<ActiveDocumentTasks> =
@@ -131,6 +150,14 @@ pub(crate) fn is_document_task_active(document_id: &str) -> bool {
     ACTIVE_DOCUMENT_TASKS.is_active(document_id)
 }
 
+pub(crate) fn has_active_document_tasks() -> bool {
+    ACTIVE_DOCUMENT_TASKS.has_any()
+}
+
+pub(crate) fn is_document_task_canceled(document_id: &str) -> bool {
+    ACTIVE_DOCUMENT_TASKS.is_canceled(document_id)
+}
+
 fn registry_error() -> CommandError {
     CommandError::new(
         "document_task_registry_unavailable",
@@ -156,11 +183,24 @@ mod tests {
         cancel_document_task(first_id).expect("first task should cancel");
         first.canceled().await;
         assert!(first.is_canceled());
+        assert!(is_document_task_canceled(first_id));
         assert!(!second.is_canceled());
+        assert!(!is_document_task_canceled(second_id));
 
         ACTIVE_DOCUMENT_TASKS.finish(first_id);
         ACTIVE_DOCUMENT_TASKS.finish(second_id);
         assert!(!is_document_task_active(first_id));
-        assert!(!is_document_task_active(second_id));
+        assert!(!is_document_task_canceled(first_id));
+    }
+
+    #[test]
+    fn active_document_registry_drives_close_protection() {
+        let registry = ActiveDocumentTasks::default();
+        let document_id = "task-close-guard";
+        assert!(!registry.has_any());
+        registry.begin(document_id).expect("task should register");
+        assert!(registry.has_any());
+        registry.finish(document_id);
+        assert!(!registry.has_any());
     }
 }

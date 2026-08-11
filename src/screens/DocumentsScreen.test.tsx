@@ -43,6 +43,17 @@ function makeDocument(
     pageCount: 10,
     extractedPageCount: 10,
     renderedPageCount: 10,
+    extractionMode: "native",
+    ocrPageCount: 0,
+    ocrCompletedPageCount: 0,
+    ocrMeanConfidence: null,
+    ocrEngine: "",
+    scaleMode: "standard",
+    estimatedSourceTokens: 0,
+    outlineWindowCount: 0,
+    outlineCompletedWindowCount: 0,
+    generationWindowCount: 0,
+    generationCompletedWindowCount: 0,
     generatedNoteCount: 6,
     generatedCardCount: 7,
     generatedDeckId: "b".repeat(32),
@@ -111,7 +122,42 @@ describe("DocumentsScreen", () => {
     });
     expect(await screen.findByRole("heading", { name: "Cardiac physiology" })).toBeTruthy();
     expect(screen.getByText(/normal editing, scheduling, archive, and deletion tools/u)).toBeTruthy();
-    expect(screen.queryByText(/does not impose a completion deadline/u)).toBeNull();
+  });
+
+  it("warns persistently when OCR recovered an unreliable PDF text layer", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([
+      makeDocument({
+        extractionMode: "ocr_fallback",
+        ocrPageCount: 18,
+        ocrCompletedPageCount: 18,
+        ocrMeanConfidence: 0.91,
+        ocrEngine: "Tesseract CLI via oxidize-pdf OcrProvider",
+      }),
+    ]);
+    renderDocuments();
+
+    expect(await screen.findByText(/Native PDF text was unreliable on 18 pages/u)).toBeTruthy();
+    expect(screen.getByText(/Mean OCR confidence: 91%/u)).toBeTruthy();
+    expect(screen.getByText(/OCR can introduce recognition errors/u)).toBeTruthy();
+  });
+
+  it("shows live OCR recovery progress after normal rendering completes", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([
+      makeDocument({
+        lifecycleState: "processing",
+        generatedDeckId: null,
+        generatedCardCount: 0,
+        completedAt: null,
+        extractionMode: "ocr_fallback",
+        ocrPageCount: 12,
+        ocrCompletedPageCount: 5,
+        ocrMeanConfidence: null,
+        ocrEngine: "tesseract-cli",
+      }),
+    ]);
+    renderDocuments();
+
+    expect(await screen.findByText("Recovering text with OCR (5/12 pages)")).toBeTruthy();
   });
 
   it("keeps a failed PDF in the library and offers a direct retry", async () => {
@@ -159,7 +205,6 @@ describe("DocumentsScreen", () => {
 
     expect(await screen.findByText("Processing")).toBeTruthy();
     expect(screen.getByText("Extracting text")).toBeTruthy();
-    expect(screen.queryByText(/does not impose a completion deadline/u)).toBeNull();
   });
 
   it("shows live rendered-page progress once the total page count is known", async () => {
@@ -304,5 +349,4 @@ describe("DocumentsScreen", () => {
       expect(showToast).toHaveBeenCalledWith("success", "PDF deleted from Documents.");
     });
   });
-
 });

@@ -90,10 +90,7 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
     try {
       const result = await importPdfAndGenerateFlashcards(selected);
       await Promise.all([refreshDocuments(), refreshDecks()]);
-      showToast(
-        "success",
-        `Created ${result.createdCardCount} flashcard${result.createdCardCount === 1 ? "" : "s"} in a new deck.`,
-      );
+      showGenerationSuccess(result.document, result.createdCardCount, showToast);
     } catch (error: unknown) {
       await handleGenerationFailure(error);
     } finally {
@@ -108,10 +105,7 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
     try {
       const result = await retryPdfFlashcardGeneration(document.id);
       await Promise.all([refreshDocuments(), refreshDecks()]);
-      showToast(
-        "success",
-        `Created ${result.createdCardCount} flashcard${result.createdCardCount === 1 ? "" : "s"} in a new deck.`,
-      );
+      showGenerationSuccess(result.document, result.createdCardCount, showToast);
     } catch (error: unknown) {
       await handleGenerationFailure(error);
     } finally {
@@ -349,6 +343,22 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                   {document.safeErrorMessage ? (
                     <p className={styles.documentError}>{document.safeErrorMessage}</p>
                   ) : null}
+                  {hasCompletedOcrRecovery(document) ? (
+                    <p className={styles.extractionWarning} role="status">
+                      Native PDF text was unreliable on {document.ocrPageCount} page
+                      {document.ocrPageCount === 1 ? "" : "s"}, so ostudy recovered those pages
+                      with OCR. OCR can introduce recognition errors; review generated cards
+                      against the source PDF.
+                      {document.ocrMeanConfidence !== null
+                        ? ` Mean OCR confidence: ${Math.round(document.ocrMeanConfidence * 100)}%.`
+                        : ""}
+                    </p>
+                  ) : document.extractionMode === "page_text_fallback" ? (
+                    <p className={styles.extractionWarning} role="status">
+                      Structured PDF extraction was degraded, so ostudy rebuilt affected semantic
+                      content from the readable page text layer.
+                    </p>
+                  ) : null}
                   {document.generatedDeckId ? (
                     <p className={styles.deckNote}>
                       The generated deck is available in Decks and uses the normal editing,
@@ -428,6 +438,31 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
   );
 }
 
+function hasCompletedOcrRecovery(document: DocumentSummary): boolean {
+  return (
+    document.extractionMode === "ocr_fallback" &&
+    document.ocrPageCount > 0 &&
+    document.ocrCompletedPageCount === document.ocrPageCount &&
+    document.ocrMeanConfidence !== null
+  );
+}
+
+function showGenerationSuccess(
+  document: DocumentSummary,
+  createdCardCount: number,
+  showToast: ShowToast,
+): void {
+  const cards = `Created ${createdCardCount} flashcard${createdCardCount === 1 ? "" : "s"} in a new deck.`;
+  if (hasCompletedOcrRecovery(document)) {
+    showToast(
+      "success",
+      `${cards} OCR fallback recovered ${document.ocrPageCount} page${document.ocrPageCount === 1 ? "" : "s"}; review cards against the source because OCR can be less accurate.`,
+    );
+    return;
+  }
+  showToast("success", cards);
+}
+
 function statusLabel(document: DocumentSummary): string {
   if (document.archivedAt !== null) return "Archived";
   if (
@@ -453,6 +488,12 @@ function processingPhaseLabel(document: DocumentSummary, canceling: boolean): st
   if (document.generatedDeckId !== null) return "Generating additional cards";
   if (document.pageCount === 0) return "Extracting text";
   if (document.renderedPageCount < document.pageCount) return "Rendering pages";
+  if (
+    document.extractionMode === "ocr_fallback" &&
+    document.ocrPageCount > document.ocrCompletedPageCount
+  ) {
+    return `Recovering text with OCR (${document.ocrCompletedPageCount}/${document.ocrPageCount} pages)`;
+  }
   return "Building outline / generating cards";
 }
 

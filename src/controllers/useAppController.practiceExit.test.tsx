@@ -7,6 +7,7 @@ import * as settingsIpc from "../ipc/settings";
 import { makeDeck, makeSettings } from "../test/factories";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import {
+  hasActivePracticeSession,
   registerPracticeExitHandler,
   resetPracticeExitGuardForTests,
 } from "./practiceExitGuard";
@@ -48,6 +49,16 @@ function renderHarness(terminate: () => Promise<boolean>) {
   );
 }
 
+async function enterPractice(): Promise<void> {
+  fireEvent.click(screen.getByRole("button", { name: "Go practice" }));
+  await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("practice"));
+  // The practice section is committed during render, while the session-exit
+  // handler is registered by the following effect. Navigation is only guarded
+  // once that handler is active, so the test must wait for the real precondition
+  // instead of racing React's effect flush on a loaded test worker.
+  await waitFor(() => expect(hasActivePracticeSession()).toBe(true));
+}
+
 describe("active practice navigation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -60,8 +71,7 @@ describe("active practice navigation", () => {
     const terminate = vi.fn().mockResolvedValue(true);
     renderHarness(terminate);
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
-    fireEvent.click(screen.getByRole("button", { name: "Go practice" }));
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("practice"));
+    await enterPractice();
 
     fireEvent.click(screen.getByRole("button", { name: "Go decks" }));
     const dialog = await screen.findByRole("alertdialog", {
@@ -79,8 +89,8 @@ describe("active practice navigation", () => {
     const terminate = vi.fn().mockResolvedValue(true);
     renderHarness(terminate);
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
-    fireEvent.click(screen.getByRole("button", { name: "Go practice" }));
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("practice"));
+    await enterPractice();
+
     fireEvent.click(screen.getByRole("button", { name: "Go decks" }));
     await screen.findByRole("alertdialog", { name: "Terminate this practice session?" });
     fireEvent.click(screen.getByRole("button", { name: "Yes, terminate" }));

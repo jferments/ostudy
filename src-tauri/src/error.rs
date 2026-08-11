@@ -18,7 +18,15 @@ impl CommandError {
     }
 
     pub fn database(error: impl std::fmt::Display) -> Self {
-        logging::error("database_error", error.to_string());
+        Self::database_at("database_error", "operation=unspecified", error)
+    }
+
+    pub fn database_at(
+        event: &str,
+        context: impl AsRef<str>,
+        error: impl std::fmt::Display,
+    ) -> Self {
+        logging::error(event, format!("{} sqlite={error}", context.as_ref()));
         Self::new(
             "database_error",
             "The local database operation failed. See the ostudy diagnostic log for details.",
