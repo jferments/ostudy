@@ -26,6 +26,9 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Apply quality and selection fixes
         run: |
           python3 .github/fix-pr41-helper.py
