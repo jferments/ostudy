@@ -211,15 +211,15 @@
 }
 
 .confidence-score-0 {
-  background: #b4233b;
+  background: var(--confidence-wrong);
 }
 
 .confidence-score-1 {
-  background: #c45d16;
+  background: var(--confidence-hard);
 }
 
 .confidence-score-2 {
-  background: #d8a000;
+  background: var(--confidence-medium);
   color: #201700;
 }
 
@@ -235,7 +235,7 @@
 }
 
 .confidence-score-3 {
-  background: #197a46;
+  background: var(--confidence-easy);
 }
 
 .practice-completion-breakdown {
@@ -255,22 +255,22 @@
 
 .rating-bar-row.wrong .rating-bar-track span,
 .review-result-dot.confidence-0 {
-  background: #b4233b;
+  background: var(--confidence-wrong);
 }
 
 .rating-bar-row.hard .rating-bar-track span,
 .review-result-dot.confidence-1 {
-  background: #c45d16;
+  background: var(--confidence-hard);
 }
 
 .rating-bar-row.medium .rating-bar-track span,
 .review-result-dot.confidence-2 {
-  background: #d8a000;
+  background: var(--confidence-medium);
 }
 
 .rating-bar-row.easy .rating-bar-track span,
 .review-result-dot.confidence-3 {
-  background: #197a46;
+  background: var(--confidence-easy);
 }
 
 @media (max-width: 1120px) {
