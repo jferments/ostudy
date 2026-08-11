@@ -71,7 +71,7 @@ jobs:
         run: |
           set -o pipefail
           {
-            git rm scripts/finalize-ui-product-overhaul.mjs scripts/finalize-ui-product-overhaul-fixes.mjs
+            git rm -f scripts/finalize-ui-product-overhaul.mjs scripts/finalize-ui-product-overhaul-fixes.mjs
             git add -A
             git config user.name "ostudy CI"
             git config user.email "actions@users.noreply.github.com"
