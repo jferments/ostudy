@@ -143,7 +143,6 @@ export function CardFilters({
           </option>
           <option value="updated_desc">Recently updated</option>
           <option value="last_reviewed_desc">Recently studied</option>
-          <option value="question_asc">Question A–Z</option>
           <option value="due_asc">Next scheduled</option>
         </select>
       </label>
