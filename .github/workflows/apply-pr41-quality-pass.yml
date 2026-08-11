@@ -1,0 +1,687 @@
+name: Apply PR41 quality pass
+
+on:
+  push:
+    branches:
+      - agent/ui-platform-overhaul
+    paths:
+      - .github/workflows/apply-pr41-quality-pass.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/ui-platform-overhaul
+          fetch-depth: 0
+
+      - name: Expose local tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Apply quality and selection fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"missing expected text in {path}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, count))
+
+          def replace_between(path, start, end, new):
+              p = Path(path)
+              text = p.read_text()
+              i = text.find(start)
+              if i < 0:
+                  raise SystemExit(f"missing start marker in {path}: {start!r}")
+              j = text.find(end, i)
+              if j < 0:
+                  raise SystemExit(f"missing end marker in {path}: {end!r}")
+              p.write_text(text[:i] + new.rstrip() + "\n\n" + text[j:])
+
+          # -----------------------------------------------------------------
+          # PDF extraction / OCR: native oxidize-pdf text is authoritative
+          # whenever it is readable. OCR is reserved for failed/corrupt or
+          # genuinely empty native text, not short/sparse pages.
+          # -----------------------------------------------------------------
+          p = Path("src-tauri/src/pdf_backend.rs")
+          text = p.read_text()
+          if "oxidize-pdf-4.2.2-rag-quality-ocr-v2" not in text:
+              raise SystemExit("expected PDF backend v2 identity not found")
+          p.write_text(text.replace(
+              "oxidize-pdf-4.2.2-rag-quality-ocr-v2",
+              "oxidize-pdf-4.2.2-rag-native-first-ocr-v3",
+          ))
+
+          replace(
+              "src-tauri/src/pdf_backend.rs",
+              '''        if !raw.substantive && !has_good_semantic {
+            ocr_pages.push(OcrPageCandidate {
+                page_number: page.page_number,
+                required: false,
+                reasons: vec!["sparse_or_missing_text"],
+            });
+            continue;
+        }
+
+        if structured_is_suspicious || document.semantic_analysis_degraded {
+            native_semantic_fallback_pages.insert(page.page_number);
+        }
+''',
+              '''        // Readable native text stays authoritative even when a page is short.
+        // A title, heading, caption, or other sparse page is not evidence that
+        // oxidize-pdf failed, and replacing it with OCR usually lowers fidelity.
+        // OCR is therefore reserved for genuinely empty native text (or the
+        // required corruption/failure cases above). PDFium renders remain
+        // available as visual grounding for providers with image capability.
+        if page.text.trim().is_empty() && !has_good_semantic {
+            ocr_pages.push(OcrPageCandidate {
+                page_number: page.page_number,
+                required: false,
+                reasons: vec!["native_text_empty"],
+            });
+            continue;
+        }
+
+        if !raw.substantive || structured_is_suspicious || document.semantic_analysis_degraded {
+            native_semantic_fallback_pages.insert(page.page_number);
+        }
+'''
+          )
+
+          replace(
+              "src-tauri/src/pdf_backend.rs",
+              '''    fn empty_native_page_still_selects_ocr_recovery() {
+        let document = base_document("", "");
+        let plan = plan_text_recovery(&document);
+        assert_eq!(plan.ocr_pages.len(), 1);
+        assert_eq!(plan.ocr_pages[0].page_number, 1);
+    }
+''',
+              '''    fn empty_native_page_still_selects_ocr_recovery() {
+        let document = base_document("", "");
+        let plan = plan_text_recovery(&document);
+        assert_eq!(plan.ocr_pages.len(), 1);
+        assert_eq!(plan.ocr_pages[0].page_number, 1);
+        assert!(!plan.ocr_pages[0].required);
+        assert_eq!(plan.ocr_pages[0].reasons, vec!["native_text_empty"]);
+    }
+
+    #[test]
+    fn sparse_but_readable_native_text_never_selects_ocr() {
+        let document = base_document("Chapter 5", "");
+        let plan = plan_text_recovery(&document);
+        assert!(plan.ocr_pages.is_empty());
+        assert_eq!(plan.native_semantic_fallback_pages, vec![1]);
+    }
+'''
+          )
+
+          # -----------------------------------------------------------------
+          # Flashcard generation: make question/answer semantic correctness a
+          # first-class generation and curation contract, including one-card
+          # jobs that previously bypassed curation entirely.
+          # -----------------------------------------------------------------
+          replace(
+              "src-tauri/src/ai/document_intelligence.rs",
+              "const FLASHCARD_PROMPT_VERSION: i64 = 5;\nconst FLASHCARD_SCHEMA_VERSION: i64 = 4;\nconst CURATION_PROMPT_VERSION: i64 = 1;",
+              "const FLASHCARD_PROMPT_VERSION: i64 = 6;\nconst FLASHCARD_SCHEMA_VERSION: i64 = 4;\nconst CURATION_PROMPT_VERSION: i64 = 2;",
+          )
+          replace(
+              "src-tauri/src/ai/document_intelligence.rs",
+              "    if cards.len() <= 1 {\n        return Ok(cards);\n    }",
+              "    if cards.is_empty() {\n        return Ok(cards);\n    }",
+          )
+
+          replace(
+              "src-tauri/src/ai/document_intelligence.rs",
+              '''         Return at most {maximum_cards} flashcards. Create fewer, including zero, when the window does not justify that many durable learning items.          Create only durable, high-value flashcards justified by this source window and the document's learning objectives.          Prefer integrated questions that connect a mechanism, comparison, process, or consequence across page boundaries when the source supports it.          If rendered pages are attached, use them to interpret diagrams, tables, equations, and image-only source content.          It is correct to return an empty cards array when this window is references, navigation, publishing material, or contributes no important learning content.",''',
+              '''         Return at most {maximum_cards} flashcards. Create fewer, including zero, when the window does not justify that many durable learning items.          Create only durable, high-value flashcards justified by this source window and the document's learning objectives.          Prefer integrated questions that connect a mechanism, comparison, process, or consequence across page boundaries when the source supports it.          If rendered pages are attached, use them to interpret diagrams, tables, equations, and image-only source content while treating readable extracted text as the primary textual evidence.          Before emitting EACH card, verify the question and answer together against the source: the answer must directly answer the exact question, cover every requested part, and contain the fact/reason/mechanism the question asks for. A section title, topic label, or heading is not an answer to a factual, quantitative, mechanistic, or explanatory question. If the source does not contain a complete supported answer, omit the card rather than guessing.          It is correct to return an empty cards array when this window is references, navigation, publishing material, or contributes no important learning content.",'''
+          )
+
+          replace(
+              "src-tauri/src/ai/document_intelligence.rs",
+              '''Each card should test one coherent learning objective and be self-contained without the PDF. Card direction is strict:''',
+              '''Each card should test one coherent learning objective and be self-contained without the PDF. QUESTION/ANSWER CORRECTNESS IS MANDATORY: read each candidate as a pair before returning it. The answer must directly and completely answer the question using source-supported information, not merely repeat a nearby heading or name the topic. If a question asks multiple linked parts such as “what ... and why/how?”, the answer must explicitly supply every part. Never use a chapter heading, subsection title, figure label, or topic phrase such as “Blood-Gas Barrier Thickness” as the answer to a question asking for a thickness value and its significance. Never ask for a numerical value, mechanism, relationship, or clinical implication unless the answer actually states that value, mechanism, relationship, or implication. When the evidence is incomplete or ambiguous, make a narrower supported card or return no card. Card direction is strict:'''
+          )
+
+          replace(
+              "src-tauri/src/ai/document_intelligence.rs",
+              '''             Return the zero-based indices of candidates that should remain. Keep strong coverage of major learning objectives and a useful mix of recall and application.              Remove globally minor or hyperspecific trivia, bibliography/citation artifacts, near-duplicates, and redundant cards that test the same knowledge in essentially the same way.              Do not rewrite cards and do not invent replacements.",''',
+              '''             Return the zero-based indices of candidates that should remain. Keep strong coverage of major learning objectives and a useful mix of recall and application.              QUALITY GATE: reject a candidate unless its answer directly and completely answers its question and is supported by the document context. Reject question/answer mismatches, incomplete answers to multi-part questions, answers that are only headings/topic labels, unsupported numerical claims, reversed question/answer direction, vague prompts whose answer is not uniquely determined, and cards that require seeing the PDF to make sense. For definitions, keep only genuine term/definition pairs.              Also remove globally minor or hyperspecific trivia, bibliography/citation artifacts, near-duplicates, and redundant cards that test the same knowledge in essentially the same way. When uncertain whether a candidate is semantically correct, drop it. Do not rewrite cards and do not invent replacements.",'''
+          )
+
+          replace(
+              "src-tauri/src/ai/document_intelligence.rs",
+              '''        "You are the final educational relevance editor for ostudy. Select, but never rewrite, generated flashcards. Optimize global learning-objective coverage and remove low-value/redundant material. Return only the required JSON. Curation prompt version: {CURATION_PROMPT_VERSION}. Curation schema version: {CURATION_SCHEMA_VERSION}."''',
+              '''        "You are the final educational quality editor for ostudy. Select, but never rewrite, generated flashcards. A card is eligible only when its question and answer are mutually coherent, directly matched, complete for what was asked, and supported by the supplied document context. Reject answer headings/topic labels masquerading as answers, unsupported claims, incomplete multi-part answers, ambiguous prompts, reversed direction, and other semantic mismatches. Then optimize global learning-objective coverage and remove low-value/redundant material. Prefer dropping a questionable card over preserving a misleading one. Return only the required JSON. Curation prompt version: {CURATION_PROMPT_VERSION}. Curation schema version: {CURATION_SCHEMA_VERSION}."'''
+          )
+
+          replace(
+              "src-tauri/src/ai/document_intelligence.rs",
+              '''        assert!(prompt.contains("subject-matter topics only"));
+        assert!(prompt.contains("PDF or AI generated"));
+        assert!(prompt.contains("schema version: 4"));''',
+              '''        assert!(prompt.contains("subject-matter topics only"));
+        assert!(prompt.contains("PDF or AI generated"));
+        assert!(prompt.contains("QUESTION/ANSWER CORRECTNESS IS MANDATORY"));
+        assert!(prompt.contains("directly and completely answer"));
+        assert!(prompt.contains("Blood-Gas Barrier Thickness"));
+        assert!(prompt.contains("schema version: 4"));'''
+          )
+
+          # Support both OpenAI-compatible usage and llama.cpp-compatible timing
+          # envelopes so local Unsloth/llama.cpp jobs can populate API tokens.
+          replace_between(
+              "src-tauri/src/ai/document_intelligence.rs",
+              "fn record_document_usage(",
+              "fn deepseek_strict_completion_endpoint(",
+              r'''fn record_document_usage(task: &DocumentTaskContext, response: &Value) {
+    let (prompt_tokens, completion_tokens, total_tokens) = response_token_usage(response);
+    let reported = total_tokens.is_some();
+    if let Ok(mut usage) = task.usage.lock() {
+        if let Some(total) = total_tokens {
+            usage.total_tokens = usage
+                .total_tokens
+                .saturating_add(i64::try_from(total).unwrap_or(i64::MAX));
+            usage.reported_requests = usage.reported_requests.saturating_add(1);
+        } else {
+            usage.unreported_requests = usage.unreported_requests.saturating_add(1);
+        }
+    }
+    crate::logging::info(
+        "document_ai_usage",
+        format!(
+            "provider={} model={} reported={} prompt_tokens={} completion_tokens={} total_tokens={}",
+            task.provider_kind,
+            task.model_id,
+            reported,
+            prompt_tokens.map_or_else(|| "unknown".to_string(), |value| value.to_string()),
+            completion_tokens.map_or_else(|| "unknown".to_string(), |value| value.to_string()),
+            total_tokens.map_or_else(|| "unknown".to_string(), |value| value.to_string()),
+        ),
+    );
+}
+
+fn response_token_usage(response: &Value) -> (Option<u64>, Option<u64>, Option<u64>) {
+    let read = |pointers: &[&str]| {
+        pointers
+            .iter()
+            .find_map(|pointer| response.pointer(pointer).and_then(Value::as_u64))
+    };
+    let prompt = read(&[
+        "/usage/prompt_tokens",
+        "/usage/input_tokens",
+        "/timings/prompt_n",
+        "/tokens_evaluated",
+    ]);
+    let completion = read(&[
+        "/usage/completion_tokens",
+        "/usage/output_tokens",
+        "/timings/predicted_n",
+        "/tokens_predicted",
+    ]);
+    let total = read(&["/usage/total_tokens"])
+        .or_else(|| prompt.zip(completion).map(|(left, right)| left.saturating_add(right)));
+    (prompt, completion, total)
+}'''
+          )
+
+          # Add usage-envelope regression tests immediately before the existing
+          # DeepSeek strict-schema test.
+          replace(
+              "src-tauri/src/ai/document_intelligence.rs",
+              '''    #[test]
+    fn deepseek_strict_schema_uses_supported_required_shapes() {''',
+              '''    #[test]
+    fn token_usage_accepts_openai_and_llama_cpp_envelopes() {
+        assert_eq!(
+            response_token_usage(&json!({
+                "usage": {"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 150}
+            })),
+            (Some(120), Some(30), Some(150))
+        );
+        assert_eq!(
+            response_token_usage(&json!({"timings": {"prompt_n": 220, "predicted_n": 45}})),
+            (Some(220), Some(45), Some(265))
+        );
+        assert_eq!(
+            response_token_usage(&json!({"tokens_evaluated": 80, "tokens_predicted": 20})),
+            (Some(80), Some(20), Some(100))
+        );
+    }
+
+    #[test]
+    fn deepseek_strict_schema_uses_supported_required_shapes() {'''
+          )
+
+          # -----------------------------------------------------------------
+          # Processing metrics: record elapsed time on failed/canceled work too,
+          # and make unavailable historical values explicit in the UI.
+          # -----------------------------------------------------------------
+          replace(
+              "src-tauri/src/documents.rs",
+              '''                     safe_error_code = ?1, safe_error_message = ?2,
+                     updated_at = ?3, revision = revision + 1
+                 WHERE id = ?4''',
+              '''                     safe_error_code = ?1, safe_error_message = ?2,
+                     processing_duration_ms = CASE
+                         WHEN processing_started_at IS NULL THEN processing_duration_ms
+                         ELSE MAX(0, ?3 - processing_started_at)
+                     END,
+                     updated_at = ?3, revision = revision + 1
+                 WHERE id = ?4'''
+          )
+          replace(
+              "src-tauri/src/document_more.rs",
+              '''                     safe_error_code = ?1, safe_error_message = ?2,
+                     updated_at = ?3, revision = revision + 1
+                 WHERE id = ?4''',
+              '''                     safe_error_code = ?1, safe_error_message = ?2,
+                     processing_duration_ms = CASE
+                         WHEN processing_started_at IS NULL THEN processing_duration_ms
+                         ELSE MAX(0, ?3 - processing_started_at)
+                     END,
+                     updated_at = ?3, revision = revision + 1
+                 WHERE id = ?4'''
+          )
+          replace(
+              "src/screens/DocumentsScreen.tsx",
+              '''                      <dd>{formatProcessingDuration(document.processingDurationMs)}</dd>''',
+              '''                      <dd>
+                        {document.lifecycleState === "processing"
+                          ? "In progress"
+                          : formatProcessingDuration(document.processingDurationMs)}
+                      </dd>'''
+          )
+          replace(
+              "src/screens/DocumentsScreen.tsx",
+              '''  if (value === null) return "—";''',
+              '''  if (value === null) return "Not recorded";'''
+          )
+          replace(
+              "src/screens/DocumentsScreen.tsx",
+              '''  if (document.apiTokenCount === null) return "Not reported";''',
+              '''  if (document.lifecycleState === "processing") return "In progress";
+  if (document.apiTokenCount === null) return "Not reported by provider";'''
+          )
+
+          # -----------------------------------------------------------------
+          # Practice selection: randomize within equivalent due/weak/new tiers
+          # BEFORE the session limit is applied. The operation id is the seed so
+          # new sessions vary while idempotent retries remain deterministic.
+          # -----------------------------------------------------------------
+          replace(
+              "src-tauri/src/workload.rs",
+              '''use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};''',
+              '''use std::{
+    collections::BTreeMap,
+    hash::{Hash, Hasher},
+};
+
+use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};'''
+          )
+          replace_between(
+              "src-tauri/src/workload.rs",
+              "pub fn planned_scheduled_cards_for_scope(",
+              "fn scoped_studyable_conditions(",
+              r'''pub fn planned_scheduled_cards_for_scope(
+    connection: &Connection,
+    scope: StudyScope<'_>,
+    settings: &AppSettingsDto,
+    time: &StudyTimeContext,
+    selection_seed: &str,
+) -> Result<(Vec<PlannedCard>, WorkloadOverviewDto), CommandError> {
+    let overview = workload_overview_for_scope(connection, scope, settings, time)?;
+    let mut selected = load_ranked_cards(
+        connection,
+        scope,
+        time,
+        Some(false),
+        true,
+        overview.scheduled_reviews,
+        selection_seed,
+    )?;
+    if overview.scheduled_new > 0 {
+        selected.extend(load_ranked_cards(
+            connection,
+            scope,
+            time,
+            Some(true),
+            true,
+            overview.scheduled_new,
+            selection_seed,
+        )?);
+    }
+    Ok((selected, overview))
+}
+
+pub fn planned_extra_cards_for_scope(
+    connection: &Connection,
+    scope: StudyScope<'_>,
+    time: &StudyTimeContext,
+    selection_seed: &str,
+) -> Result<Vec<PlannedCard>, CommandError> {
+    load_ranked_cards(
+        connection,
+        scope,
+        time,
+        None,
+        false,
+        MAX_PLANNED_CARDS,
+        selection_seed,
+    )
+}
+
+#[derive(Clone, Debug)]
+struct RankedCandidate {
+    deck_id: String,
+    card_id: String,
+    due_local_date: String,
+    needs_more_practice: bool,
+    is_new: bool,
+    shuffle_key: u64,
+    deck_rank: usize,
+}
+
+fn load_ranked_cards(
+    connection: &Connection,
+    scope: StudyScope<'_>,
+    time: &StudyTimeContext,
+    new_only: Option<bool>,
+    due_only: bool,
+    limit: i64,
+    selection_seed: &str,
+) -> Result<Vec<PlannedCard>, CommandError> {
+    if limit <= 0 {
+        return Ok(Vec::new());
+    }
+    let mut values = vec![SqlValue::Integer(time.now_utc_millis)];
+    let mut conditions = scoped_studyable_conditions(scope, &mut values);
+    if due_only {
+        conditions.push("s.due_at <= ?1".to_string());
+    }
+    match new_only {
+        Some(true) => conditions.push("s.state = 0".to_string()),
+        Some(false) => conditions.push("s.state <> 0".to_string()),
+        None => {}
+    }
+    // Pull a bounded candidate pool before applying the requested daily limit.
+    // This avoids selecting the same lowest card IDs every session and then
+    // merely shuffling that already-biased subset.
+    let candidate_limit_index = push_value(&mut values, MAX_PLANNED_CARDS);
+    let sql = format!(
+        "WITH {signals}
+         SELECT
+             c.deck_id,
+             c.id AS card_id,
+             date(s.due_at / 1000, 'unixepoch', 'localtime') AS due_local_date,
+             {signal_value} AS needs_more_practice,
+             CASE WHEN s.state = 0 THEN 1 ELSE 0 END AS is_new
+         FROM cards c
+         JOIN notes n ON n.id = c.note_id
+         JOIN decks d ON d.id = c.deck_id
+         JOIN card_schedules s ON s.card_id = c.id
+         {signal_join}
+         WHERE {conditions}
+         ORDER BY due_local_date ASC,
+                  needs_more_practice DESC,
+                  is_new ASC,
+                  s.due_at ASC,
+                  c.id ASC
+         LIMIT ?{candidate_limit_index}",
+        signals = signal_projection::LEARNING_SIGNAL_CTES,
+        signal_value = signal_projection::value_sql(),
+        signal_join = signal_projection::join_sql(),
+        conditions = conditions.join(" AND "),
+    );
+    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
+    let candidates = statement
+        .query_map(params_from_iter(values.iter()), |row| {
+            Ok(RankedCandidate {
+                deck_id: row.get(0)?,
+                card_id: row.get(1)?,
+                due_local_date: row.get(2)?,
+                needs_more_practice: row.get::<_, i64>(3)? != 0,
+                is_new: row.get::<_, i64>(4)? != 0,
+                shuffle_key: 0,
+                deck_rank: 0,
+            })
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    Ok(rank_candidates(candidates, selection_seed, limit))
+}
+
+fn rank_candidates(
+    candidates: Vec<RankedCandidate>,
+    selection_seed: &str,
+    limit: i64,
+) -> Vec<PlannedCard> {
+    let mut by_deck = BTreeMap::<String, Vec<RankedCandidate>>::new();
+    for mut candidate in candidates {
+        candidate.shuffle_key = selection_shuffle_key(selection_seed, &candidate.card_id);
+        by_deck
+            .entry(candidate.deck_id.clone())
+            .or_default()
+            .push(candidate);
+    }
+
+    let mut ranked = Vec::new();
+    for (_, cards) in by_deck.iter_mut() {
+        cards.sort_by_key(|card| {
+            (
+                card.due_local_date.clone(),
+                !card.needs_more_practice,
+                card.is_new,
+                card.shuffle_key,
+            )
+        });
+        for (deck_rank, card) in cards.iter_mut().enumerate() {
+            card.deck_rank = deck_rank;
+            ranked.push(card.clone());
+        }
+    }
+
+    // Preserve the existing FSRS-facing priority boundaries: older due dates
+    // remain first, needs-more-practice remains ahead within a date, scheduled
+    // reviews/new cards are still planned in separate phases, and fair
+    // cross-deck rank interleaving remains intact. Only equivalent cards receive
+    // a per-session seeded order.
+    ranked.sort_by_key(|card| {
+        (
+            card.due_local_date.clone(),
+            card.deck_rank,
+            card.deck_id.clone(),
+            !card.needs_more_practice,
+            card.is_new,
+            card.shuffle_key,
+        )
+    });
+    let take = usize::try_from(limit.max(0)).unwrap_or(usize::MAX);
+    ranked
+        .into_iter()
+        .take(take)
+        .map(|card| PlannedCard {
+            deck_id: card.deck_id,
+            card_id: card.card_id,
+        })
+        .collect()
+}
+
+fn selection_shuffle_key(seed: &str, card_id: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    "practice-selection-v1".hash(&mut hasher);
+    seed.hash(&mut hasher);
+    card_id.hash(&mut hasher);
+    hasher.finish()
+}'''
+          )
+
+          replace(
+              "src-tauri/src/practice_selection.rs",
+              '''        planned_scheduled_cards(connection, scope, &settings, &time)?.0''',
+              '''        planned_scheduled_cards(connection, scope, &settings, &time, &operation_id)?.0'''
+          )
+          replace(
+              "src-tauri/src/practice_selection.rs",
+              '''        planned_extra_cards(connection, scope, &time)?''',
+              '''        planned_extra_cards(connection, scope, &time, &operation_id)?'''
+          )
+
+          replace(
+              "src-tauri/src/workload.rs",
+              '''        assert_eq!(overview.scheduled_new, 0);
+    }
+}''',
+              '''        assert_eq!(overview.scheduled_new, 0);
+    }
+
+    fn candidate(id: &str, date: &str, weak: bool, is_new: bool) -> RankedCandidate {
+        RankedCandidate {
+            deck_id: "deck".to_string(),
+            card_id: id.to_string(),
+            due_local_date: date.to_string(),
+            needs_more_practice: weak,
+            is_new,
+            shuffle_key: 0,
+            deck_rank: 0,
+        }
+    }
+
+    #[test]
+    fn practice_selection_seed_changes_equivalent_card_order_but_not_priority() {
+        let candidates = (0..12)
+            .map(|index| candidate(&format!("card-{index:02}"), "2026-08-11", true, false))
+            .collect::<Vec<_>>();
+        let first = rank_candidates(candidates.clone(), "operation-a", 12);
+        let replay = rank_candidates(candidates.clone(), "operation-a", 12);
+        let next = rank_candidates(candidates, "operation-b", 12);
+        assert_eq!(
+            first.iter().map(|card| &card.card_id).collect::<Vec<_>>(),
+            replay.iter().map(|card| &card.card_id).collect::<Vec<_>>()
+        );
+        assert_ne!(
+            first.iter().map(|card| &card.card_id).collect::<Vec<_>>(),
+            next.iter().map(|card| &card.card_id).collect::<Vec<_>>()
+        );
+
+        let priority = rank_candidates(
+            vec![
+                candidate("newer-weak", "2026-08-11", true, false),
+                candidate("older-normal", "2026-08-10", false, false),
+            ],
+            "operation-c",
+            2,
+        );
+        assert_eq!(priority[0].card_id, "older-normal");
+    }
+}'''
+          )
+
+          # -----------------------------------------------------------------
+          # Intermediate-width deck toolbar: let the count occupy its own row
+          # before the compact navigation breakpoint so it can never cross the
+          # card-browser border around ~800px widths.
+          # -----------------------------------------------------------------
+          replace(
+              "src/styles/features/ui-overhaul.css",
+              '''.card-count-summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+''',
+              '''.card-browser-toolbar {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.card-browser-toolbar > * {
+  min-width: 0;
+}
+
+.card-browser-toolbar .search-field {
+  flex: 1 1 280px;
+}
+
+.card-browser-toolbar > label:not(.search-field) {
+  flex: 0 1 235px;
+}
+
+.card-count-summary {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 160px;
+  overflow-wrap: anywhere;
+  text-align: right;
+  white-space: normal;
+}
+
+@media (min-width: 761px) and (max-width: 980px) {
+  .card-browser-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 235px);
+    align-items: end;
+    gap: var(--space-3);
+  }
+
+  .card-count-summary {
+    grid-column: 1 / -1;
+    width: 100%;
+    text-align: left;
+  }
+}
+'''
+          )
+
+          # -----------------------------------------------------------------
+          # Architecture docs: record the native-first OCR and card-pair quality
+          # invariants so future provider/OCR work cannot silently regress them.
+          # -----------------------------------------------------------------
+          replace(
+              "docs/architecture/ai-and-document-processing.md",
+              '''Good raw page text with bad semantic structure uses page-text semantic fallback instead of OCR. Corrupt non-empty raw text requires trustworthy OCR before provider traffic. Blank/image-only pages may remain visual evidence when no text is recoverable. Recovered text passes the same quality boundary again; ostudy does not hard-code a substitution alphabet for one PDF/font.''',
+              '''Good raw page text with bad semantic structure uses page-text semantic fallback instead of OCR. **Readable native text is never replaced merely because it is short or sparse**: title pages, headings, captions, and other low-text pages keep the oxidize-pdf text and use the PDFium raster as visual grounding when the provider supports images. OCR is reserved for native extraction failures, detected corrupt/obfuscated text, or genuinely empty native text where recognition is needed. Corrupt non-empty raw text requires trustworthy OCR before provider traffic. Blank/image-only pages may remain visual evidence when no text is recoverable. Recovered text passes the same quality boundary again; ostudy does not hard-code a substitution alphabet for one PDF/font.'''
+          )
+          replace(
+              "docs/architecture/ai-and-document-processing.md",
+              '''After source windows complete, a bounded curation task selects which cards remain. It cannot rewrite cards. Selected cards pass through canonical generated-card authoring for restricted Markdown/content validation, Cloze syntax, tags, duplicate fingerprints, fresh schedules, and transactional deck/card creation. There is no generated-card review queue.''',
+              '''After source windows complete, a bounded curation task selects which cards remain. It cannot rewrite cards. Curation is also a semantic pair-quality gate: an answer must directly and completely answer its question, multi-part questions require all requested parts, headings/topic labels are not accepted as factual answers, and unsupported or ambiguous cards are dropped. Even a single generated candidate passes through this gate. Selected cards then pass through canonical generated-card authoring for restricted Markdown/content validation, Cloze syntax, tags, duplicate fingerprints, fresh schedules, and transactional deck/card creation. There is no generated-card review queue.'''
+          )
+
+          PY
+
+      - name: Normalize formatting
+        shell: bash
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml
+          pnpm exec prettier --write src/screens/DocumentsScreen.tsx src/styles/features/ui-overhaul.css
+
+      - name: Run focused regression checks
+        shell: bash
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml pdf_backend::tests --locked
+          cargo test --manifest-path src-tauri/Cargo.toml ai::document_intelligence::tests --locked
+          cargo test --manifest-path src-tauri/Cargo.toml workload::tests --locked
+          pnpm vitest run src/screens/DocumentsScreen.test.tsx
+
+      - name: Remove applicator and publish product tree
+        shell: bash
+        run: |
+          git rm .github/workflows/apply-pr41-quality-pass.yml
+          git config user.name "ostudy CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: improve document generation and practice selection"
+          git push origin HEAD:agent/ui-platform-overhaul
