@@ -250,7 +250,7 @@ async fn generate_more_impl(
         generated.len(),
     )?;
     ensure_exact_append_destination(database.inner(), &context.deck_id, &context.deck_name)?;
-    let payload = build_append_payload(&context.deck_name, &context.source_format, generated)?;
+    let payload = build_append_payload(&context.deck_name, generated)?;
     let (api_token_count, api_token_usage_complete) = task.usage_summary();
     let result = import_generated_flashcards_bytes_with_commit(
         database.inner(),
@@ -600,11 +600,7 @@ fn ensure_exact_append_destination(
     })
 }
 
-fn build_append_payload(
-    deck_name: &str,
-    source_format: &str,
-    cards: Vec<Value>,
-) -> Result<String, CommandError> {
+fn build_append_payload(deck_name: &str, cards: Vec<Value>) -> Result<String, CommandError> {
     serde_json::to_string(&serde_json::json!({
         "format": "ostudy-flashcards",
         "formatVersion": 1,
@@ -612,7 +608,7 @@ fn build_append_payload(
             "mode": "append",
             "name": deck_name
         },
-        "defaultTags": ["AI generated", source_format.to_ascii_uppercase()],
+        "defaultTags": [],
         "cards": cards
     }))
     .map_err(CommandError::serialization)

@@ -915,7 +915,6 @@ fn build_generated_import_json(
     document: &StoredDocument,
     cards: Vec<serde_json::Value>,
 ) -> Result<String, CommandError> {
-    let source_tag = document.source_format.to_ascii_uppercase();
     serde_json::to_string(&serde_json::json!({
         "format": "ostudy-flashcards",
         "formatVersion": 1,
@@ -927,7 +926,7 @@ fn build_generated_import_json(
                 document.dto.original_filename
             )
         },
-        "defaultTags": ["AI generated", source_tag],
+        "defaultTags": [],
         "cards": cards,
     }))
     .map_err(CommandError::serialization)

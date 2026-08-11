@@ -148,9 +148,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "92ed1082377e685570ce3fb79aacf1610c38cbea58e60f289104d7a96ce24c8c",
         sql: include_str!("../migrations/0022_document_processing_metrics.sql"),
     },
+    Migration {
+        version: 23,
+        name: "document_provenance_tag_cleanup",
+        checksum: "ec70e81cd4f7c5db36793e1ced79d646ab1981ffd2eaee90244908fbc4b71892",
+        sql: include_str!("../migrations/0023_document_provenance_tag_cleanup.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 22;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 23;
 
 pub struct Database {
     connection: Mutex<Connection>,
