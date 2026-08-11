@@ -2,6 +2,7 @@ from pathlib import Path
 
 path = Path('.github/pr41-final-fixes.py')
 text = path.read_text(encoding='utf-8')
+
 old_first = '''replace_once(
     "src-tauri/src/pdf_backend.rs",
     '    "oxidize-pdf-4.2.2-rag-native-first-ocr-v3"\\n',
@@ -26,4 +27,64 @@ old_second = '''replace_once(
 if text.count(old_first) != 1 or text.count(old_second) != 1:
     raise SystemExit('expected PDF backend applicator blocks not found')
 text = text.replace(old_first, new_first, 1).replace(old_second, '', 1)
+
+lifetime_fixes = [
+    (
+'''        statement
+            .query_map(params![input.session_id, input.note_id], |row| row.get::<_, String>(0))
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+''',
+'''        let rows = statement
+            .query_map(params![input.session_id, input.note_id], |row| row.get::<_, String>(0))
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        rows
+'''),
+    (
+'''        statement
+            .query_map([input.note_id.as_str()], |row| {
+                Ok(PlannedCard {
+                    deck_id: row.get(0)?,
+                    card_id: row.get(1)?,
+                })
+            })
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+''',
+'''        let rows = statement
+            .query_map([input.note_id.as_str()], |row| {
+                Ok(PlannedCard {
+                    deck_id: row.get(0)?,
+                    card_id: row.get(1)?,
+                })
+            })
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        rows
+'''),
+    (
+'''        statement
+            .query_map([input.session_id.as_str()], |row| row.get::<_, String>(0))
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+''',
+'''        let rows = statement
+            .query_map([input.session_id.as_str()], |row| row.get::<_, String>(0))
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        rows
+'''),
+]
+for old, new in lifetime_fixes:
+    if text.count(old) != 1:
+        raise SystemExit(f'expected one generated Rust lifetime fragment, found {text.count(old)}')
+    text = text.replace(old, new, 1)
+
 path.write_text(text, encoding='utf-8')
