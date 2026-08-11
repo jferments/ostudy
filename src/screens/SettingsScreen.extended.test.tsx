@@ -218,7 +218,10 @@ describe("SettingsScreen AI/LLM behavior", () => {
     renderSettings();
     await openAiTab();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add llama.cpp" }));
+    fireEvent.click(screen.getByRole("button", { name: "New profile" }));
+    expect(
+      (screen.getByRole("combobox", { name: "Provider type" }) as HTMLSelectElement).value,
+    ).toBe("llama_cpp");
     expect(screen.getByRole("heading", { name: "1. Provider connection" })).toBeTruthy();
     expect(screen.queryByRole("combobox", { name: "Model" })).toBeNull();
     expect(screen.getByText(/GET \/v1\/models/u)).toBeTruthy();
