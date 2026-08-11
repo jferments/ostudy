@@ -113,7 +113,7 @@
   overflow: auto;
   border-radius: inherit;
   padding: clamp(22px, 5vw, 52px);
-  background: var(--surface-1);
+  background: var(--surface);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   transform-style: preserve-3d;
