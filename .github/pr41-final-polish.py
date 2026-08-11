@@ -70,11 +70,11 @@ replace_once(
     """                    <div className=\"card-row-actions\">\n                      <span\n                        className=\"card-row-reversible\"\n                        aria-label={card.reversible ? \"Reversible\" : undefined}\n                        title={card.reversible ? \"Reversible card\" : undefined}\n                        aria-hidden={card.reversible ? undefined : \"true\"}\n                      >\n                        {card.reversible ? \"🔄\" : null}\n                      </span>\n                      <button type=\"button\" onClick={() => void openCardEditor(card)}>\n""",
 )
 
-# Add a UI regression assertion for the reversible indicator.
+# Add a UI regression assertion for the reversible indicator after card hydration.
 replace_once(
     "src/screens/DecksScreen.test.tsx",
-    """    expect(onPracticeDeck).toHaveBeenCalledWith(deck.id, \"detail\");\n  });\n""",
-    """    expect(onPracticeDeck).toHaveBeenCalledWith(deck.id, \"detail\");\n    expect(screen.getByLabelText(\"Reversible\")).toBeTruthy();\n    expect(screen.queryByText(/card variants/u)).toBeNull();\n  });\n""",
+    """    await waitFor(() => {\n      expect(screen.getByRole(\"heading\", { name: \"Dog facts\" })).toBeTruthy();\n    });\n    expect(await screen.findByLabelText(\"Reversible\")).toBeTruthy();\n    expect(screen.queryByText(/card variants/u)).toBeNull();\n\n    const detailPractice = screen.getByRole(\"button\", { name: \"Practice\" });\n""",
+    """    await waitFor(() => {\n      expect(screen.getByRole(\"heading\", { name: \"Dog facts\" })).toBeTruthy();\n    });\n    expect(await screen.findByLabelText(\"Reversible\")).toBeTruthy();\n    expect(screen.queryByText(/card variants/u)).toBeNull();\n\n    const detailPractice = screen.getByRole(\"button\", { name: \"Practice\" });\n""",
 )
 
 # ---------------------------------------------------------------------------
@@ -87,8 +87,8 @@ replace_once(
 )
 replace_once(
     "src/screens/practice/ActivePractice.tsx",
-    """            className=\"secondary-button\"\n""",
-    """            className=\"secondary-button practice-header-button\"\n""",
+    """          <button\n            type=\"button\"\n            className=\"secondary-button practice-header-button\"\n            disabled={busy}\n            onClick={onEdit}\n""",
+    """          <button\n            type=\"button\"\n            className=\"secondary-button practice-header-button\"\n            disabled={busy}\n            onClick={onEdit}\n""",
 )
 replace_once(
     "src/screens/practice/ActivePractice.tsx",
@@ -296,6 +296,11 @@ addition = r'''
   overflow: auto;
 }
 
+.active-practice-screen .practice-flip-inner {
+  height: 100%;
+  min-height: 100%;
+}
+
 .active-practice-screen .confidence-rating-panel {
   margin-top: clamp(8px, 1.3vh, 14px);
   padding: clamp(10px, 1.8vh, 18px);
@@ -396,7 +401,7 @@ addition = r'''
 '''
 if "Final PR #41 containment pass" in ui:
     raise SystemExit("ui-overhaul final polish already applied")
-write(ui_path, ui.rstrip() + addition + "\n")
+write(ui_path, ui.rstrip() + addition.rstrip() + "\n")
 
 # ---------------------------------------------------------------------------
 # Startup geometry: wider initial desktop window pairs with the four-across
