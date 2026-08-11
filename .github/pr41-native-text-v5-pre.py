@@ -18,4 +18,11 @@ text = text.replace(old2, actual2, 1)
 if text.count('TextRecoveryPlan') != 1:
     raise SystemExit(f'expected one generated TextRecoveryPlan marker, found {text.count("TextRecoveryPlan")}')
 text = text.replace('TextRecoveryPlan', 'ExtractionRecoveryPlan', 1)
+
+needle = 'let document = base_document(page, "\\\\u{e01c} bad semantic font mapping");'
+replacement = 'let document = base_document(page, "\\\\u{e01c}\\\\u{e01d} bad semantic font mapping");'
+if text.count(needle) != 1:
+    raise SystemExit(f'expected one Nunn semantic regression marker, found {text.count(needle)}')
+text = text.replace(needle, replacement, 1)
+
 path.write_text(text, encoding='utf-8')
