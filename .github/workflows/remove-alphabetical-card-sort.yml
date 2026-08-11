@@ -1,0 +1,65 @@
+name: Remove alphabetical card sort
+
+on:
+  push:
+    branches:
+      - agent/ui-platform-overhaul
+
+permissions:
+  contents: write
+
+concurrency:
+  group: remove-alphabetical-card-sort
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/ui-platform-overhaul
+          fetch-depth: 0
+
+      - name: Remove obsolete backend sort contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src-tauri/src/authoring/mod.rs")
+          text = path.read_text(encoding="utf-8")
+          old_validation = '"relevance" | "updated_desc" | "question_asc" | "due_asc" | "last_reviewed_desc"'
+          new_validation = '"relevance" | "updated_desc" | "due_asc" | "last_reviewed_desc"'
+          if text.count(old_validation) != 1:
+              raise SystemExit(f"expected one alphabetical sort validation contract, found {text.count(old_validation)}")
+          text = text.replace(old_validation, new_validation)
+          old_order = '''        "question_asc" => {
+            "CASE WHEN n.note_type = 'basic' AND c.direction = 'reverse' THEN n.back_text ELSE n.front_text END COLLATE NOCASE ASC, n.updated_at DESC, c.template_ordinal ASC"
+        }
+'''
+          if text.count(old_order) != 1:
+              raise SystemExit(f"expected one alphabetical SQL branch, found {text.count(old_order)}")
+          text = text.replace(old_order, "")
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Reject remaining obsolete sort references
+        run: |
+          if grep -R --line-number --fixed-strings 'question_asc' src src-tauri tests; then
+            echo 'Obsolete question_asc references remain.' >&2
+            exit 1
+          fi
+
+      - name: Normalize Rust
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Publish cleanup
+        run: |
+          git rm .github/workflows/remove-alphabetical-card-sort.yml
+          git add -A
+          git config user.name "ostudy CI"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "refactor: remove alphabetical card sorting"
+          git push origin HEAD:agent/ui-platform-overhaul
