@@ -45,8 +45,22 @@ jobs:
 
       - name: Normalize formatting
         run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml
-          pnpm exec prettier --write src/screens/DocumentsScreen.tsx src/styles/features/ui-overhaul.css
+          set +e
+          {
+            cargo fmt --manifest-path src-tauri/Cargo.toml
+            pnpm exec prettier --write src/screens/DocumentsScreen.tsx src/styles/features/ui-overhaul.css
+          } > .github/pr41-format-error.txt 2>&1
+          status=$?
+          cat .github/pr41-format-error.txt
+          if [ "$status" -ne 0 ]; then
+            git config user.name "ostudy CI"
+            git config user.email "actions@users.noreply.github.com"
+            git add .github/pr41-format-error.txt
+            git commit -m "ci: capture PR41 formatting failure"
+            git push origin HEAD:agent/ui-platform-overhaul
+            exit "$status"
+          fi
+          rm -f .github/pr41-format-error.txt
 
       - name: Run focused regression checks
         run: |
@@ -58,7 +72,7 @@ jobs:
       - name: Remove applicator and publish product tree
         run: |
           git rm .github/workflows/apply-pr41-quality-pass.yml .github/pr41-quality-pass.py .github/fix-pr41-helper.py
-          git rm -f .github/pr41-apply-error.txt || true
+          git rm -f .github/pr41-apply-error.txt .github/pr41-format-error.txt || true
           git config user.name "ostudy CI"
           git config user.email "actions@users.noreply.github.com"
           git add -A
