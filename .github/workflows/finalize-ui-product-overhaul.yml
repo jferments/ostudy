@@ -67,9 +67,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Remove finalizer and publish product-only tree
+      - name: Publish validated product tree
         run: |
-          git rm scripts/finalize-ui-product-overhaul.mjs scripts/finalize-ui-product-overhaul-fixes.mjs .github/workflows/finalize-ui-product-overhaul.yml
+          git rm scripts/finalize-ui-product-overhaul.mjs scripts/finalize-ui-product-overhaul-fixes.mjs
           git add -A
           git config user.name "ostudy CI"
           git config user.email "actions@users.noreply.github.com"
