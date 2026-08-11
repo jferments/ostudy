@@ -148,7 +148,81 @@ where
         ));
     }
     validate_pdf_semantic_provenance(&semantic)?;
-    let recovery_plan = pdf_backend::plan_text_recovery(&semantic);
+    let mut recovery_plan = pdf_backend::plan_text_recovery(&semantic);
+
+    // OCR is the expensive last resort. If oxidize-pdf marks a page as an OCR
+    // candidate, ask the already-bound PDFium engine for that page's native text
+    // before rasterizing anything at OCR resolution. Different PDF engines can
+    // interpret incomplete ToUnicode/custom-font maps differently; a usable
+    // second native extraction is strictly preferable to replacing readable text
+    // with Tesseract output.
+    let candidate_pages = recovery_plan
+        .ocr_pages
+        .iter()
+        .map(|candidate| candidate.page_number)
+        .collect::<Vec<_>>();
+    let mut native_rescued_pages = BTreeSet::new();
+    if !candidate_pages.is_empty() {
+        match pdf_render_backend::extract_native_text_pages(
+            render_runtime,
+            source_path,
+            &candidate_pages,
+        ) {
+            Ok(alternatives) => {
+                for (page_number, alternative) in alternatives {
+                    let assessment = pdf_backend::assess_text_quality(&alternative);
+                    if alternative.trim().is_empty()
+                        || pdf_backend::native_page_requires_ocr(&alternative, &assessment)
+                    {
+                        continue;
+                    }
+                    if let Some(page) = semantic
+                        .pages
+                        .iter_mut()
+                        .find(|page| page.page_number == page_number)
+                    {
+                        page.text = alternative;
+                        semantic
+                            .native_text_failed_pages
+                            .retain(|failed| *failed != page_number);
+                        native_rescued_pages.insert(page_number);
+                        crate::logging::info(
+                            "document_pdfium_native_text_rescued",
+                            format!("document={document_id} page={page_number}"),
+                        );
+                    }
+                }
+            }
+            Err(error) => crate::logging::info(
+                "document_pdfium_native_text_rescue_unavailable",
+                format!(
+                    "document={document_id} detail={}",
+                    bounded_diagnostic(&error.to_string(), 300)
+                ),
+            ),
+        }
+    }
+    if !native_rescued_pages.is_empty() {
+        recovery_plan = pdf_backend::plan_text_recovery(&semantic);
+        let still_ocr = recovery_plan
+            .ocr_pages
+            .iter()
+            .map(|candidate| candidate.page_number)
+            .collect::<BTreeSet<_>>();
+        let mut fallback = recovery_plan
+            .native_semantic_fallback_pages
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        fallback.extend(
+            native_rescued_pages
+                .iter()
+                .copied()
+                .filter(|page| !still_ocr.contains(page)),
+        );
+        recovery_plan.native_semantic_fallback_pages = fallback.into_iter().collect();
+    }
+
     for candidate in &recovery_plan.ocr_pages {
         crate::logging::info(
             "document_ocr_fallback_detected",
@@ -1147,7 +1221,7 @@ fn is_unmapped_pdf_text_character(character: char) -> bool {
     let value = character as u32;
     (character.is_control() && !matches!(character, '\n' | '\t'))
         || character == '\u{fffd}'
-        || ('\u{e000}'..='\u{f8ff}').contains(&character)
+        || matches!(character as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD)
         || (0xFDD0..=0xFDEF).contains(&value)
         || value & 0xFFFF == 0xFFFE
         || value & 0xFFFF == 0xFFFF

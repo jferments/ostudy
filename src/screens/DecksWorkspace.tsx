@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import type { DeckOpenRequest } from "../App";
 import type { ShowToast } from "../components/Toast";
 import type { DeckSummary } from "../ipc/decks";
 import type { AppSettings } from "../ipc/settings";
@@ -11,7 +12,9 @@ interface DecksWorkspaceProps {
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
-  onPracticeDeck: (deckId: string) => void | Promise<void>;
+  onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
+  openDeckRequest: DeckOpenRequest | null;
+  onOpenDeckRequestConsumed: () => void;
   onPracticeCards: (cardIds: string[]) => void | Promise<void>;
   onManageTemplates: () => void | Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
@@ -26,6 +29,8 @@ export function DecksWorkspace({
   refreshDecks,
   onPracticeDeck,
   onPracticeCards,
+  openDeckRequest,
+  onOpenDeckRequestConsumed,
   onManageTemplates,
   onDirtyChange,
   showToast,
@@ -40,6 +45,8 @@ export function DecksWorkspace({
         settings={settings}
         refreshDecks={refreshDecks}
         onPracticeDeck={onPracticeDeck}
+        openDeckRequest={openDeckRequest}
+        onOpenDeckRequestConsumed={onOpenDeckRequestConsumed}
         onManageTemplates={onManageTemplates}
         onBulkAdd={() => setBulkOpen(true)}
         onViewChange={setDeckView}

@@ -159,7 +159,7 @@ See [Backups, imports, and sharing](../user-guide/backups-imports-and-sharing.md
 
 `src-tauri/src/ai/` owns provider metadata, credentials, endpoint policy, HTTP transport, provider adapters, capability evidence, and task execution. Source PDFs and their derived text, semantics, outline, renders, OCR results, and generation checkpoints belong to the managed document subsystem.
 
-Document processing is divided into narrow capabilities rather than one PDF-specific monolith. Parser, renderer, OCR, provider, and authoring types do not cross each other's boundaries. A model receives bounded context and returns strict task data; native validation and the existing authoring transaction remain authoritative.
+Document processing is divided into narrow capabilities rather than one PDF-specific monolith. Parser, renderer, OCR, provider, and authoring types do not cross each other's boundaries. Candidate OCR pages receive an engine-diverse native-text rescue through PDFium before raster OCR is allowed, so a damaged font map in one parser cannot by itself trigger Tesseract. A model receives bounded context and returns strict task data; native validation and the existing authoring transaction remain authoritative.
 
 Processing duration and provider-reported token usage are persisted as separate document metrics. Token usage is never estimated when a provider omits it; llama.cpp-compatible native timing envelopes are normalized at the provider boundary before the aggregate is stored.
 

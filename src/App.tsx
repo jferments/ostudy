@@ -32,7 +32,9 @@ const SettingsScreen = lazy(() =>
 export type {
   AnalyticsLaunchRequest,
   AppSection,
+  DeckOpenRequest,
   PracticeLaunchRequest,
+  PracticeReturnTarget,
 } from "./controllers/useAppController";
 
 function App() {
@@ -78,6 +80,8 @@ function App() {
                 refreshDecks={controller.refreshDecks}
                 onPracticeDeck={controller.practiceDeck}
                 onPracticeCards={controller.practiceCards}
+                openDeckRequest={controller.deckOpenRequest}
+                onOpenDeckRequestConsumed={controller.consumeDeckOpenRequest}
                 onManageTemplates={() => controller.navigate("templates")}
                 onDirtyChange={controller.setHasUnsavedCard}
                 showToast={controller.showToast}
@@ -112,6 +116,7 @@ function App() {
                 launchRequest={controller.practiceLaunch}
                 onLaunchConsumed={controller.consumePracticeLaunch}
                 onViewAnalytics={controller.viewSessionAnalytics}
+                onEndEarly={controller.returnFromPractice}
                 showToast={controller.showToast}
               />
             ) : null}

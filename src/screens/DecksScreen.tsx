@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import type { DeckOpenRequest } from "../App";
 import { DecksController } from "../controllers/decksController";
 
 import { Modal } from "../components/Modal";
@@ -34,7 +35,9 @@ interface DecksScreenProps {
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
-  onPracticeDeck: (deckId: string) => void | Promise<void>;
+  onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
+  openDeckRequest?: DeckOpenRequest | null;
+  onOpenDeckRequestConsumed?: () => void;
   onManageTemplates?: () => void | Promise<void>;
   onBulkAdd?: () => void;
   onViewChange?: (view: DeckView) => void;
@@ -50,6 +53,8 @@ export function DecksScreen({
   settings,
   refreshDecks,
   onPracticeDeck,
+  openDeckRequest = null,
+  onOpenDeckRequestConsumed,
   onManageTemplates,
   onBulkAdd,
   onViewChange,
@@ -79,6 +84,7 @@ export function DecksScreen({
   const controllerRef = useRef<DecksController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new DecksController();
   const controller = controllerRef.current;
+  const handledOpenRequestRef = useRef<number | null>(null);
   const confirm = useConfirm();
   const compact = useMediaQuery("(max-width: 760px)");
 
@@ -166,6 +172,12 @@ export function DecksScreen({
       setIsLoadingDeck(false);
     }
   }
+
+  useEffect(() => {
+    if (!openDeckRequest || handledOpenRequestRef.current === openDeckRequest.requestId) return;
+    handledOpenRequestRef.current = openDeckRequest.requestId;
+    void openDeck(openDeckRequest.deckId).finally(() => onOpenDeckRequestConsumed?.());
+  }, [openDeckRequest?.requestId]);
 
   async function refreshDeckListAfterMutation(): Promise<void> {
     try {
@@ -658,7 +670,7 @@ export function DecksScreen({
                       {!archived ? (
                         <button
                           type="button"
-                          onClick={() => void onPracticeDeck(deck.id)}
+                          onClick={() => void onPracticeDeck(deck.id, "library")}
                           disabled={deck.generatedCardCount === 0}
                           title={practiceTitle(deck)}
                         >
@@ -787,7 +799,7 @@ export function DecksScreen({
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() => void onPracticeDeck(selectedDeck.id)}
+                onClick={() => void onPracticeDeck(selectedDeck.id, "detail")}
                 disabled={selectedDeck.generatedCardCount === 0}
                 title={practiceTitle(selectedDeck)}
               >
@@ -1106,10 +1118,9 @@ function DeckFormModal({ mode, deck, onClose, onSave }: DeckFormModalProps) {
 function practiceTitle(deck: DeckSummary): string {
   if (deck.archivedAt !== null) return "Unarchive this deck before practicing";
   if (deck.generatedCardCount === 0) return "Add a flashcard before practicing this deck";
-  if (deck.studyableDueCount === 0) return "Start an extra session; no cards are ready now";
-  return `${deck.studyableDueCount} ${
-    deck.studyableDueCount === 1 ? "card is" : "cards are"
-  } ready now`;
+  return `Practice all ${deck.generatedCardCount} ${
+    deck.generatedCardCount === 1 ? "card" : "cards"
+  } in this deck`;
 }
 
 function safeFilename(name: string): string {

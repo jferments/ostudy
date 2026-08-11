@@ -175,33 +175,6 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
             </p>
           </section>
         )}
-
-        <section className={styles.settingsCard}>
-          <h2>Default task profile</h2>
-          <label className={styles.stackedField}>
-            <span>Flashcard generation</span>
-            <select
-              value={controller.defaults.flashcardGenerationProfileId ?? ""}
-              disabled={controller.mutating}
-              onChange={(event) =>
-                void controller.setFlashcardDefault(event.currentTarget.value || null)
-              }
-            >
-              <option value="">Choose each time</option>
-              {controller.profiles
-                .filter((profile) => profile.configurationStatus !== "planned")
-                .map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.displayName}
-                    {profile.configurationStatus === "ready" ? "" : " — incomplete"}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <p className={styles.securityNote}>
-            There is no automatic fallback. A failed local profile will never silently send study material to a cloud provider.
-          </p>
-        </section>
       </main>
     </div>
   );

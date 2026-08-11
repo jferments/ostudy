@@ -180,6 +180,7 @@ function renderPractice(overrides?: Partial<React.ComponentProps<typeof Practice
     launchRequest: null,
     onLaunchConsumed: vi.fn(),
     onViewAnalytics: vi.fn(),
+    onEndEarly: vi.fn(),
     showToast: vi.fn(),
     ...overrides,
   };
@@ -311,6 +312,8 @@ describe("PracticeScreen", () => {
         tagIds: [],
         cardIds: [card.cardId],
         autoStart: true,
+        mode: "scheduled",
+        returnTarget: { section: "cards" },
       },
       onLaunchConsumed,
     });
@@ -321,6 +324,51 @@ describe("PracticeScreen", () => {
         cardIds: [card.cardId],
         shuffle: true,
       });
+    });
+  });
+
+  it("auto-starts a deck-origin launch as explicit extra practice instead of the daily limit", async () => {
+    renderPractice({
+      launchRequest: {
+        requestId: 9,
+        deckIds: [deck.id],
+        tagIds: [],
+        cardIds: [],
+        autoStart: true,
+        mode: "extra",
+        returnTarget: { section: "decks", deckId: deck.id },
+      },
+    });
+    await waitFor(() =>
+      expect(practiceIpc.startSelectedPractice).toHaveBeenCalledWith({
+        operationId: "0".repeat(32),
+        deckIds: [deck.id],
+        tagIds: [],
+        shuffle: true,
+        mode: "extra",
+      }),
+    );
+  });
+
+  it("returns to an external launch origin when End session terminates early", async () => {
+    const onEndEarly = vi.fn();
+    const returnTarget = { section: "decks" as const, deckId: deck.id };
+    renderPractice({
+      launchRequest: {
+        requestId: 10,
+        deckIds: [deck.id],
+        tagIds: [],
+        cardIds: [],
+        autoStart: true,
+        mode: "extra",
+        returnTarget,
+      },
+      onEndEarly,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "End session" }));
+    await waitFor(() => {
+      expect(practiceIpc.completePracticeSession).toHaveBeenCalledWith(session.id);
+      expect(onEndEarly).toHaveBeenCalledWith(returnTarget);
     });
   });
 

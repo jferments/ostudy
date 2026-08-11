@@ -153,7 +153,7 @@ pub(crate) struct TextQualityAssessment {
 }
 
 pub(crate) fn active_backend_id() -> &'static str {
-    "oxidize-pdf-4.2.2-rag-native-first-ocr-v5"
+    "oxidize-pdf-4.2.2-rag-native-first-ocr-v6"
 }
 
 pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, PdfBackendError> {
@@ -376,7 +376,7 @@ fn extract_page_texts<R: Read + Seek>(
     Ok((pages, failed_pages))
 }
 
-fn native_page_requires_ocr(text: &str, assessment: &TextQualityAssessment) -> bool {
+pub(crate) fn native_page_requires_ocr(text: &str, assessment: &TextQualityAssessment) -> bool {
     if !assessment.suspicious {
         return false;
     }
@@ -409,7 +409,7 @@ fn is_unmapped_pdf_glyph(character: char) -> bool {
     let value = character as u32;
     (character.is_control() && !matches!(character, '\n' | '\t'))
         || character == '\u{fffd}'
-        || ('\u{e000}'..='\u{f8ff}').contains(&character)
+        || is_private_use(character)
         || (0xFDD0..=0xFDEF).contains(&value)
         || value & 0xFFFF == 0xFFFE
         || value & 0xFFFF == 0xFFFF
@@ -863,7 +863,7 @@ mod tests {
     fn active_backend_identifies_quality_checked_oxidize_extraction() {
         assert_eq!(
             active_backend_id(),
-            "oxidize-pdf-4.2.2-rag-native-first-ocr-v5"
+            "oxidize-pdf-4.2.2-rag-native-first-ocr-v6"
         );
     }
 
@@ -999,6 +999,25 @@ mod tests {
         let corrupt = "Õâóïáäèå ÖîããóÛó îì ÖèïÝáîãîÛ× èåÝ çôó Õâóïáäèå ëóèïç Õííîäáèçáîå ñðæãáíôóÝ åóØ ÛðáÝóãáåóí";
         let assessment = assess_text_quality(corrupt);
         assert!(native_page_requires_ocr(corrupt, &assessment));
+    }
+
+    #[test]
+    fn alternative_native_text_can_rescue_a_primary_extractor_false_positive() {
+        let primary = format!(
+            "{} readable respiratory physiology text with enough remaining words to look locally damaged",
+            "�\u{0001}".repeat(28)
+        );
+        let primary_assessment = assess_text_quality(&primary);
+        assert!(primary_assessment.suspicious);
+        assert!(native_page_requires_ocr(&primary, &primary_assessment));
+
+        let pdfium_native = concat!(
+            "A textbook page can contain tables, figures, and readable explanatory prose. ",
+            "A malformed embedded font may leave bron\u{fffe}chial or pulmo\u{fffe}nary placeholders ",
+            "without making the native text layer unusable."
+        );
+        let rescue_assessment = assess_text_quality(pdfium_native);
+        assert!(!native_page_requires_ocr(pdfium_native, &rescue_assessment));
     }
 
     #[test]

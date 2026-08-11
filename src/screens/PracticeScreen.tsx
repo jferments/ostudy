@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { PracticeLaunchRequest } from "../App";
+import type { PracticeLaunchRequest, PracticeReturnTarget } from "../App";
 import { getCardNote, type CardNote } from "../ipc/cards";
 import { PracticeController } from "../controllers/practiceController";
 import { registerPracticeExitHandler } from "../controllers/practiceExitGuard";
@@ -48,6 +48,7 @@ interface PracticeScreenProps {
   launchRequest: PracticeLaunchRequest | null;
   onLaunchConsumed: () => void;
   onViewAnalytics: (sessionId: string, deckIds: string[]) => void;
+  onEndEarly: (target: PracticeReturnTarget) => void;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
 }
 
@@ -72,6 +73,7 @@ export function PracticeScreen({
   launchRequest,
   onLaunchConsumed,
   onViewAnalytics,
+  onEndEarly,
   showToast,
 }: PracticeScreenProps) {
   const activeDecks = decks.filter((deck) => deck.archivedAt === null);
@@ -98,6 +100,7 @@ export function PracticeScreen({
   const [ratedCount, setRatedCount] = useState(0);
   const [confidenceCounts, setConfidenceCounts] = useState<ConfidenceCounts>([0, 0, 0, 0]);
   const [recentDecks, setRecentDecks] = useState<RecentDeckSummary[]>([]);
+  const [returnTarget, setReturnTarget] = useState<PracticeReturnTarget | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const startingRef = useRef(false);
@@ -307,6 +310,7 @@ export function PracticeScreen({
     handledLaunchRequestRef.current = launchRequest.requestId;
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
+    setReturnTarget(launchRequest.returnTarget);
     setSession(null);
     setSessionCards([]);
     setCompleted(false);
@@ -333,7 +337,7 @@ export function PracticeScreen({
         eligible,
         launchRequest.tagIds,
         settings.practiceShuffle,
-        "scheduled",
+        launchRequest.mode,
       );
     }
   }, [
@@ -563,6 +567,10 @@ export function PracticeScreen({
     setErrorMessage(null);
     try {
       await controller.complete(session.id);
+      if (returnTarget) {
+        onEndEarly(returnTarget);
+        return;
+      }
       resetToSetup();
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -585,6 +593,7 @@ export function PracticeScreen({
     setConfidenceCounts([0, 0, 0, 0]);
     setTemporaryCardIds([]);
     setEditingCard(null);
+    setReturnTarget(null);
     setSelectedTagIds(new Set());
     setErrorMessage(null);
     void loadRecentPractice();

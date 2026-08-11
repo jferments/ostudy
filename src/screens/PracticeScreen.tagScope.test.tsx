@@ -85,9 +85,12 @@ describe("PracticeScreen tag scope", () => {
           tagIds: [tagId],
           cardIds: [],
           autoStart: true,
+          mode: "scheduled",
+          returnTarget: { section: "analytics" },
         }}
         onLaunchConsumed={onLaunchConsumed}
         onViewAnalytics={vi.fn()}
+        onEndEarly={vi.fn()}
         showToast={vi.fn()}
       />,
     );

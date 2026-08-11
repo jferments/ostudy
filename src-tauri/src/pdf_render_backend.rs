@@ -206,6 +206,82 @@ fn bounded_detail(value: &str, maximum: usize) -> String {
         .replace('\n', " ")
 }
 
+pub(crate) fn extract_native_text_pages(
+    runtime: &PdfRenderRuntime,
+    source_path: &std::path::Path,
+    page_numbers: &[usize],
+) -> Result<Vec<(usize, String)>, PdfRenderError> {
+    if runtime.backend_id != active_backend_id() {
+        return Err(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            "The PDF renderer runtime does not match the active renderer backend.",
+        ));
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let document = runtime
+            .pdfium
+            .load_pdf_from_file(source_path, None)
+            .map_err(|error| {
+                PdfRenderError::new(PdfRenderErrorKind::Open, None, error.to_string())
+            })?;
+        let total_pages = page_count(&document)?;
+        let mut requested = page_numbers.to_vec();
+        requested.sort_unstable();
+        requested.dedup();
+        for page_number in &requested {
+            if *page_number == 0 || *page_number > total_pages {
+                return Err(PdfRenderError::new(
+                    PdfRenderErrorKind::RenderPage,
+                    Some(*page_number),
+                    "The native-text fallback requested a page outside the PDF page range.",
+                ));
+            }
+        }
+
+        let mut extracted = Vec::with_capacity(requested.len());
+        for page_number in requested {
+            let index = PdfPageIndex::try_from(page_number - 1).map_err(|_| {
+                PdfRenderError::new(
+                    PdfRenderErrorKind::RenderPage,
+                    Some(page_number),
+                    "The PDF page index exceeded the renderer's supported range.",
+                )
+            })?;
+            let page = document.pages().get(index).map_err(|error| {
+                PdfRenderError::new(
+                    PdfRenderErrorKind::RenderPage,
+                    Some(page_number),
+                    error.to_string(),
+                )
+            })?;
+            match page.text() {
+                Ok(text) => extracted.push((page_number, text.all())),
+                Err(error) => crate::logging::info(
+                    "pdfium_native_text_page_unavailable",
+                    format!(
+                        "page={page_number} detail={}",
+                        bounded_detail(&error.to_string(), 300)
+                    ),
+                ),
+            };
+        }
+        Ok(extracted)
+    }
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (source_path, page_numbers);
+        Err(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            "This mobile build does not yet include the platform PDF native-text adapter.",
+        ))
+    }
+}
+
 pub(crate) fn render_pages<E, F>(
     runtime: &PdfRenderRuntime,
     source_path: &std::path::Path,

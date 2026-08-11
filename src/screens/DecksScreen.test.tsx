@@ -142,7 +142,7 @@ describe("DecksScreen", () => {
     expect(detailPractice.hasAttribute("disabled")).toBe(false);
     fireEvent.click(detailPractice);
 
-    expect(onPracticeDeck).toHaveBeenCalledWith(deck.id);
+    expect(onPracticeDeck).toHaveBeenCalledWith(deck.id, "detail");
   });
 
   it("imports generated JSON through the ordinary Import deck button", async () => {
