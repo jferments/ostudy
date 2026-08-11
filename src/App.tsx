@@ -146,6 +146,7 @@ function App() {
 function applyThemeSettings(settings: AppSettings): void {
   const root = document.documentElement;
   root.dataset.theme = settings.theme;
+  root.dataset.animationsEnabled = settings.animationsEnabled ? "true" : "false";
   root.dataset.reduceMotion = settings.reduceMotion ? "true" : "false";
   root.style.setProperty("--ui-scale", String(settings.uiScale / 100));
   root.style.setProperty("--card-base-size", `${settings.cardBaseSize}px`);
