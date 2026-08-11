@@ -180,14 +180,11 @@ export interface BulkCreateResult {
   skippedDuplicates: number;
 }
 
-export interface ListTagsInput {
-  deckIds: string[];
-}
-
+export type TransferCardsMode = "move" | "copy";
 export interface TransferCardsInput {
   noteIds: string[];
   targetDeckId: string;
-  mode: "move" | "copy";
+  mode: TransferCardsMode;
   skipDuplicates: boolean;
 }
 
@@ -196,14 +193,27 @@ export interface TransferCardsResult {
   skippedDuplicates: number;
 }
 
+export type TagChangeMode = "add" | "remove";
 export interface BulkTagCardsInput {
   noteIds: string[];
   tags: string[];
-  mode: "add" | "remove";
+  mode: TagChangeMode;
 }
 
 export interface BulkActionResult {
   affectedCount: number;
+}
+
+export async function listTags(deckIds: string[] = []): Promise<TagSummary[]> {
+  return invoke<TagSummary[]>("list_tags", { input: { deckIds } });
+}
+
+export async function searchCards(input: CardSearchInput): Promise<CardSearchPage> {
+  return invoke<CardSearchPage>("search_cards", { input });
+}
+
+export async function listMatchingCards(input: CardSearchInput): Promise<SelectionCard[]> {
+  return invoke<SelectionCard[]>("list_matching_cards", { input });
 }
 
 export async function getCardNote(noteId: string): Promise<CardNote> {
@@ -218,24 +228,8 @@ export async function updateCardNote(input: UpdateCardNoteInput): Promise<CardNo
   return invoke<CardNote>("update_card_note", { input });
 }
 
-export async function deleteCardNote(noteId: string): Promise<DeletionResult> {
-  return invoke<DeletionResult>("delete_card_note", { noteId });
-}
-
-export async function checkDuplicate(input: DuplicateCheckInput): Promise<DuplicateCard[]> {
-  return invoke<DuplicateCard[]>("check_duplicate", { input });
-}
-
-export async function listTags(input: ListTagsInput): Promise<TagSummary[]> {
-  return invoke<TagSummary[]>("list_tags", { input });
-}
-
-export async function searchCards(input: CardSearchInput): Promise<CardSearchPage> {
-  return invoke<CardSearchPage>("search_cards", { input });
-}
-
-export async function selectMatchingCards(input: CardSearchInput): Promise<SelectionCard[]> {
-  return invoke<SelectionCard[]>("select_matching_cards", { input });
+export async function findDuplicateCards(input: DuplicateCheckInput): Promise<DuplicateCard[]> {
+  return invoke<DuplicateCard[]>("find_duplicate_cards", { input });
 }
 
 export async function analyzeBulkCards(input: AnalyzeBulkCardsInput): Promise<BulkAnalyzeResult> {
@@ -254,6 +248,14 @@ export async function bulkTagCards(input: BulkTagCardsInput): Promise<BulkAction
   return invoke<BulkActionResult>("bulk_tag_cards", { input });
 }
 
+export async function deleteCard(noteId: string): Promise<DeletionResult> {
+  return invoke<DeletionResult>("delete_card", { noteId });
+}
+
+export async function deleteCards(noteIds: string[]): Promise<DeletionResult> {
+  return invoke<DeletionResult>("delete_cards", { input: { noteIds } });
+}
+
 export async function undoDeletion(undoToken: string): Promise<UndoDeletionResult> {
-  return invoke<UndoDeletionResult>("undo_deletion", { undoToken });
+  return invoke<UndoDeletionResult>("undo_deletion", { input: { undoToken } });
 }
