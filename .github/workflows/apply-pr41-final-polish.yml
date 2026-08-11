@@ -6,6 +6,7 @@ on:
       - agent/ui-platform-overhaul
     paths:
       - .github/pr41-final-polish.py
+      - .github/pr41-final-polish-pre.py
       - .github/workflows/apply-pr41-final-polish.yml
 
 permissions:
@@ -42,7 +43,9 @@ jobs:
           echo "OSTUDY_PDFIUM_PATH=$GITHUB_WORKSPACE/src-tauri/resources/native/pdfium/libpdfium.so" >> "$GITHUB_ENV"
 
       - name: Apply product changes
-        run: python3 .github/pr41-final-polish.py
+        run: |
+          python3 .github/pr41-final-polish-pre.py
+          python3 .github/pr41-final-polish.py
 
       - name: Format Rust
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
@@ -61,7 +64,7 @@ jobs:
 
       - name: Publish clean product tree
         run: |
-          git rm -f .github/pr41-final-polish.py .github/workflows/apply-pr41-final-polish.yml
+          git rm -f .github/pr41-final-polish.py .github/pr41-final-polish-pre.py .github/workflows/apply-pr41-final-polish.yml
           git config user.name "ostudy CI"
           git config user.email "actions@users.noreply.github.com"
           git add -A
