@@ -43,14 +43,18 @@ replace_once(
 )
 
 # Update the two canonical DeckCardSummary fixtures.
-for path in ["src/screens/DecksScreen.test.tsx", "src/screens/DecksScreen.extended.test.tsx"]:
-    text = read(path)
-    marker = "    imageCount: 0,\n    updatedAt: 1,\n"
-    if marker not in text:
-        raise SystemExit(f"{path}: DeckCardSummary fixture marker missing")
-    write(path, text.replace(marker, "    imageCount: 0,\n    reversible: False_PLACEHOLDER,\n    updatedAt: 1,\n", 1))
-    text = read(path).replace("False_PLACEHOLDER", "false")
-    write(path, text)
+fixture_markers = {
+    "src/screens/DecksScreen.test.tsx": (
+        "  imageCount: 0,\n  updatedAt: 1,\n",
+        "  imageCount: 0,\n  reversible: false,\n  updatedAt: 1,\n",
+    ),
+    "src/screens/DecksScreen.extended.test.tsx": (
+        "    imageCount: 0,\n    updatedAt: 1,\n",
+        "    imageCount: 0,\n    reversible: false,\n    updatedAt: 1,\n",
+    ),
+}
+for path, (old, new) in fixture_markers.items():
+    replace_once(path, old, new)
 
 # Make the primary DecksScreen fixture reversible so the icon behavior is covered.
 replace_once(
