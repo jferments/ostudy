@@ -161,6 +161,8 @@ See [Backups, imports, and sharing](../user-guide/backups-imports-and-sharing.md
 
 Document processing is divided into narrow capabilities rather than one PDF-specific monolith. Parser, renderer, OCR, provider, and authoring types do not cross each other's boundaries. A model receives bounded context and returns strict task data; native validation and the existing authoring transaction remain authoritative.
 
+Processing duration and provider-reported token usage are persisted as separate document metrics. Token usage is never estimated when a provider omits it; llama.cpp-compatible native timing envelopes are normalized at the provider boundary before the aggregate is stored.
+
 See [AI and document processing](ai-and-document-processing.md) for provider isolation, extraction, PDFium rendering, OCR, resource planning, structured output, retries, cancellation, and document lifetime.
 
 ## Untrusted content and security
