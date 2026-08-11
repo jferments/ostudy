@@ -29,6 +29,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Provision audited PDFium runtime
+        run: ./scripts/install-native-deps.sh --pdfium-only
+
       - name: Apply quality and selection fixes
         run: |
           python3 .github/fix-pr41-helper.py
@@ -36,29 +39,14 @@ jobs:
           rm -f .github/pr41-apply-error.txt
 
       - name: Normalize Rust formatting
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
 
       - name: Run focused regression checks
         run: |
-          set +e
-          (
-            set -e
-            cargo test --manifest-path src-tauri/Cargo.toml pdf_backend::tests --locked
-            cargo test --manifest-path src-tauri/Cargo.toml ai::document_intelligence::tests --locked
-            cargo test --manifest-path src-tauri/Cargo.toml workload::tests --locked
-            pnpm vitest run src/screens/DocumentsScreen.test.tsx
-          ) > .github/pr41-test-error.txt 2>&1
-          status=$?
-          cat .github/pr41-test-error.txt
-          if [ "$status" -ne 0 ]; then
-            git config user.name "ostudy CI"
-            git config user.email "actions@users.noreply.github.com"
-            git add .github/pr41-test-error.txt
-            git commit -m "ci: capture PR41 focused test failure"
-            git push origin HEAD:agent/ui-platform-overhaul
-            exit "$status"
-          fi
-          rm -f .github/pr41-test-error.txt
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib pdf_backend::tests
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib ai::document_intelligence::tests
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib workload::tests
+          pnpm vitest run src/screens/DocumentsScreen.test.tsx
 
       - name: Remove applicator and publish product tree
         run: |
