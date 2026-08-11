@@ -5,7 +5,7 @@ on:
     branches:
       - agent/ui-platform-overhaul
     paths:
-      - .agent/apply_analytics.py.gz
+      - .github/automation/apply_analytics.py.gz
       - .github/workflows/agent-apply-analytics.yml
 
 permissions:
@@ -23,9 +23,9 @@ jobs:
 
       - name: Apply deterministic analytics changes
         run: |
-          gzip -dc .agent/apply_analytics.py.gz > .agent/apply_analytics.py
-          python3 .agent/apply_analytics.py
-          rm -f .agent/apply_analytics.py
+          gzip -dc .github/automation/apply_analytics.py.gz > /tmp/ostudy-apply-analytics.py
+          python3 /tmp/ostudy-apply-analytics.py
+          rm -f /tmp/ostudy-apply-analytics.py
 
       - name: Format Rust changes
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
@@ -36,7 +36,7 @@ jobs:
           ./scripts/check-fast.sh
 
       - name: Remove one-shot transformation
-        run: rm -f .agent/apply_analytics.py.gz .github/workflows/agent-apply-analytics.yml
+        run: rm -f .github/automation/apply_analytics.py.gz .github/workflows/agent-apply-analytics.yml
 
       - name: Commit source changes
         run: |
