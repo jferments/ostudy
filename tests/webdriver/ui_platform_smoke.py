@@ -151,21 +151,32 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         "//*[@role='dialog' and @aria-modal='true']//*[normalize-space(.)='More']",
         deadline,
     )
-    templates = webdriver.find_element(
+    removed_destinations = execute(
+        session_id,
+        """
+        const labels = [...document.querySelectorAll('[role=dialog] button')]
+          .map((button) => (button.textContent || '').trim());
+        return labels.filter((label) => label.includes('Templates') || label.includes('Search')).length;
+        """,
+    )
+    if int(removed_destinations) != 0:
+        raise AssertionError("Compact More sheet still exposed Search/Filter or Templates as top-level destinations")
+
+    settings = webdriver.find_element(
         session_id,
         "xpath",
-        "//*[@role='dialog']//button[normalize-space(.)='▧Templates' or contains(normalize-space(.), 'Templates')]",
+        "//*[@role='dialog']//button[contains(normalize-space(.), 'Settings')]",
         deadline,
     )
-    webdriver.click(session_id, templates)
+    webdriver.click(session_id, settings)
     webdriver.wait_for_element_text(
         session_id,
         "css selector",
         "main h1",
-        "Templates",
+        "Settings",
         deadline,
     )
-    assert_no_horizontal_overflow(session_id, "compact Templates screen")
+    assert_no_horizontal_overflow(session_id, "compact Settings screen")
 
     decks = webdriver.find_element(
         session_id,
@@ -175,6 +186,18 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     )
     webdriver.click(session_id, decks)
     webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Decks", deadline)
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//button[normalize-space(.)='Manage templates']",
+        deadline,
+    )
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//*[normalize-space(.)='Search and filter cards']",
+        deadline,
+    )
 
 
 def verify_dialog_focus(session_id: str, deadline: float) -> None:
@@ -220,6 +243,18 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
     )
     if int(more_count) != 0:
         raise AssertionError("Wide navigation still displayed the compact More destination")
+    removed_count = execute(
+        session_id,
+        """
+        return [...document.querySelectorAll("nav[aria-label='Main navigation'] button")]
+          .filter((button) => {
+            const label = button.textContent || '';
+            return label.includes('Templates') || label.includes('Search/Filter');
+          }).length;
+        """,
+    )
+    if int(removed_count) != 0:
+        raise AssertionError("Wide navigation still exposed Search/Filter or Templates as top-level destinations")
     assert_no_horizontal_overflow(session_id, "wide application shell")
 
 
@@ -251,8 +286,9 @@ def main() -> int:
         verify_dialog_focus(session_id, deadline)
         verify_wide_navigation(session_id, deadline)
         print(
-            "Native UI platform smoke passed: compact/wide navigation, no horizontal "
-            "overflow, dialog focus containment, Escape dismissal, and focus restoration."
+            "Native UI platform smoke passed: compact/wide navigation, Decks workspace "
+            "destinations, no horizontal overflow, dialog focus containment, Escape "
+            "dismissal, and focus restoration."
         )
         return 0
     except Exception:
