@@ -163,6 +163,8 @@ Document processing is divided into narrow capabilities rather than one PDF-spec
 
 Processing duration and provider-reported token usage are persisted as separate document metrics. Token usage is never estimated when a provider omits it; llama.cpp-compatible native timing envelopes are normalized at the provider boundary before the aggregate is stored.
 
+The settings UI exposes only provider adapters that the current build can actually create; future providers remain roadmap documentation until their adapter is implemented.
+
 See [AI and document processing](ai-and-document-processing.md) for provider isolation, extraction, PDFium rendering, OCR, resource planning, structured output, retries, cancellation, and document lifetime.
 
 ## Untrusted content and security
