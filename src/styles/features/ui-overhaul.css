@@ -84,38 +84,50 @@
 }
 
 .practice-flip-card {
+  position: relative;
   min-height: clamp(260px, 42vh, 520px);
+  overflow: hidden;
   padding: 0;
   cursor: pointer;
   perspective: 1200px;
-}
-
-.practice-flip-card[data-revealed="true"] {
-  cursor: default;
+  isolation: isolate;
 }
 
 .practice-flip-inner {
   position: relative;
-  display: grid;
   min-height: inherit;
   transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
   transition: transform 560ms var(--ease-standard);
+  will-change: transform;
 }
 
-.practice-flip-card[data-revealed="true"] .practice-flip-inner {
+.practice-flip-card[data-flipped="true"] .practice-flip-inner {
   transform: rotateY(180deg);
 }
 
 .practice-flip-face {
-  grid-area: 1 / 1;
+  position: absolute;
+  inset: 0;
   min-width: 0;
+  overflow: auto;
+  border-radius: inherit;
   padding: clamp(22px, 5vw, 52px);
+  background: var(--surface-1);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+}
+
+.practice-flip-front {
+  transform: rotateY(0deg) translateZ(1px);
+  -webkit-transform: rotateY(0deg) translateZ(1px);
 }
 
 .practice-flip-back {
-  transform: rotateY(180deg);
+  transform: rotateY(180deg) translateZ(1px);
+  -webkit-transform: rotateY(180deg) translateZ(1px);
 }
 
 .practice-flip-hint {
