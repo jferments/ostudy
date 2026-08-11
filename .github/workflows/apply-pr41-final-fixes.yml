@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/apply-pr41-final-fixes.yml
       - .github/pr41-final-fixes.py
+      - .github/pr41-final-fixes-pre.py
 
 permissions:
   contents: write
@@ -38,7 +39,9 @@ jobs:
         run: ./scripts/install-native-deps.sh --pdfium-only
 
       - name: Apply final product changes
-        run: python3 .github/pr41-final-fixes.py
+        run: |
+          python3 .github/pr41-final-fixes-pre.py
+          python3 .github/pr41-final-fixes.py
 
       - name: Normalize Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
@@ -61,7 +64,7 @@ jobs:
 
       - name: Publish product-only tree
         run: |
-          git rm -f .github/workflows/apply-pr41-final-fixes.yml .github/pr41-final-fixes.py
+          git rm -f .github/workflows/apply-pr41-final-fixes.yml .github/pr41-final-fixes.py .github/pr41-final-fixes-pre.py
           git config user.name "ostudy CI"
           git config user.email "actions@users.noreply.github.com"
           git add -A
