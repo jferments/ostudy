@@ -61,5 +61,41 @@ if (mode === "after") {
   );
   writeFileSync(documentsTestPath, documentsTest);
 
-  console.log("Applied post-finalizer duplicate, ownership, deck-sort, and UI regression-test fixes.");
+  const analyticsModPath = "src-tauri/src/analytics/mod.rs";
+  let analyticsMod = readFileSync(analyticsModPath, "utf8");
+  analyticsMod = analyticsMod.replace(
+    `                        tag_ids: Vec::new(),\n                        highlighted_session_id: None,\n`,
+    `                        tag_ids: Vec::new(),\n                        custom_start_local_date: None,\n                        custom_end_local_date: None,\n                        highlighted_session_id: None,\n`,
+  );
+  writeFileSync(analyticsModPath, analyticsMod);
+
+  const regressionPath = "src-tauri/src/stage36_38_regression_tests.rs";
+  let regression = readFileSync(regressionPath, "utf8");
+  regression = regression.replace(
+    `        tag_ids: Vec::new(),\n        highlighted_session_id: None,\n`,
+    `        tag_ids: Vec::new(),\n        custom_start_local_date: None,\n        custom_end_local_date: None,\n        highlighted_session_id: None,\n`,
+  );
+  writeFileSync(regressionPath, regression);
+
+  const settingsTestsPath = "src-tauri/src/settings/extended_tests.rs";
+  let settingsTests = readFileSync(settingsTestsPath, "utf8");
+  settingsTests = settingsTests.replace(
+    `            card_base_size: 18,\n            reduce_motion: false,\n`,
+    `            card_base_size: 18,\n            animations_enabled: true,\n            reduce_motion: false,\n`,
+  );
+  settingsTests = settingsTests.replace(
+    `            card_base_size: 30,\n            reduce_motion: true,\n`,
+    `            card_base_size: 30,\n            animations_enabled: false,\n            reduce_motion: true,\n`,
+  );
+  settingsTests = settingsTests.replace(
+    `        assert_eq!(loaded.card_base_size, expected.card_base_size);\n        assert_eq!(loaded.reduce_motion, expected.reduce_motion);\n`,
+    `        assert_eq!(loaded.card_base_size, expected.card_base_size);\n        assert_eq!(loaded.animations_enabled, expected.animations_enabled);\n        assert_eq!(loaded.reduce_motion, expected.reduce_motion);\n`,
+  );
+  settingsTests = settingsTests.replace(
+    `            "cardBaseSize": 18,\n            "reduceMotion": false,\n`,
+    `            "cardBaseSize": 18,\n            "animationsEnabled": true,\n            "reduceMotion": false,\n`,
+  );
+  writeFileSync(settingsTestsPath, settingsTests);
+
+  console.log("Applied post-finalizer duplicate, ownership, deck-sort, UI-test, analytics-fixture, and settings-fixture fixes.");
 }
