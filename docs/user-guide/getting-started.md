@@ -1,3 +1,32 @@
+# Getting started
+
+ostudy is a local-first study application for creating, organizing, practicing, importing, exporting, and analyzing flashcards. AI features are optional. You can use the ordinary study system without configuring a model provider.
+
+This guide follows a normal first-use path rather than the internal implementation order.
+
+## 1. Create your first deck
+
+Open **Decks** and create a deck for one subject or study goal. A deck can contain Basic cards, reversible Basic cards, Fill in the blank cards, or cards produced from a custom template.
+
+A deck remains the main unit for organization, practice scope, import/export, archiving, and analytics. Renaming a deck changes its current display name without discarding its retained review history.
+
+## 2. Add cards
+
+Open a deck and choose **Add card**. Select the card type that matches the material:
+
+- **Basic** for a question and answer;
+- **Reversible** when both directions are independently useful;
+- **Fill in the blank** when a sentence or statement contains one or more useful recall targets;
+- a **custom template** when you repeatedly study the same structured fields.
+
+Write one main retrieval task per card. A precise question with a focused answer is usually easier to study than a card containing an entire paragraph of unrelated facts.
+
+## 3. Organize and find material
+
+Attach human-readable tags for concepts that cross deck boundaries. The **Search and filter cards** workspace at the bottom of **Decks** can query the whole library and narrow results by deck, tags, due state, or study history. Each scheduled presentation appears as its own result, so a forward and reverse card can be selected independently even though note-level actions such as tagging or moving apply to their shared source.
+
+Bulk entry is useful for a set of simple question-and-answer pairs. Exact duplicate detection prevents accidental repetition while allowing an explicit duplicate when the same wording is genuinely needed.
+
 ## 4. Run a practice session
 
 Open **Practice** when you want the normal scheduled workload. Scheduled practice applies your daily new-card and review limits and prioritizes cards according to the current schedule.
@@ -48,3 +77,11 @@ A `.studydeck` export is different: it is for moving or sharing one deck's study
 See [Backups, imports, and sharing](backups-imports-and-sharing.md) for the exact distinction.
 
 ## A useful first test
+
+A useful first test of the application is:
+
+1. Create a small deck with five Basic cards, one Reverse note, and one Fill in the blank note.
+2. Add two tags and find the cards through the Search and filter cards workspace in Decks.
+3. Practice the deck and use more than one confidence response.
+4. Open Analytics and inspect the resulting session and review details.
+5. Export the deck, create a full backup, restart ostudy, and confirm the material remains available.
