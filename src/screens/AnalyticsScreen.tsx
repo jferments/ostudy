@@ -494,9 +494,11 @@ function TimelineTable({ analytics }: { analytics: Analytics }) {
             <th>Local period</th>
             <th>Cards</th>
             <th>Reviews</th>
-            <th>New</th>
+            <th>Wrong</th>
+            <th>Hard</th>
+            <th>Medium</th>
+            <th>Easy</th>
             <th>Remembered</th>
-            <th>Confidence</th>
             <th>Study time</th>
           </tr>
         </thead>
@@ -509,9 +511,11 @@ function TimelineTable({ analytics }: { analytics: Analytics }) {
               <td>{compactDateFormatter.format(new Date(bucket.startAt))}</td>
               <td>{bucket.cardsPracticed}</td>
               <td>{bucket.reviewCount}</td>
-              <td>{bucket.newCards}</td>
+              <td>{bucket.wrongCount}</td>
+              <td>{bucket.hardCount}</td>
+              <td>{bucket.mediumCount}</td>
+              <td>{bucket.easyCount}</td>
               <td>{formatPercent(bucket.correctRate)}</td>
-              <td>{formatConfidence(bucket.averageConfidence)}</td>
               <td>{formatStudyTime(bucket.studyTimeMs)}</td>
             </tr>
           ))}

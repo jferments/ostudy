@@ -655,13 +655,21 @@ mod tests {
     }
 
     #[test]
-    fn append_payload_uses_format_neutral_source_tag_input() {
+    fn append_payload_keeps_only_card_subject_tags() {
         let payload = build_append_payload(
             "Physiology",
-            "pdf",
-            vec![serde_json::json!({"type":"basic","front":"Q","back":"A","tags":[]})],
+            vec![serde_json::json!({
+                "type": "basic",
+                "front": "Q",
+                "back": "A",
+                "tags": ["Cardiology"]
+            })],
         )
         .unwrap();
-        assert!(payload.contains("\"PDF\""));
+        let value: Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(value["defaultTags"], serde_json::json!([]));
+        assert_eq!(value["cards"][0]["tags"], serde_json::json!(["Cardiology"]));
+        assert!(!payload.contains("AI generated"));
+        assert!(!payload.contains("\"PDF\""));
     }
 }

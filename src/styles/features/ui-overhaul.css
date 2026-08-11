@@ -121,13 +121,23 @@
 }
 
 .practice-flip-front {
+  z-index: 2;
   transform: rotateY(0deg) translateZ(1px);
   -webkit-transform: rotateY(0deg) translateZ(1px);
 }
 
 .practice-flip-back {
+  z-index: 1;
   transform: rotateY(180deg) translateZ(1px);
   -webkit-transform: rotateY(180deg) translateZ(1px);
+}
+
+.practice-flip-card[data-flipped="true"] .practice-flip-front {
+  z-index: 1;
+}
+
+.practice-flip-card[data-flipped="true"] .practice-flip-back {
+  z-index: 2;
 }
 
 .practice-flip-hint {
