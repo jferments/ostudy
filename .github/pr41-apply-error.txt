@@ -1,0 +1,1 @@
+missing expected text in docs/architecture/ai-and-document-processing.md: 'After source windows complete, a bounded curation task selects which cards remain. It cannot rewrite cards. Selected car'
