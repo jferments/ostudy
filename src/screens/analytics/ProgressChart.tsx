@@ -40,35 +40,14 @@ export function ProgressChart({ buckets, range, reduceMotion }: ProgressChartPro
     [buckets, range],
   );
   const data = useMemo<LineChartData>(() => {
-    const practiced: ChartDataset<"line", ChartPoint[]> = {
-      label: "Cards practiced",
-      data: buckets.map((bucket) => bucket.cardsPracticed),
-      borderColor: colors.accent,
-      backgroundColor: colors.accent,
-      pointBackgroundColor: buckets.map((bucket) =>
-        bucket.containsHighlightedSession ? colors.warning : colors.accent,
-      ),
-      pointBorderColor: colors.surface,
-      pointBorderWidth: 2,
-      pointRadius: buckets.map((bucket) => (bucket.containsHighlightedSession ? 5 : 3)),
-      spanGaps: false,
-      tension: 0.24,
-    };
-    const remembered: ChartDataset<"line", ChartPoint[]> = {
-      label: "Remembered",
-      data: buckets.map((bucket) => bucket.rememberedCount),
-      borderColor: colors.success,
-      backgroundColor: colors.success,
-      pointBackgroundColor: buckets.map((bucket) =>
-        bucket.containsHighlightedSession ? colors.warning : colors.success,
-      ),
-      pointBorderColor: colors.surface,
-      pointBorderWidth: 2,
-      pointRadius: buckets.map((bucket) => (bucket.containsHighlightedSession ? 5 : 3)),
-      spanGaps: false,
-      tension: 0.24,
-    };
-    return { labels, datasets: [practiced, remembered] };
+    const datasets: ChartDataset<"line", ChartPoint[]>[] = [
+      lineDataset("Cards reviewed", buckets.map((bucket) => bucket.reviewCount), colors.accent, buckets),
+      lineDataset("Wrong", buckets.map((bucket) => bucket.wrongCount), colors.wrong, buckets),
+      lineDataset("Hard", buckets.map((bucket) => bucket.hardCount), colors.hard, buckets),
+      lineDataset("Medium", buckets.map((bucket) => bucket.mediumCount), colors.medium, buckets),
+      lineDataset("Easy", buckets.map((bucket) => bucket.easyCount), colors.easy, buckets),
+    ];
+    return { labels, datasets };
   }, [buckets, colors, labels]);
   const options = useMemo<ChartOptions<"line">>(
     () => ({
@@ -93,10 +72,9 @@ export function ProgressChart({ buckets, range, reduceMotion }: ProgressChartPro
               const bucket = buckets[items[0]?.dataIndex ?? 0];
               if (!bucket) return [];
               return [
-                String(bucket.reviewCount) + " review" + (bucket.reviewCount === 1 ? "" : "s"),
                 String(bucket.newCards) + " new card" + (bucket.newCards === 1 ? "" : "s"),
-                "Recall rate: " + formatPercent(bucket.correctRate),
-                "Confidence: " + formatConfidence(bucket.averageConfidence),
+                "Remembered: " + formatPercent(bucket.correctRate),
+                "Average difficulty: " + formatConfidence(bucket.averageConfidence),
                 "Focused time: " + formatDuration(bucket.studyTimeMs),
               ];
             },
@@ -114,7 +92,7 @@ export function ProgressChart({ buckets, range, reduceMotion }: ProgressChartPro
           grid: { color: colors.grid },
           ticks: { color: colors.muted, precision: 0 },
           border: { color: colors.border },
-          title: { display: true, text: "Cards", color: colors.muted },
+          title: { display: true, text: "Reviews", color: colors.muted },
         },
       },
     }),
@@ -128,11 +106,34 @@ export function ProgressChart({ buckets, range, reduceMotion }: ProgressChartPro
   );
 }
 
+function lineDataset(
+  label: string,
+  values: number[],
+  color: string,
+  buckets: TimelineBucket[],
+): ChartDataset<"line", ChartPoint[]> {
+  return {
+    label,
+    data: values,
+    borderColor: color,
+    backgroundColor: color,
+    pointBackgroundColor: color,
+    pointBorderColor: buckets.map((bucket) =>
+      bucket.containsHighlightedSession ? color : "transparent",
+    ),
+    pointBorderWidth: buckets.map((bucket) => (bucket.containsHighlightedSession ? 3 : 0)),
+    pointRadius: buckets.map((bucket) => (bucket.containsHighlightedSession ? 5 : 3)),
+    spanGaps: false,
+    tension: 0.24,
+  };
+}
+
 interface ChartColors {
   accent: string;
-  success: string;
-  warning: string;
-  surface: string;
+  wrong: string;
+  hard: string;
+  medium: string;
+  easy: string;
   surfaceRaised: string;
   text: string;
   textSoft: string;
@@ -146,9 +147,10 @@ function readChartColors(): ChartColors {
   const value = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
   return {
     accent: value("--accent", "#78a9ff"),
-    success: value("--success", "#55d79a"),
-    warning: value("--warning", "#f5c56b"),
-    surface: value("--surface", "#121a28"),
+    wrong: value("--confidence-wrong", "#b4233b"),
+    hard: value("--confidence-hard", "#c45d16"),
+    medium: value("--confidence-medium", "#d8a000"),
+    easy: value("--confidence-easy", "#197a46"),
     surfaceRaised: value("--surface-raised", "#182235"),
     text: value("--text", "#edf3fb"),
     textSoft: value("--text-soft", "#b6c1d2"),
@@ -166,18 +168,14 @@ function formatBucketLabel(value: number, range: AnalyticsRange): string {
 function buildAriaLabel(buckets: TimelineBucket[]): string {
   const active = buckets.filter((bucket) => bucket.reviewCount > 0);
   if (active.length === 0) return "Learning progress chart. No reviews occurred in the selected range.";
-  const reviews = active.reduce((total, bucket) => total + bucket.reviewCount, 0);
-  const practiced = active.reduce((total, bucket) => total + bucket.cardsPracticed, 0);
-  const remembered = active.reduce((total, bucket) => total + bucket.rememberedCount, 0);
-  return (
-    "Learning progress line chart with " +
-    reviews +
-    " reviews. One line shows " +
-    practiced +
-    " bucket-level cards practiced and the second shows " +
-    remembered +
-    " remembered answers."
-  );
+  const sum = (read: (bucket: TimelineBucket) => number) =>
+    active.reduce((total, bucket) => total + read(bucket), 0);
+  const reviews = sum((bucket) => bucket.reviewCount);
+  const wrong = sum((bucket) => bucket.wrongCount);
+  const hard = sum((bucket) => bucket.hardCount);
+  const medium = sum((bucket) => bucket.mediumCount);
+  const easy = sum((bucket) => bucket.easyCount);
+  return `Learning progress line chart with ${reviews} reviews: ${wrong} Wrong, ${hard} Hard, ${medium} Medium, and ${easy} Easy.`;
 }
 
 function formatPercent(value: number | null): string {
