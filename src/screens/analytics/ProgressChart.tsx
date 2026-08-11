@@ -15,6 +15,7 @@ import {
 import { Chart } from "react-chartjs-2";
 
 import type { AnalyticsRange, TimelineBucket } from "../../ipc/analytics";
+import { useAnimationsEnabled } from "../../ui/hooks/useAnimationsEnabled";
 
 ChartJS.register(CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip, Legend);
 
@@ -31,6 +32,8 @@ type ChartPoint = number | null;
 type LineChartData = ChartData<"line", ChartPoint[], string>;
 
 export function ProgressChart({ buckets, range, reduceMotion }: ProgressChartProps) {
+  const animationsEnabled = useAnimationsEnabled();
+  const motionDisabled = reduceMotion || !animationsEnabled;
   const colors = readChartColors();
   const labels = useMemo(
     () => buckets.map((bucket) => formatBucketLabel(bucket.startAt, range)),
@@ -71,7 +74,7 @@ export function ProgressChart({ buckets, range, reduceMotion }: ProgressChartPro
     () => ({
       responsive: true,
       maintainAspectRatio: false,
-      animation: reduceMotion ? false : { duration: 260 },
+      animation: motionDisabled ? false : { duration: 260 },
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: {
@@ -115,7 +118,7 @@ export function ProgressChart({ buckets, range, reduceMotion }: ProgressChartPro
         },
       },
     }),
-    [buckets, colors, reduceMotion],
+    [buckets, colors, motionDisabled],
   );
 
   return (
