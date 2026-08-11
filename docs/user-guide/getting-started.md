@@ -1,27 +1,25 @@
 # Getting started
 
-ostudy is organized around a local study library. A **deck** groups related material, a **note** contains the editable source, and one or more **cards** present that note for independent review. A normal Basic note produces one forward card; enabling Reverse adds a second schedule; a Fill in the blank note keeps one stable schedule while changing which marked phrase is hidden.
+ostudy is a local-first study application for creating, organizing, practicing, importing, exporting, and analyzing flashcards. AI features are optional. You can use the ordinary study system without configuring a model provider.
 
-You do not need an account or an AI provider to create cards, practice them, search your library, or view analytics.
+This guide follows a normal first-use path rather than the internal implementation order.
 
-## 1. Create a deck
+## 1. Create your first deck
 
-Open **Decks** and create a deck for one subject or course. A useful deck has a clear scope, such as “Cardiovascular pharmacology” or “Linear algebra: eigenvalues,” rather than mixing unrelated material solely because it was studied in the same week.
+Open **Decks** and create a deck for one subject or study goal. A deck can contain Basic cards, reversible Basic cards, Fill in the blank cards, or cards produced from a custom template.
 
-Decks may later be renamed, archived, exported, or deleted. Archiving removes a deck from normal study while preserving its material and historical analytics. Permanent deletion removes the deck and the historical data owned by material that is actually deleted.
+A deck remains the main unit for organization, practice scope, import/export, archiving, and analytics. Renaming a deck changes its current display name without discarding its retained review history.
 
-## 2. Add a card
+## 2. Add cards
 
-Open the deck and choose the card template that matches the material:
+Open a deck and choose **Add card**. Select the card type that matches the material:
 
 - **Basic** for a question and answer;
-- **Basic with Reverse** when both directions are independently useful;
-- **Fill in the blank** when the surrounding sentence provides meaningful context;
-- a **reusable template** when the same set of fields should generate several cards.
+- **Reversible** when both directions are independently useful;
+- **Fill in the blank** when a sentence or statement contains one or more useful recall targets;
+- a **custom template** when you repeatedly study the same structured fields.
 
-The editor stores validated structured content rather than arbitrary HTML. You can use formatting, lists, links, and managed local images without allowing an imported deck or model response to execute code.
-
-Write one main retrieval task per card. A precise question with a focused answer is usually easier to schedule and interpret than a card that asks for an entire chapter. Reverse cards work best for symmetric relationships such as terminology, abbreviations, labels, and simple associations; they are often unsuitable when the answer is a long explanation.
+Write one main retrieval task per card. A precise question with a focused answer is usually easier to study than a card containing an entire paragraph of unrelated facts.
 
 ## 3. Organize and find material
 
@@ -31,7 +29,11 @@ Bulk entry is useful for a set of simple question-and-answer pairs. Exact duplic
 
 ## 4. Run a practice session
 
-Open **Practice**, select the decks and session mode, and begin. After revealing an answer, record your confidence:
+Open **Practice** when you want the normal scheduled workload. Scheduled practice applies your daily new-card and review limits and prioritizes cards according to the current schedule.
+
+You can also press **Practice** directly on a deck. A deck-launched session is an explicit request to practice that deck, so it includes all currently studyable cards in the deck rather than silently truncating the session to the remaining daily new-card allowance. Archived, suspended, or currently buried cards remain excluded. If you end a session early, ostudy returns to the screen that launched it; a session started from a deck detail page returns to that same deck.
+
+After revealing an answer, record your confidence:
 
 | Choice | Meaning |
 | --- | --- |
@@ -52,28 +54,29 @@ Use analytics to choose a useful next action, not as a score to maximize. A high
 
 ## 6. Configure AI only when needed
 
-Open **Settings → AI/LLM** to configure a provider profile. Current builds implement:
+Open **Settings → AI/LLM** to configure an AI provider profile. The settings page only exposes providers implemented by the current build; future provider work is tracked in the project roadmap rather than shown as inactive settings controls.
 
-- **llama.cpp / Unsloth GGUF**, using an existing server that you run or manage;
-- **DeepSeek**, using the official cloud API and your own credential.
+The current provider profile supplies the endpoint, model, and credential boundary used by AI tasks. **Default AI model** selects the default profile for flashcard generation. There is no separate second “default task profile” setting.
 
-Ollama, OpenAI, Gemini, and Claude appear as planned provider families but are not active adapters in the current build. ostudy does not install or run a local model server. It connects to the endpoint you provide, tests the profile's capabilities, and uses only the provider selected for the task.
+ostudy does not install or run a local model server. It connects to the endpoint you provide, tests the profile's capabilities, and uses only the provider selected for the task. There is no silent cloud fallback from a failed local provider.
 
 See [AI providers](ai-providers.md) before entering a credential or exposing a LAN endpoint.
 
 ## 7. Generate flashcards from a PDF
 
-Open **Documents**, import a PDF, choose a destination and provider, and start generation. The source is copied into the managed local library. ostudy extracts and organizes the document locally, renders pages when needed, uses OCR for selected pages whose text layer is unusable, sends bounded source context to the configured model, validates the returned cards, and writes the accepted deck transactionally.
+Open **Documents** and import a PDF. ostudy retains the source in its local document library, extracts usable native text, renders page images for visual evidence, and uses OCR only as a last-resort recovery path when native text extraction cannot provide usable text. It then sends bounded document context to the AI provider you configured and creates an ordinary deck from the generated cards.
 
-This workflow is newer than the core flashcard system and still has known reliability and compatibility work. Read [Documents and AI-generated flashcards](documents-and-ai-generation.md) before relying on it for a large or unusual document.
+The generated deck uses the same editing, scheduling, practice, archive, search, and analytics tools as a manually authored deck. If the AI produces a card you do not want, edit or delete it through the normal deck/card tools.
 
-## 8. Make a backup
+## 8. Back up your library
 
-A `.studydeck` file is for sharing one deck without personal review history. An `.ostudybackup` file is for restoring your complete local library and managed files. AI credentials are excluded from both.
+A **complete backup** preserves your library database plus managed assets and document files. Provider credentials are excluded. Use a complete backup before risky migrations, large imports, or destructive cleanup.
 
-Create a complete backup after meaningful authoring work and before testing a migration-heavy development branch. See [Backups, imports, and sharing](backups-imports-and-sharing.md) for the difference between each format and the restore rules.
+A `.studydeck` export is different: it is for moving or sharing one deck's study content and managed card images. It does not carry the original learner's schedule or review history.
 
-## A practical first session
+See [Backups, imports, and sharing](backups-imports-and-sharing.md) for the exact distinction.
+
+## A useful first test
 
 A useful first test of the application is:
 
@@ -82,6 +85,3 @@ A useful first test of the application is:
 3. Practice the deck and use more than one confidence response.
 4. Open Analytics and inspect the resulting session and review details.
 5. Export the deck, create a full backup, restart ostudy, and confirm the material remains available.
-6. Configure an AI provider and import a short, non-sensitive PDF only after the non-AI workflow is understood.
-
-This sequence tests the durable study core before adding the extra variables of provider configuration and document processing.
