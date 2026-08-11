@@ -1085,7 +1085,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn generated_import_envelope_uses_source_format_tag() {
+    fn generated_import_envelope_has_no_provenance_default_tags() {
         let document = StoredDocument {
             dto: DocumentDto {
                 id: "0123456789abcdef0123456789abcdef".to_string(),
@@ -1134,7 +1134,11 @@ mod tests {
             vec![serde_json::json!({"type":"basic","front":"Q","back":"A","tags":[]})],
         )
         .unwrap();
-        assert!(payload.contains("\"PDF\""));
+        let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(value["defaultTags"], serde_json::json!([]));
+        assert_eq!(value["cards"][0]["tags"], serde_json::json!([]));
+        assert!(!payload.contains("AI generated"));
+        assert!(!payload.contains("\"PDF\""));
         assert!(payload.contains("ostudy-flashcards"));
     }
 }
