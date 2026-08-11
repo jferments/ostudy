@@ -1,5 +1,6 @@
 name: Apply PR41 quality pass
 
+# Temporary self-hosted applicator; removed by the successful run.
 on:
   push:
     branches:
