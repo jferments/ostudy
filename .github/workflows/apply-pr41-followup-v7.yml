@@ -6,6 +6,7 @@ on:
       - agent/ui-platform-overhaul
     paths:
       - .github/pr41-followup-v7.py
+      - .github/pr41-followup-v7-pre.py
       - .github/pr41-followup-v7-tests.py
       - .github/workflows/apply-pr41-followup-v7.yml
 
@@ -44,6 +45,7 @@ jobs:
 
       - name: Apply product changes
         run: |
+          python3 .github/pr41-followup-v7-pre.py
           python3 .github/pr41-followup-v7.py
           python3 .github/pr41-followup-v7-tests.py
 
@@ -70,7 +72,7 @@ jobs:
 
       - name: Publish clean product tree
         run: |
-          git rm -f .github/pr41-followup-v7.py .github/pr41-followup-v7-tests.py .github/workflows/apply-pr41-followup-v7.yml
+          git rm -f .github/pr41-followup-v7.py .github/pr41-followup-v7-pre.py .github/pr41-followup-v7-tests.py .github/workflows/apply-pr41-followup-v7.yml
           git config user.name "ostudy CI"
           git config user.email "actions@users.noreply.github.com"
           git add -A
