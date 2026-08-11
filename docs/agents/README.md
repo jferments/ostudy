@@ -7,7 +7,6 @@ These files provide operational instructions for automated maintainers of **ostu
 - [`ARCHITECTURE-GUARDRAILS.md`](ARCHITECTURE-GUARDRAILS.md) explains the boundaries and invariants that a change must preserve.
 - [`CODE-STANDARDS.md`](CODE-STANDARDS.md) defines TypeScript/React, Rust, SQL, shell, documentation, and dependency expectations.
 - [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md) defines how to scope, publish, implement, test, review, and hand off a change.
-- [`PROJECT-CONTEXT.md`](PROJECT-CONTEXT.md) records stable product and repository context that helps an automated maintainer orient itself before reading task-specific code.
 
 The maintained product and engineering references are:
 

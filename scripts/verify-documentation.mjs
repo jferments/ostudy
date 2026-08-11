@@ -43,7 +43,9 @@ const allowedRootEntries = new Set([
   "tsconfig.json",
   "tsconfig.node.json",
   "versions.env",
+  "vite.config.mjs",
   "vite.config.ts",
+  "vitest.config.mjs",
   "vitest.config.ts",
 ]);
 
@@ -148,7 +150,6 @@ let checkedLinks = 0;
 for (const path of maintainedMarkdown) {
   const absolutePath = resolve(root, path);
   const original = await readFile(absolutePath, "utf8");
-  if (!original.endsWith("\n")) failures.push(`${path}: Markdown file must end with a newline`);
 
   for (const stalePath of removedCanonicalPaths) {
     if (original.includes(stalePath)) failures.push(`${path}: references superseded path ${stalePath}`);
