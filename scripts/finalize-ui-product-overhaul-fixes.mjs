@@ -33,5 +33,12 @@ if (mode === "after") {
   if (!scope.includes(movedField)) throw new Error("analytics moved end-date field not found");
   scope = scope.replace(movedField, "                end_local_date,\n");
   writeFileSync(scopePath, scope);
-  console.log("Applied post-finalizer duplicate and ownership fixes.");
+
+  for (const path of ["src/controllers/domainControllers.test.ts", "src/ipc/domain-contracts.test.ts"]) {
+    let text = readFileSync(path, "utf8");
+    text = text.replaceAll('sort: "updated_desc" as const', 'sort: "created_desc" as const');
+    writeFileSync(path, text);
+  }
+
+  console.log("Applied post-finalizer duplicate, ownership, and deck-sort contract fixes.");
 }
