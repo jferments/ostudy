@@ -46,24 +46,8 @@ jobs:
           fi
           rm -f .github/pr41-apply-error.txt
 
-      - name: Normalize formatting
-        run: |
-          set +e
-          {
-            cargo fmt --manifest-path src-tauri/Cargo.toml
-            pnpm exec prettier --write src/screens/DocumentsScreen.tsx src/styles/features/ui-overhaul.css
-          } > .github/pr41-format-error.txt 2>&1
-          status=$?
-          cat .github/pr41-format-error.txt
-          if [ "$status" -ne 0 ]; then
-            git config user.name "ostudy CI"
-            git config user.email "actions@users.noreply.github.com"
-            git add .github/pr41-format-error.txt
-            git commit -m "ci: capture PR41 formatting failure"
-            git push origin HEAD:agent/ui-platform-overhaul
-            exit "$status"
-          fi
-          rm -f .github/pr41-format-error.txt
+      - name: Normalize Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml
 
       - name: Run focused regression checks
         run: |
