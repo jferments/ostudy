@@ -15,9 +15,7 @@ if text.count(old2) != 1:
     raise SystemExit('old generated fallback template not found')
 text = text.replace(old2, actual2, 1)
 
-text = text.replace(
-    'marker = \'\'\'pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> TextRecoveryPlan {\\n\'\'\'',
-    'marker = \'\'\'pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionRecoveryPlan {\\n\'\'\'',
-    1,
-)
+if text.count('TextRecoveryPlan') != 1:
+    raise SystemExit(f'expected one generated TextRecoveryPlan marker, found {text.count("TextRecoveryPlan")}')
+text = text.replace('TextRecoveryPlan', 'ExtractionRecoveryPlan', 1)
 path.write_text(text, encoding='utf-8')
