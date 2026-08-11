@@ -193,6 +193,7 @@ describe("SettingsScreen", () => {
     expect(screen.queryByRole("button", { name: /Add llama\.cpp/u })).toBeNull();
     expect(screen.queryByRole("button", { name: /Add DeepSeek/u })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Planned providers" })).toBeNull();
+    expect(screen.queryByRole("option", { name: /planned/u })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "New profile" }));
     const provider = await screen.findByRole("combobox", { name: "Provider type" });

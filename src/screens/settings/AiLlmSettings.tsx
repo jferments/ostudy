@@ -256,16 +256,13 @@ function ProfileEditor({
             disabled={saved !== null || controller.mutating}
             onChange={(event) => onProviderChange(event.currentTarget.value as AiProviderKind)}
           >
-            {controller.catalog.map((entry) => (
-              <option
-                key={entry.providerKind}
-                value={entry.providerKind}
-                disabled={entry.implementationStatus !== "available"}
-              >
-                {entry.displayName}
-                {entry.implementationStatus === "available" ? "" : " — planned"}
-              </option>
-            ))}
+            {controller.catalog
+              .filter((entry) => entry.implementationStatus === "available")
+              .map((entry) => (
+                <option key={entry.providerKind} value={entry.providerKind}>
+                  {entry.displayName}
+                </option>
+              ))}
           </select>
         </label>
         <label className={`${styles.stackedField} ${styles.fullWidth}`}>
