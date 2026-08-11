@@ -80,6 +80,16 @@
     touch-action: manipulation;
   }
 
+  /* Native selects size themselves from their longest option unless explicitly
+     allowed to shrink. Keep all form controls bounded by their layout cell so
+     long deck/model names cannot overlap adjacent grid or flex content. */
+  input,
+  select,
+  textarea {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   :root[data-animations-enabled="false"] *,
   :root[data-animations-enabled="false"] *::before,
   :root[data-animations-enabled="false"] *::after,
@@ -120,6 +130,17 @@
       min-width: var(--touch-target-min);
       min-height: var(--touch-target-min);
     }
+  }
+}
+
+@layer features {
+  /* The Bulk Add destination selector must fill only its own grid track. The
+     generic min/max bounds above prevent intrinsic option width from escaping;
+     width: 100% makes the intended two-column geometry explicit. */
+  .bulk-entry-controls > label > select {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
   }
 }
 
