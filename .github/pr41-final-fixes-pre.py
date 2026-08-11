@@ -28,6 +28,14 @@ if text.count(old_first) != 1 or text.count(old_second) != 1:
     raise SystemExit('expected PDF backend applicator blocks not found')
 text = text.replace(old_first, new_first, 1).replace(old_second, '', 1)
 
+# Choosing a provider in an unsaved New profile is part of creating that profile,
+# not navigation away from dirty work. Route it directly to the controller's
+# draft initializer so the select does not trigger the discard-confirmation guard.
+provider_change = '              onProviderChange={(providerKind) => void beginCreate(providerKind)}\n'
+if text.count(provider_change) != 1:
+    raise SystemExit(f'expected one generated provider-change callback, found {text.count(provider_change)}')
+text = text.replace(provider_change, '              onProviderChange={controller.beginCreate}\n', 1)
+
 lifetime_fixes = [
     (
 '''        statement
