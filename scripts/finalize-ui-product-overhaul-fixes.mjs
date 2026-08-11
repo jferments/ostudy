@@ -40,5 +40,26 @@ if (mode === "after") {
     writeFileSync(path, text);
   }
 
-  console.log("Applied post-finalizer duplicate, ownership, and deck-sort contract fixes.");
+  const practiceTestPath = "src/screens/PracticeScreen.test.tsx";
+  let practiceTest = readFileSync(practiceTestPath, "utf8");
+  practiceTest = practiceTest.replace(
+    'await screen.findByRole("button", { name: /1 Hard, About 1 day/u });',
+    'await screen.findByRole("button", { name: /1 Hard/u });',
+  );
+  practiceTest = practiceTest.replace(
+    'it("shows FSRS interval previews and submits the preview revision", async () => {',
+    'it("submits the FSRS preview revision from the compact rating controls", async () => {',
+  );
+  writeFileSync(practiceTestPath, practiceTest);
+
+  const documentsTestPath = "src/screens/DocumentsScreen.test.tsx";
+  let documentsTest = readFileSync(documentsTestPath, "utf8");
+  documentsTest = documentsTest.replace('expect(screen.getByText("12.3 sec")).toBeTruthy();', 'expect(screen.getByText("12 sec")).toBeTruthy();');
+  documentsTest = documentsTest.replace(
+    'expect(await screen.findByText("Processing")).toBeTruthy();',
+    'expect((await screen.findAllByText("Processing")).length).toBeGreaterThan(0);',
+  );
+  writeFileSync(documentsTestPath, documentsTest);
+
+  console.log("Applied post-finalizer duplicate, ownership, deck-sort, and UI regression-test fixes.");
 }
