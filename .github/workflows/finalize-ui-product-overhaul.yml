@@ -36,12 +36,6 @@ jobs:
             node ./scripts/finalize-ui-product-overhaul.mjs
             node ./scripts/finalize-ui-product-overhaul-fixes.mjs after
           } 2>&1 | tee "$RUNNER_TEMP/ui-finalizer.log"; then
-            {
-              echo "### UI finalizer failure"
-              echo '```text'
-              tail -n 80 "$RUNNER_TEMP/ui-finalizer.log"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
@@ -60,7 +54,18 @@ jobs:
       - name: Run fast qualification before publishing
         env:
           OSTUDY_FORCE_CHECK: "1"
-        run: ./scripts/check-fast.sh
+        run: |
+          set -o pipefail
+          ./scripts/check-fast.sh 2>&1 | tee "$RUNNER_TEMP/ui-fast.log"
+
+      - name: Upload fast-gate failure log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ui-fast-failure-${{ github.run_id }}
+          path: ${{ runner.temp }}/ui-fast.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Remove finalizer and publish product-only tree
         run: |
