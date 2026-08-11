@@ -29,7 +29,17 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Apply final product transformations
-        run: node ./scripts/finalize-ui-product-overhaul.mjs
+        run: |
+          set -o pipefail
+          if ! node ./scripts/finalize-ui-product-overhaul.mjs 2>&1 | tee "$RUNNER_TEMP/ui-finalizer.log"; then
+            {
+              echo "### UI finalizer failure"
+              echo '```text'
+              tail -n 80 "$RUNNER_TEMP/ui-finalizer.log"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
       - name: Normalize Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
