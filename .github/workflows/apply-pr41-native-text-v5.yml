@@ -6,6 +6,7 @@ on:
       - agent/ui-platform-overhaul
     paths:
       - .github/pr41-native-text-v5.py
+      - .github/pr41-native-text-v5-pre.py
       - .github/workflows/apply-pr41-native-text-v5.yml
 
 permissions:
@@ -40,7 +41,9 @@ jobs:
           echo "OSTUDY_PDFIUM_PATH=$GITHUB_WORKSPACE/src-tauri/resources/native/pdfium/libpdfium.so" >> "$GITHUB_ENV"
 
       - name: Apply product changes
-        run: python3 .github/pr41-native-text-v5.py
+        run: |
+          python3 .github/pr41-native-text-v5-pre.py
+          python3 .github/pr41-native-text-v5.py
 
       - name: Normalize Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
@@ -62,7 +65,7 @@ jobs:
 
       - name: Publish clean product tree
         run: |
-          git rm -f .github/pr41-native-text-v5.py .github/workflows/apply-pr41-native-text-v5.yml
+          git rm -f .github/pr41-native-text-v5.py .github/pr41-native-text-v5-pre.py .github/workflows/apply-pr41-native-text-v5.yml
           git config user.name "ostudy CI"
           git config user.email "actions@users.noreply.github.com"
           git add -A
