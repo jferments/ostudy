@@ -76,6 +76,9 @@
     touch-action: manipulation;
   }
 
+  :root[data-animations-enabled="false"] *,
+  :root[data-animations-enabled="false"] *::before,
+  :root[data-animations-enabled="false"] *::after,
   :root[data-reduce-motion="true"] *,
   :root[data-reduce-motion="true"] *::before,
   :root[data-reduce-motion="true"] *::after {
