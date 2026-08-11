@@ -113,13 +113,19 @@ describe("App shell", () => {
     vi.clearAllMocks();
     resetTestEntityIds();
     document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("data-animations-enabled");
     document.documentElement.removeAttribute("data-reduce-motion");
   });
 
   it("loads the local settings and deck library before rendering navigation", async () => {
     const deck = makeDeck({ name: "Cardiology" });
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(
-      makeSettings({ theme: "console", reduceMotion: true, uiScale: 110 }),
+      makeSettings({
+        theme: "console",
+        animationsEnabled: false,
+        reduceMotion: true,
+        uiScale: 110,
+      }),
     );
     vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
 
@@ -129,6 +135,7 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
     expect(screen.getByText("Cardiology")).toBeTruthy();
     expect(document.documentElement.dataset.theme).toBe("console");
+    expect(document.documentElement.dataset.animationsEnabled).toBe("false");
     expect(document.documentElement.dataset.reduceMotion).toBe("true");
     expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe("1.1");
   });
