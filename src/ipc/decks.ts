@@ -48,6 +48,7 @@ export interface DeckCardSummary {
   answerExcerpt: string;
   generatedCardCount: number;
   imageCount: number;
+  reversible: boolean;
   updatedAt: number;
 }
 

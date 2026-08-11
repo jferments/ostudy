@@ -202,7 +202,7 @@ describe("ActivePractice", () => {
     ] as const;
 
     for (const [label] of actions) {
-      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      fireEvent.click(screen.getByRole("button", { name: "Schedule" }));
       fireEvent.click(screen.getByRole("menuitem", { name: label }));
     }
 
@@ -228,5 +228,10 @@ describe("ActivePractice", () => {
     expect(screen.getByText("EXTRA PRACTICE")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Cardiology" })).toBeTruthy();
     expect(screen.getByText("Needs more practice")).toBeTruthy();
+    expect(screen.getByLabelText("1 of 1 cards, 0 reviewed")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Schedule" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "End session" }).className).toContain(
+      "practice-end-button",
+    );
   });
 });

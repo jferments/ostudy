@@ -34,6 +34,7 @@ pub struct DeckCardSummaryDto {
     pub answer_excerpt: String,
     pub generated_card_count: i64,
     pub image_count: i64,
+    pub reversible: bool,
     pub updated_at: i64,
 }
 
@@ -111,6 +112,9 @@ fn list_from_connection(
              COUNT(DISTINCT CASE
                  WHEN a.deleted_at IS NULL AND a.lifecycle_state = 'ready' THEN a.id
              END),
+             MAX(CASE
+                 WHEN n.note_type = 'basic' AND n.reverse_enabled = 1 THEN 1 ELSE 0
+             END),
              n.updated_at
          FROM notes n
          JOIN decks d ON d.id = n.deck_id
@@ -134,7 +138,8 @@ fn list_from_connection(
                 answer_excerpt: row.get(3)?,
                 generated_card_count: row.get(4)?,
                 image_count: row.get(5)?,
-                updated_at: row.get(6)?,
+                reversible: row.get::<_, i64>(6)? != 0,
+                updated_at: row.get(7)?,
             })
         })
         .map_err(CommandError::database)?

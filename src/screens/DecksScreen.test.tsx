@@ -68,6 +68,7 @@ const card: decksIpc.DeckCardSummary = {
   answerExcerpt: "Yes",
   generatedCardCount: 1,
   imageCount: 0,
+  reversible: true,
   updatedAt: 1,
 };
 
@@ -137,6 +138,8 @@ describe("DecksScreen", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Dog facts" })).toBeTruthy();
     });
+    expect(await screen.findByLabelText("Reversible")).toBeTruthy();
+    expect(screen.queryByText(/card variants/u)).toBeNull();
 
     const detailPractice = screen.getByRole("button", { name: "Practice" });
     expect(detailPractice.hasAttribute("disabled")).toBe(false);

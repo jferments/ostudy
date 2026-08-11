@@ -60,6 +60,7 @@ function summaryFor(deck: decksIpc.DeckSummary): decksIpc.DeckCardSummary {
     answerExcerpt: "Answer",
     generatedCardCount: 1,
     imageCount: 0,
+    reversible: false,
     updatedAt: 1,
   };
 }

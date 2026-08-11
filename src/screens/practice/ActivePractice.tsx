@@ -111,7 +111,7 @@ export function ActivePractice({
   return (
     <div className="screen practice-screen active-practice-screen">
       <header className="practice-session-header">
-        <div>
+        <div className="practice-session-title">
           <span className="eyebrow">
             {session.mode === "extra"
               ? "EXTRA PRACTICE"
@@ -120,27 +120,31 @@ export function ActivePractice({
                 : "PRACTICE"}
           </span>
           <h1>{current.deckName}</h1>
-          {current.needsMorePractice ? (
-            <span className="schedule-status-badge needs-practice">Needs more practice</span>
-          ) : null}
-        </div>
-        <div className="practice-progress-copy">
-          <strong>
-            {position + 1} / {session.cardCount}
-          </strong>
-          <span>{ratedCount} reviewed</span>
+          <div className="practice-session-meta">
+            <span
+              className="practice-progress-chip"
+              aria-label={`${position + 1} of ${session.cardCount} cards, ${ratedCount} reviewed`}
+            >
+              <strong>{position + 1} / {session.cardCount}</strong>
+              <span>· {ratedCount} reviewed</span>
+            </span>
+            {current.needsMorePractice ? (
+              <span className="schedule-status-badge needs-practice">Needs more practice</span>
+            ) : null}
+          </div>
         </div>
         <div className="practice-header-actions">
           <button
             type="button"
-            className="secondary-button"
+            className="secondary-button practice-header-button"
             disabled={busy}
             onClick={onEdit}
           >
             Edit card
           </button>
           <Menu
-            label="More"
+            label="Schedule"
+            className="practice-header-button"
             disabled={busy}
             items={[
               {
@@ -164,7 +168,7 @@ export function ActivePractice({
           />
           <button
             type="button"
-            className="secondary-button"
+            className="practice-end-button practice-header-button"
             disabled={busy}
             onClick={onEnd}
           >

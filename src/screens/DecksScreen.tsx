@@ -938,12 +938,13 @@ export function DecksScreen({
                       </span>
                     </button>
                     <div className="card-row-actions">
-                      <span>
-                        {card.generatedCardCount}{" "}
-                        {card.generatedCardCount === 1 ? "card" : "card variants"} ·{" "}
-                        {card.imageCount > 0
-                          ? `${card.imageCount} image${card.imageCount === 1 ? "" : "s"}`
-                          : "Text"}
+                      <span
+                        className="card-row-reversible"
+                        aria-label={card.reversible ? "Reversible" : undefined}
+                        title={card.reversible ? "Reversible card" : undefined}
+                        aria-hidden={card.reversible ? undefined : "true"}
+                      >
+                        {card.reversible ? "🔄" : null}
                       </span>
                       <button type="button" onClick={() => void openCardEditor(card)}>
                         Edit
