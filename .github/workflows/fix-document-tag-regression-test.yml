@@ -1,0 +1,42 @@
+name: Fix document tag regression test
+
+on:
+  push:
+    branches:
+      - agent/ui-platform-overhaul
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-document-tag-regression-test
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/ui-platform-overhaul
+          fetch-depth: 0
+
+      - name: Expose local tools
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Update regression test
+        run: node ./scripts/fix-document-tag-regression-test.mjs
+
+      - name: Normalize Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Publish product-only tree
+        run: |
+          git rm scripts/fix-document-tag-regression-test.mjs .github/workflows/fix-document-tag-regression-test.yml
+          git add -A
+          git config user.name "ostudy CI"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "test: keep document import tags subject-matter only"
+          git push origin HEAD:agent/ui-platform-overhaul
