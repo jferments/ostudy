@@ -31,6 +31,10 @@
     --radius-large: 18px;
     --on-accent: #ffffff;
     --on-danger: #ffffff;
+    --confidence-wrong: #b4233b;
+    --confidence-hard: #c45d16;
+    --confidence-medium: #d8a000;
+    --confidence-easy: #197a46;
     --overlay-scrim: rgb(0 0 0 / 64%);
     --elevation-panel: var(--card-shadow);
     --elevation-overlay: var(--shadow);
