@@ -32,18 +32,7 @@ jobs:
       - name: Apply quality and selection fixes
         run: |
           python3 .github/fix-pr41-helper.py
-          set +e
-          python3 .github/pr41-quality-pass.py > .github/pr41-apply-error.txt 2>&1
-          status=$?
-          cat .github/pr41-apply-error.txt
-          if [ "$status" -ne 0 ]; then
-            git config user.name "ostudy CI"
-            git config user.email "actions@users.noreply.github.com"
-            git add .github/pr41-quality-pass.py .github/pr41-apply-error.txt
-            git commit -m "ci: capture PR41 applicator failure"
-            git push origin HEAD:agent/ui-platform-overhaul
-            exit "$status"
-          fi
+          python3 .github/pr41-quality-pass.py
           rm -f .github/pr41-apply-error.txt
 
       - name: Normalize Rust formatting
@@ -51,28 +40,14 @@ jobs:
 
       - name: Run focused regression checks
         run: |
-          set +e
-          {
-            cargo test --manifest-path src-tauri/Cargo.toml pdf_backend::tests --locked
-            cargo test --manifest-path src-tauri/Cargo.toml ai::document_intelligence::tests --locked
-            cargo test --manifest-path src-tauri/Cargo.toml workload::tests --locked
-            pnpm vitest run src/screens/DocumentsScreen.test.tsx
-          } > .github/pr41-test-error.txt 2>&1
-          status=$?
-          cat .github/pr41-test-error.txt
-          if [ "$status" -ne 0 ]; then
-            git config user.name "ostudy CI"
-            git config user.email "actions@users.noreply.github.com"
-            git add .github/pr41-test-error.txt
-            git commit -m "ci: capture PR41 focused test failure"
-            git push origin HEAD:agent/ui-platform-overhaul
-            exit "$status"
-          fi
-          rm -f .github/pr41-test-error.txt
+          cargo test --manifest-path src-tauri/Cargo.toml pdf_backend::tests --locked
+          cargo test --manifest-path src-tauri/Cargo.toml ai::document_intelligence::tests --locked
+          cargo test --manifest-path src-tauri/Cargo.toml workload::tests --locked
+          pnpm vitest run src/screens/DocumentsScreen.test.tsx
 
       - name: Remove applicator and publish product tree
         run: |
-          git rm .github/workflows/apply-pr41-quality-pass.yml .github/pr41-quality-pass.py .github/fix-pr41-helper.py
+          git rm -f .github/workflows/apply-pr41-quality-pass.yml .github/pr41-quality-pass.py .github/fix-pr41-helper.py
           git rm -f .github/pr41-apply-error.txt .github/pr41-format-error.txt .github/pr41-test-error.txt || true
           git config user.name "ostudy CI"
           git config user.email "actions@users.noreply.github.com"
