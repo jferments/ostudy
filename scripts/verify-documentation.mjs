@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
-import { dirname, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -143,6 +143,48 @@ for (const path of removedCanonicalPaths) {
   if (tracked.has(path)) failures.push(`Stale or superseded canonical path remains tracked: ${path}`);
 }
 
+const textExtensions = new Set([
+  ".cjs",
+  ".css",
+  ".env",
+  ".html",
+  ".js",
+  ".json",
+  ".lock",
+  ".md",
+  ".mjs",
+  ".py",
+  ".rs",
+  ".sh",
+  ".sql",
+  ".toml",
+  ".ts",
+  ".tsx",
+  ".txt",
+  ".yaml",
+  ".yml",
+]);
+const textBasenames = new Set([
+  ".editorconfig",
+  ".gitignore",
+  ".node-version",
+  ".nvmrc",
+  "LICENSE",
+  "versions.env",
+]);
+const staleReferenceScanFiles = trackedFiles.filter(
+  (path) =>
+    path !== "scripts/verify-documentation.mjs"
+    && !path.startsWith("docs/history/")
+    && (textExtensions.has(extname(path)) || textBasenames.has(basename(path))),
+);
+for (const path of staleReferenceScanFiles) {
+  const content = await readFile(resolve(root, path), "utf8");
+  for (const stalePath of removedCanonicalPaths) {
+    if (content.includes(stalePath)) failures.push(`${path}: references superseded path ${stalePath}`);
+  }
+}
+
 const maintainedMarkdown = trackedFiles.filter(
   (path) => path.endsWith(".md") && !path.startsWith("docs/history/"),
 );
@@ -150,11 +192,6 @@ let checkedLinks = 0;
 for (const path of maintainedMarkdown) {
   const absolutePath = resolve(root, path);
   const original = await readFile(absolutePath, "utf8");
-
-  for (const stalePath of removedCanonicalPaths) {
-    if (original.includes(stalePath)) failures.push(`${path}: references superseded path ${stalePath}`);
-  }
-
   const text = stripCode(original);
   const targets = [];
   for (const match of text.matchAll(/!?\[[^\]]*\]\(\s*(<[^>]+>|[^)\s]+)(?:\s+["'][^"']*["'])?\s*\)/gu)) {
@@ -183,7 +220,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `OK   Documentation: ${maintainedMarkdown.length} maintained Markdown files and ${checkedLinks} local links verified; root and docs organization are canonical.`,
+  `OK   Documentation: ${maintainedMarkdown.length} maintained Markdown files, ${checkedLinks} local links, and ${staleReferenceScanFiles.length} tracked text files verified; root and docs organization are canonical.`,
 );
 
 function stripCode(text) {
