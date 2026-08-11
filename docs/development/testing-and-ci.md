@@ -1,87 +1,167 @@
 # Testing and CI
 
-ostudy uses the Multipass-hosted Linux runner for pull-request, main-branch, and release validation. Repository workflow jobs do not use GitHub-hosted operating-system runners. Third-party actions are pinned to immutable commit SHAs with a human-readable release comment.
+ostudy uses one tiered validation system locally and on the self-hosted Linux runner. Each tier answers a different question; none of the inexpensive tiers should be described as complete application qualification.
 
-## Required runner labels
-
-Every workflow job targets:
+The repository does not use GitHub-hosted operating-system runners. Every workflow job targets:
 
 ```yaml
 runs-on: [self-hosted, linux, x64, ostudy]
 ```
 
-The runner must satisfy `scripts/doctor.sh --native-smoke`, including the pinned Node, pnpm, Rust, WebKit, SQLite, OpenSSL, Tauri-driver, and display dependencies. `versions.env` is authoritative; `.node-version`, `.nvmrc`, package engines, `rust-toolchain.toml`, JavaScript manifests, and Cargo manifests are verified mirrors.
+Third-party actions are pinned to immutable commit SHAs with a human-readable version comment.
 
-## What the gate treats as a contract
+## Why the tiers exist
 
-Static verification protects durable repository boundaries rather than historical source layout:
+The complete Tauri build, Rust suite, and native WebDriver workflow are valuable but expensive. Running them after every small edit wastes time and obscures the first useful failure. The tiers therefore progress from cheap structural guarantees to full native behavior:
 
-- identity, exact versions, lockfiles, and migration checksums;
-- frontend `invoke` names matching the Tauri command registry;
-- direct Tauri invocation limited to typed domain gateways under `src/ipc/`;
-- absence of obsolete unbounded or superseded IPC commands;
-- explicit Rust modules and narrow repository policies;
-- no skipped/focused/ignored tests;
-- script syntax and the bounded-log Python tests;
-- immutable self-hosted workflow dependencies.
+```text
+changed → static → fast → full
+```
 
-Feature behavior belongs in Vitest, controller race tests, Rust/SQLite/migration tests, generated-import conformance/package round trips, and the native WebDriver workflow. Renaming a private helper, CSS class, or heading must not fail a structural stage verifier.
+An exact-tree stamp allows a later tier to reuse an earlier successful result only when source, relevant untracked files, deletions, tool versions, and platform still match. `OSTUDY_FORCE_CHECK=1` disables reuse when testing the gate itself or investigating a suspicious cache result.
 
-## Development check tiers
-
-### Changed-file iteration aid
+## Changed-file iteration
 
 ```bash
 ./scripts/check-changed.sh
 ```
 
-This compares the branch and working tree with `origin/main` when available. Documentation-only changes skip executable checks; frontend-only changes run static checks plus changed Vitest selection; Rust-only changes run static checks, compile checking, and Rust library tests; mixed, migration, workflow, manifest, or script changes escalate to the complete fast tier. It is not merge qualification.
+This is a development aid, not merge qualification. It compares the branch and working tree with `origin/main` when available and routes the change:
 
-### Static tier
+- documentation-only changes run documentation and static repository contracts;
+- frontend-only changes run static checks and changed Vitest selection;
+- Rust-only changes run static checks, locked compile checking, and focused library tests;
+- document-related Rust changes add focused document contract filters;
+- migrations, manifests, workflows, scripts, native dependencies, or mixed changes escalate to the fast tier.
+
+The routing is conservative. When the script cannot prove that a narrow selection is sufficient, it chooses the broader tier.
+
+## Static qualification
 
 ```bash
 ./scripts/check-static.sh
 ```
 
-The static tier performs environment diagnostics, manifest/migration validation, IPC parity and gateway ownership, repository policy, test policy, Bash/Node/Python syntax, Python behavior tests for diagnostic rotation, frozen JavaScript installation, exact dependency verification, TypeScript checking, and `cargo fmt --check`.
+The static tier verifies:
 
-### Fast tier
+- pinned environment and manifest relationships;
+- committed JavaScript and Cargo lockfiles;
+- migration registration and checksums;
+- frontend IPC names against the native command registry;
+- direct Tauri invocation limited to typed domain gateways;
+- repository module, provider-network, credential, UI, workflow, and test policies;
+- documentation links, stale canonical paths, and top-level organization;
+- Bash and Node syntax plus Python script behavior tests;
+- frozen JavaScript installation and exact direct dependency versions;
+- TypeScript project checking;
+- canonical Rust formatting.
+
+This tier is the minimum check for a documentation reorganization because a moved file can break agent instructions, issue forms, scripts, or reader navigation even when no executable source changed.
+
+## Fast qualification
 
 ```bash
 ./scripts/check-fast.sh
 ```
 
-The fast tier reuses an exact-tree static result when possible, then runs the complete frontend suite and locked Rust compile checking for every target and feature. Draft pull requests use this tier. Stage 3.12 controller tests deliberately resolve independent Search, Deck, Template, Practice, and Analytics reads out of order and assert that only the latest request may update current state.
+The fast tier reuses a matching static result, provisions or verifies the pinned PDFium runtime, then runs:
 
-### Full qualification tier
+- the complete frontend Vitest suite;
+- locked Rust compile checking for the supported target and feature set;
+- focused document contracts that protect source-format, semantic-window, provider, OCR, rendering, and checkpoint boundaries.
+
+Draft pull requests use the fast tier. Controller tests deliberately resolve independent reads out of order and verify that obsolete successes and errors cannot replace newer screen state. Mutation tests preserve committed success when a later reconciliation read fails.
+
+## Full qualification
 
 ```bash
 ./scripts/check.sh
 ```
 
-The full tier reuses an exact-tree fast result when possible, then adds native environment qualification, production frontend build, Clippy with warnings denied, all Rust/unit/integration/migration tests, standalone Tauri build, dependency verification, and the native create → review → restart → persistence workflow. This is the local acceptance command before merging.
+The full tier reuses a matching fast result and adds:
 
-The full Rust suite includes the generated `.ostudy.json` conformance corpus. The harness writes real input files under a unique temporary root, imports into a disposable test database, verifies supported/rejected syntax, boundaries, duplicates, create/append resolution, fresh schedules and atomicity, explicitly removes its imported test graph, and removes its temporary filesystem root through RAII cleanup. It never opens the user's live library.
+- native environment qualification, including WebKit/WebDriver and native runtime checks;
+- production frontend build;
+- Clippy with warnings denied;
+- all Rust unit, integration, migration, import/export, backup, scheduling, analytics, AI, and document tests;
+- standalone Tauri build with locked Cargo dependencies;
+- resolved Rust dependency verification;
+- a native WebDriver create → practice → restart → persistence workflow.
 
-## Exact-tree qualification and Cargo artifacts
+This is the authoritative local merge gate. A pull request is not ready because files compile in isolation or because an older commit passed.
 
-`scripts/check-state.sh` fingerprints tracked files, non-ignored untracked files, deletions, active Node/pnpm/Rust versions, and platform. Static, fast, and full stamps live under the user cache directory. Editing the tree invalidates reuse; `OSTUDY_FORCE_CHECK=1` forces execution.
+The native smoke test can be skipped temporarily with `OSTUDY_SKIP_NATIVE_SMOKE=1`, but the pull request must state that it was skipped and why. CI normally runs it.
 
-Local builds continue using `src-tauri/target`. CI uses `$HOME/.cache/ostudy/cargo-target`, so checkout cleanup does not discard compiled dependencies. Cargo remains responsible for normal source/toolchain invalidation.
+## Important test layers
 
-## Diagnostics
+### Repository contracts
 
-`log-run.py` bounds every JSONL record, rotates the active log while the application is still running, and retains one bounded predecessor. WebView render, uncaught-error, and unhandled-rejection reports cross a typed Tauri command with bounded event/message/stack fields. Diagnostic export includes only environment/version/git state and bounded log tails; it excludes the SQLite library, flashcard contents, and managed images.
+Static scripts protect stable boundaries such as exact versions, immutable migrations, IPC parity, self-hosted workflow policy, dependency isolation, documentation organization, and absence of skipped/focused/ignored tests. They should verify behaviorally meaningful ownership rules rather than brittle private helper names.
 
-On CI failure, `summarize-check-failure.mjs` writes a bounded index of the failed phase and relevant excerpts to the job summary. Complete check logs and the privacy-conscious diagnostic archive remain available as failure artifacts.
+### Frontend and controller tests
 
-## Pull-request workflow
+Vitest and Testing Library cover user interaction, accessible relationships, error/empty/loading states, responsive primitives, editor behavior, and controller request ordering. Independent request lanes are resolved in deliberately surprising orders to prove that stale reads cannot update current state.
 
-1. Create one branch from current `main` and open one draft PR.
-2. Use changed/static/fast checks while implementing.
-3. Freeze a meaningful SHA long enough to consume its complete failure batch.
-4. Run `./scripts/check.sh` locally when implementation is complete.
-5. Mark the PR ready; the self-hosted workflow runs full qualification.
-6. Review the exact-head green result and squash-merge.
+### Pure Rust tests
 
-Concurrency cancellation stops obsolete runs for the same PR/ref. Manual workflow dispatch supports `static`, `fast`, and `full` gates.
+Pure tests cover rich-content validation, cloze parsing and presentation, template substitution, duplicate normalization, scheduling adapters, local-calendar semantics, provider schema conversion, endpoint policy, semantic partitioning, resource planning, and safe error normalization.
+
+### SQLite integration and migration tests
+
+Integration tests cover transactions, CRUD, FTS triggers, card identity, scheduling/history preservation, move/copy, archive/delete semantics, analytics attribution, import/export, backups, managed assets, startup repair, and idempotent retry behavior.
+
+Released schema fixtures load representative historical data, apply current migrations and repairs, verify preserved behavior, and run SQLite integrity checks. Released migration files and fixtures are never edited to make a new test pass.
+
+### Generated-import conformance
+
+The `.ostudy.json` harness materializes real files under unique temporary roots and exercises valid Markdown, Basic/Reverse/Cloze behavior, Unicode, limits, unknown fields, unsafe syntax, duplicates, exact-name create/append behavior, fresh schedules, transaction atomicity, and cleanup. It never opens the user's live library.
+
+### Provider and document contracts
+
+Provider fixtures use deterministic local servers rather than paid internet credentials. Document tests cover extraction quality, malformed text, semantic windows, outline assembly, rendering, OCR selection, cancellation, checkpoints, source locators, provider budgets, structured output, generated-card validation, backup, and deletion lifecycle.
+
+Focused acceptance plans under this directory describe the regression matrices for high-risk document, scheduling, transfer, backup, and managed-asset changes.
+
+### Native smoke test
+
+The native smoke test launches the built Linux Tauri binary through WebDriver, performs a real create and review workflow, restarts the application, and confirms persistence. It validates the application shell, IPC, native storage, and restart boundary together; a mocked frontend test cannot replace it.
+
+## Manual acceptance
+
+Automation protects known contracts. A human still evaluates the changed workflow in the built application. Test what actually changed rather than copying an unrelated historical checklist.
+
+For user-visible work, consider:
+
+- normal, empty, loading, validation, provider, cancellation, and recovery states;
+- persistence after restart;
+- Light, Dark, Console, and Synthwave themes;
+- compact, tablet, and wide layouts;
+- keyboard-only and coarse-pointer/touch interaction;
+- reduced motion and high interface scale;
+- import/export, backup, migration, and deletion effects;
+- close/exit behavior during active practice or document work;
+- privacy of diagnostics and errors.
+
+Record the exact paths exercised and any unavailable platform test.
+
+## CI workflow
+
+Draft pull requests run fast qualification. Ready pull requests run the full gate. Pushes to `main` and tagged releases use the same scripts rather than a parallel CI-only implementation.
+
+Concurrency cancellation stops obsolete runs for the same pull request or ref. Manual workflow dispatch can request static, fast, or full qualification. The successful run must belong to the current head SHA.
+
+CI uses a persistent Cargo target cache outside the checkout, while Git and toolchain fingerprints continue to control correctness. The workflow may expose a candidate Cargo lockfile or rustfmt artifact when normalization is required, but normal qualification is read-only and still fails until intentional source changes are committed.
+
+## Failure artifacts and diagnostics
+
+On failure, the workflow writes a bounded summary of the phase and relevant excerpts. Complete check logs and the privacy-conscious diagnostic archive may be uploaded as artifacts.
+
+Diagnostic export includes environment, pinned versions, Git state, and bounded recent log records. It excludes the SQLite library, cards, tags, templates, managed images, source PDFs, OCR/source text, provider prompts or responses, credentials, and Authorization headers.
+
+## Release qualification
+
+```bash
+./scripts/release-check.sh
+```
+
+The release check repeats the complete gate from a clean source copy and verifies version agreement and artifact assumptions. The current release workflow builds Linux artifacts from a version tag. Other platforms require their own qualified runners and packaging before they can be added to release documentation.

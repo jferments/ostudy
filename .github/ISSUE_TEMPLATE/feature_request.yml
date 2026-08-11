@@ -1,0 +1,57 @@
+name: Feature request
+description: Propose a focused learner or contributor workflow improvement
+title: "feature: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with the problem and desired workflow. A technology name or model provider by itself is not a complete feature proposal.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Who encounters the problem, and what are they trying to accomplish?
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround
+      description: Explain how the task is handled today and why that is inadequate.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed user-visible behavior
+      description: Describe the workflow from the learner's point of view.
+    validations:
+      required: true
+  - type: textarea
+    id: first_version
+    attributes:
+      label: Smallest useful first version
+      description: State what must be included and what can be deferred.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Data, privacy, accessibility, platform, and compatibility constraints
+      description: Include relevant offline behavior, provider selection, synchronization, deletion, migration, import/export, keyboard/touch, or mobile requirements.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Explain other designs or existing tools that were considered.
+  - type: checkboxes
+    id: readiness
+    attributes:
+      label: Readiness check
+      options:
+        - label: I reviewed the current roadmap and documentation.
+          required: true
+        - label: I distinguished currently shipped behavior from planned behavior.
+          required: true
+        - label: This request describes a workflow and acceptance outcome, not only a preferred implementation technology.
+          required: true

@@ -23,6 +23,7 @@
     "check:changed": "./scripts/check-changed.sh",
     "verify:versions": "node ./scripts/verify-js-dependencies.mjs",
     "verify:manifests": "node ./scripts/verify-project-manifests.mjs",
+    "verify:docs": "node ./scripts/verify-documentation.mjs",
     "verify:contracts": "node ./scripts/verify-ipc-contract.mjs && node ./scripts/verify-repository-policy.mjs"
   },
   "dependencies": {
@@ -57,6 +58,6 @@
     "vite": "7.3.6",
     "vitest": "4.1.10"
   },
-  "description": "A free, local-first desktop flashcard and study application",
+  "description": "A free, local-first flashcard and study application with optional AI-assisted authoring",
   "license": "MIT"
 }

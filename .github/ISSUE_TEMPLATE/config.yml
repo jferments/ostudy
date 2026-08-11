@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/jferments/ostudy/blob/main/docs/README.md
+    about: Check the user, installation, roadmap, architecture, and development guides before opening an issue.
+  - name: Contributing guide
+    url: https://github.com/jferments/ostudy/blob/main/CONTRIBUTING.md
+    about: Learn what information belongs in a useful bug report or feature proposal.
