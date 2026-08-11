@@ -132,7 +132,7 @@ The task prompt favors durable concepts, mechanisms, comparisons, applications, 
 
 Generated forms include Basic conceptual questions, definitions, four-option multiple choice with explanation, critical-thinking/application/scenario questions, and Cloze. Definition/MCQ/critical-thinking forms normalize into existing safe Basic cards; Rust constructs Cloze markers from validated exact substrings.
 
-After source windows complete, a bounded curation task selects which cards remain. It cannot rewrite cards. Selected cards pass through canonical generated-card authoring for restricted Markdown/content validation, Cloze syntax, tags, duplicate fingerprints, fresh schedules, and transactional deck/card creation. There is no generated-card review queue.
+After source windows complete, a bounded curation task selects which cards remain. It cannot rewrite cards. Selected cards pass through canonical generated-card authoring for restricted Markdown/content validation, Cloze syntax, subject-matter tags, duplicate fingerprints, fresh schedules, and transactional deck/card creation. There is no generated-card review queue. Document provenance remains in the managed-document/deck relationship and never becomes learner-facing tags such as `PDF` or `AI generated`; defensive normalization strips those legacy provenance labels if a model returns them anyway.
 
 `Generate more cards` reuses retained extraction/OCR derivatives, outline, and current deck coverage. It should not rerender or OCR an unchanged source.
 
