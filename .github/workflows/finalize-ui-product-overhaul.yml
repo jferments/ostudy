@@ -31,7 +31,11 @@ jobs:
       - name: Apply final product transformations
         run: |
           set -o pipefail
-          if ! node ./scripts/finalize-ui-product-overhaul.mjs 2>&1 | tee "$RUNNER_TEMP/ui-finalizer.log"; then
+          if ! {
+            node ./scripts/finalize-ui-product-overhaul-fixes.mjs before
+            node ./scripts/finalize-ui-product-overhaul.mjs
+            node ./scripts/finalize-ui-product-overhaul-fixes.mjs after
+          } 2>&1 | tee "$RUNNER_TEMP/ui-finalizer.log"; then
             {
               echo "### UI finalizer failure"
               echo '```text'
@@ -60,7 +64,7 @@ jobs:
 
       - name: Remove finalizer and publish product-only tree
         run: |
-          git rm scripts/finalize-ui-product-overhaul.mjs .github/workflows/finalize-ui-product-overhaul.yml
+          git rm scripts/finalize-ui-product-overhaul.mjs scripts/finalize-ui-product-overhaul-fixes.mjs .github/workflows/finalize-ui-product-overhaul.yml
           git add -A
           git config user.name "ostudy CI"
           git config user.email "actions@users.noreply.github.com"
