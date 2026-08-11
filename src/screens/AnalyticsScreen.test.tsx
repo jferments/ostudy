@@ -222,19 +222,18 @@ function analyticsForRange(
   };
 }
 
-function renderAnalytics(
-  launchRequest: React.ComponentProps<typeof AnalyticsScreen>["launchRequest"] = null,
-) {
-  return render(
+function renderAnalytics(onPracticeScope = vi.fn()) {
+  render(
     <AnalyticsScreen
       decks={[deck]}
       settings={settings}
-      launchRequest={launchRequest}
+      launchRequest={null}
       onLaunchConsumed={vi.fn()}
-      onPracticeScope={vi.fn()}
+      onPracticeScope={onPracticeScope}
       showToast={vi.fn()}
     />,
   );
+  return onPracticeScope;
 }
 
 describe("AnalyticsScreen", () => {
@@ -243,32 +242,49 @@ describe("AnalyticsScreen", () => {
     vi.mocked(analyticsIpc.getAnalytics).mockResolvedValue(analyticsForRange("7d"));
   });
 
-  it("loads week analytics by default and renders current and historical summaries", async () => {
+  it("starts with the past week and shows an accessible data alternative", async () => {
     renderAnalytics();
 
     expect(await screen.findByText("Cards practiced")).toBeTruthy();
-    expect(analyticsIpc.getAnalytics).toHaveBeenCalledWith({
-      range: "7d",
-      deckIds: [],
-      tagIds: [],
-      highlightedSessionId: undefined,
+    await waitFor(() => {
+      expect(analyticsIpc.getAnalytics).toHaveBeenCalledWith({
+        range: "7d",
+        deckIds: [],
+        tagIds: [],
+        highlightedSessionId: undefined,
+      });
     });
-    expect(screen.getByText("Remembered")).toBeTruthy();
-    expect(screen.getByText("80%")).toBeTruthy();
-    expect(screen.getByText("Arrhythmias")).toBeTruthy();
+    expect(
+      screen.getByRole("radio", { name: "7 days" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(screen.getByText("8")).toBeTruthy();
+    expect(screen.getAllByText("80%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2 min").length).toBeGreaterThan(0);
+    expect(screen.getByRole("img", { name: "Learning progress chart" })).toBeTruthy();
+    expect(screen.getAllByText("Arrhythmias").length).toBeGreaterThan(0);
+    expect(screen.getByText("Needs attention")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "View chart data" }));
+    expect(
+      screen.getByRole("table", {
+        name: "Data represented in the learning progress chart",
+      }),
+    ).toBeTruthy();
   });
 
-  it("filters historical analytics by the selected deck", async () => {
-    renderAnalytics();
-    await screen.findByText("Cards practiced");
-    fireEvent.click(screen.getByText("Decks", { selector: "summary" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Cardiology/u }));
+  it("changes the range and starts a scoped ready session for a weak tag", async () => {
+    const onPracticeScope = renderAnalytics();
 
-    await waitFor(() =>
+    await screen.findAllByText("Arrhythmias");
+    fireEvent.click(screen.getByRole("radio", { name: "90 days" }));
+    await waitFor(() => {
       expect(analyticsIpc.getAnalytics).toHaveBeenLastCalledWith(
-        expect.objectContaining({ deckIds: [deck.id] }),
-      ),
-    );
+        expect.objectContaining({ range: "90d" }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Practice ready" }));
+    expect(onPracticeScope).toHaveBeenCalledWith([], [tagId]);
   });
 
   it("submits an exact custom local date range", async () => {
@@ -291,44 +307,21 @@ describe("AnalyticsScreen", () => {
   });
 
   it("discards a slower response for an obsolete range", async () => {
-    const slow = deferred<analyticsIpc.Analytics>();
+    const first = deferred<analyticsIpc.Analytics>();
+    const second = deferred<analyticsIpc.Analytics>();
     vi.mocked(analyticsIpc.getAnalytics)
-      .mockReturnValueOnce(slow.promise)
-      .mockResolvedValueOnce(analyticsForRange("30d", 30));
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
     renderAnalytics();
 
-    fireEvent.click(screen.getByRole("radio", { name: "30 days" }));
-    expect(await screen.findByText("30")).toBeTruthy();
-    slow.resolve(analyticsForRange("7d", 7));
+    fireEvent.click(screen.getByRole("radio", { name: "90 days" }));
+    await waitFor(() => expect(analyticsIpc.getAnalytics).toHaveBeenCalledTimes(2));
 
-    await waitFor(() => expect(screen.queryByText("7")).toBeNull());
-  });
-
-  it("consumes a launch request and highlights its session", async () => {
-    const onLaunchConsumed = vi.fn();
-    render(
-      <AnalyticsScreen
-        decks={[deck]}
-        settings={settings}
-        launchRequest={{
-          range: "7d",
-          deckIds: [deck.id],
-          highlightedSessionId: "e".repeat(32),
-        }}
-        onLaunchConsumed={onLaunchConsumed}
-        onPracticeScope={vi.fn()}
-        showToast={vi.fn()}
-      />,
-    );
-
-    await screen.findByText("Cards practiced");
-    expect(onLaunchConsumed).toHaveBeenCalledOnce();
-    expect(analyticsIpc.getAnalytics).toHaveBeenCalledWith(
-      expect.objectContaining({
-        range: "7d",
-        deckIds: [deck.id],
-        highlightedSessionId: "e".repeat(32),
-      }),
-    );
+    second.resolve(analyticsForRange("90d", 90));
+    expect(await screen.findByText("90")).toBeTruthy();
+    first.resolve(analyticsForRange("7d", 7));
+    await Promise.resolve();
+    expect(screen.queryByText("7")).toBeNull();
+    expect(screen.getByText("90")).toBeTruthy();
   });
 });
