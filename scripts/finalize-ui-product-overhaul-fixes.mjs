@@ -97,5 +97,13 @@ if (mode === "after") {
   );
   writeFileSync(settingsTestsPath, settingsTests);
 
-  console.log("Applied post-finalizer duplicate, ownership, deck-sort, UI-test, analytics-fixture, and settings-fixture fixes.");
+  const pdfTestPath = "src-tauri/src/document_pdf_tests.rs";
+  let pdfTest = readFileSync(pdfTestPath, "utf8");
+  pdfTest = pdfTest.replace(
+    '"oxidize-pdf-4.2.2-rag-quality-ocr-v1"',
+    '"oxidize-pdf-4.2.2-rag-quality-ocr-v2"',
+  );
+  writeFileSync(pdfTestPath, pdfTest);
+
+  console.log("Applied post-finalizer duplicate, ownership, deck-sort, UI-test, analytics-fixture, settings-fixture, and PDF-backend fixes.");
 }
