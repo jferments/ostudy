@@ -447,8 +447,13 @@ fn workload_excludes_suspended_and_buried_cards_and_protects_review_backlog() {
             assert_eq!(overview.scheduled_new, 1);
             assert_eq!(overview.extra_available, 2);
 
-            let (planned, _) =
-                planned_scheduled_cards_for_scope(connection, scope, &settings, &time)?;
+            let (planned, _) = planned_scheduled_cards_for_scope(
+                connection,
+                scope,
+                &settings,
+                &time,
+                "regression-workload",
+            )?;
             assert_eq!(planned.len(), 2);
             assert_eq!(planned[0].card_id, review_id);
             assert_eq!(planned[1].card_id, new_id);

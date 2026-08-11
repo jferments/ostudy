@@ -46,7 +46,7 @@ The canonical structure-aware `ExtractionProfile::Rag` partition/chunk pass rema
 
 Extracted text is untrusted until it passes quality validation. The validator detects at least Private Use Area mappings, replacement characters, invalid controls, the observed pathological high-Latin substitution pattern, native page extraction exceptions, sparse/missing page text, and corrupt structured semantics when raw page text remains readable.
 
-Good raw page text with bad semantic structure uses page-text semantic fallback instead of OCR. Corrupt non-empty raw text requires trustworthy OCR before provider traffic. Blank/image-only pages may remain visual evidence when no text is recoverable. Recovered text passes the same quality boundary again; ostudy does not hard-code a substitution alphabet for one PDF/font.
+Good raw page text with bad semantic structure uses page-text semantic fallback instead of OCR. **Readable native text is never replaced merely because it is short or sparse**: title pages, headings, captions, and other low-text pages keep the oxidize-pdf text and use the PDFium raster as visual grounding when the provider supports images. OCR is reserved for native extraction failures, detected corrupt/obfuscated text, or genuinely empty native text where recognition is needed. Corrupt non-empty raw text requires trustworthy OCR before provider traffic. Blank/image-only pages may remain visual evidence when no text is recoverable. Recovered text passes the same quality boundary again; ostudy does not hard-code a substitution alphabet for one PDF/font.
 
 ## PDFium rendering and native runtime trust
 
@@ -132,7 +132,7 @@ The task prompt favors durable concepts, mechanisms, comparisons, applications, 
 
 Generated forms include Basic conceptual questions, definitions, four-option multiple choice with explanation, critical-thinking/application/scenario questions, and Cloze. Definition/MCQ/critical-thinking forms normalize into existing safe Basic cards; Rust constructs Cloze markers from validated exact substrings.
 
-After source windows complete, a bounded curation task selects which cards remain. It cannot rewrite cards. Selected cards pass through canonical generated-card authoring for restricted Markdown/content validation, Cloze syntax, subject-matter tags, duplicate fingerprints, fresh schedules, and transactional deck/card creation. There is no generated-card review queue. Document provenance remains in the managed-document/deck relationship and never becomes learner-facing tags such as `PDF` or `AI generated`; defensive normalization strips those legacy provenance labels if a model returns them anyway.
+After source windows complete, a bounded curation task selects which cards remain. It cannot rewrite cards. Curation is also a semantic pair-quality gate: an answer must directly and completely answer its question, multi-part questions require all requested parts, headings/topic labels are not accepted as factual answers, and unsupported or ambiguous cards are dropped. Even a single generated candidate passes through this gate. Selected cards then pass through canonical generated-card authoring for restricted Markdown/content validation, Cloze syntax, tags, duplicate fingerprints, fresh schedules, and transactional deck/card creation. There is no generated-card review queue.
 
 `Generate more cards` reuses retained extraction/OCR derivatives, outline, and current deck coverage. It should not rerender or OCR an unchanged source.
 

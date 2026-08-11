@@ -542,6 +542,10 @@ fn record_additional_failure(database: &Database, document_id: &str, code: &str,
                          ELSE 'failed'
                      END,
                      safe_error_code = ?1, safe_error_message = ?2,
+                     processing_duration_ms = CASE
+                         WHEN processing_started_at IS NULL THEN processing_duration_ms
+                         ELSE MAX(0, ?3 - processing_started_at)
+                     END,
                      updated_at = ?3, revision = revision + 1
                  WHERE id = ?4",
                 params![bounded(code, 80), bounded(message, 1000), now, document_id],

@@ -153,7 +153,7 @@ pub(crate) struct TextQualityAssessment {
 }
 
 pub(crate) fn active_backend_id() -> &'static str {
-    "oxidize-pdf-4.2.2-rag-quality-ocr-v2"
+    "oxidize-pdf-4.2.2-rag-native-first-ocr-v3"
 }
 
 pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, PdfBackendError> {
@@ -439,16 +439,22 @@ pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionReco
             continue;
         }
 
-        if !raw.substantive && !has_good_semantic {
+        // Readable native text stays authoritative even when a page is short.
+        // A title, heading, caption, or other sparse page is not evidence that
+        // oxidize-pdf failed, and replacing it with OCR usually lowers fidelity.
+        // OCR is therefore reserved for genuinely empty native text (or the
+        // required corruption/failure cases above). PDFium renders remain
+        // available as visual grounding for providers with image capability.
+        if page.text.trim().is_empty() && !has_good_semantic {
             ocr_pages.push(OcrPageCandidate {
                 page_number: page.page_number,
                 required: false,
-                reasons: vec!["sparse_or_missing_text"],
+                reasons: vec!["native_text_empty"],
             });
             continue;
         }
 
-        if structured_is_suspicious || document.semantic_analysis_degraded {
+        if !raw.substantive || structured_is_suspicious || document.semantic_analysis_degraded {
             native_semantic_fallback_pages.insert(page.page_number);
         }
     }
@@ -800,7 +806,10 @@ mod tests {
 
     #[test]
     fn active_backend_identifies_quality_checked_oxidize_extraction() {
-        assert_eq!(active_backend_id(), "oxidize-pdf-4.2.2-rag-quality-ocr-v2");
+        assert_eq!(
+            active_backend_id(),
+            "oxidize-pdf-4.2.2-rag-native-first-ocr-v3"
+        );
     }
 
     #[test]
@@ -854,6 +863,16 @@ mod tests {
         let plan = plan_text_recovery(&document);
         assert_eq!(plan.ocr_pages.len(), 1);
         assert_eq!(plan.ocr_pages[0].page_number, 1);
+        assert!(!plan.ocr_pages[0].required);
+        assert_eq!(plan.ocr_pages[0].reasons, vec!["native_text_empty"]);
+    }
+
+    #[test]
+    fn sparse_but_readable_native_text_never_selects_ocr() {
+        let document = base_document("Chapter 5", "");
+        let plan = plan_text_recovery(&document);
+        assert!(plan.ocr_pages.is_empty());
+        assert_eq!(plan.native_semantic_fallback_pages, vec![1]);
     }
 
     #[test]

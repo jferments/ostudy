@@ -337,7 +337,11 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                     </div>
                     <div>
                       <dt>Processing</dt>
-                      <dd>{formatProcessingDuration(document.processingDurationMs)}</dd>
+                      <dd>
+                        {document.lifecycleState === "processing"
+                          ? "In progress"
+                          : formatProcessingDuration(document.processingDurationMs)}
+                      </dd>
                     </div>
                     <div>
                       <dt>API tokens</dt>
@@ -499,7 +503,7 @@ function formatBytes(bytes: number): string {
 }
 
 function formatProcessingDuration(value: number | null): string {
-  if (value === null) return "—";
+  if (value === null) return "Not recorded";
   if (value < 1_000) return "<1 sec";
   if (value < 60_000) return Math.round(value / 1_000) + " sec";
   if (value < 3_600_000) return (value / 60_000).toFixed(value < 600_000 ? 1 : 0) + " min";
@@ -507,7 +511,8 @@ function formatProcessingDuration(value: number | null): string {
 }
 
 function formatApiTokens(document: DocumentSummary): string {
-  if (document.apiTokenCount === null) return "Not reported";
+  if (document.lifecycleState === "processing") return "In progress";
+  if (document.apiTokenCount === null) return "Not reported by provider";
   const formatted = document.apiTokenCount.toLocaleString();
   return document.apiTokenUsageComplete ? formatted : formatted + "+ reported";
 }

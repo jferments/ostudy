@@ -78,9 +78,45 @@
   font-size: 1.25rem;
 }
 
+.card-browser-toolbar {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.card-browser-toolbar > * {
+  min-width: 0;
+}
+
+.card-browser-toolbar .search-field {
+  flex: 1 1 280px;
+}
+
+.card-browser-toolbar > label:not(.search-field) {
+  flex: 0 1 235px;
+}
+
 .card-count-summary {
   min-width: 0;
+  max-width: 100%;
+  flex: 1 1 160px;
   overflow-wrap: anywhere;
+  text-align: right;
+  white-space: normal;
+}
+
+@media (min-width: 761px) and (max-width: 980px) {
+  .card-browser-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 235px);
+    align-items: end;
+    gap: var(--space-3);
+  }
+
+  .card-count-summary {
+    grid-column: 1 / -1;
+    width: 100%;
+    text-align: left;
+  }
 }
 
 .practice-flip-card {

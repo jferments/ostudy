@@ -876,6 +876,10 @@ fn record_document_failure(database: &Database, document_id: &str, error: &Comma
                  SET lifecycle_state = CASE WHEN archived_at IS NULL THEN 'failed' ELSE 'archived' END,
                      outline_state = CASE WHEN outline_state = 'building' THEN 'failed' ELSE outline_state END,
                      safe_error_code = ?1, safe_error_message = ?2,
+                     processing_duration_ms = CASE
+                         WHEN processing_started_at IS NULL THEN processing_duration_ms
+                         ELSE MAX(0, ?3 - processing_started_at)
+                     END,
                      updated_at = ?3, revision = revision + 1
                  WHERE id = ?4",
                 params![

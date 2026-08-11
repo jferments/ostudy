@@ -205,9 +205,9 @@ pub(crate) fn start_selected_practice_in_connection(
     };
     let planned = if mode == "scheduled" {
         let settings = load_settings(connection)?;
-        planned_scheduled_cards(connection, scope, &settings, &time)?.0
+        planned_scheduled_cards(connection, scope, &settings, &time, &operation_id)?.0
     } else {
-        planned_extra_cards(connection, scope, &time)?
+        planned_extra_cards(connection, scope, &time, &operation_id)?
     };
     if planned.is_empty() {
         let message = if mode == "scheduled" {
