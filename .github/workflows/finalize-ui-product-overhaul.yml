@@ -1,0 +1,49 @@
+name: Finalize UI product overhaul
+
+on:
+  push:
+    branches:
+      - agent/ui-platform-overhaul
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-ui-product-overhaul
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 60
+    steps:
+      - name: Check out development branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/ui-platform-overhaul
+          fetch-depth: 0
+
+      - name: Expose local tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Apply final product transformations
+        run: node ./scripts/finalize-ui-product-overhaul.mjs
+
+      - name: Normalize Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Run fast qualification before publishing
+        env:
+          OSTUDY_FORCE_CHECK: "1"
+        run: ./scripts/check-fast.sh
+
+      - name: Remove finalizer and publish product-only tree
+        run: |
+          git rm scripts/finalize-ui-product-overhaul.mjs .github/workflows/finalize-ui-product-overhaul.yml
+          git add -A
+          git config user.name "ostudy CI"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "refactor: complete responsive UI platform overhaul"
+          git push origin HEAD:agent/ui-platform-overhaul
