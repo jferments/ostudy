@@ -124,9 +124,6 @@ else
   log "tauri-driver ${TAURI_DRIVER_VERSION} is already installed"
 fi
 
-log "Provisioning the verified PDFium runtime and desktop OCR fallback"
-"$SCRIPT_DIR/install-native-deps.sh" --with-tesseract
-
 log "Building ostudy once so ordinary startup is fast"
 "$SCRIPT_DIR/build.sh"
 

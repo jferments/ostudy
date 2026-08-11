@@ -1,6 +1,6 @@
 # Install and run ostudy on Linux
 
-Ubuntu and Debian are the primary supported development environment. The repository setup script installs the packages and pinned toolchains expected by the local checks and the self-hosted Linux runner, provisions the verified PDF/OCR runtimes, and creates a standalone debug build.
+Ubuntu and Debian are the primary supported development environment. The repository setup script installs the packages and pinned toolchains expected by the local checks and the self-hosted Linux runner, then creates a standalone debug build.
 
 ## Prerequisites
 
@@ -23,14 +23,13 @@ From the repository root:
 
 The script is intentionally repeatable. Existing matching tool installations are reused, while version mismatches fail or are replaced explicitly rather than being ignored.
 
-Setup also runs the reviewed native dependency installer. It stages the pinned PDFium runtime used to render PDF pages and installs Tesseract with English data for OCR fallback on PDFs whose embedded text is unusable. Normal text-based PDFs may never invoke OCR, but the runtime is available when a corrupted or image-only text layer requires recovery.
-
-To re-provision only native document dependencies later:
+The ordinary build path provisions the pinned PDFium runtime needed to render PDF pages. To enable OCR fallback for PDFs whose embedded text is unusable, also install Tesseract and its English data through the reviewed native dependency installer:
 
 ```bash
-./scripts/install-native-deps.sh --pdfium-only
 ./scripts/install-native-deps.sh --with-tesseract
 ```
+
+On Ubuntu/Debian this uses the distribution's `tesseract-ocr` and `tesseract-ocr-eng` packages. Normal text-based PDFs do not require OCR, but corrupted or image-only text layers may.
 
 ## Start the application
 

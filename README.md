@@ -79,7 +79,7 @@ The repository currently provides a complete setup path for Ubuntu and Debian de
 ./run-app.sh
 ```
 
-The setup script installs the required system packages, pinned development tools, JavaScript and Rust dependencies, and native PDF/OCR requirements, then creates an initial standalone debug build. `run-app.sh` starts that existing build without rebuilding it.
+The setup script installs the required system packages, pinned development tools, JavaScript and Rust dependencies, and the PDF rendering runtime, then creates an initial standalone debug build. OCR support for scanned or damaged PDFs is an additional installation step described in the [Linux guide](docs/installation/linux.md). `run-app.sh` starts the existing build without rebuilding it.
 
 After changing source code:
 
