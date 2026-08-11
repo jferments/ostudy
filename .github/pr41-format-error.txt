@@ -1,0 +1,3 @@
+[ERR_PNPM_VERIFY_DEPS_BEFORE_RUN] Cannot check whether dependencies are outdated
+
+Run "pnpm install"
