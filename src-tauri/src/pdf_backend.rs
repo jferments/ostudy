@@ -153,7 +153,7 @@ pub(crate) struct TextQualityAssessment {
 }
 
 pub(crate) fn active_backend_id() -> &'static str {
-    "oxidize-pdf-4.2.2-rag-native-first-ocr-v4"
+    "oxidize-pdf-4.2.2-rag-native-first-ocr-v5"
 }
 
 pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, PdfBackendError> {
@@ -376,6 +376,45 @@ fn extract_page_texts<R: Read + Seek>(
     Ok((pages, failed_pages))
 }
 
+fn native_page_requires_ocr(text: &str, assessment: &TextQualityAssessment) -> bool {
+    if !assessment.suspicious {
+        return false;
+    }
+    // Font-substitution ciphers can look alphabetic while being unreadable, so
+    // this whole-page pattern still requires OCR. The other quality signals are
+    // often localized failures of individual embedded font maps; only escalate
+    // those when corruption dominates the page rather than merely appearing.
+    if assessment.reasons.contains(&"probable_font_substitution") {
+        return true;
+    }
+
+    let mut visible = 0_usize;
+    let mut damaged = 0_usize;
+    for character in text.chars() {
+        if character.is_whitespace() {
+            continue;
+        }
+        visible = visible.saturating_add(1);
+        if is_unmapped_pdf_glyph(character) {
+            damaged = damaged.saturating_add(1);
+        }
+    }
+    // Require both a meaningful absolute amount and severe density. This keeps
+    // image/table-heavy textbook pages out of OCR when they have less prose and
+    // therefore a deceptively high percentage of a few broken symbol glyphs.
+    damaged >= 24 && damaged.saturating_mul(100) >= visible.max(1).saturating_mul(30)
+}
+
+fn is_unmapped_pdf_glyph(character: char) -> bool {
+    let value = character as u32;
+    (character.is_control() && !matches!(character, '\n' | '\t'))
+        || character == '\u{fffd}'
+        || ('\u{e000}'..='\u{f8ff}').contains(&character)
+        || (0xFDD0..=0xFDEF).contains(&value)
+        || value & 0xFFFF == 0xFFFE
+        || value & 0xFFFF == 0xFFFF
+}
+
 pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionRecoveryPlan {
     let failed_pages = document
         .native_text_failed_pages
@@ -424,11 +463,9 @@ pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionReco
         let structured_is_suspicious = semantic_suspicious.contains(&page.page_number);
         let has_good_semantic = semantic_good.contains(&page.page_number);
 
-        if extraction_failed || raw.suspicious {
+        if extraction_failed {
             let mut reasons = raw.reasons.clone();
-            if extraction_failed {
-                reasons.push("native_extraction_failed");
-            }
+            reasons.push("native_extraction_failed");
             reasons.sort_unstable();
             reasons.dedup();
             ocr_pages.push(OcrPageCandidate {
@@ -439,12 +476,9 @@ pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionReco
             continue;
         }
 
-        // Readable native text stays authoritative even when a page is short.
-        // A title, heading, caption, or other sparse page is not evidence that
-        // oxidize-pdf failed, and replacing it with OCR usually lowers fidelity.
-        // OCR is therefore reserved for genuinely empty native text (or the
-        // required corruption/failure cases above). PDFium renders remain
-        // available as visual grounding for providers with image capability.
+        // Empty native text may still benefit from OCR. Localized malformed
+        // glyphs in otherwise readable native text are handled below without
+        // replacing the page with raster OCR.
         if page.text.trim().is_empty() && !has_good_semantic {
             ocr_pages.push(OcrPageCandidate {
                 page_number: page.page_number,
@@ -454,7 +488,21 @@ pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionReco
             continue;
         }
 
-        if !raw.substantive || structured_is_suspicious || document.semantic_analysis_degraded {
+        if native_page_requires_ocr(&page.text, &raw) {
+            ocr_pages.push(OcrPageCandidate {
+                page_number: page.page_number,
+                required: true,
+                reasons: raw.reasons.clone(),
+            });
+            continue;
+        }
+        if raw.suspicious
+            || !raw.substantive
+            || structured_is_suspicious
+            || document.semantic_analysis_degraded
+        {
+            // Localized font-map damage invalidates structured semantics, not
+            // the readable page. Rebuild from cleaned native text without OCR.
             native_semantic_fallback_pages.insert(page.page_number);
         }
     }
@@ -815,7 +863,7 @@ mod tests {
     fn active_backend_identifies_quality_checked_oxidize_extraction() {
         assert_eq!(
             active_backend_id(),
-            "oxidize-pdf-4.2.2-rag-native-first-ocr-v4"
+            "oxidize-pdf-4.2.2-rag-native-first-ocr-v5"
         );
     }
 
@@ -915,6 +963,42 @@ mod tests {
         let plan = plan_text_recovery(&document);
         assert!(plan.ocr_pages.is_empty());
         assert_eq!(plan.native_semantic_fallback_pages, vec![1]);
+    }
+
+    #[test]
+    fn nunn_style_font_map_damage_uses_native_fallback_without_ocr() {
+        let page = concat!(
+            "The respiratory tract contains readable scientific prose. ",
+            "\u{0007}e alveolar septa remain thin and gas exchange remains efficient. ",
+            "The active side is around 0.3 \u{001e}m thick. Airways are divided into bronchi and bronchioles. ",
+            "Text from figures can contain a stray \u{fffe} marker while the paragraphs remain usable. ",
+            "This sentence deliberately adds enough ordinary English text to model an image-heavy textbook page."
+        );
+        let assessment = assess_text_quality(page);
+        let document = base_document(page, "\u{e01c}\u{e01d} bad semantic font mapping");
+        let plan = plan_text_recovery(&document);
+        assert!(assessment.substantive);
+        assert!(plan.ocr_pages.is_empty());
+        assert_eq!(plan.native_semantic_fallback_pages, vec![1]);
+    }
+
+    #[test]
+    fn catastrophic_page_wide_unmapped_glyphs_still_require_ocr() {
+        let corrupt = (0..40).map(|_| "\u{e001}\u{e002}x").collect::<String>();
+        let assessment = assess_text_quality(&corrupt);
+        assert!(assessment.suspicious);
+        assert!(native_page_requires_ocr(&corrupt, &assessment));
+        let document = base_document(&corrupt, "");
+        let plan = plan_text_recovery(&document);
+        assert_eq!(plan.ocr_pages.len(), 1);
+        assert!(plan.ocr_pages[0].required);
+    }
+
+    #[test]
+    fn font_substitution_cipher_still_requires_ocr_even_when_letters_dominate() {
+        let corrupt = "Õâóïáäèå ÖîããóÛó îì ÖèïÝáîãîÛ× èåÝ çôó Õâóïáäèå ëóèïç Õííîäáèçáîå ñðæãáíôóÝ åóØ ÛðáÝóãáåóí";
+        let assessment = assess_text_quality(corrupt);
+        assert!(native_page_requires_ocr(corrupt, &assessment));
     }
 
     #[test]

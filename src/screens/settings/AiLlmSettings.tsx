@@ -25,9 +25,6 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
   const availableProviders = controller.catalog.filter(
     (provider) => provider.implementationStatus === "available",
   );
-  const plannedProviders = controller.catalog.filter(
-    (provider) => provider.implementationStatus === "planned",
-  );
   const profileDirty = hasProfileChanges(
     controller.draft,
     controller.selectedProfile,
@@ -204,18 +201,6 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
           <p className={styles.securityNote}>
             There is no automatic fallback. A failed local profile will never silently send study material to a cloud provider.
           </p>
-        </section>
-
-        <section className={styles.settingsCard}>
-          <h2>Planned providers</h2>
-          <div className={styles.plannedProviderGrid}>
-            {plannedProviders.map((provider) => (
-              <article key={provider.providerKind}>
-                <strong>{provider.displayName}</strong>
-                <p>{provider.description}</p>
-              </article>
-            ))}
-          </div>
         </section>
       </main>
     </div>

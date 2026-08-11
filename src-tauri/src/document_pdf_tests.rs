@@ -49,7 +49,7 @@ fn structured_extraction_and_pdfium_rendering_process_a_real_fixture() {
     assert!(extracted.chunks[0].page_numbers.contains(&1));
     assert_eq!(
         pdf_backend::active_backend_id(),
-        "oxidize-pdf-4.2.2-rag-native-first-ocr-v4"
+        "oxidize-pdf-4.2.2-rag-native-first-ocr-v5"
     );
 
     let runtime = PdfRenderRuntime::new(None).expect("provisioned PDFium should initialize");

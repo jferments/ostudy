@@ -1058,26 +1058,69 @@ fn response_token_usage(response: &Value) -> (Option<u64>, Option<u64>, Option<u
     let read = |pointers: &[&str]| {
         pointers
             .iter()
-            .find_map(|pointer| response.pointer(pointer).and_then(Value::as_u64))
+            .find_map(|pointer| response.pointer(pointer).and_then(nonnegative_json_integer))
     };
-    let prompt = read(&[
+
+    let standard_prompt = read(&[
         "/usage/prompt_tokens",
         "/usage/input_tokens",
-        "/timings/prompt_n",
-        "/tokens_evaluated",
+        "/response/usage/prompt_tokens",
+        "/data/usage/prompt_tokens",
     ]);
-    let completion = read(&[
+    let standard_completion = read(&[
         "/usage/completion_tokens",
         "/usage/output_tokens",
-        "/timings/predicted_n",
-        "/tokens_predicted",
+        "/response/usage/completion_tokens",
+        "/data/usage/completion_tokens",
     ]);
-    let total = read(&["/usage/total_tokens"]).or_else(|| {
-        prompt
-            .zip(completion)
-            .map(|(left, right)| left.saturating_add(right))
-    });
+    let standard_total = read(&[
+        "/usage/total_tokens",
+        "/response/usage/total_tokens",
+        "/data/usage/total_tokens",
+    ]);
+    if standard_prompt.is_some() || standard_completion.is_some() || standard_total.is_some() {
+        let total = standard_total.or_else(|| {
+            standard_prompt
+                .zip(standard_completion)
+                .map(|(left, right)| left.saturating_add(right))
+        });
+        return (standard_prompt, standard_completion, total);
+    }
+
+    // llama.cpp timing semantics distinguish cached prompt tokens from prompt
+    // tokens newly evaluated. A provider total reconstructed from timings must
+    // include both; otherwise repeated document windows are substantially
+    // undercounted. Older server builds may place these fields in __verbose.
+    let prompt_processed = read(&[
+        "/timings/prompt_n",
+        "/__verbose/timings/prompt_n",
+        "/tokens_evaluated",
+        "/__verbose/tokens_evaluated",
+    ]);
+    let cached = read(&[
+        "/timings/cache_n",
+        "/__verbose/timings/cache_n",
+        "/tokens_cached",
+        "/__verbose/tokens_cached",
+    ])
+    .unwrap_or(0);
+    let completion = read(&[
+        "/timings/predicted_n",
+        "/__verbose/timings/predicted_n",
+        "/tokens_predicted",
+        "/__verbose/tokens_predicted",
+    ]);
+    let prompt = prompt_processed.map(|value| value.saturating_add(cached));
+    let total = prompt
+        .zip(completion)
+        .map(|(left, right)| left.saturating_add(right));
     (prompt, completion, total)
+}
+
+fn nonnegative_json_integer(value: &Value) -> Option<u64> {
+    value
+        .as_u64()
+        .or_else(|| value.as_i64().and_then(|value| u64::try_from(value).ok()))
 }
 
 fn deepseek_strict_completion_endpoint(profile: &ProfileSnapshot) -> Result<Url, CommandError> {
@@ -2243,12 +2286,30 @@ mod tests {
             (Some(120), Some(30), Some(150))
         );
         assert_eq!(
-            response_token_usage(&json!({"timings": {"prompt_n": 220, "predicted_n": 45}})),
+            response_token_usage(&json!({
+                "timings": {"cache_n": 180, "prompt_n": 40, "predicted_n": 45}
+            })),
             (Some(220), Some(45), Some(265))
         );
         assert_eq!(
-            response_token_usage(&json!({"tokens_evaluated": 80, "tokens_predicted": 20})),
-            (Some(80), Some(20), Some(100))
+            response_token_usage(&json!({
+                "tokens_cached": 20, "tokens_evaluated": 80, "tokens_predicted": 20
+            })),
+            (Some(100), Some(20), Some(120))
+        );
+        assert_eq!(
+            response_token_usage(&json!({
+                "__verbose": {
+                    "timings": {"cache_n": 60, "prompt_n": 15, "predicted_n": 25}
+                }
+            })),
+            (Some(75), Some(25), Some(100))
+        );
+        assert_eq!(
+            response_token_usage(&json!({
+                "response": {"usage": {"prompt_tokens": 9, "completion_tokens": 4, "total_tokens": 13}}
+            })),
+            (Some(9), Some(4), Some(13))
         );
     }
 

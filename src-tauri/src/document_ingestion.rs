@@ -1136,11 +1136,21 @@ fn normalize_page_text(value: &str) -> String {
 fn normalize_semantic_text(value: &str, maximum: usize) -> String {
     value
         .chars()
-        .filter(|character| !character.is_control() || matches!(character, '\n' | '\t'))
+        .filter(|character| !is_unmapped_pdf_text_character(*character))
         .take(maximum)
         .collect::<String>()
         .trim()
         .to_string()
+}
+
+fn is_unmapped_pdf_text_character(character: char) -> bool {
+    let value = character as u32;
+    (character.is_control() && !matches!(character, '\n' | '\t'))
+        || character == '\u{fffd}'
+        || ('\u{e000}'..='\u{f8ff}').contains(&character)
+        || (0xFDD0..=0xFDEF).contains(&value)
+        || value & 0xFFFF == 0xFFFE
+        || value & 0xFFFF == 0xFFFF
 }
 
 fn bounded_diagnostic(value: &str, maximum: usize) -> String {
@@ -1220,6 +1230,14 @@ mod tests {
         assert_eq!(
             normalize_page_text(" line\r\none\0two\rthree "),
             "line\nonetwo\nthree"
+        );
+    }
+
+    #[test]
+    fn normalizes_nunn_style_unmapped_font_glyphs_without_discarding_native_text() {
+        assert_eq!(
+            normalize_page_text("\u{0007}e airway has 0.3 \u{001e}m text air\u{fffe}ways and \u{e001} one bad private glyph"),
+            "e airway has 0.3 m text airways and  one bad private glyph"
         );
     }
 
