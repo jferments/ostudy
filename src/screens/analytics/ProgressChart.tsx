@@ -16,6 +16,7 @@ import { Chart } from "react-chartjs-2";
 
 import type { AnalyticsRange, TimelineBucket } from "../../ipc/analytics";
 import { useAnimationsEnabled } from "../../ui/hooks/useAnimationsEnabled";
+import { buildDifficultyTimelineSeries } from "./difficultySeries";
 
 ChartJS.register(CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip, Legend);
 
@@ -39,16 +40,17 @@ export function ProgressChart({ buckets, range, reduceMotion }: ProgressChartPro
     () => buckets.map((bucket) => formatBucketLabel(bucket.startAt, range)),
     [buckets, range],
   );
+  const series = useMemo(() => buildDifficultyTimelineSeries(buckets), [buckets]);
   const data = useMemo<LineChartData>(() => {
     const datasets: ChartDataset<"line", ChartPoint[]>[] = [
-      lineDataset("Cards reviewed", buckets.map((bucket) => bucket.reviewCount), colors.accent, buckets),
-      lineDataset("Wrong", buckets.map((bucket) => bucket.wrongCount), colors.wrong, buckets),
-      lineDataset("Hard", buckets.map((bucket) => bucket.hardCount), colors.hard, buckets),
-      lineDataset("Medium", buckets.map((bucket) => bucket.mediumCount), colors.medium, buckets),
-      lineDataset("Easy", buckets.map((bucket) => bucket.easyCount), colors.easy, buckets),
+      lineDataset("Cards reviewed", series.reviewed, colors.accent, buckets),
+      lineDataset("Wrong", series.wrong, colors.wrong, buckets),
+      lineDataset("Hard", series.hard, colors.hard, buckets),
+      lineDataset("Medium", series.medium, colors.medium, buckets),
+      lineDataset("Easy", series.easy, colors.easy, buckets),
     ];
     return { labels, datasets };
-  }, [buckets, colors, labels]);
+  }, [buckets, colors, labels, series]);
   const options = useMemo<ChartOptions<"line">>(
     () => ({
       responsive: true,
