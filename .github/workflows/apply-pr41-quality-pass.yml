@@ -27,6 +27,7 @@ jobs:
 
       - name: Apply quality and selection fixes
         run: |
+          python3 .github/fix-pr41-helper.py
           set +e
           python3 .github/pr41-quality-pass.py > .github/pr41-apply-error.txt 2>&1
           status=$?
@@ -34,12 +35,12 @@ jobs:
           if [ "$status" -ne 0 ]; then
             git config user.name "ostudy CI"
             git config user.email "actions@users.noreply.github.com"
-            git add .github/pr41-apply-error.txt
+            git add .github/pr41-quality-pass.py .github/pr41-apply-error.txt
             git commit -m "ci: capture PR41 applicator failure"
             git push origin HEAD:agent/ui-platform-overhaul
             exit "$status"
           fi
-          rm .github/pr41-apply-error.txt
+          rm -f .github/pr41-apply-error.txt
 
       - name: Normalize formatting
         run: |
@@ -55,7 +56,8 @@ jobs:
 
       - name: Remove applicator and publish product tree
         run: |
-          git rm .github/workflows/apply-pr41-quality-pass.yml .github/pr41-quality-pass.py
+          git rm .github/workflows/apply-pr41-quality-pass.yml .github/pr41-quality-pass.py .github/fix-pr41-helper.py
+          git rm -f .github/pr41-apply-error.txt || true
           git config user.name "ostudy CI"
           git config user.email "actions@users.noreply.github.com"
           git add -A
