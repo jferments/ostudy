@@ -76,6 +76,10 @@ export interface TimelineBucket {
   reviewCount: number;
   newCards: number;
   rememberedCount: number;
+  wrongCount: number;
+  hardCount: number;
+  mediumCount: number;
+  easyCount: number;
   correctRate: number | null;
   averageConfidence: number | null;
   averageResponseTimeMs: number | null;
