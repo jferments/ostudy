@@ -90,8 +90,13 @@ fn list_from_connection(
         .map_err(CommandError::database)?;
 
     let order_sql = match input.sort.as_str() {
-        "question_asc" => "n.front_text COLLATE NOCASE ASC, n.updated_at DESC, n.id ASC",
-        _ => "n.updated_at DESC, n.created_at DESC, n.id ASC",
+        "practiced_desc" => {
+            "MAX(r.reviewed_at) IS NULL ASC, MAX(r.reviewed_at) DESC, n.created_at DESC, n.id ASC"
+        }
+        "practiced_asc" => {
+            "MAX(r.reviewed_at) IS NULL DESC, MAX(r.reviewed_at) ASC, n.created_at DESC, n.id ASC"
+        }
+        _ => "n.created_at DESC, n.id ASC",
     };
     let excerpt_index = push_value(&mut values, SUMMARY_EXCERPT_CHARS);
     let limit_index = push_value(&mut values, input.limit);
@@ -110,6 +115,7 @@ fn list_from_connection(
          FROM notes n
          JOIN decks d ON d.id = n.deck_id
          LEFT JOIN cards c ON c.note_id = n.id
+         LEFT JOIN review_events r ON r.card_id = c.id
          LEFT JOIN note_assets na ON na.note_id = n.id
          LEFT JOIN assets a ON a.id = na.asset_id
          WHERE {where_sql}
@@ -158,10 +164,13 @@ fn validate_input(input: &DeckCardSummaryQuery) -> Result<(), CommandError> {
             format!("Deck search text cannot exceed {MAX_DECK_CARD_QUERY_CHARS} characters."),
         ));
     }
-    if !matches!(input.sort.as_str(), "updated_desc" | "question_asc") {
+    if !matches!(
+        input.sort.as_str(),
+        "created_desc" | "practiced_desc" | "practiced_asc"
+    ) {
         return Err(CommandError::new(
             "invalid_deck_card_sort",
-            "Sort deck cards by recent update or question.",
+            "Sort deck cards by creation time or practice history.",
         ));
     }
     if !(1..=MAX_DECK_CARD_PAGE).contains(&input.limit) || input.offset < 0 {
@@ -174,7 +183,7 @@ fn validate_input(input: &DeckCardSummaryQuery) -> Result<(), CommandError> {
 }
 
 fn default_sort() -> String {
-    "updated_desc".to_string()
+    "created_desc".to_string()
 }
 
 const fn default_limit() -> i64 {

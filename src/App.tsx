@@ -7,8 +7,8 @@ import { useAppController } from "./controllers/useAppController";
 import type { AppSettings } from "./ipc/settings";
 import { LoadingState } from "./ui/primitives/EmptyState";
 
-const DecksScreen = lazy(() =>
-  import("./screens/DecksScreen").then((module) => ({ default: module.DecksScreen })),
+const DecksWorkspace = lazy(() =>
+  import("./screens/DecksWorkspace").then((module) => ({ default: module.DecksWorkspace })),
 );
 const DocumentsSection = lazy(() =>
   import("./screens/DocumentsSection").then((module) => ({ default: module.DocumentsSection })),
@@ -72,11 +72,13 @@ function App() {
         <AppErrorBoundary>
           <Suspense fallback={<LoadingState label="Opening section…" />}>
             {controller.section === "decks" ? (
-              <DecksScreen
+              <DecksWorkspace
                 decks={controller.decks}
                 settings={controller.activeSettings}
                 refreshDecks={controller.refreshDecks}
                 onPracticeDeck={controller.practiceDeck}
+                onPracticeCards={controller.practiceCards}
+                onManageTemplates={() => controller.navigate("templates")}
                 onDirtyChange={controller.setHasUnsavedCard}
                 showToast={controller.showToast}
               />
@@ -98,6 +100,7 @@ function App() {
             ) : null}
             {controller.section === "templates" ? (
               <TemplatesScreen
+                onBack={() => controller.navigate("decks")}
                 onDirtyChange={controller.setHasUnsavedTemplate}
                 showToast={controller.showToast}
               />

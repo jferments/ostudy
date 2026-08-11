@@ -51,3 +51,45 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+
+.credentialField {
+  position: relative;
+  display: block;
+}
+
+.credentialField input {
+  width: 100%;
+  padding-right: 48px;
+}
+
+.credentialVisibility {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.credentialVisibility:hover,
+.credentialVisibility:focus-visible {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.credentialVisibility svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

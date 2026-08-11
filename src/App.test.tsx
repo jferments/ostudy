@@ -19,8 +19,8 @@ vi.mock("./ipc/settings", () => ({
   getSettings: vi.fn(),
 }));
 
-vi.mock("./screens/DecksScreen", () => ({
-  DecksScreen: ({
+vi.mock("./screens/DecksWorkspace", () => ({
+  DecksWorkspace: ({
     decks,
     onPracticeDeck,
     onDirtyChange,

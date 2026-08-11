@@ -47,6 +47,7 @@ interface CardsScreenProps {
   onPracticeCards: (cardIds: string[]) => void;
   onDirtyChange: (dirty: boolean) => void;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
+  embedded?: boolean;
 }
 
 type SelectionAction =
@@ -74,6 +75,7 @@ export function CardsScreen({
   onPracticeCards,
   onDirtyChange,
   showToast,
+  embedded = false,
 }: CardsScreenProps) {
   const activeDecks = useMemo(
     () => decks.filter((deck) => deck.archivedAt === null),
@@ -486,40 +488,42 @@ export function CardsScreen({
 
   return (
     <div className="screen cards-screen">
-      <header className="screen-header compact-screen-header">
-        <div>
-          <h1>Search/Filter</h1>
-          <p>
-            Find independently scheduled generated cards and manage exact card schedules without
-            changing sibling presentations.
-          </p>
-        </div>
-        <div className="header-actions wrap-actions">
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={activeDecks.length === 0}
-            onClick={() => setBulkOpen(true)}
-          >
-            Bulk add
-          </button>
-          <button
-            type="button"
-            className="primary-button"
-            disabled={!selectedDeck}
-            title={
-              selectedDeck ? undefined : "Select exactly one active deck before adding a card"
-            }
-            onClick={() => {
-              if (!selectedDeck) return;
-              setEditingCard(null);
-              setCreatingDeckId(selectedDeck.id);
-            }}
-          >
-            Add card
-          </button>
-        </div>
-      </header>
+      {!embedded ? (
+        <header className="screen-header compact-screen-header">
+          <div>
+            <h1>Search/Filter</h1>
+            <p>
+              Find independently scheduled cards and manage exact schedules without changing
+              sibling presentations.
+            </p>
+          </div>
+          <div className="header-actions wrap-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={activeDecks.length === 0}
+              onClick={() => setBulkOpen(true)}
+            >
+              Bulk add
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={!selectedDeck}
+              title={
+                selectedDeck ? undefined : "Select exactly one active deck before adding a card"
+              }
+              onClick={() => {
+                if (!selectedDeck) return;
+                setEditingCard(null);
+                setCreatingDeckId(selectedDeck.id);
+              }}
+            >
+              Add card
+            </button>
+          </div>
+        </header>
+      ) : null}
 
       <CardFilters
         activeDecks={activeDecks}

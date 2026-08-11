@@ -172,7 +172,7 @@ describe("DecksScreen", () => {
     });
     expect(showToast).toHaveBeenCalledWith(
       "success",
-      "Imported 15 source notes as 15 scheduled cards.",
+      "Imported 15 card entries as 15 scheduled cards.",
     );
   });
 

@@ -586,6 +586,7 @@ export function PracticeScreen({
         isRating={isRating}
         isEnding={isEnding}
         isManaging={isManaging || isLoadingWindow}
+        flipAnimationEnabled={!settings.reduceMotion}
         errorMessage={errorMessage}
         onReveal={() => void revealAnswer()}
         onScore={(score) => void submitScore(score)}

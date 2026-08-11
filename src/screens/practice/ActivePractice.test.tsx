@@ -116,13 +116,23 @@ describe("ActivePractice", () => {
     input.remove();
   });
 
-  it("shows all FSRS previews and submits 0-3 keyboard scores after reveal", () => {
+  it("reveals when the animated card surface is clicked", () => {
+    const props = renderActive({ flipAnimationEnabled: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    expect(props.onReveal).toHaveBeenCalledOnce();
+  });
+
+  it("shows concise ratings and submits 0-3 keyboard scores after reveal", () => {
     const props = renderActive({ revealed: true, previewSet: previews });
 
-    expect(screen.getByRole("button", { name: /0 Wrong, About 1 min/u })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /1 Hard, About 1 hr/u })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /2 Medium, About 1 day/u })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /3 Easy, About 1 month/u })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "0 Wrong" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "1 Hard" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "2 Medium" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "3 Easy" })).toBeTruthy();
+    expect(screen.queryByText(/About 1/u)).toBeNull();
+    expect(screen.queryByText("I could not recall it.")).toBeNull();
 
     for (const key of ["0", "1", "2", "3"]) {
       fireEvent.keyDown(window, { key });

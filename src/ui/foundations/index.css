@@ -13,6 +13,7 @@
 @import "../../styles/features/scheduling.css" layer(features);
 @import "../../styles/features/analytics.css" layer(features);
 @import "../../styles/features/assets.css" layer(features);
+@import "../../styles/features/ui-overhaul.css" layer(features);
 
 @layer tokens {
   :root {

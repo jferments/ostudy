@@ -26,6 +26,7 @@ import {
   type GenerateTemplateCardsResult,
 } from "../ipc/templates";
 import { openFile, saveFile } from "../platform/files";
+import { useMediaQuery } from "../ui/hooks/useMediaQuery";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { CardEditorScreen } from "./CardEditorScreen";
 
@@ -34,6 +35,9 @@ interface DecksScreenProps {
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
   onPracticeDeck: (deckId: string) => void | Promise<void>;
+  onManageTemplates?: () => void | Promise<void>;
+  onBulkAdd?: () => void;
+  onViewChange?: (view: DeckView) => void;
   onDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
 }
@@ -46,6 +50,9 @@ export function DecksScreen({
   settings,
   refreshDecks,
   onPracticeDeck,
+  onManageTemplates,
+  onBulkAdd,
+  onViewChange,
   onDirtyChange,
   showToast,
 }: DecksScreenProps) {
@@ -64,15 +71,26 @@ export function DecksScreen({
   const pendingImportRef = useRef<{ sourcePath: string; operationId: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [cardSort, setCardSort] = useState<"updated_desc" | "question_asc">("updated_desc");
+  const [searchDialogOpen, setSearchDialogOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [cardSort, setCardSort] = useState<
+    "created_desc" | "practiced_desc" | "practiced_asc"
+  >("created_desc");
   const controllerRef = useRef<DecksController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new DecksController();
   const controller = controllerRef.current;
   const confirm = useConfirm();
+  const compact = useMediaQuery("(max-width: 760px)");
 
   const selectedDeckId = selectedDeck?.id ?? null;
+  const activeDecks = decks.filter((deck) => deck.archivedAt === null);
+  const archivedDecks = decks.filter((deck) => deck.archivedAt !== null);
 
   useEffect(() => () => controller.invalidate(), [controller]);
+  useEffect(() => onViewChange?.(view), [onViewChange, view]);
+  useEffect(() => {
+    if (!compact) setSearchDialogOpen(false);
+  }, [compact]);
 
   useEffect(() => {
     if (!selectedDeckId) return;
@@ -139,7 +157,7 @@ export function DecksScreen({
       setHasMoreCards(false);
       setEditingCard(null);
       setSearch("");
-      setCardSort("updated_desc");
+      setCardSort("created_desc");
       setView("detail");
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -279,9 +297,9 @@ export function DecksScreen({
     if (settings.confirmDeletions) {
       const accepted = await confirm({
         title: `Delete “${deck.name}”?`,
-        description: `This will delete ${deck.sourceNoteCount} ${
-          deck.sourceNoteCount === 1 ? "source note" : "source notes"
-        } and every generated card. Review history will also be permanently removed after the Undo period.`,
+        description: `This will delete ${deck.generatedCardCount} ${
+          deck.generatedCardCount === 1 ? "card" : "cards"
+        } and their review history after the Undo period.`,
         confirmLabel: "Delete deck",
         destructive: true,
       });
@@ -318,8 +336,8 @@ export function DecksScreen({
     if (settings.confirmDeletions) {
       const accepted = await confirm({
         title: "Delete this flashcard?",
-        description: `The source note and its ${card.generatedCardCount} generated ${
-          card.generatedCardCount === 1 ? "card" : "cards"
+        description: `This card entry and its ${card.generatedCardCount} scheduled ${
+          card.generatedCardCount === 1 ? "card" : "card variants"
         } will be deleted. Review history will also be removed after the Undo period. ${
           card.questionExcerpt || "Image card"
         }`,
@@ -462,10 +480,10 @@ export function DecksScreen({
             : "";
         await showImportedDeck(
           result.deckId,
-          `Imported ${result.createdNoteCount} source ${
-            result.createdNoteCount === 1 ? "note" : "notes"
-          } as ${result.createdCardCount} scheduled ${
-            result.createdCardCount === 1 ? "card" : "cards"
+          `Imported ${result.createdNoteCount} ${
+            result.createdNoteCount === 1 ? "card entry" : "card entries"
+          } as ${result.createdCardCount} ${
+            result.createdCardCount === 1 ? "scheduled card" : "scheduled cards"
           }.${duplicateMessage}`,
         );
         return;
@@ -540,6 +558,25 @@ export function DecksScreen({
               <h1>Decks</h1>
             </div>
             <div className="header-actions">
+              {onManageTemplates ? (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => void onManageTemplates()}
+                >
+                  Manage templates
+                </button>
+              ) : null}
+              {onBulkAdd ? (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={activeDecks.length === 0}
+                  onClick={onBulkAdd}
+                >
+                  Bulk add
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="secondary-button"
@@ -562,7 +599,7 @@ export function DecksScreen({
           {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
           {isLoadingDeck ? <div className="inline-progress">Opening deck…</div> : null}
 
-          {decks.length === 0 ? (
+          {activeDecks.length === 0 ? (
             <section className="empty-library-card">
               <div className="empty-icon" aria-hidden="true">
                 ?
@@ -589,7 +626,7 @@ export function DecksScreen({
             </section>
           ) : (
             <section className="deck-grid" aria-label="Deck library">
-              {decks.map((deck) => {
+              {activeDecks.map((deck) => {
                 const archived = deck.archivedAt !== null;
                 return (
                   <article key={deck.id} className={archived ? "deck-card archived" : "deck-card"}>
@@ -663,6 +700,63 @@ export function DecksScreen({
               })}
             </section>
           )}
+
+          {archivedDecks.length > 0 ? (
+            <section className="archived-decks-section" aria-labelledby="archived-decks-heading">
+              <button
+                type="button"
+                className="archived-decks-toggle"
+                aria-expanded={showArchived}
+                onClick={() => setShowArchived((current) => !current)}
+              >
+                <span>
+                  <strong id="archived-decks-heading">Archived decks</strong>
+                  <small>{archivedDecks.length} stored with cards suspended</small>
+                </span>
+                <span aria-hidden="true">{showArchived ? "▴" : "▾"}</span>
+              </button>
+              {showArchived ? (
+                <div className="deck-grid archived-deck-grid">
+                  {archivedDecks.map((deck) => (
+                    <article key={deck.id} className="deck-card archived">
+                      <div className="deck-card-main">
+                        <span className="deck-card-mark" aria-hidden="true">
+                          ▤
+                        </span>
+                        <span className="deck-card-copy">
+                          <strong>{deck.name}</strong>
+                          <span>Archived · cards suspended</span>
+                        </span>
+                        <span className="deck-card-count">
+                          <strong>{deck.generatedCardCount}</strong>
+                          <small>{deck.generatedCardCount === 1 ? "card" : "cards"}</small>
+                        </span>
+                      </div>
+                      <div className="deck-card-actions">
+                        <button type="button" onClick={() => void handleArchiveDeck(deck, false)}>
+                          Unarchive
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isTransferring}
+                          onClick={() => void handleExport(deck)}
+                        >
+                          Export
+                        </button>
+                        <button
+                          type="button"
+                          className="danger-text"
+                          onClick={() => void handleDeleteDeck(deck)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
         </>
       ) : null}
 
@@ -731,32 +825,48 @@ export function DecksScreen({
 
           <section className="card-browser-panel">
             <div className="card-browser-toolbar">
-              <label className="search-field">
-                <span>Search this deck</span>
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.currentTarget.value)}
-                  placeholder="Search questions and answers"
-                />
-              </label>
+              {compact ? (
+                <button
+                  type="button"
+                  className="deck-search-trigger"
+                  aria-label="Search this deck"
+                  title={search ? `Search: ${search}` : "Search this deck"}
+                  onClick={() => setSearchDialogOpen(true)}
+                >
+                  <span aria-hidden="true">⌕</span>
+                  <span className="sr-only">Search this deck</span>
+                </button>
+              ) : (
+                <label className="search-field">
+                  <span>Search this deck</span>
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(event) => setSearch(event.currentTarget.value)}
+                    placeholder="Search questions and answers"
+                  />
+                </label>
+              )}
               <label>
                 <span>Sort</span>
                 <select
                   value={cardSort}
                   onChange={(event) =>
-                    setCardSort(event.currentTarget.value as "updated_desc" | "question_asc")
+                    setCardSort(
+                      event.currentTarget.value as
+                        | "created_desc"
+                        | "practiced_desc"
+                        | "practiced_asc",
+                    )
                   }
                 >
-                  <option value="updated_desc">Recently updated</option>
-                  <option value="question_asc">Question A–Z</option>
+                  <option value="created_desc">Time created</option>
+                  <option value="practiced_desc">Most recently practiced</option>
+                  <option value="practiced_asc">Least recently practiced</option>
                 </select>
               </label>
               <span className="card-count-summary">
-                {cardTotalCount} {cardTotalCount === 1 ? "source note" : "source notes"}
-                {` · ${selectedDeck.generatedCardCount} generated ${
-                  selectedDeck.generatedCardCount === 1 ? "card" : "cards"
-                }`}
+                {cardTotalCount} {cardTotalCount === 1 ? "Card" : "Cards"}
                 {selectedDeck.studyableDueCount > 0
                   ? ` · ${selectedDeck.studyableDueCount} ready now`
                   : ""}
@@ -804,7 +914,7 @@ export function DecksScreen({
                     >
                       <span className="card-number">{index + 1}</span>
                       <span className="card-row-side">
-                        <small>Question / source</small>
+                        <small>Question</small>
                         <strong>{summarize(card.questionExcerpt, card.imageCount > 0)}</strong>
                       </span>
                       <span className="card-row-divider" aria-hidden="true">
@@ -817,7 +927,9 @@ export function DecksScreen({
                     </button>
                     <div className="card-row-actions">
                       <span>
-                        {card.generatedCardCount} generated · {card.imageCount > 0
+                        {card.generatedCardCount}{" "}
+                        {card.generatedCardCount === 1 ? "card" : "card variants"} ·{" "}
+                        {card.imageCount > 0
                           ? `${card.imageCount} image${card.imageCount === 1 ? "" : "s"}`
                           : "Text"}
                       </span>
@@ -857,6 +969,42 @@ export function DecksScreen({
           onClose={() => setDeckDialog(null)}
           onSave={handleDeckSaved}
         />
+      ) : null}
+
+      {searchDialogOpen ? (
+        <Modal
+          title="Search this deck"
+          description={`Find cards in ${selectedDeck?.name ?? "this deck"}.`}
+          onClose={() => setSearchDialogOpen(false)}
+          width="small"
+        >
+          <div className="form-stack">
+            <label>
+              <span>Search questions and answers</span>
+              <input
+                data-autofocus="true"
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.currentTarget.value)}
+                placeholder="Enter a word or phrase"
+              />
+            </label>
+            <div className="modal-actions">
+              {search ? (
+                <button type="button" className="secondary-button" onClick={() => setSearch("")}>
+                  Clear
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => setSearchDialogOpen(false)}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </Modal>
       ) : null}
     </div>
   );
