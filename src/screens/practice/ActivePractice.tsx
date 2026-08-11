@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { RichTextView } from "../../editor/RichTextView";
 import {
@@ -57,9 +57,14 @@ export function ActivePractice({
 }: ActivePracticeProps) {
   const ratingPanelRef = useRef<HTMLElement | null>(null);
   const wasRevealed = useRef(revealed);
+  const [showingAnswer, setShowingAnswer] = useState(revealed);
   const busy = isRevealing || isRating || isEnding || isManaging;
   const { topId } = useOverlayContext();
   const experience = useExperience();
+
+  useEffect(() => {
+    setShowingAnswer(revealed);
+  }, [current.presentation.cardId, revealed]);
 
   useEffect(() => {
     if (revealed) ratingPanelRef.current?.focus();
@@ -91,6 +96,15 @@ export function ActivePractice({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [busy, onReveal, onScore, revealed, topId]);
+
+  function activateAnimatedCard(): void {
+    if (busy) return;
+    if (!revealed) {
+      onReveal();
+      return;
+    }
+    setShowingAnswer((currentSide) => !currentSide);
+  }
 
   return (
     <div className="screen practice-screen active-practice-screen">
@@ -161,38 +175,41 @@ export function ActivePractice({
       {flipAnimationEnabled ? (
         <section
           className="practice-card-surface practice-flip-card"
-          data-revealed={revealed}
-          role={revealed ? undefined : "button"}
-          tabIndex={revealed ? undefined : 0}
-          aria-label={revealed ? undefined : "Reveal answer"}
-          aria-disabled={!revealed && busy ? "true" : undefined}
+          data-flipped={showingAnswer}
+          role="button"
+          tabIndex={0}
+          aria-label={!revealed ? "Reveal answer" : showingAnswer ? "Show question" : "Show answer"}
+          aria-disabled={busy ? "true" : undefined}
           onClick={(event) => {
             const target = event.target;
             if (
-              !revealed &&
-              !busy &&
-              !(
-                target instanceof HTMLElement &&
-                target.closest("a, button, input, textarea, select")
-              )
+              target instanceof HTMLElement &&
+              target.closest("a, button, input, textarea, select")
             ) {
-              onReveal();
+              return;
             }
+            activateAnimatedCard();
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== " " && event.key !== "Enter") return;
+            event.preventDefault();
+            event.stopPropagation();
+            activateAnimatedCard();
           }}
         >
           <div className="practice-flip-inner">
-            <div className="practice-flip-face practice-flip-front" aria-hidden={revealed}>
+            <div className="practice-flip-face practice-flip-front" aria-hidden={showingAnswer}>
               <span className="practice-side-label">Question</span>
               <RichTextView
                 document={current.presentation.frontDoc}
                 assets={current.presentation.assets}
                 onLinkError={onLinkError}
               />
-              {!revealed ? (
+              {!showingAnswer ? (
                 <small className="practice-flip-hint">Click the card to flip it</small>
               ) : null}
             </div>
-            <div className="practice-flip-face practice-flip-back" aria-hidden={!revealed}>
+            <div className="practice-flip-face practice-flip-back" aria-hidden={!showingAnswer}>
               <span className="practice-side-label">Answer</span>
               <RichTextView
                 document={current.presentation.backDoc}
