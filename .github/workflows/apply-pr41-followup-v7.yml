@@ -6,6 +6,7 @@ on:
       - agent/ui-platform-overhaul
     paths:
       - .github/pr41-followup-v7.py
+      - .github/pr41-followup-v7-tests.py
       - .github/workflows/apply-pr41-followup-v7.yml
 
 permissions:
@@ -42,7 +43,9 @@ jobs:
           echo "OSTUDY_PDFIUM_PATH=$GITHUB_WORKSPACE/src-tauri/resources/native/pdfium/libpdfium.so" >> "$GITHUB_ENV"
 
       - name: Apply product changes
-        run: python3 .github/pr41-followup-v7.py
+        run: |
+          python3 .github/pr41-followup-v7.py
+          python3 .github/pr41-followup-v7-tests.py
 
       - name: Format Rust
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
@@ -56,7 +59,7 @@ jobs:
 
       - name: Focused practice and settings regressions
         run: |
-          pnpm vitest run src/App.test.tsx src/screens/DecksScreen.test.tsx src/screens/PracticeScreen.test.tsx src/screens/SettingsScreen.test.tsx src/screens/settings/DefaultAiModelSettings.test.tsx
+          pnpm vitest run src/App.test.tsx src/screens/DecksScreen.test.tsx src/screens/PracticeScreen.test.tsx src/screens/PracticeScreen.tagScope.test.tsx src/screens/SettingsScreen.test.tsx src/screens/settings/DefaultAiModelSettings.test.tsx
           pnpm exec tsc --noEmit
 
       - name: Fast qualification
@@ -67,7 +70,7 @@ jobs:
 
       - name: Publish clean product tree
         run: |
-          git rm -f .github/pr41-followup-v7.py .github/workflows/apply-pr41-followup-v7.yml
+          git rm -f .github/pr41-followup-v7.py .github/pr41-followup-v7-tests.py .github/workflows/apply-pr41-followup-v7.yml
           git config user.name "ostudy CI"
           git config user.email "actions@users.noreply.github.com"
           git add -A
