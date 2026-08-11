@@ -47,8 +47,7 @@
 }
 
 .sectionHeading p,
-.emptyDetail p,
-.plannedProviderGrid p {
+.emptyDetail p {
   margin: 0;
   color: var(--muted);
   line-height: 1.5;
@@ -553,8 +552,7 @@
   white-space: nowrap;
 }
 
-.capabilityGrid,
-.plannedProviderGrid {
+.capabilityGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
@@ -650,17 +648,6 @@
   grid-column: 1 / -1;
 }
 
-.plannedProviderGrid article {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px;
-  background: var(--surface-strong);
-}
-
-.plannedProviderGrid p {
-  margin-top: 5px;
-  font-size: 0.84rem;
-}
 
 @media (max-width: 980px) {
   .themeGrid {
@@ -673,7 +660,6 @@
 
   .formGrid,
   .capabilityGrid,
-  .plannedProviderGrid,
   .probeDiagnostics dl {
     grid-template-columns: 1fr;
   }
@@ -723,8 +709,7 @@
   .dailyLimitGrid,
   .formGrid,
   .themeGrid,
-  .capabilityGrid,
-  .plannedProviderGrid {
+  .capabilityGrid {
     grid-template-columns: 1fr;
   }
 

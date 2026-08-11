@@ -9,6 +9,7 @@ mod extended_tests {
             card_font: "system".to_string(),
             ui_scale: 100,
             card_base_size: 18,
+            animations_enabled: true,
             reduce_motion: false,
             confirm_deletions: true,
             practice_shuffle: true,
@@ -27,6 +28,7 @@ mod extended_tests {
             card_font: "serif".to_string(),
             ui_scale: 135,
             card_base_size: 30,
+            animations_enabled: false,
             reduce_motion: true,
             confirm_deletions: false,
             practice_shuffle: false,
@@ -47,6 +49,7 @@ mod extended_tests {
         assert_eq!(loaded.card_font, expected.card_font);
         assert_eq!(loaded.ui_scale, expected.ui_scale);
         assert_eq!(loaded.card_base_size, expected.card_base_size);
+        assert_eq!(loaded.animations_enabled, expected.animations_enabled);
         assert_eq!(loaded.reduce_motion, expected.reduce_motion);
         assert_eq!(loaded.confirm_deletions, expected.confirm_deletions);
         assert_eq!(loaded.practice_shuffle, expected.practice_shuffle);
@@ -93,6 +96,7 @@ mod extended_tests {
             "cardFont": "system",
             "uiScale": 100,
             "cardBaseSize": 18,
+            "animationsEnabled": true,
             "reduceMotion": false,
             "confirmDeletions": true,
             "practiceShuffle": true,

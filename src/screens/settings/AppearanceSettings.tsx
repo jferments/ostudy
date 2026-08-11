@@ -52,7 +52,21 @@ export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
           onChange={(cardBaseSize) => update({ cardBaseSize })}
         />
         <label className={styles.switchRow}>
-          <span><strong>Reduce motion</strong><small>Minimize nonessential transitions and effects.</small></span>
+          <span>
+            <strong>Animations and transitions</strong>
+            <small>Enable card flips and other nonessential motion effects.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={draft.animationsEnabled}
+            onChange={(event) => update({ animationsEnabled: event.currentTarget.checked })}
+          />
+        </label>
+        <label className={styles.switchRow}>
+          <span>
+            <strong>Reduce motion</strong>
+            <small>Minimize motion even when animations are enabled.</small>
+          </span>
           <input
             type="checkbox"
             checked={draft.reduceMotion}

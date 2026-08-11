@@ -38,25 +38,19 @@ describe("NavigationSidebar", () => {
     renderNavigation(false);
 
     const navigation = screen.getByRole("navigation", { name: "Main navigation" });
-    for (const label of [
-      "Decks",
-      "Documents",
-      "Search/Filter",
-      "Templates",
-      "Practice",
-      "Analytics",
-      "Settings",
-    ]) {
+    for (const label of ["Decks", "Documents", "Practice", "Analytics", "Settings"]) {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     }
     expect(navigation).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Search/Filter" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Templates" })).toBeNull();
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
   });
 
   it("preserves the established compact priorities and exposes Documents through More", async () => {
     const onNavigate = renderNavigation(true);
 
-    for (const label of ["Decks", "Search", "Practice", "Analytics", "More"]) {
+    for (const label of ["Decks", "Practice", "Analytics", "More"]) {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     }
     expect(screen.queryByRole("button", { name: "Documents" })).toBeNull();

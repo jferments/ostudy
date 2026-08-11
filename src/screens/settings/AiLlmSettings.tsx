@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
 import type {
@@ -24,9 +24,6 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
   const confirm = useConfirm();
   const availableProviders = controller.catalog.filter(
     (provider) => provider.implementationStatus === "available",
-  );
-  const plannedProviders = controller.catalog.filter(
-    (provider) => provider.implementationStatus === "planned",
   );
   const profileDirty = hasProfileChanges(
     controller.draft,
@@ -94,22 +91,24 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
         <aside className={styles.aiSidebar} aria-label="AI provider profiles">
         <div className={styles.sectionHeading}>
           <div>
-            <h2>Provider profiles</h2>
+            <h2>AI provider profiles</h2>
             <p>One profile represents one trusted endpoint, model, and credential boundary.</p>
           </div>
         </div>
         <div className={styles.addProviderGrid}>
-          {availableProviders.map((provider) => (
-            <button
-              key={provider.providerKind}
-              type="button"
-              className="secondary-button"
-              disabled={controller.mutating}
-              onClick={() => void beginCreate(provider.providerKind)}
-            >
-              Add {provider.providerKind === "llama_cpp" ? "llama.cpp" : provider.displayName}
-            </button>
-          ))}
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={controller.mutating || availableProviders.length === 0}
+            onClick={() => {
+              const preferred =
+                availableProviders.find((provider) => provider.providerKind === "llama_cpp") ??
+                availableProviders[0];
+              if (preferred) void beginCreate(preferred.providerKind);
+            }}
+          >
+            New profile
+          </button>
         </div>
         {controller.loading ? <div className="inline-progress">Loading AI profiles…</div> : null}
         <div className={styles.profileList}>
@@ -147,6 +146,7 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
             <ProfileEditor
               controller={controller}
               providerSettingsDirty={providerSettingsDirty}
+              onProviderChange={controller.beginCreate}
               onDelete={() => void deleteProfile()}
             />
             {controller.selectedProfile ? (
@@ -175,45 +175,6 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
             </p>
           </section>
         )}
-
-        <section className={styles.settingsCard}>
-          <h2>Default task profile</h2>
-          <label className={styles.stackedField}>
-            <span>Flashcard generation</span>
-            <select
-              value={controller.defaults.flashcardGenerationProfileId ?? ""}
-              disabled={controller.mutating}
-              onChange={(event) =>
-                void controller.setFlashcardDefault(event.currentTarget.value || null)
-              }
-            >
-              <option value="">Choose each time</option>
-              {controller.profiles
-                .filter((profile) => profile.configurationStatus !== "planned")
-                .map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.displayName}
-                    {profile.configurationStatus === "ready" ? "" : " — incomplete"}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <p className={styles.securityNote}>
-            There is no automatic fallback. A failed local profile will never silently send study material to a cloud provider.
-          </p>
-        </section>
-
-        <section className={styles.settingsCard}>
-          <h2>Planned providers</h2>
-          <div className={styles.plannedProviderGrid}>
-            {plannedProviders.map((provider) => (
-              <article key={provider.providerKind}>
-                <strong>{provider.displayName}</strong>
-                <p>{provider.description}</p>
-              </article>
-            ))}
-          </div>
-        </section>
       </main>
     </div>
   );
@@ -222,10 +183,12 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
 function ProfileEditor({
   controller,
   providerSettingsDirty,
+  onProviderChange,
   onDelete,
 }: {
   controller: AiProfilesController;
   providerSettingsDirty: boolean;
+  onProviderChange: (providerKind: AiProviderKind) => void;
   onDelete: () => void;
 }) {
   const draft = controller.draft;
@@ -260,7 +223,20 @@ function ProfileEditor({
         </label>
         <label className={styles.stackedField}>
           <span>Provider</span>
-          <input value={provider?.displayName ?? draft.providerKind} readOnly />
+          <select
+            aria-label="Provider type"
+            value={draft.providerKind}
+            disabled={saved !== null || controller.mutating}
+            onChange={(event) => onProviderChange(event.currentTarget.value as AiProviderKind)}
+          >
+            {controller.catalog
+              .filter((entry) => entry.implementationStatus === "available")
+              .map((entry) => (
+                <option key={entry.providerKind} value={entry.providerKind}>
+                  {entry.displayName}
+                </option>
+              ))}
+          </select>
         </label>
         <label className={`${styles.stackedField} ${styles.fullWidth}`}>
           <span>Base URL</span>
@@ -335,15 +311,11 @@ function ProfileEditor({
         ) : null}
       </div>
 
-      {isLlama ? (
-        <p className={styles.securityNote}>
-          llama.cpp applies the chat template embedded with the loaded model. For an Unsloth-exported GGUF, serve the model with its matching template; ostudy does not replace it with a hand-written template.
-        </p>
-      ) : (
+      {!isLlama ? (
         <p className={styles.cloudNotice}>
-          DeepSeek is a cloud provider. ostudy uses DeepSeek's fixed official API endpoint; the credential is entered only after this profile has a saved identity.
+          DeepSeek is a cloud provider. ostudy uses DeepSeek's fixed official API endpoint.
         </p>
-      )}
+      ) : null}
 
       <div className={styles.actionRow}>
         <button
@@ -375,6 +347,7 @@ function ProfileEditor({
 }
 
 function CredentialPanel({ controller }: { controller: AiProfilesController }) {
+  const [credentialVisible, setCredentialVisible] = useState(false);
   const profile = controller.selectedProfile;
   if (!profile) return null;
   if (profile.authMode === "none") {
@@ -403,13 +376,40 @@ function CredentialPanel({ controller }: { controller: AiProfilesController }) {
       </div>
       <label className={styles.stackedField}>
         <span>{hasCredential ? "Replacement credential" : "API credential"}</span>
-        <input
-          type="password"
-          autoComplete="off"
-          value={controller.credentialDraft}
-          placeholder={hasCredential ? "Enter a replacement" : "Credential is never readable after saving"}
-          onChange={(event) => controller.setCredentialDraft(event.currentTarget.value)}
-        />
+        <span className={aiStyles.credentialField}>
+          <input
+            type={credentialVisible ? "text" : "password"}
+            autoComplete="off"
+            value={controller.credentialDraft}
+            placeholder={
+              hasCredential ? "Enter a replacement" : "Credential is never readable after saving"
+            }
+            onChange={(event) => controller.setCredentialDraft(event.currentTarget.value)}
+          />
+          <button
+            type="button"
+            className={aiStyles.credentialVisibility}
+            aria-label={credentialVisible ? "Hide API credential" : "Show API credential"}
+            aria-pressed={credentialVisible}
+            onClick={() => setCredentialVisible((current) => !current)}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              {credentialVisible ? (
+                <>
+                  <path d="M3 3l18 18" />
+                  <path d="M10.6 10.6a2 2 0 002.8 2.8" />
+                  <path d="M9.9 4.3A10.7 10.7 0 0112 4c5 0 8.7 4.1 9.7 5.4a1 1 0 010 1.2 17.8 17.8 0 01-3.1 3.3" />
+                  <path d="M6.2 6.2A18.4 18.4 0 002.3 9.4a1 1 0 000 1.2C3.3 11.9 7 16 12 16c1 0 2-.2 2.9-.5" />
+                </>
+              ) : (
+                <>
+                  <path d="M2.3 9.4C3.3 8.1 7 4 12 4s8.7 4.1 9.7 5.4a1 1 0 010 1.2C20.7 11.9 17 16 12 16s-8.7-4.1-9.7-5.4a1 1 0 010-1.2z" />
+                  <path d="M12 13a3 3 0 100-6 3 3 0 000 6z" />
+                </>
+              )}
+            </svg>
+          </button>
+        </span>
       </label>
       <fieldset className={styles.persistenceOptions}>
         <legend>Storage</legend>
@@ -436,9 +436,6 @@ function CredentialPanel({ controller }: { controller: AiProfilesController }) {
           Use only until ostudy closes
         </label>
       </fieldset>
-      <p className={styles.securityNote}>
-        The credential never enters SQLite, React state after submission, diagnostics, `.studydeck` files, or `.ostudybackup` archives. After the credential is saved, ostudy automatically requests the provider's model list.
-      </p>
       <div className={styles.actionRow}>
         <button
           type="button"
@@ -542,11 +539,6 @@ function ModelSelectionPanel({
           <p className={styles.note}>
             {controller.models.length} model{controller.models.length === 1 ? "" : "s"} returned by the provider.
           </p>
-          {profile.providerKind === "llama_cpp" ? (
-            <p className={styles.note}>
-              llama.cpp normally reports the loaded GGUF file path as its model ID unless the server was started with <code>--alias</code>. The API-reported ID is the correct routing value for ostudy.
-            </p>
-          ) : null}
           <div className={styles.actionRow}>
             <button
               type="button"

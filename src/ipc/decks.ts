@@ -36,7 +36,7 @@ export interface SetDeckArchivedInput {
 export interface DeckCardSummaryQuery {
   deckId: string;
   query: string;
-  sort: "updated_desc" | "question_asc";
+  sort: "created_desc" | "practiced_desc" | "practiced_asc";
   limit: number;
   offset: number;
 }
@@ -48,6 +48,7 @@ export interface DeckCardSummary {
   answerExcerpt: string;
   generatedCardCount: number;
   imageCount: number;
+  reversible: boolean;
   updatedAt: number;
 }
 

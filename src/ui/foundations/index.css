@@ -13,6 +13,7 @@
 @import "../../styles/features/scheduling.css" layer(features);
 @import "../../styles/features/analytics.css" layer(features);
 @import "../../styles/features/assets.css" layer(features);
+@import "../../styles/features/ui-overhaul.css" layer(features);
 
 @layer tokens {
   :root {
@@ -30,6 +31,10 @@
     --radius-large: 18px;
     --on-accent: #ffffff;
     --on-danger: #ffffff;
+    --confidence-wrong: #b4233b;
+    --confidence-hard: #c45d16;
+    --confidence-medium: #d8a000;
+    --confidence-easy: #197a46;
     --overlay-scrim: rgb(0 0 0 / 64%);
     --elevation-panel: var(--card-shadow);
     --elevation-overlay: var(--shadow);
@@ -75,6 +80,19 @@
     touch-action: manipulation;
   }
 
+  /* Native selects size themselves from their longest option unless explicitly
+     allowed to shrink. Keep all form controls bounded by their layout cell so
+     long deck/model names cannot overlap adjacent grid or flex content. */
+  input,
+  select,
+  textarea {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  :root[data-animations-enabled="false"] *,
+  :root[data-animations-enabled="false"] *::before,
+  :root[data-animations-enabled="false"] *::after,
   :root[data-reduce-motion="true"] *,
   :root[data-reduce-motion="true"] *::before,
   :root[data-reduce-motion="true"] *::after {
@@ -112,6 +130,17 @@
       min-width: var(--touch-target-min);
       min-height: var(--touch-target-min);
     }
+  }
+}
+
+@layer features {
+  /* The Bulk Add destination selector must fill only its own grid track. The
+     generic min/max bounds above prevent intrinsic option width from escaping;
+     width: 100% makes the intended two-column geometry explicit. */
+  .bulk-entry-controls > label > select {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
   }
 }
 

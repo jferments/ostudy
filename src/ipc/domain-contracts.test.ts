@@ -168,7 +168,7 @@ describe("typed Tauri IPC wrappers", () => {
     const page = {
       deckId,
       query: "warfarin",
-      sort: "updated_desc" as const,
+      sort: "created_desc" as const,
       limit: 50,
       offset: 0,
     };

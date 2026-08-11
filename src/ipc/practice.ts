@@ -69,6 +69,19 @@ export interface PracticeCardWindowInput {
   limit: number;
 }
 
+export interface RefreshPracticeAfterCardEditInput {
+  sessionId: string;
+  noteId: string;
+  startPosition: number;
+}
+
+export interface PracticeEditRefresh {
+  cardCount: number;
+  startPosition: number;
+  completed: boolean;
+  window: PracticeCardWindow;
+}
+
 export interface IntervalPreview {
   outcome: ReviewOutcome;
   dueAt: number;
@@ -122,6 +135,12 @@ export async function getPracticeCardWindow(
   input: PracticeCardWindowInput,
 ): Promise<PracticeCardWindow> {
   return invoke<PracticeCardWindow>("get_practice_card_window", { input });
+}
+
+export async function refreshPracticeAfterCardEdit(
+  input: RefreshPracticeAfterCardEditInput,
+): Promise<PracticeEditRefresh> {
+  return invoke<PracticeEditRefresh>("refresh_practice_after_card_edit", { input });
 }
 
 export async function markPracticeCardViewed(sessionId: string, cardId: string): Promise<void> {

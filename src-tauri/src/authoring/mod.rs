@@ -369,7 +369,7 @@ fn validate_search_input(input: &SearchCardsInput) -> Result<(), CommandError> {
     }
     if !matches!(
         input.sort.as_str(),
-        "relevance" | "updated_desc" | "question_asc" | "due_asc" | "last_reviewed_desc"
+        "relevance" | "updated_desc" | "due_asc" | "last_reviewed_desc"
     ) {
         return Err(CommandError::new(
             "invalid_card_sort",
@@ -496,9 +496,6 @@ fn build_search_sql(
     let order_sql = match input.sort.as_str() {
         "relevance" if fts_query_is_present(&input.query) => {
             "bm25(card_search_fts) ASC, n.updated_at DESC, c.template_ordinal ASC"
-        }
-        "question_asc" => {
-            "CASE WHEN n.note_type = 'basic' AND c.direction = 'reverse' THEN n.back_text ELSE n.front_text END COLLATE NOCASE ASC, n.updated_at DESC, c.template_ordinal ASC"
         }
         "due_asc" => "s.due_at ASC, n.updated_at DESC, c.template_ordinal ASC",
         "last_reviewed_desc" => {

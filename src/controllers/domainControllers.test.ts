@@ -131,7 +131,7 @@ describe("domain controllers ignore obsolete read completions", () => {
       .mockReturnValueOnce(newer.promise);
     const base = {
       deckId: "d".repeat(32),
-      sort: "updated_desc" as const,
+      sort: "created_desc" as const,
       limit: 50,
       offset: 0,
     };

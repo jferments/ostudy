@@ -8,6 +8,8 @@ import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 
 interface AnalyticsFiltersProps {
   range: AnalyticsRange;
+  customStartLocalDate: string;
+  customEndLocalDate: string;
   selectedDeckIds: Set<string>;
   selectedTagIds: Set<string>;
   highlightedSessionId?: string;
@@ -15,6 +17,8 @@ interface AnalyticsFiltersProps {
   tagOptions: AnalyticsTagOption[];
   decks: DeckSummary[];
   onRangeChange: (range: AnalyticsRange) => void;
+  onCustomStartLocalDateChange: (value: string) => void;
+  onCustomEndLocalDateChange: (value: string) => void;
   onDeckIdsChange: (next: Set<string>) => void;
   onTagIdsChange: (next: Set<string>) => void;
   onClearHighlightedSession: () => void;
@@ -27,11 +31,14 @@ const RANGE_OPTIONS: ReadonlyArray<{ value: AnalyticsRange; label: string }> = [
   { value: "90d", label: "90 days" },
   { value: "1y", label: "1 year" },
   { value: "all", label: "All time" },
+  { value: "custom", label: "Custom" },
 ];
 
 /** Pure analytics range/scope controls. Native reads and stale-response policy live in the controller. */
 export function AnalyticsFilters({
   range,
+  customStartLocalDate,
+  customEndLocalDate,
   selectedDeckIds,
   selectedTagIds,
   highlightedSessionId,
@@ -39,6 +46,8 @@ export function AnalyticsFilters({
   tagOptions,
   decks,
   onRangeChange,
+  onCustomStartLocalDateChange,
+  onCustomEndLocalDateChange,
   onDeckIdsChange,
   onTagIdsChange,
   onClearHighlightedSession,
@@ -68,6 +77,30 @@ export function AnalyticsFilters({
           onClearHighlightedSession();
         }}
       />
+
+      {range === "custom" ? (
+        <div className="analytics-custom-range" aria-label="Custom analytics date range">
+          <label>
+            <span>Start date</span>
+            <input
+              type="date"
+              value={customStartLocalDate}
+              max={customEndLocalDate}
+              onChange={(event) => onCustomStartLocalDateChange(event.currentTarget.value)}
+            />
+          </label>
+          <label>
+            <span>End date</span>
+            <input
+              type="date"
+              value={customEndLocalDate}
+              min={customStartLocalDate}
+              max={localToday()}
+              onChange={(event) => onCustomEndLocalDateChange(event.currentTarget.value)}
+            />
+          </label>
+        </div>
+      ) : null}
 
       <details className="analytics-scope-details">
         <summary>
@@ -186,4 +219,12 @@ function FilterChecklist({
       )}
     </fieldset>
   );
+}
+
+function localToday(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return year + "-" + month + "-" + day;
 }

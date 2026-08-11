@@ -21,12 +21,24 @@ export type AppSection =
   | "analytics"
   | "settings";
 
+export interface PracticeReturnTarget {
+  section: Exclude<AppSection, "practice">;
+  deckId?: string;
+}
+
+export interface DeckOpenRequest {
+  requestId: number;
+  deckId: string;
+}
+
 export interface PracticeLaunchRequest {
   requestId: number;
   deckIds: string[];
   tagIds: string[];
   cardIds: string[];
   autoStart: boolean;
+  mode: "scheduled" | "extra";
+  returnTarget: PracticeReturnTarget | null;
 }
 
 export interface AnalyticsLaunchRequest {
@@ -43,6 +55,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cardFont: "system",
   uiScale: 100,
   cardBaseSize: 18,
+  animationsEnabled: true,
   reduceMotion: false,
   confirmDeletions: true,
   practiceShuffle: true,
@@ -62,6 +75,8 @@ export function useAppController() {
   const toastSequence = useRef(1);
   const [practiceLaunch, setPracticeLaunch] = useState<PracticeLaunchRequest | null>(null);
   const practiceRequestSequence = useRef(1);
+  const [deckOpenRequest, setDeckOpenRequest] = useState<DeckOpenRequest | null>(null);
+  const deckOpenRequestSequence = useRef(1);
   const [analyticsLaunch, setAnalyticsLaunch] = useState<AnalyticsLaunchRequest | null>(null);
   const analyticsRequestSequence = useRef(1);
   const [hasUnsavedCard, setHasUnsavedCard] = useState(false);
@@ -84,6 +99,7 @@ export function useAppController() {
   }, [deckRefreshLane]);
 
   const consumePracticeLaunch = useCallback(() => setPracticeLaunch(null), []);
+  const consumeDeckOpenRequest = useCallback(() => setDeckOpenRequest(null), []);
   const consumeAnalyticsLaunch = useCallback(() => setAnalyticsLaunch(null), []);
 
   useEffect(() => {
@@ -188,17 +204,19 @@ export function useAppController() {
     tagIds: string[],
     cardIds: string[],
     autoStart: boolean,
+    mode: "scheduled" | "extra",
+    returnTarget: PracticeReturnTarget | null,
   ): void {
     const requestId = practiceRequestSequence.current;
     practiceRequestSequence.current += 1;
-    setPracticeLaunch({ requestId, deckIds, tagIds, cardIds, autoStart });
+    setPracticeLaunch({ requestId, deckIds, tagIds, cardIds, autoStart, mode, returnTarget });
   }
 
   async function navigate(next: AppSection): Promise<void> {
     if (next === section && next !== "practice") return;
     if (!(await confirmPracticeTermination(next))) return;
     if (!(await canLeaveCurrentSection())) return;
-    if (next === "practice") nextPracticeRequest([], [], [], false);
+    if (next === "practice") nextPracticeRequest([], [], [], false, "scheduled", null);
     if (next === "analytics") {
       const requestId = analyticsRequestSequence.current;
       analyticsRequestSequence.current += 1;
@@ -210,20 +228,48 @@ export function useAppController() {
     setSection(next);
   }
 
-  async function practiceDeck(deckId: string): Promise<void> {
-    await practiceScope([deckId], []);
+  async function practiceDeck(
+    deckId: string,
+    origin: "library" | "detail" = "library",
+  ): Promise<void> {
+    if (!(await canLeaveCurrentSection())) return;
+    nextPracticeRequest(
+      [deckId],
+      [],
+      [],
+      true,
+      "extra",
+      origin === "detail" ? { section: "decks", deckId } : { section: "decks" },
+    );
+    setSection("practice");
   }
 
   async function practiceScope(deckIds: string[], tagIds: string[]): Promise<void> {
     if (!(await canLeaveCurrentSection())) return;
-    nextPracticeRequest(deckIds, tagIds, [], true);
+    const returnTarget: PracticeReturnTarget | null =
+      section === "practice" ? null : { section };
+    nextPracticeRequest(deckIds, tagIds, [], true, "scheduled", returnTarget);
     setSection("practice");
   }
 
   async function practiceCards(cardIds: string[]): Promise<void> {
     if (cardIds.length === 0 || !(await canLeaveCurrentSection())) return;
-    nextPracticeRequest([], [], cardIds, true);
+    const returnTarget: PracticeReturnTarget | null =
+      section === "practice" ? null : { section };
+    nextPracticeRequest([], [], cardIds, true, "scheduled", returnTarget);
     setSection("practice");
+  }
+
+  function returnFromPractice(target: PracticeReturnTarget): void {
+    if (target.section === "decks" && target.deckId) {
+      const requestId = deckOpenRequestSequence.current;
+      deckOpenRequestSequence.current += 1;
+      setDeckOpenRequest({ requestId, deckId: target.deckId });
+    }
+    if (target.section === "decks" || target.section === "cards") {
+      void refreshDecks().catch((error: unknown) => showToast("error", getErrorMessage(error)));
+    }
+    setSection(target.section);
   }
 
   function viewSessionAnalytics(sessionId: string, deckIds: string[]): void {
@@ -256,15 +302,18 @@ export function useAppController() {
     toast,
     setToast,
     practiceLaunch,
+    deckOpenRequest,
     analyticsLaunch,
     showToast,
     refreshDecks,
     consumePracticeLaunch,
+    consumeDeckOpenRequest,
     consumeAnalyticsLaunch,
     navigate,
     practiceDeck,
     practiceScope,
     practiceCards,
+    returnFromPractice,
     viewSessionAnalytics,
     setHasUnsavedCard,
     setHasUnsavedTemplate,

@@ -250,7 +250,8 @@ async fn generate_more_impl(
         generated.len(),
     )?;
     ensure_exact_append_destination(database.inner(), &context.deck_id, &context.deck_name)?;
-    let payload = build_append_payload(&context.deck_name, &context.source_format, generated)?;
+    let payload = build_append_payload(&context.deck_name, generated)?;
+    let (api_token_count, api_token_usage_complete) = task.usage_summary();
     let result = import_generated_flashcards_bytes_with_commit(
         database.inner(),
         payload.as_bytes(),
@@ -269,12 +270,23 @@ async fn generate_more_impl(
                          generated_card_count = generated_card_count + ?2,
                          generation_completed_window_count = generation_window_count,
                          safe_error_code = '', safe_error_message = '',
+                         processing_duration_ms = CASE
+                             WHEN processing_started_at IS NULL THEN NULL
+                             ELSE MAX(0, ?3 - processing_started_at)
+                         END,
+                         api_token_count = ?4, api_token_usage_complete = ?5,
                          updated_at = ?3, completed_at = ?3, revision = revision + 1
-                     WHERE id = ?4 AND generated_deck_id = ?5 AND lifecycle_state = 'processing'",
+                     WHERE id = ?6 AND generated_deck_id = ?7 AND lifecycle_state = 'processing'",
                     params![
                         import_result.created_note_count,
                         import_result.created_card_count,
                         now,
+                        api_token_count,
+                        if api_token_usage_complete {
+                            1_i64
+                        } else {
+                            0_i64
+                        },
                         input.document_id,
                         context.deck_id,
                     ],
@@ -530,6 +542,10 @@ fn record_additional_failure(database: &Database, document_id: &str, code: &str,
                          ELSE 'failed'
                      END,
                      safe_error_code = ?1, safe_error_message = ?2,
+                     processing_duration_ms = CASE
+                         WHEN processing_started_at IS NULL THEN processing_duration_ms
+                         ELSE MAX(0, ?3 - processing_started_at)
+                     END,
                      updated_at = ?3, revision = revision + 1
                  WHERE id = ?4",
                 params![bounded(code, 80), bounded(message, 1000), now, document_id],
@@ -588,11 +604,7 @@ fn ensure_exact_append_destination(
     })
 }
 
-fn build_append_payload(
-    deck_name: &str,
-    source_format: &str,
-    cards: Vec<Value>,
-) -> Result<String, CommandError> {
+fn build_append_payload(deck_name: &str, cards: Vec<Value>) -> Result<String, CommandError> {
     serde_json::to_string(&serde_json::json!({
         "format": "ostudy-flashcards",
         "formatVersion": 1,
@@ -600,7 +612,7 @@ fn build_append_payload(
             "mode": "append",
             "name": deck_name
         },
-        "defaultTags": ["AI generated", source_format.to_ascii_uppercase()],
+        "defaultTags": [],
         "cards": cards
     }))
     .map_err(CommandError::serialization)
@@ -647,13 +659,21 @@ mod tests {
     }
 
     #[test]
-    fn append_payload_uses_format_neutral_source_tag_input() {
+    fn append_payload_keeps_only_card_subject_tags() {
         let payload = build_append_payload(
             "Physiology",
-            "pdf",
-            vec![serde_json::json!({"type":"basic","front":"Q","back":"A","tags":[]})],
+            vec![serde_json::json!({
+                "type": "basic",
+                "front": "Q",
+                "back": "A",
+                "tags": ["Cardiology"]
+            })],
         )
         .unwrap();
-        assert!(payload.contains("\"PDF\""));
+        let value: Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(value["defaultTags"], serde_json::json!([]));
+        assert_eq!(value["cards"][0]["tags"], serde_json::json!(["Cardiology"]));
+        assert!(!payload.contains("AI generated"));
+        assert!(!payload.contains("\"PDF\""));
     }
 }

@@ -336,6 +336,18 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                       <dd>{document.generatedCardCount}</dd>
                     </div>
                     <div>
+                      <dt>Processing</dt>
+                      <dd>
+                        {document.lifecycleState === "processing"
+                          ? "In progress"
+                          : formatProcessingDuration(document.processingDurationMs)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>API tokens</dt>
+                      <dd>{formatApiTokens(document)}</dd>
+                    </div>
+                    <div>
                       <dt>Updated</dt>
                       <dd>{formatDate(document.updatedAt)}</dd>
                     </div>
@@ -343,28 +355,9 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                   {document.safeErrorMessage ? (
                     <p className={styles.documentError}>{document.safeErrorMessage}</p>
                   ) : null}
-                  {hasCompletedOcrRecovery(document) ? (
-                    <p className={styles.extractionWarning} role="status">
-                      Native PDF text was unreliable on {document.ocrPageCount} page
-                      {document.ocrPageCount === 1 ? "" : "s"}, so ostudy recovered those pages
-                      with OCR. OCR can introduce recognition errors; review generated cards
-                      against the source PDF.
-                      {document.ocrMeanConfidence !== null
-                        ? ` Mean OCR confidence: ${Math.round(document.ocrMeanConfidence * 100)}%.`
-                        : ""}
-                    </p>
-                  ) : document.extractionMode === "page_text_fallback" ? (
-                    <p className={styles.extractionWarning} role="status">
-                      Structured PDF extraction was degraded, so ostudy rebuilt affected semantic
-                      content from the readable page text layer.
-                    </p>
-                  ) : null}
-                  {document.generatedDeckId ? (
-                    <p className={styles.deckNote}>
-                      The generated deck is available in Decks and uses the normal editing,
-                      scheduling, archive, and deletion tools.
-                    </p>
-                  ) : document.generatedCardCount > 0 && document.lifecycleState === "ready" ? (
+                  {!document.generatedDeckId &&
+                  document.generatedCardCount > 0 &&
+                  document.lifecycleState === "ready" ? (
                     <p className={styles.deckNote}>
                       The previous generated deck was deleted. Retry generation to create a new
                       deck from the retained PDF.
@@ -507,6 +500,21 @@ function formatBytes(bytes: number): string {
     unit = units[index];
   }
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
+}
+
+function formatProcessingDuration(value: number | null): string {
+  if (value === null) return "Not recorded";
+  if (value < 1_000) return "<1 sec";
+  if (value < 60_000) return Math.round(value / 1_000) + " sec";
+  if (value < 3_600_000) return (value / 60_000).toFixed(value < 600_000 ? 1 : 0) + " min";
+  return (value / 3_600_000).toFixed(1) + " hr";
+}
+
+function formatApiTokens(document: DocumentSummary): string {
+  if (document.lifecycleState === "processing") return "In progress";
+  if (document.apiTokenCount === null) return "Not reported by provider";
+  const formatted = document.apiTokenCount.toLocaleString();
+  return document.apiTokenUsageComplete ? formatted : formatted + "+ reported";
 }
 
 function formatDate(timestamp: number): string {

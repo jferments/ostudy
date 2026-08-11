@@ -64,6 +64,9 @@ function makeDocument(
     completedAt: 1_700_000_000_000,
     archivedAt: null,
     revision: 2,
+    processingDurationMs: 12_345,
+    apiTokenCount: 45_678,
+    apiTokenUsageComplete: true,
     ...overrides,
   };
 }
@@ -121,10 +124,12 @@ describe("DocumentsScreen", () => {
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
     expect(await screen.findByRole("heading", { name: "Cardiac physiology" })).toBeTruthy();
-    expect(screen.getByText(/normal editing, scheduling, archive, and deletion tools/u)).toBeTruthy();
+    expect(screen.queryByText(/normal editing, scheduling, archive, and deletion tools/u)).toBeNull();
+    expect(screen.getByText("12 sec")).toBeTruthy();
+    expect(screen.getByText("45,678")).toBeTruthy();
   });
 
-  it("warns persistently when OCR recovered an unreliable PDF text layer", async () => {
+  it("keeps completed OCR recovery out of permanent document-list copy", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([
       makeDocument({
         extractionMode: "ocr_fallback",
@@ -136,9 +141,9 @@ describe("DocumentsScreen", () => {
     ]);
     renderDocuments();
 
-    expect(await screen.findByText(/Native PDF text was unreliable on 18 pages/u)).toBeTruthy();
-    expect(screen.getByText(/Mean OCR confidence: 91%/u)).toBeTruthy();
-    expect(screen.getByText(/OCR can introduce recognition errors/u)).toBeTruthy();
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    expect(screen.queryByText(/Native PDF text was unreliable/u)).toBeNull();
+    expect(screen.queryByText(/Mean OCR confidence/u)).toBeNull();
   });
 
   it("shows live OCR recovery progress after normal rendering completes", async () => {
@@ -203,7 +208,7 @@ describe("DocumentsScreen", () => {
     ]);
     renderDocuments();
 
-    expect(await screen.findByText("Processing")).toBeTruthy();
+    expect((await screen.findAllByText("Processing")).length).toBeGreaterThan(0);
     expect(screen.getByText("Extracting text")).toBeTruthy();
   });
 

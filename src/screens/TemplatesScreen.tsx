@@ -20,6 +20,7 @@ import { useConfirm } from "../ui/overlays/overlayContext";
 import { TemplateLayoutEditor } from "./templates/TemplateLayoutEditor";
 
 interface TemplatesScreenProps {
+  onBack?: () => void | Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
 }
@@ -46,7 +47,7 @@ interface TemplateDraft {
   assets: Asset[];
 }
 
-export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenProps) {
+export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesScreenProps) {
   const [templates, setTemplates] = useState<CardTemplateSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOpening, setIsOpening] = useState(false);
@@ -544,6 +545,11 @@ export function TemplatesScreen({ onDirtyChange, showToast }: TemplatesScreenPro
     <div className="screen templates-screen">
       <header className="screen-header compact-screen-header">
         <div>
+          {onBack ? (
+            <button type="button" className="back-button" onClick={() => void onBack()}>
+              ← Decks
+            </button>
+          ) : null}
           <h1>Templates</h1>
           <p>Build reusable rich entry forms that generate permanent Basic cards.</p>
         </div>

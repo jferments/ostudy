@@ -49,10 +49,23 @@ fn structured_extraction_and_pdfium_rendering_process_a_real_fixture() {
     assert!(extracted.chunks[0].page_numbers.contains(&1));
     assert_eq!(
         pdf_backend::active_backend_id(),
-        "oxidize-pdf-4.2.2-rag-quality-ocr-v1"
+        "oxidize-pdf-4.2.2-rag-native-first-ocr-v6"
     );
 
     let runtime = PdfRenderRuntime::new(None).expect("provisioned PDFium should initialize");
+    let pdfium_text = pdf_render_backend::extract_native_text_pages(&runtime, &source, &[1])
+        .expect("PDFium should expose native text before OCR is considered");
+    assert_eq!(pdfium_text.len(), 1);
+    assert_eq!(pdfium_text[0].0, 1);
+    assert!(
+        pdfium_text[0]
+            .1
+            .chars()
+            .filter(|character| character.is_alphabetic())
+            .count()
+            >= 10
+    );
+
     let mut rendered = 0_usize;
     let page_count = pdf_render_backend::render_pages(&runtime, &source, |page_number, png| {
         rendered += 1;

@@ -1,5 +1,10 @@
 //! Daily workload accounting and bounded scheduled-session planning.
 
+use std::{
+    collections::BTreeMap,
+    hash::{Hash, Hasher},
+};
+
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 use serde::Serialize;
 
@@ -134,6 +139,7 @@ pub fn planned_scheduled_cards_for_scope(
     scope: StudyScope<'_>,
     settings: &AppSettingsDto,
     time: &StudyTimeContext,
+    selection_seed: &str,
 ) -> Result<(Vec<PlannedCard>, WorkloadOverviewDto), CommandError> {
     let overview = workload_overview_for_scope(connection, scope, settings, time)?;
     let mut selected = load_ranked_cards(
@@ -143,6 +149,7 @@ pub fn planned_scheduled_cards_for_scope(
         Some(false),
         true,
         overview.scheduled_reviews,
+        selection_seed,
     )?;
     if overview.scheduled_new > 0 {
         selected.extend(load_ranked_cards(
@@ -152,6 +159,7 @@ pub fn planned_scheduled_cards_for_scope(
             Some(true),
             true,
             overview.scheduled_new,
+            selection_seed,
         )?);
     }
     Ok((selected, overview))
@@ -161,8 +169,28 @@ pub fn planned_extra_cards_for_scope(
     connection: &Connection,
     scope: StudyScope<'_>,
     time: &StudyTimeContext,
+    selection_seed: &str,
 ) -> Result<Vec<PlannedCard>, CommandError> {
-    load_ranked_cards(connection, scope, time, None, false, MAX_PLANNED_CARDS)
+    load_ranked_cards(
+        connection,
+        scope,
+        time,
+        None,
+        false,
+        MAX_PLANNED_CARDS,
+        selection_seed,
+    )
+}
+
+#[derive(Clone, Debug)]
+struct RankedCandidate {
+    deck_id: String,
+    card_id: String,
+    due_local_date: String,
+    needs_more_practice: bool,
+    is_new: bool,
+    shuffle_key: u64,
+    deck_rank: usize,
 }
 
 fn load_ranked_cards(
@@ -172,6 +200,7 @@ fn load_ranked_cards(
     new_only: Option<bool>,
     due_only: bool,
     limit: i64,
+    selection_seed: &str,
 ) -> Result<Vec<PlannedCard>, CommandError> {
     if limit <= 0 {
         return Ok(Vec::new());
@@ -186,60 +215,108 @@ fn load_ranked_cards(
         Some(false) => conditions.push("s.state <> 0".to_string()),
         None => {}
     }
-    let limit_index = push_value(&mut values, limit.min(MAX_PLANNED_CARDS));
+    let candidate_limit_index = push_value(&mut values, MAX_PLANNED_CARDS);
     let sql = format!(
-        "WITH {signals},
-         eligible AS (
-             SELECT
-                 c.deck_id,
-                 c.id AS card_id,
-                 s.due_at,
-                 {signal_value} AS needs_more_practice,
-                 date(s.due_at / 1000, 'unixepoch', 'localtime') AS due_local_date
-             FROM cards c
-             JOIN notes n ON n.id = c.note_id
-             JOIN decks d ON d.id = c.deck_id
-             JOIN card_schedules s ON s.card_id = c.id
-             {signal_join}
-             WHERE {conditions}
-         ),
-         ranked AS (
-             SELECT *,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY deck_id
-                        ORDER BY due_local_date ASC,
-                                 needs_more_practice DESC,
-                                 due_at ASC,
-                                 card_id ASC
-                    ) AS deck_rank
-             FROM eligible
-         )
-         SELECT deck_id, card_id
-         FROM ranked
+        "WITH {signals}
+         SELECT
+             c.deck_id,
+             c.id AS card_id,
+             date(s.due_at / 1000, 'unixepoch', 'localtime') AS due_local_date,
+             {signal_value} AS needs_more_practice,
+             CASE WHEN s.state = 0 THEN 1 ELSE 0 END AS is_new
+         FROM cards c
+         JOIN notes n ON n.id = c.note_id
+         JOIN decks d ON d.id = c.deck_id
+         JOIN card_schedules s ON s.card_id = c.id
+         {signal_join}
+         WHERE {conditions}
          ORDER BY due_local_date ASC,
-                  deck_rank ASC,
-                  deck_id ASC,
                   needs_more_practice DESC,
-                  due_at ASC,
-                  card_id ASC
-         LIMIT ?{limit_index}",
+                  is_new ASC,
+                  s.due_at ASC,
+                  c.id ASC
+         LIMIT ?{candidate_limit_index}",
         signals = signal_projection::LEARNING_SIGNAL_CTES,
         signal_value = signal_projection::value_sql(),
         signal_join = signal_projection::join_sql(),
         conditions = conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    let planned = statement
+    let candidates = statement
         .query_map(params_from_iter(values.iter()), |row| {
-            Ok(PlannedCard {
+            Ok(RankedCandidate {
                 deck_id: row.get(0)?,
                 card_id: row.get(1)?,
+                due_local_date: row.get(2)?,
+                needs_more_practice: row.get::<_, i64>(3)? != 0,
+                is_new: row.get::<_, i64>(4)? != 0,
+                shuffle_key: 0,
+                deck_rank: 0,
             })
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    Ok(planned)
+    Ok(rank_candidates(candidates, selection_seed, limit))
+}
+
+fn rank_candidates(
+    candidates: Vec<RankedCandidate>,
+    selection_seed: &str,
+    limit: i64,
+) -> Vec<PlannedCard> {
+    let mut by_deck = BTreeMap::<String, Vec<RankedCandidate>>::new();
+    for mut candidate in candidates {
+        candidate.shuffle_key = selection_shuffle_key(selection_seed, &candidate.card_id);
+        by_deck
+            .entry(candidate.deck_id.clone())
+            .or_default()
+            .push(candidate);
+    }
+
+    let mut ranked = Vec::new();
+    for cards in by_deck.values_mut() {
+        cards.sort_by_key(|card| {
+            (
+                card.due_local_date.clone(),
+                !card.needs_more_practice,
+                card.is_new,
+                card.shuffle_key,
+            )
+        });
+        for (deck_rank, card) in cards.iter_mut().enumerate() {
+            card.deck_rank = deck_rank;
+            ranked.push(card.clone());
+        }
+    }
+
+    ranked.sort_by_key(|card| {
+        (
+            card.due_local_date.clone(),
+            card.deck_rank,
+            card.deck_id.clone(),
+            !card.needs_more_practice,
+            card.is_new,
+            card.shuffle_key,
+        )
+    });
+    let take = usize::try_from(limit.max(0)).unwrap_or(usize::MAX);
+    ranked
+        .into_iter()
+        .take(take)
+        .map(|card| PlannedCard {
+            deck_id: card.deck_id,
+            card_id: card.card_id,
+        })
+        .collect()
+}
+
+fn selection_shuffle_key(seed: &str, card_id: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    "practice-selection-v1".hash(&mut hasher);
+    seed.hash(&mut hasher);
+    card_id.hash(&mut hasher);
+    hasher.finish()
 }
 
 fn scoped_studyable_conditions(scope: StudyScope<'_>, values: &mut Vec<SqlValue>) -> Vec<String> {
@@ -281,5 +358,45 @@ mod tests {
         };
         assert!(overview.due_reviews > overview.scheduled_reviews);
         assert_eq!(overview.scheduled_new, 0);
+    }
+
+    fn ranked_candidate(id: &str, date: &str, weak: bool, is_new: bool) -> RankedCandidate {
+        RankedCandidate {
+            deck_id: "deck".to_string(),
+            card_id: id.to_string(),
+            due_local_date: date.to_string(),
+            needs_more_practice: weak,
+            is_new,
+            shuffle_key: 0,
+            deck_rank: 0,
+        }
+    }
+
+    #[test]
+    fn selection_seed_randomizes_equivalent_cards_without_overriding_due_date_priority() {
+        let candidates = (0..12)
+            .map(|index| ranked_candidate(&format!("card-{index:02}"), "2026-08-11", true, false))
+            .collect::<Vec<_>>();
+        let first = rank_candidates(candidates.clone(), "operation-a", 12);
+        let replay = rank_candidates(candidates.clone(), "operation-a", 12);
+        let next = rank_candidates(candidates, "operation-b", 12);
+        assert_eq!(
+            first.iter().map(|card| &card.card_id).collect::<Vec<_>>(),
+            replay.iter().map(|card| &card.card_id).collect::<Vec<_>>()
+        );
+        assert_ne!(
+            first.iter().map(|card| &card.card_id).collect::<Vec<_>>(),
+            next.iter().map(|card| &card.card_id).collect::<Vec<_>>()
+        );
+
+        let priority = rank_candidates(
+            vec![
+                ranked_candidate("newer-weak", "2026-08-11", true, false),
+                ranked_candidate("older-normal", "2026-08-10", false, false),
+            ],
+            "operation-c",
+            2,
+        );
+        assert_eq!(priority[0].card_id, "older-normal");
     }
 }

@@ -39,6 +39,7 @@ vi.mock("../ipc/practice", () => ({
   getPracticeWorkload: vi.fn(),
   markPracticeCardRevealed: vi.fn(),
   markPracticeCardViewed: vi.fn(),
+  refreshPracticeAfterCardEdit: vi.fn(),
   startCardPractice: vi.fn(),
   startSelectedPractice: vi.fn(),
   submitPracticeReview: vi.fn(),
@@ -76,6 +77,7 @@ const settings: settingsIpc.AppSettings = {
   cardFont: "system",
   uiScale: 100,
   cardBaseSize: 18,
+  animationsEnabled: true,
   reduceMotion: false,
   confirmDeletions: true,
   practiceShuffle: true,
@@ -178,6 +180,7 @@ function renderPractice(overrides?: Partial<React.ComponentProps<typeof Practice
     launchRequest: null,
     onLaunchConsumed: vi.fn(),
     onViewAnalytics: vi.fn(),
+    onEndEarly: vi.fn(),
     showToast: vi.fn(),
     ...overrides,
   };
@@ -190,7 +193,7 @@ async function startAndReveal(): Promise<void> {
   await screen.findByText("1 cards in the scheduled session");
   fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
   fireEvent.click(await screen.findByRole("button", { name: "Show answer" }));
-  await screen.findByRole("button", { name: /1 Hard, About 1 day/u });
+  await screen.findByRole("button", { name: /1 Hard/u });
 }
 
 describe("PracticeScreen", () => {
@@ -277,7 +280,7 @@ describe("PracticeScreen", () => {
     );
   });
 
-  it("shows FSRS interval previews and submits the preview revision", async () => {
+  it("submits the FSRS preview revision from the compact rating controls", async () => {
     renderPractice();
     await startAndReveal();
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
@@ -309,6 +312,8 @@ describe("PracticeScreen", () => {
         tagIds: [],
         cardIds: [card.cardId],
         autoStart: true,
+        mode: "scheduled",
+        returnTarget: { section: "cards" },
       },
       onLaunchConsumed,
     });
@@ -319,6 +324,51 @@ describe("PracticeScreen", () => {
         cardIds: [card.cardId],
         shuffle: true,
       });
+    });
+  });
+
+  it("auto-starts a deck-origin launch as explicit extra practice instead of the daily limit", async () => {
+    renderPractice({
+      launchRequest: {
+        requestId: 9,
+        deckIds: [deck.id],
+        tagIds: [],
+        cardIds: [],
+        autoStart: true,
+        mode: "extra",
+        returnTarget: { section: "decks", deckId: deck.id },
+      },
+    });
+    await waitFor(() =>
+      expect(practiceIpc.startSelectedPractice).toHaveBeenCalledWith({
+        operationId: "0".repeat(32),
+        deckIds: [deck.id],
+        tagIds: [],
+        shuffle: true,
+        mode: "extra",
+      }),
+    );
+  });
+
+  it("returns to an external launch origin when End session terminates early", async () => {
+    const onEndEarly = vi.fn();
+    const returnTarget = { section: "decks" as const, deckId: deck.id };
+    renderPractice({
+      launchRequest: {
+        requestId: 10,
+        deckIds: [deck.id],
+        tagIds: [],
+        cardIds: [],
+        autoStart: true,
+        mode: "extra",
+        returnTarget,
+      },
+      onEndEarly,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "End session" }));
+    await waitFor(() => {
+      expect(practiceIpc.completePracticeSession).toHaveBeenCalledWith(session.id);
+      expect(onEndEarly).toHaveBeenCalledWith(returnTarget);
     });
   });
 

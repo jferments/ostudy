@@ -33,6 +33,10 @@ pub struct AnalyticsQueryDto {
     #[serde(default)]
     pub tag_ids: Vec<String>,
     #[serde(default)]
+    pub custom_start_local_date: Option<String>,
+    #[serde(default)]
+    pub custom_end_local_date: Option<String>,
+    #[serde(default)]
     pub highlighted_session_id: Option<String>,
 }
 
@@ -105,6 +109,10 @@ pub struct TimelineBucketDto {
     pub review_count: i64,
     pub new_cards: i64,
     pub remembered_count: i64,
+    pub wrong_count: i64,
+    pub hard_count: i64,
+    pub medium_count: i64,
+    pub easy_count: i64,
     pub correct_rate: Option<f64>,
     pub average_confidence: Option<f64>,
     pub average_response_time_ms: Option<f64>,
@@ -260,6 +268,8 @@ pub fn get_recent_practice_reviews(
             range: "all".to_string(),
             deck_ids: Vec::new(),
             tag_ids: Vec::new(),
+            custom_start_local_date: None,
+            custom_end_local_date: None,
             highlighted_session_id: None,
         })?;
         recent::load_reviews(connection, &context)
@@ -320,6 +330,8 @@ mod tests {
                         range: default_range(),
                         deck_ids: Vec::new(),
                         tag_ids: Vec::new(),
+                        custom_start_local_date: None,
+                        custom_end_local_date: None,
                         highlighted_session_id: None,
                     },
                 )

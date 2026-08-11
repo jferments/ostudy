@@ -78,13 +78,14 @@ function renderActive(
     errorMessage: null,
     onReveal: vi.fn(),
     onScore: vi.fn(),
+    onEdit: vi.fn(),
     onScheduleAction: vi.fn(),
     onEnd: vi.fn(),
     onLinkError: vi.fn(),
     ...overrides,
   };
-  render(<ActivePractice {...props} />);
-  return props;
+  const view = render(<ActivePractice {...props} />);
+  return { props, ...view };
 }
 
 describe("ActivePractice", () => {
@@ -94,7 +95,7 @@ describe("ActivePractice", () => {
   });
 
   it("reveals with Space or Enter when focus is not in an interactive control", () => {
-    const props = renderActive();
+    const { props } = renderActive();
 
     fireEvent.keyDown(window, { key: " " });
     fireEvent.keyDown(window, { key: "Enter" });
@@ -103,7 +104,7 @@ describe("ActivePractice", () => {
   });
 
   it("does not steal reveal shortcuts from interactive controls", () => {
-    const props = renderActive();
+    const { props } = renderActive();
     const input = document.createElement("input");
     document.body.append(input);
 
@@ -116,13 +117,47 @@ describe("ActivePractice", () => {
     input.remove();
   });
 
-  it("shows all FSRS previews and submits 0-3 keyboard scores after reveal", () => {
-    const props = renderActive({ revealed: true, previewSet: previews });
+  it("reveals when the animated card surface is clicked", () => {
+    const { props } = renderActive({ flipAnimationEnabled: true });
 
-    expect(screen.getByRole("button", { name: /0 Wrong, About 1 min/u })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /1 Hard, About 1 hr/u })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /2 Medium, About 1 day/u })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /3 Easy, About 1 month/u })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+
+    expect(props.onReveal).toHaveBeenCalledOnce();
+  });
+
+  it("flips an already revealed animated card back and forth without changing review state", () => {
+    const { props } = renderActive({
+      flipAnimationEnabled: true,
+      revealed: true,
+      previewSet: previews,
+    });
+
+    const front = document.querySelector(".practice-flip-front");
+    const back = document.querySelector(".practice-flip-back");
+    expect(front?.getAttribute("aria-hidden")).toBe("true");
+    expect(back?.getAttribute("aria-hidden")).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show question" }));
+    expect(screen.getByRole("button", { name: "Show answer" })).toBeTruthy();
+    expect(front?.getAttribute("aria-hidden")).toBe("false");
+    expect(back?.getAttribute("aria-hidden")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show answer" }));
+    expect(screen.getByRole("button", { name: "Show question" })).toBeTruthy();
+    expect(front?.getAttribute("aria-hidden")).toBe("true");
+    expect(back?.getAttribute("aria-hidden")).toBe("false");
+    expect(props.onReveal).not.toHaveBeenCalled();
+  });
+
+  it("shows concise ratings and submits 0-3 keyboard scores after reveal", () => {
+    const { props } = renderActive({ revealed: true, previewSet: previews });
+
+    expect(screen.getByRole("button", { name: "0 Wrong" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "1 Hard" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "2 Medium" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "3 Easy" })).toBeTruthy();
+    expect(screen.queryByText(/About 1/u)).toBeNull();
+    expect(screen.queryByText("I could not recall it.")).toBeNull();
 
     for (const key of ["0", "1", "2", "3"]) {
       fireEvent.keyDown(window, { key });
@@ -134,7 +169,7 @@ describe("ActivePractice", () => {
   });
 
   it("blocks shortcuts and buttons while any review mutation is pending", () => {
-    const props = renderActive({
+    const { props } = renderActive({
       revealed: true,
       previewSet: previews,
       isRating: true,
@@ -150,8 +185,14 @@ describe("ActivePractice", () => {
     ).toBe(true);
   });
 
+  it("opens the card editor from an active session", () => {
+    const { props } = renderActive();
+    fireEvent.click(screen.getByRole("button", { name: "Edit card" }));
+    expect(props.onEdit).toHaveBeenCalledOnce();
+  });
+
   it("routes shared menu schedule controls to the exact-card action callback", () => {
-    const props = renderActive();
+    const { props } = renderActive();
     const onScheduleAction = vi.mocked(props.onScheduleAction);
     const actions = [
       ["Bury until tomorrow", ["bury"]],
@@ -161,7 +202,7 @@ describe("ActivePractice", () => {
     ] as const;
 
     for (const [label] of actions) {
-      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      fireEvent.click(screen.getByRole("button", { name: "Schedule" }));
       fireEvent.click(screen.getByRole("menuitem", { name: label }));
     }
 
@@ -187,5 +228,10 @@ describe("ActivePractice", () => {
     expect(screen.getByText("EXTRA PRACTICE")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Cardiology" })).toBeTruthy();
     expect(screen.getByText("Needs more practice")).toBeTruthy();
+    expect(screen.getByLabelText("1 of 1 cards, 0 reviewed")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Schedule" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "End session" }).className).toContain(
+      "practice-end-button",
+    );
   });
 });

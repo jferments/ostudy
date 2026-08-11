@@ -13,14 +13,19 @@ interface NavigationSidebarProps {
 const ITEMS: ReadonlyArray<{ section: AppSection; icon: string; label: string }> = [
   { section: "decks", icon: "▤", label: "Decks" },
   { section: "documents", icon: "▣", label: "Documents" },
-  { section: "cards", icon: "⌕", label: "Search/Filter" },
-  { section: "templates", icon: "▧", label: "Templates" },
   { section: "practice", icon: "▶", label: "Practice" },
   { section: "analytics", icon: "▥", label: "Analytics" },
   { section: "settings", icon: "⚙", label: "Settings" },
 ];
 
-const COMPACT_SECTIONS = new Set<AppSection>(["decks", "cards", "practice", "analytics"]);
+const COMPACT_SECTIONS = new Set<AppSection>(["decks", "practice", "analytics"]);
+
+function isActive(item: AppSection, current: AppSection): boolean {
+  if (item === "decks") {
+    return current === "decks" || current === "cards" || current === "templates";
+  }
+  return item === current;
+}
 
 export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProps) {
   const compact = useMediaQuery("(max-width: 760px)");
@@ -41,18 +46,18 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
               key={item.section}
               type="button"
               className={styles.compactButton}
-              data-active={section === item.section}
-              aria-current={section === item.section ? "page" : undefined}
+              data-active={isActive(item.section, section)}
+              aria-current={isActive(item.section, section) ? "page" : undefined}
               onClick={() => navigate(item.section)}
             >
               <span aria-hidden="true">{item.icon}</span>
-              <span>{item.label === "Search/Filter" ? "Search" : item.label}</span>
+              <span>{item.label}</span>
             </button>
           ))}
           <button
             type="button"
             className={styles.compactButton}
-            data-active={!COMPACT_SECTIONS.has(section)}
+            data-active={!COMPACT_SECTIONS.has(section) && !isActive("decks", section)}
             aria-expanded={moreOpen}
             onClick={() => setMoreOpen(true)}
           >
@@ -86,8 +91,8 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
           <button
             key={item.section}
             type="button"
-            className={section === item.section ? "nav-button active" : "nav-button"}
-            aria-current={section === item.section ? "page" : undefined}
+            className={isActive(item.section, section) ? "nav-button active" : "nav-button"}
+            aria-current={isActive(item.section, section) ? "page" : undefined}
             onClick={() => navigate(item.section)}
           >
             <span aria-hidden="true">{item.icon}</span>

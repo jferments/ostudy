@@ -6,6 +6,7 @@ export interface AppSettings {
   cardFont: string;
   uiScale: number;
   cardBaseSize: number;
+  animationsEnabled: boolean;
   reduceMotion: boolean;
   confirmDeletions: boolean;
   practiceShuffle: boolean;

@@ -94,12 +94,7 @@ export type ReviewedFilter =
   | "past_7_local_dates"
   | "past_30_local_dates"
   | "before_past_30_local_dates";
-export type CardSort =
-  | "relevance"
-  | "updated_desc"
-  | "question_asc"
-  | "due_asc"
-  | "last_reviewed_desc";
+export type CardSort = "relevance" | "updated_desc" | "due_asc" | "last_reviewed_desc";
 
 export interface CardSearchInput {
   deckIds: string[];

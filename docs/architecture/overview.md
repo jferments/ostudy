@@ -159,7 +159,11 @@ See [Backups, imports, and sharing](../user-guide/backups-imports-and-sharing.md
 
 `src-tauri/src/ai/` owns provider metadata, credentials, endpoint policy, HTTP transport, provider adapters, capability evidence, and task execution. Source PDFs and their derived text, semantics, outline, renders, OCR results, and generation checkpoints belong to the managed document subsystem.
 
-Document processing is divided into narrow capabilities rather than one PDF-specific monolith. Parser, renderer, OCR, provider, and authoring types do not cross each other's boundaries. A model receives bounded context and returns strict task data; native validation and the existing authoring transaction remain authoritative.
+Document processing is divided into narrow capabilities rather than one PDF-specific monolith. Parser, renderer, OCR, provider, and authoring types do not cross each other's boundaries. Candidate OCR pages receive an engine-diverse native-text rescue through PDFium before raster OCR is allowed, so a damaged font map in one parser cannot by itself trigger Tesseract. A model receives bounded context and returns strict task data; native validation and the existing authoring transaction remain authoritative.
+
+Processing duration and provider-reported token usage are persisted as separate document metrics. Token usage is never estimated when a provider omits it; llama.cpp-compatible native timing envelopes are normalized at the provider boundary before the aggregate is stored.
+
+The settings UI exposes only provider adapters that the current build can actually create; future providers remain roadmap documentation until their adapter is implemented.
 
 See [AI and document processing](ai-and-document-processing.md) for provider isolation, extraction, PDFium rendering, OCR, resource planning, structured output, retries, cancellation, and document lifetime.
 
@@ -195,3 +199,9 @@ New work should enter through the narrowest existing boundary:
 - a durable cross-module rule receives an Architecture Decision Record under [`../decisions/`](../decisions/).
 
 The purpose of these boundaries is not architectural ceremony. They make local ownership, recovery, platform expansion, and testing possible without allowing every feature to invent its own storage, network, or interaction model.
+
+## Cross-platform UI dependency boundary
+
+ostudy's product UI is intentionally platform-neutral. React screens, feature controllers, responsive layouts, and shared UI primitives must not branch on desktop/mobile operating-system identity. Native differences are exposed through typed IPC under `src/ipc/` or capability-focused adapters under `src/platform/`. Responsive presentation is selected from viewport, pointer, safe-area, and accessibility capabilities rather than user-agent strings.
+
+The dependency direction is one-way: shared UI primitives do not import feature controllers or IPC; feature screens may depend on controllers/shared UI; controllers may depend on typed IPC; direct Tauri imports are confined to the IPC/platform boundary. This lets Android, iOS, Windows, macOS, and Linux supply platform integrations without forking the study workflows themselves.

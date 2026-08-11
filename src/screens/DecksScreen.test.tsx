@@ -68,6 +68,7 @@ const card: decksIpc.DeckCardSummary = {
   answerExcerpt: "Yes",
   generatedCardCount: 1,
   imageCount: 0,
+  reversible: true,
   updatedAt: 1,
 };
 
@@ -77,6 +78,7 @@ const settings: settingsIpc.AppSettings = {
   cardFont: "system",
   uiScale: 100,
   cardBaseSize: 18,
+  animationsEnabled: true,
   reduceMotion: false,
   confirmDeletions: true,
   practiceShuffle: true,
@@ -136,12 +138,14 @@ describe("DecksScreen", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Dog facts" })).toBeTruthy();
     });
+    expect(await screen.findByLabelText("Reversible")).toBeTruthy();
+    expect(screen.queryByText(/card variants/u)).toBeNull();
 
     const detailPractice = screen.getByRole("button", { name: "Practice" });
     expect(detailPractice.hasAttribute("disabled")).toBe(false);
     fireEvent.click(detailPractice);
 
-    expect(onPracticeDeck).toHaveBeenCalledWith(deck.id);
+    expect(onPracticeDeck).toHaveBeenCalledWith(deck.id, "detail");
   });
 
   it("imports generated JSON through the ordinary Import deck button", async () => {
@@ -172,7 +176,7 @@ describe("DecksScreen", () => {
     });
     expect(showToast).toHaveBeenCalledWith(
       "success",
-      "Imported 15 source notes as 15 scheduled cards.",
+      "Imported 15 card entries as 15 scheduled cards.",
     );
   });
 

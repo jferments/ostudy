@@ -60,6 +60,7 @@ function summaryFor(deck: decksIpc.DeckSummary): decksIpc.DeckCardSummary {
     answerExcerpt: "Answer",
     generatedCardCount: 1,
     imageCount: 0,
+    reversible: false,
     updatedAt: 1,
   };
 }
@@ -202,7 +203,7 @@ describe("DecksScreen extended behavior", () => {
     await waitFor(() => {
       expect(showToast).toHaveBeenCalledWith(
         "success",
-        "Imported 2 source notes as 3 scheduled cards. 4 exact duplicates were skipped.",
+        "Imported 2 card entries as 3 scheduled cards. 4 exact duplicates were skipped.",
       );
     });
     expect(screen.getByRole("heading", { name: imported.name })).toBeTruthy();

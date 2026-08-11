@@ -46,6 +46,7 @@ const settings: settingsIpc.AppSettings = {
   cardFont: "system",
   uiScale: 100,
   cardBaseSize: 18,
+  animationsEnabled: true,
   reduceMotion: false,
   confirmDeletions: true,
   practiceShuffle: true,
@@ -181,6 +182,29 @@ describe("SettingsScreen", () => {
     });
     expect(screen.queryByRole("checkbox", { name: /shuffle/iu })).toBeNull();
     expect(screen.getByText(/shuffling, are chosen on the Practice screen/u)).toBeTruthy();
+  });
+
+  it("uses one New profile action and selects provider type inside the connection form", async () => {
+    renderSettings();
+    await screen.findByText("/tmp/ostudy/data");
+    fireEvent.click(screen.getByRole("tab", { name: "AI/LLM" }));
+    expect(await screen.findByRole("heading", { name: "AI provider profiles" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New profile" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Add llama\.cpp/u })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Add DeepSeek/u })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Planned providers" })).toBeNull();
+    expect(screen.queryByRole("option", { name: /planned/u })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Default task profile" })).toBeNull();
+    expect(screen.getAllByRole("combobox", { name: "Flashcard generation" })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "New profile" }));
+    const provider = await screen.findByRole("combobox", { name: "Provider type" });
+    expect((provider as HTMLSelectElement).value).toBe("llama_cpp");
+    fireEvent.change(provider, { target: { value: "deepseek" } });
+    expect((provider as HTMLSelectElement).value).toBe("deepseek");
+    expect(screen.queryByText(/chat template embedded with the loaded model/u)).toBeNull();
+    expect(screen.queryByText(/credential never enters SQLite/u)).toBeNull();
+    expect(screen.queryByText(/normally reports the loaded GGUF file path/u)).toBeNull();
   });
 
   it("backs up provider metadata while explicitly excluding credentials", async () => {

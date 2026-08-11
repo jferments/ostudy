@@ -247,6 +247,139 @@ fn operation_identifiers_cannot_cross_practice_start_kinds() {
 }
 
 #[test]
+fn consecutive_shuffled_sessions_avoid_repeating_the_same_equal_priority_first_card() {
+    let paths = TestPaths::new();
+    let database = Database::open_in_memory().expect("database should open");
+    database
+        .with_connection(|connection| {
+            let deck_id = create_deck_in_connection(
+                connection,
+                CreateDeckInput {
+                    name: "Shuffle fairness".to_string(),
+                    description: None,
+                },
+            )?
+            .id;
+            for _ in 0..6 {
+                create_card(connection, &deck_id)?;
+            }
+            let first = start_selected_practice_in_connection(
+                connection,
+                &paths.paths,
+                "1".repeat(32),
+                vec![deck_id.clone()],
+                Vec::new(),
+                true,
+                "extra",
+            )?;
+            let second = start_selected_practice_in_connection(
+                connection,
+                &paths.paths,
+                "2".repeat(32),
+                vec![deck_id],
+                Vec::new(),
+                true,
+                "extra",
+            )?;
+            assert_ne!(
+                first.first_window.cards[0].presentation.id,
+                second.first_window.cards[0].presentation.id
+            );
+            Ok(())
+        })
+        .expect("equivalent shuffled sessions should rotate their first card");
+}
+
+#[test]
+fn practice_edit_refresh_removes_deleted_reverse_variant_and_updates_snapshot() {
+    let paths = TestPaths::new();
+    let database = Database::open_in_memory().expect("database should open");
+    database
+        .with_connection(|connection| {
+            let deck_id = create_deck_in_connection(
+                connection,
+                CreateDeckInput {
+                    name: "Edit during practice".to_string(),
+                    description: None,
+                },
+            )?
+            .id;
+            let (note_id, forward_id) = create_card(connection, &deck_id)?;
+            let reverse_id = generate_id(connection)?;
+            connection
+                .execute(
+                    "INSERT INTO cards (
+                     id, note_id, deck_id, direction, template_ordinal, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, 'reverse', 0, 10, 10)",
+                    params![reverse_id, note_id, deck_id],
+                )
+                .map_err(CommandError::database)?;
+            insert_new_schedule(connection, &reverse_id, 10)?;
+            connection
+                .execute(
+                    "UPDATE notes SET reverse_enabled = 1 WHERE id = ?1",
+                    [note_id.as_str()],
+                )
+                .map_err(CommandError::database)?;
+
+            let session = start_card_practice_in_connection(
+                connection,
+                &paths.paths,
+                "3".repeat(32),
+                vec![forward_id.clone(), reverse_id.clone()],
+                false,
+            )?;
+            let edited = validate_content(
+                paragraph("Updated question"),
+                paragraph("Updated answer"),
+                "Updated question".to_string(),
+                "Updated answer".to_string(),
+            )?;
+            connection
+                .execute(
+                    "UPDATE notes
+                 SET front_doc = ?1, back_doc = ?2, front_text = ?3, back_text = ?4,
+                     reverse_enabled = 0, revision = revision + 1, updated_at = 20
+                 WHERE id = ?5",
+                    params![
+                        edited.front_doc_json,
+                        edited.back_doc_json,
+                        edited.front_text,
+                        edited.back_text,
+                        note_id,
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "UPDATE cards SET deleted_at = 20, updated_at = 20 WHERE id = ?1",
+                    [reverse_id.as_str()],
+                )
+                .map_err(CommandError::database)?;
+
+            let refreshed = refresh_practice_after_card_edit_in_connection(
+                connection,
+                &paths.paths,
+                RefreshPracticeAfterCardEditInput {
+                    session_id: session.id,
+                    note_id,
+                    start_position: 0,
+                },
+            )?;
+            assert_eq!(refreshed.card_count, 1);
+            assert!(!refreshed.completed);
+            assert_eq!(refreshed.window.cards.len(), 1);
+            assert_eq!(refreshed.window.cards[0].presentation.id, forward_id);
+            assert_eq!(
+                refreshed.window.cards[0].presentation.front_text,
+                "Updated question"
+            );
+            Ok(())
+        })
+        .expect("practice session should refresh after editing its note");
+}
+
+#[test]
 fn practice_start_persists_snapshot_and_returns_a_bounded_first_window() {
     let paths = TestPaths::new();
     let database = Database::open_in_memory().expect("database should open");

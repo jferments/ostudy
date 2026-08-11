@@ -15,6 +15,7 @@ use super::{AnalyticsQueryDto, AnalyticsScopeDto};
 
 const MAX_ANALYTICS_DECKS: usize = 256;
 const MAX_ANALYTICS_TAGS: usize = 64;
+const MAX_CUSTOM_RANGE_DAYS: i64 = 3_660;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AnalyticsRange {
@@ -23,6 +24,7 @@ pub enum AnalyticsRange {
     Days90,
     Year1,
     All,
+    Custom,
 }
 
 impl AnalyticsRange {
@@ -33,9 +35,10 @@ impl AnalyticsRange {
             "90d" => Ok(Self::Days90),
             "1y" => Ok(Self::Year1),
             "all" => Ok(Self::All),
+            "custom" => Ok(Self::Custom),
             _ => Err(CommandError::new(
                 "invalid_analytics_range",
-                "Choose 7 days, 30 days, 90 days, one year, or all time.",
+                "Choose 7 days, 30 days, 90 days, one year, all time, or a custom range.",
             )),
         }
     }
@@ -47,6 +50,7 @@ impl AnalyticsRange {
             Self::Days90 => "90d",
             Self::Year1 => "1y",
             Self::All => "all",
+            Self::Custom => "custom",
         }
     }
 
@@ -55,6 +59,7 @@ impl AnalyticsRange {
             Self::Days7 | Self::Days30 => "day",
             Self::Days90 | Self::Year1 => "week",
             Self::All => "month",
+            Self::Custom => "day",
         }
     }
 
@@ -63,6 +68,7 @@ impl AnalyticsRange {
             Self::Days7 | Self::Days30 => Some(1),
             Self::Days90 | Self::Year1 => Some(7),
             Self::All => None,
+            Self::Custom => Some(1),
         }
     }
 }
@@ -105,11 +111,19 @@ impl AnalyticsContext {
             AnalyticsRange::Days90 => Some(time.trailing_local_dates(90)?),
             AnalyticsRange::Year1 => Some(time.one_year_window()?),
             AnalyticsRange::All => None,
+            AnalyticsRange::Custom => Some(custom_window(
+                &time,
+                input.custom_start_local_date.as_deref(),
+                input.custom_end_local_date.as_deref(),
+            )?),
         };
         let previous = current
             .as_ref()
             .map(|window| time.adjacent_previous_window(window))
             .transpose()?;
+        let end_local_date = current
+            .as_ref()
+            .map_or(time.local_date, |window| window.end_local_date);
         Ok(Self {
             range,
             deck_ids: input.deck_ids,
@@ -119,7 +133,7 @@ impl AnalyticsContext {
             window: AnalyticsWindow {
                 current,
                 previous,
-                end_local_date: time.local_date,
+                end_local_date,
             },
         })
     }
@@ -140,7 +154,13 @@ impl AnalyticsContext {
                 .current
                 .as_ref()
                 .map(|window| window.start_utc_millis),
-            end_at: self.time.now_utc_millis,
+            end_at: self
+                .window
+                .current
+                .as_ref()
+                .map_or(self.time.now_utc_millis, |window| {
+                    window.end_utc_millis.saturating_sub(1)
+                }),
             bucket_granularity: self.range.granularity().to_string(),
             deck_ids: self.deck_ids.clone(),
             tag_ids: self.tag_ids.clone(),
@@ -213,6 +233,62 @@ impl AnalyticsContext {
     pub fn previous_window(&self) -> Option<&CalendarWindow> {
         self.window.previous.as_ref()
     }
+}
+
+fn custom_window(
+    time: &StudyTimeContext,
+    start: Option<&str>,
+    end: Option<&str>,
+) -> Result<CalendarWindow, CommandError> {
+    let parse = |value: Option<&str>| -> Result<NaiveDate, CommandError> {
+        let value = value.ok_or_else(|| {
+            CommandError::new(
+                "invalid_analytics_custom_range",
+                "Choose both a start date and an end date for the custom analytics range.",
+            )
+        })?;
+        NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
+            CommandError::new(
+                "invalid_analytics_custom_range",
+                "Choose valid custom analytics dates.",
+            )
+        })
+    };
+    let start_local_date = parse(start)?;
+    let end_local_date = parse(end)?;
+    if start_local_date > end_local_date || end_local_date > time.local_date {
+        return Err(CommandError::new(
+            "invalid_analytics_custom_range",
+            "The custom analytics start date must be on or before the end date, and the end date cannot be in the future.",
+        ));
+    }
+    let day_count = end_local_date
+        .signed_duration_since(start_local_date)
+        .num_days()
+        .saturating_add(1);
+    if !(1..=MAX_CUSTOM_RANGE_DAYS).contains(&day_count) {
+        return Err(CommandError::new(
+            "invalid_analytics_custom_range",
+            "Choose a custom analytics range no longer than 3660 local calendar days.",
+        ));
+    }
+    let end_utc_millis = if end_local_date == time.local_date {
+        time.now_utc_millis.saturating_add(1)
+    } else {
+        let next = end_local_date.succ_opt().ok_or_else(|| {
+            CommandError::new(
+                "invalid_analytics_custom_range",
+                "The custom analytics end date is outside the supported calendar.",
+            )
+        })?;
+        time.first_valid_instant(next)?
+    };
+    Ok(CalendarWindow {
+        start_local_date,
+        end_local_date,
+        start_utc_millis: time.first_valid_instant(start_local_date)?,
+        end_utc_millis,
+    })
 }
 
 fn normalize_ids(

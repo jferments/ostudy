@@ -5,13 +5,16 @@ import {
   getPracticeWorkload,
   markPracticeCardRevealed,
   markPracticeCardViewed,
+  refreshPracticeAfterCardEdit,
   startCardPractice,
   startSelectedPractice,
   submitPracticeReview,
   type PracticeCardWindow,
   type PracticeCardWindowInput,
+  type PracticeEditRefresh,
   type PracticeSession,
   type PracticeWorkloadOverview,
+  type RefreshPracticeAfterCardEditInput,
   type ReviewPreviewSet,
   type ReviewResult,
   type StartCardPracticeInput,
@@ -36,6 +39,10 @@ export class PracticeController {
 
   window(input: PracticeCardWindowInput): Promise<PracticeCardWindow | undefined> {
     return latestResult(this.#window, () => getPracticeCardWindow(input));
+  }
+
+  refreshAfterEdit(input: RefreshPracticeAfterCardEditInput): Promise<PracticeEditRefresh> {
+    return refreshPracticeAfterCardEdit(input);
   }
 
   recentReviews(): Promise<RecentReview[] | undefined> {

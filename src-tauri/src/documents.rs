@@ -84,6 +84,9 @@ pub struct DocumentDto {
     pub completed_at: Option<i64>,
     pub archived_at: Option<i64>,
     pub revision: i64,
+    pub processing_duration_ms: Option<i64>,
+    pub api_token_count: Option<i64>,
+    pub api_token_usage_complete: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -254,6 +257,10 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                  SET lifecycle_state = 'failed',
                      outline_state = CASE WHEN outline_state = 'building' THEN 'failed' ELSE outline_state END,
                      safe_error_code = ?1, safe_error_message = ?2,
+                     processing_duration_ms = CASE
+                         WHEN processing_started_at IS NULL THEN processing_duration_ms
+                         ELSE MAX(0, ?3 - processing_started_at)
+                     END,
                      updated_at = ?3, revision = revision + 1
                  WHERE lifecycle_state = 'processing'",
                 params![INTERRUPTED_ERROR_CODE, INTERRUPTED_ERROR_MESSAGE, now],
@@ -664,6 +671,7 @@ async fn process_and_generate(
         generated_cards.len(),
     )?;
     let payload = build_generated_import_json(&stored, generated_cards)?;
+    let (api_token_count, api_token_usage_complete) = task.usage_summary();
     let result = import_generated_flashcards_bytes_with_commit(
         database.inner(),
         payload.as_bytes(),
@@ -689,13 +697,24 @@ async fn process_and_generate(
                          outline_completed_window_count = outline_window_count,
                          generation_completed_window_count = generation_window_count,
                          safe_error_code = '', safe_error_message = '',
+                         processing_duration_ms = CASE
+                             WHEN processing_started_at IS NULL THEN NULL
+                             ELSE MAX(0, ?4 - processing_started_at)
+                         END,
+                         api_token_count = ?5, api_token_usage_complete = ?6,
                          updated_at = ?4, completed_at = ?4, revision = revision + 1
-                     WHERE id = ?5 AND lifecycle_state = 'processing'",
+                     WHERE id = ?7 AND lifecycle_state = 'processing'",
                     params![
                         import_result.created_note_count,
                         import_result.created_card_count,
                         import_result.deck_id,
                         now,
+                        api_token_count,
+                        if api_token_usage_complete {
+                            1_i64
+                        } else {
+                            0_i64
+                        },
                         document_id,
                     ],
                 )
@@ -857,6 +876,10 @@ fn record_document_failure(database: &Database, document_id: &str, error: &Comma
                  SET lifecycle_state = CASE WHEN archived_at IS NULL THEN 'failed' ELSE 'archived' END,
                      outline_state = CASE WHEN outline_state = 'building' THEN 'failed' ELSE outline_state END,
                      safe_error_code = ?1, safe_error_message = ?2,
+                     processing_duration_ms = CASE
+                         WHEN processing_started_at IS NULL THEN processing_duration_ms
+                         ELSE MAX(0, ?3 - processing_started_at)
+                     END,
                      updated_at = ?3, revision = revision + 1
                  WHERE id = ?4",
                 params![
@@ -896,7 +919,6 @@ fn build_generated_import_json(
     document: &StoredDocument,
     cards: Vec<serde_json::Value>,
 ) -> Result<String, CommandError> {
-    let source_tag = document.source_format.to_ascii_uppercase();
     serde_json::to_string(&serde_json::json!({
         "format": "ostudy-flashcards",
         "formatVersion": 1,
@@ -908,7 +930,7 @@ fn build_generated_import_json(
                 document.dto.original_filename
             )
         },
-        "defaultTags": ["AI generated", source_tag],
+        "defaultTags": [],
         "cards": cards,
     }))
     .map_err(CommandError::serialization)
@@ -933,7 +955,8 @@ fn list_document_rows(
                         WHERE deck.id = documents.generated_deck_id AND deck.deleted_at IS NULL
                     ) THEN documents.generated_deck_id ELSE NULL END,
                     safe_error_code, safe_error_message, created_at, updated_at,
-                    completed_at, archived_at, revision
+                    completed_at, archived_at, revision,
+                    processing_duration_ms, api_token_count, api_token_usage_complete
              FROM documents
              WHERE (?1 = 1 OR archived_at IS NULL)
              ORDER BY updated_at DESC, id
@@ -973,20 +996,21 @@ fn load_document(
                         WHERE deck.id = documents.generated_deck_id AND deck.deleted_at IS NULL
                     ) THEN documents.generated_deck_id ELSE NULL END,
                     safe_error_code, safe_error_message, created_at, updated_at,
-                    completed_at, archived_at, revision, source_relative_path,
-                    extraction_backend, render_backend, semantic_chunk_count,
+                    completed_at, archived_at, revision,
+                    processing_duration_ms, api_token_count, api_token_usage_complete,
+                    source_relative_path, extraction_backend, render_backend, semantic_chunk_count,
                     source_format, source_unit_kind
              FROM documents WHERE id = ?1",
             [document_id],
             |row| {
                 Ok(StoredDocument {
                     dto: document_row(row)?,
-                    source_relative_path: row.get(30)?,
-                    extraction_backend: row.get(31)?,
-                    render_backend: row.get(32)?,
-                    semantic_chunk_count: row.get(33)?,
-                    source_format: row.get(34)?,
-                    source_unit_kind: row.get(35)?,
+                    source_relative_path: row.get(33)?,
+                    extraction_backend: row.get(34)?,
+                    render_backend: row.get(35)?,
+                    semantic_chunk_count: row.get(36)?,
+                    source_format: row.get(37)?,
+                    source_unit_kind: row.get(38)?,
                 })
             },
         )
@@ -1032,6 +1056,9 @@ fn document_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentDto> {
         completed_at: row.get(27)?,
         archived_at: row.get(28)?,
         revision: row.get(29)?,
+        processing_duration_ms: row.get(30)?,
+        api_token_count: row.get(31)?,
+        api_token_usage_complete: row.get::<_, i64>(32)? != 0,
     })
 }
 
@@ -1062,7 +1089,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn generated_import_envelope_uses_source_format_tag() {
+    fn generated_import_envelope_has_no_provenance_default_tags() {
         let document = StoredDocument {
             dto: DocumentDto {
                 id: "0123456789abcdef0123456789abcdef".to_string(),
@@ -1095,6 +1122,9 @@ mod tests {
                 completed_at: None,
                 archived_at: None,
                 revision: 1,
+                processing_duration_ms: None,
+                api_token_count: None,
+                api_token_usage_complete: false,
             },
             source_relative_path: "documents/id/source.pdf".to_string(),
             extraction_backend: "extractor".to_string(),
@@ -1108,7 +1138,11 @@ mod tests {
             vec![serde_json::json!({"type":"basic","front":"Q","back":"A","tags":[]})],
         )
         .unwrap();
-        assert!(payload.contains("\"PDF\""));
+        let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(value["defaultTags"], serde_json::json!([]));
+        assert_eq!(value["cards"][0]["tags"], serde_json::json!([]));
+        assert!(!payload.contains("AI generated"));
+        assert!(!payload.contains("\"PDF\""));
         assert!(payload.contains("ostudy-flashcards"));
     }
 }

@@ -32,7 +32,6 @@ import {
   type GenerateTemplateCardsResult,
 } from "../ipc/templates";
 import { CardEditorScreen } from "./CardEditorScreen";
-import { BulkEntryModal } from "./cards/BulkEntryModal";
 import { CardFilters } from "./cards/CardFilters";
 import { BulkTagModal } from "./cards/BulkTagModal";
 import { DeleteCardsModal } from "./cards/DeleteCardsModal";
@@ -47,6 +46,7 @@ interface CardsScreenProps {
   onPracticeCards: (cardIds: string[]) => void;
   onDirtyChange: (dirty: boolean) => void;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
+  embedded?: boolean;
 }
 
 type SelectionAction =
@@ -74,6 +74,7 @@ export function CardsScreen({
   onPracticeCards,
   onDirtyChange,
   showToast,
+  embedded = false,
 }: CardsScreenProps) {
   const activeDecks = useMemo(
     () => decks.filter((deck) => deck.archivedAt === null),
@@ -99,7 +100,6 @@ export function CardsScreen({
   const [editingCard, setEditingCard] = useState<CardNote | null>(null);
   const [creatingDeckId, setCreatingDeckId] = useState<string | null>(null);
   const [isOpeningCard, setIsOpeningCard] = useState(false);
-  const [bulkOpen, setBulkOpen] = useState(false);
   const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
   const [moveCopyCards, setMoveCopyCards] = useState<TransferableCard[]>([]);
   const [practiceCards, setPracticeCards] = useState<SelectionCard[] | null>(null);
@@ -486,40 +486,34 @@ export function CardsScreen({
 
   return (
     <div className="screen cards-screen">
-      <header className="screen-header compact-screen-header">
-        <div>
-          <h1>Search/Filter</h1>
-          <p>
-            Find independently scheduled generated cards and manage exact card schedules without
-            changing sibling presentations.
-          </p>
-        </div>
-        <div className="header-actions wrap-actions">
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={activeDecks.length === 0}
-            onClick={() => setBulkOpen(true)}
-          >
-            Bulk add
-          </button>
-          <button
-            type="button"
-            className="primary-button"
-            disabled={!selectedDeck}
-            title={
-              selectedDeck ? undefined : "Select exactly one active deck before adding a card"
-            }
-            onClick={() => {
-              if (!selectedDeck) return;
-              setEditingCard(null);
-              setCreatingDeckId(selectedDeck.id);
-            }}
-          >
-            Add card
-          </button>
-        </div>
-      </header>
+      {!embedded ? (
+        <header className="screen-header compact-screen-header">
+          <div>
+            <h1>Search/Filter</h1>
+            <p>
+              Find independently scheduled cards and manage exact schedules without changing
+              sibling presentations.
+            </p>
+          </div>
+          <div className="header-actions wrap-actions">
+            <button
+              type="button"
+              className="primary-button"
+              disabled={!selectedDeck}
+              title={
+                selectedDeck ? undefined : "Select exactly one active deck before adding a card"
+              }
+              onClick={() => {
+                if (!selectedDeck) return;
+                setEditingCard(null);
+                setCreatingDeckId(selectedDeck.id);
+              }}
+            >
+              Add card
+            </button>
+          </div>
+        </header>
+      ) : null}
 
       <CardFilters
         activeDecks={activeDecks}
@@ -556,7 +550,7 @@ export function CardsScreen({
             }}
           >
             <option value="">Actions…</option>
-            <option value="move_copy">Move / copy source notes</option>
+            <option value="move_copy">Move / copy cards</option>
             <option value="add_tags">Add tags</option>
             <option value="remove_tags">Remove tags</option>
             <option value="suspend">Suspend cards</option>
@@ -565,7 +559,7 @@ export function CardsScreen({
             <option value="unbury">Unbury cards</option>
             <option value="reschedule">Reschedule cards</option>
             <option value="reset">Reset schedules</option>
-            <option value="delete">Delete source notes</option>
+            <option value="delete">Delete cards</option>
           </select>
           <button
             type="button"
@@ -717,16 +711,6 @@ export function CardsScreen({
             </button>
           ) : null}
         </section>
-      ) : null}
-
-      {bulkOpen ? (
-        <BulkEntryModal
-          decks={activeDecks}
-          defaultDeckId={selectedDeck?.id}
-          onClose={() => setBulkOpen(false)}
-          onSaved={refreshAfterMutation}
-          showToast={showToast}
-        />
       ) : null}
       {renderSelectionModal()}
       {practiceCards ? (

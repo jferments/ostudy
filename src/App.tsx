@@ -7,8 +7,8 @@ import { useAppController } from "./controllers/useAppController";
 import type { AppSettings } from "./ipc/settings";
 import { LoadingState } from "./ui/primitives/EmptyState";
 
-const DecksScreen = lazy(() =>
-  import("./screens/DecksScreen").then((module) => ({ default: module.DecksScreen })),
+const DecksWorkspace = lazy(() =>
+  import("./screens/DecksWorkspace").then((module) => ({ default: module.DecksWorkspace })),
 );
 const DocumentsSection = lazy(() =>
   import("./screens/DocumentsSection").then((module) => ({ default: module.DocumentsSection })),
@@ -32,7 +32,9 @@ const SettingsScreen = lazy(() =>
 export type {
   AnalyticsLaunchRequest,
   AppSection,
+  DeckOpenRequest,
   PracticeLaunchRequest,
+  PracticeReturnTarget,
 } from "./controllers/useAppController";
 
 function App() {
@@ -72,11 +74,15 @@ function App() {
         <AppErrorBoundary>
           <Suspense fallback={<LoadingState label="Opening section…" />}>
             {controller.section === "decks" ? (
-              <DecksScreen
+              <DecksWorkspace
                 decks={controller.decks}
                 settings={controller.activeSettings}
                 refreshDecks={controller.refreshDecks}
                 onPracticeDeck={controller.practiceDeck}
+                onPracticeCards={controller.practiceCards}
+                openDeckRequest={controller.deckOpenRequest}
+                onOpenDeckRequestConsumed={controller.consumeDeckOpenRequest}
+                onManageTemplates={() => controller.navigate("templates")}
                 onDirtyChange={controller.setHasUnsavedCard}
                 showToast={controller.showToast}
               />
@@ -98,6 +104,7 @@ function App() {
             ) : null}
             {controller.section === "templates" ? (
               <TemplatesScreen
+                onBack={() => controller.navigate("decks")}
                 onDirtyChange={controller.setHasUnsavedTemplate}
                 showToast={controller.showToast}
               />
@@ -109,6 +116,7 @@ function App() {
                 launchRequest={controller.practiceLaunch}
                 onLaunchConsumed={controller.consumePracticeLaunch}
                 onViewAnalytics={controller.viewSessionAnalytics}
+                onEndEarly={controller.returnFromPractice}
                 showToast={controller.showToast}
               />
             ) : null}
@@ -143,6 +151,7 @@ function App() {
 function applyThemeSettings(settings: AppSettings): void {
   const root = document.documentElement;
   root.dataset.theme = settings.theme;
+  root.dataset.animationsEnabled = settings.animationsEnabled ? "true" : "false";
   root.dataset.reduceMotion = settings.reduceMotion ? "true" : "false";
   root.style.setProperty("--ui-scale", String(settings.uiScale / 100));
   root.style.setProperty("--card-base-size", `${settings.cardBaseSize}px`);

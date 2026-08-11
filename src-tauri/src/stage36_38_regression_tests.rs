@@ -162,6 +162,8 @@ fn all_time_query() -> AnalyticsQueryDto {
         range: "all".to_string(),
         deck_ids: Vec::new(),
         tag_ids: Vec::new(),
+        custom_start_local_date: None,
+        custom_end_local_date: None,
         highlighted_session_id: None,
     }
 }

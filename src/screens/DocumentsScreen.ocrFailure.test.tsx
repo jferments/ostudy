@@ -52,6 +52,9 @@ function failedOcrDocument(): documentIpc.DocumentSummary {
     completedAt: null,
     archivedAt: null,
     revision: 3,
+  processingDurationMs: 12_345,
+  apiTokenCount: 45_678,
+  apiTokenUsageComplete: true,
   };
 }
 

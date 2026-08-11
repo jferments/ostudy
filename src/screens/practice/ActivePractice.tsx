@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { RichTextView } from "../../editor/RichTextView";
 import {
@@ -27,15 +27,15 @@ interface ActivePracticeProps {
   isRating: boolean;
   isEnding: boolean;
   isManaging: boolean;
+  flipAnimationEnabled?: boolean;
   errorMessage: string | null;
   onReveal: () => void;
   onScore: (score: ConfidenceScore) => void;
+  onEdit: () => void;
   onScheduleAction: (action: ScheduleAction, intent?: RescheduleIntent) => void;
   onEnd: () => void;
   onLinkError: (message: string) => void;
 }
-
-const outcomes = ["wrong", "not_confident", "somewhat_confident", "very_confident"] as const;
 
 export function ActivePractice({
   session,
@@ -48,18 +48,25 @@ export function ActivePractice({
   isRating,
   isEnding,
   isManaging,
+  flipAnimationEnabled = false,
   errorMessage,
   onReveal,
   onScore,
+  onEdit,
   onScheduleAction,
   onEnd,
   onLinkError,
 }: ActivePracticeProps) {
   const ratingPanelRef = useRef<HTMLElement | null>(null);
   const wasRevealed = useRef(revealed);
+  const [showingAnswer, setShowingAnswer] = useState(revealed);
   const busy = isRevealing || isRating || isEnding || isManaging;
   const { topId } = useOverlayContext();
   const experience = useExperience();
+
+  useEffect(() => {
+    setShowingAnswer(revealed);
+  }, [current.presentation.cardId, revealed]);
 
   useEffect(() => {
     if (revealed) ratingPanelRef.current?.focus();
@@ -92,13 +99,19 @@ export function ActivePractice({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [busy, onReveal, onScore, revealed, topId]);
 
-  const previewFor = (score: ConfidenceScore) =>
-    previewSet?.previews.find((preview) => preview.outcome === outcomes[score]);
+  function activateAnimatedCard(): void {
+    if (busy) return;
+    if (!revealed) {
+      onReveal();
+      return;
+    }
+    setShowingAnswer((currentSide) => !currentSide);
+  }
 
   return (
     <div className="screen practice-screen active-practice-screen">
       <header className="practice-session-header">
-        <div>
+        <div className="practice-session-title">
           <span className="eyebrow">
             {session.mode === "extra"
               ? "EXTRA PRACTICE"
@@ -107,19 +120,31 @@ export function ActivePractice({
                 : "PRACTICE"}
           </span>
           <h1>{current.deckName}</h1>
-          {current.needsMorePractice ? (
-            <span className="schedule-status-badge needs-practice">Needs more practice</span>
-          ) : null}
-        </div>
-        <div className="practice-progress-copy">
-          <strong>
-            {position + 1} / {session.cardCount}
-          </strong>
-          <span>{ratedCount} reviewed</span>
+          <div className="practice-session-meta">
+            <span
+              className="practice-progress-chip"
+              aria-label={`${position + 1} of ${session.cardCount} cards, ${ratedCount} reviewed`}
+            >
+              <strong>{position + 1} / {session.cardCount}</strong>
+              <span>· {ratedCount} reviewed</span>
+            </span>
+            {current.needsMorePractice ? (
+              <span className="schedule-status-badge needs-practice">Needs more practice</span>
+            ) : null}
+          </div>
         </div>
         <div className="practice-header-actions">
+          <button
+            type="button"
+            className="secondary-button practice-header-button"
+            disabled={busy}
+            onClick={onEdit}
+          >
+            Edit card
+          </button>
           <Menu
-            label="More"
+            label="Schedule"
+            className="practice-header-button"
             disabled={busy}
             items={[
               {
@@ -143,7 +168,7 @@ export function ActivePractice({
           />
           <button
             type="button"
-            className="secondary-button"
+            className="practice-end-button practice-header-button"
             disabled={busy}
             onClick={onEnd}
           >
@@ -161,25 +186,74 @@ export function ActivePractice({
 
       {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
 
-      <section className="practice-card-surface">
-        <span className="practice-side-label">Question</span>
-        <RichTextView
-          document={current.presentation.frontDoc}
-          assets={current.presentation.assets}
-          onLinkError={onLinkError}
-        />
-        {revealed ? (
-          <>
-            <div className="practice-answer-divider" />
-            <span className="practice-side-label">Answer</span>
-            <RichTextView
-              document={current.presentation.backDoc}
-              assets={current.presentation.assets}
-              onLinkError={onLinkError}
-            />
-          </>
-        ) : null}
-      </section>
+      {flipAnimationEnabled ? (
+        <section
+          className="practice-card-surface practice-flip-card"
+          data-flipped={showingAnswer}
+          role="button"
+          tabIndex={0}
+          aria-label={!revealed ? "Reveal answer" : showingAnswer ? "Show question" : "Show answer"}
+          aria-disabled={busy ? "true" : undefined}
+          onClick={(event) => {
+            const target = event.target;
+            if (
+              target instanceof HTMLElement &&
+              target.closest("a, button, input, textarea, select")
+            ) {
+              return;
+            }
+            activateAnimatedCard();
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== " " && event.key !== "Enter") return;
+            event.preventDefault();
+            event.stopPropagation();
+            activateAnimatedCard();
+          }}
+        >
+          <div className="practice-flip-inner">
+            <div className="practice-flip-face practice-flip-front" aria-hidden={showingAnswer}>
+              <span className="practice-side-label">Question</span>
+              <RichTextView
+                document={current.presentation.frontDoc}
+                assets={current.presentation.assets}
+                onLinkError={onLinkError}
+              />
+              {!showingAnswer ? (
+                <small className="practice-flip-hint">Click the card to flip it</small>
+              ) : null}
+            </div>
+            <div className="practice-flip-face practice-flip-back" aria-hidden={!showingAnswer}>
+              <span className="practice-side-label">Answer</span>
+              <RichTextView
+                document={current.presentation.backDoc}
+                assets={current.presentation.assets}
+                onLinkError={onLinkError}
+              />
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="practice-card-surface">
+          <span className="practice-side-label">Question</span>
+          <RichTextView
+            document={current.presentation.frontDoc}
+            assets={current.presentation.assets}
+            onLinkError={onLinkError}
+          />
+          {revealed ? (
+            <>
+              <div className="practice-answer-divider" />
+              <span className="practice-side-label">Answer</span>
+              <RichTextView
+                document={current.presentation.backDoc}
+                assets={current.presentation.assets}
+                onLinkError={onLinkError}
+              />
+            </>
+          ) : null}
+        </section>
+      )}
 
       {!revealed ? (
         <div className="practice-primary-action">
@@ -201,38 +275,30 @@ export function ActivePractice({
         >
           <div className="confidence-rating-heading">
             <h2 id="confidence-rating-heading">How difficult was that answer?</h2>
-            <p>Approximate next intervals are calculated by FSRS. Keyboard shortcuts: 0–3.</p>
+            <p>Choose the result that best matches your recall.</p>
           </div>
           <div className="confidence-score-actions">
             <ConfidenceButton
               score={0}
               label="Wrong"
-              detail="I could not recall it."
-              interval={formatInterval(previewFor(0)?.intervalMs)}
               disabled={isRating || !previewSet}
               onClick={() => onScore(0)}
             />
             <ConfidenceButton
               score={1}
               label="Hard"
-              detail="I recalled it with major difficulty."
-              interval={formatInterval(previewFor(1)?.intervalMs)}
               disabled={isRating || !previewSet}
               onClick={() => onScore(1)}
             />
             <ConfidenceButton
               score={2}
               label="Medium"
-              detail="I recalled it with some effort."
-              interval={formatInterval(previewFor(2)?.intervalMs)}
               disabled={isRating || !previewSet}
               onClick={() => onScore(2)}
             />
             <ConfidenceButton
               score={3}
               label="Easy"
-              detail="The answer came immediately."
-              interval={formatInterval(previewFor(3)?.intervalMs)}
               disabled={isRating || !previewSet}
               onClick={() => onScore(3)}
             />
@@ -246,15 +312,11 @@ export function ActivePractice({
 function ConfidenceButton({
   score,
   label,
-  detail,
-  interval,
   disabled,
   onClick,
 }: {
   score: ConfidenceScore;
   label: string;
-  detail: string;
-  interval: string;
   disabled: boolean;
   onClick: () => void;
 }) {
@@ -263,7 +325,7 @@ function ConfidenceButton({
       type="button"
       className={`confidence-score-button confidence-score-${score}`}
       disabled={disabled}
-      aria-label={`${score} ${label}, ${interval}`}
+      aria-label={`${score} ${label}`}
       aria-keyshortcuts={String(score)}
       onClick={onClick}
     >
@@ -272,21 +334,7 @@ function ConfidenceButton({
       </span>
       <span className="confidence-score-copy">
         <strong>{label}</strong>
-        <small>{detail}</small>
-        <em>{interval}</em>
       </span>
-      <kbd aria-hidden="true">{score}</kbd>
     </button>
   );
-}
-
-function formatInterval(value: number | undefined): string {
-  if (value === undefined) return "Calculating…";
-  if (value < 60_000) return "Less than 1 minute";
-  if (value < 3_600_000) return `About ${Math.max(1, Math.round(value / 60_000))} min`;
-  if (value < 86_400_000) return `About ${Math.max(1, Math.round(value / 3_600_000))} hr`;
-  const days = Math.max(1, Math.round(value / 86_400_000));
-  if (days < 30) return `About ${days} ${days === 1 ? "day" : "days"}`;
-  const months = Math.max(1, Math.round(days / 30));
-  return `About ${months} ${months === 1 ? "month" : "months"}`;
 }

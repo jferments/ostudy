@@ -41,6 +41,7 @@ const settings: settingsIpc.AppSettings = {
   cardFont: "system",
   uiScale: 100,
   cardBaseSize: 18,
+  animationsEnabled: true,
   reduceMotion: false,
   confirmDeletions: true,
   practiceShuffle: true,
@@ -60,7 +61,12 @@ function analyticsForRange(
       endLocalDate: "2026-08-06",
       startAt: 1,
       endAt: 2,
-      bucketGranularity: range === "7d" || range === "30d" ? "day" : "week",
+      bucketGranularity:
+        range === "7d" || range === "30d" || range === "custom"
+          ? "day"
+          : range === "all"
+            ? "month"
+            : "week",
       deckIds: [],
       tagIds: [],
       highlightedSessionId: null,
@@ -102,6 +108,10 @@ function analyticsForRange(
         reviewCount: 10,
         newCards: 3,
         rememberedCount: 8,
+        wrongCount: 2,
+        hardCount: 2,
+        mediumCount: 4,
+        easyCount: 2,
         correctRate: 0.8,
         averageConfidence: 1.9,
         averageResponseTimeMs: 4200,
@@ -275,6 +285,25 @@ describe("AnalyticsScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Practice ready" }));
     expect(onPracticeScope).toHaveBeenCalledWith([], [tagId]);
+  });
+
+  it("submits an exact custom local date range", async () => {
+    renderAnalytics();
+    await screen.findByText("Cards practiced");
+
+    fireEvent.click(screen.getByRole("radio", { name: "Custom" }));
+    fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-07-01" } });
+    fireEvent.change(screen.getByLabelText("End date"), { target: { value: "2026-07-15" } });
+
+    await waitFor(() => {
+      expect(analyticsIpc.getAnalytics).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          range: "custom",
+          customStartLocalDate: "2026-07-01",
+          customEndLocalDate: "2026-07-15",
+        }),
+      );
+    });
   });
 
   it("discards a slower response for an obsolete range", async () => {

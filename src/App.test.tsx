@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AnalyticsLaunchRequest, PracticeLaunchRequest } from "./App";
+import type { AnalyticsLaunchRequest, DeckOpenRequest, PracticeLaunchRequest, PracticeReturnTarget } from "./App";
 import App from "./App";
 import * as decksIpc from "./ipc/decks";
 import * as settingsIpc from "./ipc/settings";
@@ -19,23 +19,26 @@ vi.mock("./ipc/settings", () => ({
   getSettings: vi.fn(),
 }));
 
-vi.mock("./screens/DecksScreen", () => ({
-  DecksScreen: ({
+vi.mock("./screens/DecksWorkspace", () => ({
+  DecksWorkspace: ({
     decks,
     onPracticeDeck,
+    openDeckRequest,
     onDirtyChange,
   }: {
     decks: decksIpc.DeckSummary[];
-    onPracticeDeck: (deckId: string) => void;
+    onPracticeDeck: (deckId: string, origin: "library" | "detail") => void;
+    openDeckRequest: DeckOpenRequest | null;
     onDirtyChange: (dirty: boolean) => void;
   }) => (
     <section>
       <h1>Decks mock</h1>
       <span>{decks.map((deck) => deck.name).join(",")}</span>
+      <output aria-label="Deck open request">{openDeckRequest?.deckId ?? "none"}</output>
       <button type="button" onClick={() => onDirtyChange(true)}>
         Mark card dirty
       </button>
-      <button type="button" onClick={() => onPracticeDeck(decks[0]?.id ?? "")}>
+      <button type="button" onClick={() => onPracticeDeck(decks[0]?.id ?? "", "detail")}>
         Practice deck mock
       </button>
     </section>
@@ -54,9 +57,11 @@ vi.mock("./screens/PracticeScreen", () => ({
   PracticeScreen: ({
     launchRequest,
     onViewAnalytics,
+    onEndEarly,
   }: {
     launchRequest: PracticeLaunchRequest | null;
     onViewAnalytics: (sessionId: string, deckIds: string[]) => void;
+    onEndEarly: (target: PracticeReturnTarget) => void;
   }) => (
     <section>
       <h1>Practice mock</h1>
@@ -64,7 +69,9 @@ vi.mock("./screens/PracticeScreen", () => ({
         {launchRequest
           ? `${launchRequest.deckIds.join(",")}|${launchRequest.cardIds.join(",")}|${String(
               launchRequest.autoStart,
-            )}`
+            )}|${launchRequest.mode}|${launchRequest.returnTarget?.section ?? "none"}|${
+              launchRequest.returnTarget?.deckId ?? ""
+            }`
           : "none"}
       </output>
       <button
@@ -72,6 +79,14 @@ vi.mock("./screens/PracticeScreen", () => ({
         onClick={() => onViewAnalytics("session-1", ["deck-from-practice"])}
       >
         Open session analytics
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (launchRequest?.returnTarget) onEndEarly(launchRequest.returnTarget);
+        }}
+      >
+        End early mock
       </button>
     </section>
   ),
@@ -113,13 +128,19 @@ describe("App shell", () => {
     vi.clearAllMocks();
     resetTestEntityIds();
     document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("data-animations-enabled");
     document.documentElement.removeAttribute("data-reduce-motion");
   });
 
   it("loads the local settings and deck library before rendering navigation", async () => {
     const deck = makeDeck({ name: "Cardiology" });
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(
-      makeSettings({ theme: "console", reduceMotion: true, uiScale: 110 }),
+      makeSettings({
+        theme: "console",
+        animationsEnabled: false,
+        reduceMotion: true,
+        uiScale: 110,
+      }),
     );
     vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
 
@@ -129,6 +150,7 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
     expect(screen.getByText("Cardiology")).toBeTruthy();
     expect(document.documentElement.dataset.theme).toBe("console");
+    expect(document.documentElement.dataset.animationsEnabled).toBe("false");
     expect(document.documentElement.dataset.reduceMotion).toBe("true");
     expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe("1.1");
   });
@@ -166,7 +188,22 @@ describe("App shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Practice deck mock" }));
 
     expect(await screen.findByRole("heading", { name: "Practice mock" })).toBeTruthy();
-    expect(screen.getByLabelText("Practice launch").textContent).toBe(`${deck.id}||true`);
+    expect(screen.getByLabelText("Practice launch").textContent).toBe(`${deck.id}||true|extra|decks|${deck.id}`);
+  });
+
+  it("returns an early-ended deck-detail practice session to that exact deck", async () => {
+    const deck = makeDeck({ name: "Respiratory physiology" });
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
+
+    renderApp();
+    await screen.findByRole("heading", { name: "Decks mock" });
+    fireEvent.click(screen.getByRole("button", { name: "Practice deck mock" }));
+    await screen.findByRole("heading", { name: "Practice mock" });
+    fireEvent.click(screen.getByRole("button", { name: "End early mock" }));
+
+    expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
+    expect(screen.getByLabelText("Deck open request").textContent).toBe(deck.id);
   });
 
   it("carries a completed practice session into week-scoped analytics", async () => {

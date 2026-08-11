@@ -153,7 +153,7 @@ pub(crate) struct TextQualityAssessment {
 }
 
 pub(crate) fn active_backend_id() -> &'static str {
-    "oxidize-pdf-4.2.2-rag-quality-ocr-v1"
+    "oxidize-pdf-4.2.2-rag-native-first-ocr-v6"
 }
 
 pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, PdfBackendError> {
@@ -376,6 +376,45 @@ fn extract_page_texts<R: Read + Seek>(
     Ok((pages, failed_pages))
 }
 
+pub(crate) fn native_page_requires_ocr(text: &str, assessment: &TextQualityAssessment) -> bool {
+    if !assessment.suspicious {
+        return false;
+    }
+    // Font-substitution ciphers can look alphabetic while being unreadable, so
+    // this whole-page pattern still requires OCR. The other quality signals are
+    // often localized failures of individual embedded font maps; only escalate
+    // those when corruption dominates the page rather than merely appearing.
+    if assessment.reasons.contains(&"probable_font_substitution") {
+        return true;
+    }
+
+    let mut visible = 0_usize;
+    let mut damaged = 0_usize;
+    for character in text.chars() {
+        if character.is_whitespace() {
+            continue;
+        }
+        visible = visible.saturating_add(1);
+        if is_unmapped_pdf_glyph(character) {
+            damaged = damaged.saturating_add(1);
+        }
+    }
+    // Require both a meaningful absolute amount and severe density. This keeps
+    // image/table-heavy textbook pages out of OCR when they have less prose and
+    // therefore a deceptively high percentage of a few broken symbol glyphs.
+    damaged >= 24 && damaged.saturating_mul(100) >= visible.max(1).saturating_mul(30)
+}
+
+fn is_unmapped_pdf_glyph(character: char) -> bool {
+    let value = character as u32;
+    (character.is_control() && !matches!(character, '\n' | '\t'))
+        || character == '\u{fffd}'
+        || is_private_use(character)
+        || (0xFDD0..=0xFDEF).contains(&value)
+        || value & 0xFFFF == 0xFFFE
+        || value & 0xFFFF == 0xFFFF
+}
+
 pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionRecoveryPlan {
     let failed_pages = document
         .native_text_failed_pages
@@ -424,11 +463,9 @@ pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionReco
         let structured_is_suspicious = semantic_suspicious.contains(&page.page_number);
         let has_good_semantic = semantic_good.contains(&page.page_number);
 
-        if extraction_failed || raw.suspicious {
+        if extraction_failed {
             let mut reasons = raw.reasons.clone();
-            if extraction_failed {
-                reasons.push("native_extraction_failed");
-            }
+            reasons.push("native_extraction_failed");
             reasons.sort_unstable();
             reasons.dedup();
             ocr_pages.push(OcrPageCandidate {
@@ -439,16 +476,33 @@ pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionReco
             continue;
         }
 
-        if !raw.substantive && !has_good_semantic {
+        // Empty native text may still benefit from OCR. Localized malformed
+        // glyphs in otherwise readable native text are handled below without
+        // replacing the page with raster OCR.
+        if page.text.trim().is_empty() && !has_good_semantic {
             ocr_pages.push(OcrPageCandidate {
                 page_number: page.page_number,
                 required: false,
-                reasons: vec!["sparse_or_missing_text"],
+                reasons: vec!["native_text_empty"],
             });
             continue;
         }
 
-        if structured_is_suspicious || document.semantic_analysis_degraded {
+        if native_page_requires_ocr(&page.text, &raw) {
+            ocr_pages.push(OcrPageCandidate {
+                page_number: page.page_number,
+                required: true,
+                reasons: raw.reasons.clone(),
+            });
+            continue;
+        }
+        if raw.suspicious
+            || !raw.substantive
+            || structured_is_suspicious
+            || document.semantic_analysis_degraded
+        {
+            // Localized font-map damage invalidates structured semantics, not
+            // the readable page. Rebuild from cleaned native text without OCR.
             native_semantic_fallback_pages.insert(page.page_number);
         }
     }
@@ -497,10 +551,17 @@ pub(crate) fn assess_text_quality(text: &str) -> TextQualityAssessment {
     {
         reasons.push("private_use_unicode");
     }
-    if replacement > 0 {
+    if replacement >= 3 && replacement.saturating_mul(100) >= nonspace.max(1) {
         reasons.push("unicode_replacement_character");
     }
-    if invalid_controls > 0 {
+    // Custom embedded PDF fonts sometimes map isolated scientific-symbol
+    // glyphs to C0 control codes when no complete ToUnicode map is available.
+    // A few such glyphs inside otherwise readable native text are lossy, but
+    // they are not evidence that the whole page should be replaced by OCR.
+    // Treat controls as corruption only when they are both numerous and dense.
+    if invalid_controls >= 8
+        && invalid_controls.saturating_mul(100) >= nonspace.max(1).saturating_mul(5)
+    {
         reasons.push("invalid_control_characters");
     }
     if alphabetic >= MIN_SUBSTITUTION_ALPHA_CHARS
@@ -800,7 +861,10 @@ mod tests {
 
     #[test]
     fn active_backend_identifies_quality_checked_oxidize_extraction() {
-        assert_eq!(active_backend_id(), "oxidize-pdf-4.2.2-rag-quality-ocr-v1");
+        assert_eq!(
+            active_backend_id(),
+            "oxidize-pdf-4.2.2-rag-native-first-ocr-v6"
+        );
     }
 
     #[test]
@@ -832,6 +896,65 @@ mod tests {
     }
 
     #[test]
+    fn sparse_custom_font_control_glyphs_do_not_force_ocr() {
+        let assessment = assess_text_quality(
+            "The active blood-gas barrier is around 0.3 \u{001e}m thick and the capillary is under 3 \u{001e}m in scale.",
+        );
+        assert!(!assessment.suspicious);
+
+        let document = base_document(
+            "The active blood-gas barrier is around 0.3 \u{001e}m thick.",
+            "",
+        );
+        let plan = plan_text_recovery(&document);
+        assert!(plan.ocr_pages.is_empty());
+        assert_eq!(plan.native_semantic_fallback_pages, Vec::<usize>::new());
+    }
+
+    #[test]
+    fn dense_control_character_corruption_still_requires_recovery() {
+        let corrupt = "A\u{0001}B\u{0002}C\u{0003}D\u{0004}E\u{0005}F\u{0006}G\u{0007}H\u{0008}I\u{0009}J\u{000b}K\u{000c}L\u{000e}M\u{000f}N";
+        let assessment = assess_text_quality(corrupt);
+        assert!(assessment.suspicious);
+        assert!(assessment.reasons.contains(&"invalid_control_characters"));
+    }
+
+    #[test]
+    fn isolated_replacement_glyph_does_not_force_ocr_on_readable_native_text() {
+        let assessment = assess_text_quality(
+            "A readable native text layer may contain one unsupported glyph � without making the page unusable for study.",
+        );
+        assert!(!assessment.suspicious);
+    }
+
+    #[test]
+    fn repeated_replacement_glyphs_still_fail_native_text_quality() {
+        let assessment = assess_text_quality("Cardiac �� �� �� �� �� physiology text");
+        assert!(assessment.suspicious);
+        assert!(assessment
+            .reasons
+            .contains(&"unicode_replacement_character"));
+    }
+
+    #[test]
+    fn empty_native_page_still_selects_ocr_recovery() {
+        let document = base_document("", "");
+        let plan = plan_text_recovery(&document);
+        assert_eq!(plan.ocr_pages.len(), 1);
+        assert_eq!(plan.ocr_pages[0].page_number, 1);
+        assert!(!plan.ocr_pages[0].required);
+        assert_eq!(plan.ocr_pages[0].reasons, vec!["native_text_empty"]);
+    }
+
+    #[test]
+    fn sparse_but_readable_native_text_never_selects_ocr() {
+        let document = base_document("Chapter 5", "");
+        let plan = plan_text_recovery(&document);
+        assert!(plan.ocr_pages.is_empty());
+        assert_eq!(plan.native_semantic_fallback_pages, vec![1]);
+    }
+
+    #[test]
     fn corrupt_semantics_with_good_raw_text_use_native_page_fallback_not_ocr() {
         let document = base_document(
             "The American College of Cardiology published updated clinical guidelines.",
@@ -840,6 +963,61 @@ mod tests {
         let plan = plan_text_recovery(&document);
         assert!(plan.ocr_pages.is_empty());
         assert_eq!(plan.native_semantic_fallback_pages, vec![1]);
+    }
+
+    #[test]
+    fn nunn_style_font_map_damage_uses_native_fallback_without_ocr() {
+        let page = concat!(
+            "The respiratory tract contains readable scientific prose. ",
+            "\u{0007}e alveolar septa remain thin and gas exchange remains efficient. ",
+            "The active side is around 0.3 \u{001e}m thick. Airways are divided into bronchi and bronchioles. ",
+            "Text from figures can contain a stray \u{fffe} marker while the paragraphs remain usable. ",
+            "This sentence deliberately adds enough ordinary English text to model an image-heavy textbook page."
+        );
+        let assessment = assess_text_quality(page);
+        let document = base_document(page, "\u{e01c}\u{e01d} bad semantic font mapping");
+        let plan = plan_text_recovery(&document);
+        assert!(assessment.substantive);
+        assert!(plan.ocr_pages.is_empty());
+        assert_eq!(plan.native_semantic_fallback_pages, vec![1]);
+    }
+
+    #[test]
+    fn catastrophic_page_wide_unmapped_glyphs_still_require_ocr() {
+        let corrupt = (0..40).map(|_| "\u{e001}\u{e002}x").collect::<String>();
+        let assessment = assess_text_quality(&corrupt);
+        assert!(assessment.suspicious);
+        assert!(native_page_requires_ocr(&corrupt, &assessment));
+        let document = base_document(&corrupt, "");
+        let plan = plan_text_recovery(&document);
+        assert_eq!(plan.ocr_pages.len(), 1);
+        assert!(plan.ocr_pages[0].required);
+    }
+
+    #[test]
+    fn font_substitution_cipher_still_requires_ocr_even_when_letters_dominate() {
+        let corrupt = "Õâóïáäèå ÖîããóÛó îì ÖèïÝáîãîÛ× èåÝ çôó Õâóïáäèå ëóèïç Õííîäáèçáîå ñðæãáíôóÝ åóØ ÛðáÝóãáåóí";
+        let assessment = assess_text_quality(corrupt);
+        assert!(native_page_requires_ocr(corrupt, &assessment));
+    }
+
+    #[test]
+    fn alternative_native_text_can_rescue_a_primary_extractor_false_positive() {
+        let primary = format!(
+            "{} readable respiratory physiology text with enough remaining words to look locally damaged",
+            "�\u{0001}".repeat(28)
+        );
+        let primary_assessment = assess_text_quality(&primary);
+        assert!(primary_assessment.suspicious);
+        assert!(native_page_requires_ocr(&primary, &primary_assessment));
+
+        let pdfium_native = concat!(
+            "A textbook page can contain tables, figures, and readable explanatory prose. ",
+            "A malformed embedded font may leave bron\u{fffe}chial or pulmo\u{fffe}nary placeholders ",
+            "without making the native text layer unusable."
+        );
+        let rescue_assessment = assess_text_quality(pdfium_native);
+        assert!(!native_page_requires_ocr(pdfium_native, &rescue_assessment));
     }
 
     #[test]
