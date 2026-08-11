@@ -27,6 +27,7 @@ step "Environment and repository contracts"
 node "$SCRIPT_DIR/verify-project-manifests.mjs"
 node "$SCRIPT_DIR/verify-ipc-contract.mjs"
 node "$SCRIPT_DIR/verify-repository-policy.mjs"
+node "$SCRIPT_DIR/verify-documentation.mjs"
 [[ -f pnpm-lock.yaml && -f src-tauri/Cargo.lock ]] || {
   printf 'ERROR: committed pnpm and Cargo lockfiles are required.\n' >&2
   exit 1
