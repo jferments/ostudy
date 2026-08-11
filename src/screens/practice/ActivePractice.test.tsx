@@ -78,6 +78,7 @@ function renderActive(
     errorMessage: null,
     onReveal: vi.fn(),
     onScore: vi.fn(),
+    onEdit: vi.fn(),
     onScheduleAction: vi.fn(),
     onEnd: vi.fn(),
     onLinkError: vi.fn(),
@@ -182,6 +183,12 @@ describe("ActivePractice", () => {
     expect(
       (screen.getByRole("button", { name: "End session" }) as HTMLButtonElement).disabled,
     ).toBe(true);
+  });
+
+  it("opens the card editor from an active session", () => {
+    const { props } = renderActive();
+    fireEvent.click(screen.getByRole("button", { name: "Edit card" }));
+    expect(props.onEdit).toHaveBeenCalledOnce();
   });
 
   it("routes shared menu schedule controls to the exact-card action callback", () => {

@@ -39,6 +39,7 @@ vi.mock("../ipc/practice", () => ({
   getPracticeWorkload: vi.fn(),
   markPracticeCardRevealed: vi.fn(),
   markPracticeCardViewed: vi.fn(),
+  refreshPracticeAfterCardEdit: vi.fn(),
   startCardPractice: vi.fn(),
   startSelectedPractice: vi.fn(),
   submitPracticeReview: vi.fn(),

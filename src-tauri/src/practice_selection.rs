@@ -79,6 +79,23 @@ pub struct PracticeCardWindowInput {
     pub limit: i64,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RefreshPracticeAfterCardEditInput {
+    pub session_id: String,
+    pub note_id: String,
+    pub start_position: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PracticeEditRefreshDto {
+    pub card_count: i64,
+    pub start_position: i64,
+    pub completed: bool,
+    pub window: PracticeCardWindowDto,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SelectedPracticeRequestIdentity<'a> {
@@ -178,6 +195,25 @@ pub fn get_practice_card_window(
             input.start_position,
             input.limit,
         )
+    })
+}
+
+#[tauri::command]
+pub fn refresh_practice_after_card_edit(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    input: RefreshPracticeAfterCardEditInput,
+) -> Result<PracticeEditRefreshDto, CommandError> {
+    validate_entity_id(&input.session_id, "practice session")?;
+    validate_entity_id(&input.note_id, "note")?;
+    if input.start_position < 0 {
+        return Err(CommandError::new(
+            "invalid_practice_position",
+            "The current practice position is invalid.",
+        ));
+    }
+    database.with_connection(|connection| {
+        refresh_practice_after_card_edit_in_connection(connection, &paths, input)
     })
 }
 
@@ -379,6 +415,11 @@ fn create_practice_session(
             format!("A practice session can contain at most {MAX_SESSION_CARDS} cards."),
         ));
     }
+    let previous_first = if shuffle {
+        previous_first_card_for_request(connection, &request_fingerprint)?
+    } else {
+        None
+    };
     let session_id = generate_id(connection)?;
     let mut prepared = prepare_new_session_cards(connection, &planned, time)?;
     if shuffle {
@@ -393,6 +434,7 @@ fn create_practice_session(
                 shuffle_key(&session_id, &card.card_id),
             )
         });
+        avoid_repeating_previous_first(&mut prepared, previous_first.as_deref(), time);
     }
 
     // Build the entire fallible first response window before durable success.
@@ -450,6 +492,261 @@ fn create_practice_session(
         shuffle,
         mode: mode.to_string(),
         started_at: time.now_utc_millis,
+    })
+}
+
+fn previous_first_card_for_request(
+    connection: &Connection,
+    request_fingerprint: &str,
+) -> Result<Option<String>, CommandError> {
+    connection
+        .query_row(
+            "SELECT psc.card_id
+             FROM practice_sessions ps
+             JOIN practice_session_cards psc
+               ON psc.session_id = ps.id AND psc.position = 0
+             WHERE ps.start_request_fingerprint = ?1
+             ORDER BY ps.started_at DESC, ps.id DESC
+             LIMIT 1",
+            [request_fingerprint],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(CommandError::database)
+}
+
+fn avoid_repeating_previous_first(
+    prepared: &mut [PreparedPracticeCard],
+    previous_first: Option<&str>,
+    time: &StudyTimeContext,
+) {
+    let Some(previous_first) = previous_first else {
+        return;
+    };
+    let Some(first) = prepared.first() else {
+        return;
+    };
+    if first.card_id != previous_first {
+        return;
+    }
+    let due_date = time
+        .local_date_for_timestamp(first.due_at)
+        .unwrap_or(time.local_date);
+    let weak = first.needs_more_practice;
+    let is_new = first.state == 0;
+    if let Some(index) = prepared
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(index, card)| {
+            let candidate_date = time
+                .local_date_for_timestamp(card.due_at)
+                .unwrap_or(time.local_date);
+            (candidate_date == due_date
+                && card.needs_more_practice == weak
+                && (card.state == 0) == is_new)
+                .then_some(index)
+        })
+    {
+        prepared.swap(0, index);
+    }
+}
+
+fn refresh_practice_after_card_edit_in_connection(
+    connection: &mut Connection,
+    paths: &AppPaths,
+    input: RefreshPracticeAfterCardEditInput,
+) -> Result<PracticeEditRefreshDto, CommandError> {
+    let session_open: Option<i64> = connection
+        .query_row(
+            "SELECT card_count FROM practice_sessions
+             WHERE id = ?1 AND completed_at IS NULL",
+            [input.session_id.as_str()],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    if session_open.is_none() {
+        return Err(CommandError::new(
+            "practice_session_not_found",
+            "That active practice session no longer exists.",
+        ));
+    }
+
+    let existing_rows = {
+        let mut statement = connection
+            .prepare(
+                "SELECT psc.card_id
+                 FROM practice_session_cards psc
+                 JOIN practice_session_card_snapshots snap
+                   ON snap.session_id = psc.session_id AND snap.card_id = psc.card_id
+                 WHERE psc.session_id = ?1 AND snap.note_id = ?2 AND psc.rated_at IS NULL
+                 ORDER BY psc.position",
+            )
+            .map_err(CommandError::database)?;
+        let rows = statement
+            .query_map(params![input.session_id, input.note_id], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        rows
+    };
+    if existing_rows.is_empty() {
+        return Err(CommandError::new(
+            "practice_card_already_completed",
+            "That card is no longer an unreviewed item in this practice session.",
+        ));
+    }
+
+    let time = StudyTimeContext::capture()?;
+    let active_planned = {
+        let mut statement = connection
+            .prepare(
+                "SELECT c.deck_id, c.id
+                 FROM cards c
+                 JOIN notes n ON n.id = c.note_id
+                 JOIN decks d ON d.id = c.deck_id
+                 WHERE c.note_id = ?1
+                   AND c.deleted_at IS NULL
+                   AND n.deleted_at IS NULL
+                   AND d.deleted_at IS NULL
+                   AND d.archived_at IS NULL",
+            )
+            .map_err(CommandError::database)?;
+        let rows = statement
+            .query_map([input.note_id.as_str()], |row| {
+                Ok(PlannedCard {
+                    deck_id: row.get(0)?,
+                    card_id: row.get(1)?,
+                })
+            })
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        rows
+    };
+    let prepared = prepare_new_session_cards(connection, &active_planned, &time)?;
+    let prepared_by_id = prepared
+        .into_iter()
+        .map(|card| (card.card_id.clone(), card))
+        .collect::<BTreeMap<_, _>>();
+
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(CommandError::database)?;
+    for card_id in &existing_rows {
+        transaction
+            .execute(
+                "DELETE FROM practice_session_card_tag_snapshots
+                 WHERE session_id = ?1 AND card_id = ?2",
+                params![input.session_id, card_id],
+            )
+            .map_err(CommandError::database)?;
+        transaction
+            .execute(
+                "DELETE FROM practice_session_card_snapshots
+                 WHERE session_id = ?1 AND card_id = ?2",
+                params![input.session_id, card_id],
+            )
+            .map_err(CommandError::database)?;
+        if let Some(card) = prepared_by_id.get(card_id) {
+            insert_session_snapshot(&transaction, &input.session_id, card, time.now_utc_millis)?;
+        } else {
+            transaction
+                .execute(
+                    "DELETE FROM practice_session_cards
+                     WHERE session_id = ?1 AND card_id = ?2 AND rated_at IS NULL",
+                    params![input.session_id, card_id],
+                )
+                .map_err(CommandError::database)?;
+        }
+    }
+
+    let remaining = {
+        let mut statement = transaction
+            .prepare(
+                "SELECT card_id FROM practice_session_cards
+                 WHERE session_id = ?1 ORDER BY position",
+            )
+            .map_err(CommandError::database)?;
+        let rows = statement
+            .query_map([input.session_id.as_str()], |row| row.get::<_, String>(0))
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        rows
+    };
+    transaction
+        .execute(
+            "UPDATE practice_session_cards SET position = position + ?1 WHERE session_id = ?2",
+            params![MAX_SESSION_CARDS as i64 + 1, input.session_id],
+        )
+        .map_err(CommandError::database)?;
+    for (position, card_id) in remaining.iter().enumerate() {
+        transaction
+            .execute(
+                "UPDATE practice_session_cards SET position = ?1
+                 WHERE session_id = ?2 AND card_id = ?3",
+                params![
+                    i64::try_from(position).unwrap_or(i64::MAX),
+                    input.session_id,
+                    card_id,
+                ],
+            )
+            .map_err(CommandError::database)?;
+    }
+    let card_count = i64::try_from(remaining.len()).unwrap_or(i64::MAX);
+    let rated_count: i64 = transaction
+        .query_row(
+            "SELECT rated_count FROM practice_sessions WHERE id = ?1",
+            [input.session_id.as_str()],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    let completed = card_count == 0 || rated_count >= card_count;
+    transaction
+        .execute(
+            "UPDATE practice_sessions
+             SET card_count = ?1,
+                 completed_at = CASE WHEN ?2 = 1 THEN COALESCE(completed_at, ?3) ELSE completed_at END
+             WHERE id = ?4",
+            params![
+                card_count,
+                i64::from(completed),
+                time.now_utc_millis,
+                input.session_id,
+            ],
+        )
+        .map_err(CommandError::database)?;
+    transaction.commit().map_err(CommandError::database)?;
+
+    if completed {
+        return Ok(PracticeEditRefreshDto {
+            card_count,
+            start_position: input.start_position.min(card_count.max(0)),
+            completed: true,
+            window: PracticeCardWindowDto {
+                start_position: input.start_position.min(card_count.max(0)),
+                cards: Vec::new(),
+                has_more: false,
+            },
+        });
+    }
+    let start_position = input.start_position.min(card_count.saturating_sub(1));
+    let window = load_practice_window(
+        connection,
+        paths,
+        &input.session_id,
+        start_position,
+        PRACTICE_WINDOW_MAX,
+    )?;
+    Ok(PracticeEditRefreshDto {
+        card_count,
+        start_position,
+        completed: false,
+        window,
     })
 }
 

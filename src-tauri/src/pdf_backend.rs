@@ -153,7 +153,7 @@ pub(crate) struct TextQualityAssessment {
 }
 
 pub(crate) fn active_backend_id() -> &'static str {
-    "oxidize-pdf-4.2.2-rag-native-first-ocr-v3"
+    "oxidize-pdf-4.2.2-rag-native-first-ocr-v4"
 }
 
 pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, PdfBackendError> {
@@ -506,7 +506,14 @@ pub(crate) fn assess_text_quality(text: &str) -> TextQualityAssessment {
     if replacement >= 3 && replacement.saturating_mul(100) >= nonspace.max(1) {
         reasons.push("unicode_replacement_character");
     }
-    if invalid_controls > 0 {
+    // Custom embedded PDF fonts sometimes map isolated scientific-symbol
+    // glyphs to C0 control codes when no complete ToUnicode map is available.
+    // A few such glyphs inside otherwise readable native text are lossy, but
+    // they are not evidence that the whole page should be replaced by OCR.
+    // Treat controls as corruption only when they are both numerous and dense.
+    if invalid_controls >= 8
+        && invalid_controls.saturating_mul(100) >= nonspace.max(1).saturating_mul(5)
+    {
         reasons.push("invalid_control_characters");
     }
     if alphabetic >= MIN_SUBSTITUTION_ALPHA_CHARS
@@ -808,7 +815,7 @@ mod tests {
     fn active_backend_identifies_quality_checked_oxidize_extraction() {
         assert_eq!(
             active_backend_id(),
-            "oxidize-pdf-4.2.2-rag-native-first-ocr-v3"
+            "oxidize-pdf-4.2.2-rag-native-first-ocr-v4"
         );
     }
 
@@ -838,6 +845,30 @@ mod tests {
             "L'étude cardiovasculaire évalue la pression artérielle et l'activité physique régulière.",
         );
         assert!(!normal.suspicious);
+    }
+
+    #[test]
+    fn sparse_custom_font_control_glyphs_do_not_force_ocr() {
+        let assessment = assess_text_quality(
+            "The active blood-gas barrier is around 0.3 \u{001e}m thick and the capillary is under 3 \u{001e}m in scale.",
+        );
+        assert!(!assessment.suspicious);
+
+        let document = base_document(
+            "The active blood-gas barrier is around 0.3 \u{001e}m thick.",
+            "",
+        );
+        let plan = plan_text_recovery(&document);
+        assert!(plan.ocr_pages.is_empty());
+        assert_eq!(plan.native_semantic_fallback_pages, Vec::<usize>::new());
+    }
+
+    #[test]
+    fn dense_control_character_corruption_still_requires_recovery() {
+        let corrupt = "A\u{0001}B\u{0002}C\u{0003}D\u{0004}E\u{0005}F\u{0006}G\u{0007}H\u{0008}I\u{0009}J\u{000b}K\u{000c}L\u{000e}M\u{000f}N";
+        let assessment = assess_text_quality(corrupt);
+        assert!(assessment.suspicious);
+        assert!(assessment.reasons.contains(&"invalid_control_characters"));
     }
 
     #[test]

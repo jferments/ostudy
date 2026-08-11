@@ -94,22 +94,24 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
         <aside className={styles.aiSidebar} aria-label="AI provider profiles">
         <div className={styles.sectionHeading}>
           <div>
-            <h2>Provider profiles</h2>
+            <h2>AI provider profiles</h2>
             <p>One profile represents one trusted endpoint, model, and credential boundary.</p>
           </div>
         </div>
         <div className={styles.addProviderGrid}>
-          {availableProviders.map((provider) => (
-            <button
-              key={provider.providerKind}
-              type="button"
-              className="secondary-button"
-              disabled={controller.mutating}
-              onClick={() => void beginCreate(provider.providerKind)}
-            >
-              Add {provider.providerKind === "llama_cpp" ? "llama.cpp" : provider.displayName}
-            </button>
-          ))}
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={controller.mutating || availableProviders.length === 0}
+            onClick={() => {
+              const preferred =
+                availableProviders.find((provider) => provider.providerKind === "llama_cpp") ??
+                availableProviders[0];
+              if (preferred) void beginCreate(preferred.providerKind);
+            }}
+          >
+            New profile
+          </button>
         </div>
         {controller.loading ? <div className="inline-progress">Loading AI profiles…</div> : null}
         <div className={styles.profileList}>
@@ -147,6 +149,7 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
             <ProfileEditor
               controller={controller}
               providerSettingsDirty={providerSettingsDirty}
+              onProviderChange={controller.beginCreate}
               onDelete={() => void deleteProfile()}
             />
             {controller.selectedProfile ? (
@@ -222,10 +225,12 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
 function ProfileEditor({
   controller,
   providerSettingsDirty,
+  onProviderChange,
   onDelete,
 }: {
   controller: AiProfilesController;
   providerSettingsDirty: boolean;
+  onProviderChange: (providerKind: AiProviderKind) => void;
   onDelete: () => void;
 }) {
   const draft = controller.draft;
@@ -260,7 +265,23 @@ function ProfileEditor({
         </label>
         <label className={styles.stackedField}>
           <span>Provider</span>
-          <input value={provider?.displayName ?? draft.providerKind} readOnly />
+          <select
+            aria-label="Provider type"
+            value={draft.providerKind}
+            disabled={saved !== null || controller.mutating}
+            onChange={(event) => onProviderChange(event.currentTarget.value as AiProviderKind)}
+          >
+            {controller.catalog.map((entry) => (
+              <option
+                key={entry.providerKind}
+                value={entry.providerKind}
+                disabled={entry.implementationStatus !== "available"}
+              >
+                {entry.displayName}
+                {entry.implementationStatus === "available" ? "" : " — planned"}
+              </option>
+            ))}
+          </select>
         </label>
         <label className={`${styles.stackedField} ${styles.fullWidth}`}>
           <span>Base URL</span>
@@ -335,15 +356,11 @@ function ProfileEditor({
         ) : null}
       </div>
 
-      {isLlama ? (
-        <p className={styles.securityNote}>
-          llama.cpp applies the chat template embedded with the loaded model. For an Unsloth-exported GGUF, serve the model with its matching template; ostudy does not replace it with a hand-written template.
-        </p>
-      ) : (
+      {!isLlama ? (
         <p className={styles.cloudNotice}>
-          DeepSeek is a cloud provider. ostudy uses DeepSeek's fixed official API endpoint; the credential is entered only after this profile has a saved identity.
+          DeepSeek is a cloud provider. ostudy uses DeepSeek's fixed official API endpoint.
         </p>
-      )}
+      ) : null}
 
       <div className={styles.actionRow}>
         <button
@@ -464,9 +481,6 @@ function CredentialPanel({ controller }: { controller: AiProfilesController }) {
           Use only until ostudy closes
         </label>
       </fieldset>
-      <p className={styles.securityNote}>
-        The credential never enters SQLite, React state after submission, diagnostics, `.studydeck` files, or `.ostudybackup` archives. After the credential is saved, ostudy automatically requests the provider's model list.
-      </p>
       <div className={styles.actionRow}>
         <button
           type="button"
@@ -570,11 +584,6 @@ function ModelSelectionPanel({
           <p className={styles.note}>
             {controller.models.length} model{controller.models.length === 1 ? "" : "s"} returned by the provider.
           </p>
-          {profile.providerKind === "llama_cpp" ? (
-            <p className={styles.note}>
-              llama.cpp normally reports the loaded GGUF file path as its model ID unless the server was started with <code>--alias</code>. The API-reported ID is the correct routing value for ostudy.
-            </p>
-          ) : null}
           <div className={styles.actionRow}>
             <button
               type="button"

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { PracticeLaunchRequest } from "../App";
+import { getCardNote, type CardNote } from "../ipc/cards";
 import { PracticeController } from "../controllers/practiceController";
 import { registerPracticeExitHandler } from "../controllers/practiceExitGuard";
 import {
@@ -29,6 +30,7 @@ import {
 } from "../ipc/settings";
 import { useExperience } from "../ui/feedback/ExperienceProvider";
 import { useConfirm } from "../ui/overlays/overlayContext";
+import { CardEditorScreen } from "./CardEditorScreen";
 import { ActivePractice } from "./practice/ActivePractice";
 import {
   outcomeForScore,
@@ -90,6 +92,8 @@ export function PracticeScreen({
   const [isRating, setIsRating] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
   const [isManaging, setIsManaging] = useState(false);
+  const [isLoadingEditor, setIsLoadingEditor] = useState(false);
+  const [editingCard, setEditingCard] = useState<CardNote | null>(null);
   const [completed, setCompleted] = useState(false);
   const [ratedCount, setRatedCount] = useState(0);
   const [confidenceCounts, setConfidenceCounts] = useState<ConfidenceCounts>([0, 0, 0, 0]);
@@ -438,6 +442,45 @@ export function PracticeScreen({
     }
   }
 
+  async function editCurrentCard(): Promise<void> {
+    if (!session || !current || isLoadingEditor || pendingReviewRef.current) return;
+    setIsLoadingEditor(true);
+    setErrorMessage(null);
+    try {
+      setEditingCard(await getCardNote(current.presentation.noteId));
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsLoadingEditor(false);
+    }
+  }
+
+  async function finishCardEdit(saved: CardNote): Promise<void> {
+    if (!session) return;
+    const refreshed = await controller.refreshAfterEdit({
+      sessionId: session.id,
+      noteId: saved.noteId,
+      startPosition: position,
+    });
+    setSession((currentSession) =>
+      currentSession ? { ...currentSession, cardCount: refreshed.cardCount } : currentSession,
+    );
+    setEditingCard(null);
+    setPosition(refreshed.startPosition);
+    setSessionCards((cards) => [
+      ...cards.slice(0, refreshed.startPosition),
+      ...refreshed.window.cards,
+    ]);
+    setRevealed(false);
+    setPreviewSet(null);
+    questionShownAtRef.current = Date.now();
+    if (refreshed.completed) {
+      setCompleted(true);
+      experience.emit({ type: "session_completed" });
+    }
+    showToast("success", "Card updated. Practice session refreshed.");
+  }
+
   async function manageCurrent(
     action: ScheduleAction,
     rescheduleIntent?: RescheduleIntent,
@@ -541,10 +584,29 @@ export function PracticeScreen({
     setRatedCount(0);
     setConfidenceCounts([0, 0, 0, 0]);
     setTemporaryCardIds([]);
+    setEditingCard(null);
     setSelectedTagIds(new Set());
     setErrorMessage(null);
     void loadRecentPractice();
     void loadWorkload([...selectedDeckIds], []);
+  }
+
+  if (session && editingCard) {
+    const editorDeck = activeDecks.find((deck) => deck.id === editingCard.deckId);
+    if (editorDeck) {
+      return (
+        <CardEditorScreen
+          deck={editorDeck}
+          decks={[editorDeck]}
+          card={editingCard}
+          onCancel={() => setEditingCard(null)}
+          onSaved={async (saved) => finishCardEdit(saved)}
+          onTemplateGenerated={async () => undefined}
+          onDirtyChange={() => undefined}
+          onMoveCopy={() => undefined}
+        />
+      );
+    }
   }
 
   if (session && completed) {
@@ -585,11 +647,12 @@ export function PracticeScreen({
         isRevealing={isRevealing}
         isRating={isRating}
         isEnding={isEnding}
-        isManaging={isManaging || isLoadingWindow}
+        isManaging={isManaging || isLoadingWindow || isLoadingEditor}
         flipAnimationEnabled={settings.animationsEnabled && !settings.reduceMotion}
         errorMessage={errorMessage}
         onReveal={() => void revealAnswer()}
         onScore={(score) => void submitScore(score)}
+        onEdit={() => void editCurrentCard()}
         onScheduleAction={(action, intent) => void manageCurrent(action, intent)}
         onEnd={() => void endSession()}
         onLinkError={setErrorMessage}

@@ -31,6 +31,7 @@ interface ActivePracticeProps {
   errorMessage: string | null;
   onReveal: () => void;
   onScore: (score: ConfidenceScore) => void;
+  onEdit: () => void;
   onScheduleAction: (action: ScheduleAction, intent?: RescheduleIntent) => void;
   onEnd: () => void;
   onLinkError: (message: string) => void;
@@ -51,6 +52,7 @@ export function ActivePractice({
   errorMessage,
   onReveal,
   onScore,
+  onEdit,
   onScheduleAction,
   onEnd,
   onLinkError,
@@ -129,6 +131,14 @@ export function ActivePractice({
           <span>{ratedCount} reviewed</span>
         </div>
         <div className="practice-header-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={busy}
+            onClick={onEdit}
+          >
+            Edit card
+          </button>
           <Menu
             label="More"
             disabled={busy}
