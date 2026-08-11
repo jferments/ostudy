@@ -1,0 +1,83 @@
+name: Bug report
+description: Report a reproducible problem in ostudy
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the smallest reproducible problem. Do not attach API keys, private PDFs, card contents, the live SQLite library, or unredacted personal data.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Enter the ostudy version, tag, or exact commit SHA.
+      placeholder: 0.1.0 or abc1234
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Ubuntu or Debian Linux
+        - Other Linux distribution
+        - Windows source build
+        - macOS source build
+        - Android (planned / development work)
+        - iOS (planned / development work)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: architecture
+    attributes:
+      label: CPU architecture and operating-system version
+      placeholder: x86_64, Ubuntu 24.04
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Affected workflow
+      description: Name the screen and describe the action being performed.
+      placeholder: Documents → import PDF → start generation
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Use the smallest sequence that reproduces the problem, including whether it survives restart.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Restart ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the exact redacted error text and the processing phase when applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Validation and diagnostics
+      description: List failing commands, relevant redacted log excerpts, provider/model details, PDF text-vs-scan status, and OCR use when applicable.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Privacy and duplicate check
+      options:
+        - label: I searched existing issues and the roadmap for this problem.
+          required: true
+        - label: I removed credentials, private study content, private documents, patient/student data, and the live library database from this report.
+          required: true
