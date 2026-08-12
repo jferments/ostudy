@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { basename, dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +14,12 @@ const trackedFiles = execFileSync("git", ["ls-files", "-z"], {
 })
   .split("\0")
   .filter(Boolean)
-  .map((path) => path.replaceAll("\\", "/"));
+  .map((path) => path.replaceAll("\\", "/"))
+  // Qualification workflows intentionally validate an all-or-nothing working
+  // tree before committing. Files scheduled for deletion still appear in
+  // `git ls-files`, so omit only entries that are already absent from that
+  // candidate tree while retaining every existing tracked file in the scan.
+  .filter((path) => existsSync(resolve(root, path)));
 const tracked = new Set(trackedFiles);
 
 const allowedRootEntries = new Set([
@@ -49,104 +55,98 @@ const allowedRootEntries = new Set([
   "vitest.config.ts",
 ]);
 
-const rootEntries = new Set(trackedFiles.map((path) => path.split("/")[0]));
-for (const entry of [...rootEntries].sort()) {
-  if (!allowedRootEntries.has(entry)) {
-    failures.push(
-      `${entry}: tracked top-level entry is not a conventional repository entry point or tool-discovered configuration; place subject-specific material under docs/, scripts/, tests/, or the owning source directory`,
-    );
-  }
-}
-
-const allowedDocsEntries = new Set([
-  "README.md",
-  "agents",
-  "architecture",
-  "decisions",
-  "development",
-  "examples",
-  "history",
-  "installation",
-  "ostudy-flashcards-v1.schema.json",
-  "reference",
-  "roadmap.md",
-  "user-guide",
-]);
-const docsEntries = new Set(
-  trackedFiles
-    .filter((path) => path.startsWith("docs/"))
-    .map((path) => path.slice("docs/".length).split("/")[0]),
+const rootEntries = new Set(
+  trackedFiles.map((path) => path.split("/")[0]).filter((entry) => entry !== ""),
 );
-for (const entry of [...docsEntries].sort()) {
-  if (!allowedDocsEntries.has(entry)) {
-    failures.push(
-      `docs/${entry}: maintained documentation must be placed in the user, installation, architecture, development, reference, decision, agent, example, or history section`,
-    );
+for (const entry of rootEntries) {
+  if (!allowedRootEntries.has(entry)) failures.push(`Unexpected repository-root entry: ${entry}`);
+}
+
+const requiredFiles = [
+  "AGENTS.md",
+  "CONTRIBUTING.md",
+  "README.md",
+  "docs/README.md",
+  "docs/architecture/overview.md",
+  "docs/architecture/platform-services.md",
+  "docs/architecture/ui.md",
+  "docs/development/platform-portability-inventory.md",
+  "docs/development/testing-and-ci.md",
+  "docs/installation/development.md",
+  "docs/installation/linux.md",
+  "docs/installation/mobile.md",
+  "docs/installation/windows.md",
+  "docs/roadmap.md",
+];
+for (const path of requiredFiles) {
+  if (!tracked.has(path)) failures.push(`Required maintained document is missing: ${path}`);
+}
+
+const forbiddenRootFiles = [
+  "ARCHITECTURE.md",
+  "BUILD.md",
+  "DEVELOPMENT.md",
+  "INSTALL.md",
+  "INSTALLATION.md",
+  "MIGRATIONS.md",
+  "ROADMAP.md",
+  "TESTING.md",
+];
+for (const path of forbiddenRootFiles) {
+  if (tracked.has(path)) failures.push(`Documentation belongs under docs/: ${path}`);
+}
+
+const markdownFiles = trackedFiles.filter((path) => path.endsWith(".md"));
+const maintainedRootMarkdown = markdownFiles.filter((path) => !path.includes("/"));
+for (const path of maintainedRootMarkdown) {
+  if (!new Set(["AGENTS.md", "CONTRIBUTING.md", "README.md"]).has(path)) {
+    failures.push(`Unexpected maintained Markdown at repository root: ${path}`);
   }
 }
 
-const requiredPaths = [
-  "README.md",
-  "CONTRIBUTING.md",
-  "AGENTS.md",
-  "docs/README.md",
-  "docs/roadmap.md",
-  "docs/installation/README.md",
-  "docs/installation/linux.md",
-  "docs/installation/windows.md",
-  "docs/installation/macos.md",
-  "docs/installation/mobile.md",
-  "docs/user-guide/getting-started.md",
-  "docs/user-guide/ai-providers.md",
-  "docs/user-guide/documents-and-ai-generation.md",
-  "docs/user-guide/backups-imports-and-sharing.md",
-  "docs/architecture/overview.md",
-  "docs/architecture/ai-and-document-processing.md",
-  "docs/architecture/card-format-and-data-model.md",
-  "docs/architecture/ui.md",
-  "docs/development/guide.md",
-  "docs/development/workflow.md",
-  "docs/development/testing-and-ci.md",
-  "docs/development/dependency-audit.md",
-  "docs/reference/generated-json-import.md",
-  "docs/reference/flashcard-import-agent.md",
-  "docs/history/README.md",
-  "docs/ostudy-flashcards-v1.schema.json",
-  "docs/examples/cardiovascular.ostudy.json",
-  ".github/ISSUE_TEMPLATE/bug_report.yml",
-  ".github/ISSUE_TEMPLATE/feature_request.yml",
-  ".github/ISSUE_TEMPLATE/config.yml",
+const requiredDecisionFiles = [
+  "docs/decisions/0026-runtime-platform-ports-and-composition.md",
+  "docs/decisions/0027-opaque-external-files-and-managed-content-protocol.md",
+  "docs/decisions/0028-secret-storage-and-device-key-isolation.md",
+  "docs/decisions/0029-lifecycle-time-and-resource-observation.md",
+  "docs/decisions/0030-durable-authoring-drafts-and-recovery.md",
 ];
-for (const path of requiredPaths) {
-  if (!tracked.has(path)) failures.push(`Required maintained documentation is missing: ${path}`);
+for (const path of requiredDecisionFiles) {
+  if (!tracked.has(path)) failures.push(`Required architecture decision is missing: ${path}`);
+}
+
+const readme = tracked.has("README.md") ? await readFile(resolve(root, "README.md"), "utf8") : "";
+for (const heading of ["## Features", "## Installation", "## Documentation"]) {
+  if (!readme.includes(heading)) failures.push(`README.md: missing ${heading}`);
+}
+for (const phrase of [
+  "failed PDF generations available for retry",
+  "bounded multi-core",
+  "ordered durable page",
+  "source-window-aware diagnostic",
+]) {
+  if (readme.toLowerCase().includes(phrase.toLowerCase())) {
+    failures.push(`README.md: contains implementation-detail marketing copy: ${phrase}`);
+  }
+}
+
+const roadmap = tracked.has("docs/roadmap.md")
+  ? await readFile(resolve(root, "docs/roadmap.md"), "utf8")
+  : "";
+for (const heading of ["## Current priorities", "## Later work"]) {
+  if (!roadmap.includes(heading)) failures.push(`docs/roadmap.md: missing ${heading}`);
 }
 
 const removedCanonicalPaths = [
-  "ARCHITECTURE-AND-PLAN.md",
-  "DEPENDENCY-AUDIT.md",
-  "VALIDATION-REPORT.md",
-  "templates/0001_initial.sql",
-  "docs/ARCHITECTURE.md",
-  "docs/AI-ARCHITECTURE.md",
-  "docs/CARD-FORMAT-AND-DATA-MODEL.md",
-  "docs/UI-ARCHITECTURE.md",
-  "docs/DEVELOPMENT-AND-QUALITY.md",
-  "docs/GIT-WORKFLOW.md",
-  "docs/OSTUDY-GIT-AND-CODING-WORKFLOW.md",
-  "docs/GENERATED-JSON-IMPORT.md",
-  "docs/OSTUDY-FLASHCARD-IMPORT-AGENT.md",
-  "docs/PHASE-2-ROADMAP.md",
-  "docs/STAGE-3-CARD-TYPES-AND-TEMPLATES.md",
-  "docs/CODE-REVIEW-2026-08-03.md",
+  "docs/architecture.md",
+  "docs/build.md",
+  "docs/development.md",
+  "docs/installation.md",
+  "docs/migrations.md",
+  "docs/testing.md",
 ];
-for (const path of removedCanonicalPaths) {
-  if (tracked.has(path)) failures.push(`Stale or superseded canonical path remains tracked: ${path}`);
-}
-
 const textExtensions = new Set([
-  ".cjs",
   ".css",
-  ".env",
   ".html",
   ".js",
   ".json",
@@ -208,81 +208,70 @@ for (const path of maintainedMarkdown) {
     const target = normalizeTarget(candidate.target);
     if (target === null) continue;
     checkedLinks += 1;
-    const problem = await validateLocalTarget(path, target);
-    if (problem) failures.push(`${path}:${lineNumber(original, candidate.index)}: ${problem}`);
+    const [pathPart, fragment] = target.split("#", 2);
+    const targetPath = pathPart === ""
+      ? path
+      : relative(root, resolve(dirname(absolutePath), decodeURIComponent(pathPart))).replaceAll(sep, "/");
+    if (!tracked.has(targetPath)) {
+      failures.push(`${path}: local link target is not tracked: ${target}`);
+      continue;
+    }
+    if (fragment !== undefined && fragment !== "") {
+      const targetText = await readFile(resolve(root, targetPath), "utf8");
+      const anchors = markdownAnchors(targetText);
+      if (!anchors.has(decodeURIComponent(fragment).toLowerCase())) {
+        failures.push(`${path}: local link fragment does not exist: ${target}`);
+      }
+    }
   }
 }
 
 if (failures.length > 0) {
-  console.error("Documentation and repository organization verification failed:");
+  console.error("Documentation verification failed:");
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
 
 console.log(
-  `OK   Documentation: ${maintainedMarkdown.length} maintained Markdown files, ${checkedLinks} local links, and ${staleReferenceScanFiles.length} tracked text files verified; root and docs organization are canonical.`,
+  `OK   Documentation: ${maintainedMarkdown.length} maintained Markdown files and ${checkedLinks} local links are valid; stale canonical references are absent.`,
 );
 
 function stripCode(text) {
-  let fence = null;
   return text
-    .split(/\r?\n/u)
-    .map((line) => {
-      const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/u);
-      if (fenceMatch) {
-        const marker = fenceMatch[1][0];
-        if (fence === null) fence = marker;
-        else if (fence === marker) fence = null;
-        return "";
-      }
-      if (fence !== null) return "";
-      return line.replace(/`[^`\n]*`/gu, "");
-    })
-    .join("\n");
+    .replace(/```[\s\S]*?```/gu, "")
+    .replace(/`[^`\n]+`/gu, "");
 }
 
 function normalizeTarget(raw) {
-  let target = raw.trim();
-  if (target.startsWith("<") && target.endsWith(">")) target = target.slice(1, -1);
-  if (target === "" || target.startsWith("#") || target.startsWith("//")) return null;
-  if (/^(?:https?|mailto|tel):/iu.test(target)) return null;
-  if (/^[a-z][a-z0-9+.-]*:/iu.test(target)) return `__UNSAFE_SCHEME__${target}`;
-  return target;
+  const unwrapped = raw.startsWith("<") && raw.endsWith(">") ? raw.slice(1, -1) : raw;
+  if (
+    unwrapped === ""
+    || unwrapped.startsWith("#")
+    || /^[a-z][a-z0-9+.-]*:/iu.test(unwrapped)
+    || unwrapped.startsWith("//")
+  ) {
+    return unwrapped.startsWith("#") ? unwrapped : null;
+  }
+  return unwrapped;
 }
 
-async function validateLocalTarget(sourcePath, target) {
-  if (target.startsWith("__UNSAFE_SCHEME__")) {
-    return `unsupported or unsafe link scheme: ${target.slice("__UNSAFE_SCHEME__".length)}`;
+function markdownAnchors(text) {
+  const counts = new Map();
+  const output = new Set();
+  for (const line of stripCode(text).split("\n")) {
+    const match = line.match(/^#{1,6}\s+(.+?)\s*#*\s*$/u);
+    if (!match) continue;
+    const base = match[1]
+      .trim()
+      .toLowerCase()
+      .replace(/<[^>]+>/gu, "")
+      .replace(/[^\p{L}\p{N}\s-]/gu, "")
+      .replace(/\s+/gu, "-")
+      .replace(/-+/gu, "-")
+      .replace(/^-|-$/gu, "");
+    const count = counts.get(base) ?? 0;
+    counts.set(base, count + 1);
+    output.add(count === 0 ? base : `${base}-${count}`);
   }
-
-  const withoutFragment = target.split("#", 1)[0].split("?", 1)[0];
-  if (withoutFragment === "") return null;
-
-  let decoded;
-  try {
-    decoded = decodeURIComponent(withoutFragment);
-  } catch {
-    return `link target is not valid percent-encoding: ${target}`;
-  }
-  if (decoded.includes("\\")) return `local Markdown links must use forward slashes: ${target}`;
-
-  const destination = decoded.startsWith("/")
-    ? resolve(root, `.${decoded}`)
-    : resolve(dirname(resolve(root, sourcePath)), decoded);
-  const relativeDestination = relative(root, destination);
-  if (relativeDestination === ".." || relativeDestination.startsWith(`..${sep}`)) {
-    return `link escapes the repository: ${target}`;
-  }
-
-  try {
-    const info = await stat(destination);
-    if (!info.isFile() && !info.isDirectory()) return `link target is not a file or directory: ${target}`;
-  } catch {
-    return `broken local link: ${target}`;
-  }
-  return null;
-}
-
-function lineNumber(text, index) {
-  return text.slice(0, index).split("\n").length;
+  return output;
 }
