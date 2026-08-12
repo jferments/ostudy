@@ -1,0 +1,77 @@
+name: Apply Android A1-A3 core integration
+
+on:
+  push:
+    branches:
+      - agent/android-a1-a3
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-android-a1-a3-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 120
+    steps:
+      - name: Check out Android branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/android-a1-a3
+          fetch-depth: 0
+
+      - name: Expose tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Apply core integration
+        run: node ./scripts/apply-android-a1-a3-core.mjs
+
+      - name: Install JavaScript and native dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          ./scripts/install-native-deps.sh --pdfium-only
+          ./scripts/install-android-deps.sh
+          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+          source ./scripts/android-env.sh
+          android_write_local_properties
+          android_emit_github_environment
+
+      - name: Normalize Rust dependency graph and source
+        run: |
+          cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 > /dev/null
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Qualify shared application
+        env:
+          OSTUDY_PDFIUM_PATH: ${{ github.workspace }}/src-tauri/resources/native/pdfium/libpdfium.so
+        run: |
+          pnpm exec tsc -b --pretty false
+          pnpm test
+          cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
+          node scripts/verify-ipc-contract.mjs
+          node scripts/verify-platform-boundaries.mjs
+          git diff --check
+
+      - name: Build Android x86_64 debug APK
+        env:
+          CI: "true"
+        run: |
+          source ./scripts/android-env.sh
+          pnpm tauri android build --debug --target x86_64
+
+      - name: Commit qualified integration
+        run: |
+          rm scripts/apply-android-a1-a3-core.mjs
+          rm .github/workflows/apply-android-a1-a3-core.yml
+          git diff --check
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: integrate Android runtime and build shell"
+          git push origin HEAD:agent/android-a1-a3
