@@ -15,7 +15,7 @@ concurrency:
 jobs:
   complete:
     runs-on: [self-hosted, linux, x64, ostudy]
-    timeout-minutes: 180
+    timeout-minutes: 240
     env:
       CI: "true"
       CARGO_TERM_COLOR: always
@@ -32,11 +32,9 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Apply A1-A3 source integrations
+      - name: Apply final shared UI integrations
         run: |
-          node ./scripts/run-android-a1-a3-core.mjs
           node ./scripts/apply-android-a2-product.mjs
-          node ./scripts/apply-android-a3-incoming.mjs
           node ./scripts/apply-android-a3-frontend.mjs
           chmod +x src-tauri/gen/android/gradlew
           chmod +x \
@@ -78,6 +76,27 @@ jobs:
         run: |
           node ./scripts/verify-android-project.mjs
           ./scripts/android-test.sh
+
+      - name: Run official emulator smoke when KVM is available
+        run: |
+          if [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then
+            ./scripts/install-android-deps.sh --with-emulator
+            ./scripts/android-emulator-smoke.sh --artifacts "$RUNNER_TEMP/android-smoke"
+          else
+            echo "The current self-hosted runner does not expose writable /dev/kvm; emulator smoke remains available through pnpm android:smoke on a KVM-capable host."
+          fi
+
+      - name: Upload emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ostudy-android-a1-a3-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/android-smoke/**
+            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+            src-tauri/gen/android/app/build/reports/**
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Remove implementation-only applicators and workflows
         run: |
