@@ -36,16 +36,22 @@ jobs:
         run: |
           if [[ ! -f plugins/ostudy-platform/Cargo.toml ]]; then
             rm -rf tauri-plugin-ostudy-platform
-            pnpm tauri plugin new ostudy-platform --no-api --no-example --android
+            # The current plugin generator still requests metadata through a TTY.
+            # Empty answers select its safe defaults; the repository pins and
+            # verifies the final metadata after generation.
+            yes '' | script -qec \
+              "pnpm tauri plugin new ostudy-platform --no-api --no-example --android" \
+              /dev/null
             mkdir -p plugins
             mv tauri-plugin-ostudy-platform plugins/ostudy-platform
           fi
-          find plugins/ostudy-platform -maxdepth 6 -type f | sort
+          find plugins/ostudy-platform -maxdepth 7 -type f | sort
 
       - name: Commit generated plugin
         run: |
           git config user.name "ostudy automation"
           git config user.email "actions@users.noreply.github.com"
+          git add -A
           git add -f plugins/ostudy-platform
           if git diff --cached --quiet; then
             echo "No plugin generation changes were required."
