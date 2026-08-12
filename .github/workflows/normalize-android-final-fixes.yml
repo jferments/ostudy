@@ -1,0 +1,53 @@
+name: Normalize Android request transformation
+
+on:
+  push:
+    branches:
+      - agent/android-a1-a3
+
+permissions:
+  contents: write
+
+concurrency:
+  group: normalize-android-final-fixes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  normalize:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 15
+    steps:
+      - name: Check out Android branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/android-a1-a3
+          fetch-depth: 0
+
+      - name: Protect the ExternalFileRequest definition
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/apply-android-final-fixes.mjs")
+          text = path.read_text()
+          old = '''for (const path of await rustFiles(join(root, "src-tauri", "src"))) {
+            let source = await readFile(path, "utf8");
+          '''
+          new = '''for (const path of await rustFiles(join(root, "src-tauri", "src"))) {
+            if (path.endsWith(join("src-tauri", "src", "platform", "mod.rs"))) continue;
+            let source = await readFile(path, "utf8");
+          '''
+          if old not in text:
+              raise SystemExit("Android ExternalFileRequest scanner anchor was not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
+          rm -f .github/workflows/normalize-android-final-fixes.yml
+
+      - name: Commit safe request transformation
+        run: |
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: keep Android request normalization type-safe"
+          git push origin HEAD:agent/android-a1-a3
