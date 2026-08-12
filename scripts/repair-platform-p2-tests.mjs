@@ -11,6 +11,16 @@ const id = '"1".repeat(32)';
 const staged = (kind, purpose, name) =>
   `{ id: ${id}, purpose: "${purpose}", detectedKind: "${kind}", displayName: "${name}", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 }`;
 
+function insertAfterImports(text, snippet) {
+  const matches = [...text.matchAll(/^import[\s\S]*?;\n/gmu)];
+  const last = matches.at(-1);
+  if (!last || last.index === undefined) {
+    throw new Error("Could not find an import block for durable-draft test mocking.");
+  }
+  const insertion = last.index + last[0].length;
+  return text.slice(0, insertion) + snippet + text.slice(insertion);
+}
+
 let factories = await read("src", "test", "factories.ts");
 factories = factories.replace(/^\s*filePath:\s*[^\n]+\n/gmu, "");
 await write("src/test/factories.ts", factories);
@@ -43,8 +53,14 @@ async function patchTests(directory) {
       .replaceAll('{ sourcePath: "/tmp/deck.studydeck", operationId: importOperationId }', `{ stagedFileId: ${id}, operationId: importOperationId }`)
       .replaceAll('prepareLibraryRestore("/tmp/library.ostudybackup")', `prepareLibraryRestore(${id})`)
       .replaceAll('{ sourcePath: "/tmp/library.ostudybackup" }', `{ stagedFileId: ${id} }`)
-      .replaceAll('importGeneratedFlashcards("/tmp/', `importGeneratedFlashcards(${id} /* `)
-      .replaceAll('importPdfAndGenerateFlashcards("/tmp/', `importPdfAndGenerateFlashcards(${id} /* `);
+      .replace(/importGeneratedFlashcards\("\/tmp\/[^"\n]+"\)/gu, `importGeneratedFlashcards(${id})`)
+      .replace(/importPdfAndGenerateFlashcards\("\/tmp\/[^"\n]+"\)/gu, `importPdfAndGenerateFlashcards(${id})`)
+      .replace(/input:\s*\{\s*sourcePath:\s*"\/tmp\/[^"\n]+"\s*\}/gu, `input: { stagedFileId: ${id} }`);
+
+    text = text.replace(
+      /expect\(invoke\)\.toHaveBeenCalledWith\("import_generated_flashcards",\s*\{\s*sourcePath:\s*"\/tmp\/[^"\n]+",?\s*\}\);/gu,
+      `expect(invoke).toHaveBeenCalledWith("import_generated_flashcards", { input: { stagedFileId: ${id} } });`,
+    );
 
     text = text.replace(
       /mockResolvedValue\("\/tmp\/[^"\n]+\.studydeck"\)/gu,
@@ -64,28 +80,31 @@ async function patchTests(directory) {
     );
 
     text = text.replace(
-      /vi\.mocked\((?:decksIpc\.)?prepareDeckExport\)\.mockResolvedValue\([\s\S]*?\n\s*\);/gu,
-      'vi.mocked(decksIpc.prepareDeckExport).mockResolvedValue({ preparedExport: { id: "2".repeat(32), purpose: "studydeck", suggestedFilename: "deck.studydeck", mediaType: "application/vnd.ostudy.studydeck", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 }, cardCount: 3, assetCount: 1 });',
+      /^(\s*)vi\.mocked\((?:decksIpc\.)?prepareDeckExport\)\.mockResolvedValue\([^\n]*\);\s*$/gmu,
+      '$1vi.mocked(decksIpc.prepareDeckExport).mockResolvedValue({ preparedExport: { id: "2".repeat(32), purpose: "studydeck", suggestedFilename: "deck.studydeck", mediaType: "application/vnd.ostudy.studydeck", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 }, cardCount: 3, assetCount: 1 });',
     );
     text = text.replace(
-      /vi\.mocked\((?:backupIpc\.)?prepareLibraryBackup\)\.mockResolvedValue\([\s\S]*?\n\s*\);/gu,
-      'vi.mocked(backupIpc.prepareLibraryBackup).mockResolvedValue({ preparedExport: { id: "2".repeat(32), purpose: "library_backup", suggestedFilename: "library.ostudybackup", mediaType: "application/vnd.ostudy.backup", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 }, deckCount: 3, templateCount: 2, reviewCount: 41, assetCount: 4 });',
+      /^(\s*)vi\.mocked\((?:backupIpc\.)?prepareLibraryBackup\)\.mockResolvedValue\([^\n]*\);\s*$/gmu,
+      '$1vi.mocked(backupIpc.prepareLibraryBackup).mockResolvedValue({ preparedExport: { id: "2".repeat(32), purpose: "library_backup", suggestedFilename: "library.ostudybackup", mediaType: "application/vnd.ostudy.backup", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 }, deckCount: 3, templateCount: 2, reviewCount: 41, assetCount: 4 });',
     );
     text = text.replace(
-      /vi\.mocked\(platformFiles\.publishExport\)\.mockResolvedValue\([\s\S]*?\);/gu,
-      'vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "export", destinationKind: "desktop_file", completedAt: Date.now() });',
+      /^(\s*)vi\.mocked\(platformFiles\.publishExport\)\.mockResolvedValue\([^\n]*\);\s*$/gmu,
+      '$1vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "export", destinationKind: "desktop_file", completedAt: Date.now() });',
     );
 
     if (
-      (text.includes("CardEditorScreen") || text.includes("TemplatesScreen") || text.includes("SettingsScreen"))
-      && !text.includes('vi.mock("../controllers/useDurableDraft"')
+      (text.includes("CardEditorScreen") ||
+        text.includes("TemplatesScreen") ||
+        text.includes("SettingsScreen")) &&
+      !text.includes('vi.mock("../controllers/useDurableDraft"')
     ) {
-      const importEnd = text.lastIndexOf("\n", text.indexOf("\n\n", 0));
-      text = text.slice(0, importEnd + 1) + durableMock("../controllers/useDurableDraft") + text.slice(importEnd + 1);
+      text = insertAfterImports(text, durableMock("../controllers/useDurableDraft"));
     }
-    if (text.includes("BulkEntryModal") && !text.includes('vi.mock("../../controllers/useDurableDraft"')) {
-      const firstDescribe = text.indexOf("describe(");
-      text = text.slice(0, firstDescribe) + durableMock("../../controllers/useDurableDraft") + text.slice(firstDescribe);
+    if (
+      text.includes("BulkEntryModal") &&
+      !text.includes('vi.mock("../../controllers/useDurableDraft"')
+    ) {
+      text = insertAfterImports(text, durableMock("../../controllers/useDurableDraft"));
     }
 
     if (text !== original) await write(relative, text);
