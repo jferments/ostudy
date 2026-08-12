@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: complete-platform-p0-p2-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   complete:
@@ -28,6 +28,26 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
+      - name: Apply pending path-free frontend changes
+        run: |
+          if grep -q '"export_library_backup"' src/ipc/backup.ts \
+             && [[ -f scripts/run-platform-p2-pathfree-frontend.mjs ]]; then
+            node scripts/run-platform-p2-pathfree-frontend.mjs
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/screens/DecksScreen.tsx")
+          text = path.read_text()
+          start = text.find("\nfunction safeFilename(")
+          if start >= 0:
+              end = text.find("\nfunction summarize(", start)
+              if end < 0:
+                  raise SystemExit("DecksScreen safeFilename boundary is incomplete")
+              text = text[:start] + text[end:]
+              path.write_text(text)
+          PY
+
       - name: Apply pending durable draft source changes
         run: |
           if ! grep -q 'name: "durable_editor_drafts"' src-tauri/src/database.rs \
@@ -40,19 +60,20 @@ jobs:
           fi
           python3 - <<'PY'
           from pathlib import Path
-          import hashlib, re
+          import hashlib
+          import re
 
-          migration_path = Path('src-tauri/migrations/0025_durable_editor_drafts.sql')
+          migration_path = Path("src-tauri/migrations/0025_durable_editor_drafts.sql")
           if not migration_path.exists():
-              raise SystemExit('Migration 25 is missing')
+              raise SystemExit("Migration 25 is missing")
           checksum = hashlib.sha256(migration_path.read_bytes()).hexdigest()
 
-          path = Path('src-tauri/src/database.rs')
+          path = Path("src-tauri/src/database.rs")
           text = path.read_text()
           if 'name: "durable_editor_drafts"' not in text:
               match = re.search(r'(\s+Migration \{\n\s+version: 24,[\s\S]*?\n\s+\},\n)(\];)', text)
               if not match:
-                  raise SystemExit('Migration 24 registry anchor missing')
+                  raise SystemExit("Migration 24 registry anchor missing")
               entry = f'''    Migration {{
                   version: 25,
                   name: "durable_editor_drafts",
@@ -69,33 +90,40 @@ jobs:
           text = re.sub(r'LATEST_SCHEMA_VERSION: i64 = \d+', 'LATEST_SCHEMA_VERSION: i64 = 25', text)
           path.write_text(text)
 
-          path = Path('src-tauri/src/lib.rs')
+          path = Path("src-tauri/src/lib.rs")
           text = path.read_text()
-          if 'mod editor_drafts;' not in text:
-              text = text.replace('mod error;', 'mod editor_drafts;\nmod error;')
-          if 'editor_drafts::reconcile_startup(&database)' not in text:
-              marker = 'external_files::reconcile_startup(&database, &paths)\n                .map_err(|error| io::Error::other(error.message))?;'
-              text = text.replace(marker, marker + '\n            editor_drafts::reconcile_startup(&database)\n                .map_err(|error| io::Error::other(error.message))?;')
-          if 'editor_drafts::open_editor_draft' not in text:
-              text = text.replace(
-                  'external_files::release_prepared_export,',
-                  '''external_files::release_prepared_export,
+          if "mod editor_drafts;" not in text:
+              text = text.replace("mod error;", "mod editor_drafts;\nmod error;")
+          if "editor_drafts::reconcile_startup(&database)" not in text:
+              marker = '''external_files::reconcile_startup(&database, &paths)
+                          .map_err(|error| io::Error::other(error.message))?;'''
+              replacement = marker + '''
+                      editor_drafts::reconcile_startup(&database)
+                          .map_err(|error| io::Error::other(error.message))?;'''
+              if marker not in text:
+                  raise SystemExit("External-file startup reconciliation anchor missing")
+              text = text.replace(marker, replacement)
+          if "editor_drafts::open_editor_draft" not in text:
+              marker = "external_files::release_prepared_export,"
+              replacement = '''external_files::release_prepared_export,
                       editor_drafts::open_editor_draft,
                       editor_drafts::save_editor_draft,
                       editor_drafts::discard_editor_draft,
                       editor_drafts::commit_editor_draft,
-                      editor_drafts::list_editor_drafts,''',
-              )
+                      editor_drafts::list_editor_drafts,'''
+              if marker not in text:
+                  raise SystemExit("Tauri external-file command registry anchor missing")
+              text = text.replace(marker, replacement)
           path.write_text(text)
 
-          path = Path('src-tauri/src/asset_lifecycle.rs')
+          path = Path("src-tauri/src/asset_lifecycle.rs")
           text = path.read_text()
           text = text.replace(
-              'WHERE committed_at IS NULL AND canceled_at IS NULL AND expires_at < ?1',
+              "WHERE committed_at IS NULL AND canceled_at IS NULL AND expires_at < ?1",
               "WHERE committed_at IS NULL AND canceled_at IS NULL AND retention_mode = 'ephemeral' AND expires_at < ?1",
           )
-          if 'pub(crate) fn retire_unused_editor_assets' not in text:
-              at = text.index('fn retire_unused_draft_assets(')
+          if "pub(crate) fn retire_unused_editor_assets" not in text:
+              at = text.index("fn retire_unused_draft_assets(")
               wrappers = '''pub(crate) fn retire_unused_editor_assets(
                   connection: &Connection,
                   paths: &AppPaths,
@@ -115,10 +143,10 @@ jobs:
               text = text[:at] + wrappers + text[at:]
           path.write_text(text)
 
-          path = Path('src-tauri/src/library_backup.rs')
-          text = path.read_text().replace('const BACKUP_VERSION: i64 = 2;', 'const BACKUP_VERSION: i64 = 3;')
+          path = Path("src-tauri/src/library_backup.rs")
+          text = path.read_text().replace("const BACKUP_VERSION: i64 = 2;", "const BACKUP_VERSION: i64 = 3;")
           text = text.replace(
-              'SELECT COUNT(*) FROM asset_drafts\n                 WHERE committed_at IS NULL AND canceled_at IS NULL',
+              "SELECT COUNT(*) FROM asset_drafts\n                 WHERE committed_at IS NULL AND canceled_at IS NULL",
               "SELECT COUNT(*) FROM asset_drafts\n                 WHERE committed_at IS NULL AND canceled_at IS NULL\n                   AND retention_mode = 'ephemeral'",
           )
           old = "SELECT id, relative_path, mime_type, byte_size\n             FROM assets\n             WHERE lifecycle_state = 'ready' AND deleted_at IS NULL\n             ORDER BY id"
@@ -151,18 +179,25 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('docs/roadmap.md')
+
+          path = Path("docs/roadmap.md")
           text = path.read_text()
-          marker = '## Current priorities\n'
-          note = '''## Completed portability foundation (P0-P2)\n\nThe shared runtime now exposes typed platform capabilities for external files, secure secrets, lifecycle, time zones, and resource observation. External imports are staged into managed storage, exports are prepared before publication, card images use opaque asset identities, and card/template/bulk/AI-profile metadata editors retain bounded device-local drafts across process loss. Android, iOS, Windows, and macOS adapters and packaging remain later platform phases.\n\n'''
-          if '## Completed portability foundation (P0-P2)' not in text:
+          marker = "## Current priorities\n"
+          note = '''## Completed portability foundation (P0-P2)
+
+          The shared runtime now exposes typed platform capabilities for external files, secure secrets, lifecycle, time zones, and resource observation. External imports are staged into managed storage, exports are prepared before publication, card images use opaque asset identities, and card/template/bulk/AI-profile metadata editors retain bounded device-local drafts across process loss. Android, iOS, Windows, and macOS adapters and packaging remain later platform phases.
+
+          '''
+          if "## Completed portability foundation (P0-P2)" not in text:
+              if marker not in text:
+                  raise SystemExit("Roadmap current-priorities anchor missing")
               text = text.replace(marker, note + marker)
           path.write_text(text)
 
-          path = Path('docs/installation/mobile.md')
+          path = Path("docs/installation/mobile.md")
           text = path.read_text()
-          old = 'No installable mobile application, generated mobile project, or supported mobile build procedure is currently included in the repository.'
-          new = 'No installable mobile application or supported mobile build procedure is currently included in the repository. The shared P0-P2 runtime, opaque file-transfer layer, and durable authoring drafts are now implemented, but Android/iOS native adapters and generated projects remain future work.'
+          old = "No installable mobile application, generated mobile project, or supported mobile build procedure is currently included in the repository."
+          new = "No installable mobile application or supported mobile build procedure is currently included in the repository. The shared P0-P2 runtime, opaque file-transfer layer, and durable authoring drafts are now implemented, but Android/iOS native adapters and generated projects remain future work."
           text = text.replace(old, new)
           path.write_text(text)
           PY
@@ -171,10 +206,15 @@ jobs:
         run: |
           rm -f scripts/apply-platform-p2-drafts-native.mjs
           rm -f scripts/apply-platform-p2-drafts-frontend.mjs
+          rm -f scripts/apply-platform-p2-pathfree-frontend.mjs
+          rm -f scripts/run-platform-p2-pathfree-frontend.mjs
+          rm -f scripts/fix-platform-p2-draft-ui.mjs
+          rm -f scripts/repair-platform-p2-richtext-test.mjs
           rm -f scripts/repair-platform-p2-tests.mjs
           rm -f .github/workflows/apply-platform-p2-drafts-native.yml
           rm -f .github/workflows/finalize-platform-p2-drafts-native.yml
           rm -f .github/workflows/apply-platform-p2-drafts-frontend.yml
+          rm -f .github/workflows/apply-platform-p2-pathfree-frontend.yml
           rm -f .github/workflows/complete-platform-p0-p2.yml
 
       - name: Install and provision
@@ -204,5 +244,9 @@ jobs:
           git config user.name "ostudy automation"
           git config user.email "actions@users.noreply.github.com"
           git add -A
+          if git diff --cached --quiet; then
+            echo "No completed P0-P2 changes remain to commit."
+            exit 0
+          fi
           git commit -m "feat: complete platform portability phases P0-P2"
           git push origin HEAD:agent/platform-portability-p0-p2
