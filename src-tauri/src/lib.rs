@@ -9,6 +9,7 @@
 mod ai;
 mod analytics;
 mod asset_lifecycle;
+mod asset_protocol;
 mod assets;
 mod authoring;
 mod cards;
@@ -34,6 +35,7 @@ mod document_semantics;
 mod document_store;
 mod documents;
 mod error;
+mod external_files;
 mod library_backup;
 mod logging;
 mod paths;
@@ -83,6 +85,7 @@ static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .register_uri_scheme_protocol("ostudy-asset", asset_protocol::respond)
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -103,6 +106,8 @@ pub fn run() {
             let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
                 .map_err(|error| io::Error::other(error.to_string()))?;
 
+            external_files::reconcile_startup(&database, &paths)
+                .map_err(|error| io::Error::other(error.message))?;
             deletion::finalize_expired_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
             deletion_purge::purge_finalized_deletions(&database)
@@ -234,6 +239,10 @@ pub fn run() {
             settings::save_settings,
             settings::get_app_info,
             platform::get_platform_capabilities,
+            external_files::select_and_stage_external_import,
+            external_files::release_staged_external_import,
+            external_files::publish_prepared_export,
+            external_files::release_prepared_export,
             ai::profiles::get_ai_provider_catalog,
             ai::profiles::list_ai_provider_profiles,
             ai::profiles::get_ai_provider_profile,

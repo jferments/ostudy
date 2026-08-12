@@ -20,11 +20,15 @@ impl AppPaths {
         let asset_quarantine_dir = assets_dir.join("quarantine");
         let documents_dir = app_data_dir.join("documents");
         let document_staging_dir = documents_dir.join("staging");
+        let transfer_imports_dir = app_data_dir.join("transfers").join("imports");
+        let transfer_exports_dir = app_data_dir.join("transfers").join("exports");
         std::fs::create_dir_all(&images_dir)?;
         std::fs::create_dir_all(&asset_staging_dir)?;
         std::fs::create_dir_all(&asset_quarantine_dir)?;
         std::fs::create_dir_all(&documents_dir)?;
         std::fs::create_dir_all(&document_staging_dir)?;
+        std::fs::create_dir_all(&transfer_imports_dir)?;
+        std::fs::create_dir_all(&transfer_exports_dir)?;
 
         Ok(Self {
             app_data_dir,
@@ -91,5 +95,25 @@ impl AppPaths {
 
     pub fn staged_document_relative_path(document_id: &str) -> String {
         format!("documents/staging/{document_id}.pdf.stage")
+    }
+
+    pub fn transfer_imports_dir(&self) -> PathBuf {
+        self.app_data_dir.join("transfers").join("imports")
+    }
+
+    pub fn transfer_exports_dir(&self) -> PathBuf {
+        self.app_data_dir.join("transfers").join("exports")
+    }
+
+    pub fn staged_import_partial_relative_path(id: &str) -> String {
+        format!("transfers/imports/{id}.partial")
+    }
+
+    pub fn staged_import_relative_path(id: &str, extension: &str) -> String {
+        format!("transfers/imports/{id}.{extension}")
+    }
+
+    pub fn prepared_export_relative_path(id: &str, extension: &str) -> String {
+        format!("transfers/exports/{id}.{extension}")
     }
 }

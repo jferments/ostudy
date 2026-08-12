@@ -1,101 +1,14 @@
-#!/usr/bin/env node
-
-import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const root = fileURLToPath(new URL("..", import.meta.url));
-const read = (...parts) => readFile(join(root, ...parts), "utf8");
-const write = async (path, content) => {
-  const target = join(root, path);
-  await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, content, "utf8");
-};
-const replace = async (path, from, to) => {
-  const source = await read(path);
-  if (!source.includes(from)) throw new Error(`${path}: source fragment not found`);
-  await write(path, source.replace(from, to));
-};
-
-const migration = `-- Opaque external-file acquisition and prepared export publication.
---
--- Native platform references are never durable application values. Selected
--- bytes are copied into app-private staging and exports are prepared privately
--- before the operating system is asked where to publish them.
-
-CREATE TABLE staged_external_imports (
-    id              TEXT PRIMARY KEY CHECK(length(id) = 32),
-    operation_id    TEXT NOT NULL UNIQUE CHECK(length(operation_id) = 32),
-    purpose         TEXT NOT NULL CHECK(purpose IN (
-                        'image', 'pdf_document', 'study_content', 'library_backup'
-                    )),
-    detected_kind   TEXT NOT NULL CHECK(detected_kind IN (
-                        'png', 'jpeg', 'gif', 'webp', 'pdf',
-                        'studydeck', 'generated_json', 'ostudybackup'
-                    )),
-    display_name    TEXT NOT NULL,
-    media_type      TEXT NOT NULL,
-    byte_size       INTEGER NOT NULL CHECK(byte_size > 0),
-    sha256          TEXT NOT NULL CHECK(length(sha256) = 64),
-    relative_path   TEXT NOT NULL UNIQUE,
-    state           TEXT NOT NULL CHECK(state IN (
-                        'staging', 'staged', 'consumed', 'released', 'failed'
-                    )),
-    result_json     TEXT NOT NULL DEFAULT '',
-    created_at      INTEGER NOT NULL,
-    updated_at      INTEGER NOT NULL,
-    expires_at      INTEGER NOT NULL,
-    consumed_at     INTEGER,
-    released_at     INTEGER,
-    CHECK(expires_at >= created_at),
-    CHECK(consumed_at IS NULL OR consumed_at >= created_at),
-    CHECK(released_at IS NULL OR released_at >= created_at)
-) STRICT;
-
-CREATE INDEX staged_external_imports_state_expiry_idx
-    ON staged_external_imports(state, expires_at);
-
-CREATE TABLE prepared_exports (
-    id                  TEXT PRIMARY KEY CHECK(length(id) = 32),
-    operation_id        TEXT NOT NULL UNIQUE CHECK(length(operation_id) = 32),
-    purpose             TEXT NOT NULL CHECK(purpose IN ('studydeck', 'library_backup')),
-    suggested_filename  TEXT NOT NULL,
-    media_type          TEXT NOT NULL,
-    byte_size           INTEGER NOT NULL CHECK(byte_size > 0),
-    sha256              TEXT NOT NULL CHECK(length(sha256) = 64),
-    relative_path       TEXT NOT NULL UNIQUE,
-    state               TEXT NOT NULL CHECK(state IN (
-                            'prepared', 'published', 'released', 'failed'
-                        )),
-    summary_json        TEXT NOT NULL,
-    created_at          INTEGER NOT NULL,
-    updated_at          INTEGER NOT NULL,
-    expires_at          INTEGER NOT NULL,
-    published_at        INTEGER,
-    released_at         INTEGER,
-    CHECK(expires_at >= created_at),
-    CHECK(published_at IS NULL OR published_at >= created_at),
-    CHECK(released_at IS NULL OR released_at >= created_at)
-) STRICT;
-
-CREATE INDEX prepared_exports_state_expiry_idx
-    ON prepared_exports(state, expires_at);
-`;
-await write("src-tauri/migrations/0024_external_file_transfers.sql", migration);
-const migrationChecksum = createHash("sha256").update(migration).digest("hex");
-
-await write("src-tauri/src/external_files.rs", String.raw`//! Opaque external-file staging and prepared-export publication.
+//! Opaque external-file staging and prepared-export publication.
 //!
 //! Platform-specific paths, content URIs, and security-scoped references stop at
-//! `ExternalFilePort`. Shared use cases receive only managed transfer IDs and
+//! 'ExternalFilePort'. Shared use cases receive only managed transfer IDs and
 //! validated app-private files.
 
 use std::{
     collections::BTreeSet,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
 };
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
@@ -375,16 +288,11 @@ pub fn select_and_stage_external_import(
     let partial_path = paths.resolve_relative(&partial_relative);
     create_parent(&partial_path)?;
     remove_file_if_exists(&partial_path)?;
-    let (byte_size, sha256) = copy_bounded_with_hash(
-        &source_path,
-        &partial_path,
-        input.purpose.maximum_bytes(),
-    )?;
+    let (byte_size, sha256) =
+        copy_bounded_with_hash(&source_path, &partial_path, input.purpose.maximum_bytes())?;
     let detected_kind = detect_kind(&partial_path, input.purpose)?;
-    let relative_path = AppPaths::staged_import_relative_path(
-        &input.operation_id,
-        detected_kind.extension(),
-    );
+    let relative_path =
+        AppPaths::staged_import_relative_path(&input.operation_id, detected_kind.extension());
     let ready_path = paths.resolve_relative(&relative_path);
     remove_file_if_exists(&ready_path)?;
     let now = unix_time_millis()?;
@@ -503,7 +411,7 @@ pub fn release_staged_external_import(
     if let Some(relative) = relative {
         remove_file_if_exists(&paths.resolve_relative(&relative))?;
         remove_file_if_exists(&paths.resolve_relative(
-            AppPaths::staged_import_partial_relative_path(&input.staged_file_id),
+            &AppPaths::staged_import_partial_relative_path(&input.staged_file_id),
         ))?;
     }
     Ok(())
@@ -625,10 +533,8 @@ pub(crate) fn resolve_staged_import(
             "The staged file is no longer available.",
         ));
     }
-    let expected_relative = AppPaths::staged_import_relative_path(
-        staged_file_id,
-        stored.0.detected_kind.extension(),
-    );
+    let expected_relative =
+        AppPaths::staged_import_relative_path(staged_file_id, stored.0.detected_kind.extension());
     if stored.2 != expected_relative {
         return Err(CommandError::new(
             "invalid_external_file_path",
@@ -715,8 +621,8 @@ pub(crate) fn load_prepared_export_summary<T: DeserializeOwned>(
         return Ok(None);
     };
     let stored = load_prepared_export(connection, paths, &id)?;
-    let summary = serde_json::from_str(&stored.summary_json)
-        .map_err(CommandError::serialization)?;
+    let summary =
+        serde_json::from_str(&stored.summary_json).map_err(CommandError::serialization)?;
     Ok(Some((stored.dto, summary)))
 }
 
@@ -778,10 +684,7 @@ pub(crate) fn register_prepared_export<T: Serialize>(
     })
 }
 
-pub(crate) fn reconcile_startup(
-    database: &Database,
-    paths: &AppPaths,
-) -> Result<(), CommandError> {
+pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result<(), CommandError> {
     let now = unix_time_millis()?;
     let mut referenced = BTreeSet::<PathBuf>::new();
     database.with_connection(|connection| {
@@ -793,7 +696,7 @@ pub(crate) fn reconcile_startup(
                      WHERE state <> 'released'",
                 )
                 .map_err(CommandError::database)?;
-            statement
+            let rows = statement
                 .query_map([], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -805,7 +708,8 @@ pub(crate) fn reconcile_startup(
                 })
                 .map_err(CommandError::database)?
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(CommandError::database)?
+                .map_err(CommandError::database)?;
+            rows
         };
         for (id, kind, relative, state, expires_at) in imports {
             let kind = ExternalFileKind::parse(&kind)?;
@@ -821,7 +725,8 @@ pub(crate) fn reconcile_startup(
                 continue;
             }
             let ready = paths.resolve_relative(&relative);
-            let partial = paths.resolve_relative(AppPaths::staged_import_partial_relative_path(&id));
+            let partial =
+                paths.resolve_relative(&AppPaths::staged_import_partial_relative_path(&id));
             referenced.insert(ready.clone());
             referenced.insert(partial.clone());
             if state == "staging" && !ready.exists() && partial.is_file() {
@@ -864,7 +769,7 @@ pub(crate) fn reconcile_startup(
                      WHERE state <> 'released'",
                 )
                 .map_err(CommandError::database)?;
-            statement
+            let rows = statement
                 .query_map([], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -875,7 +780,8 @@ pub(crate) fn reconcile_startup(
                 })
                 .map_err(CommandError::database)?
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(CommandError::database)?
+                .map_err(CommandError::database)?;
+            rows
         };
         for (id, relative, _state, expires_at) in exports {
             let path = paths.resolve_relative(&relative);
@@ -904,8 +810,8 @@ pub(crate) fn reconcile_startup(
         Ok(())
     })?;
 
-    remove_unknown_transfer_files(paths.transfer_imports_dir(), &referenced)?;
-    remove_unknown_transfer_files(paths.transfer_exports_dir(), &referenced)?;
+    remove_unknown_transfer_files(&paths.transfer_imports_dir(), &referenced)?;
+    remove_unknown_transfer_files(&paths.transfer_exports_dir(), &referenced)?;
     Ok(())
 }
 
@@ -1062,7 +968,10 @@ fn load_prepared_export(
     })
 }
 
-fn detect_kind(path: &Path, purpose: ExternalImportPurpose) -> Result<ExternalFileKind, CommandError> {
+fn detect_kind(
+    path: &Path,
+    purpose: ExternalImportPurpose,
+) -> Result<ExternalFileKind, CommandError> {
     match purpose {
         ExternalImportPurpose::Image => {
             let mut file = File::open(path).map_err(CommandError::io)?;
@@ -1074,7 +983,10 @@ fn detect_kind(path: &Path, purpose: ExternalImportPurpose) -> Result<ExternalFi
                 "image/jpeg" => Ok(ExternalFileKind::Jpeg),
                 "image/gif" => Ok(ExternalFileKind::Gif),
                 "image/webp" => Ok(ExternalFileKind::Webp),
-                _ => Err(CommandError::new("unsupported_image", "Use a supported image file.")),
+                _ => Err(CommandError::new(
+                    "unsupported_image",
+                    "Use a supported image file.",
+                )),
             }
         }
         ExternalImportPurpose::PdfDocument => {
@@ -1084,7 +996,10 @@ fn detect_kind(path: &Path, purpose: ExternalImportPurpose) -> Result<ExternalFi
             if &signature == b"%PDF-" {
                 Ok(ExternalFileKind::Pdf)
             } else {
-                Err(CommandError::new("invalid_pdf", "The selected file is not a PDF."))
+                Err(CommandError::new(
+                    "invalid_pdf",
+                    "The selected file is not a PDF.",
+                ))
             }
         }
         ExternalImportPurpose::StudyContent => detect_study_content(path),
@@ -1126,7 +1041,10 @@ fn detect_study_content(path: &Path) -> Result<ExternalFileKind, CommandError> {
         )
     })?;
     if value.get("format").and_then(serde_json::Value::as_str) == Some("ostudy-flashcards")
-        && value.get("formatVersion").and_then(serde_json::Value::as_i64) == Some(1)
+        && value
+            .get("formatVersion")
+            .and_then(serde_json::Value::as_i64)
+            == Some(1)
     {
         Ok(ExternalFileKind::GeneratedJson)
     } else {
@@ -1231,7 +1149,9 @@ fn copy_bounded_with_hash(
             ));
         }
         hasher.update(&buffer[..read]);
-        output.write_all(&buffer[..read]).map_err(CommandError::io)?;
+        output
+            .write_all(&buffer[..read])
+            .map_err(CommandError::io)?;
     }
     output.sync_all().map_err(CommandError::io)?;
     Ok((
@@ -1260,7 +1180,6 @@ fn hash_file(path: &Path) -> Result<(i64, String), CommandError> {
 }
 
 fn verify_file(path: &Path, expected_size: i64, expected_hash: &str) -> Result<(), CommandError> {
-    ensure_managed_path(path)?;
     if !path.is_file() {
         return Err(CommandError::new(
             "external_file_missing",
@@ -1337,18 +1256,6 @@ fn remove_unknown_transfer_files(
     Ok(())
 }
 
-fn ensure_managed_path(path: &Path) -> Result<(), CommandError> {
-    if path.components().any(|component| {
-        matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_))
-    }) {
-        return Err(CommandError::new(
-            "invalid_external_file_path",
-            "The managed transfer path is invalid.",
-        ));
-    }
-    Ok(())
-}
-
 fn create_parent(path: &Path) -> Result<(), CommandError> {
     let parent = path.parent().ok_or_else(|| {
         CommandError::new(
@@ -1387,280 +1294,3 @@ fn sync_directory(path: Option<&Path>) -> Result<(), CommandError> {
 fn sync_directory(_path: Option<&Path>) -> Result<(), CommandError> {
     Ok(())
 }
-`);
-
-await write("src-tauri/src/asset_protocol.rs", String.raw`//! Asset-ID-only WebView protocol.
-
-use std::{fs, path::{Component, Path}};
-
-use rusqlite::OptionalExtension;
-use tauri::{
-    http::{header, Request, Response, StatusCode},
-    Manager, Runtime, UriSchemeContext,
-};
-
-use crate::{
-    database::Database,
-    paths::AppPaths,
-    util::validate_entity_id,
-};
-
-pub fn respond<R: Runtime>(
-    context: UriSchemeContext<'_, R>,
-    request: Request<Vec<u8>>,
-) -> Response<Vec<u8>> {
-    if context.webview_label() != "main" {
-        return response(StatusCode::FORBIDDEN, "text/plain", b"forbidden".to_vec());
-    }
-    let asset_id = request.uri().path().trim_matches('/');
-    if validate_entity_id(asset_id, "asset").is_err() {
-        return response(StatusCode::BAD_REQUEST, "text/plain", b"invalid asset".to_vec());
-    }
-    let database = context.app_handle().state::<Database>();
-    let paths = context.app_handle().state::<AppPaths>();
-    let resolved = database.with_connection(|connection| {
-        connection
-            .query_row(
-                "SELECT a.mime_type, a.byte_size,
-                        CASE
-                          WHEN a.lifecycle_state = 'ready' THEN a.relative_path
-                          WHEN a.lifecycle_state = 'staged'
-                               AND EXISTS (
-                                 SELECT 1 FROM asset_drafts d
-                                 WHERE d.id = a.draft_id
-                                   AND d.committed_at IS NULL
-                                   AND d.canceled_at IS NULL
-                               )
-                          THEN a.staged_relative_path
-                          ELSE NULL
-                        END
-                 FROM assets a
-                 WHERE a.id = ?1 AND a.deleted_at IS NULL",
-                [asset_id],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, i64>(1)?,
-                        row.get::<_, Option<String>>(2)?,
-                    ))
-                },
-            )
-            .optional()
-            .map_err(crate::error::CommandError::database)
-    });
-    let Ok(Some((mime_type, expected_size, Some(relative)))) = resolved else {
-        return response(StatusCode::NOT_FOUND, "text/plain", b"asset not found".to_vec());
-    };
-    if !safe_relative_path(&relative) {
-        return response(StatusCode::BAD_REQUEST, "text/plain", b"invalid asset path".to_vec());
-    }
-    let path = paths.resolve_relative(&relative);
-    let Ok(bytes) = fs::read(&path) else {
-        return response(StatusCode::NOT_FOUND, "text/plain", b"asset missing".to_vec());
-    };
-    if i64::try_from(bytes.len()).unwrap_or(i64::MAX) != expected_size {
-        return response(StatusCode::GONE, "text/plain", b"asset changed".to_vec());
-    }
-    response(StatusCode::OK, &mime_type, bytes)
-}
-
-fn response(status: StatusCode, mime_type: &str, body: Vec<u8>) -> Response<Vec<u8>> {
-    Response::builder()
-        .status(status)
-        .header(header::CONTENT_TYPE, mime_type)
-        .header(header::CACHE_CONTROL, "private, max-age=300")
-        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
-        .body(body)
-        .unwrap_or_else(|_| Response::new(Vec::new()))
-}
-
-fn safe_relative_path(value: &str) -> bool {
-    let path = Path::new(value);
-    !path.is_absolute()
-        && !path.components().any(|component| {
-            matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_))
-        })
-        && (value.starts_with("assets/images/") || value.starts_with("assets/staging/"))
-}
-`);
-
-let paths = await read("src-tauri/src/paths.rs");
-let pathsWithDirs = paths.replace(
-  "        let document_staging_dir = app_data_dir.join(\"documents\").join(\"staging\");\n        for directory in [\n            &images_dir,\n            &staged_assets_dir,\n            &quarantine_dir,\n            &documents_dir,\n            &document_staging_dir,\n        ] {",
-  "        let document_staging_dir = app_data_dir.join(\"documents\").join(\"staging\");\n        let transfer_imports_dir = app_data_dir.join(\"transfers\").join(\"imports\");\n        let transfer_exports_dir = app_data_dir.join(\"transfers\").join(\"exports\");\n        for directory in [\n            &images_dir,\n            &staged_assets_dir,\n            &quarantine_dir,\n            &documents_dir,\n            &document_staging_dir,\n            &transfer_imports_dir,\n            &transfer_exports_dir,\n        ] {",
-);
-if (pathsWithDirs === paths) throw new Error("paths.rs: directory block not found");
-const pathMethods = `
-
-    pub fn transfer_imports_dir(&self) -> PathBuf {
-        self.app_data_dir.join("transfers").join("imports")
-    }
-
-    pub fn transfer_exports_dir(&self) -> PathBuf {
-        self.app_data_dir.join("transfers").join("exports")
-    }
-
-    pub fn staged_import_partial_relative_path(id: &str) -> String {
-        format!("transfers/imports/{id}.partial")
-    }
-
-    pub fn staged_import_relative_path(id: &str, extension: &str) -> String {
-        format!("transfers/imports/{id}.{extension}")
-    }
-
-    pub fn prepared_export_relative_path(id: &str, extension: &str) -> String {
-        format!("transfers/exports/{id}.{extension}")
-    }
-`;
-await write(
-  "src-tauri/src/paths.rs",
-  pathsWithDirs.replace("\n}\n\nfn validate_component", `${pathMethods}\n}\n\nfn validate_component`),
-);
-
-let database = await read("src-tauri/src/database.rs");
-const registryAnchor = `    Migration {
-        version: 23,
-        name: "document_provenance_tag_cleanup",
-        checksum: "ec70e81cd4f7c5db36793e1ced79d646ab1981ffd2eaee90244908fbc4b71892",
-        sql: include_str!("../migrations/0023_document_provenance_tag_cleanup.sql"),
-    },
-];`;
-const registryReplacement = `    Migration {
-        version: 23,
-        name: "document_provenance_tag_cleanup",
-        checksum: "ec70e81cd4f7c5db36793e1ced79d646ab1981ffd2eaee90244908fbc4b71892",
-        sql: include_str!("../migrations/0023_document_provenance_tag_cleanup.sql"),
-    },
-    Migration {
-        version: 24,
-        name: "external_file_transfers",
-        checksum: "${migrationChecksum}",
-        sql: include_str!("../migrations/0024_external_file_transfers.sql"),
-    },
-];`;
-if (!database.includes(registryAnchor)) throw new Error("database.rs: migration anchor not found");
-await write(
-  "src-tauri/src/database.rs",
-  database
-    .replace(registryAnchor, registryReplacement)
-    .replace("LATEST_SCHEMA_VERSION: i64 = 23", "LATEST_SCHEMA_VERSION: i64 = 24"),
-);
-
-let lib = await read("src-tauri/src/lib.rs");
-let updatedLib = lib
-  .replace("mod asset_lifecycle;\n", "mod asset_lifecycle;\nmod asset_protocol;\n")
-  .replace("mod error;\n", "mod error;\nmod external_files;\n")
-  .replace(
-    "    tauri::Builder::default()\n        .plugin(tauri_plugin_dialog::init())",
-    "    tauri::Builder::default()\n        .register_uri_scheme_protocol(\"ostudy-asset\", asset_protocol::respond)\n        .plugin(tauri_plugin_dialog::init())",
-  )
-  .replace(
-    "            deletion::finalize_expired_deletions(&database)",
-    "            external_files::reconcile_startup(&database, &paths)\n                .map_err(|error| io::Error::other(error.message))?;\n            deletion::finalize_expired_deletions(&database)",
-  )
-  .replace(
-    "            platform::get_platform_capabilities,",
-    "            platform::get_platform_capabilities,\n            external_files::select_and_stage_external_import,\n            external_files::release_staged_external_import,\n            external_files::publish_prepared_export,\n            external_files::release_prepared_export,",
-  );
-if (updatedLib === lib) throw new Error("lib.rs: external file integration failed");
-await write("src-tauri/src/lib.rs", updatedLib);
-
-await write("src/ipc/externalFiles.ts", String.raw`import { invoke } from "@tauri-apps/api/core";
-import { createOperationId } from "./common";
-
-export type ExternalImportPurpose =
-  | "image"
-  | "pdf_document"
-  | "study_content"
-  | "library_backup";
-
-export type ExternalFileKind =
-  | "png"
-  | "jpeg"
-  | "gif"
-  | "webp"
-  | "pdf"
-  | "studydeck"
-  | "generated_json"
-  | "ostudybackup";
-
-export interface StagedExternalFile {
-  id: string;
-  purpose: ExternalImportPurpose;
-  detectedKind: ExternalFileKind;
-  displayName: string;
-  mediaType: string;
-  byteSize: number;
-  sha256: string;
-  expiresAt: number;
-}
-
-export interface PublishReceipt {
-  preparedExportId: string;
-  displayName: string;
-  destinationKind: string;
-  completedAt: number;
-}
-
-export async function selectAndStageExternalImport(
-  purpose: ExternalImportPurpose,
-  operationId = createOperationId(),
-): Promise<StagedExternalFile | null> {
-  return invoke<StagedExternalFile | null>("select_and_stage_external_import", {
-    input: { operationId, purpose },
-  });
-}
-
-export async function releaseStagedExternalImport(stagedFileId: string): Promise<void> {
-  return invoke<void>("release_staged_external_import", { input: { stagedFileId } });
-}
-
-export async function publishPreparedExport(
-  preparedExportId: string,
-): Promise<PublishReceipt | null> {
-  return invoke<PublishReceipt | null>("publish_prepared_export", {
-    input: { preparedExportId },
-  });
-}
-
-export async function releasePreparedExport(preparedExportId: string): Promise<void> {
-  return invoke<void>("release_prepared_export", { input: { preparedExportId } });
-}
-`);
-
-await write("src/platform/files.ts", String.raw`import {
-  publishPreparedExport,
-  selectAndStageExternalImport,
-  type ExternalImportPurpose,
-  type PublishReceipt,
-  type StagedExternalFile,
-} from "../ipc/externalFiles";
-
-export function selectExternalImport(
-  purpose: ExternalImportPurpose,
-): Promise<StagedExternalFile | null> {
-  return selectAndStageExternalImport(purpose);
-}
-
-export function publishExport(preparedExportId: string): Promise<PublishReceipt | null> {
-  return publishPreparedExport(preparedExportId);
-}
-`);
-
-await write("src/platform/assets.ts", String.raw`import { convertFileSrc } from "@tauri-apps/api/core";
-
-export function managedAssetUrl(assetId: string): string {
-  return convertFileSrc(assetId, "ostudy-asset");
-}
-`);
-
-let tauriConfig = JSON.parse(await read("src-tauri/tauri.conf.json"));
-tauriConfig.app.security.csp = tauriConfig.app.security.csp.replace(
-  "img-src 'self' asset: http://asset.localhost data:;",
-  "img-src 'self' asset: http://asset.localhost ostudy-asset: http://ostudy-asset.localhost https://ostudy-asset.localhost data:;",
-);
-await write("src-tauri/tauri.conf.json", `${JSON.stringify(tauriConfig, null, 2)}\n`);
-
-await rm(join(root, "scripts", "apply-platform-p2-files-foundation.mjs"), { force: true });
-await rm(join(root, ".github", "workflows", "apply-platform-p2-files-foundation.yml"), { force: true });
-console.log("Applied P2 external-file foundation.");
