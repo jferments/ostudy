@@ -29,6 +29,19 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
+      - name: Provision JDK 17
+        run: |
+          if ! command -v javac >/dev/null 2>&1 \
+             || [[ "$(javac -version 2>&1 | sed -E 's/^javac ([0-9]+).*/\1/')" != "17" ]]; then
+            sudo apt-get update
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y openjdk-17-jdk-headless
+          fi
+          java_path="$(readlink -f "$(command -v javac)")"
+          java_home="$(dirname "$(dirname "$java_path")")"
+          echo "JAVA_HOME=$java_home" >> "$GITHUB_ENV"
+          echo "$java_home/bin" >> "$GITHUB_PATH"
+          "$java_home/bin/java" -version
+
       - name: Install pinned Android SDK and NDK
         run: |
           bash ./scripts/install-android-deps.sh
