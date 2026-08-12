@@ -87,11 +87,18 @@ jobs:
             scripts/install-android-deps.sh
           git config user.name "ostudy automation"
           git config user.email "actions@users.noreply.github.com"
-          git add src-tauri/gen/android src-tauri/tauri.android.conf.json \
+          # Tauri intentionally adds gen/ to its generated .gitignore. Android is
+          # a supported source target here, so force-add the reproducible shell.
+          git add -f src-tauri/gen/android
+          git add src-tauri/tauri.android.conf.json \
             scripts/android-env.sh scripts/android-doctor.sh scripts/install-android-deps.sh 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No generated Android changes were required."
             exit 0
           fi
           git commit -m "feat: generate the Tauri Android shell"
+          # The implementation branch can advance while SDK provisioning runs.
+          # Rebase the generated-only commit onto the current head before push.
+          git fetch origin agent/android-a1-a3
+          git rebase origin/agent/android-a1-a3
           git push origin HEAD:agent/android-a1-a3
