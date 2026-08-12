@@ -1,0 +1,71 @@
+name: Normalize Android terminal qualification
+
+on:
+  push:
+    branches:
+      - agent/android-a1-a3
+
+permissions:
+  contents: write
+
+concurrency:
+  group: normalize-android-terminal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  normalize:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 15
+    steps:
+      - name: Check out Android branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/android-a1-a3
+          fetch-depth: 0
+
+      - name: Move temporary-tool cleanup before qualification
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path(".github/workflows/apply-android-a1-a3-core.yml")
+          text = path.read_text()
+          cleanup = '''      - name: Remove implementation-only applicators and workflows
+            run: |
+              rm -f \\
+                scripts/apply-android-final-fixes.mjs \\
+                scripts/apply-android-a1-a3-core.mjs \\
+                scripts/run-android-a1-a3-core.mjs \\
+                scripts/apply-android-a2-product.mjs \\
+                scripts/apply-android-a3-incoming.mjs \\
+                scripts/apply-android-a3-frontend.mjs \\
+                scripts/apply-android-shared-a1-a2.mjs \\
+                scripts/bootstrap-android-a1.mjs \\
+                scripts/bootstrap-ostudy-platform-plugin.mjs \\
+                .github/workflows/apply-android-a1-a3-core.yml \\
+                .github/workflows/apply-android-shared-a1-a2.yml \\
+                .github/workflows/bootstrap-android-a1.yml \\
+                .github/workflows/bootstrap-ostudy-platform-plugin.yml
+              git diff --check
+
+          '''
+          if cleanup not in text:
+              raise SystemExit("Android terminal cleanup block was not found")
+          text = text.replace(cleanup, "", 1)
+          anchor = '''      - name: Install JavaScript, Linux, and Android dependencies
+          '''
+          if anchor not in text:
+              raise SystemExit("Android terminal install anchor was not found")
+          text = text.replace(anchor, cleanup + anchor, 1)
+          path.write_text(text)
+          PY
+          rm -f .github/workflows/normalize-android-terminal.yml
+
+      - name: Commit terminal normalization
+        run: |
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "ci: qualify the final Android candidate tree"
+          git push origin HEAD:agent/android-a1-a3
