@@ -1,8 +1,4 @@
-//! Conservative mobile build adapter used before the generated native plugin is wired.
-//!
-//! It deliberately reports OS-bound services as unavailable instead of allowing
-//! shared product code to infer support from a target name. Android/iOS projects
-//! replace this composition with their native plugin adapters.
+//! Conservative mobile fallback used when no target-specific native adapter exists.
 
 use std::{
     sync::Arc,
@@ -15,10 +11,10 @@ use tauri::AppHandle;
 use crate::{
     error::CommandError,
     platform::{
-        CapabilityProvider, ExternalDestination, ExternalFilePort, ExternalFileRequest,
-        ExternalSource, NativeServiceCapabilities, PlatformCapabilitySnapshot, PlatformFuture,
-        PlatformRuntime, ResourceProbe, ResourceSnapshot, ServiceCapability, ThermalState,
-        TimeZoneProvider, TimeZoneSnapshot, UnavailableSecretStore,
+        CapabilityProvider, ExternalFilePort, ExternalFileRequest, NativeServiceCapabilities,
+        PlatformCapabilitySnapshot, PlatformFuture, PlatformRuntime, ResourceProbe,
+        ResourceSnapshot, ServiceCapability, ThermalState, TimeZoneProvider, TimeZoneSnapshot,
+        UnavailableSecretStore, UnavailableSystemSharePort,
     },
 };
 
@@ -31,6 +27,7 @@ pub(super) fn runtime() -> PlatformRuntime {
         clock,
         Arc::new(UtcFallbackTimeZoneProvider),
         Arc::new(ConservativeMobileResourceProbe),
+        Arc::new(UnavailableSystemSharePort),
     )
 }
 
@@ -73,28 +70,30 @@ impl CapabilityProvider for MobileCapabilityProvider {
 struct UnavailableExternalFilePort;
 
 impl ExternalFilePort for UnavailableExternalFilePort {
-    fn select_import(
+    fn acquire_import(
         &self,
         _app: AppHandle,
         _request: ExternalFileRequest,
-    ) -> PlatformFuture<Result<Option<ExternalSource>, CommandError>> {
+        _target: crate::platform::ExternalImportTarget,
+    ) -> PlatformFuture<Result<Option<crate::platform::ExternalAcquireResult>, CommandError>> {
         Box::pin(async {
             Err(CommandError::new(
                 "external_file_adapter_unavailable",
-                "This mobile build does not yet include its native file-selection adapter.",
+                "This mobile build does not include its native file-selection adapter.",
             ))
         })
     }
 
-    fn select_export(
+    fn publish_export(
         &self,
         _app: AppHandle,
         _request: ExternalFileRequest,
-    ) -> PlatformFuture<Result<Option<ExternalDestination>, CommandError>> {
+        _source: crate::platform::ExternalExportSource,
+    ) -> PlatformFuture<Result<Option<crate::platform::ExternalPublishResult>, CommandError>> {
         Box::pin(async {
             Err(CommandError::new(
                 "external_file_adapter_unavailable",
-                "This mobile build does not yet include its native export adapter.",
+                "This mobile build does not include its native export adapter.",
             ))
         })
     }
