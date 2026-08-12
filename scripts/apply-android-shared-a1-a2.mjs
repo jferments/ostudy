@@ -82,15 +82,13 @@ const checkpointEffects = `
     return () => window.clearTimeout(timer);
   }, [analyticsLaunch, fatalError, isLoading, section]);
 
-  useEffect(
-    () =>
-      registerPlatformBackHandler(() => {
-        if (section === "decks") return false;
-        void navigate("decks");
-        return true;
-      }),
-    [section],
-  );
+  useEffect(() => {
+    if (section === "decks") return;
+    return registerPlatformBackHandler(() => {
+      void navigate("decks");
+      return true;
+    });
+  }, [section]);
 `;
 controller = replaceExact(
   controller,
@@ -172,5 +170,58 @@ provider = replaceExact(
   "bridge native Back events",
 );
 await write("src/platform/PlatformProvider.tsx", provider);
+
+let overlays = await read("src/ui/overlays/OverlayProvider.tsx");
+overlays = replaceExact(
+  overlays,
+  `  useEffect(
+    () =>
+      registerPlatformBackHandler(() => {
+        const top = resolveTopOverlay(entriesRef.current);
+        if (!top) return false;
+        return top.requestClose("platform_back");
+      }),
+    [],
+  );`,
+  `  useEffect(() => {
+    if (topId === null) return;
+    return registerPlatformBackHandler(() => {
+      const top = resolveTopOverlay(entriesRef.current);
+      if (!top) return false;
+      return top.requestClose("platform_back");
+    });
+  }, [topId]);`,
+  "register Back only while an overlay is present",
+);
+await write("src/ui/overlays/OverlayProvider.tsx", overlays);
+
+let appTest = await read("src/App.test.tsx");
+appTest = replaceExact(
+  appTest,
+  'import * as settingsIpc from "./ipc/settings";\n',
+  'import * as settingsIpc from "./ipc/settings";\nimport * as uiCheckpointIpc from "./ipc/uiCheckpoint";\n',
+  "import UI checkpoint test module",
+);
+appTest = replaceExact(
+  appTest,
+  `vi.mock("./ipc/settings", () => ({
+  getSettings: vi.fn(),
+}));`,
+  `vi.mock("./ipc/settings", () => ({
+  getSettings: vi.fn(),
+}));
+vi.mock("./ipc/uiCheckpoint", () => ({
+  getUiCheckpoint: vi.fn(),
+  saveUiCheckpoint: vi.fn(),
+}));`,
+  "mock UI checkpoint IPC",
+);
+appTest = replaceExact(
+  appTest,
+  "    document.documentElement.removeAttribute(\"data-reduce-motion\");\n",
+  "    document.documentElement.removeAttribute(\"data-reduce-motion\");\n    vi.mocked(uiCheckpointIpc.getUiCheckpoint).mockResolvedValue(null);\n    vi.mocked(uiCheckpointIpc.saveUiCheckpoint).mockResolvedValue({\n      schemaVersion: 1,\n      updatedAt: 1,\n      section: \"decks\",\n      deckId: null,\n      editorDraftId: null,\n      practice: null,\n      analytics: null,\n    });\n",
+  "initialize UI checkpoint test doubles",
+);
+await write("src/App.test.tsx", appTest);
 
 console.log("Applied shared Android A1-A2 restoration and Back integration.");
