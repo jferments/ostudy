@@ -77,17 +77,15 @@ if ((${#libraries[@]} == 0)); then
   exit 1
 fi
 for library in "${libraries[@]}"; do
-  while read -r alignment; do
-    [[ -n "$alignment" ]] || continue
+  while read -r alignment_literal; do
+    [[ -n "$alignment_literal" ]] || continue
+    alignment=$((alignment_literal))
     if ((alignment < 0x4000)); then
       printf 'Native library is not 16 KiB aligned: %s (LOAD alignment 0x%x)\n' \
         "${library#"$temporary/"}" "$alignment" >&2
       exit 1
     fi
-  done < <(
-    "$READELF" -lW "$library" |
-      awk '$1 == "LOAD" { value=$NF; sub(/^0x/, "", value); printf "%d\n", strtonum("0x" value) }'
-  )
+  done < <("$READELF" -lW "$library" | awk '$1 == "LOAD" { print $NF }')
 done
 
 if [[ "$MODE" == release ]]; then
