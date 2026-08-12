@@ -344,7 +344,7 @@ describe("typed Tauri IPC wrappers", () => {
       input: { draftId, assetIds: [cardId] },
     });
     await expectInvocation(() => importImage("/tmp/image.png", draftId), "import_image", {
-      input: { filePath: "/tmp/image.png", draftId },
+      input: { stagedFileId: "1".repeat(32), draftId },
     });
     await expectInvocation(() => cancelAssetDraft(draftId), "cancel_asset_draft", {
       draftId,
