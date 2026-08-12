@@ -4,6 +4,16 @@ on:
   push:
     branches:
       - agent/android-a1-a3
+    paths:
+      - .github/workflows/bootstrap-android-a1.yml
+      - scripts/android-env.sh
+      - scripts/android-doctor.sh
+      - scripts/install-android-deps.sh
+      - versions.env
+      - package.json
+      - pnpm-lock.yaml
+      - src-tauri/Cargo.toml
+      - src-tauri/tauri.conf.json
   workflow_dispatch:
 
 permissions:
@@ -11,7 +21,7 @@ permissions:
 
 concurrency:
   group: bootstrap-android-a1-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   bootstrap:
