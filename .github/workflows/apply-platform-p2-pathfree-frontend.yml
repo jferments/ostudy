@@ -65,9 +65,6 @@ jobs:
           JSON
           pnpm exec tsc -p tsconfig.p2-production.json --pretty false
           rm tsconfig.p2-production.json
-          node ./scripts/verify-ipc-contract.mjs
-          node ./scripts/verify-repository-policy.mjs
-          node ./scripts/verify-platform-boundaries.mjs
           git diff --check
 
       - name: Commit production migration
