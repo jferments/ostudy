@@ -21,8 +21,9 @@ mod backup_tests;
 #[cfg(test)]
 mod provider_contract_tests;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
+use crate::platform::SecureSecretStore;
 use gateway::AiGateway;
 use secrets::SecretManager;
 
@@ -33,9 +34,9 @@ pub struct AiRuntimeState {
 }
 
 impl AiRuntimeState {
-    pub fn new() -> Result<Self, String> {
+    pub fn new(secret_store: Arc<dyn SecureSecretStore>) -> Result<Self, String> {
         Ok(Self {
-            secrets: SecretManager::default(),
+            secrets: SecretManager::new(secret_store),
             gateway: AiGateway::new()?,
             profile_mutations: Mutex::new(()),
         })
@@ -48,6 +49,7 @@ mod tests {
 
     #[test]
     fn runtime_state_builds_without_contacting_a_provider() {
-        AiRuntimeState::new().expect("AI runtime should initialize");
+        AiRuntimeState::new(crate::platform::unavailable_secret_store())
+            .expect("AI runtime should initialize");
     }
 }

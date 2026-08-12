@@ -40,6 +40,7 @@ mod paths;
 mod pdf_backend;
 mod pdf_ocr_backend;
 mod pdf_render_backend;
+mod platform;
 mod practice;
 mod practice_selection;
 mod projections;
@@ -74,7 +75,7 @@ use ai::AiRuntimeState;
 use database::Database;
 use paths::AppPaths;
 use pdf_render_backend::PdfRenderRuntime;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
@@ -95,7 +96,10 @@ pub fn run() {
             let pending_restore =
                 library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
-            let ai_runtime = AiRuntimeState::new().map_err(io::Error::other)?;
+            let platform_runtime = platform::PlatformRuntime::current();
+            platform::install_global(platform_runtime.clone()).map_err(io::Error::other)?;
+            let ai_runtime = AiRuntimeState::new(platform_runtime.secure_secret_store())
+                .map_err(io::Error::other)?;
             let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
                 .map_err(|error| io::Error::other(error.to_string()))?;
 
@@ -121,12 +125,20 @@ pub fn run() {
             if !app.manage(database) {
                 return Err(io::Error::other("The database state was already initialized.").into());
             }
+            if !app.manage(platform_runtime.clone()) {
+                return Err(io::Error::other("The platform runtime was already initialized.").into());
+            }
             if !app.manage(ai_runtime) {
                 return Err(io::Error::other("The AI runtime state was already initialized.").into());
             }
             if !app.manage(pdf_render_runtime) {
                 return Err(io::Error::other("The PDF renderer state was already initialized.").into());
             }
+
+            let lifecycle = platform_runtime
+                .lifecycle()
+                .transition(platform::LifecyclePhase::Foreground);
+            let _ = app.emit("ostudy-lifecycle", lifecycle);
 
             logging::info(
                 "application_started",
@@ -144,7 +156,12 @@ pub fn run() {
             let tauri::WindowEvent::CloseRequested { api, .. } = event else {
                 return;
             };
+            let lifecycle = window.state::<platform::PlatformRuntime>().lifecycle();
+            let requested = lifecycle.transition(platform::LifecyclePhase::TerminationRequested);
+            let _ = window.emit("ostudy-lifecycle", requested);
             if window.label() != "main" || !task_cancellation::has_active_document_tasks() {
+                let terminating = lifecycle.transition(platform::LifecyclePhase::Terminating);
+                let _ = window.emit("ostudy-lifecycle", terminating);
                 return;
             }
 
@@ -154,6 +171,7 @@ pub fn run() {
             }
 
             let window = window.clone();
+            let lifecycle_after = lifecycle.clone();
             window
                 .dialog()
                 .message(
@@ -168,7 +186,12 @@ pub fn run() {
                 .show(move |should_close| {
                     CLOSE_CONFIRMATION_OPEN.store(false, Ordering::Release);
                     if should_close {
+                        let terminating = lifecycle_after.transition(platform::LifecyclePhase::Terminating);
+                        let _ = window.emit("ostudy-lifecycle", terminating);
                         let _ = window.destroy();
+                    } else {
+                        let foreground = lifecycle_after.transition(platform::LifecyclePhase::Foreground);
+                        let _ = window.emit("ostudy-lifecycle", foreground);
                     }
                 });
         })
@@ -210,6 +233,7 @@ pub fn run() {
             settings::get_settings,
             settings::save_settings,
             settings::get_app_info,
+            platform::get_platform_capabilities,
             ai::profiles::get_ai_provider_catalog,
             ai::profiles::list_ai_provider_profiles,
             ai::profiles::get_ai_provider_profile,

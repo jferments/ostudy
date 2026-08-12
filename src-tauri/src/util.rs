@@ -1,25 +1,10 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use rusqlite::Connection;
 
 use crate::error::CommandError;
 
 pub fn unix_time_millis() -> Result<i64, CommandError> {
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| {
-            CommandError::new(
-                "invalid_system_clock",
-                format!("The system clock is before the Unix epoch: {error}"),
-            )
-        })?;
-
-    i64::try_from(duration.as_millis()).map_err(|_| {
-        CommandError::new(
-            "invalid_system_clock",
-            "The current timestamp is outside SQLite's supported integer range.",
-        )
-    })
+    crate::platform::now_utc_millis()
+        .map_err(|message| CommandError::new("invalid_system_clock", message))
 }
 
 pub fn generate_id(connection: &Connection) -> Result<String, CommandError> {

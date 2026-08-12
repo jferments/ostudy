@@ -251,7 +251,7 @@ for (const [name, expected] of [
   ["check:fast", "./scripts/check-fast.sh"],
   ["check:changed", "./scripts/check-changed.sh"],
   ["check", "./scripts/check.sh"],
-  ["verify:contracts", "node ./scripts/verify-ipc-contract.mjs && node ./scripts/verify-repository-policy.mjs"],
+  ["verify:contracts", "node ./scripts/verify-ipc-contract.mjs && node ./scripts/verify-repository-policy.mjs && node ./scripts/verify-platform-boundaries.mjs"],
 ]) {
   equal(`package script ${name}`, pkg.scripts?.[name], expected);
 }

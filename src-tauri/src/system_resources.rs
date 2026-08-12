@@ -1,12 +1,8 @@
 //! Resource-aware concurrency planning for CPU-heavy native document work.
 //!
-//! Document extraction and OCR should use the machine that the learner has
-//! available without hard-coding a workstation-specific thread count. Plans are
-//! bounded by logical CPUs, currently available RAM, task count, and an optional
-//! operator cap. Memory values are conservative working-set estimates, not
-//! allocations or promises that an external process will stay below them.
-
-use sysinfo::{MemoryRefreshKind, System};
+//! Platform adapters observe CPU and memory. The shared planner applies task,
+//! CPU, RAM, thermal, lifecycle, and optional operator bounds without knowing
+//! which operating system produced the snapshot.
 
 const MIB: u64 = 1024 * 1024;
 const MIN_MEMORY_RESERVE_BYTES: u64 = 512 * MIB;
@@ -16,18 +12,23 @@ const MEMORY_RESERVE_PERCENT: u64 = 25;
 pub(crate) struct SystemResourceSnapshot {
     pub logical_cpus: usize,
     pub available_memory_bytes: u64,
+    pub low_memory: bool,
+    pub thermal_limited: bool,
+    pub foreground: bool,
 }
 
 impl SystemResourceSnapshot {
     pub(crate) fn capture() -> Self {
-        let logical_cpus = std::thread::available_parallelism()
-            .map(std::num::NonZeroUsize::get)
-            .unwrap_or(1);
-        let mut system = System::new();
-        system.refresh_memory_specifics(MemoryRefreshKind::nothing().with_ram());
+        let snapshot = crate::platform::resource_snapshot();
         Self {
-            logical_cpus: logical_cpus.max(1),
-            available_memory_bytes: system.available_memory(),
+            logical_cpus: snapshot.logical_cpus,
+            available_memory_bytes: snapshot.available_memory_bytes,
+            low_memory: snapshot.low_memory,
+            thermal_limited: matches!(
+                snapshot.thermal_state,
+                crate::platform::ThermalState::Serious | crate::platform::ThermalState::Critical
+            ),
+            foreground: snapshot.foreground,
         }
     }
 }
@@ -46,12 +47,11 @@ pub(crate) fn plan_parallel_workers(
     per_worker_memory_bytes: u64,
     environment_cap: &str,
 ) -> ParallelWorkPlan {
-    let cap = environment_worker_cap(environment_cap);
     calculate_parallel_workers(
         SystemResourceSnapshot::capture(),
         task_count,
         per_worker_memory_bytes,
-        cap,
+        environment_worker_cap(environment_cap),
     )
 }
 
@@ -64,7 +64,6 @@ pub(crate) fn queue_capacity(
     if task_count == 0 || plan.worker_count == 0 {
         return 0;
     }
-
     let cpu_pipeline_target = plan
         .worker_count
         .saturating_mul(target_items_per_worker.max(1))
@@ -73,7 +72,6 @@ pub(crate) fn queue_capacity(
     if per_queue_item_bytes == 0 || plan.working_memory_budget_bytes == 0 {
         return cpu_pipeline_target;
     }
-
     let worker_memory = plan
         .per_worker_memory_bytes
         .saturating_mul(u64::try_from(plan.worker_count).unwrap_or(u64::MAX));
@@ -94,7 +92,6 @@ fn calculate_parallel_workers(
 ) -> ParallelWorkPlan {
     let logical_cpus = snapshot.logical_cpus.max(1);
     let working_memory_budget_bytes = working_memory_budget(snapshot.available_memory_bytes);
-
     let memory_worker_limit = if working_memory_budget_bytes == 0 || per_worker_memory_bytes == 0 {
         usize::MAX
     } else {
@@ -102,16 +99,24 @@ fn calculate_parallel_workers(
             .unwrap_or(usize::MAX)
             .max(1)
     };
-
+    let environmental_limit =
+        if snapshot.low_memory || snapshot.thermal_limited || !snapshot.foreground {
+            1
+        } else {
+            usize::MAX
+        };
     let mut worker_count = if task_count == 0 {
         0
     } else {
-        task_count.min(logical_cpus).min(memory_worker_limit).max(1)
+        task_count
+            .min(logical_cpus)
+            .min(memory_worker_limit)
+            .min(environmental_limit)
+            .max(1)
     };
     if let Some(cap) = explicit_cap.filter(|cap| *cap > 0) {
         worker_count = worker_count.min(cap);
     }
-
     ParallelWorkPlan {
         logical_cpus,
         available_memory_bytes: snapshot.available_memory_bytes,
@@ -125,14 +130,9 @@ fn working_memory_budget(available_memory_bytes: u64) -> u64 {
     if available_memory_bytes == 0 {
         return 0;
     }
-
     let percentage_reserve = available_memory_bytes.saturating_mul(MEMORY_RESERVE_PERCENT) / 100;
-    // On small-memory systems, reserving a full 512 MiB could consume virtually
-    // everything. Reserve at least 25%, and aim for 512 MiB only when doing so
-    // still leaves at least half the currently available RAM for the workload.
     let minimum_reserve = MIN_MEMORY_RESERVE_BYTES.min(available_memory_bytes / 2);
-    let reserve = percentage_reserve.max(minimum_reserve);
-    available_memory_bytes.saturating_sub(reserve)
+    available_memory_bytes.saturating_sub(percentage_reserve.max(minimum_reserve))
 }
 
 fn environment_worker_cap(name: &str) -> Option<usize> {
@@ -150,80 +150,83 @@ mod tests {
         value * 1024 * MIB
     }
 
+    fn snapshot(logical_cpus: usize, memory: u64) -> SystemResourceSnapshot {
+        SystemResourceSnapshot {
+            logical_cpus,
+            available_memory_bytes: memory,
+            low_memory: false,
+            thermal_limited: false,
+            foreground: true,
+        }
+    }
+
     #[test]
     fn worker_plan_can_be_cpu_limited_without_a_fixed_ceiling() {
-        let plan = calculate_parallel_workers(
-            SystemResourceSnapshot {
-                logical_cpus: 64,
-                available_memory_bytes: gib(128),
-            },
-            100,
-            256 * MIB,
-            None,
+        assert_eq!(
+            calculate_parallel_workers(snapshot(64, gib(128)), 100, 256 * MIB, None).worker_count,
+            64
         );
-        assert_eq!(plan.worker_count, 64);
     }
 
     #[test]
     fn worker_plan_is_memory_limited_before_machine_exhaustion() {
-        let plan = calculate_parallel_workers(
-            SystemResourceSnapshot {
-                logical_cpus: 64,
-                available_memory_bytes: gib(4),
-            },
-            100,
-            512 * MIB,
-            None,
-        );
+        let plan = calculate_parallel_workers(snapshot(64, gib(4)), 100, 512 * MIB, None);
         assert_eq!(plan.working_memory_budget_bytes, gib(3));
         assert_eq!(plan.worker_count, 6);
     }
 
     #[test]
     fn worker_plan_is_task_limited_and_accepts_an_operator_cap() {
-        let snapshot = SystemResourceSnapshot {
-            logical_cpus: 64,
-            available_memory_bytes: gib(128),
-        };
+        let value = snapshot(64, gib(128));
         assert_eq!(
-            calculate_parallel_workers(snapshot, 3, 128 * MIB, None).worker_count,
+            calculate_parallel_workers(value, 3, 128 * MIB, None).worker_count,
             3
         );
         assert_eq!(
-            calculate_parallel_workers(snapshot, 100, 128 * MIB, Some(12)).worker_count,
+            calculate_parallel_workers(value, 100, 128 * MIB, Some(12)).worker_count,
             12
         );
     }
 
     #[test]
-    fn missing_memory_information_falls_back_to_cpu_and_task_bounds() {
-        let plan = calculate_parallel_workers(
-            SystemResourceSnapshot {
-                logical_cpus: 24,
-                available_memory_bytes: 0,
-            },
-            100,
-            512 * MIB,
-            None,
+    fn low_memory_thermal_and_background_states_are_conservative() {
+        for mut value in [
+            snapshot(16, gib(32)),
+            snapshot(16, gib(32)),
+            snapshot(16, gib(32)),
+        ] {
+            if value == snapshot(16, gib(32)) {
+                value.low_memory = true;
+            }
+            assert_eq!(
+                calculate_parallel_workers(value, 20, 128 * MIB, None).worker_count,
+                1
+            );
+        }
+        let mut thermal = snapshot(16, gib(32));
+        thermal.thermal_limited = true;
+        assert_eq!(
+            calculate_parallel_workers(thermal, 20, 128 * MIB, None).worker_count,
+            1
         );
+        let mut background = snapshot(16, gib(32));
+        background.foreground = false;
+        assert_eq!(
+            calculate_parallel_workers(background, 20, 128 * MIB, None).worker_count,
+            1
+        );
+    }
+
+    #[test]
+    fn missing_memory_information_falls_back_to_cpu_and_task_bounds() {
+        let plan = calculate_parallel_workers(snapshot(24, 0), 100, 512 * MIB, None);
         assert_eq!(plan.worker_count, 24);
         assert_eq!(plan.working_memory_budget_bytes, 0);
     }
 
     #[test]
     fn queue_capacity_respects_remaining_memory_and_pipeline_depth() {
-        let plan = calculate_parallel_workers(
-            SystemResourceSnapshot {
-                logical_cpus: 8,
-                available_memory_bytes: gib(8),
-            },
-            20,
-            512 * MIB,
-            None,
-        );
-        // 8 GiB available -> 6 GiB working budget; 8 workers reserve 4 GiB,
-        // leaving 2 GiB. At 256 MiB per queued image, memory permits 8 slots,
-        // even though a two-deep worker pipeline would otherwise target 16.
+        let plan = calculate_parallel_workers(snapshot(8, gib(8)), 20, 512 * MIB, None);
         assert_eq!(queue_capacity(plan, 20, 256 * MIB, 2), 8);
     }
 }
