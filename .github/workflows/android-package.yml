@@ -1,0 +1,68 @@
+name: Android package
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact:
+        description: Android artifact to build
+        required: true
+        default: aab
+        type: choice
+        options:
+          - apk
+          - aab
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 120
+    env:
+      CI: "true"
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Check out selected source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Expose user-local tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install Android build prerequisites
+        run: |
+          pnpm install --frozen-lockfile
+          bash ./scripts/install-android-deps.sh
+          rustup target add \
+            aarch64-linux-android \
+            armv7-linux-androideabi \
+            i686-linux-android \
+            x86_64-linux-android
+          source ./scripts/android-env.sh
+          android_write_local_properties
+          android_emit_github_environment
+
+      - name: Build unsigned release artifact
+        env:
+          ARTIFACT: ${{ inputs.artifact }}
+        run: |
+          if [[ "$ARTIFACT" == aab ]]; then
+            bash ./scripts/android-build.sh --release --aab --target all
+          else
+            bash ./scripts/android-build.sh --release --apk --target all
+            apk="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' -printf '%T@ %p\n' | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
+            bash ./scripts/verify-android-package.sh "$apk" release
+          fi
+
+      - name: Upload unsigned package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ostudy-android-${{ inputs.artifact }}-${{ github.sha }}
+          path: |
+            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+            src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
+          if-no-files-found: error
+          retention-days: 14
