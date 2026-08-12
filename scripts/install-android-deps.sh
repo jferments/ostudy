@@ -91,7 +91,9 @@ printf 'Accepting Android SDK licenses for the pinned packages...\n'
 yes | "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
 printf 'Installing Android SDK packages into %s...\n' "$ANDROID_HOME"
 "$sdkmanager" --sdk_root="$ANDROID_HOME" --install "${packages[@]}"
-yes | "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
+# sdkmanager closes stdin after the final prompt, which gives `yes` SIGPIPE
+# under pipefail even though every license was accepted.
+yes | "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
 
 if [[ ! -d "$NDK_HOME" ]]; then
   printf 'The pinned NDK was not installed at %s.\n' "$NDK_HOME" >&2
