@@ -171,9 +171,9 @@ templateScreen = replaceExact(
 );
 templateScreen = replaceExact(
   templateScreen,
-  `      await durableDraft.commit(saved.id);\n      openRequestSequence.current += 1;\n`,
-  `      durableDraft.acceptCanonicalCommit();\n      openRequestSequence.current += 1;\n`,
-  "accept template canonical commit",
+  `      const saved = draft.id\n        ? await controller.update({\n            ...input,\n            templateId: draft.id,\n            revision: draft.revision ?? 1,\n          })\n        : await controller.create(input);\n      await durableDraft.commit(saved.id);\n`,
+  `      if (draft.id) {\n        await controller.update({\n          ...input,\n          templateId: draft.id,\n          revision: draft.revision ?? 1,\n        });\n      } else {\n        await controller.create(input);\n      }\n      durableDraft.acceptCanonicalCommit();\n`,
+  "atomically commit template without an unused result",
 );
 await write("src/screens/TemplatesScreen.tsx", templateScreen);
 
@@ -215,9 +215,11 @@ const testFiles = [
 for (const path of testFiles) {
   let text = await read(path);
   if (!text.includes("prepareCanonicalCommit:")) {
-    const anchor = `    commit: vi.fn().mockResolvedValue(undefined),\n`;
-    const replacement = `    prepareCanonicalCommit: vi.fn().mockResolvedValue({ draftId: "d".repeat(32), revision: 1 }),\n    acceptCanonicalCommit: vi.fn(),\n${anchor}`;
-    if (text.includes(anchor)) text = text.replaceAll(anchor, replacement);
+    for (const indent of ["    ", "  "]) {
+      const anchor = `${indent}commit: vi.fn().mockResolvedValue(undefined),\n`;
+      const replacement = `${indent}prepareCanonicalCommit: vi.fn().mockResolvedValue({ draftId: "d".repeat(32), revision: 1 }),\n${indent}acceptCanonicalCommit: vi.fn(),\n${anchor}`;
+      if (text.includes(anchor)) text = text.replaceAll(anchor, replacement);
+    }
   }
   text = text.replaceAll("durableDraftMock.commit", "durableDraftMock.acceptCanonicalCommit");
   await write(path, text);
