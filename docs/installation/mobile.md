@@ -1,55 +1,67 @@
 # Android and iOS status
 
-Android and iOS are planned ostudy targets. No installable mobile application or supported mobile build procedure is currently included in the repository. The shared P0-P2 runtime, opaque file-transfer layer, and durable authoring drafts are now implemented, but Android/iOS native adapters and generated projects remain future work. The presence of cross-platform Tauri abstractions, accepted platform-service decisions, and native dependency metadata is preparation for future work, not evidence that the mobile applications have shipped.
+Android and iOS remain separate delivery targets over one shared ostudy application core.
 
-## Portability foundation
+## Android
 
-The implementation sequence begins before an Android project is generated:
+Android phases A1–A3 are implemented as a source-build application. The repository contains a generated Tauri Android project, a private Kotlin platform plugin, pinned Android SDK/NDK tooling, APK/AAB build wrappers, official-emulator smoke tests, and self-hosted GitHub workflows.
 
-1. **P0 — decisions and inventory:** accept the platform, file, secret, lifecycle/time/resource, and durable-draft boundaries; reject new untracked platform debt.
-2. **P1 — runtime ports:** move current Linux behavior behind typed capability, file, secret, lifecycle, clock/time-zone, and resource interfaces.
-3. **P2 — path-free files and durable drafts:** stage imports, prepare exports, serve managed images by ID, and recover interrupted authoring safely.
+The Android application supports:
 
-See [Platform services](../architecture/platform-services.md) and the [portability inventory](../development/platform-portability-inventory.md).
+- deck, card, tag, template, search, and bulk authoring;
+- managed card/template images;
+- practice, scheduling controls, interrupted-session restoration, and analytics;
+- durable authoring drafts after backgrounding or process death;
+- `.studydeck`, generated `.ostudy.json`, and complete `.ostudybackup` import;
+- system document-picker export and restore;
+- Android Sharesheet send and confirmed incoming share import;
+- Android Keystore-backed AI-provider credentials;
+- cloud and LAN AI-provider profile connectivity.
 
-## What can be shared
+PDF import, PDF rendering, OCR, and AI document generation intentionally remain an Android development stub during A1–A3. Existing desktop document rows and managed files are preserved when a complete backup is restored on Android.
 
-The architecture is designed so that the following behavior remains common across desktop and mobile:
+See [Build and install ostudy for Android](android.md) and [Android development architecture](../development/android.md).
+
+## iOS
+
+iOS remains planned. The shared P0–P2 runtime and the Android work validate the ports and mobile UI patterns that a future Swift implementation will reuse, but there is no generated iOS project, installable application, native adapter set, or supported iOS build procedure yet.
+
+## Shared portability foundation
+
+The following behavior remains common across desktop and mobile:
 
 - card, deck, tag, template, scheduling, and analytics domain rules;
 - SQLite migrations and data repairs;
 - validated rich-content and import formats;
 - provider-profile metadata and narrow AI task contracts;
-- document semantics, source grounding, and generated-card validation;
-- React feature views, controllers, and responsive shared UI where WebView behavior is portable;
-- staged-import, prepared-export, and durable-draft state machines.
+- React feature views, controllers, and adaptive shared UI;
+- staged-import, prepared-export, durable-draft, backup, and operation-identity state machines.
 
-## What needs mobile adapters
+## Native mobile adapters
 
-Mobile applications require platform-specific implementations for capabilities that desktop obtains from Tauri plugins, native libraries, or subprocesses:
+Platform-specific code remains limited to operating-system boundaries:
 
-- document and backup selection through Android content URIs and iOS document providers;
-- application lifecycle and long-running task interruption;
-- native PDF rendering and packaging;
-- OCR without a desktop Tesseract subprocess;
-- operating-system credential storage;
-- share sheets, backup destinations, and external-link handling;
-- hardware Back on Android, safe areas, virtual keyboards, touch interaction, audio, and haptics;
-- application signing, store packaging, upgrades, and data-directory compatibility.
+- Android content URIs and future iOS document-provider URLs;
+- lifecycle, process restoration, system Back, safe areas, and software keyboards;
+- protected credential storage;
+- Sharesheets and incoming intents;
+- connectivity and future local-network permissions;
+- future mobile PDF rendering and OCR;
+- signing, store packaging, and upgrade testing.
 
-The preferred future OCR direction is a platform-native adapter: bundled/offline ML Kit Text Recognition on Android and Apple Vision on iOS. This remains a design direction until implemented and qualified.
+Kotlin and future Swift code do not write the ostudy database or implement scheduling, analytics, package validation, or authoring transactions.
 
 ## Mobile acceptance requirements
 
-A mobile release should not be announced merely because a project compiles. It needs end-to-end testing for:
+A mobile application is considered usable only after end-to-end qualification for:
 
 - first launch, migration, restart, and upgrade persistence;
 - compact navigation, overlays, focus, keyboard, and screen-reader behavior;
 - card authoring, practice, scheduling controls, and analytics;
-- import, export, backup, restore, and device share workflows;
-- local and cloud provider connections under mobile network policies;
-- cancellation and recovery when the application is backgrounded or terminated;
-- document ingestion, rendering, OCR, AI generation, and storage cleanup;
-- battery, memory, storage, and large-document behavior on representative devices.
+- import, export, backup, restore, and system sharing;
+- provider credentials and mobile network policy;
+- cancellation and recovery when backgrounded or terminated;
+- battery, memory, storage, and representative phone/tablet layouts;
+- package permissions and native-library compatibility.
 
-Follow the [roadmap](../roadmap.md) for progress. Until a mobile project and its validation path are committed, README and release documentation should describe Android and iOS as planned.
+Android A1–A3 has automated shared, compile/package, and official-emulator smoke paths for the supported non-document feature set. PDF/OCR/document-generation acceptance belongs to later Android phases.
