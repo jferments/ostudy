@@ -103,6 +103,35 @@ jobs:
             return publishPreparedExport(preparedExportId);
           }
           '''.replace('\n          ', '\n').lstrip())
+
+          path = Path('src-tauri/src/paths.rs')
+          text = path.read_text()
+          methods = r'''
+
+              pub fn transfer_imports_dir(&self) -> PathBuf {
+                  self.app_data_dir.join("transfers").join("imports")
+              }
+
+              pub fn transfer_exports_dir(&self) -> PathBuf {
+                  self.app_data_dir.join("transfers").join("exports")
+              }
+
+              pub fn staged_import_partial_relative_path(id: &str) -> String {
+                  format!("transfers/imports/{id}.partial")
+              }
+
+              pub fn staged_import_relative_path(id: &str, extension: &str) -> String {
+                  format!("transfers/imports/{id}.{extension}")
+              }
+
+              pub fn prepared_export_relative_path(id: &str, extension: &str) -> String {
+                  format!("transfers/exports/{id}.{extension}")
+              }
+          '''
+          close = text.rfind('\n}')
+          if close < 0:
+              raise SystemExit('src-tauri/src/paths.rs: impl closing brace not found')
+          path.write_text(text[:close] + methods + text[close:])
           PY
 
       - name: Install dependencies
