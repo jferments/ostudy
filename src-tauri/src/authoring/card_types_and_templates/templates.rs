@@ -1225,7 +1225,7 @@ fn replace_template_assets(
 
 fn load_template_assets(
     connection: &Connection,
-    paths: &AppPaths,
+    _paths: &AppPaths,
     template_id: &str,
 ) -> Result<Vec<AssetDto>, CommandError> {
     let mut statement = connection
@@ -1240,16 +1240,12 @@ fn load_template_assets(
         .map_err(CommandError::database)?;
     let rows = statement
         .query_map([template_id], |row| {
-            let relative_path: String = row.get(4)?;
+            let _relative_path: String = row.get(4)?;
             Ok(AssetDto {
                 id: row.get(0)?,
                 original_filename: row.get(1)?,
                 mime_type: row.get(2)?,
                 byte_size: row.get(3)?,
-                file_path: paths
-                    .resolve_relative(&relative_path)
-                    .to_string_lossy()
-                    .into_owned(),
                 created_at: row.get(5)?,
             })
         })
@@ -1271,16 +1267,12 @@ fn load_assets_by_ids(
                  FROM assets WHERE id = ?1 AND deleted_at IS NULL",
                 [asset_id],
                 |row| {
-                    let relative_path: String = row.get(4)?;
+                    let _relative_path: String = row.get(4)?;
                     Ok(AssetDto {
                         id: row.get(0)?,
                         original_filename: row.get(1)?,
                         mime_type: row.get(2)?,
                         byte_size: row.get(3)?,
-                        file_path: paths
-                            .resolve_relative(&relative_path)
-                            .to_string_lossy()
-                            .into_owned(),
                         created_at: row.get(5)?,
                     })
                 },

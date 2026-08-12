@@ -66,27 +66,27 @@ CREATE TABLE document_files (
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ExportLibraryBackupInput {
-    pub destination_path: String,
+pub struct PrepareLibraryBackupInput {
+    pub operation_id: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PrepareLibraryRestoreInput {
-    pub source_path: String,
+    pub staged_file_id: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LibraryBackupResultDto {
-    pub destination_path: String,
-    pub deck_count: i64,
-    pub template_count: i64,
-    pub review_count: i64,
-    pub asset_count: i64,
+struct LibraryBackupResultDto {
+    destination_path: String,
+    deck_count: i64,
+    template_count: i64,
+    review_count: i64,
+    asset_count: i64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryRestoreResultDto {
     pub deck_count: i64,
@@ -94,6 +94,25 @@ pub struct LibraryRestoreResultDto {
     pub review_count: i64,
     pub asset_count: i64,
     pub restart_required: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryBackupSummaryDto {
+    deck_count: i64,
+    template_count: i64,
+    review_count: i64,
+    asset_count: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedLibraryBackupDto {
+    pub prepared_export: crate::external_files::PreparedExportDto,
+    pub deck_count: i64,
+    pub template_count: i64,
+    pub review_count: i64,
+    pub asset_count: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -157,34 +176,111 @@ impl Drop for PendingRestoreGuard {
 }
 
 #[tauri::command]
-pub fn export_library_backup(
+pub fn prepare_library_backup(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
-    input: ExportLibraryBackupInput,
-) -> Result<LibraryBackupResultDto, CommandError> {
-    let destination = normalize_backup_path(&input.destination_path)?;
-    export_backup(database.inner(), paths.inner(), &destination)
+    input: PrepareLibraryBackupInput,
+) -> Result<PreparedLibraryBackupDto, CommandError> {
+    crate::util::validate_entity_id(&input.operation_id, "library backup operation")?;
+    if let Some((prepared_export, summary)) = database.with_connection(|connection| {
+        crate::external_files::load_prepared_export_summary::<LibraryBackupSummaryDto>(
+            connection,
+            paths.inner(),
+            &input.operation_id,
+            "library_backup",
+        )
+    })? {
+        return Ok(PreparedLibraryBackupDto {
+            prepared_export,
+            deck_count: summary.deck_count,
+            template_count: summary.template_count,
+            review_count: summary.review_count,
+            asset_count: summary.asset_count,
+        });
+    }
+    let relative = AppPaths::prepared_export_relative_path(&input.operation_id, "ostudybackup");
+    let destination = paths.resolve_relative(&relative);
+    let exported = export_backup(database.inner(), paths.inner(), &destination)?;
+    let summary = LibraryBackupSummaryDto {
+        deck_count: exported.deck_count,
+        template_count: exported.template_count,
+        review_count: exported.review_count,
+        asset_count: exported.asset_count,
+    };
+    let created_at = unix_time_millis()?;
+    let created_date = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(created_at)
+        .map(|value| value.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| "backup".to_string());
+    let suggested_filename = format!("ostudy-library-{created_date}.ostudybackup");
+    let prepared_export = database.with_connection(|connection| {
+        crate::external_files::register_prepared_export(
+            connection,
+            paths.inner(),
+            crate::external_files::RegisterPreparedExport {
+                id: &input.operation_id,
+                purpose: "library_backup",
+                suggested_filename: &suggested_filename,
+                media_type: "application/vnd.ostudy.backup",
+                relative_path: &relative,
+                summary: &summary,
+            },
+        )
+    })?;
+    Ok(PreparedLibraryBackupDto {
+        prepared_export,
+        deck_count: summary.deck_count,
+        template_count: summary.template_count,
+        review_count: summary.review_count,
+        asset_count: summary.asset_count,
+    })
 }
 
 #[tauri::command]
 pub fn prepare_library_restore(
+    database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     input: PrepareLibraryRestoreInput,
 ) -> Result<LibraryRestoreResultDto, CommandError> {
-    let source = fs::canonicalize(&input.source_path).map_err(CommandError::io)?;
-    let summary = validate_backup_package(&source, None)?;
+    crate::util::validate_entity_id(&input.staged_file_id, "staged library backup")?;
+    if let Some(result) = database.with_connection(|connection| {
+        crate::external_files::consumed_import_result::<LibraryRestoreResultDto>(
+            connection,
+            &input.staged_file_id,
+        )
+    })? {
+        return Ok(result);
+    }
+    let staged = database.with_connection(|connection| {
+        crate::external_files::resolve_staged_import(
+            connection,
+            paths.inner(),
+            &input.staged_file_id,
+            crate::external_files::ExternalImportPurpose::LibraryBackup,
+            &[crate::external_files::ExternalFileKind::Ostudybackup],
+        )
+    })?;
+    let summary = validate_backup_package(&staged.path, None)?;
     let pending = pending_restore_path(&paths);
     let temporary = pending.with_extension("ostudybackup.tmp");
     remove_file_if_exists(&temporary).map_err(CommandError::io)?;
-    copy_and_sync(&source, &temporary)?;
+    copy_and_sync(&staged.path, &temporary)?;
     replace_file(&temporary, &pending)?;
-    Ok(LibraryRestoreResultDto {
+    let result = LibraryRestoreResultDto {
         deck_count: summary.deck_count,
         template_count: summary.template_count,
         review_count: summary.review_count,
         asset_count: summary.asset_count,
         restart_required: true,
-    })
+    };
+    database.with_connection(|connection| {
+        crate::external_files::mark_import_consumed(
+            connection,
+            &input.staged_file_id,
+            &result,
+            unix_time_millis()?,
+        )
+    })?;
+    Ok(result)
 }
 
 pub(crate) fn apply_pending_restore(
@@ -822,21 +918,6 @@ fn backup_version(connection: &Connection) -> Result<i64, CommandError> {
     backup_metadata(connection, "formatVersion")?
         .parse::<i64>()
         .map_err(|_| CommandError::new("invalid_backup", "The backup version is invalid."))
-}
-
-fn normalize_backup_path(value: &str) -> Result<PathBuf, CommandError> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Err(CommandError::new(
-            "invalid_backup_path",
-            "Choose where to save the library backup.",
-        ));
-    }
-    let mut path = PathBuf::from(trimmed);
-    if path.extension().and_then(|value| value.to_str()) != Some("ostudybackup") {
-        path.set_extension("ostudybackup");
-    }
-    Ok(path)
 }
 
 fn pending_restore_path(paths: &AppPaths) -> PathBuf {

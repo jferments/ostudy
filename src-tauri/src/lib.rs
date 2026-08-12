@@ -264,7 +264,7 @@ pub fn run() {
             document_operations::open_document_source,
             document_operations::delete_pdf_document,
             documents::set_document_archived,
-            library_backup::export_library_backup,
+            library_backup::prepare_library_backup,
             library_backup::prepare_library_restore,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
@@ -278,7 +278,7 @@ pub fn run() {
             schedule_controls::apply_schedule_action,
             analytics::get_analytics,
             analytics::get_recent_practice_reviews,
-            studydeck::export_deck,
+            studydeck::prepare_deck_export,
             studydeck::import_deck
         ])
         .run(tauri::generate_context!())

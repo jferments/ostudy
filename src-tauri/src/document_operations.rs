@@ -25,6 +25,7 @@ use crate::{
         self, DocumentGenerationResultDto, ImportPdfDocumentInput, RetryPdfGenerationInput,
     },
     error::CommandError,
+    external_files::{self, ExternalFileKind, ExternalImportPurpose},
     paths::AppPaths,
     pdf_render_backend::PdfRenderRuntime,
     task_cancellation::{cancel_document_task, is_document_task_active, run_document_task},
@@ -36,7 +37,7 @@ const MAX_DECK_DESCRIPTION_CHARS: usize = 2_000;
 const CANCELED_MESSAGE: &str =
     "PDF flashcard generation was stopped. The PDF remains in Documents and can be retried.";
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportedPdfDocumentDto {
     pub document_id: String,
@@ -65,8 +66,31 @@ pub fn import_pdf_document(
     paths: State<'_, AppPaths>,
     input: ImportPdfDocumentInput,
 ) -> Result<ImportedPdfDocumentDto, CommandError> {
-    let document_id = import_managed_pdf(database.inner(), paths.inner(), &input.source_path)?;
-    Ok(ImportedPdfDocumentDto { document_id })
+    validate_entity_id(&input.staged_file_id, "staged PDF")?;
+    if let Some(result) = database.with_connection(|connection| {
+        external_files::consumed_import_result::<ImportedPdfDocumentDto>(
+            connection,
+            &input.staged_file_id,
+        )
+    })? {
+        return Ok(result);
+    }
+    let staged = database.with_connection(|connection| {
+        external_files::resolve_staged_import(
+            connection,
+            paths.inner(),
+            &input.staged_file_id,
+            ExternalImportPurpose::PdfDocument,
+            &[ExternalFileKind::Pdf],
+        )
+    })?;
+    import_managed_pdf(
+        database.inner(),
+        paths.inner(),
+        &staged.path,
+        &staged.display_name,
+        &input.staged_file_id,
+    )
 }
 
 /// Run the existing document pipeline inside a task-local cancellation scope.
@@ -392,8 +416,10 @@ fn record_canceled_generation(database: &Database, document_id: &str) {
 fn import_managed_pdf(
     database: &Database,
     paths: &AppPaths,
-    source_path: &str,
-) -> Result<String, CommandError> {
+    source_path: &Path,
+    source_display_name: &str,
+    staged_file_id: &str,
+) -> Result<ImportedPdfDocumentDto, CommandError> {
     let source = fs::canonicalize(source_path).map_err(CommandError::io)?;
     if !source.is_file() {
         return Err(CommandError::new("invalid_pdf", "Select a PDF file."));
@@ -405,12 +431,7 @@ fn import_managed_pdf(
             "The PDF is empty or exceeds the 512 MB document limit.",
         ));
     }
-    let original_filename = validate_pdf_filename(
-        source
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or_default(),
-    )?;
+    let original_filename = validate_pdf_filename(source_display_name)?;
     let title = validate_document_title(
         Path::new(&original_filename)
             .file_stem()
@@ -454,8 +475,14 @@ fn import_managed_pdf(
     sync_directory(directory)?;
 
     let now = unix_time_millis()?;
+    let result = ImportedPdfDocumentDto {
+        document_id: document_id.clone(),
+    };
     let insert_result = database.with_connection(|connection| {
-        connection
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        transaction
             .execute(
                 "INSERT INTO documents (
                      id, title, original_filename, mime_type, byte_size, sha256,
@@ -487,13 +514,14 @@ fn import_managed_pdf(
                     error,
                 )
             })?;
-        Ok(())
+        external_files::mark_import_consumed(&transaction, staged_file_id, &result, now)?;
+        transaction.commit().map_err(CommandError::database)
     });
     if let Err(error) = insert_result {
         let _ = fs::remove_dir_all(directory);
         return Err(error);
     }
-    Ok(document_id)
+    Ok(result)
 }
 
 fn deleted_pdf_citation(title: &str, original_filename: &str, page_count: i64) -> String {

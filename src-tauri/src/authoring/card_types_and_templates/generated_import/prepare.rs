@@ -1,17 +1,18 @@
-use super::markdown::markdown_document;
-use super::*;
-
+#[cfg(test)]
 pub(super) fn prepare_flashcard_import(source_path: &str) -> Result<PreparedImport, CommandError> {
     let source = std::fs::canonicalize(source_path).map_err(CommandError::io)?;
     if !source.is_file() {
         return Err(CommandError::new(
             "invalid_flashcard_import",
-            "Select an ostudy `.studydeck` or generated `.ostudy.json` file.",
+            "Select an ostudy generated-flashcard file.",
         ));
     }
-    let bytes = std::fs::read(&source).map_err(CommandError::io)?;
+    let bytes = std::fs::read(source).map_err(CommandError::io)?;
     prepare_flashcard_import_bytes(&bytes)
 }
+
+use super::markdown::markdown_document;
+use super::*;
 
 pub(super) fn prepare_flashcard_import_bytes(bytes: &[u8]) -> Result<PreparedImport, CommandError> {
     if bytes.is_empty() || bytes.len() > MAX_GENERATED_IMPORT_BYTES {

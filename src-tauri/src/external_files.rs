@@ -237,21 +237,14 @@ pub struct PreparedExportDto {
 
 #[derive(Clone, Debug)]
 pub(crate) struct ResolvedStagedImport {
-    pub id: String,
     pub path: PathBuf,
     pub display_name: String,
-    pub detected_kind: ExternalFileKind,
-    pub byte_size: i64,
-    pub sha256: String,
-    pub state: String,
-    pub result_json: String,
 }
 
 #[derive(Clone, Debug)]
 struct StoredPreparedExport {
     dto: PreparedExportDto,
     relative_path: String,
-    state: String,
     summary_json: String,
 }
 
@@ -544,14 +537,8 @@ pub(crate) fn resolve_staged_import(
     let path = paths.resolve_relative(&stored.2);
     verify_file(&path, stored.0.byte_size, &stored.0.sha256)?;
     Ok(ResolvedStagedImport {
-        id: staged_file_id.to_string(),
         path,
         display_name: stored.0.display_name,
-        detected_kind: stored.0.detected_kind,
-        byte_size: stored.0.byte_size,
-        sha256: stored.0.sha256,
-        state: stored.0.state,
-        result_json: stored.3,
     })
 }
 
@@ -963,7 +950,6 @@ fn load_prepared_export(
             expires_at: row.8,
         },
         relative_path: row.5,
-        state: row.6,
         summary_json: row.7,
     })
 }
