@@ -27,6 +27,7 @@ await replace(
   "        #[cfg(any(target_os = \"android\", target_os = \"ios\"))]\n        {\n            compile_error!(\"Mobile PlatformRuntime adapters must be supplied by the generated Tauri mobile project.\");\n        }",
   "        #[cfg(any(target_os = \"android\", target_os = \"ios\"))]\n        {\n            return mobile_stub::runtime();\n        }",
 );
+await replace("src-tauri/src/lib.rs", "mod platform;", "pub mod platform;");
 
 let policy = await read("scripts/verify-platform-boundaries.mjs");
 policy = policy
@@ -50,8 +51,32 @@ await write("scripts/verify-repository-policy.mjs", repositoryPolicy);
 let calendar = await read("src-tauri/src/study_calendar.rs");
 calendar = calendar
   .replace("#[cfg(test)]\nuse chrono::Utc;\nuse chrono::{DateTime, Datelike, Duration, NaiveDate};", "#[cfg(test)]\nuse chrono::{DateTime, Utc};\nuse chrono::{Datelike, Duration, NaiveDate};")
-  .replace("const SECONDS_PER_LOCAL_DATE: i64 = 86_400;\n", "");
+  .replace("const SECONDS_PER_LOCAL_DATE: i64 = 86_400;\n", "")
+  .replace(
+    "\n    #[test]\n    fn zone_identifier_rejects_paths_and_control_characters() {\n        assert_eq!(\n            normalize_zone_identifier(\"America/Los_Angeles\"),\n            Some(\"America/Los_Angeles\".to_string())\n        );\n        assert_eq!(normalize_zone_identifier(\"/usr/share/zoneinfo/UTC\"), None);\n        assert_eq!(normalize_zone_identifier(\"bad\\nzone\"), None);\n    }",
+    "",
+  );
 await write("src-tauri/src/study_calendar.rs", calendar);
+
+let desktopTime = await read("src-tauri/src/platform/desktop/time.rs");
+desktopTime += `
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zone_identifier_rejects_paths_and_control_characters() {
+        assert_eq!(
+            normalize_zone_identifier("America/Los_Angeles"),
+            Some("America/Los_Angeles".to_string())
+        );
+        assert_eq!(normalize_zone_identifier("/usr/share/zoneinfo/UTC"), None);
+        assert_eq!(normalize_zone_identifier("bad\\nzone"), None);
+    }
+}
+`;
+await write("src-tauri/src/platform/desktop/time.rs", desktopTime);
 
 let mobile = await read("src-tauri/src/platform/mobile_stub.rs");
 mobile = mobile.replace(
