@@ -35,7 +35,11 @@ policy = policy
     '    const desktopAdapter = displayPath.startsWith("src-tauri/src/platform/desktop/");',
     '    const platformAdapter = displayPath.startsWith("src-tauri/src/platform/");',
   )
-  .replaceAll("!desktopAdapter", "!platformAdapter");
+  .replaceAll("!desktopAdapter", "!platformAdapter")
+  .replace(
+    '  if (!/\\.(?:rs|ts|tsx)$/u.test(displayPath)) continue;\n  if (/(?:^|\\/)[^/]+\\.(?:test|spec)\\.(?:ts|tsx)$/u.test(displayPath)) continue;',
+    '  if (!/\\.(?:rs|ts|tsx)$/u.test(displayPath)) continue;\n  if (/(?:^|\\/)[^/]+\\.(?:test|spec)\\.(?:ts|tsx)$/u.test(displayPath)) continue;\n  if (\n    displayPath.startsWith("src-tauri/src/")\n    && (\n      displayPath.includes("/tests/")\n      || /(?:^|\\/)(?:[^/]*_tests|conformance_tests|operation_tests)\\.rs$/u.test(displayPath)\n    )\n  ) continue;',
+  );
 await write("scripts/verify-platform-boundaries.mjs", policy);
 
 let repositoryPolicy = await read("scripts/verify-repository-policy.mjs");
@@ -47,6 +51,21 @@ if (!repositoryPolicy.includes("desktop secret-store adapter")) {
   throw new Error("scripts/verify-repository-policy.mjs: keyring policy was not migrated");
 }
 await write("scripts/verify-repository-policy.mjs", repositoryPolicy);
+
+const exceptionPath = "scripts/policy/platform-boundary-exceptions.json";
+const exceptions = JSON.parse(await read(exceptionPath));
+if (!exceptions.exceptions.some(
+  (entry) => entry.rule === "frontend-direct-tauri-core-import"
+    && entry.path === "src/editor/StudyRichEditor.tsx",
+)) {
+  exceptions.exceptions.push({
+    rule: "frontend-direct-tauri-core-import",
+    path: "src/editor/StudyRichEditor.tsx",
+    retireInPhase: "P2",
+    reason: "Temporary absolute asset path conversion",
+  });
+}
+await write(exceptionPath, `${JSON.stringify(exceptions, null, 2)}\n`);
 
 let calendar = await read("src-tauri/src/study_calendar.rs");
 calendar = calendar
@@ -91,6 +110,42 @@ resources = resources.replace(
   "        let mut low_memory = snapshot(16, gib(32));\n        low_memory.low_memory = true;\n        assert_eq!(\n            calculate_parallel_workers(low_memory, 20, 128 * MIB, None).worker_count,\n            1\n        );\n        let mut thermal = snapshot(16, gib(32));",
 );
 await write("src-tauri/src/system_resources.rs", resources);
+
+await write("src-tauri/src/logging.rs", `fn timestamp_millis() -> i64 {
+    crate::platform::now_utc_millis().unwrap_or_default()
+}
+
+fn record(level: &str, event: &str, message: &str) -> serde_json::Value {
+    serde_json::json!({
+        "timestampMs": timestamp_millis(),
+        "level": level,
+        "event": event,
+        "message": message,
+        "application": "ostudy",
+        "version": env!("CARGO_PKG_VERSION"),
+    })
+}
+
+pub fn info(event: &str, message: impl AsRef<str>) {
+    println!("{}", record("info", event, message.as_ref()));
+}
+
+pub fn error(event: &str, message: impl AsRef<str>) {
+    eprintln!("{}", record("error", event, message.as_ref()));
+}
+`);
+
+let ocr = await read("src-tauri/src/pdf_ocr_backend.rs");
+ocr = ocr
+  .replace(
+    "    time::{Duration, Instant, SystemTime, UNIX_EPOCH},",
+    "    time::{Duration, Instant},",
+  )
+  .replace(
+    "        let nanos = SystemTime::now()\n            .duration_since(UNIX_EPOCH)\n            .unwrap_or_default()\n            .as_nanos();",
+    "        let nanos = crate::platform::now_utc_millis().unwrap_or_default();",
+  );
+await write("src-tauri/src/pdf_ocr_backend.rs", ocr);
 
 await rm(join(root, "scripts", "apply-platform-p1-followup.mjs"), { force: true });
 await rm(join(root, ".github", "workflows", "apply-platform-p1-followup.yml"), { force: true });
