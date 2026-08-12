@@ -18,7 +18,7 @@ Usage: ./scripts/android-build.sh [options]
 Options:
   --debug                 Build a debuggable APK (default).
   --release               Build an optimized release artifact.
-  --target <abi>          aarch64, armv7, i686, or x86_64 (default: aarch64).
+  --target <abi|all>      aarch64, armv7, i686, x86_64, or all.
   --apk                    Build an APK (default).
   --aab                    Build an Android App Bundle.
   --smoke-bridge           Include the test-only emulator bridge. Never use for release.
@@ -44,7 +44,7 @@ while (($#)); do
 done
 
 case "$TARGET" in
-  aarch64|armv7|i686|x86_64) ;;
+  aarch64|armv7|i686|x86_64|all) ;;
   *) printf 'Unsupported Android target: %s\n' "$TARGET" >&2; exit 2 ;;
 esac
 if [[ "$MODE" == release && "$SMOKE_BRIDGE" == 1 ]]; then
@@ -56,7 +56,11 @@ cd "$ROOT_DIR"
 bash ./scripts/android-doctor.sh
 android_write_local_properties
 
-args=(android build "--$FORMAT" --target "$TARGET")
+targets=("$TARGET")
+if [[ "$TARGET" == all ]]; then
+  targets=(aarch64 armv7 i686 x86_64)
+fi
+args=(android build "--$FORMAT" --target "${targets[@]}")
 if [[ "$MODE" == debug ]]; then
   args+=(--debug)
 fi
@@ -67,7 +71,7 @@ else
   unset VITE_OSTUDY_ANDROID_TEST_BRIDGE || true
 fi
 
-printf 'Building ostudy Android %s %s for %s...\n' "$MODE" "$FORMAT" "$TARGET"
+printf 'Building ostudy Android %s %s for %s...\n' "$MODE" "$FORMAT" "${targets[*]}"
 pnpm tauri "${args[@]}"
 
 output_root="$ROOT_DIR/src-tauri/gen/android/app/build/outputs"
