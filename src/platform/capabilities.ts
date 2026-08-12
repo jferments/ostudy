@@ -1,5 +1,7 @@
 import {
   getNativePlatformSnapshot,
+  type AndroidInsetsSnapshot,
+  type AndroidNetworkSnapshot,
   type NativePlatformSnapshot,
 } from "../ipc/platform";
 
@@ -11,9 +13,13 @@ export interface PlatformCapabilities {
   hapticsAvailable: boolean;
   nativeFilePickerAvailable: boolean;
   native: NativePlatformSnapshot | null;
+  androidInsets: AndroidInsetsSnapshot | null;
+  network: AndroidNetworkSnapshot | null;
 }
 
 let nativeSnapshot: NativePlatformSnapshot | null = null;
+let androidInsets: AndroidInsetsSnapshot | null = null;
+let network: AndroidNetworkSnapshot | null = null;
 const listeners = new Set<() => void>();
 
 function matches(query: string): boolean {
@@ -24,7 +30,17 @@ function matches(query: string): boolean {
 
 export async function initializePlatformCapabilities(): Promise<void> {
   nativeSnapshot = await getNativePlatformSnapshot();
-  for (const listener of listeners) listener();
+  publish();
+}
+
+export function updateAndroidInsets(snapshot: AndroidInsetsSnapshot): void {
+  androidInsets = snapshot;
+  publish();
+}
+
+export function updateAndroidNetwork(snapshot: AndroidNetworkSnapshot): void {
+  network = snapshot;
+  publish();
 }
 
 export function subscribePlatformCapabilities(listener: () => void): () => void {
@@ -42,5 +58,11 @@ export function getPlatformCapabilities(): PlatformCapabilities {
     nativeFilePickerAvailable:
       nativeSnapshot?.services.externalFileImport.state === "available",
     native: nativeSnapshot,
+    androidInsets,
+    network,
   };
+}
+
+function publish(): void {
+  for (const listener of listeners) listener();
 }
