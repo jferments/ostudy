@@ -28,8 +28,16 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Apply P2 file foundation
-        run: node ./scripts/apply-platform-p2-files-foundation.mjs
+      - name: Repair and apply P2 file foundation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-platform-p2-files-foundation.mjs')
+          text = path.read_text()
+          text = text.replace('`ExternalFilePort`', "'ExternalFilePort'")
+          path.write_text(text)
+          PY
+          node ./scripts/apply-platform-p2-files-foundation.mjs
 
       - name: Install dependencies
         run: |
