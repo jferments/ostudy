@@ -231,7 +231,18 @@ pub struct ExternalFileRequest {
     pub title: String,
     pub suggested_filename: Option<String>,
     pub filters: Vec<FileFilter>,
-    pub mime_types: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExternalSource {
+    pub path: PathBuf,
+    pub display_name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExternalDestination {
+    pub path: PathBuf,
+    pub display_name: String,
 }
 
 #[derive(Clone, Debug)]
@@ -265,19 +276,59 @@ pub struct ExternalPublishResult {
 pub type PlatformFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 pub trait ExternalFilePort: Send + Sync {
+    fn select_import(
+        &self,
+        _app: AppHandle,
+        _request: ExternalFileRequest,
+    ) -> PlatformFuture<Result<Option<ExternalSource>, CommandError>> {
+        Box::pin(async {
+            Err(CommandError::new(
+                "external_file_adapter_unavailable",
+                "This build does not provide path-based external-file selection.",
+            ))
+        })
+    }
+
+    fn select_export(
+        &self,
+        _app: AppHandle,
+        _request: ExternalFileRequest,
+    ) -> PlatformFuture<Result<Option<ExternalDestination>, CommandError>> {
+        Box::pin(async {
+            Err(CommandError::new(
+                "external_file_adapter_unavailable",
+                "This build does not provide path-based export destinations.",
+            ))
+        })
+    }
+
     fn acquire_import(
         &self,
-        app: AppHandle,
-        request: ExternalFileRequest,
-        target: ExternalImportTarget,
-    ) -> PlatformFuture<Result<Option<ExternalAcquireResult>, CommandError>>;
+        _app: AppHandle,
+        _request: ExternalFileRequest,
+        _target: ExternalImportTarget,
+    ) -> PlatformFuture<Result<Option<ExternalAcquireResult>, CommandError>> {
+        Box::pin(async {
+            Err(CommandError::new(
+                "external_file_streaming_unavailable",
+                "This build does not provide streaming external-file acquisition.",
+            ))
+        })
+    }
 
     fn publish_export(
         &self,
-        app: AppHandle,
-        request: ExternalFileRequest,
-        source: ExternalExportSource,
-    ) -> PlatformFuture<Result<Option<ExternalPublishResult>, CommandError>>;
+        _app: AppHandle,
+        _request: ExternalFileRequest,
+        _source: ExternalExportSource,
+    ) -> PlatformFuture<Result<Option<ExternalPublishResult>, CommandError>> {
+        Box::pin(async {
+            Err(CommandError::new(
+                "external_file_streaming_unavailable",
+                "This build does not provide streaming external-file publication.",
+            ))
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
