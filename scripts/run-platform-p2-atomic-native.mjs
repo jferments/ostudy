@@ -27,3 +27,33 @@ source = source.replace(strictImportCleanup, tolerantImportCleanup);
 await writeFile(applicatorPath, source, "utf8");
 
 await import(new URL("./apply-platform-p2-atomic-native.mjs", import.meta.url));
+
+const profilesPath = join(root, "src-tauri", "src", "ai", "profiles.rs");
+let profiles = await readFile(profilesPath, "utf8");
+const profileFixture = `        request_timeout_ms: super::catalog::DEFAULT_TIMEOUT_MS,
+    }
+}`;
+const migratedProfileFixture = `        request_timeout_ms: super::catalog::DEFAULT_TIMEOUT_MS,
+        editor_draft: None,
+    }
+}`;
+if (!profiles.includes(profileFixture)) {
+  throw new Error("The AI profile test fixture was not found.");
+}
+profiles = profiles.replace(profileFixture, migratedProfileFixture);
+await writeFile(profilesPath, profiles, "utf8");
+
+const authoringTestsPath = join(root, "src-tauri", "src", "authoring", "tests.rs");
+let authoringTests = await readFile(authoringTestsPath, "utf8");
+const bulkFixture = `        ],
+    };
+    let prepared = input`;
+const migratedBulkFixture = `        ],
+        editor_draft: None,
+    };
+    let prepared = input`;
+if (!authoringTests.includes(bulkFixture)) {
+  throw new Error("The bulk-entry test fixture was not found.");
+}
+authoringTests = authoringTests.replace(bulkFixture, migratedBulkFixture);
+await writeFile(authoringTestsPath, authoringTests, "utf8");
