@@ -29,7 +29,7 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Apply native migration
-        run: node ./scripts/apply-platform-p2-pathfree-native.mjs
+        run: node ./scripts/run-platform-p2-pathfree-native.mjs
 
       - name: Provision native dependencies
         run: ./scripts/install-native-deps.sh --pdfium-only
