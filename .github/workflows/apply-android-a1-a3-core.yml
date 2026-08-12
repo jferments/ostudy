@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: apply-android-a1-a3-core-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   apply:
