@@ -4,6 +4,8 @@ src-tauri/target/
 src-tauri/gen/
 src-tauri/resources/native/
 artifacts/
+.android-cargo-target/
+.android-emulator.pid
 *.log
 *.tar.gz
 .DS_Store
