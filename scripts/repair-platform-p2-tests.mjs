@@ -21,6 +21,15 @@ function insertAfterImports(text, snippet) {
   return text.slice(0, insertion) + snippet + text.slice(insertion);
 }
 
+await import(new URL("./fix-platform-p2-draft-ui.mjs", import.meta.url));
+
+let aiProfiles = await read("src", "controllers", "aiProfilesController.ts");
+aiProfiles = aiProfiles.replace(
+  'import { useCallback, useEffect, useMemo, useState } from "react";',
+  'import { useCallback, useEffect, useState } from "react";',
+);
+await write("src/controllers/aiProfilesController.ts", aiProfiles);
+
 let factories = await read("src", "test", "factories.ts");
 factories = factories.replace(/^\s*filePath:\s*[^\n]+\n/gmu, "");
 await write("src/test/factories.ts", factories);
