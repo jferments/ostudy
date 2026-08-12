@@ -11,8 +11,9 @@ use tokio::sync::oneshot;
 use crate::{
     error::CommandError,
     platform::{
-        ExternalAcquireResult, ExternalExportSource, ExternalFilePort, ExternalFileRequest,
-        ExternalImportTarget, ExternalPublishResult, PlatformFuture,
+        ExternalAcquireResult, ExternalDestination, ExternalExportSource, ExternalFilePort,
+        ExternalFileRequest, ExternalImportTarget, ExternalPublishResult, ExternalSource,
+        PlatformFuture,
     },
 };
 
@@ -21,6 +22,30 @@ const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 pub(super) struct DesktopExternalFilePort;
 
 impl ExternalFilePort for DesktopExternalFilePort {
+    fn select_import(
+        &self,
+        app: AppHandle,
+        request: ExternalFileRequest,
+    ) -> PlatformFuture<Result<Option<ExternalSource>, CommandError>> {
+        Box::pin(async move {
+            Ok(select_import_path(app, request).await?.map(|(path, display_name)| {
+                ExternalSource { path, display_name }
+            }))
+        })
+    }
+
+    fn select_export(
+        &self,
+        app: AppHandle,
+        request: ExternalFileRequest,
+    ) -> PlatformFuture<Result<Option<ExternalDestination>, CommandError>> {
+        Box::pin(async move {
+            Ok(select_export_path(app, request).await?.map(|(path, display_name)| {
+                ExternalDestination { path, display_name }
+            }))
+        })
+    }
+
     fn acquire_import(
         &self,
         app: AppHandle,
