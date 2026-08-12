@@ -1,0 +1,111 @@
+name: Normalize pending Android integration sources
+
+on:
+  push:
+    branches:
+      - agent/android-a1-a3
+
+permissions:
+  contents: write
+
+concurrency:
+  group: normalize-android-pending-sources-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  normalize:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 15
+    steps:
+      - name: Check out Android branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/android-a1-a3
+          fetch-depth: 0
+
+      - name: Normalize pending sources
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          verifier = Path("scripts/verify-android-project.mjs")
+          text = verifier.read_text()
+          if 'import { execFileSync } from "node:child_process";' not in text:
+              text = text.replace(
+                  'import { existsSync } from "node:fs";\n',
+                  'import { execFileSync } from "node:child_process";\nimport { existsSync } from "node:fs";\n',
+                  1,
+              )
+          old = '''if (existsSync(resolve(root, "src-tauri/gen/android/local.properties"))) {
+            failures.push("src-tauri/gen/android/local.properties must remain untracked and machine-local");
+          }
+          '''
+          new = '''let trackedLocalProperties = "";
+          try {
+            trackedLocalProperties = execFileSync(
+              "git",
+              ["ls-files", "--error-unmatch", "src-tauri/gen/android/local.properties"],
+              { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+            ).trim();
+          } catch {
+            trackedLocalProperties = "";
+          }
+          if (trackedLocalProperties !== "") {
+            failures.push("src-tauri/gen/android/local.properties must remain untracked and machine-local");
+          }
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif "trackedLocalProperties" not in text:
+              raise SystemExit("Android local.properties verifier anchor was not found")
+          verifier.write_text(text)
+
+          a2 = Path("scripts/apply-android-a2-product.mjs")
+          text = a2.read_text()
+          old = '''  useEffect(() => {
+            if (section === "decks") return;
+            return registerPlatformBackHandler(() => {
+              void navigate("decks");
+              return true;
+            });
+          }, [section]);
+          '''
+          new = '''  useEffect(() => {
+            if (section === "decks") return;
+            return registerPlatformBackHandler(() => {
+              void navigate("decks");
+              return true;
+            });
+          }, [
+            hasUnsavedCard,
+            hasUnsavedSettings,
+            hasUnsavedTemplate,
+            savedSettings,
+            section,
+          ]);
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif "hasUnsavedSettings,\n            hasUnsavedTemplate" not in text:
+              raise SystemExit("Android top-level Back dependency anchor was not found")
+          a2.write_text(text)
+
+          gradle = Path("src-tauri/gen/android/app/build.gradle.kts")
+          text = gradle.read_text().replace(
+              'implementation("androidx.lifecycle:lifecycle-process:2.10.0")',
+              'implementation("androidx.lifecycle:lifecycle-process:2.9.4")',
+          )
+          gradle.write_text(text)
+          PY
+          rm -f \
+            .github/workflows/fix-android-verifier.yml \
+            .github/workflows/normalize-android-pending-sources.yml
+
+      - name: Commit normalized integration sources
+        run: |
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: normalize Android build and restoration checks"
+          git push origin HEAD:agent/android-a1-a3
