@@ -108,4 +108,10 @@ impl<R: Runtime> OstudyPlatform<R> {
             .run_mobile_plugin("takeIncomingShare", IncomingShareRequest { token })
             .map_err(Into::into)
     }
+
+    pub fn dismiss_incoming_share(&self, token: String) -> Result<()> {
+        self.0
+            .run_mobile_plugin("dismissIncomingShare", IncomingShareRequest { token })
+            .map_err(Into::into)
+    }
 }
