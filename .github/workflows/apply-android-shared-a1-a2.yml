@@ -1,0 +1,60 @@
+name: Apply shared Android A1-A2 foundation
+
+on:
+  push:
+    branches:
+      - agent/android-a1-a3
+    paths:
+      - .github/workflows/apply-android-shared-a1-a2.yml
+      - scripts/apply-android-shared-a1-a2.mjs
+      - src-tauri/src/ui_checkpoint.rs
+      - src/ipc/uiCheckpoint.ts
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-android-shared-a1-a2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 60
+    steps:
+      - name: Check out Android branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/android-a1-a3
+          fetch-depth: 0
+
+      - name: Expose tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Apply shared source changes
+        run: node ./scripts/apply-android-shared-a1-a2.mjs
+
+      - name: Qualify shared changes
+        run: |
+          pnpm install --frozen-lockfile
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          pnpm exec tsc -b --pretty false
+          pnpm test
+          cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
+          node scripts/verify-ipc-contract.mjs
+          node scripts/verify-platform-boundaries.mjs
+          git diff --check
+
+      - name: Remove applicator and commit
+        run: |
+          rm scripts/apply-android-shared-a1-a2.mjs
+          rm .github/workflows/apply-android-shared-a1-a2.yml
+          git diff --check
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: add Android UI restoration and Back foundations"
+          git push origin HEAD:agent/android-a1-a3
