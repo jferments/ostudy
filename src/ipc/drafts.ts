@@ -40,13 +40,13 @@ export interface SaveEditorDraftInput<T> {
 export async function openEditorDraft<T extends Record<string, unknown>>(
   input: OpenEditorDraftInput<T>,
 ): Promise<EditorDraft<T>> {
-  return invoke<EditorDraft<T>>("open_editor_draft", { input });
+  return invoke("open_editor_draft", { input }) as Promise<EditorDraft<T>>;
 }
 
 export async function saveEditorDraft<T extends Record<string, unknown>>(
   input: SaveEditorDraftInput<T>,
 ): Promise<EditorDraft<T>> {
-  return invoke<EditorDraft<T>>("save_editor_draft", { input });
+  return invoke("save_editor_draft", { input }) as Promise<EditorDraft<T>>;
 }
 
 export async function discardEditorDraft(draftId: string, revision: number): Promise<void> {
