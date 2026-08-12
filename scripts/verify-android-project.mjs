@@ -1,0 +1,151 @@
+#!/usr/bin/env node
+
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const failures = [];
+const required = [
+  "src-tauri/tauri.android.conf.json",
+  "src-tauri/gen/android/gradlew",
+  "src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties",
+  "src-tauri/gen/android/app/build.gradle.kts",
+  "src-tauri/gen/android/app/src/main/AndroidManifest.xml",
+  "src-tauri/gen/android/app/src/main/res/xml/file_paths.xml",
+  "src-tauri/gen/android/app/src/main/res/xml/network_security_config.xml",
+  "src-tauri/gen/android/app/src/main/res/xml/backup_rules.xml",
+  "src-tauri/gen/android/app/src/main/res/xml/data_extraction_rules.xml",
+  "plugins/ostudy-platform/Cargo.toml",
+  "plugins/ostudy-platform/android/src/main/java/OstudyPlatformPlugin.kt",
+  "src-tauri/src/platform/android.rs",
+  "src-tauri/src/ui_checkpoint.rs",
+  "src-tauri/src/practice_resume.rs",
+  "scripts/android-env.sh",
+  "scripts/android-doctor.sh",
+  "scripts/android-build.sh",
+  "scripts/android-dev.sh",
+  "scripts/android-avd.sh",
+  "scripts/android-emulator-smoke.sh",
+  "scripts/verify-android-package.sh",
+];
+for (const path of required) {
+  if (!existsSync(resolve(root, path))) failures.push(`Missing Android project file: ${path}`);
+}
+
+const env = parseEnv(await read("versions.env"));
+for (const key of [
+  "ANDROID_JDK_MAJOR",
+  "ANDROID_MIN_SDK",
+  "ANDROID_COMPILE_SDK",
+  "ANDROID_TARGET_SDK",
+  "ANDROID_BUILD_TOOLS_VERSION",
+  "ANDROID_NDK_VERSION",
+  "ANDROID_COMMANDLINE_TOOLS_BUILD",
+  "ANDROID_COMMANDLINE_TOOLS_SHA256",
+  "ANDROID_PHONE_SYSTEM_IMAGE",
+  "ANDROID_PHONE_AVD",
+]) {
+  if (!env.has(key) || env.get(key) === "") failures.push(`versions.env is missing ${key}`);
+}
+
+if (existsSync(resolve(root, "src-tauri/gen/android/local.properties"))) {
+  failures.push("src-tauri/gen/android/local.properties must remain untracked and machine-local");
+}
+
+const gradle = await read("src-tauri/gen/android/app/build.gradle.kts");
+expectContains(gradle, `compileSdk = ${env.get("ANDROID_COMPILE_SDK")}`, "compileSdk pin");
+expectContains(gradle, `minSdk = ${env.get("ANDROID_MIN_SDK")}`, "minSdk pin");
+expectContains(gradle, `targetSdk = ${env.get("ANDROID_TARGET_SDK")}`, "targetSdk pin");
+expectContains(gradle, 'applicationId = "io.github.jferments.ostudy"', "application identity");
+expectContains(gradle, 'applicationIdSuffix = ".dev"', "debug application suffix");
+expectContains(gradle, 'testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"', "instrumentation runner");
+
+const manifest = await read("src-tauri/gen/android/app/src/main/AndroidManifest.xml");
+for (const requiredText of [
+  'android.permission.INTERNET',
+  'android.permission.ACCESS_NETWORK_STATE',
+  'android:allowBackup="false"',
+  'android:resizeableActivity="true"',
+  'androidx.core.content.FileProvider',
+  '${applicationId}.fileprovider',
+  'android.intent.action.SEND',
+]) {
+  expectContains(manifest, requiredText, `Android manifest entry ${requiredText}`);
+}
+for (const forbidden of [
+  "READ_EXTERNAL_STORAGE",
+  "WRITE_EXTERNAL_STORAGE",
+  "MANAGE_EXTERNAL_STORAGE",
+  "REQUEST_INSTALL_PACKAGES",
+]) {
+  if (manifest.includes(forbidden)) failures.push(`Android manifest contains forbidden permission ${forbidden}`);
+}
+
+const baseConfig = JSON.parse(await read("src-tauri/tauri.conf.json"));
+if (baseConfig.bundle?.resources) {
+  failures.push("Desktop PDFium resources must not remain in the shared Tauri bundle configuration");
+}
+const linuxConfig = JSON.parse(await read("src-tauri/tauri.linux.conf.json"));
+if (!linuxConfig.bundle?.resources?.["resources/native/pdfium/*"]) {
+  failures.push("Linux overlay must retain the managed PDFium bundle resource");
+}
+
+const androidConfig = JSON.parse(await read("src-tauri/tauri.android.conf.json"));
+if (androidConfig.bundle?.android?.minSdkVersion !== Number(env.get("ANDROID_MIN_SDK"))) {
+  failures.push("Tauri Android minSdkVersion does not match versions.env");
+}
+if (androidConfig.bundle?.resources != null) {
+  failures.push("Android Tauri configuration must not bundle PDFium resources during A1-A3");
+}
+
+const packageJson = JSON.parse(await read("package.json"));
+for (const command of [
+  "android:doctor",
+  "android:dev",
+  "android:build:debug",
+  "android:build:aab",
+  "android:avd",
+  "android:smoke",
+]) {
+  if (!packageJson.scripts?.[command]) failures.push(`package.json is missing ${command}`);
+}
+
+const cargo = await read("src-tauri/Cargo.toml");
+expectContains(cargo, "tauri-plugin-ostudy-platform", "private platform plugin dependency");
+
+if (failures.length > 0) {
+  console.error("Android project verification failed:");
+  for (const failure of failures) console.error(`  - ${failure}`);
+  process.exit(1);
+}
+console.log("OK   Android project, toolchain pins, permissions, and platform overlays are canonical.");
+
+function expectContains(text, value, label) {
+  if (!text.includes(value)) failures.push(`Missing ${label}`);
+}
+
+async function read(path) {
+  return readFile(resolve(root, path), "utf8");
+}
+
+function parseEnv(text) {
+  const values = new Map();
+  for (const line of text.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed.startsWith("#")) continue;
+    const index = trimmed.indexOf("=");
+    if (index < 1) continue;
+    const key = trimmed.slice(0, index);
+    let value = trimmed.slice(index + 1).trim();
+    if (
+      (value.startsWith("'") && value.endsWith("'")) ||
+      (value.startsWith('"') && value.endsWith('"'))
+    ) {
+      value = value.slice(1, -1);
+    }
+    values.set(key, value);
+  }
+  return values;
+}
