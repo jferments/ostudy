@@ -26,7 +26,7 @@ import {
   type CardTemplate,
   type GenerateTemplateCardsResult,
 } from "../ipc/templates";
-import { openFile, saveFile } from "../platform/files";
+import { publishExport, selectExternalImport } from "../platform/files";
 import { useMediaQuery } from "../ui/hooks/useMediaQuery";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { CardEditorScreen } from "./CardEditorScreen";
@@ -73,7 +73,7 @@ export function DecksScreen({
   const loadingDeckRef = useRef(false);
   const [isTransferring, setIsTransferring] = useState(false);
   const transferringRef = useRef(false);
-  const pendingImportRef = useRef<{ sourcePath: string; operationId: string } | null>(null);
+  const pendingImportRef = useRef<{ stagedFileId: string; operationId: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
@@ -386,16 +386,12 @@ export function DecksScreen({
     transferringRef.current = true;
     setIsTransferring(true);
     try {
-      const destination = await saveFile({
-        title: "Export deck",
-        defaultPath: `${safeFilename(deck.name)}.studydeck`,
-        filters: [{ name: "ostudy deck", extensions: ["studydeck"] }],
-      });
-      if (typeof destination !== "string") return;
-      const result = await controller.export(deck.id, destination);
+      const prepared = await controller.prepareExport(deck.id, createOperationId());
+      const receipt = await publishExport(prepared.preparedExport.id);
+      if (!receipt) return;
       showToast(
         "success",
-        `Exported ${result.cardCount} ${result.cardCount === 1 ? "card" : "cards"}.`,
+        `Exported ${prepared.cardCount} ${prepared.cardCount === 1 ? "card" : "cards"}.`,
       );
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
@@ -444,29 +440,18 @@ export function DecksScreen({
     transferringRef.current = true;
     setIsTransferring(true);
     try {
-      const selected = await openFile({
-        title: "Import an ostudy deck",
-        multiple: false,
-        directory: false,
-        filters: [
-          {
-            name: "ostudy deck or generated JSON",
-            extensions: ["studydeck", "json"],
-          },
-        ],
-      });
-      if (typeof selected !== "string") return;
+      const selected = await selectExternalImport("study_content");
+      if (!selected) return;
 
-      const normalizedPath = selected.toLocaleLowerCase();
-      if (normalizedPath.endsWith(".studydeck")) {
+      if (selected.detectedKind === "studydeck") {
         const pending =
-          pendingImportRef.current?.sourcePath === selected
+          pendingImportRef.current?.stagedFileId === selected.id
             ? pendingImportRef.current
-            : { sourcePath: selected, operationId: createOperationId() };
+            : { stagedFileId: selected.id, operationId: createOperationId() };
         pendingImportRef.current = pending;
         let result;
         try {
-          result = await controller.importStudydeck(selected, pending.operationId);
+          result = await controller.importStudydeck(selected.id, pending.operationId);
           pendingImportRef.current = null;
         } catch (error: unknown) {
           if (getErrorCode(error) !== null) pendingImportRef.current = null;
@@ -482,8 +467,8 @@ export function DecksScreen({
         return;
       }
 
-      if (normalizedPath.endsWith(".json")) {
-        const result = await controller.importGenerated(selected);
+      if (selected.detectedKind === "generated_json") {
+        const result = await controller.importGenerated(selected.id);
         const duplicateMessage =
           result.skippedDuplicateCount > 0
             ? ` ${result.skippedDuplicateCount} exact ${
@@ -501,7 +486,7 @@ export function DecksScreen({
         return;
       }
 
-      throw new Error("Select an ostudy .studydeck or generated .ostudy.json file.");
+      throw new Error("Select an ostudy deck or generated-card file.");
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
     } finally {
@@ -1122,15 +1107,6 @@ function practiceTitle(deck: DeckSummary): string {
   return `Practice all ${deck.generatedCardCount} ${
     deck.generatedCardCount === 1 ? "card" : "cards"
   } in this deck`;
-}
-
-function safeFilename(name: string): string {
-  const cleaned = name
-    .trim()
-    .replace(/[\\/:*?"<>|]+/gu, "-")
-    .replace(/\s+/gu, " ")
-    .slice(0, 120);
-  return cleaned || "deck";
 }
 
 function summarize(text: string, hasImage: boolean): string {

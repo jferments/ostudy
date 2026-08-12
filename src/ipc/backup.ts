@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { PreparedExport } from "./externalFiles";
 
-export interface LibraryBackupResult {
-  destinationPath: string;
+export interface PreparedLibraryBackup {
+  preparedExport: PreparedExport;
   deckCount: number;
   templateCount: number;
   reviewCount: number;
@@ -16,18 +17,18 @@ export interface LibraryRestoreResult {
   restartRequired: boolean;
 }
 
-export async function exportLibraryBackup(
-  destinationPath: string,
-): Promise<LibraryBackupResult> {
-  return invoke<LibraryBackupResult>("export_library_backup", {
-    input: { destinationPath },
+export async function prepareLibraryBackup(
+  operationId: string,
+): Promise<PreparedLibraryBackup> {
+  return invoke<PreparedLibraryBackup>("prepare_library_backup", {
+    input: { operationId },
   });
 }
 
 export async function prepareLibraryRestore(
-  sourcePath: string,
+  stagedFileId: string,
 ): Promise<LibraryRestoreResult> {
   return invoke<LibraryRestoreResult>("prepare_library_restore", {
-    input: { sourcePath },
+    input: { stagedFileId },
   });
 }

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { DeletionResult } from "./common";
+import type { PreparedExport } from "./externalFiles";
 
 export interface DeckSummary {
   id: string;
@@ -59,8 +60,8 @@ export interface DeckCardSummaryPage {
   hasMore: boolean;
 }
 
-export interface ExportResult {
-  destinationPath: string;
+export interface PreparedDeckExport {
+  preparedExport: PreparedExport;
   cardCount: number;
   assetCount: number;
 }
@@ -101,15 +102,20 @@ export async function listDeckCardSummaries(
   return invoke<DeckCardSummaryPage>("list_deck_card_summaries", { input });
 }
 
-export async function exportDeck(deckId: string, destinationPath: string): Promise<ExportResult> {
-  return invoke<ExportResult>("export_deck", { input: { deckId, destinationPath } });
+export async function prepareDeckExport(
+  deckId: string,
+  operationId: string,
+): Promise<PreparedDeckExport> {
+  return invoke<PreparedDeckExport>("prepare_deck_export", {
+    input: { deckId, operationId },
+  });
 }
 
 export async function importDeck(
-  sourcePath: string,
+  stagedFileId: string,
   operationId: string,
 ): Promise<ImportResult> {
   return invoke<ImportResult>("import_deck", {
-    input: { sourcePath, operationId },
+    input: { stagedFileId, operationId },
   });
 }

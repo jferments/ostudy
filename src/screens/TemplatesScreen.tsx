@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ShowToast } from "../components/Toast";
 import { TemplatesController } from "../controllers/templatesController";
+import { useDurableDraft } from "../controllers/useDurableDraft";
 import { collectAssetIds, EMPTY_RICH_DOCUMENT, cloneDocument } from "../editor/richText";
 import {
   type Asset,
@@ -77,6 +78,16 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
     return [...ids].sort();
   }, [draft?.rules]);
   const usedAssetKey = usedAssetIds.join(",");
+  const durableDraft = useDurableDraft<TemplateDraft & Record<string, unknown>>({
+    kind: "template",
+    targetEntityId: draft?.id,
+    contextEntityId: draft?.id ? undefined : "0".repeat(32),
+    baseRevision: draft?.revision,
+    payload: (draft ?? newTemplateDraft()) as TemplateDraft & Record<string, unknown>,
+    assetIds: usedAssetIds,
+    enabled: draft !== null,
+    onRecovered: (payload) => setDraft(payload),
+  });
 
   useEffect(() => {
     void loadTemplates();
@@ -84,22 +95,17 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
   }, [controller]);
 
   useEffect(() => {
-    onDirtyChange(dirty);
+    onDirtyChange(durableDraft.hasUnsavedLocalChanges);
     return () => onDirtyChange(false);
-  }, [dirty, onDirtyChange]);
+  }, [durableDraft.hasUnsavedLocalChanges, onDirtyChange]);
 
   useEffect(() => {
-    return () => {
-      openRequestSequence.current += 1;
-      const draftId = assetDraftRef.current;
-      assetDraftRef.current = null;
-      if (draftId) {
-        void controller.cancelDraft(draftId).catch((error: unknown) => {
-          console.error("Unable to cancel template image draft:", getErrorMessage(error));
-        });
-      }
-    };
-  }, []);
+    assetDraftRef.current = durableDraft.assetDraftId;
+    setAssetDraftId(durableDraft.assetDraftId);
+    setIsOpeningAssetDraft(durableDraft.status === "opening");
+  }, [durableDraft.assetDraftId, durableDraft.status]);
+
+
 
   useEffect(() => {
     if (!assetDraftId) return;
@@ -128,29 +134,9 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
   }
 
   async function openDraft(next: TemplateDraft): Promise<void> {
-    const requestId = openRequestSequence.current;
     setDraft(next);
     setBaseline(next);
-    setAssetDraftId(null);
-    setIsOpeningAssetDraft(true);
     setErrorMessage(null);
-    try {
-      const assetDraft = await controller.beginDraft(next.id);
-      if (openRequestSequence.current !== requestId) {
-        await controller.cancelDraft(assetDraft.id).catch((error: unknown) => {
-          console.error("Unable to cancel stale template image draft:", getErrorMessage(error));
-        });
-        return;
-      }
-      assetDraftRef.current = assetDraft.id;
-      setAssetDraftId(assetDraft.id);
-    } catch (error: unknown) {
-      if (openRequestSequence.current === requestId) {
-        setErrorMessage(`The managed image draft could not open: ${getErrorMessage(error)}`);
-      }
-    } finally {
-      if (openRequestSequence.current === requestId) setIsOpeningAssetDraft(false);
-    }
   }
 
   function beginCreate(): void {
@@ -189,19 +175,14 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
     }
     openRequestSequence.current += 1;
     setIsOpeningAssetDraft(false);
-    const draftId = assetDraftRef.current;
+    try {
+      await durableDraft.discard();
+    } catch (error: unknown) {
+      setErrorMessage(`The durable template draft could not be discarded: ${getErrorMessage(error)}`);
+      return;
+    }
     assetDraftRef.current = null;
     setAssetDraftId(null);
-    if (draftId) {
-      try {
-        await controller.cancelDraft(draftId);
-      } catch (error: unknown) {
-        assetDraftRef.current = draftId;
-        setAssetDraftId(draftId);
-        setErrorMessage(`The image draft could not be canceled: ${getErrorMessage(error)}`);
-        return;
-      }
-    }
     setDraft(null);
     setBaseline(null);
     setErrorMessage(null);
@@ -222,6 +203,7 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
     setIsSaving(true);
     setErrorMessage(null);
     try {
+      await durableDraft.flush();
       const input = {
         name: draft.name,
         description: draft.description,
@@ -234,15 +216,14 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
         })),
         assetDraftId,
       };
-      if (draft.id) {
-        await controller.update({
-          ...input,
-          templateId: draft.id,
-          revision: draft.revision ?? 1,
-        });
-      } else {
-        await controller.create(input);
-      }
+      const saved = draft.id
+        ? await controller.update({
+            ...input,
+            templateId: draft.id,
+            revision: draft.revision ?? 1,
+          })
+        : await controller.create(input);
+      await durableDraft.commit(saved.id);
       openRequestSequence.current += 1;
       assetDraftRef.current = null;
       setAssetDraftId(null);

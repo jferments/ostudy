@@ -8,12 +8,28 @@ import * as platformFiles from "../platform/files";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { SettingsScreen } from "./SettingsScreen";
 
+vi.mock("../controllers/useDurableDraft", () => ({
+  useDurableDraft: () => ({
+    draftId: "d".repeat(32),
+    assetDraftId: "7".repeat(32),
+    revision: 1,
+    status: "saved",
+    errorMessage: null,
+    recovered: false,
+    hasUnsavedLocalChanges: false,
+    flush: vi.fn().mockResolvedValue(undefined),
+    discard: vi.fn().mockResolvedValue(undefined),
+    commit: vi.fn().mockResolvedValue(undefined),
+    restart: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("../platform/files", () => ({
-  openFile: vi.fn(),
-  saveFile: vi.fn(),
+  selectExternalImport: vi.fn(),
+  publishExport: vi.fn(),
 }));
 vi.mock("../ipc/backup", () => ({
-  exportLibraryBackup: vi.fn(),
+  prepareLibraryBackup: vi.fn(),
   prepareLibraryRestore: vi.fn(),
 }));
 vi.mock("../ipc/settings", () => ({
@@ -107,8 +123,8 @@ function providerCatalog(): aiIpc.AiProviderCatalogEntry[] {
 describe("SettingsScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(platformFiles.openFile).mockResolvedValue(null);
-    vi.mocked(platformFiles.saveFile).mockResolvedValue(null);
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
+    vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "export", destinationKind: "desktop_file", completedAt: Date.now() });
     vi.mocked(settingsIpc.getAppInfo).mockResolvedValue({
       appVersion: "0.1.0",
       dataDirectory: "/tmp/ostudy/data",
@@ -117,13 +133,7 @@ describe("SettingsScreen", () => {
       databaseSchemaVersion: 16,
     });
     vi.mocked(settingsIpc.saveSettings).mockImplementation(async (input) => input);
-    vi.mocked(backupIpc.exportLibraryBackup).mockResolvedValue({
-      destinationPath: "/tmp/library.ostudybackup",
-      deckCount: 3,
-      templateCount: 2,
-      reviewCount: 41,
-      assetCount: 4,
-    });
+    vi.mocked(backupIpc.prepareLibraryBackup).mockResolvedValue({ preparedExport: { id: "2".repeat(32), purpose: "library_backup", suggestedFilename: "library.ostudybackup", mediaType: "application/vnd.ostudy.backup", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 }, deckCount: 3, templateCount: 2, reviewCount: 41, assetCount: 4 });
     vi.mocked(backupIpc.prepareLibraryRestore).mockResolvedValue({
       deckCount: 3,
       templateCount: 2,
@@ -208,13 +218,13 @@ describe("SettingsScreen", () => {
   });
 
   it("backs up provider metadata while explicitly excluding credentials", async () => {
-    vi.mocked(platformFiles.saveFile).mockResolvedValue("/tmp/library.ostudybackup");
+    vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "export", destinationKind: "desktop_file", completedAt: Date.now() });
     const { showToast } = renderSettings();
     await screen.findByText("/tmp/ostudy/data");
     fireEvent.click(screen.getByRole("button", { name: "Back up library" }));
 
     await waitFor(() => {
-      expect(backupIpc.exportLibraryBackup).toHaveBeenCalledWith("/tmp/library.ostudybackup");
+      expect(backupIpc.prepareLibraryBackup).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith(
         "success",
         "Backed up 3 decks, 2 templates, and 41 review events.",
@@ -224,7 +234,7 @@ describe("SettingsScreen", () => {
   });
 
   it("prepares restore only after shared destructive confirmation", async () => {
-    vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/library.ostudybackup");
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "library_backup", detectedKind: "ostudybackup", displayName: "library.ostudybackup", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
     const { showToast } = renderSettings();
     await screen.findByText("/tmp/ostudy/data");
     fireEvent.click(screen.getByRole("button", { name: "Restore backup" }));
@@ -232,7 +242,7 @@ describe("SettingsScreen", () => {
     expect(backupIpc.prepareLibraryRestore).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Prepare restore" }));
     await waitFor(() => {
-      expect(backupIpc.prepareLibraryRestore).toHaveBeenCalledWith("/tmp/library.ostudybackup");
+      expect(backupIpc.prepareLibraryRestore).toHaveBeenCalledWith("1".repeat(32));
       expect(showToast).toHaveBeenCalledWith(
         "info",
         "Restore prepared for 3 decks. Close and reopen ostudy to apply it.",

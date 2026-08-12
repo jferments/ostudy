@@ -1,8 +1,7 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
-
 import {
   type Asset,
 } from "../ipc/assets";
+import { managedAssetUrl } from "../platform/assets";
 import {
   type RichDocument,
 } from "../ipc/common";
@@ -64,7 +63,7 @@ export function hydrateDocument(
     }
     const asset = byId.get(assetId);
     if (asset) {
-      node.attrs.src = convertFileSrc(asset.filePath);
+      node.attrs.src = managedAssetUrl(asset.id);
       if (typeof node.attrs.alt !== "string" || node.attrs.alt.trim() === "") {
         node.attrs.alt = asset.originalFilename;
       }

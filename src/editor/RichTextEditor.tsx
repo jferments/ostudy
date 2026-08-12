@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, MouseEvent, ReactNode } from "react";
 import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 
 import {
   importImage,
@@ -12,7 +11,8 @@ import {
   getErrorMessage,
   type RichDocument,
 } from "../ipc/common";
-import { openFile } from "../platform/files";
+import { managedAssetUrl } from "../platform/assets";
+import { selectExternalImport } from "../platform/files";
 import { createEditorExtensions } from "./extensions";
 import { isAllowedExternalLink, normalizeExternalLink } from "./links";
 import { canonicalizeDocument, hydrateDocument } from "./richText";
@@ -90,25 +90,16 @@ export function RichTextEditor({
     setEditorError(null);
     setIsImportingImage(true);
     try {
-      const selected = await openFile({
-        multiple: false,
-        directory: false,
-        filters: [
-          {
-            name: "Images",
-            extensions: ["png", "jpg", "jpeg", "gif", "webp"],
-          },
-        ],
-      });
-      if (typeof selected !== "string") return;
+      const selected = await selectExternalImport("image");
+      if (!selected) return;
 
-      const asset = await importImage(selected, assetDraftId);
+      const asset = await importImage(selected.id, assetDraftId);
       onAssetImported(asset);
       editor
         .chain()
         .focus()
         .setImage({
-          src: convertFileSrc(asset.filePath),
+          src: managedAssetUrl(asset.id),
           alt: asset.originalFilename,
           title: asset.originalFilename,
           assetId: asset.id,

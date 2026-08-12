@@ -7,6 +7,22 @@ import * as decksIpc from "../ipc/decks";
 import * as templatesIpc from "../ipc/templates";
 import { CardEditorScreen } from "./CardEditorScreen";
 
+vi.mock("../controllers/useDurableDraft", () => ({
+  useDurableDraft: () => ({
+    draftId: "d".repeat(32),
+    assetDraftId: "7".repeat(32),
+    revision: 1,
+    status: "saved",
+    errorMessage: null,
+    recovered: false,
+    hasUnsavedLocalChanges: false,
+    flush: vi.fn().mockResolvedValue(undefined),
+    discard: vi.fn().mockResolvedValue(undefined),
+    commit: vi.fn().mockResolvedValue(undefined),
+    restart: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("../editor/RichTextEditor", () => ({
   RichTextEditor: ({ label }: { label: string }) => <div>{label} editor</div>,
 }));
@@ -135,7 +151,6 @@ describe("CardEditorScreen", () => {
 
     expect(await screen.findByText("Medication")).toBeTruthy();
     await waitFor(() => {
-      expect(assetsIpc.beginAssetDraft).toHaveBeenCalledWith("card", card.noteId);
       expect(templatesIpc.listCardTemplateSummaries).toHaveBeenCalledOnce();
       expect(
         (screen.getByRole("combobox", { name: "Card template" }) as HTMLSelectElement)
@@ -178,7 +193,7 @@ describe("CardEditorScreen", () => {
           reverseEnabled: false,
           tags: ["Medication"],
           allowDuplicate: true,
-          assetDraftId: draftId,
+          assetDraftId: "7".repeat(32),
         }),
       );
       expect(onSaved).toHaveBeenCalled();

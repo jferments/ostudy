@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
 import type { ShowToast } from "../../components/Toast";
-import { exportLibraryBackup, prepareLibraryRestore } from "../../ipc/backup";
-import { getErrorMessage } from "../../ipc/common";
+import { prepareLibraryBackup, prepareLibraryRestore } from "../../ipc/backup";
+import { createOperationId, getErrorMessage } from "../../ipc/common";
 import { getAppInfo, type AppInfo, type AppSettings } from "../../ipc/settings";
-import { openFile, saveFile } from "../../platform/files";
+import { publishExport, selectExternalImport } from "../../platform/files";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { PathRow } from "./SettingsControls";
 import styles from "./Settings.module.css";
@@ -30,19 +30,15 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
 
   async function backupLibrary(): Promise<void> {
     if (isTransferringLibrary) return;
-    const destination = await saveFile({
-      title: "Back up the complete ostudy library",
-      defaultPath: `ostudy-library-${new Date().toISOString().slice(0, 10)}.ostudybackup`,
-      filters: [{ name: "ostudy library backup", extensions: ["ostudybackup"] }],
-    });
-    if (typeof destination !== "string") return;
     setIsTransferringLibrary(true);
     setErrorMessage(null);
     try {
-      const result = await exportLibraryBackup(destination);
+      const prepared = await prepareLibraryBackup(createOperationId());
+      const receipt = await publishExport(prepared.preparedExport.id);
+      if (!receipt) return;
       showToast(
         "success",
-        `Backed up ${result.deckCount} ${result.deckCount === 1 ? "deck" : "decks"}, ${result.templateCount} ${result.templateCount === 1 ? "template" : "templates"}, and ${result.reviewCount} review ${result.reviewCount === 1 ? "event" : "events"}.`,
+        `Backed up ${prepared.deckCount} ${prepared.deckCount === 1 ? "deck" : "decks"}, ${prepared.templateCount} ${prepared.templateCount === 1 ? "template" : "templates"}, and ${prepared.reviewCount} review ${prepared.reviewCount === 1 ? "event" : "events"}.`,
       );
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -53,13 +49,8 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
 
   async function restoreLibrary(): Promise<void> {
     if (isTransferringLibrary) return;
-    const source = await openFile({
-      title: "Choose an ostudy library backup",
-      multiple: false,
-      directory: false,
-      filters: [{ name: "ostudy library backup", extensions: ["ostudybackup"] }],
-    });
-    if (typeof source !== "string") return;
+    const source = await selectExternalImport("library_backup");
+    if (!source) return;
     const accepted = await confirm({
       title: "Restore this complete library?",
       description:
@@ -71,7 +62,7 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
     setIsTransferringLibrary(true);
     setErrorMessage(null);
     try {
-      const result = await prepareLibraryRestore(source);
+      const result = await prepareLibraryRestore(source.id);
       setRestorePrepared(result.restartRequired);
       showToast(
         "info",

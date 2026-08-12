@@ -1,6 +1,6 @@
 # Android and iOS status
 
-Android and iOS are planned ostudy targets. No installable mobile application, generated mobile project, or supported mobile build procedure is currently included in the repository. The presence of cross-platform Tauri abstractions, accepted platform-service decisions, and native dependency metadata is preparation for future work, not evidence that the mobile applications have shipped.
+Android and iOS are planned ostudy targets. No installable mobile application or supported mobile build procedure is currently included in the repository. The shared P0-P2 runtime, opaque file-transfer layer, and durable authoring drafts are now implemented, but Android/iOS native adapters and generated projects remain future work. The presence of cross-platform Tauri abstractions, accepted platform-service decisions, and native dependency metadata is preparation for future work, not evidence that the mobile applications have shipped.
 
 ## Portability foundation
 

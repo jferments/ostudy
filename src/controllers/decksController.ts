@@ -8,7 +8,7 @@ import type { DeletionResult, UndoDeletionResult } from "../ipc/common";
 import {
   createDeck,
   deleteDeck,
-  exportDeck,
+  prepareDeckExport,
   getDeck,
   importDeck,
   listDeckCardSummaries,
@@ -18,7 +18,7 @@ import {
   type DeckCardSummaryPage,
   type DeckCardSummaryQuery,
   type DeckSummary,
-  type ExportResult,
+  type PreparedDeckExport,
   type ImportResult,
   type SetDeckArchivedInput,
   type UpdateDeckInput,
@@ -70,16 +70,16 @@ export class DecksController {
     return undoDeletion(undoToken);
   }
 
-  export(deckId: string, destinationPath: string): Promise<ExportResult> {
-    return exportDeck(deckId, destinationPath);
+  prepareExport(deckId: string, operationId: string): Promise<PreparedDeckExport> {
+    return prepareDeckExport(deckId, operationId);
   }
 
-  importStudydeck(sourcePath: string, operationId: string): Promise<ImportResult> {
-    return importDeck(sourcePath, operationId);
+  importStudydeck(stagedFileId: string, operationId: string): Promise<ImportResult> {
+    return importDeck(stagedFileId, operationId);
   }
 
-  importGenerated(sourcePath: string): Promise<FlashcardImportResult> {
-    return importGeneratedFlashcards(sourcePath);
+  importGenerated(stagedFileId: string): Promise<FlashcardImportResult> {
+    return importGeneratedFlashcards(stagedFileId);
   }
 
   invalidateCards(): void {

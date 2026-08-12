@@ -7,6 +7,22 @@ import * as templatesIpc from "../ipc/templates";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { TemplatesScreen } from "./TemplatesScreen";
 
+vi.mock("../controllers/useDurableDraft", () => ({
+  useDurableDraft: () => ({
+    draftId: "d".repeat(32),
+    assetDraftId: "7".repeat(32),
+    revision: 1,
+    status: "saved",
+    errorMessage: null,
+    recovered: false,
+    hasUnsavedLocalChanges: false,
+    flush: vi.fn().mockResolvedValue(undefined),
+    discard: vi.fn().mockResolvedValue(undefined),
+    commit: vi.fn().mockResolvedValue(undefined),
+    restart: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("../ipc/assets", () => ({
   beginAssetDraft: vi.fn(),
   cancelAssetDraft: vi.fn(),
@@ -26,7 +42,7 @@ vi.mock("../ipc/templates", () => ({
 }));
 
 const FIELD_ID = "b".repeat(32);
-const ASSET_DRAFT_ID = "e".repeat(32);
+const ASSET_DRAFT_ID = "7".repeat(32);
 const inlineDoc: commonIpc.RichDocument = {
   type: "doc",
   content: [
@@ -165,7 +181,6 @@ describe("TemplatesScreen", () => {
 
     expect(await screen.findByRole("heading", { name: "Edit card template" })).toBeTruthy();
     expect(templatesIpc.getCardTemplate).toHaveBeenCalledWith(template.id);
-    expect(assetsIpc.beginAssetDraft).toHaveBeenCalledWith("template", template.id);
   });
 
   it("deletes only the authoring template after shared confirmation", async () => {

@@ -19,6 +19,10 @@ The following capabilities are already present in the active codebase:
 
 Historical stage plans are kept under [`history/`](history/) for project archaeology. They are not the current roadmap.
 
+## Completed portability foundation (P0-P2)
+
+The shared runtime now exposes typed platform capabilities for external files, secure secrets, lifecycle, time zones, and resource observation. External imports are staged into managed storage, exports are prepared before publication, card images use opaque asset identities, and card/template/bulk/AI-profile metadata editors retain bounded device-local drafts across process loss. Android, iOS, Windows, and macOS adapters and packaging remain later platform phases.
+
 ## Current priorities
 
 ### 1. Stabilize document and PDF processing

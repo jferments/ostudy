@@ -1,4 +1,3 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import Highlight from "@tiptap/extension-highlight";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
@@ -14,6 +13,7 @@ import {
 import {
   type RichDocument,
 } from "../ipc/common";
+import { managedAssetUrl } from "../platform/assets";
 
 const ManagedImage = Image.extend({
   addAttributes() {
@@ -86,7 +86,7 @@ export function StudyRichEditor({
       .chain()
       .focus()
       .setImage({
-        src: convertFileSrc(asset.filePath),
+        src: managedAssetUrl(asset.id),
         alt: asset.originalFilename,
         assetId: asset.id,
       } as never)
@@ -151,7 +151,7 @@ function documentForEditor(value: RichDocument, assets: Map<string, Asset>): Ric
       ...node,
       attrs: {
         ...attrs,
-        src: asset ? convertFileSrc(asset.filePath) : attrs.src,
+        src: asset ? managedAssetUrl(asset.id) : attrs.src,
         alt: attrs.alt ?? asset?.originalFilename ?? "Image",
       },
     };

@@ -7,6 +7,22 @@ import * as decksIpc from "../ipc/decks";
 import * as schedulingIpc from "../ipc/scheduling";
 import { CardsScreen } from "./CardsScreen";
 
+vi.mock("../controllers/useDurableDraft", () => ({
+  useDurableDraft: () => ({
+    draftId: "d".repeat(32),
+    assetDraftId: "7".repeat(32),
+    revision: 1,
+    status: "saved",
+    errorMessage: null,
+    recovered: false,
+    hasUnsavedLocalChanges: false,
+    flush: vi.fn().mockResolvedValue(undefined),
+    discard: vi.fn().mockResolvedValue(undefined),
+    commit: vi.fn().mockResolvedValue(undefined),
+    restart: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("../ipc/cards", () => ({
   analyzeBulkCards: vi.fn(),
   bulkCreateCards: vi.fn(),

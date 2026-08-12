@@ -28,6 +28,16 @@ export interface StagedExternalFile {
   expiresAt: number;
 }
 
+export interface PreparedExport {
+  id: string;
+  purpose: "studydeck" | "library_backup";
+  suggestedFilename: string;
+  mediaType: string;
+  byteSize: number;
+  sha256: string;
+  expiresAt: number;
+}
+
 export interface PublishReceipt {
   preparedExportId: string;
   displayName: string;

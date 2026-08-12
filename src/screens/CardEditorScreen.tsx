@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CardEditorController } from "../controllers/cardEditorController";
+import { useDurableDraft } from "../controllers/useDurableDraft";
 
 import { TagInput } from "../components/TagInput";
 import { RichTextEditor } from "../editor/RichTextEditor";
@@ -42,6 +43,22 @@ import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
 import { distinctClozeGroups } from "./card-editor/cloze";
 import { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
+
+
+interface CardEditorDraftPayload extends Record<string, unknown> {
+  selectedDeckId: string;
+  selectedTemplateKey: string;
+  reverseEnabled: boolean;
+  clozeSource: string;
+  clozeMode: ClozeMode;
+  frontDoc: RichDocument;
+  backDoc: RichDocument;
+  frontText: string;
+  backText: string;
+  assets: Asset[];
+  tags: string[];
+  templateValues: TemplateValueInput[];
+}
 
 interface CardEditorScreenProps {
   deck: DeckSummary;
@@ -157,42 +174,73 @@ export function CardEditorScreen({
     return [...ids].sort();
   }, [backDoc, frontDoc, templateValues]);
   const usedAssetKey = usedAssetIds.join(",");
+  const durablePayload = useMemo<CardEditorDraftPayload>(
+    () => ({
+      selectedDeckId,
+      selectedTemplateKey,
+      reverseEnabled,
+      clozeSource,
+      clozeMode,
+      frontDoc,
+      backDoc,
+      frontText,
+      backText,
+      assets,
+      tags,
+      templateValues,
+    }),
+    [
+      assets,
+      backDoc,
+      backText,
+      clozeMode,
+      clozeSource,
+      frontDoc,
+      frontText,
+      reverseEnabled,
+      selectedDeckId,
+      selectedTemplateKey,
+      tags,
+      templateValues,
+    ],
+  );
+  const durableDraft = useDurableDraft<CardEditorDraftPayload>({
+    kind: "card",
+    targetEntityId: card?.noteId || undefined,
+    contextEntityId: card?.noteId ? undefined : deck.id,
+    baseRevision: card?.revision,
+    payload: durablePayload,
+    assetIds: usedAssetIds,
+    onRecovered: (payload) => {
+      setSelectedDeckId(payload.selectedDeckId);
+      setSelectedTemplateKey(payload.selectedTemplateKey);
+      setReverseEnabled(payload.reverseEnabled);
+      setClozeSource(payload.clozeSource);
+      setClozeMode(payload.clozeMode);
+      setFrontDoc(payload.frontDoc);
+      setBackDoc(payload.backDoc);
+      setFrontText(payload.frontText);
+      setBackText(payload.backText);
+      setAssets(payload.assets);
+      setTags(payload.tags);
+      setTemplateValues(payload.templateValues);
+      setDirty(true);
+    },
+  });
+
 
   useEffect(() => () => controller.invalidate(), [controller]);
 
   useEffect(() => {
-    onDirtyChange(dirty);
+    onDirtyChange(durableDraft.hasUnsavedLocalChanges);
     return () => onDirtyChange(false);
-  }, [dirty, onDirtyChange]);
+  }, [durableDraft.hasUnsavedLocalChanges, onDirtyChange]);
 
   useEffect(() => {
-    let current = true;
-    setAssetDraftId(null);
-    void controller.beginDraft(card?.noteId)
-      .then((draft) => {
-        if (!current) {
-          void controller.cancelDraft(draft.id).catch(() => undefined);
-          return;
-        }
-        assetDraftRef.current = draft.id;
-        setAssetDraftId(draft.id);
-      })
-      .catch((error: unknown) => {
-        if (current) {
-          setErrorMessage(`The managed image draft could not open: ${getErrorMessage(error)}`);
-        }
-      });
-    return () => {
-      current = false;
-      const draftId = assetDraftRef.current;
-      assetDraftRef.current = null;
-      if (draftId) {
-        void controller.cancelDraft(draftId).catch((error: unknown) => {
-          console.error("Unable to cancel the image draft:", getErrorMessage(error));
-        });
-      }
-    };
-  }, [card?.noteId]);
+    assetDraftRef.current = durableDraft.assetDraftId;
+    setAssetDraftId(durableDraft.assetDraftId);
+  }, [durableDraft.assetDraftId]);
+
 
   useEffect(() => {
     if (!assetDraftId) return;
@@ -328,9 +376,26 @@ export function CardEditorScreen({
   }
 
   async function openFreshAssetDraft(): Promise<void> {
-    const draft = await controller.beginDraft();
-    assetDraftRef.current = draft.id;
-    setAssetDraftId(draft.id);
+    await durableDraft.restart({
+      selectedDeckId,
+      selectedTemplateKey,
+      reverseEnabled: false,
+      clozeSource: "",
+      clozeMode: "one_at_a_time",
+      frontDoc: cloneDocument(EMPTY_RICH_DOCUMENT),
+      backDoc: cloneDocument(EMPTY_RICH_DOCUMENT),
+      frontText: "",
+      backText: "",
+      assets: selectedCustomTemplate?.assets ?? [],
+      tags: [],
+      templateValues: selectedCustomTemplate
+        ? selectedCustomTemplate.fields.map((field) => ({
+            fieldId: field.id,
+            doc: cloneDocument(EMPTY_RICH_DOCUMENT),
+            text: "",
+          }))
+        : [],
+    });
   }
 
   async function buildTemplatePreview(): Promise<void> {
@@ -369,6 +434,7 @@ export function CardEditorScreen({
     setErrorMessage(null);
 
     try {
+      await durableDraft.flush();
       if (selectedCustomTemplate) {
         const result = await controller.generate({
           deckId: selectedDeckId,
@@ -378,6 +444,7 @@ export function CardEditorScreen({
           tags,
           assetDraftId: assetDraftId ?? undefined,
         });
+        await durableDraft.commit();
         markAssetDraftCommitted();
         setDirty(false);
         setTemplatePreviews([]);
@@ -444,6 +511,7 @@ export function CardEditorScreen({
             : await controller.create(input);
       }
 
+      await durableDraft.commit(saved.noteId);
       markAssetDraftCommitted();
       setDirty(false);
       setDuplicateMatches([]);
@@ -523,19 +591,14 @@ export function CardEditorScreen({
       });
       if (!accepted) return;
     }
-    const draftId = assetDraftRef.current;
+    try {
+      await durableDraft.discard();
+    } catch (error: unknown) {
+      setErrorMessage(`The durable draft could not be discarded: ${getErrorMessage(error)}`);
+      return;
+    }
     assetDraftRef.current = null;
     setAssetDraftId(null);
-    if (draftId) {
-      try {
-        await controller.cancelDraft(draftId);
-      } catch (error: unknown) {
-        assetDraftRef.current = draftId;
-        setAssetDraftId(draftId);
-        setErrorMessage(`The image draft could not be canceled: ${getErrorMessage(error)}`);
-        return;
-      }
-    }
     onCancel();
   }
 

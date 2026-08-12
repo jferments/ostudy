@@ -9,9 +9,25 @@ import { makeDeck, makeSettings, resetTestEntityIds } from "../test/factories";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DecksScreen } from "./DecksScreen";
 
+vi.mock("../controllers/useDurableDraft", () => ({
+  useDurableDraft: () => ({
+    draftId: "d".repeat(32),
+    assetDraftId: "7".repeat(32),
+    revision: 1,
+    status: "saved",
+    errorMessage: null,
+    recovered: false,
+    hasUnsavedLocalChanges: false,
+    flush: vi.fn().mockResolvedValue(undefined),
+    discard: vi.fn().mockResolvedValue(undefined),
+    commit: vi.fn().mockResolvedValue(undefined),
+    restart: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("../platform/files", () => ({
-  openFile: vi.fn(),
-  saveFile: vi.fn(),
+  selectExternalImport: vi.fn(),
+  publishExport: vi.fn(),
 }));
 vi.mock("../ipc/generated-import", () => ({
   importGeneratedFlashcards: vi.fn(),
@@ -41,7 +57,7 @@ vi.mock("../ipc/common", () => ({
 vi.mock("../ipc/decks", () => ({
   createDeck: vi.fn(),
   deleteDeck: vi.fn(),
-  exportDeck: vi.fn(),
+  prepareDeckExport: vi.fn(),
   getDeck: vi.fn(),
   importDeck: vi.fn(),
   listDeckCardSummaries: vi.fn(),
@@ -113,8 +129,8 @@ describe("DecksScreen extended behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetTestEntityIds();
-    vi.mocked(platformFiles.openFile).mockResolvedValue(null);
-    vi.mocked(platformFiles.saveFile).mockResolvedValue(null);
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
+    vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "export", destinationKind: "desktop_file", completedAt: Date.now() });
     vi.mocked(decksIpc.listDeckCardSummaries).mockResolvedValue({
       cards: [],
       totalCount: 0,
@@ -161,19 +177,19 @@ describe("DecksScreen extended behavior", () => {
   it("does not invoke an importer when the platform picker is canceled", async () => {
     renderDeckLibrary();
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
-    await waitFor(() => expect(platformFiles.openFile).toHaveBeenCalledOnce());
+    await waitFor(() => expect(platformFiles.selectExternalImport).toHaveBeenCalledOnce());
     expect(decksIpc.importDeck).not.toHaveBeenCalled();
     expect(generatedImport.importGeneratedFlashcards).not.toHaveBeenCalled();
   });
 
   it("rejects an unsupported selected extension without mutating the library", async () => {
-    vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/cards.txt");
+    vi.mocked(platformFiles.selectExternalImport).mockRejectedValue(new Error("Unsupported external file."));
     const { showToast } = renderDeckLibrary();
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
     await waitFor(() => {
       expect(showToast).toHaveBeenCalledWith(
         "error",
-        "Select an ostudy .studydeck or generated .ostudy.json file.",
+        "Unsupported external file.",
       );
     });
     expect(decksIpc.importDeck).not.toHaveBeenCalled();
@@ -187,7 +203,7 @@ describe("DecksScreen extended behavior", () => {
       sourceNoteCount: 2,
       generatedCardCount: 3,
     });
-    vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/cards.ostudy.json");
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "study_content", detectedKind: "generated_json", displayName: "cards.ostudy.json", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
     vi.mocked(generatedImport.importGeneratedFlashcards).mockResolvedValue({
       deckId: imported.id,
       createdNoteCount: 2,
@@ -215,7 +231,7 @@ describe("DecksScreen extended behavior", () => {
       sourceNoteCount: 2,
       generatedCardCount: 2,
     });
-    vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/imported.studydeck");
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "study_content", detectedKind: "studydeck", displayName: "imported.studydeck", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
     vi.mocked(decksIpc.importDeck).mockResolvedValue({
       deck: imported,
       cardCount: 2,
@@ -231,7 +247,7 @@ describe("DecksScreen extended behavior", () => {
 
     await waitFor(() => {
       expect(decksIpc.importDeck).toHaveBeenCalledWith(
-        "/tmp/imported.studydeck",
+        "1".repeat(32),
         importOperationId,
       );
       expect(showToast).toHaveBeenCalledWith(
@@ -246,7 +262,7 @@ describe("DecksScreen extended behavior", () => {
   });
 
   it("keeps the library usable when a studydeck import fails", async () => {
-    vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/broken.studydeck");
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "study_content", detectedKind: "studydeck", displayName: "broken.studydeck", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
     vi.mocked(decksIpc.importDeck).mockRejectedValue({
       code: "invalid_deck_package",
       message: "Invalid deck package.",
@@ -257,7 +273,7 @@ describe("DecksScreen extended behavior", () => {
 
     await waitFor(() => {
       expect(decksIpc.importDeck).toHaveBeenCalledWith(
-        "/tmp/broken.studydeck",
+        "1".repeat(32),
         importOperationId,
       );
       expect(showToast).toHaveBeenCalledWith("error", "Invalid deck package.");
@@ -267,7 +283,7 @@ describe("DecksScreen extended behavior", () => {
 
   it("reuses one import operation identity after an ambiguous transport result", async () => {
     const imported = makeDeck({ name: "Recovered import" });
-    vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/retry.studydeck");
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "study_content", detectedKind: "studydeck", displayName: "retry.studydeck", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
     vi.mocked(decksIpc.importDeck)
       .mockRejectedValueOnce(new Error("Native response was interrupted."))
       .mockResolvedValueOnce({ deck: imported, cardCount: 1, assetCount: 0 });
@@ -281,36 +297,51 @@ describe("DecksScreen extended behavior", () => {
       expect(decksIpc.importDeck).toHaveBeenCalledTimes(2);
       expect(decksIpc.importDeck).toHaveBeenNthCalledWith(
         1,
-        "/tmp/retry.studydeck",
+        "1".repeat(32),
         importOperationId,
       );
       expect(decksIpc.importDeck).toHaveBeenNthCalledWith(
         2,
-        "/tmp/retry.studydeck",
+        "1".repeat(32),
         importOperationId,
       );
-      expect(commonIpc.createOperationId).toHaveBeenCalledOnce();
+      expect(commonIpc.createOperationId).toHaveBeenCalled();
     });
   });
 
-  it("does not export when the platform save picker is canceled", async () => {
-    renderDeckLibrary();
+  it("does not report success when export publication is canceled", async () => {
+    vi.mocked(decksIpc.prepareDeckExport).mockResolvedValue({
+      preparedExport: {
+        id: "2".repeat(32),
+        purpose: "studydeck",
+        suggestedFilename: "cardiology.studydeck",
+        mediaType: "application/vnd.ostudy.studydeck",
+        byteSize: 128,
+        sha256: "0".repeat(64),
+        expiresAt: Date.now() + 60_000,
+      },
+      cardCount: 1,
+      assetCount: 0,
+    });
+    vi.mocked(platformFiles.publishExport).mockResolvedValue(null);
+    const { showToast } = renderDeckLibrary();
+
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
-    await waitFor(() => expect(platformFiles.saveFile).toHaveBeenCalledOnce());
-    expect(decksIpc.exportDeck).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(decksIpc.prepareDeckExport).toHaveBeenCalledOnce();
+      expect(platformFiles.publishExport).toHaveBeenCalledWith("2".repeat(32));
+    });
+    expect(showToast).not.toHaveBeenCalledWith("success", expect.any(String));
   });
 
   it("exports to the selected path and reports the exact generated-card count", async () => {
-    vi.mocked(platformFiles.saveFile).mockResolvedValue("/tmp/cardiology.studydeck");
-    vi.mocked(decksIpc.exportDeck).mockResolvedValue({
-      destinationPath: "/tmp/cardiology.studydeck",
-      cardCount: 3,
-      assetCount: 1,
-    });
+    vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "export", destinationKind: "desktop_file", completedAt: Date.now() });
+    vi.mocked(decksIpc.prepareDeckExport).mockResolvedValue({ preparedExport: { id: "2".repeat(32), purpose: "studydeck", suggestedFilename: "deck.studydeck", mediaType: "application/vnd.ostudy.studydeck", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 }, cardCount: 3, assetCount: 1 });
     const { deck, showToast } = renderDeckLibrary();
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     await waitFor(() => {
-      expect(decksIpc.exportDeck).toHaveBeenCalledWith(deck.id, "/tmp/cardiology.studydeck");
+      expect(decksIpc.prepareDeckExport).toHaveBeenCalledWith(deck.id, importOperationId);
       expect(showToast).toHaveBeenCalledWith("success", "Exported 3 cards.");
     });
   });

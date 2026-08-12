@@ -1,6 +1,6 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { managedAssetUrl } from "../platform/assets";
 import { makeAsset, paragraphDocument } from "../test/factories";
 import {
   canonicalizeDocument,
@@ -10,8 +10,8 @@ import {
   isDocumentEmpty,
 } from "./richText";
 
-vi.mock("@tauri-apps/api/core", () => ({
-  convertFileSrc: vi.fn((path: string) => `asset-url:${path}`),
+vi.mock("../platform/assets", () => ({
+  managedAssetUrl: vi.fn((assetId: string) => `asset-url:${assetId}`),
 }));
 
 describe("rich document helpers", () => {
@@ -27,7 +27,7 @@ describe("rich document helpers", () => {
           type: "image",
           attrs: {
             assetId: "a".repeat(32),
-            src: "asset-url:/tmp/diagram.png",
+            src: "asset-url:temporary",
             width: "640",
             height: 20_000,
           },
@@ -52,14 +52,13 @@ describe("rich document helpers", () => {
         },
       ],
     });
-    expect(source.content[0]?.attrs.src).toBe("asset-url:/tmp/diagram.png");
+    expect(source.content[0]?.attrs.src).toBe("asset-url:temporary");
   });
 
   it("hydrates only known managed assets and supplies missing alt text", () => {
     const asset = makeAsset({
       id: "b".repeat(32),
       originalFilename: "heart.png",
-      filePath: "/managed/heart.png",
     });
     const document = {
       type: "doc",
@@ -85,7 +84,7 @@ describe("rich document helpers", () => {
 
     const hydrated = hydrateDocument(document, [asset]);
 
-    expect(convertFileSrc).toHaveBeenCalledWith(asset.filePath);
+    expect(managedAssetUrl).toHaveBeenCalledWith(asset.id);
     expect(hydrated).toEqual({
       type: "doc",
       content: [
@@ -93,7 +92,7 @@ describe("rich document helpers", () => {
           type: "image",
           attrs: {
             assetId: asset.id,
-            src: `asset-url:${asset.filePath}`,
+            src: `asset-url:${asset.id}`,
             alt: asset.originalFilename,
           },
         },
@@ -137,9 +136,7 @@ describe("rich document helpers", () => {
         content: [{ type: "image", attrs: { assetId: "f".repeat(32) } }],
       }),
     ).toBe(false);
-    expect(isDocumentEmpty("Visible text", paragraphDocument("Visible text"))).toBe(
-      false,
-    );
+    expect(isDocumentEmpty("Visible text", paragraphDocument("Visible text"))).toBe(false);
   });
 
   it("deep-clones a document before callers mutate it", () => {

@@ -5,7 +5,7 @@ import * as documentIpc from "../ipc/documents";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "./DocumentsScreen";
 
-vi.mock("../platform/files", () => ({ openFile: vi.fn() }));
+vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
   importPdfAndGenerateFlashcards: vi.fn(),

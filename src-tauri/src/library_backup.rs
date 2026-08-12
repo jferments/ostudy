@@ -438,6 +438,7 @@ fn export_backup(
                 "SELECT COUNT(*) FROM asset_drafts
                  WHERE committed_at IS NULL AND canceled_at IS NULL
                    AND retention_mode = 'ephemeral'
+                   AND retention_mode = 'ephemeral'
                    AND retention_mode = 'ephemeral'",
                 [],
                 |row| row.get::<_, i64>(0),

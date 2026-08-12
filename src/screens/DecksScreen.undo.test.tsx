@@ -7,6 +7,22 @@ import * as decksIpc from "../ipc/decks";
 import * as settingsIpc from "../ipc/settings";
 import { DecksScreen } from "./DecksScreen";
 
+vi.mock("../controllers/useDurableDraft", () => ({
+  useDurableDraft: () => ({
+    draftId: "d".repeat(32),
+    assetDraftId: "7".repeat(32),
+    revision: 1,
+    status: "saved",
+    errorMessage: null,
+    recovered: false,
+    hasUnsavedLocalChanges: false,
+    flush: vi.fn().mockResolvedValue(undefined),
+    discard: vi.fn().mockResolvedValue(undefined),
+    commit: vi.fn().mockResolvedValue(undefined),
+    restart: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("../ipc/cards", () => ({
   deleteCard: vi.fn(),
   getCardNote: vi.fn(),
@@ -21,7 +37,7 @@ vi.mock("../ipc/common", () => ({
 vi.mock("../ipc/decks", () => ({
   createDeck: vi.fn(),
   deleteDeck: vi.fn(),
-  exportDeck: vi.fn(),
+  prepareDeckExport: vi.fn(),
   getDeck: vi.fn(),
   importDeck: vi.fn(),
   listDeckCardSummaries: vi.fn(),

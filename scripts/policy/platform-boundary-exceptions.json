@@ -2,78 +2,6 @@
   "schemaVersion": 1,
   "exceptions": [
     {
-      "rule": "frontend-direct-tauri-core-import",
-      "path": "src/editor/richText.ts",
-      "retireInPhase": "P2",
-      "reason": "Temporary absolute asset path conversion"
-    },
-    {
-      "rule": "frontend-direct-tauri-core-import",
-      "path": "src/editor/RichTextEditor.tsx",
-      "retireInPhase": "P2",
-      "reason": "Temporary imported-image path conversion"
-    },
-    {
-      "rule": "frontend-raw-path-contract",
-      "path": "src/ipc/assets.ts",
-      "retireInPhase": "P2",
-      "reason": "Asset DTO and image import expose paths"
-    },
-    {
-      "rule": "frontend-raw-path-contract",
-      "path": "src/ipc/backup.ts",
-      "retireInPhase": "P2",
-      "reason": "Backup commands accept source/destination paths"
-    },
-    {
-      "rule": "frontend-raw-path-contract",
-      "path": "src/ipc/decks.ts",
-      "retireInPhase": "P2",
-      "reason": "Deck import/export accepts paths"
-    },
-    {
-      "rule": "frontend-raw-path-contract",
-      "path": "src/ipc/documents.ts",
-      "retireInPhase": "P2",
-      "reason": "PDF import accepts a path"
-    },
-    {
-      "rule": "frontend-raw-path-contract",
-      "path": "src/ipc/generated-import.ts",
-      "retireInPhase": "P2",
-      "reason": "Generated import accepts a path"
-    },
-    {
-      "rule": "rust-raw-path-contract",
-      "path": "src-tauri/src/assets.rs",
-      "retireInPhase": "P2",
-      "reason": "Asset DTO exposes a path"
-    },
-    {
-      "rule": "rust-raw-path-contract",
-      "path": "src-tauri/src/asset_lifecycle.rs",
-      "retireInPhase": "P2",
-      "reason": "Image import command accepts a path"
-    },
-    {
-      "rule": "rust-raw-path-contract",
-      "path": "src-tauri/src/documents.rs",
-      "retireInPhase": "P2",
-      "reason": "PDF import input contains a path"
-    },
-    {
-      "rule": "rust-raw-path-contract",
-      "path": "src-tauri/src/library_backup.rs",
-      "retireInPhase": "P2",
-      "reason": "Backup commands accept paths"
-    },
-    {
-      "rule": "rust-raw-path-contract",
-      "path": "src-tauri/src/studydeck.rs",
-      "retireInPhase": "P2",
-      "reason": "Deck package commands accept paths"
-    },
-    {
       "rule": "rust-target-os-branch",
       "path": "src-tauri/src/pdf_ocr_backend.rs",
       "retireInPhase": "Android/iOS",
@@ -90,12 +18,6 @@
       "path": "src-tauri/src/pdf_ocr_backend.rs",
       "retireInPhase": "Android/iOS",
       "reason": "Desktop Tesseract subprocess"
-    },
-    {
-      "rule": "frontend-direct-tauri-core-import",
-      "path": "src/editor/StudyRichEditor.tsx",
-      "retireInPhase": "P2",
-      "reason": "Temporary absolute asset path conversion"
     }
   ]
 }

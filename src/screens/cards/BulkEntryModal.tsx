@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 
 import { Modal } from "../../components/Modal";
+import { useDurableDraft } from "../../controllers/useDurableDraft";
 import {
   analyzeBulkCards,
   bulkCreateCards,
@@ -61,6 +62,17 @@ export function BulkEntryModal({
   const uniqueCount = analysis
     ? Math.max(0, populatedRows.length - analysis.duplicateCount)
     : populatedRows.length;
+  const durableDraft = useDurableDraft({
+    kind: "bulk_cards",
+    contextEntityId: "b".repeat(32),
+    payload: { deckId, rows },
+    onRecovered: (payload: { deckId: string; rows: DraftRow[] }) => {
+      setDeckId(payload.deckId);
+      setRows(payload.rows);
+      sequence.current = Math.max(4, ...payload.rows.map((row) => row.id + 1));
+    },
+  });
+
   const canSubmit =
     deckId !== "" &&
     populatedRows.length > 0 &&
@@ -135,7 +147,9 @@ export function BulkEntryModal({
     let createdCount: number;
     let skippedDuplicates: number;
     try {
+      await durableDraft.flush();
       const result = await bulkCreateCards({ deckId, rows: cardRows });
+      await durableDraft.commit();
       createdCount = result.createdCount;
       skippedDuplicates = result.skippedDuplicates;
     } catch (error: unknown) {
@@ -310,13 +324,14 @@ export function BulkEntryModal({
         {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
 
         <div className="modal-actions bulk-entry-actions">
+          <button type="button" className="text-button danger-text" disabled={isSaving} onClick={() => void durableDraft.discard().then(onClose)}>Discard draft</button>
           <button
             type="button"
             className="secondary-button"
             disabled={isSaving}
-            onClick={onClose}
+            onClick={() => void durableDraft.flush().finally(onClose)}
           >
-            Cancel
+            Close
           </button>
           <button
             type="button"

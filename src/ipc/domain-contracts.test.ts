@@ -8,7 +8,7 @@ import {
   syncAssetDraft,
 } from "./assets";
 import {
-  exportLibraryBackup,
+  prepareLibraryBackup,
   prepareLibraryRestore,
 } from "./backup";
 import {
@@ -37,7 +37,7 @@ import {
 } from "./common";
 import {
   createDeck,
-  exportDeck,
+  prepareDeckExport,
   getDeck,
   importDeck,
   listDeckCardSummaries,
@@ -343,9 +343,11 @@ describe("typed Tauri IPC wrappers", () => {
     await expectInvocation(() => syncAssetDraft(draftId, [cardId]), "sync_asset_draft", {
       input: { draftId, assetIds: [cardId] },
     });
-    await expectInvocation(() => importImage("/tmp/image.png", draftId), "import_image", {
-      input: { stagedFileId: "1".repeat(32), draftId },
-    });
+    await expectInvocation(
+      () => importImage("1".repeat(32), draftId),
+      "import_image",
+      { input: { stagedFileId: "1".repeat(32), draftId } },
+    );
     await expectInvocation(() => cancelAssetDraft(draftId), "cancel_asset_draft", {
       draftId,
     });
@@ -419,25 +421,17 @@ describe("typed Tauri IPC wrappers", () => {
     await expectInvocation(() => applyScheduleAction(mutation), "apply_schedule_action", {
       input: mutation,
     });
+    await expectInvocation(() => prepareDeckExport(deckId, importOperationId), "prepare_deck_export", { input: { deckId, operationId: importOperationId } });
     await expectInvocation(
-      () => exportDeck(deckId, "/tmp/deck.studydeck"),
-      "export_deck",
-      { input: { deckId, destinationPath: "/tmp/deck.studydeck" } },
-    );
-    await expectInvocation(
-      () => importDeck("/tmp/deck.studydeck", importOperationId),
+      () => importDeck("1".repeat(32), importOperationId),
       "import_deck",
-      { input: { sourcePath: "/tmp/deck.studydeck", operationId: importOperationId } },
+      { input: { stagedFileId: "1".repeat(32), operationId: importOperationId } },
     );
+    await expectInvocation(() => prepareLibraryBackup(importOperationId), "prepare_library_backup", { input: { operationId: importOperationId } });
     await expectInvocation(
-      () => exportLibraryBackup("/tmp/library.ostudybackup"),
-      "export_library_backup",
-      { input: { destinationPath: "/tmp/library.ostudybackup" } },
-    );
-    await expectInvocation(
-      () => prepareLibraryRestore("/tmp/library.ostudybackup"),
+      () => prepareLibraryRestore("1".repeat(32)),
       "prepare_library_restore",
-      { input: { sourcePath: "/tmp/library.ostudybackup" } },
+      { input: { stagedFileId: "1".repeat(32) } },
     );
   });
 

@@ -5,7 +5,6 @@ export interface Asset {
   originalFilename: string;
   mimeType: string;
   byteSize: number;
-  filePath: string;
   createdAt: number;
 }
 
@@ -30,6 +29,6 @@ export async function syncAssetDraft(draftId: string, assetIds: string[]): Promi
   return invoke<void>("sync_asset_draft", { input: { draftId, assetIds } });
 }
 
-export async function importImage(filePath: string, draftId: string): Promise<Asset> {
-  return invoke<Asset>("import_image", { input: { filePath, draftId } });
+export async function importImage(stagedFileId: string, draftId: string): Promise<Asset> {
+  return invoke<Asset>("import_image", { input: { stagedFileId, draftId } });
 }
