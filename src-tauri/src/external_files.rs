@@ -249,7 +249,7 @@ struct StoredPreparedExport {
 }
 
 #[tauri::command]
-pub fn select_and_stage_external_import(
+pub async fn select_and_stage_external_import(
     app: AppHandle,
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
@@ -265,7 +265,8 @@ pub fn select_and_stage_external_import(
 
     let Some(source) = runtime
         .external_files()
-        .select_import(&app, &input.purpose.request())?
+        .select_import(app.clone(), input.purpose.request())
+        .await?
     else {
         return Ok(None);
     };
@@ -411,7 +412,7 @@ pub fn release_staged_external_import(
 }
 
 #[tauri::command]
-pub fn publish_prepared_export(
+pub async fn publish_prepared_export(
     app: AppHandle,
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
@@ -439,7 +440,11 @@ pub fn publish_prepared_export(
             },
         }],
     };
-    let Some(destination) = runtime.external_files().select_export(&app, &request)? else {
+    let Some(destination) = runtime
+        .external_files()
+        .select_export(app.clone(), request)
+        .await?
+    else {
         return Ok(None);
     };
     let source = paths.resolve_relative(&stored.relative_path);

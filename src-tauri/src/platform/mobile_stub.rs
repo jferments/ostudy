@@ -16,9 +16,9 @@ use crate::{
     error::CommandError,
     platform::{
         CapabilityProvider, ExternalDestination, ExternalFilePort, ExternalFileRequest,
-        ExternalSource, NativeServiceCapabilities, PlatformCapabilitySnapshot, PlatformRuntime,
-        ResourceProbe, ResourceSnapshot, ServiceCapability, ThermalState, TimeZoneProvider,
-        TimeZoneSnapshot, UnavailableSecretStore,
+        ExternalSource, NativeServiceCapabilities, PlatformCapabilitySnapshot, PlatformFuture,
+        PlatformRuntime, ResourceProbe, ResourceSnapshot, ServiceCapability, ThermalState,
+        TimeZoneProvider, TimeZoneSnapshot, UnavailableSecretStore,
     },
 };
 
@@ -75,24 +75,28 @@ struct UnavailableExternalFilePort;
 impl ExternalFilePort for UnavailableExternalFilePort {
     fn select_import(
         &self,
-        _app: &AppHandle,
-        _request: &ExternalFileRequest,
-    ) -> Result<Option<ExternalSource>, CommandError> {
-        Err(CommandError::new(
-            "external_file_adapter_unavailable",
-            "This mobile build does not yet include its native file-selection adapter.",
-        ))
+        _app: AppHandle,
+        _request: ExternalFileRequest,
+    ) -> PlatformFuture<Result<Option<ExternalSource>, CommandError>> {
+        Box::pin(async {
+            Err(CommandError::new(
+                "external_file_adapter_unavailable",
+                "This mobile build does not yet include its native file-selection adapter.",
+            ))
+        })
     }
 
     fn select_export(
         &self,
-        _app: &AppHandle,
-        _request: &ExternalFileRequest,
-    ) -> Result<Option<ExternalDestination>, CommandError> {
-        Err(CommandError::new(
-            "external_file_adapter_unavailable",
-            "This mobile build does not yet include its native export adapter.",
-        ))
+        _app: AppHandle,
+        _request: ExternalFileRequest,
+    ) -> PlatformFuture<Result<Option<ExternalDestination>, CommandError>> {
+        Box::pin(async {
+            Err(CommandError::new(
+                "external_file_adapter_unavailable",
+                "This mobile build does not yet include its native export adapter.",
+            ))
+        })
     }
 }
 

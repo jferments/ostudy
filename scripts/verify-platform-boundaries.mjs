@@ -59,6 +59,9 @@ for (const path of files) {
     if (/\bpub\s+(?:source_path|destination_path|file_path)\s*:\s*String\b/u.test(text)) {
       report("rust-raw-path-contract", displayPath);
     }
+    if (/\bblocking_(?:pick_file|pick_files|pick_folder|pick_folders|save_file)\s*\(/u.test(text)) {
+      report("rust-blocking-native-dialog", displayPath);
+    }
     const platformAdapter = displayPath.startsWith("src-tauri/src/platform/");
     if (!platformAdapter && /\bkeyring(?:::|\b)/u.test(text)) report("rust-keyring-outside-adapter", displayPath);
     if (!platformAdapter && /\bsysinfo(?:::|\b)/u.test(text)) report("rust-sysinfo-outside-adapter", displayPath);
