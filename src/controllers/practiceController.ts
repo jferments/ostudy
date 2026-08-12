@@ -6,6 +6,7 @@ import {
   markPracticeCardRevealed,
   markPracticeCardViewed,
   refreshPracticeAfterCardEdit,
+  resumePracticeSession,
   startCardPractice,
   startSelectedPractice,
   submitPracticeReview,
@@ -15,6 +16,7 @@ import {
   type PracticeSession,
   type PracticeWorkloadOverview,
   type RefreshPracticeAfterCardEditInput,
+  type ResumedPracticeSession,
   type ReviewPreviewSet,
   type ReviewResult,
   type StartCardPracticeInput,
@@ -55,6 +57,10 @@ export class PracticeController {
 
   startCards(input: StartCardPracticeInput): Promise<PracticeSession> {
     return startCardPractice(input);
+  }
+
+  resume(sessionId: string): Promise<ResumedPracticeSession> {
+    return resumePracticeSession(sessionId);
   }
 
   markViewed(sessionId: string, cardId: string): Promise<void> {
