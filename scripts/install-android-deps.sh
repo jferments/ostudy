@@ -71,6 +71,11 @@ if [[ ! -x "$command_tools" ]]; then
   rmdir "$extraction_dir"
 fi
 
+# Python's standard zip extractor intentionally does not restore Unix mode bits.
+# Android's command-line archive contains shell launchers that must be executable.
+chmod -R u+rwX "$ANDROID_HOME/cmdline-tools/latest"
+find "$ANDROID_HOME/cmdline-tools/latest/bin" -maxdepth 1 -type f -exec chmod u+x {} +
+
 sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 packages=(
   "platform-tools"
