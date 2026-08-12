@@ -40,15 +40,29 @@
     "category": "Education",
     "shortDescription": "Local-first flashcards and study tools",
     "longDescription": "A free, local-first flashcard and study application.",
-    "resources": {
-      "resources/native/pdfium/*": "native/pdfium/"
-    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["studydeck"],
+        "mimeType": "application/vnd.ostudy.studydeck",
+        "name": "ostudy deck"
+      },
+      {
+        "ext": ["ostudybackup"],
+        "mimeType": "application/vnd.ostudy.backup",
+        "name": "ostudy backup"
+      },
+      {
+        "ext": ["json"],
+        "mimeType": "application/json",
+        "name": "ostudy generated flashcards"
+      }
     ]
   }
 }
