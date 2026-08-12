@@ -169,6 +169,8 @@ pub struct BulkAnalyzeResultDto {
 pub struct BulkCreateCardsInput {
     pub deck_id: String,
     pub rows: Vec<BulkCardRowInput>,
+    #[serde(default)]
+    pub editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
 }
 
 #[derive(Clone, Debug, Serialize)]

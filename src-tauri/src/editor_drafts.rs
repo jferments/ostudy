@@ -100,7 +100,14 @@ pub struct DiscardEditorDraftInput {
     pub revision: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EditorDraftCommitRef {
+    pub draft_id: String,
+    pub revision: i64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommitEditorDraftInput {
     pub draft_id: String,
@@ -410,15 +417,24 @@ pub fn commit_editor_draft(
     }
     database.with_connection(|connection| {
         let current = load_draft(connection, &input.draft_id)?;
+        let reference = EditorDraftCommitRef {
+            draft_id: input.draft_id.clone(),
+            revision: input.revision,
+        };
+        ensure_canonical_commit_matches(
+            &current,
+            current.draft_kind,
+            input.target_entity_id.as_deref(),
+            current.base_revision,
+            current.asset_draft_id.as_deref(),
+        )?;
         if current.state == "committed" {
             return Ok(());
         }
         if current.state != "active" || current.revision != input.revision {
-            return Err(CommandError::new(
-                "editor_draft_changed",
-                "This recovered draft changed before its final save completed.",
-            ));
+            return Err(editor_draft_changed());
         }
+
         let now = unix_time_millis()?;
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -447,23 +463,124 @@ pub fn commit_editor_draft(
                 )
                 .map_err(CommandError::database)?;
         }
-        let changed = transaction
-            .execute(
-                "UPDATE editor_drafts
-                 SET state = 'committed', target_entity_id = COALESCE(?1, target_entity_id),
-                     committed_at = ?2, updated_at = ?2, revision = revision + 1
-                 WHERE id = ?3 AND revision = ?4 AND state = 'active'",
-                params![input.target_entity_id, now, input.draft_id, input.revision,],
-            )
-            .map_err(CommandError::database)?;
-        if changed != 1 {
-            return Err(CommandError::new(
-                "editor_draft_changed",
-                "This recovered draft changed before its final save completed.",
-            ));
-        }
+        commit_canonical_editor_draft(
+            &transaction,
+            Some(&reference),
+            current.draft_kind,
+            input.target_entity_id.as_deref(),
+            current.base_revision,
+            current.asset_draft_id.as_deref(),
+            now,
+        )?;
         transaction.commit().map_err(CommandError::database)
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn commit_canonical_editor_draft(
+    connection: &Connection,
+    reference: Option<&EditorDraftCommitRef>,
+    expected_kind: EditorDraftKind,
+    target_entity_id: Option<&str>,
+    expected_base_revision: Option<i64>,
+    expected_asset_draft_id: Option<&str>,
+    now: i64,
+) -> Result<(), CommandError> {
+    let Some(reference) = reference else {
+        return Ok(());
+    };
+    validate_entity_id(&reference.draft_id, "editor draft")?;
+    validate_optional_id(target_entity_id, "editor draft target")?;
+    validate_optional_id(expected_asset_draft_id, "asset draft")?;
+    validate_base_revision(expected_base_revision)?;
+    if reference.revision < 1 {
+        return Err(invalid_draft_revision());
+    }
+
+    let current = load_draft(connection, &reference.draft_id)?;
+    ensure_canonical_commit_matches(
+        &current,
+        expected_kind,
+        target_entity_id,
+        expected_base_revision,
+        expected_asset_draft_id,
+    )?;
+    if current.state == "committed" {
+        if target_entity_id.is_some() {
+            return Ok(());
+        }
+        return Err(CommandError::new(
+            "editor_draft_already_committed",
+            "This authoring draft was already committed. Reload the saved content instead of creating it again.",
+        ));
+    }
+    if current.state != "active" || current.revision != reference.revision {
+        return Err(editor_draft_changed());
+    }
+
+    let changed = connection
+        .execute(
+            "UPDATE editor_drafts
+             SET state = 'committed', target_entity_id = COALESCE(?1, target_entity_id),
+                 committed_at = ?2, updated_at = ?2, revision = revision + 1
+             WHERE id = ?3 AND revision = ?4 AND state = 'active'",
+            params![
+                target_entity_id,
+                now,
+                reference.draft_id,
+                reference.revision
+            ],
+        )
+        .map_err(CommandError::database)?;
+    if changed != 1 {
+        return Err(editor_draft_changed());
+    }
+    Ok(())
+}
+
+fn ensure_canonical_commit_matches(
+    current: &EditorDraftDto,
+    expected_kind: EditorDraftKind,
+    target_entity_id: Option<&str>,
+    expected_base_revision: Option<i64>,
+    expected_asset_draft_id: Option<&str>,
+) -> Result<(), CommandError> {
+    if current.draft_kind != expected_kind {
+        return Err(CommandError::new(
+            "editor_draft_kind_mismatch",
+            "The recovered draft belongs to a different authoring workflow.",
+        ));
+    }
+    if current
+        .target_entity_id
+        .as_deref()
+        .is_some_and(|stored| Some(stored) != target_entity_id)
+    {
+        return Err(CommandError::new(
+            "editor_draft_target_mismatch",
+            "The recovered draft belongs to a different saved item.",
+        ));
+    }
+    if current.base_revision != expected_base_revision {
+        return Err(CommandError::new(
+            "editor_draft_base_changed",
+            "The saved item changed after this recoverable draft was opened.",
+        ));
+    }
+    if current.asset_draft_id.as_deref() != expected_asset_draft_id {
+        return Err(CommandError::new(
+            "editor_draft_asset_mismatch",
+            "The recovered draft does not own the images supplied to this save.",
+        ));
+    }
+    Ok(())
+}
+
+fn editor_draft_changed() -> CommandError {
+    CommandError::new(
+        "editor_draft_changed",
+        "This recovered draft changed before its final save completed.",
+    )
 }
 
 #[tauri::command]
@@ -862,5 +979,166 @@ mod tests {
             }),
         )
         .expect("incomplete safe card draft should be recoverable");
+    }
+
+    fn insert_test_draft(
+        connection: &Connection,
+        draft_id: &str,
+        kind: EditorDraftKind,
+        target_entity_id: Option<&str>,
+        base_revision: Option<i64>,
+    ) -> Result<(), CommandError> {
+        let operation_id = "f".repeat(32);
+        let payload = "{}";
+        connection
+            .execute(
+                "INSERT INTO editor_drafts (
+                     id, open_operation_id, draft_kind, target_entity_id,
+                     context_entity_id, base_revision, payload_schema_version,
+                     payload_json, payload_sha256, revision, state, asset_draft_id,
+                     created_at, updated_at, last_opened_at
+                 ) VALUES (?1, ?2, ?3, ?4, NULL, ?5, 1, ?6, ?7, 1, 'active', NULL, 1, 1, 1)",
+                params![
+                    draft_id,
+                    operation_id,
+                    kind.as_str(),
+                    target_entity_id,
+                    base_revision,
+                    payload,
+                    hash_payload(payload),
+                ],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
+    }
+
+    #[test]
+    fn canonical_draft_commit_rolls_back_with_the_callers_transaction() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                let draft_id = "a".repeat(32);
+                insert_test_draft(
+                    connection,
+                    &draft_id,
+                    EditorDraftKind::BulkCards,
+                    None,
+                    None,
+                )?;
+                connection
+                    .execute_batch("CREATE TEMP TABLE atomic_draft_probe (value INTEGER NOT NULL);")
+                    .map_err(CommandError::database)?;
+                {
+                    let transaction = connection
+                        .transaction_with_behavior(TransactionBehavior::Immediate)
+                        .map_err(CommandError::database)?;
+                    transaction
+                        .execute("INSERT INTO atomic_draft_probe (value) VALUES (1)", [])
+                        .map_err(CommandError::database)?;
+                    commit_canonical_editor_draft(
+                        &transaction,
+                        Some(&EditorDraftCommitRef {
+                            draft_id: draft_id.clone(),
+                            revision: 1,
+                        }),
+                        EditorDraftKind::BulkCards,
+                        None,
+                        None,
+                        None,
+                        2,
+                    )?;
+                }
+                let count: i64 = connection
+                    .query_row("SELECT COUNT(*) FROM atomic_draft_probe", [], |row| {
+                        row.get(0)
+                    })
+                    .map_err(CommandError::database)?;
+                let state: String = connection
+                    .query_row(
+                        "SELECT state FROM editor_drafts WHERE id = ?1",
+                        [draft_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(count, 0);
+                assert_eq!(state, "active");
+                Ok(())
+            })
+            .expect("rollback should be observable");
+    }
+
+    #[test]
+    fn canonical_draft_commit_commits_with_the_callers_mutation() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                let draft_id = "b".repeat(32);
+                let target_id = "c".repeat(32);
+                insert_test_draft(
+                    connection,
+                    &draft_id,
+                    EditorDraftKind::AiProfile,
+                    None,
+                    None,
+                )?;
+                connection
+                    .execute_batch("CREATE TEMP TABLE atomic_draft_probe (value INTEGER NOT NULL);")
+                    .map_err(CommandError::database)?;
+                let transaction = connection
+                    .transaction_with_behavior(TransactionBehavior::Immediate)
+                    .map_err(CommandError::database)?;
+                transaction
+                    .execute("INSERT INTO atomic_draft_probe (value) VALUES (1)", [])
+                    .map_err(CommandError::database)?;
+                commit_canonical_editor_draft(
+                    &transaction,
+                    Some(&EditorDraftCommitRef {
+                        draft_id: draft_id.clone(),
+                        revision: 1,
+                    }),
+                    EditorDraftKind::AiProfile,
+                    Some(&target_id),
+                    None,
+                    None,
+                    2,
+                )?;
+                transaction.commit().map_err(CommandError::database)?;
+                let committed: (String, Option<String>) = connection
+                    .query_row(
+                        "SELECT state, target_entity_id FROM editor_drafts WHERE id = ?1",
+                        [draft_id],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(committed, ("committed".to_string(), Some(target_id)));
+                Ok(())
+            })
+            .expect("commit should be observable");
+    }
+
+    #[test]
+    fn canonical_draft_commit_rejects_the_wrong_workflow() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                let draft_id = "d".repeat(32);
+                insert_test_draft(connection, &draft_id, EditorDraftKind::Card, None, None)?;
+                let error = commit_canonical_editor_draft(
+                    connection,
+                    Some(&EditorDraftCommitRef {
+                        draft_id,
+                        revision: 1,
+                    }),
+                    EditorDraftKind::Template,
+                    None,
+                    None,
+                    None,
+                    2,
+                )
+                .expect_err("wrong draft kind must fail");
+                assert_eq!(error.code, "editor_draft_kind_mismatch");
+                Ok(())
+            })
+            .expect("test database should remain usable");
     }
 }

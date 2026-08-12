@@ -665,6 +665,15 @@ pub(in super::super) fn generate_automatic_template_cards_in_connection(
         created_note_ids.push(note_id);
     }
 
+    crate::editor_drafts::commit_canonical_editor_draft(
+        &transaction,
+        input.editor_draft.as_ref(),
+        crate::editor_drafts::EditorDraftKind::Card,
+        None,
+        None,
+        input.asset_draft_id.as_deref(),
+        now,
+    )?;
     transaction.commit().map_err(CommandError::database)?;
     Ok(GenerateTemplateCardsResultDto {
         created_count: i64::try_from(created_note_ids.len()).unwrap_or(i64::MAX),

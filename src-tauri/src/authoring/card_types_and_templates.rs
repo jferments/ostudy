@@ -52,6 +52,8 @@ pub enum CreateCardNoteInput {
         allow_duplicate: bool,
         #[serde(default)]
         asset_draft_id: Option<String>,
+        #[serde(default)]
+        editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
     },
     Cloze {
         deck_id: String,
@@ -64,6 +66,8 @@ pub enum CreateCardNoteInput {
         allow_duplicate: bool,
         #[serde(default)]
         asset_draft_id: Option<String>,
+        #[serde(default)]
+        editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
     },
 }
 
@@ -89,6 +93,8 @@ pub enum UpdateCardNoteInput {
         allow_duplicate: bool,
         #[serde(default)]
         asset_draft_id: Option<String>,
+        #[serde(default)]
+        editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
     },
     Cloze {
         note_id: String,
@@ -103,6 +109,8 @@ pub enum UpdateCardNoteInput {
         allow_duplicate: bool,
         #[serde(default)]
         asset_draft_id: Option<String>,
+        #[serde(default)]
+        editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
     },
 }
 
@@ -136,6 +144,8 @@ pub struct CreateCardTemplateInput {
     pub rules: Vec<CardTemplateRuleInput>,
     #[serde(default)]
     pub asset_draft_id: Option<String>,
+    #[serde(default)]
+    pub editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -150,6 +160,8 @@ pub struct UpdateCardTemplateInput {
     pub rules: Vec<CardTemplateRuleInput>,
     #[serde(default)]
     pub asset_draft_id: Option<String>,
+    #[serde(default)]
+    pub editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -212,6 +224,8 @@ pub struct GenerateTemplateCardsInput {
     pub tags: Vec<String>,
     #[serde(default)]
     pub asset_draft_id: Option<String>,
+    #[serde(default)]
+    pub editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -534,6 +548,7 @@ struct GeneratedCardWrite {
     tags: Vec<String>,
     allow_duplicate: bool,
     asset_draft_id: Option<String>,
+    editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
 }
 
 fn create_card_note_in_database(
@@ -550,6 +565,7 @@ fn create_card_note_in_database(
             tags,
             allow_duplicate,
             asset_draft_id,
+            editor_draft,
         } => GeneratedCardWrite {
             note_id: None,
             deck_id,
@@ -562,6 +578,7 @@ fn create_card_note_in_database(
             tags,
             allow_duplicate,
             asset_draft_id,
+            editor_draft,
         },
         CreateCardNoteInput::Cloze {
             deck_id,
@@ -570,6 +587,7 @@ fn create_card_note_in_database(
             tags,
             allow_duplicate,
             asset_draft_id,
+            editor_draft,
         } => GeneratedCardWrite {
             note_id: None,
             deck_id,
@@ -581,6 +599,7 @@ fn create_card_note_in_database(
             tags,
             allow_duplicate,
             asset_draft_id,
+            editor_draft,
         },
     };
     create_prepared_card_note(database, paths, write)
@@ -599,6 +618,7 @@ fn create_prepared_card_note(
         tags,
         allow_duplicate,
         asset_draft_id,
+        editor_draft,
     } = write;
     validate_entity_id(&deck_id, "deck")?;
     if let Some(draft_id) = asset_draft_id.as_deref() {
@@ -669,6 +689,15 @@ fn create_prepared_card_note(
             asset_draft_id.as_deref(),
             Some(&note_id),
         )?;
+        crate::editor_drafts::commit_canonical_editor_draft(
+            &transaction,
+            editor_draft.as_ref(),
+            crate::editor_drafts::EditorDraftKind::Card,
+            Some(&note_id),
+            None,
+            asset_draft_id.as_deref(),
+            now,
+        )?;
         transaction.commit().map_err(CommandError::database)?;
         finalization.cleanup();
         Ok(note_id)
@@ -693,6 +722,7 @@ fn update_card_note_in_database(
             tags,
             allow_duplicate,
             asset_draft_id,
+            editor_draft,
         } => GeneratedCardWrite {
             note_id: Some(note_id),
             deck_id,
@@ -705,6 +735,7 @@ fn update_card_note_in_database(
             tags,
             allow_duplicate,
             asset_draft_id,
+            editor_draft,
         },
         UpdateCardNoteInput::Cloze {
             note_id,
@@ -715,6 +746,7 @@ fn update_card_note_in_database(
             tags,
             allow_duplicate,
             asset_draft_id,
+            editor_draft,
         } => GeneratedCardWrite {
             note_id: Some(note_id),
             deck_id,
@@ -726,6 +758,7 @@ fn update_card_note_in_database(
             tags,
             allow_duplicate,
             asset_draft_id,
+            editor_draft,
         },
     };
     update_prepared_card_note(database, paths, write)
@@ -744,6 +777,7 @@ fn update_prepared_card_note(
         tags,
         allow_duplicate,
         asset_draft_id,
+        editor_draft,
     } = write;
     let note_id = note_id
         .ok_or_else(|| CommandError::new("card_not_found", "That flashcard no longer exists."))?;
@@ -847,6 +881,15 @@ fn update_prepared_card_note(
             &asset_ids,
             asset_draft_id.as_deref(),
             Some(&note_id),
+        )?;
+        crate::editor_drafts::commit_canonical_editor_draft(
+            &transaction,
+            editor_draft.as_ref(),
+            crate::editor_drafts::EditorDraftKind::Card,
+            Some(&note_id),
+            Some(revision),
+            asset_draft_id.as_deref(),
+            now,
         )?;
         transaction.commit().map_err(CommandError::database)?;
         finalization.cleanup();
