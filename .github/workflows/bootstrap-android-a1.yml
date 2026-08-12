@@ -1,0 +1,138 @@
+name: Bootstrap Android A1 shell
+
+on:
+  push:
+    branches:
+      - agent/android-a1-a3
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-android-a1-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 45
+    steps:
+      - name: Check out Android branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/android-a1-a3
+          fetch-depth: 0
+
+      - name: Resolve Android toolchain
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+          candidates=(
+            "${ANDROID_HOME:-}"
+            "${ANDROID_SDK_ROOT:-}"
+            "$HOME/Android/Sdk"
+            "$HOME/Android/sdk"
+            "/opt/android-sdk"
+          )
+          sdk=""
+          for candidate in "${candidates[@]}"; do
+            if [[ -n "$candidate" && -d "$candidate" ]]; then
+              sdk="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$sdk" ]]; then
+            echo "No Android SDK directory was found." >&2
+            printf 'Checked: %s\n' "${candidates[@]}" >&2
+            exit 1
+          fi
+
+          sdkmanager=""
+          for candidate in \
+            "$sdk/cmdline-tools/latest/bin/sdkmanager" \
+            "$sdk/cmdline-tools/bin/sdkmanager" \
+            "$sdk/tools/bin/sdkmanager"; do
+            if [[ -x "$candidate" ]]; then
+              sdkmanager="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$sdkmanager" ]]; then
+            echo "Android command-line tools are missing under $sdk." >&2
+            exit 1
+          fi
+
+          ndk="${NDK_HOME:-}"
+          if [[ -z "$ndk" || ! -d "$ndk" ]]; then
+            ndk="$(find "$sdk/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -n 1 || true)"
+          fi
+          if [[ -z "$ndk" || ! -d "$ndk" ]]; then
+            echo "No side-by-side Android NDK is installed under $sdk/ndk." >&2
+            exit 1
+          fi
+
+          java_home="${JAVA_HOME:-}"
+          if [[ -z "$java_home" ]]; then
+            java_path="$(readlink -f "$(command -v javac)")"
+            java_home="$(dirname "$(dirname "$java_path")")"
+          fi
+
+          {
+            echo "ANDROID_HOME=$sdk"
+            echo "ANDROID_SDK_ROOT=$sdk"
+            echo "NDK_HOME=$ndk"
+            echo "JAVA_HOME=$java_home"
+            echo "$sdk/platform-tools"
+            echo "$sdk/emulator"
+            echo "$sdk/cmdline-tools/latest/bin"
+          } >> "$GITHUB_ENV"
+          {
+            echo "$sdk/platform-tools"
+            echo "$sdk/emulator"
+            echo "$sdk/cmdline-tools/latest/bin"
+            echo "$java_home/bin"
+          } >> "$GITHUB_PATH"
+
+          echo "Android SDK: $sdk"
+          echo "Android NDK: $ndk"
+          echo "Java home: $java_home"
+          "$java_home/bin/java" -version
+          "$sdkmanager" --version
+          "$sdk/platform-tools/adb" version
+          if [[ -x "$sdk/emulator/emulator" ]]; then
+            "$sdk/emulator/emulator" -version | head -n 3
+          fi
+
+      - name: Install JavaScript and Rust targets
+        run: |
+          pnpm install --frozen-lockfile
+          rustup target add \
+            aarch64-linux-android \
+            armv7-linux-androideabi \
+            i686-linux-android \
+            x86_64-linux-android
+
+      - name: Generate Tauri Android project
+        run: |
+          if [[ ! -f src-tauri/gen/android/gradlew ]]; then
+            pnpm tauri android init --ci
+          else
+            echo "Android project already exists; keeping the committed generated shell."
+          fi
+          find src-tauri/gen/android -maxdepth 5 -type f | sort
+
+      - name: Commit generated Android shell
+        run: |
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add src-tauri/gen/android src-tauri/tauri.android.conf.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No generated Android changes were required."
+            exit 0
+          fi
+          git commit -m "feat: generate the Tauri Android shell"
+          git push origin HEAD:agent/android-a1-a3
