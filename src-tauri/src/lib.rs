@@ -36,6 +36,7 @@ mod document_store;
 mod documents;
 mod editor_drafts;
 mod error;
+mod external_file_commands;
 mod external_files;
 mod library_backup;
 mod logging;
@@ -249,11 +250,14 @@ pub fn run() {
             ui_checkpoint::get_ui_checkpoint,
             ui_checkpoint::save_ui_checkpoint,
             ui_checkpoint::clear_ui_checkpoint,
-            external_files::select_and_stage_external_import,
+            external_file_commands::select_and_stage_external_import,
             external_files::release_staged_external_import,
-            external_files::publish_prepared_export,
-            external_files::share_prepared_export,
+            external_file_commands::publish_prepared_export,
+            external_file_commands::share_prepared_export,
             external_files::release_prepared_export,
+            external_file_commands::list_incoming_shares,
+            external_file_commands::stage_incoming_share,
+            external_file_commands::dismiss_incoming_share,
             editor_drafts::open_editor_draft,
             editor_drafts::save_editor_draft,
             editor_drafts::discard_editor_draft,
