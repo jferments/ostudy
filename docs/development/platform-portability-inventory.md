@@ -2,6 +2,10 @@
 
 This document records the operating-system assumptions that remain after the P0-P2 portability foundation. The machine-readable companion is [`../../scripts/policy/platform-boundary-exceptions.json`](../../scripts/policy/platform-boundary-exceptions.json); it contains only source-level exceptions that the static verifier can enforce directly.
 
+## Qualification baseline
+
+P0-P2 completion is qualified through the ordinary full repository gate on the self-hosted Linux runner. The portable shared model currently includes schema version 25, backup format version 3, explicit version-1/version-2 backup compatibility, transaction-atomic durable-draft retirement, opaque external-file transfers, and managed asset identities. Later target work may replace adapters and packaging, but it must preserve these contracts and keep the Linux gate green.
+
 ## Remaining assumptions
 
 | ID | Current location | Remaining assumption | Target boundary | Retirement |
