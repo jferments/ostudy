@@ -11,7 +11,7 @@ The following capabilities are already present in the active codebase:
 - rich card content with managed local images and strict validation;
 - tags, full-text search, filters, bulk entry, duplicate detection, and move/copy workflows;
 - FSRS scheduling, workload controls, voluntary and due-only study, and detailed learning analytics;
-- portable deck exchange, generated JSON import, and complete personal-library backup;
+- portable deck exchange, generated JSON import, and complete personal-library backup including recoverable unfinished authoring drafts;
 - configurable llama.cpp/Unsloth and DeepSeek provider profiles with native credential and network boundaries;
 - a managed PDF library and an initial document-to-flashcard generation workflow;
 - responsive shared UI foundations, themes, keyboard behavior, and accessibility primitives;
@@ -21,7 +21,7 @@ Historical stage plans are kept under [`history/`](history/) for project archaeo
 
 ## Completed portability foundation (P0-P2)
 
-The shared runtime now exposes typed platform capabilities for external files, secure secrets, lifecycle, time zones, and resource observation. External imports are staged into managed storage, exports are prepared before publication, card images use opaque asset identities, and card/template/bulk/AI-profile metadata editors retain bounded device-local drafts across process loss. Android, iOS, Windows, and macOS adapters and packaging remain later platform phases.
+The shared runtime now exposes typed platform capabilities for external files, secure secrets, lifecycle, time zones, and resource observation. External imports are staged into managed storage, exports are prepared before publication, card images use opaque asset identities, and card/template/bulk/AI-profile metadata editors retain bounded device-local drafts across process loss. Final authoring saves retire the exact flushed draft inside the canonical SQLite transaction, and backup format version 3 restores persistent drafts with their staged images. Android, iOS, Windows, and macOS adapters and packaging remain later platform phases.
 
 ## Current priorities
 
@@ -29,9 +29,9 @@ The shared runtime now exposes typed platform capabilities for external files, s
 
 PDF generation is the newest large subsystem and remains the most important reliability target. Work in this area includes improving extraction quality, OCR recovery, provider compatibility, progress reporting, cancellation, retries, diagnostic clarity, generated-card quality, and behavior on large or unusual documents. The goal is not merely to make one test PDF succeed, but to make failures understandable and recoverable without corrupting the local library.
 
-### 2. Complete everyday authoring and review ergonomics
+### 2. Refine everyday authoring and review ergonomics
 
-Planned improvements include autosaved editor drafts, interrupted-edit recovery, richer image sizing and alignment, and a carefully designed undo-last-review operation that restores an exact prior schedule state without rewriting historical evidence incorrectly.
+Autosaved card, template, bulk-entry, and AI-profile metadata drafts now recover after interruption and participate in complete-library backup. Remaining improvements include richer image sizing and alignment, clearer multi-draft management, and a carefully designed undo-last-review operation that restores an exact prior schedule state without rewriting historical evidence incorrectly.
 
 ### 3. Broaden desktop qualification
 

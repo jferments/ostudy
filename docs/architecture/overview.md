@@ -114,6 +114,8 @@ SQLite stores structured domain state. Managed directories store controlled file
 
 Command or service orchestrators own logical transactions. Helpers accept a connection or transaction and do not commit secretly. Multi-card scheduling operations, generated imports, deck transfer, review submission, and generated-card persistence validate their complete logical unit before commit.
 
+Durable authoring follows the same rule. The interface flushes an exact editor-draft revision before final save; the Rust use case validates that revision and commits canonical content, managed-image promotion, and draft retirement in one SQLite transaction. Canonical failure preserves the draft for recovery, while replay of a targetless committed batch is rejected before duplicate cards can be created.
+
 Long-lived compatibility is split into two mechanisms:
 
 - **schema migrations** append SQL structure changes and are checksum registered;
@@ -151,7 +153,7 @@ React renders analytics data but does not invent an independent scoring model.
 
 `.ostudy.json` is strict data-only generated authoring input. The entire file is validated before one transaction, exact duplicates are skipped, and unsupported or unknown syntax is rejected rather than ignored.
 
-`.ostudybackup` is the complete personal-library recovery format. It combines one coherent SQLite snapshot with the managed files required by that snapshot. Provider metadata may be backed up; credential bytes are excluded because they never enter SQLite.
+`.ostudybackup` is the complete personal-library recovery format. It combines one coherent SQLite snapshot with the managed files required by that snapshot. Backup format version 3 includes active persistent authoring drafts and their draft-owned staged images; version-1 and version-2 packages remain readable. Provider metadata may be backed up, but credential bytes are excluded because they never enter SQLite or draft payloads.
 
 See [Backups, imports, and sharing](../user-guide/backups-imports-and-sharing.md) for the user-facing distinction.
 

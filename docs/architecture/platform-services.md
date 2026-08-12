@@ -49,6 +49,10 @@ The AI credential vault uses `SecureSecretStore`; session-only values remain in 
 
 Lifecycle events are useful opportunities to flush or checkpoint, not guarantees. Durable drafts, transfer ledgers, document checkpoints, idempotent operation identities, and startup reconciliation make abrupt termination safe.
 
+Before a canonical card, template, generated-card batch, bulk-entry batch, or AI-profile metadata mutation begins, the frontend flushes the latest draft and supplies its exact draft ID and optimistic revision. Rust validates that reference and commits the canonical records, managed-asset promotion, and draft retirement inside the same SQLite transaction. A failed canonical mutation therefore leaves the recoverable draft active; a lost success response cannot authorize a duplicate targetless batch.
+
+Whole-library backup format version 3 includes active or conflicted persistent drafts and their staged images. Older backup versions remain readable, while transient external-file staging and in-progress document work remain outside a coherent backup snapshot.
+
 ## Resources
 
 Adapters observe the device. Shared Rust policy decides how many workers, bitmaps, or network requests are safe. Unknown mobile data results in conservative plans.
