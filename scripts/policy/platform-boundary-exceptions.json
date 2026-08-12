@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "exceptions": [
+    {
+      "rule": "frontend-user-agent-platform-detection",
+      "path": "src/platform/capabilities.ts",
+      "retireInPhase": "P1",
+      "reason": "Temporary Android hardware Back detection"
+    },
+    {
+      "rule": "frontend-direct-tauri-core-import",
+      "path": "src/editor/richText.ts",
+      "retireInPhase": "P2",
+      "reason": "Temporary absolute asset path conversion"
+    },
+    {
+      "rule": "frontend-direct-tauri-core-import",
+      "path": "src/editor/RichTextEditor.tsx",
+      "retireInPhase": "P2",
+      "reason": "Temporary imported-image path conversion"
+    },
+    {
+      "rule": "frontend-raw-path-contract",
+      "path": "src/ipc/assets.ts",
+      "retireInPhase": "P2",
+      "reason": "Asset DTO and image import expose paths"
+    },
+    {
+      "rule": "frontend-raw-path-contract",
+      "path": "src/ipc/backup.ts",
+      "retireInPhase": "P2",
+      "reason": "Backup commands accept source/destination paths"
+    },
+    {
+      "rule": "frontend-raw-path-contract",
+      "path": "src/ipc/decks.ts",
+      "retireInPhase": "P2",
+      "reason": "Deck import/export accepts paths"
+    },
+    {
+      "rule": "frontend-raw-path-contract",
+      "path": "src/ipc/documents.ts",
+      "retireInPhase": "P2",
+      "reason": "PDF import accepts a path"
+    },
+    {
+      "rule": "frontend-raw-path-contract",
+      "path": "src/ipc/generated-import.ts",
+      "retireInPhase": "P2",
+      "reason": "Generated import accepts a path"
+    },
+    {
+      "rule": "rust-raw-path-contract",
+      "path": "src-tauri/src/assets.rs",
+      "retireInPhase": "P2",
+      "reason": "Asset DTO exposes a path"
+    },
+    {
+      "rule": "rust-raw-path-contract",
+      "path": "src-tauri/src/asset_lifecycle.rs",
+      "retireInPhase": "P2",
+      "reason": "Image import command accepts a path"
+    },
+    {
+      "rule": "rust-raw-path-contract",
+      "path": "src-tauri/src/documents.rs",
+      "retireInPhase": "P2",
+      "reason": "PDF import input contains a path"
+    },
+    {
+      "rule": "rust-raw-path-contract",
+      "path": "src-tauri/src/library_backup.rs",
+      "retireInPhase": "P2",
+      "reason": "Backup commands accept paths"
+    },
+    {
+      "rule": "rust-raw-path-contract",
+      "path": "src-tauri/src/studydeck.rs",
+      "retireInPhase": "P2",
+      "reason": "Deck package commands accept paths"
+    },
+    {
+      "rule": "rust-keyring-outside-adapter",
+      "path": "src-tauri/src/ai/secrets.rs",
+      "retireInPhase": "P1",
+      "reason": "Current concrete credential store"
+    },
+    {
+      "rule": "rust-sysinfo-outside-adapter",
+      "path": "src-tauri/src/system_resources.rs",
+      "retireInPhase": "P1",
+      "reason": "Current direct resource probe"
+    },
+    {
+      "rule": "rust-direct-system-clock",
+      "path": "src-tauri/src/util.rs",
+      "retireInPhase": "P1",
+      "reason": "Current direct SystemTime access"
+    },
+    {
+      "rule": "rust-direct-local-time-zone",
+      "path": "src-tauri/src/study_calendar.rs",
+      "retireInPhase": "P1",
+      "reason": "Current Unix-oriented zone discovery"
+    },
+    {
+      "rule": "rust-target-os-branch",
+      "path": "src-tauri/src/pdf_ocr_backend.rs",
+      "retireInPhase": "Android/iOS",
+      "reason": "Desktop OCR adapter selection"
+    },
+    {
+      "rule": "rust-target-os-branch",
+      "path": "src-tauri/src/pdf_render_backend.rs",
+      "retireInPhase": "Android/iOS",
+      "reason": "Desktop/mobile renderer adapter selection"
+    },
+    {
+      "rule": "rust-process-command-outside-adapter",
+      "path": "src-tauri/src/pdf_ocr_backend.rs",
+      "retireInPhase": "Android/iOS",
+      "reason": "Desktop Tesseract subprocess"
+    }
+  ]
+}
