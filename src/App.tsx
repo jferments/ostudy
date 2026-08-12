@@ -1,6 +1,7 @@
 import { lazy, Suspense, useLayoutEffect } from "react";
 
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
+import { IncomingShareCoordinator } from "./components/IncomingShareCoordinator";
 import { NavigationSidebar } from "./components/NavigationSidebar";
 import { Toast } from "./components/Toast";
 import { useAppController } from "./controllers/useAppController";
@@ -68,6 +69,10 @@ function App() {
 
   return (
     <div className="app-shell" data-ui-root="true">
+      <IncomingShareCoordinator
+        refreshDecks={controller.refreshDecks}
+        showToast={controller.showToast}
+      />
       <NavigationSidebar section={controller.section} onNavigate={controller.navigate} />
 
       <main className="main-area">
@@ -115,6 +120,8 @@ function App() {
                 settings={controller.activeSettings}
                 launchRequest={controller.practiceLaunch}
                 onLaunchConsumed={controller.consumePracticeLaunch}
+                restoreCheckpoint={controller.practiceRestore}
+                onRestoreConsumed={controller.consumePracticeRestore}
                 onViewAnalytics={controller.viewSessionAnalytics}
                 onEndEarly={controller.returnFromPractice}
                 showToast={controller.showToast}
