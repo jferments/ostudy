@@ -29,7 +29,7 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Apply backup v3 corrections
-        run: node ./scripts/apply-platform-p2-backup-v3.mjs
+        run: node ./scripts/run-platform-p2-backup-v3.mjs
 
       - name: Install and provision
         run: |
@@ -43,6 +43,7 @@ jobs:
       - name: Remove applicator and commit
         run: |
           rm scripts/apply-platform-p2-backup-v3.mjs
+          rm scripts/run-platform-p2-backup-v3.mjs
           rm .github/workflows/apply-platform-p2-backup-v3.yml
           git diff --check
           git config user.name "ostudy automation"
