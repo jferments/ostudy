@@ -5,7 +5,7 @@
 //! bypass the final domain validator. Card/template drafts own a persistent
 //! managed asset draft so image bytes survive WebView or process loss.
 
-use std::{collections::BTreeSet, path::PathBuf};
+use std::collections::BTreeSet;
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};

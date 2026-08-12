@@ -355,7 +355,8 @@ fn ensure_active_draft(
     draft_id: &str,
     now: i64,
 ) -> Result<String, CommandError> {
-    let row: Option<(String, i64, Option<i64>, Option<i64>, String)> = connection
+    type ActiveDraftRow = (String, i64, Option<i64>, Option<i64>, String);
+    let row: Option<ActiveDraftRow> = connection
         .query_row(
             "SELECT purpose, expires_at, committed_at, canceled_at, retention_mode
              FROM asset_drafts WHERE id = ?1",

@@ -338,11 +338,11 @@ impl PlatformRuntime {
     pub fn current() -> Self {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
-            return desktop::runtime();
+            desktop::runtime()
         }
         #[cfg(any(target_os = "android", target_os = "ios"))]
         {
-            return mobile_stub::runtime();
+            mobile_stub::runtime()
         }
     }
 

@@ -1256,7 +1256,7 @@ fn load_template_assets(
 
 fn load_assets_by_ids(
     connection: &Connection,
-    paths: &AppPaths,
+    _paths: &AppPaths,
     asset_ids: &[String],
 ) -> Result<Vec<AssetDto>, CommandError> {
     let mut assets = Vec::new();
