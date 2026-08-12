@@ -1,4 +1,4 @@
-name: Apply Android A1-A3 core integration
+name: Complete Android A1-A3 implementation
 
 on:
   push:
@@ -9,13 +9,17 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-android-a1-a3-core-${{ github.ref }}
-  cancel-in-progress: false
+  group: complete-android-a1-a3-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  apply:
+  complete:
     runs-on: [self-hosted, linux, x64, ostudy]
-    timeout-minutes: 120
+    timeout-minutes: 180
+    env:
+      CI: "true"
+      CARGO_TERM_COLOR: always
+
     steps:
       - name: Check out Android branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -23,56 +27,83 @@ jobs:
           ref: agent/android-a1-a3
           fetch-depth: 0
 
-      - name: Expose tools
+      - name: Expose user-local tools
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Apply core integration
-        run: node ./scripts/run-android-a1-a3-core.mjs
+      - name: Apply A1-A3 source integrations
+        run: |
+          node ./scripts/run-android-a1-a3-core.mjs
+          node ./scripts/apply-android-a2-product.mjs
+          node ./scripts/apply-android-a3-incoming.mjs
+          node ./scripts/apply-android-a3-frontend.mjs
+          chmod +x src-tauri/gen/android/gradlew
+          chmod +x \
+            scripts/android-env.sh \
+            scripts/android-doctor.sh \
+            scripts/install-android-deps.sh \
+            scripts/android-build.sh \
+            scripts/android-dev.sh \
+            scripts/android-avd.sh \
+            scripts/android-test.sh \
+            scripts/android-emulator-smoke.sh \
+            scripts/verify-android-package.sh
 
-      - name: Install JavaScript and native dependencies
+      - name: Install JavaScript, Linux, and Android dependencies
         run: |
           pnpm install --frozen-lockfile
           ./scripts/install-native-deps.sh --pdfium-only
           ./scripts/install-android-deps.sh
-          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+          rustup target add \
+            aarch64-linux-android \
+            armv7-linux-androideabi \
+            i686-linux-android \
+            x86_64-linux-android
           source ./scripts/android-env.sh
           android_write_local_properties
           android_emit_github_environment
+          echo "OSTUDY_PDFIUM_PATH=$GITHUB_WORKSPACE/src-tauri/resources/native/pdfium/libpdfium.so" >> "$GITHUB_ENV"
 
-      - name: Normalize Rust dependency graph and source
+      - name: Normalize generated Rust state
         run: |
           cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 > /dev/null
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
-
-      - name: Qualify shared application
-        env:
-          OSTUDY_PDFIUM_PATH: ${{ github.workspace }}/src-tauri/resources/native/pdfium/libpdfium.so
-        run: |
-          pnpm exec tsc -b --pretty false
-          pnpm test
-          cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
-          node scripts/verify-ipc-contract.mjs
-          node scripts/verify-platform-boundaries.mjs
           git diff --check
 
-      - name: Build Android x86_64 debug APK
-        env:
-          CI: "true"
-        run: |
-          source ./scripts/android-env.sh
-          pnpm tauri android build --debug --target x86_64
+      - name: Run complete shared Linux qualification
+        run: ./scripts/check.sh
 
-      - name: Commit qualified integration
+      - name: Run Android project and package qualification
         run: |
-          rm scripts/apply-android-a1-a3-core.mjs
-          rm scripts/run-android-a1-a3-core.mjs
-          rm .github/workflows/apply-android-a1-a3-core.yml
+          node ./scripts/verify-android-project.mjs
+          ./scripts/android-test.sh
+
+      - name: Remove implementation-only applicators and workflows
+        run: |
+          rm -f \
+            scripts/apply-android-a1-a3-core.mjs \
+            scripts/run-android-a1-a3-core.mjs \
+            scripts/apply-android-a2-product.mjs \
+            scripts/apply-android-a3-incoming.mjs \
+            scripts/apply-android-a3-frontend.mjs \
+            scripts/apply-android-shared-a1-a2.mjs \
+            scripts/bootstrap-android-a1.mjs \
+            scripts/bootstrap-ostudy-platform-plugin.mjs \
+            .github/workflows/apply-android-a1-a3-core.yml \
+            .github/workflows/apply-android-shared-a1-a2.yml \
+            .github/workflows/bootstrap-android-a1.yml \
+            .github/workflows/bootstrap-ostudy-platform-plugin.yml
           git diff --check
+
+      - name: Commit fully qualified Android application
+        run: |
           git config user.name "ostudy automation"
           git config user.email "actions@users.noreply.github.com"
           git add -A
-          git commit -m "feat: integrate Android runtime and build shell"
+          if git diff --cached --quiet; then
+            echo "No Android integration changes remain to commit."
+            exit 0
+          fi
+          git commit -m "feat: complete Android application phases A1-A3"
           git push origin HEAD:agent/android-a1-a3
