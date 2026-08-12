@@ -355,12 +355,20 @@ fn ensure_active_draft(
     draft_id: &str,
     now: i64,
 ) -> Result<String, CommandError> {
-    let row: Option<(String, i64, Option<i64>, Option<i64>)> = connection
+    let row: Option<(String, i64, Option<i64>, Option<i64>, String)> = connection
         .query_row(
-            "SELECT purpose, expires_at, committed_at, canceled_at
+            "SELECT purpose, expires_at, committed_at, canceled_at, retention_mode
              FROM asset_drafts WHERE id = ?1",
             [draft_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .optional()
         .map_err(CommandError::database)?;
@@ -369,19 +377,23 @@ fn ensure_active_draft(
             "asset_draft_not_found",
             "This image draft no longer exists.",
         )),
-        Some((_, _, Some(_), _)) => Err(CommandError::new(
+        Some((_, _, Some(_), _, _)) => Err(CommandError::new(
             "asset_draft_committed",
             "This image draft has already been saved.",
         )),
-        Some((_, _, _, Some(_))) => Err(CommandError::new(
+        Some((_, _, _, Some(_), _)) => Err(CommandError::new(
             "asset_draft_canceled",
             "This image draft has already been canceled.",
         )),
-        Some((_, expires_at, None, None)) if expires_at < now => Err(CommandError::new(
-            "asset_draft_expired",
-            "This image draft expired. Reopen the editor and add the image again.",
-        )),
-        Some((purpose, _, None, None)) => Ok(purpose),
+        Some((_, expires_at, None, None, retention_mode))
+            if retention_mode == "ephemeral" && expires_at < now =>
+        {
+            Err(CommandError::new(
+                "asset_draft_expired",
+                "This image draft expired. Reopen the editor and add the image again.",
+            ))
+        }
+        Some((purpose, _, None, None, _)) => Ok(purpose),
     }
 }
 
@@ -652,6 +664,21 @@ fn rollback_promoted_files(promoted: &[(PathBuf, PathBuf)]) {
     }
 }
 
+pub(crate) fn retire_unused_editor_assets(
+    connection: &Connection,
+    paths: &AppPaths,
+    draft_id: &str,
+    retained: &BTreeSet<String>,
+    now: i64,
+    reason: &str,
+) -> Result<Vec<PathBuf>, CommandError> {
+    retire_unused_draft_assets(connection, paths, draft_id, retained, now, reason)
+}
+
+pub(crate) fn remove_editor_cleanup_paths(paths: &[PathBuf]) {
+    remove_paths_best_effort(paths);
+}
+
 fn retire_unused_draft_assets(
     connection: &Connection,
     paths: &AppPaths,
@@ -764,7 +791,8 @@ fn expire_drafts(
         let mut statement = connection
             .prepare(
                 "SELECT id FROM asset_drafts
-                 WHERE committed_at IS NULL AND canceled_at IS NULL AND expires_at < ?1",
+                 WHERE committed_at IS NULL AND canceled_at IS NULL
+                   AND retention_mode = 'ephemeral' AND expires_at < ?1",
             )
             .map_err(CommandError::database)?;
         let rows = statement

@@ -34,6 +34,7 @@ mod document_scale;
 mod document_semantics;
 mod document_store;
 mod documents;
+mod editor_drafts;
 mod error;
 mod external_files;
 mod library_backup;
@@ -107,6 +108,8 @@ pub fn run() {
                 .map_err(|error| io::Error::other(error.to_string()))?;
 
             external_files::reconcile_startup(&database, &paths)
+                .map_err(|error| io::Error::other(error.message))?;
+            editor_drafts::reconcile_startup(&database)
                 .map_err(|error| io::Error::other(error.message))?;
             deletion::finalize_expired_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
@@ -243,6 +246,11 @@ pub fn run() {
             external_files::release_staged_external_import,
             external_files::publish_prepared_export,
             external_files::release_prepared_export,
+            editor_drafts::open_editor_draft,
+            editor_drafts::save_editor_draft,
+            editor_drafts::discard_editor_draft,
+            editor_drafts::commit_editor_draft,
+            editor_drafts::list_editor_drafts,
             ai::profiles::get_ai_provider_catalog,
             ai::profiles::list_ai_provider_profiles,
             ai::profiles::get_ai_provider_profile,

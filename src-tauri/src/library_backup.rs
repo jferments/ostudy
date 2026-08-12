@@ -28,7 +28,7 @@ use crate::{
 };
 
 const BACKUP_FORMAT: &str = "ostudy-library-backup";
-const BACKUP_VERSION: i64 = 2;
+const BACKUP_VERSION: i64 = 3;
 const MIN_SUPPORTED_BACKUP_VERSION: i64 = 1;
 const MAX_BACKUP_FILE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const MAX_DATABASE_SNAPSHOT_BYTES: usize = 1_500 * 1024 * 1024;
@@ -436,7 +436,9 @@ fn export_backup(
         let active_drafts = connection
             .query_row(
                 "SELECT COUNT(*) FROM asset_drafts
-                 WHERE committed_at IS NULL AND canceled_at IS NULL",
+                 WHERE committed_at IS NULL AND canceled_at IS NULL
+                   AND retention_mode = 'ephemeral'
+                   AND retention_mode = 'ephemeral'",
                 [],
                 |row| row.get::<_, i64>(0),
             )
@@ -586,10 +588,26 @@ fn export_asset_files(
 ) -> Result<(), CommandError> {
     let mut statement = snapshot
         .prepare(
-            "SELECT id, relative_path, mime_type, byte_size
-             FROM assets
-             WHERE lifecycle_state = 'ready' AND deleted_at IS NULL
-             ORDER BY id",
+            "SELECT a.id,
+                    CASE
+                      WHEN a.lifecycle_state = 'ready' THEN a.relative_path
+                      ELSE a.staged_relative_path
+                    END,
+                    a.mime_type, a.byte_size
+             FROM assets a
+             LEFT JOIN asset_drafts ad ON ad.id = a.draft_id
+             LEFT JOIN editor_drafts ed ON ed.id = ad.editor_draft_id
+             WHERE a.deleted_at IS NULL
+               AND (
+                 a.lifecycle_state = 'ready'
+                 OR (
+                   a.lifecycle_state = 'staged'
+                   AND ad.retention_mode = 'persistent_editor'
+                   AND ad.committed_at IS NULL AND ad.canceled_at IS NULL
+                   AND ed.state IN ('active', 'conflicted')
+                 )
+               )
+             ORDER BY a.id",
         )
         .map_err(CommandError::database)?;
     let assets = statement

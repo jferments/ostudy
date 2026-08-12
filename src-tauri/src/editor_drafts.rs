@@ -5,10 +5,7 @@
 //! bypass the final domain validator. Card/template drafts own a persistent
 //! managed asset draft so image bytes survive WebView or process loss.
 
-use std::{
-    collections::BTreeSet,
-    path::PathBuf,
-};
+use std::{collections::BTreeSet, path::PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -175,14 +172,7 @@ pub fn open_editor_draft(
                          id, purpose, owner_id, created_at, updated_at, expires_at,
                          retention_mode, editor_draft_id
                      ) VALUES (?1, ?2, ?3, ?4, ?4, ?5, 'persistent_editor', ?6)",
-                    params![
-                        id,
-                        purpose,
-                        input.target_entity_id,
-                        now,
-                        i64::MAX,
-                        draft_id,
-                    ],
+                    params![id, purpose, input.target_entity_id, now, i64::MAX, draft_id,],
                 )
                 .map_err(CommandError::database)?;
             Some(id)
@@ -245,7 +235,11 @@ pub fn save_editor_draft(
                 "This recovered draft changed before autosave completed. Reload it and try again.",
             ));
         }
-        validate_payload(current.draft_kind, input.payload_schema_version, &input.payload)?;
+        validate_payload(
+            current.draft_kind,
+            input.payload_schema_version,
+            &input.payload,
+        )?;
         if current.asset_draft_id.is_none() && !retained.is_empty() {
             return Err(CommandError::new(
                 "editor_draft_assets_not_supported",
@@ -302,7 +296,8 @@ pub fn save_editor_draft(
                      SET last_opened_at = ?1, updated_at = ?1
                      WHERE id = ?2 AND revision = ?3 AND state = 'active'",
                     params![now, input.draft_id, input.revision],
-                )?
+                )
+                .map_err(CommandError::database)?
         } else {
             transaction
                 .execute(
@@ -319,7 +314,8 @@ pub fn save_editor_draft(
                         input.draft_id,
                         input.revision,
                     ],
-                )?
+                )
+                .map_err(CommandError::database)?
         };
         if changed != 1 {
             return Err(CommandError::new(
@@ -457,12 +453,7 @@ pub fn commit_editor_draft(
                  SET state = 'committed', target_entity_id = COALESCE(?1, target_entity_id),
                      committed_at = ?2, updated_at = ?2, revision = revision + 1
                  WHERE id = ?3 AND revision = ?4 AND state = 'active'",
-                params![
-                    input.target_entity_id,
-                    now,
-                    input.draft_id,
-                    input.revision,
-                ],
+                params![input.target_entity_id, now, input.draft_id, input.revision,],
             )
             .map_err(CommandError::database)?;
         if changed != 1 {
@@ -831,10 +822,7 @@ fn validate_base_revision(value: Option<i64>) -> Result<(), CommandError> {
 }
 
 fn invalid_draft_revision() -> CommandError {
-    CommandError::new(
-        "invalid_revision",
-        "The editor draft revision is invalid.",
-    )
+    CommandError::new("invalid_revision", "The editor draft revision is invalid.")
 }
 
 fn inactive_draft_error(state: &str) -> CommandError {

@@ -160,9 +160,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "392cfda8f689f8e6f08be650003cf58d283d113452efa6d6d3f905b959bcb2d8",
         sql: include_str!("../migrations/0024_external_file_transfers.sql"),
     },
+    Migration {
+        version: 25,
+        name: "durable_editor_drafts",
+        checksum: "842ab270202dd3e936216e57878cc2b3f503059d78fc1476b4fdeb9a05fbb54e",
+        sql: include_str!("../migrations/0025_durable_editor_drafts.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 24;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 25;
 
 pub struct Database {
     connection: Mutex<Connection>,
