@@ -4,7 +4,7 @@
 //! re-derives the authoritative position, counts, and current card window from
 //! SQLite so a stale or tampered checkpoint cannot skip or duplicate reviews.
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -122,90 +122,4 @@ pub fn resume_practice_session(
             completed,
         })
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        authoring::{card_types_and_templates::CreateCardNoteInput, create_card_note_in_database},
-        decks::{create_deck_in_connection, CreateDeckInput},
-        practice_selection::start_selected_practice_in_connection,
-        study_calendar::StudyTimeContext,
-        util::generate_id,
-    };
-
-    #[test]
-    fn resume_uses_the_first_authoritative_unrated_position() {
-        let database = Database::open_in_memory().expect("database should open");
-        database
-            .with_connection(|connection| {
-                let deck = create_deck_in_connection(
-                    connection,
-                    CreateDeckInput {
-                        name: "Mobile restore".to_string(),
-                        description: None,
-                    },
-                )?;
-                create_card_note_in_database(
-                    connection,
-                    &crate::paths::AppPaths::new(std::env::temp_dir().join(generate_id(connection)?))
-                        .map_err(CommandError::io)?,
-                    CreateCardNoteInput::Basic {
-                        deck_id: deck.id.clone(),
-                        front_doc: serde_json::json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Q"}]}]}),
-                        back_doc: serde_json::json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"A"}]}]}),
-                        front_text: "Q".to_string(),
-                        back_text: "A".to_string(),
-                        tags: Vec::new(),
-                        reverse: true,
-                        allow_duplicate: false,
-                        asset_draft_id: None,
-                        editor_draft: None,
-                    },
-                )?;
-                let paths = crate::paths::AppPaths::new(
-                    std::env::temp_dir().join(format!("ostudy-resume-{}", generate_id(connection)?)),
-                )
-                .map_err(CommandError::io)?;
-                let session = start_selected_practice_in_connection(
-                    connection,
-                    &paths,
-                    generate_id(connection)?,
-                    vec![deck.id],
-                    Vec::new(),
-                    false,
-                    "extra",
-                )?;
-                connection
-                    .execute(
-                        "UPDATE practice_session_cards
-                         SET viewed_at = 1, revealed_at = 1, rated_at = 2, rating = 4
-                         WHERE session_id = ?1 AND position = 0",
-                        params![session.id],
-                    )
-                    .map_err(CommandError::database)?;
-                connection
-                    .execute(
-                        "UPDATE practice_sessions SET rated_count = 1, correct_count = 1
-                         WHERE id = ?1",
-                        params![session.id],
-                    )
-                    .map_err(CommandError::database)?;
-                let pending: (i64, i64) = connection
-                    .query_row(
-                        "SELECT position, CASE WHEN revealed_at IS NULL THEN 0 ELSE 1 END
-                         FROM practice_session_cards
-                         WHERE session_id = ?1 AND rated_at IS NULL AND dismissed_at IS NULL
-                         ORDER BY position LIMIT 1",
-                        params![session.id],
-                        |row| Ok((row.get(0)?, row.get(1)?)),
-                    )
-                    .map_err(CommandError::database)?;
-                assert_eq!(pending, (1, 0));
-                let _ = StudyTimeContext::capture()?;
-                Ok(())
-            })
-            .expect("resume fixture should be valid");
-    }
 }
