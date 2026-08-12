@@ -18,10 +18,28 @@ lib = replaceExact(lib, "mod util;\nmod workload;", "mod ui_checkpoint;\nmod uti
 lib = replaceExact(
   lib,
   "            platform::get_platform_capabilities,\n            external_files::select_and_stage_external_import,",
-  "            platform::get_platform_capabilities,\n            ui_checkpoint::get_ui_checkpoint,\n            ui_checkpoint::save_ui_checkpoint,\n            ui_checkpoint::clear_ui_checkpoint,\n            external_files::select_and_stage_external_import,",
-  "register UI checkpoint commands",
+  "            platform::get_platform_capabilities,\n            platform::set_platform_back_interception,\n            ui_checkpoint::get_ui_checkpoint,\n            ui_checkpoint::save_ui_checkpoint,\n            ui_checkpoint::clear_ui_checkpoint,\n            external_files::select_and_stage_external_import,",
+  "register UI checkpoint and Back commands",
 );
 await write("src-tauri/src/lib.rs", lib);
+
+let platform = await read("src-tauri/src/platform/mod.rs");
+platform = replaceExact(
+  platform,
+  `#[cfg(test)]
+pub(crate) fn unavailable_secret_store()`,
+  `#[tauri::command]
+pub fn set_platform_back_interception(_enabled: bool) -> Result<(), CommandError> {
+    // Desktop has no hardware Back dispatcher. The Android adapter replaces
+    // this no-op with native OnBackPressedDispatcher registration.
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn unavailable_secret_store()`,
+  "add portable Back interception command",
+);
+await write("src-tauri/src/platform/mod.rs", platform);
 
 let controller = await read("src/controllers/useAppController.ts");
 controller = replaceExact(
