@@ -121,14 +121,17 @@ controller = replaceExact(
 );
 await write("src/controllers/useAppController.ts", controller);
 
-// Wire checkpoint state into the practice screen.
+// Wire checkpoint state into the practice screen when an earlier source step
+// has not already added the props.
 let app = await read("src/App.tsx");
-app = replaceExact(
-  app,
-  `                launchRequest={controller.practiceLaunch}\n                onLaunchConsumed={controller.consumePracticeLaunch}\n`,
-  `                launchRequest={controller.practiceLaunch}\n                onLaunchConsumed={controller.consumePracticeLaunch}\n                restoreCheckpoint={controller.practiceRestore}\n                onRestoreConsumed={controller.consumePracticeRestore}\n`,
-  "wire practice restoration props",
-);
+if (!app.includes("restoreCheckpoint={controller.practiceRestore}")) {
+  app = replaceExact(
+    app,
+    `                launchRequest={controller.practiceLaunch}\n                onLaunchConsumed={controller.consumePracticeLaunch}\n`,
+    `                launchRequest={controller.practiceLaunch}\n                onLaunchConsumed={controller.consumePracticeLaunch}\n                restoreCheckpoint={controller.practiceRestore}\n                onRestoreConsumed={controller.consumePracticeRestore}\n`,
+    "wire practice restoration props",
+  );
+}
 await write("src/App.tsx", app);
 
 let practice = await read("src/screens/PracticeScreen.tsx");
