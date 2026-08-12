@@ -13,7 +13,7 @@ const MAX_GENERATED_IMPORT_ERROR_EXAMPLES: usize = 20;
 mod schema;
 use schema::{GeneratedImportCard, GeneratedImportDeckMode, GeneratedImportFile};
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FlashcardImportResultDto {
     pub deck_id: String,
@@ -39,16 +39,55 @@ struct PreparedImport {
 mod apply;
 mod prepare;
 
-use apply::{import_prepared_flashcards, import_prepared_flashcards_with_commit};
-use prepare::{prepare_flashcard_import, prepare_flashcard_import_bytes};
+#[cfg(test)]
+use apply::import_prepared_flashcards;
+use apply::import_prepared_flashcards_with_commit;
+#[cfg(test)]
+use prepare::prepare_flashcard_import;
+use prepare::prepare_flashcard_import_bytes;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImportGeneratedFlashcardsInput {
+    pub staged_file_id: String,
+}
 
 #[tauri::command]
 pub fn import_generated_flashcards(
     database: State<'_, Database>,
-    source_path: String,
+    paths: State<'_, AppPaths>,
+    input: ImportGeneratedFlashcardsInput,
 ) -> Result<FlashcardImportResultDto, CommandError> {
-    let prepared = prepare_flashcard_import(&source_path)?;
-    database.with_connection(|connection| import_prepared_flashcards(connection, prepared))
+    validate_entity_id(&input.staged_file_id, "staged generated flashcards")?;
+    if let Some(result) = database.with_connection(|connection| {
+        crate::external_files::consumed_import_result::<FlashcardImportResultDto>(
+            connection,
+            &input.staged_file_id,
+        )
+    })? {
+        return Ok(result);
+    }
+    let staged = database.with_connection(|connection| {
+        crate::external_files::resolve_staged_import(
+            connection,
+            paths.inner(),
+            &input.staged_file_id,
+            crate::external_files::ExternalImportPurpose::StudyContent,
+            &[crate::external_files::ExternalFileKind::GeneratedJson],
+        )
+    })?;
+    let bytes = std::fs::read(&staged.path).map_err(CommandError::io)?;
+    let prepared = prepare_flashcard_import_bytes(&bytes)?;
+    database.with_connection(|connection| {
+        import_prepared_flashcards_with_commit(connection, prepared, |connection, result, now| {
+            crate::external_files::mark_import_consumed(
+                connection,
+                &input.staged_file_id,
+                result,
+                now,
+            )
+        })
+    })
 }
 
 pub(crate) fn import_generated_flashcards_bytes_with_commit<F>(

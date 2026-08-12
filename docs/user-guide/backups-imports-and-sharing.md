@@ -44,6 +44,7 @@ A `.ostudybackup` file is the complete personal-library recovery format. It capt
 - schedules, review events, practice sessions, and analytics source records;
 - ordinary application settings;
 - managed card images;
+- active recoverable card, template, bulk-entry, and AI-provider-metadata drafts, including their draft-owned staged images;
 - retained source PDFs and their durable document-processing state;
 - nonsecret AI provider metadata, task defaults, and redacted capability evidence;
 - completed migration and data-repair ledgers needed for consistent restoration.
@@ -62,7 +63,7 @@ Create a complete backup:
 
 Keep more than one generation and store at least one copy outside the application data directory. A backup located only on the same failing disk is not a complete recovery strategy.
 
-Backup creation is blocked while a document task is active. This ensures the database and managed files are captured at one coherent point rather than packaging an in-progress PDF operation.
+Backup creation is blocked while a document task or transient file/asset operation is active. This ensures the database and managed files are captured at one coherent point rather than packaging an in-progress PDF or half-copied external file. Successfully autosaved persistent editor drafts do not block backup creation: backup format version 3 includes their typed payload, optimistic revision, ownership records, and staged images. Credential inputs remain excluded.
 
 ## Restoring a backup
 
@@ -71,7 +72,7 @@ A restore is validated before it replaces the active library. The application st
 After restoration:
 
 1. Restart ostudy when instructed.
-2. Confirm that decks, images, schedules, recent reviews, settings, and documents are present.
+2. Confirm that decks, images, schedules, recent reviews, settings, documents, and any unfinished recoverable authoring drafts are present.
 3. Reconfigure or verify AI credentials on the restored machine.
 4. Run a small practice session and create a new backup before deleting the older source copy.
 

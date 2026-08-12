@@ -9,6 +9,7 @@
 mod ai;
 mod analytics;
 mod asset_lifecycle;
+mod asset_protocol;
 mod assets;
 mod authoring;
 mod cards;
@@ -33,13 +34,16 @@ mod document_scale;
 mod document_semantics;
 mod document_store;
 mod documents;
+mod editor_drafts;
 mod error;
+mod external_files;
 mod library_backup;
 mod logging;
 mod paths;
 mod pdf_backend;
 mod pdf_ocr_backend;
 mod pdf_render_backend;
+pub mod platform;
 mod practice;
 mod practice_selection;
 mod projections;
@@ -74,7 +78,7 @@ use ai::AiRuntimeState;
 use database::Database;
 use paths::AppPaths;
 use pdf_render_backend::PdfRenderRuntime;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
@@ -82,6 +86,7 @@ static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .register_uri_scheme_protocol("ostudy-asset", asset_protocol::respond)
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -95,10 +100,17 @@ pub fn run() {
             let pending_restore =
                 library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
-            let ai_runtime = AiRuntimeState::new().map_err(io::Error::other)?;
+            let platform_runtime = platform::PlatformRuntime::current();
+            platform::install_global(platform_runtime.clone()).map_err(io::Error::other)?;
+            let ai_runtime = AiRuntimeState::new(platform_runtime.secure_secret_store())
+                .map_err(io::Error::other)?;
             let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
                 .map_err(|error| io::Error::other(error.to_string()))?;
 
+            external_files::reconcile_startup(&database, &paths)
+                .map_err(|error| io::Error::other(error.message))?;
+            editor_drafts::reconcile_startup(&database)
+                .map_err(|error| io::Error::other(error.message))?;
             deletion::finalize_expired_deletions(&database)
                 .map_err(|error| io::Error::other(error.message))?;
             deletion_purge::purge_finalized_deletions(&database)
@@ -121,12 +133,20 @@ pub fn run() {
             if !app.manage(database) {
                 return Err(io::Error::other("The database state was already initialized.").into());
             }
+            if !app.manage(platform_runtime.clone()) {
+                return Err(io::Error::other("The platform runtime was already initialized.").into());
+            }
             if !app.manage(ai_runtime) {
                 return Err(io::Error::other("The AI runtime state was already initialized.").into());
             }
             if !app.manage(pdf_render_runtime) {
                 return Err(io::Error::other("The PDF renderer state was already initialized.").into());
             }
+
+            let lifecycle = platform_runtime
+                .lifecycle()
+                .transition(platform::LifecyclePhase::Foreground);
+            let _ = app.emit("ostudy-lifecycle", lifecycle);
 
             logging::info(
                 "application_started",
@@ -144,7 +164,12 @@ pub fn run() {
             let tauri::WindowEvent::CloseRequested { api, .. } = event else {
                 return;
             };
+            let lifecycle = window.state::<platform::PlatformRuntime>().lifecycle();
+            let requested = lifecycle.transition(platform::LifecyclePhase::TerminationRequested);
+            let _ = window.emit("ostudy-lifecycle", requested);
             if window.label() != "main" || !task_cancellation::has_active_document_tasks() {
+                let terminating = lifecycle.transition(platform::LifecyclePhase::Terminating);
+                let _ = window.emit("ostudy-lifecycle", terminating);
                 return;
             }
 
@@ -154,6 +179,7 @@ pub fn run() {
             }
 
             let window = window.clone();
+            let lifecycle_after = lifecycle.clone();
             window
                 .dialog()
                 .message(
@@ -168,7 +194,12 @@ pub fn run() {
                 .show(move |should_close| {
                     CLOSE_CONFIRMATION_OPEN.store(false, Ordering::Release);
                     if should_close {
+                        let terminating = lifecycle_after.transition(platform::LifecyclePhase::Terminating);
+                        let _ = window.emit("ostudy-lifecycle", terminating);
                         let _ = window.destroy();
+                    } else {
+                        let foreground = lifecycle_after.transition(platform::LifecyclePhase::Foreground);
+                        let _ = window.emit("ostudy-lifecycle", foreground);
                     }
                 });
         })
@@ -210,6 +241,16 @@ pub fn run() {
             settings::get_settings,
             settings::save_settings,
             settings::get_app_info,
+            platform::get_platform_capabilities,
+            external_files::select_and_stage_external_import,
+            external_files::release_staged_external_import,
+            external_files::publish_prepared_export,
+            external_files::release_prepared_export,
+            editor_drafts::open_editor_draft,
+            editor_drafts::save_editor_draft,
+            editor_drafts::discard_editor_draft,
+            editor_drafts::commit_editor_draft,
+            editor_drafts::list_editor_drafts,
             ai::profiles::get_ai_provider_catalog,
             ai::profiles::list_ai_provider_profiles,
             ai::profiles::get_ai_provider_profile,
@@ -231,7 +272,7 @@ pub fn run() {
             document_operations::open_document_source,
             document_operations::delete_pdf_document,
             documents::set_document_archived,
-            library_backup::export_library_backup,
+            library_backup::prepare_library_backup,
             library_backup::prepare_library_restore,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
@@ -245,7 +286,7 @@ pub fn run() {
             schedule_controls::apply_schedule_action,
             analytics::get_analytics,
             analytics::get_recent_practice_reviews,
-            studydeck::export_deck,
+            studydeck::prepare_deck_export,
             studydeck::import_deck
         ])
         .run(tauri::generate_context!())

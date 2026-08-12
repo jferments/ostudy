@@ -13,7 +13,7 @@ import {
   setDocumentArchived,
   type DocumentSummary,
 } from "../ipc/documents";
-import { openFile } from "../platform/files";
+import { selectExternalImport } from "../platform/files";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import styles from "./DocumentsScreen.module.css";
 
@@ -78,17 +78,14 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
 
   async function uploadPdf(): Promise<void> {
     if (isUploading || busyDocumentId || deletingDocumentId) return;
-    const selected = await openFile({
-      title: "Upload PDF",
-      filters: [{ name: "PDF documents", extensions: ["pdf"] }],
-    });
-    if (typeof selected !== "string") return;
+    const selected = await selectExternalImport("pdf_document");
+    if (!selected) return;
 
     showToast("info", "Large documents can take several minutes.");
     setIsUploading(true);
     setErrorMessage(null);
     try {
-      const result = await importPdfAndGenerateFlashcards(selected);
+      const result = await importPdfAndGenerateFlashcards(selected.id);
       await Promise.all([refreshDocuments(), refreshDecks()]);
       showGenerationSuccess(result.document, result.createdCardCount, showToast);
     } catch (error: unknown) {

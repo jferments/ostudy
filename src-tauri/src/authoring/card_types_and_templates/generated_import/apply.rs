@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(test)]
 pub(super) fn import_prepared_flashcards(
     connection: &mut Connection,
     prepared: PreparedImport,

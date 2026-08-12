@@ -8,9 +8,25 @@ import * as settingsIpc from "../ipc/settings";
 import * as platformFiles from "../platform/files";
 import { DecksScreen } from "./DecksScreen";
 
+vi.mock("../controllers/useDurableDraft", () => ({
+  useDurableDraft: () => ({
+    draftId: "d".repeat(32),
+    assetDraftId: "7".repeat(32),
+    revision: 1,
+    status: "saved",
+    errorMessage: null,
+    recovered: false,
+    hasUnsavedLocalChanges: false,
+    flush: vi.fn().mockResolvedValue(undefined),
+    discard: vi.fn().mockResolvedValue(undefined),
+    commit: vi.fn().mockResolvedValue(undefined),
+    restart: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("../platform/files", () => ({
-  openFile: vi.fn(),
-  saveFile: vi.fn(),
+  selectExternalImport: vi.fn(),
+  publishExport: vi.fn(),
 }));
 
 vi.mock("../ipc/generated-import", () => ({
@@ -36,7 +52,7 @@ vi.mock("../ipc/common", () => ({
 vi.mock("../ipc/decks", () => ({
   createDeck: vi.fn(),
   deleteDeck: vi.fn(),
-  exportDeck: vi.fn(),
+  prepareDeckExport: vi.fn(),
   getDeck: vi.fn(),
   importDeck: vi.fn(),
   listDeckCardSummaries: vi.fn(),
@@ -104,8 +120,8 @@ function renderDecks(showToast = vi.fn()) {
 describe("DecksScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(platformFiles.openFile).mockResolvedValue(null);
-    vi.mocked(platformFiles.saveFile).mockResolvedValue(null);
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
+    vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "export", destinationKind: "desktop_file", completedAt: Date.now() });
     vi.mocked(decksIpc.getDeck).mockResolvedValue(deck);
     vi.mocked(decksIpc.listDeckCardSummaries).mockResolvedValue({
       cards: [card],
@@ -149,7 +165,7 @@ describe("DecksScreen", () => {
   });
 
   it("imports generated JSON through the ordinary Import deck button", async () => {
-    vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/nclex.ostudy.json");
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "study_content", detectedKind: "generated_json", displayName: "nclex.ostudy.json", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
     vi.mocked(generatedImport.importGeneratedFlashcards).mockResolvedValue({
       deckId: deck.id,
       createdNoteCount: 15,
@@ -162,15 +178,11 @@ describe("DecksScreen", () => {
 
     await waitFor(() => {
       expect(generatedImport.importGeneratedFlashcards).toHaveBeenCalledWith(
-        "/tmp/nclex.ostudy.json",
+        "1".repeat(32),
       );
     });
     expect(decksIpc.importDeck).not.toHaveBeenCalled();
-    expect(platformFiles.openFile).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filters: [expect.objectContaining({ extensions: ["studydeck", "json"] })],
-      }),
-    );
+    expect(platformFiles.selectExternalImport).toHaveBeenCalledWith("study_content");
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Dog facts" })).toBeTruthy();
     });
@@ -181,7 +193,7 @@ describe("DecksScreen", () => {
   });
 
   it("continues to import studydeck packages through the same button", async () => {
-    vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/dog-facts.studydeck");
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "study_content", detectedKind: "studydeck", displayName: "dog-facts.studydeck", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
     vi.mocked(decksIpc.importDeck).mockResolvedValue({
       deck,
       cardCount: 2,
@@ -193,11 +205,11 @@ describe("DecksScreen", () => {
 
     await waitFor(() => {
       expect(decksIpc.importDeck).toHaveBeenCalledWith(
-        "/tmp/dog-facts.studydeck",
+        "1".repeat(32),
         importOperationId,
       );
     });
-    expect(commonIpc.createOperationId).toHaveBeenCalledOnce();
+    expect(commonIpc.createOperationId).toHaveBeenCalled();
     expect(generatedImport.importGeneratedFlashcards).not.toHaveBeenCalled();
   });
 });

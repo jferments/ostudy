@@ -42,7 +42,6 @@ use crate::{
 const PACKAGE_FORMAT: &str = "studydeck-sqlite";
 const CURRENT_PACKAGE_VERSION: i64 = 2;
 const LEGACY_PACKAGE_VERSION: i64 = 1;
-const MAX_PACKAGE_FILE_BYTES: u64 = 640 * 1024 * 1024;
 const MAX_PACKAGE_ASSET_BYTES: usize = 512 * 1024 * 1024;
 const MAX_PACKAGE_SINGLE_ASSET_BYTES: usize = 25 * 1024 * 1024;
 const MAX_PACKAGE_NOTES: usize = 100_000;
@@ -122,32 +121,170 @@ CREATE TABLE note_assets (
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ExportDeckInput {
+pub struct PrepareDeckExportInput {
     pub deck_id: String,
-    pub destination_path: String,
+    pub operation_id: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImportDeckInput {
     pub operation_id: String,
-    pub source_path: String,
+    pub staged_file_id: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExportResultDto {
-    pub destination_path: String,
-    pub card_count: i64,
-    pub asset_count: i64,
+pub(crate) struct ExportResultDto {
+    pub(crate) destination_path: String,
+    pub(crate) card_count: i64,
+    pub(crate) asset_count: i64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportResultDto {
     pub deck: DeckSummaryDto,
     pub card_count: i64,
     pub asset_count: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeckExportSummary {
+    card_count: i64,
+    asset_count: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedDeckExportDto {
+    pub prepared_export: crate::external_files::PreparedExportDto,
+    pub card_count: i64,
+    pub asset_count: i64,
+}
+
+#[tauri::command]
+pub fn prepare_deck_export(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    input: PrepareDeckExportInput,
+) -> Result<PreparedDeckExportDto, CommandError> {
+    validate_entity_id(&input.deck_id, "deck")?;
+    validate_entity_id(&input.operation_id, "deck export operation")?;
+    if let Some((prepared_export, summary)) = database.with_connection(|connection| {
+        crate::external_files::load_prepared_export_summary::<DeckExportSummary>(
+            connection,
+            paths.inner(),
+            &input.operation_id,
+            "studydeck",
+        )
+    })? {
+        return Ok(PreparedDeckExportDto {
+            prepared_export,
+            card_count: summary.card_count,
+            asset_count: summary.asset_count,
+        });
+    }
+
+    let relative = AppPaths::prepared_export_relative_path(&input.operation_id, "studydeck");
+    let destination = paths.resolve_relative(&relative);
+    let exported = database.with_connection(|connection| {
+        export::export_deck_from_connection(connection, &paths, &input.deck_id, &destination)
+    })?;
+    let deck_name = database.with_connection(|connection| {
+        Ok(get_deck_from_connection(connection, &input.deck_id)?.name)
+    })?;
+    let summary = DeckExportSummary {
+        card_count: exported.card_count,
+        asset_count: exported.asset_count,
+    };
+    let suggested_filename = format!("{}.studydeck", portable_filename(&deck_name));
+    let prepared_export = database.with_connection(|connection| {
+        crate::external_files::register_prepared_export(
+            connection,
+            paths.inner(),
+            crate::external_files::RegisterPreparedExport {
+                id: &input.operation_id,
+                purpose: "studydeck",
+                suggested_filename: &suggested_filename,
+                media_type: "application/vnd.ostudy.studydeck",
+                relative_path: &relative,
+                summary: &summary,
+            },
+        )
+    })?;
+    Ok(PreparedDeckExportDto {
+        prepared_export,
+        card_count: summary.card_count,
+        asset_count: summary.asset_count,
+    })
+}
+
+#[tauri::command]
+pub fn import_deck(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    input: ImportDeckInput,
+) -> Result<ImportResultDto, CommandError> {
+    validate_entity_id(&input.operation_id, "deck import operation")?;
+    validate_entity_id(&input.staged_file_id, "staged deck")?;
+    if let Some(result) = database.with_connection(|connection| {
+        crate::external_files::consumed_import_result::<ImportResultDto>(
+            connection,
+            &input.staged_file_id,
+        )
+    })? {
+        return Ok(result);
+    }
+    let staged = database.with_connection(|connection| {
+        crate::external_files::resolve_staged_import(
+            connection,
+            paths.inner(),
+            &input.staged_file_id,
+            crate::external_files::ExternalImportPurpose::StudyContent,
+            &[crate::external_files::ExternalFileKind::Studydeck],
+        )
+    })?;
+    let fingerprint = hash_file(&staged.path)?;
+    let package = read::read_package(&staged.path)?;
+    let result = database.with_connection(|connection| {
+        import::import_package(
+            connection,
+            &paths,
+            &input.operation_id,
+            &fingerprint,
+            package,
+        )
+    })?;
+    database.with_connection(|connection| {
+        crate::external_files::mark_import_consumed(
+            connection,
+            &input.staged_file_id,
+            &result,
+            unix_time_millis()?,
+        )
+    })?;
+    Ok(result)
+}
+
+fn portable_filename(value: &str) -> String {
+    let normalized = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, ' ' | '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    let trimmed = normalized.trim().trim_matches('_');
+    if trimmed.is_empty() {
+        "ostudy-deck".to_string()
+    } else {
+        trimmed.chars().take(120).collect()
+    }
 }
 
 #[derive(Clone)]
@@ -241,72 +378,6 @@ impl Drop for TemporaryFileGuard {
             let _ = fs::remove_file(&self.path);
         }
     }
-}
-
-#[tauri::command]
-pub fn export_deck(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    input: ExportDeckInput,
-) -> Result<ExportResultDto, CommandError> {
-    validate_entity_id(&input.deck_id, "deck")?;
-    let destination = normalize_export_path(&input.destination_path)?;
-    database.with_connection(|connection| {
-        export::export_deck_from_connection(connection, &paths, &input.deck_id, &destination)
-    })
-}
-
-#[tauri::command]
-pub fn import_deck(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    input: ImportDeckInput,
-) -> Result<ImportResultDto, CommandError> {
-    validate_entity_id(&input.operation_id, "deck import operation")?;
-    let source = fs::canonicalize(&input.source_path).map_err(CommandError::io)?;
-    if !source.is_file() {
-        return Err(CommandError::invalid_package(
-            "Select a .studydeck file to import.",
-        ));
-    }
-    let metadata = fs::metadata(&source).map_err(CommandError::io)?;
-    if metadata.len() == 0 || metadata.len() > MAX_PACKAGE_FILE_BYTES {
-        return Err(CommandError::invalid_package(
-            "The selected deck file is empty or exceeds the 640 MB import limit.",
-        ));
-    }
-    let fingerprint = hash_file(&source)?;
-    let package = read::read_package(&source)?;
-    database.with_connection(|connection| {
-        import::import_package(
-            connection,
-            &paths,
-            &input.operation_id,
-            &fingerprint,
-            package,
-        )
-    })
-}
-
-fn normalize_export_path(value: &str) -> Result<PathBuf, CommandError> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Err(CommandError::new(
-            "invalid_export_path",
-            "Choose where to save the deck.",
-        ));
-    }
-    let mut path = PathBuf::from(trimmed);
-    if path.extension().and_then(|value| value.to_str()) != Some("studydeck") {
-        path.set_extension("studydeck");
-    }
-    if path.file_name().and_then(|value| value.to_str()).is_none() {
-        return Err(CommandError::new(
-            "invalid_export_path",
-            "Choose a valid deck filename.",
-        ));
-    }
-    Ok(path)
 }
 
 fn temporary_export_path(destination: &Path) -> PathBuf {

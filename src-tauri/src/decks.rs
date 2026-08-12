@@ -37,7 +37,7 @@ pub struct SetDeckArchivedInput {
     pub archived: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeckSummaryDto {
     pub id: String,

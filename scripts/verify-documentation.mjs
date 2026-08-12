@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { basename, dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -174,7 +175,8 @@ const textBasenames = new Set([
 ]);
 const staleReferenceScanFiles = trackedFiles.filter(
   (path) =>
-    path !== "scripts/verify-documentation.mjs"
+    existsSync(resolve(root, path))
+    && path !== "scripts/verify-documentation.mjs"
     && !path.startsWith("docs/history/")
     && (textExtensions.has(extname(path)) || textBasenames.has(basename(path))),
 );
@@ -186,7 +188,10 @@ for (const path of staleReferenceScanFiles) {
 }
 
 const maintainedMarkdown = trackedFiles.filter(
-  (path) => path.endsWith(".md") && !path.startsWith("docs/history/"),
+  (path) =>
+    existsSync(resolve(root, path))
+    && path.endsWith(".md")
+    && !path.startsWith("docs/history/"),
 );
 let checkedLinks = 0;
 for (const path of maintainedMarkdown) {

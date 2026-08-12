@@ -36,6 +36,8 @@ pub struct CreateAiProviderProfileInput {
     pub enabled: bool,
     pub allow_insecure_http: bool,
     pub request_timeout_ms: i64,
+    #[serde(default)]
+    pub editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,6 +53,8 @@ pub struct UpdateAiProviderProfileInput {
     pub enabled: bool,
     pub allow_insecure_http: bool,
     pub request_timeout_ms: i64,
+    #[serde(default)]
+    pub editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -578,6 +582,15 @@ fn create_profile(
         Some(&id),
         now,
     )?;
+    crate::editor_drafts::commit_canonical_editor_draft(
+        &transaction,
+        input.editor_draft.as_ref(),
+        crate::editor_drafts::EditorDraftKind::AiProfile,
+        Some(&id),
+        None,
+        None,
+        now,
+    )?;
     transaction.commit().map_err(CommandError::database)?;
     Ok(id)
 }
@@ -642,6 +655,15 @@ fn update_profile(
         &input.operation_id,
         "update_profile",
         Some(&input.profile_id),
+        now,
+    )?;
+    crate::editor_drafts::commit_canonical_editor_draft(
+        &transaction,
+        input.editor_draft.as_ref(),
+        crate::editor_drafts::EditorDraftKind::AiProfile,
+        Some(&input.profile_id),
+        Some(input.revision),
+        None,
         now,
     )?;
     transaction.commit().map_err(CommandError::database)?;
@@ -1191,6 +1213,7 @@ fn default_profile_input(provider_kind: ProviderKind) -> CreateAiProviderProfile
         enabled: true,
         allow_insecure_http: false,
         request_timeout_ms: super::catalog::DEFAULT_TIMEOUT_MS,
+        editor_draft: None,
     }
 }
 

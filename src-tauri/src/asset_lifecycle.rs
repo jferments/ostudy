@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -21,6 +21,7 @@ use crate::{
     assets::{detect_image_bytes, validate_original_filename, AssetDto},
     database::Database,
     error::CommandError,
+    external_files::{self, ExternalFileKind, ExternalImportPurpose},
     paths::AppPaths,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
@@ -47,7 +48,7 @@ pub struct AssetDraftDto {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImportImageInput {
-    pub file_path: String,
+    pub staged_file_id: String,
     pub draft_id: String,
 }
 
@@ -166,15 +167,63 @@ pub(crate) fn stage_image(
     input: ImportImageInput,
 ) -> Result<AssetDto, CommandError> {
     validate_entity_id(&input.draft_id, "asset draft")?;
-    let source_path = fs::canonicalize(&input.file_path).map_err(CommandError::io)?;
+    validate_entity_id(&input.staged_file_id, "staged image")?;
     database.with_connection(|connection| {
-        stage_source_in_connection(
+        if let Some(asset) =
+            external_files::consumed_import_result::<AssetDto>(connection, &input.staged_file_id)?
+        {
+            return Ok(asset);
+        }
+        let staged = external_files::resolve_staged_import(
             connection,
             paths,
-            &source_path,
+            &input.staged_file_id,
+            ExternalImportPurpose::Image,
+            &[
+                ExternalFileKind::Png,
+                ExternalFileKind::Jpeg,
+                ExternalFileKind::Gif,
+                ExternalFileKind::Webp,
+            ],
+        )?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        let asset = stage_source_named_in_connection(
+            &transaction,
+            paths,
+            &staged.path,
             &input.draft_id,
+            Some(&staged.display_name),
             IngestFaults::default(),
-        )
+        )?;
+        let extension = match asset.mime_type.as_str() {
+            "image/png" => "png",
+            "image/jpeg" => "jpg",
+            "image/gif" => "gif",
+            "image/webp" => "webp",
+            _ => "bin",
+        };
+        let staged_asset_path = paths.resolve_relative(&AppPaths::staged_asset_relative_path(
+            &input.draft_id,
+            &asset.id,
+            extension,
+        ));
+        if let Err(error) = external_files::mark_import_consumed(
+            &transaction,
+            &input.staged_file_id,
+            &asset,
+            unix_time_millis()?,
+        ) {
+            drop(transaction);
+            let _ = fs::remove_file(staged_asset_path);
+            return Err(error);
+        }
+        if let Err(error) = transaction.commit() {
+            let _ = fs::remove_file(staged_asset_path);
+            return Err(CommandError::database(error));
+        }
+        Ok(asset)
     })
 }
 
@@ -306,12 +355,21 @@ fn ensure_active_draft(
     draft_id: &str,
     now: i64,
 ) -> Result<String, CommandError> {
-    let row: Option<(String, i64, Option<i64>, Option<i64>)> = connection
+    type ActiveDraftRow = (String, i64, Option<i64>, Option<i64>, String);
+    let row: Option<ActiveDraftRow> = connection
         .query_row(
-            "SELECT purpose, expires_at, committed_at, canceled_at
+            "SELECT purpose, expires_at, committed_at, canceled_at, retention_mode
              FROM asset_drafts WHERE id = ?1",
             [draft_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .optional()
         .map_err(CommandError::database)?;
@@ -320,27 +378,43 @@ fn ensure_active_draft(
             "asset_draft_not_found",
             "This image draft no longer exists.",
         )),
-        Some((_, _, Some(_), _)) => Err(CommandError::new(
+        Some((_, _, Some(_), _, _)) => Err(CommandError::new(
             "asset_draft_committed",
             "This image draft has already been saved.",
         )),
-        Some((_, _, _, Some(_))) => Err(CommandError::new(
+        Some((_, _, _, Some(_), _)) => Err(CommandError::new(
             "asset_draft_canceled",
             "This image draft has already been canceled.",
         )),
-        Some((_, expires_at, None, None)) if expires_at < now => Err(CommandError::new(
-            "asset_draft_expired",
-            "This image draft expired. Reopen the editor and add the image again.",
-        )),
-        Some((purpose, _, None, None)) => Ok(purpose),
+        Some((_, expires_at, None, None, retention_mode))
+            if retention_mode == "ephemeral" && expires_at < now =>
+        {
+            Err(CommandError::new(
+                "asset_draft_expired",
+                "This image draft expired. Reopen the editor and add the image again.",
+            ))
+        }
+        Some((purpose, _, None, None, _)) => Ok(purpose),
     }
 }
 
+#[cfg(test)]
 fn stage_source_in_connection(
-    connection: &mut Connection,
+    connection: &Connection,
     paths: &AppPaths,
     source_path: &Path,
     draft_id: &str,
+    faults: IngestFaults,
+) -> Result<AssetDto, CommandError> {
+    stage_source_named_in_connection(connection, paths, source_path, draft_id, None, faults)
+}
+
+fn stage_source_named_in_connection(
+    connection: &Connection,
+    paths: &AppPaths,
+    source_path: &Path,
+    draft_id: &str,
+    original_filename_override: Option<&str>,
     faults: IngestFaults,
 ) -> Result<AssetDto, CommandError> {
     ensure_active_draft(connection, draft_id, unix_time_millis()?)?;
@@ -367,12 +441,12 @@ fn stage_source_in_connection(
     let mut header = [0_u8; 16];
     let bytes_read = header_file.read(&mut header).map_err(CommandError::io)?;
     let (mime_type, extension) = detect_image_bytes(&header[..bytes_read])?;
-    let original_filename = validate_original_filename(
-        source_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("image"),
-    )?;
+    let source_filename = source_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("image");
+    let original_filename =
+        validate_original_filename(original_filename_override.unwrap_or(source_filename))?;
     let now = unix_time_millis()?;
     let id = generate_id(connection)?;
     let relative_path = AppPaths::image_relative_path(&id, extension);
@@ -450,7 +524,6 @@ fn stage_source_in_connection(
         original_filename,
         mime_type: mime_type.to_string(),
         byte_size: i64::try_from(metadata.len()).unwrap_or(i64::MAX),
-        file_path: staged_path.to_string_lossy().into_owned(),
         created_at: now,
     })
 }
@@ -592,6 +665,21 @@ fn rollback_promoted_files(promoted: &[(PathBuf, PathBuf)]) {
     }
 }
 
+pub(crate) fn retire_unused_editor_assets(
+    connection: &Connection,
+    paths: &AppPaths,
+    draft_id: &str,
+    retained: &BTreeSet<String>,
+    now: i64,
+    reason: &str,
+) -> Result<Vec<PathBuf>, CommandError> {
+    retire_unused_draft_assets(connection, paths, draft_id, retained, now, reason)
+}
+
+pub(crate) fn remove_editor_cleanup_paths(paths: &[PathBuf]) {
+    remove_paths_best_effort(paths);
+}
+
 fn retire_unused_draft_assets(
     connection: &Connection,
     paths: &AppPaths,
@@ -704,7 +792,8 @@ fn expire_drafts(
         let mut statement = connection
             .prepare(
                 "SELECT id FROM asset_drafts
-                 WHERE committed_at IS NULL AND canceled_at IS NULL AND expires_at < ?1",
+                 WHERE committed_at IS NULL AND canceled_at IS NULL
+                   AND retention_mode = 'ephemeral' AND expires_at < ?1",
             )
             .map_err(CommandError::database)?;
         let rows = statement
@@ -1532,6 +1621,14 @@ mod tests {
                     &draft.id,
                     Default::default(),
                 )?;
+                let kept_path = paths.resolve_relative(&AppPaths::staged_asset_relative_path(
+                    &draft.id, &kept.id, "png",
+                ));
+                let removed_path = paths.resolve_relative(&AppPaths::staged_asset_relative_path(
+                    &draft.id,
+                    &removed.id,
+                    "png",
+                ));
                 let retained = BTreeSet::from([kept.id.clone()]);
                 let transaction = connection.transaction().map_err(CommandError::database)?;
                 let cleanup = retire_unused_draft_assets(
@@ -1544,13 +1641,13 @@ mod tests {
                 )?;
                 transaction.commit().map_err(CommandError::database)?;
                 remove_paths_best_effort(&cleanup);
-                assert!(Path::new(&kept.file_path).exists());
-                assert!(!Path::new(&removed.file_path).exists());
+                assert!(kept_path.exists());
+                assert!(!removed_path.exists());
 
                 let cleanup =
                     abandon_draft_in_connection(connection, &paths, &draft.id, "test cancel")?;
                 remove_paths_best_effort(&cleanup);
-                assert!(!Path::new(&kept.file_path).exists());
+                assert!(!kept_path.exists());
                 Ok(())
             })
             .expect("draft cleanup should succeed");

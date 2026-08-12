@@ -27,6 +27,7 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 ## Understand the design
 
 - [Architecture overview](architecture/overview.md) explains the frontend, native domain, persistence, and platform boundaries.
+- [Platform services](architecture/platform-services.md) defines the typed operating-system ports, opaque file flow, secure-store boundary, lifecycle/time/resource observations, and enforcement rules.
 - [AI and document processing](architecture/ai-and-document-processing.md) documents provider isolation and the PDF extraction, rendering, OCR, and generation pipeline.
 - [Card format and data model](architecture/card-format-and-data-model.md) describes notes, scheduled presentations, rich content, templates, search, and interchange formats.
 - [UI architecture](architecture/ui.md) describes shared interaction primitives, responsive layouts, accessibility, and platform adapters.
@@ -35,6 +36,7 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 ## Develop and maintain ostudy
 
 - [Development guide](development/guide.md) covers setup, repository layout, change design, and day-to-day commands.
+- [Platform portability inventory](development/platform-portability-inventory.md) records the current OS assumptions and the phase responsible for removing each one.
 - [Git and pull-request workflow](development/workflow.md) defines the publication, review, merge, release, and rollback process.
 - [Testing and CI](development/testing-and-ci.md) is the authoritative description of the changed, static, fast, and full validation tiers.
 - [Dependency audit](development/dependency-audit.md) records the pinned dependency graph and native runtime trust boundaries.

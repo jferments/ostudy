@@ -24,7 +24,8 @@
     "verify:versions": "node ./scripts/verify-js-dependencies.mjs",
     "verify:manifests": "node ./scripts/verify-project-manifests.mjs",
     "verify:docs": "node ./scripts/verify-documentation.mjs",
-    "verify:contracts": "node ./scripts/verify-ipc-contract.mjs && node ./scripts/verify-repository-policy.mjs"
+    "verify:platform": "node ./scripts/verify-platform-boundaries.mjs",
+    "verify:contracts": "node ./scripts/verify-ipc-contract.mjs && node ./scripts/verify-repository-policy.mjs && node ./scripts/verify-platform-boundaries.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",

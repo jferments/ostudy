@@ -1,3 +1,8 @@
+import {
+  getNativePlatformSnapshot,
+  type NativePlatformSnapshot,
+} from "../ipc/platform";
+
 export interface PlatformCapabilities {
   coarsePointer: boolean;
   hoverAvailable: boolean;
@@ -5,7 +10,11 @@ export interface PlatformCapabilities {
   audioAvailable: boolean;
   hapticsAvailable: boolean;
   nativeFilePickerAvailable: boolean;
+  native: NativePlatformSnapshot | null;
 }
+
+let nativeSnapshot: NativePlatformSnapshot | null = null;
+const listeners = new Set<() => void>();
 
 function matches(query: string): boolean {
   return typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -13,15 +22,25 @@ function matches(query: string): boolean {
     : false;
 }
 
+export async function initializePlatformCapabilities(): Promise<void> {
+  nativeSnapshot = await getNativePlatformSnapshot();
+  for (const listener of listeners) listener();
+}
+
+export function subscribePlatformCapabilities(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 export function getPlatformCapabilities(): PlatformCapabilities {
-  const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent;
-  const android = /Android/iu.test(userAgent);
   return {
     coarsePointer: matches("(pointer: coarse)"),
     hoverAvailable: matches("(hover: hover)"),
-    hardwareBackAvailable: android,
+    hardwareBackAvailable: nativeSnapshot?.hardwareBackAvailable ?? false,
     audioAvailable: typeof Audio !== "undefined",
-    hapticsAvailable: typeof navigator !== "undefined" && "vibrate" in navigator,
-    nativeFilePickerAvailable: true,
+    hapticsAvailable: nativeSnapshot?.services.haptics.state === "available",
+    nativeFilePickerAvailable:
+      nativeSnapshot?.services.externalFileImport.state === "available",
+    native: nativeSnapshot,
   };
 }

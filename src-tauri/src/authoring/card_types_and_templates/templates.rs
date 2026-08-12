@@ -5,6 +5,8 @@ pub(super) fn create_card_template_in_connection(
     paths: &AppPaths,
     input: CreateCardTemplateInput,
 ) -> Result<CardTemplateDto, CommandError> {
+    let editor_draft = input.editor_draft.clone();
+    let asset_draft_id = input.asset_draft_id.clone();
     let name = validate_template_name(input.name)?;
     let normalized_name = normalize_template_name(&name);
     let description = validate_bounded_visible_text(
@@ -34,6 +36,15 @@ pub(super) fn create_card_template_in_connection(
         .map_err(CommandError::database)?;
     insert_template_children(&transaction, &template_id, &fields, &rules)?;
     replace_template_assets(&transaction, &template_id, &asset_ids)?;
+    crate::editor_drafts::commit_canonical_editor_draft(
+        &transaction,
+        editor_draft.as_ref(),
+        crate::editor_drafts::EditorDraftKind::Template,
+        Some(&template_id),
+        None,
+        asset_draft_id.as_deref(),
+        now,
+    )?;
     transaction.commit().map_err(CommandError::database)?;
     load_stored_template(connection, paths, &template_id, true).map(|stored| stored.dto)
 }
@@ -43,6 +54,8 @@ pub(super) fn update_card_template_in_connection(
     paths: &AppPaths,
     input: UpdateCardTemplateInput,
 ) -> Result<CardTemplateDto, CommandError> {
+    let editor_draft = input.editor_draft.clone();
+    let asset_draft_id = input.asset_draft_id.clone();
     validate_entity_id(&input.template_id, "card template")?;
     if input.revision < 1 {
         return Err(CommandError::new(
@@ -131,6 +144,15 @@ pub(super) fn update_card_template_in_connection(
         .map_err(CommandError::database)?;
     insert_template_children(&transaction, &input.template_id, &fields, &rules)?;
     replace_template_assets(&transaction, &input.template_id, &asset_ids)?;
+    crate::editor_drafts::commit_canonical_editor_draft(
+        &transaction,
+        editor_draft.as_ref(),
+        crate::editor_drafts::EditorDraftKind::Template,
+        Some(&input.template_id),
+        Some(input.revision),
+        asset_draft_id.as_deref(),
+        now,
+    )?;
     transaction.commit().map_err(CommandError::database)?;
     load_stored_template(connection, paths, &input.template_id, true).map(|stored| stored.dto)
 }
@@ -1171,6 +1193,15 @@ fn generate_template_cards_in_connection(
         created_note_ids.push(note_id);
     }
 
+    crate::editor_drafts::commit_canonical_editor_draft(
+        &transaction,
+        input.editor_draft.as_ref(),
+        crate::editor_drafts::EditorDraftKind::Card,
+        None,
+        None,
+        input.asset_draft_id.as_deref(),
+        now,
+    )?;
     transaction.commit().map_err(CommandError::database)?;
     Ok(GenerateTemplateCardsResultDto {
         created_count: i64::try_from(created_note_ids.len()).unwrap_or(i64::MAX),
@@ -1225,7 +1256,7 @@ fn replace_template_assets(
 
 fn load_template_assets(
     connection: &Connection,
-    paths: &AppPaths,
+    _paths: &AppPaths,
     template_id: &str,
 ) -> Result<Vec<AssetDto>, CommandError> {
     let mut statement = connection
@@ -1240,16 +1271,12 @@ fn load_template_assets(
         .map_err(CommandError::database)?;
     let rows = statement
         .query_map([template_id], |row| {
-            let relative_path: String = row.get(4)?;
+            let _relative_path: String = row.get(4)?;
             Ok(AssetDto {
                 id: row.get(0)?,
                 original_filename: row.get(1)?,
                 mime_type: row.get(2)?,
                 byte_size: row.get(3)?,
-                file_path: paths
-                    .resolve_relative(&relative_path)
-                    .to_string_lossy()
-                    .into_owned(),
                 created_at: row.get(5)?,
             })
         })
@@ -1260,7 +1287,7 @@ fn load_template_assets(
 
 fn load_assets_by_ids(
     connection: &Connection,
-    paths: &AppPaths,
+    _paths: &AppPaths,
     asset_ids: &[String],
 ) -> Result<Vec<AssetDto>, CommandError> {
     let mut assets = Vec::new();
@@ -1271,16 +1298,12 @@ fn load_assets_by_ids(
                  FROM assets WHERE id = ?1 AND deleted_at IS NULL",
                 [asset_id],
                 |row| {
-                    let relative_path: String = row.get(4)?;
+                    let _relative_path: String = row.get(4)?;
                     Ok(AssetDto {
                         id: row.get(0)?,
                         original_filename: row.get(1)?,
                         mime_type: row.get(2)?,
                         byte_size: row.get(3)?,
-                        file_path: paths
-                            .resolve_relative(&relative_path)
-                            .to_string_lossy()
-                            .into_owned(),
                         created_at: row.get(5)?,
                     })
                 },

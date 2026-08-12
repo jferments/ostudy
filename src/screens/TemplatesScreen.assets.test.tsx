@@ -1,16 +1,36 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as assetsIpc from "../ipc/assets";
 import * as templatesIpc from "../ipc/templates";
-import { deferred } from "../test/factories";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { TemplatesScreen } from "./TemplatesScreen";
 
-vi.mock("../ipc/assets", () => ({
-  beginAssetDraft: vi.fn(),
-  cancelAssetDraft: vi.fn(),
-  syncAssetDraft: vi.fn(),
+const durableDraftMock = vi.hoisted(() => ({
+  draftId: "d".repeat(32),
+  assetDraftId: "7".repeat(32) as string | null,
+  revision: 1,
+  status: "saved" as
+    | "opening"
+    | "clean"
+    | "locally_dirty"
+    | "saving"
+    | "saved"
+    | "save_failed"
+    | "conflicted"
+    | "committing",
+  errorMessage: null as string | null,
+  recovered: false,
+  hasUnsavedLocalChanges: false,
+  flush: vi.fn().mockResolvedValue(undefined),
+  discard: vi.fn().mockResolvedValue(undefined),
+  prepareCanonicalCommit: vi.fn().mockResolvedValue({ draftId: "d".repeat(32), revision: 1 }),
+  acceptCanonicalCommit: vi.fn(),
+  commit: vi.fn().mockResolvedValue(undefined),
+  restart: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../controllers/useDurableDraft", () => ({
+  useDurableDraft: () => durableDraftMock,
 }));
 vi.mock("../ipc/common", () => ({
   getErrorMessage: (error: unknown) =>
@@ -23,12 +43,11 @@ vi.mock("../ipc/templates", () => ({
   listCardTemplateSummaries: vi.fn(),
   updateCardTemplate: vi.fn(),
 }));
-
 vi.mock("./templates/TemplateLayoutEditor", () => ({
   TemplateLayoutEditor: ({ label }: { label: string }) => <div>{label}</div>,
 }));
 
-const draftId = "a".repeat(32);
+const assetDraftId = "7".repeat(32);
 
 function savedTemplate(): templatesIpc.CardTemplate {
   return {
@@ -67,30 +86,25 @@ function renderTemplates() {
   );
 }
 
-describe("TemplatesScreen managed assets", () => {
+describe("TemplatesScreen durable managed assets", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    durableDraftMock.status = "saved";
+    durableDraftMock.assetDraftId = assetDraftId;
+    durableDraftMock.errorMessage = null;
+    durableDraftMock.hasUnsavedLocalChanges = false;
+    durableDraftMock.flush.mockResolvedValue(undefined);
+    durableDraftMock.discard.mockResolvedValue(undefined);
+    durableDraftMock.acceptCanonicalCommit.mockResolvedValue(undefined);
     vi.mocked(templatesIpc.listCardTemplateSummaries).mockResolvedValue([]);
-    vi.mocked(assetsIpc.beginAssetDraft).mockResolvedValue({
-      id: draftId,
-      purpose: "template",
-      expiresAt: Date.now() + 10_000,
-    });
-    vi.mocked(assetsIpc.cancelAssetDraft).mockResolvedValue(undefined);
-    vi.mocked(assetsIpc.syncAssetDraft).mockResolvedValue(undefined);
     vi.mocked(templatesIpc.createCardTemplate).mockResolvedValue(savedTemplate());
   });
 
-  it("opens one template draft and commits its identity with the template", async () => {
+  it("uses the persistent draft asset identity when saving a template", async () => {
     renderTemplates();
 
     await screen.findByRole("heading", { name: "Create a reusable card template" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
-
-    await waitFor(() => {
-      expect(assetsIpc.beginAssetDraft).toHaveBeenCalledWith("template", undefined);
-    });
-
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
       target: { value: "Medication" },
     });
@@ -98,28 +112,37 @@ describe("TemplatesScreen managed assets", () => {
 
     await waitFor(() => {
       expect(templatesIpc.createCardTemplate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: "Medication",
-          assetDraftId: draftId,
-        }),
+        expect.objectContaining({ name: "Medication", assetDraftId }),
       );
+      expect(durableDraftMock.prepareCanonicalCommit).toHaveBeenCalled();
+      expect(durableDraftMock.acceptCanonicalCommit).toHaveBeenCalledOnce();
     });
   });
 
-  it("cancels the uncommitted draft when the editor is canceled", async () => {
+  it("discards the persistent draft when edited template work is canceled", async () => {
+    durableDraftMock.hasUnsavedLocalChanges = true;
     renderTemplates();
 
     await screen.findByRole("heading", { name: "Create a reusable card template" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
-    await waitFor(() => expect(assetsIpc.beginAssetDraft).toHaveBeenCalledOnce());
-
+    fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
+      target: { value: "Medication" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(assetsIpc.cancelAssetDraft).toHaveBeenCalledWith(draftId));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Discard changes" }),
+    );
+
+    await waitFor(() => expect(durableDraftMock.discard).toHaveBeenCalledOnce());
+    expect(
+      await screen.findByRole("heading", { name: "Create a reusable card template" }),
+    ).toBeTruthy();
   });
 
-  it("blocks save and cancels a managed draft that resolves after confirmed cancellation", async () => {
-    const opening = deferred<Awaited<ReturnType<typeof assetsIpc.beginAssetDraft>>>();
-    vi.mocked(assetsIpc.beginAssetDraft).mockReturnValueOnce(opening.promise);
+  it("blocks save while the durable draft is opening and still permits discard", async () => {
+    durableDraftMock.status = "opening";
+    durableDraftMock.assetDraftId = null;
+    durableDraftMock.hasUnsavedLocalChanges = true;
     renderTemplates();
 
     await screen.findByRole("heading", { name: "Create a reusable card template" });
@@ -128,24 +151,16 @@ describe("TemplatesScreen managed assets", () => {
       target: { value: "Medication" },
     });
 
-    const preparing = screen.getByRole("button", { name: "Preparing…" }) as HTMLButtonElement;
-    expect(preparing.disabled).toBe(true);
-    fireEvent.click(preparing);
+    const preparing = await screen.findByRole("button", { name: "Preparing…" });
+    expect((preparing as HTMLButtonElement).disabled).toBe(true);
     expect(templatesIpc.createCardTemplate).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(
-      await screen.findByRole("alertdialog", { name: "Discard template changes?" }),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-    opening.resolve({
-      id: draftId,
-      purpose: "template",
-      expiresAt: Date.now() + 10_000,
-    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Discard changes" }),
+    );
 
-    await waitFor(() => expect(assetsIpc.cancelAssetDraft).toHaveBeenCalledWith(draftId));
+    await waitFor(() => expect(durableDraftMock.discard).toHaveBeenCalledOnce());
     expect(templatesIpc.createCardTemplate).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "Create a reusable card template" })).toBeTruthy();
   });
 });

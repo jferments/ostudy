@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { Asset } from "./assets";
 import type { DeletionResult, RichDocument, UndoDeletionResult } from "./common";
+import type { EditorDraftCommitRef } from "./drafts";
 
 export type BuiltInCardType = "basic" | "cloze";
 export type ClozeMode = "one_at_a_time" | "all_together";
@@ -52,6 +53,7 @@ interface CardNoteWriteCommon {
   tags: string[];
   allowDuplicate: boolean;
   assetDraftId?: string;
+  editorDraft?: EditorDraftCommitRef;
 }
 
 export type CreateCardNoteInput =
@@ -173,6 +175,7 @@ export interface BulkAnalyzeResult {
 export interface BulkCreateCardsInput {
   deckId: string;
   rows: BulkCardRowInput[];
+  editorDraft?: EditorDraftCommitRef;
 }
 
 export interface BulkCreateResult {

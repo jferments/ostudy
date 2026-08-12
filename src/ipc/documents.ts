@@ -70,13 +70,13 @@ export async function listDocuments(includeArchived = false): Promise<DocumentSu
 }
 
 export async function importPdfAndGenerateFlashcards(
-  sourcePath: string,
+  stagedFileId: string,
 ): Promise<DocumentGenerationResult> {
   // Establish a durable document identity before the long-running provider
   // request begins. That lets Documents expose an exact Stop action while the
   // generation command remains in flight.
   const imported = await invoke<ImportedPdfDocument>("import_pdf_document", {
-    input: { sourcePath },
+    input: { stagedFileId },
   });
   return retryPdfFlashcardGeneration(imported.documentId);
 }

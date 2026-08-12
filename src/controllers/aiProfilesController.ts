@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { ShowToast } from "../components/Toast";
 import {
@@ -27,6 +27,7 @@ import {
 } from "../ipc/aiProfiles";
 import { getErrorMessage } from "../ipc/common";
 import { useRequestLane } from "./requestLane";
+import { useDurableDraft } from "./useDurableDraft";
 
 const EMPTY_DEFAULTS: AiTaskDefaults = { flashcardGenerationProfileId: null };
 
@@ -85,6 +86,24 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
   const listLane = useRequestLane();
   const detailLane = useRequestLane();
   const modelLane = useRequestLane();
+  const durableDraft = useDurableDraft<AiProfileDraft & Record<string, unknown>>({
+    kind: "ai_profile",
+    targetEntityId: selectedProfile?.id,
+    contextEntityId: selectedProfile?.id ? undefined : "a".repeat(32),
+    baseRevision: selectedProfile?.revision,
+    payload: (draft ?? {
+      displayName: "",
+      providerKind: "llama_cpp",
+      baseUrl: "",
+      modelId: "",
+      authMode: "none",
+      enabled: true,
+      allowInsecureHttp: false,
+      requestTimeoutMs: 60_000,
+    }) as AiProfileDraft & Record<string, unknown>,
+    enabled: draft !== null,
+    onRecovered: (payload) => setDraft(payload),
+  });
 
   const loadProfiles = useCallback(async (): Promise<AiProviderProfileSummary[]> => {
     const token = listLane.begin();
@@ -204,12 +223,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       });
   }, [detailLane, discoverModelsForProfile, selectedProfileId]);
 
-  const dirty = useMemo(() => {
-    if (credentialDraft !== "") return true;
-    if (!draft) return false;
-    if (!selectedProfile) return selectedProfileId?.startsWith("new:") === true;
-    return JSON.stringify(draft) !== JSON.stringify(draftFromProfile(selectedProfile));
-  }, [credentialDraft, draft, selectedProfile, selectedProfileId]);
+  const dirty = credentialDraft !== "" || durableDraft.hasUnsavedLocalChanges;
 
   function selectProfile(profileId: string): void {
     setSelectedProfileId(profileId);
@@ -251,13 +265,16 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     setMutating(true);
     setErrorMessage(null);
     try {
+      const editorDraft = await durableDraft.prepareCanonicalCommit();
       const wasExisting = selectedProfile !== null;
+      const input = { ...draft, editorDraft };
       const saved = selectedProfile
-        ? await updateAiProviderProfile(selectedProfile.id, selectedProfile.revision, draft)
-        : await createAiProviderProfile(draft);
+        ? await updateAiProviderProfile(selectedProfile.id, selectedProfile.revision, input)
+        : await createAiProviderProfile(input);
       setSelectedProfile(saved);
       setDraft(draftFromProfile(saved));
       setSelectedProfileId(saved.id);
+      durableDraft.acceptCanonicalCommit();
       setModels([]);
       setModelsLoaded(false);
       await loadProfiles();
@@ -401,6 +418,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
 
   function discardDraft(): void {
     setCredentialDraft("");
+    void durableDraft.discard().catch(() => undefined);
     if (selectedProfile) {
       setDraft(draftFromProfile(selectedProfile));
     } else {

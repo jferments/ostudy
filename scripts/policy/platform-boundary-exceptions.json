@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "exceptions": [
+    {
+      "rule": "rust-target-os-branch",
+      "path": "src-tauri/src/pdf_ocr_backend.rs",
+      "retireInPhase": "Android/iOS",
+      "reason": "Desktop OCR adapter selection"
+    },
+    {
+      "rule": "rust-target-os-branch",
+      "path": "src-tauri/src/pdf_render_backend.rs",
+      "retireInPhase": "Android/iOS",
+      "reason": "Desktop/mobile renderer adapter selection"
+    },
+    {
+      "rule": "rust-process-command-outside-adapter",
+      "path": "src-tauri/src/pdf_ocr_backend.rs",
+      "retireInPhase": "Android/iOS",
+      "reason": "Desktop Tesseract subprocess"
+    }
+  ]
+}

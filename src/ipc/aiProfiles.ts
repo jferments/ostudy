@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { createOperationId } from "./common";
+import type { EditorDraftCommitRef } from "./drafts";
 
 export type AiProviderKind =
   | "llama_cpp"
@@ -80,6 +81,10 @@ export interface AiProfileDraft {
   requestTimeoutMs: number;
 }
 
+export interface AiProfileWriteInput extends AiProfileDraft {
+  editorDraft?: EditorDraftCommitRef;
+}
+
 export interface AiTaskDefaults {
   flashcardGenerationProfileId: string | null;
 }
@@ -154,7 +159,7 @@ export async function getAiProviderProfile(profileId: string): Promise<AiProvide
 }
 
 export async function createAiProviderProfile(
-  input: AiProfileDraft,
+  input: AiProfileWriteInput,
   operationId = createOperationId(),
 ): Promise<AiProviderProfileDetail> {
   return invoke<AiProviderProfileDetail>("create_ai_provider_profile", {
@@ -165,7 +170,7 @@ export async function createAiProviderProfile(
 export async function updateAiProviderProfile(
   profileId: string,
   revision: number,
-  input: AiProfileDraft,
+  input: AiProfileWriteInput,
   operationId = createOperationId(),
 ): Promise<AiProviderProfileDetail> {
   return invoke<AiProviderProfileDetail>("update_ai_provider_profile", {
@@ -180,6 +185,7 @@ export async function updateAiProviderProfile(
       enabled: input.enabled,
       allowInsecureHttp: input.allowInsecureHttp,
       requestTimeoutMs: input.requestTimeoutMs,
+      editorDraft: input.editorDraft,
     },
   });
 }

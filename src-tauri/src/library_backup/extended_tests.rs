@@ -493,3 +493,244 @@ fn dropping_the_restore_guard_rolls_back_the_previous_library() {
     let _ = fs::remove_dir_all(source_paths.app_data_dir());
     let _ = fs::remove_dir_all(target_paths.app_data_dir());
 }
+
+#[test]
+fn backup_v3_restores_active_editor_draft_and_its_staged_image() {
+    let source_paths = temp_paths("draft-source");
+    let source = Database::open(source_paths.database_path()).expect("source database");
+    let (draft_id, asset_draft_id, asset_id, staged_relative, payload_json) = source
+        .with_connection(|connection| {
+            let now = unix_time_millis()?;
+            let draft_id = generate_id(connection)?;
+            let asset_draft_id = generate_id(connection)?;
+            let asset_id = generate_id(connection)?;
+            let operation_id = generate_id(connection)?;
+            let staged_relative =
+                AppPaths::staged_asset_relative_path(&asset_draft_id, &asset_id, "png");
+            let final_relative = AppPaths::image_relative_path(&asset_id, "png");
+            let payload_json = serde_json::to_string(&json!({
+                "frontDoc": {"type":"doc","content":[{"type":"paragraph"}]},
+                "backDoc": {"type":"doc","content":[{"type":"paragraph"}]},
+                "frontText": "",
+                "backText": "",
+                "tags": []
+            }))
+            .map_err(CommandError::serialization)?;
+            fs::write(source_paths.resolve_relative(&staged_relative), png_bytes())
+                .map_err(CommandError::io)?;
+            connection
+                .execute(
+                    "INSERT INTO asset_drafts (
+                         id, purpose, owner_id, created_at, updated_at, expires_at,
+                         retention_mode, editor_draft_id
+                     ) VALUES (?1, 'card', NULL, ?2, ?2, ?3, 'persistent_editor', ?4)",
+                    params![
+                        asset_draft_id,
+                        now,
+                        now.saturating_add(7 * 24 * 60 * 60 * 1000),
+                        draft_id,
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO editor_drafts (
+                         id, open_operation_id, draft_kind, target_entity_id,
+                         context_entity_id, base_revision, payload_schema_version,
+                         payload_json, payload_sha256, revision, state, asset_draft_id,
+                         created_at, updated_at, last_opened_at
+                     ) VALUES (
+                         ?1, ?2, 'card', NULL,
+                         NULL, NULL, 1,
+                         ?3, ?4, 1, 'active', ?5,
+                         ?6, ?6, ?6
+                     )",
+                    params![
+                        draft_id,
+                        operation_id,
+                        payload_json,
+                        "0".repeat(64),
+                        asset_draft_id,
+                        now,
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO assets (
+                         id, original_filename, mime_type, byte_size, relative_path,
+                         created_at, lifecycle_state, draft_id, staged_relative_path,
+                         updated_at
+                     ) VALUES (
+                         ?1, 'draft-diagram.png', 'image/png', ?2, ?3,
+                         ?4, 'staged', ?5, ?6, ?4
+                     )",
+                    params![
+                        asset_id,
+                        png_bytes().len() as i64,
+                        final_relative,
+                        now,
+                        asset_draft_id,
+                        staged_relative,
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO editor_draft_assets (draft_id, asset_id) VALUES (?1, ?2)",
+                    params![draft_id, asset_id],
+                )
+                .map_err(CommandError::database)?;
+            Ok((
+                draft_id,
+                asset_draft_id,
+                asset_id,
+                staged_relative,
+                payload_json,
+            ))
+        })
+        .expect("persistent draft fixture");
+
+    let backup_path = source_paths.app_data_dir().join("draft-v3.ostudybackup");
+    let exported = export_backup(&source, &source_paths, &backup_path).expect("v3 backup");
+    assert_eq!(
+        exported.asset_count, 0,
+        "staged images are not canonical library assets"
+    );
+    let package = Connection::open_with_flags(&backup_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .expect("backup package");
+    assert_eq!(backup_version(&package).expect("version"), 3);
+    let packaged: (i64, String) = package
+        .query_row(
+            "SELECT COUNT(*), MIN(relative_path) FROM asset_files",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("packaged staged asset");
+    assert_eq!(packaged, (1, staged_relative.clone()));
+    drop(package);
+    drop(source);
+
+    let target_paths = temp_paths("draft-target");
+    let pending = pending_restore_path(&target_paths);
+    copy_and_sync(&backup_path, &pending).expect("pending backup");
+    let guard = apply_pending_restore(&target_paths)
+        .expect("restore should prepare")
+        .expect("restore should exist");
+    let restored = Database::open(target_paths.database_path()).expect("restored database");
+    crate::editor_drafts::reconcile_startup(&restored).expect("draft reconciliation");
+    crate::asset_lifecycle::reconcile_startup(&restored, &target_paths)
+        .expect("asset reconciliation");
+    restored
+        .with_connection(|connection| {
+            let restored_row: (String, String, String, String, String, i64) = connection
+                .query_row(
+                    "SELECT ed.state, ed.payload_json, ad.retention_mode,
+                            a.lifecycle_state, a.staged_relative_path,
+                            (SELECT COUNT(*) FROM editor_draft_assets
+                             WHERE draft_id = ed.id AND asset_id = a.id)
+                     FROM editor_drafts ed
+                     JOIN asset_drafts ad ON ad.id = ed.asset_draft_id
+                     JOIN assets a ON a.draft_id = ad.id
+                     WHERE ed.id = ?1 AND ad.id = ?2 AND a.id = ?3",
+                    params![draft_id, asset_draft_id, asset_id],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                            row.get(5)?,
+                        ))
+                    },
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(
+                restored_row,
+                (
+                    "active".to_string(),
+                    payload_json,
+                    "persistent_editor".to_string(),
+                    "staged".to_string(),
+                    staged_relative.clone(),
+                    1,
+                )
+            );
+            Ok(())
+        })
+        .expect("restored draft ledger");
+    assert_eq!(
+        fs::read(target_paths.resolve_relative(&staged_relative)).expect("restored draft image"),
+        png_bytes()
+    );
+    drop(restored);
+    guard.commit();
+    let _ = fs::remove_dir_all(source_paths.app_data_dir());
+    let _ = fs::remove_dir_all(target_paths.app_data_dir());
+}
+
+#[test]
+fn backup_versions_one_and_two_remain_restorable() {
+    let source_paths = temp_paths("legacy-source");
+    let source = Database::open(source_paths.database_path()).expect("source database");
+    source
+        .with_connection(|connection| {
+            create_deck_in_connection(
+                connection,
+                CreateDeckInput {
+                    name: "Legacy-compatible deck".to_string(),
+                    description: None,
+                },
+            )?;
+            Ok(())
+        })
+        .expect("legacy fixture");
+    let current_path = source_paths.app_data_dir().join("current.ostudybackup");
+    export_backup(&source, &source_paths, &current_path).expect("current backup");
+    drop(source);
+
+    for version in [1_i64, 2_i64] {
+        let legacy_path = source_paths
+            .app_data_dir()
+            .join(format!("legacy-v{version}.ostudybackup"));
+        copy_and_sync(&current_path, &legacy_path).expect("legacy package copy");
+        {
+            let package = Connection::open(&legacy_path).expect("writable legacy package");
+            package
+                .execute(
+                    "UPDATE backup_metadata SET value = ?1 WHERE key = 'formatVersion'",
+                    [version.to_string()],
+                )
+                .expect("legacy version metadata");
+        }
+        let summary =
+            validate_backup_package(&legacy_path, None).expect("legacy package validation");
+        assert_eq!(summary.deck_count, 1);
+
+        let target_paths = temp_paths(&format!("legacy-target-v{version}"));
+        copy_and_sync(&legacy_path, &pending_restore_path(&target_paths))
+            .expect("pending legacy backup");
+        let guard = apply_pending_restore(&target_paths)
+            .expect("legacy restore should prepare")
+            .expect("legacy restore should exist");
+        let restored =
+            Database::open(target_paths.database_path()).expect("legacy restored database");
+        let deck_count = restored
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM decks WHERE deleted_at IS NULL",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .expect("legacy deck count");
+        assert_eq!(deck_count, 1);
+        drop(restored);
+        guard.commit();
+        let _ = fs::remove_dir_all(target_paths.app_data_dir());
+    }
+    let _ = fs::remove_dir_all(source_paths.app_data_dir());
+}

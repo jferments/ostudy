@@ -5,15 +5,12 @@
 //! date-only rescheduling, and analytics windows. Every command captures one
 //! [`StudyTimeContext`] and passes it through subordinate calculations.
 
-use std::{env, path::Path};
-
 #[cfg(test)]
-use chrono::Utc;
-use chrono::{DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, Offset, TimeZone};
+use chrono::{DateTime, Utc};
+use chrono::{Datelike, Duration, NaiveDate};
 
 use crate::{error::CommandError, util::unix_time_millis};
 
-const SECONDS_PER_LOCAL_DATE: i64 = 86_400;
 const MAX_CALENDAR_DAY_SPAN: i64 = 3_660;
 #[cfg(test)]
 const MILLIS_PER_MINUTE: i64 = 60_000;
@@ -45,21 +42,21 @@ enum StudyZoneResolver {
 }
 
 impl StudyZoneResolver {
-    fn identifier(&self) -> String {
+    fn identifier(&self, now_utc_millis: i64) -> Result<String, CommandError> {
         match self {
-            Self::System => discover_system_time_zone_id(),
+            Self::System => crate::platform::time_zone_snapshot(now_utc_millis)
+                .map(|snapshot| snapshot.identifier)
+                .map_err(platform_calendar_error),
             #[cfg(test)]
-            Self::Pacific2026 => "America/Los_Angeles".to_string(),
+            Self::Pacific2026 => Ok("America/Los_Angeles".to_string()),
         }
     }
 
     fn local_date_at(&self, utc_millis: i64) -> Result<NaiveDate, CommandError> {
         match self {
-            Self::System => Local
-                .timestamp_millis_opt(utc_millis)
-                .earliest()
-                .map(|value| value.date_naive())
-                .ok_or_else(invalid_calendar_date),
+            Self::System => {
+                crate::platform::local_date_at(utc_millis).map_err(platform_calendar_error)
+            }
             #[cfg(test)]
             Self::Pacific2026 => synthetic_pacific_local_date(utc_millis),
         }
@@ -67,11 +64,9 @@ impl StudyZoneResolver {
 
     fn offset_minutes_at(&self, utc_millis: i64) -> Result<i32, CommandError> {
         match self {
-            Self::System => Local
-                .timestamp_millis_opt(utc_millis)
-                .earliest()
-                .map(|value| value.offset().fix().local_minus_utc().div_euclid(60))
-                .ok_or_else(invalid_calendar_date),
+            Self::System => crate::platform::time_zone_snapshot(utc_millis)
+                .map(|snapshot| snapshot.utc_offset_minutes)
+                .map_err(platform_calendar_error),
             #[cfg(test)]
             Self::Pacific2026 => Ok(synthetic_pacific_offset_at_utc(utc_millis)),
         }
@@ -79,7 +74,9 @@ impl StudyZoneResolver {
 
     fn first_valid_instant(&self, date: NaiveDate) -> Result<i64, CommandError> {
         match self {
-            Self::System => first_valid_system_instant(date),
+            Self::System => {
+                crate::platform::first_valid_instant(date).map_err(platform_calendar_error)
+            }
             #[cfg(test)]
             Self::Pacific2026 => synthetic_pacific_first_instant(date),
         }
@@ -102,7 +99,7 @@ impl StudyTimeContext {
         let tomorrow_start_utc_millis = zone.first_valid_instant(tomorrow)?;
         Ok(Self {
             now_utc_millis,
-            time_zone_id: zone.identifier(),
+            time_zone_id: zone.identifier(now_utc_millis)?,
             utc_offset_minutes: zone.offset_minutes_at(now_utc_millis)?,
             local_date,
             today_start_utc_millis,
@@ -208,37 +205,6 @@ impl StudyTimeContext {
     }
 }
 
-fn first_valid_system_instant(date: NaiveDate) -> Result<i64, CommandError> {
-    let midnight = date
-        .and_hms_opt(0, 0, 0)
-        .ok_or_else(invalid_calendar_date)?;
-    for seconds in 0..SECONDS_PER_LOCAL_DATE {
-        let local = midnight
-            .checked_add_signed(Duration::seconds(seconds))
-            .ok_or_else(invalid_calendar_date)?;
-        if local.date() != date {
-            break;
-        }
-        if let Some(value) = resolve_local_result(Local.from_local_datetime(&local)) {
-            return Ok(value);
-        }
-    }
-    Err(CommandError::new(
-        "nonexistent_local_date",
-        "That local calendar date has no valid instant in the current time zone.",
-    ))
-}
-
-fn resolve_local_result(result: LocalResult<DateTime<Local>>) -> Option<i64> {
-    match result {
-        LocalResult::Single(value) => Some(value.timestamp_millis()),
-        LocalResult::Ambiguous(first, second) => {
-            Some(first.timestamp_millis().min(second.timestamp_millis()))
-        }
-        LocalResult::None => None,
-    }
-}
-
 pub fn parse_local_date(value: &str) -> Result<NaiveDate, CommandError> {
     NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| {
         CommandError::new(
@@ -248,47 +214,8 @@ pub fn parse_local_date(value: &str) -> Result<NaiveDate, CommandError> {
     })
 }
 
-fn discover_system_time_zone_id() -> String {
-    if let Ok(value) = env::var("TZ") {
-        if let Some(normalized) = normalize_zone_identifier(&value) {
-            return normalized;
-        }
-    }
-
-    #[cfg(unix)]
-    {
-        if let Ok(target) = std::fs::read_link("/etc/localtime") {
-            let rendered = target.to_string_lossy();
-            if let Some((_, suffix)) = rendered.rsplit_once("/zoneinfo/") {
-                if let Some(normalized) = normalize_zone_identifier(suffix) {
-                    return normalized;
-                }
-            }
-        }
-        if let Ok(value) = std::fs::read_to_string("/etc/timezone") {
-            if let Some(normalized) = normalize_zone_identifier(value.trim()) {
-                return normalized;
-            }
-        }
-    }
-
-    "unknown".to_string()
-}
-
-fn normalize_zone_identifier(value: &str) -> Option<String> {
-    let trimmed = value.trim().trim_start_matches(':');
-    if trimmed.is_empty()
-        || trimmed.len() > 128
-        || Path::new(trimmed).is_absolute()
-        || trimmed.chars().any(|character| {
-            character.is_control()
-                || !(character.is_ascii_alphanumeric()
-                    || matches!(character, '/' | '_' | '-' | '+' | '.'))
-        })
-    {
-        return None;
-    }
-    Some(trimmed.to_string())
+fn platform_calendar_error(message: String) -> CommandError {
+    CommandError::new("invalid_study_calendar_date", message)
 }
 
 fn checked_add_days(date: NaiveDate, days: i64) -> Result<NaiveDate, CommandError> {
@@ -443,15 +370,5 @@ mod tests {
             previous_year_clamped(date).expect("previous year should resolve"),
             NaiveDate::from_ymd_opt(2023, 2, 28).expect("valid date")
         );
-    }
-
-    #[test]
-    fn zone_identifier_rejects_paths_and_control_characters() {
-        assert_eq!(
-            normalize_zone_identifier("America/Los_Angeles"),
-            Some("America/Los_Angeles".to_string())
-        );
-        assert_eq!(normalize_zone_identifier("/usr/share/zoneinfo/UTC"), None);
-        assert_eq!(normalize_zone_identifier("bad\nzone"), None);
     }
 }

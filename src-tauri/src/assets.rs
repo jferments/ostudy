@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
@@ -13,14 +13,13 @@ use crate::{
     util::validate_entity_id,
 };
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetDto {
     pub id: String,
     pub original_filename: String,
     pub mime_type: String,
     pub byte_size: i64,
-    pub file_path: String,
     pub created_at: i64,
 }
 
@@ -44,7 +43,7 @@ pub(crate) fn get_assets_for_note(
 
 pub(crate) fn load_assets_for_notes(
     connection: &Connection,
-    paths: &AppPaths,
+    _paths: &AppPaths,
     note_ids: &[String],
 ) -> Result<HashMap<String, Vec<AssetDto>>, CommandError> {
     let mut result = note_ids
@@ -62,7 +61,7 @@ pub(crate) fn load_assets_for_notes(
         let sql = format!(
             "SELECT DISTINCT
                  na.note_id, a.id, a.original_filename, a.mime_type, a.byte_size,
-                 a.relative_path, a.created_at
+                 a.created_at
              FROM note_assets na
              JOIN assets a ON a.id = na.asset_id
              WHERE na.note_id IN ({placeholders})
@@ -73,20 +72,14 @@ pub(crate) fn load_assets_for_notes(
         let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
         let rows = statement
             .query_map(params_from_iter(values.iter()), |row| {
-                let note_id: String = row.get(0)?;
-                let relative_path: String = row.get(5)?;
                 Ok((
-                    note_id,
+                    row.get::<_, String>(0)?,
                     AssetDto {
                         id: row.get(1)?,
                         original_filename: row.get(2)?,
                         mime_type: row.get(3)?,
                         byte_size: row.get(4)?,
-                        file_path: paths
-                            .resolve_relative(&relative_path)
-                            .to_string_lossy()
-                            .into_owned(),
-                        created_at: row.get(6)?,
+                        created_at: row.get(5)?,
                     },
                 ))
             })

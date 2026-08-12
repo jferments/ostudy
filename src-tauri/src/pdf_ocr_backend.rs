@@ -21,7 +21,7 @@ use std::{
     process::{Command, Stdio},
     sync::atomic::{AtomicU64, Ordering},
     thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 
 const OCR_CANCELED_MARKER: &str = "ostudy_document_ocr_canceled";
@@ -514,10 +514,7 @@ impl TempOcrWorkspace {
     fn create() -> OcrResult<Self> {
         let root = std::env::temp_dir();
         let process = std::process::id();
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
+        let nanos = crate::platform::now_utc_millis().unwrap_or_default();
         for _ in 0..32 {
             let sequence = WORKSPACE_COUNTER.fetch_add(1, Ordering::Relaxed);
             let path = root.join(format!("ostudy-ocr-{process}-{nanos}-{sequence}"));

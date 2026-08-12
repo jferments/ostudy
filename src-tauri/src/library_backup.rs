@@ -28,7 +28,7 @@ use crate::{
 };
 
 const BACKUP_FORMAT: &str = "ostudy-library-backup";
-const BACKUP_VERSION: i64 = 2;
+const BACKUP_VERSION: i64 = 3;
 const MIN_SUPPORTED_BACKUP_VERSION: i64 = 1;
 const MAX_BACKUP_FILE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const MAX_DATABASE_SNAPSHOT_BYTES: usize = 1_500 * 1024 * 1024;
@@ -66,27 +66,27 @@ CREATE TABLE document_files (
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ExportLibraryBackupInput {
-    pub destination_path: String,
+pub struct PrepareLibraryBackupInput {
+    pub operation_id: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PrepareLibraryRestoreInput {
-    pub source_path: String,
+    pub staged_file_id: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LibraryBackupResultDto {
-    pub destination_path: String,
-    pub deck_count: i64,
-    pub template_count: i64,
-    pub review_count: i64,
-    pub asset_count: i64,
+struct LibraryBackupResultDto {
+    destination_path: String,
+    deck_count: i64,
+    template_count: i64,
+    review_count: i64,
+    asset_count: i64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryRestoreResultDto {
     pub deck_count: i64,
@@ -94,6 +94,25 @@ pub struct LibraryRestoreResultDto {
     pub review_count: i64,
     pub asset_count: i64,
     pub restart_required: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryBackupSummaryDto {
+    deck_count: i64,
+    template_count: i64,
+    review_count: i64,
+    asset_count: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparedLibraryBackupDto {
+    pub prepared_export: crate::external_files::PreparedExportDto,
+    pub deck_count: i64,
+    pub template_count: i64,
+    pub review_count: i64,
+    pub asset_count: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -157,34 +176,111 @@ impl Drop for PendingRestoreGuard {
 }
 
 #[tauri::command]
-pub fn export_library_backup(
+pub fn prepare_library_backup(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
-    input: ExportLibraryBackupInput,
-) -> Result<LibraryBackupResultDto, CommandError> {
-    let destination = normalize_backup_path(&input.destination_path)?;
-    export_backup(database.inner(), paths.inner(), &destination)
+    input: PrepareLibraryBackupInput,
+) -> Result<PreparedLibraryBackupDto, CommandError> {
+    crate::util::validate_entity_id(&input.operation_id, "library backup operation")?;
+    if let Some((prepared_export, summary)) = database.with_connection(|connection| {
+        crate::external_files::load_prepared_export_summary::<LibraryBackupSummaryDto>(
+            connection,
+            paths.inner(),
+            &input.operation_id,
+            "library_backup",
+        )
+    })? {
+        return Ok(PreparedLibraryBackupDto {
+            prepared_export,
+            deck_count: summary.deck_count,
+            template_count: summary.template_count,
+            review_count: summary.review_count,
+            asset_count: summary.asset_count,
+        });
+    }
+    let relative = AppPaths::prepared_export_relative_path(&input.operation_id, "ostudybackup");
+    let destination = paths.resolve_relative(&relative);
+    let exported = export_backup(database.inner(), paths.inner(), &destination)?;
+    let summary = LibraryBackupSummaryDto {
+        deck_count: exported.deck_count,
+        template_count: exported.template_count,
+        review_count: exported.review_count,
+        asset_count: exported.asset_count,
+    };
+    let created_at = unix_time_millis()?;
+    let created_date = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(created_at)
+        .map(|value| value.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|| "backup".to_string());
+    let suggested_filename = format!("ostudy-library-{created_date}.ostudybackup");
+    let prepared_export = database.with_connection(|connection| {
+        crate::external_files::register_prepared_export(
+            connection,
+            paths.inner(),
+            crate::external_files::RegisterPreparedExport {
+                id: &input.operation_id,
+                purpose: "library_backup",
+                suggested_filename: &suggested_filename,
+                media_type: "application/vnd.ostudy.backup",
+                relative_path: &relative,
+                summary: &summary,
+            },
+        )
+    })?;
+    Ok(PreparedLibraryBackupDto {
+        prepared_export,
+        deck_count: summary.deck_count,
+        template_count: summary.template_count,
+        review_count: summary.review_count,
+        asset_count: summary.asset_count,
+    })
 }
 
 #[tauri::command]
 pub fn prepare_library_restore(
+    database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     input: PrepareLibraryRestoreInput,
 ) -> Result<LibraryRestoreResultDto, CommandError> {
-    let source = fs::canonicalize(&input.source_path).map_err(CommandError::io)?;
-    let summary = validate_backup_package(&source, None)?;
+    crate::util::validate_entity_id(&input.staged_file_id, "staged library backup")?;
+    if let Some(result) = database.with_connection(|connection| {
+        crate::external_files::consumed_import_result::<LibraryRestoreResultDto>(
+            connection,
+            &input.staged_file_id,
+        )
+    })? {
+        return Ok(result);
+    }
+    let staged = database.with_connection(|connection| {
+        crate::external_files::resolve_staged_import(
+            connection,
+            paths.inner(),
+            &input.staged_file_id,
+            crate::external_files::ExternalImportPurpose::LibraryBackup,
+            &[crate::external_files::ExternalFileKind::Ostudybackup],
+        )
+    })?;
+    let summary = validate_backup_package(&staged.path, None)?;
     let pending = pending_restore_path(&paths);
     let temporary = pending.with_extension("ostudybackup.tmp");
     remove_file_if_exists(&temporary).map_err(CommandError::io)?;
-    copy_and_sync(&source, &temporary)?;
+    copy_and_sync(&staged.path, &temporary)?;
     replace_file(&temporary, &pending)?;
-    Ok(LibraryRestoreResultDto {
+    let result = LibraryRestoreResultDto {
         deck_count: summary.deck_count,
         template_count: summary.template_count,
         review_count: summary.review_count,
         asset_count: summary.asset_count,
         restart_required: true,
-    })
+    };
+    database.with_connection(|connection| {
+        crate::external_files::mark_import_consumed(
+            connection,
+            &input.staged_file_id,
+            &result,
+            unix_time_millis()?,
+        )
+    })?;
+    Ok(result)
 }
 
 pub(crate) fn apply_pending_restore(
@@ -340,7 +436,8 @@ fn export_backup(
         let active_drafts = connection
             .query_row(
                 "SELECT COUNT(*) FROM asset_drafts
-                 WHERE committed_at IS NULL AND canceled_at IS NULL",
+                 WHERE committed_at IS NULL AND canceled_at IS NULL
+                   AND retention_mode = 'ephemeral'",
                 [],
                 |row| row.get::<_, i64>(0),
             )
@@ -490,10 +587,26 @@ fn export_asset_files(
 ) -> Result<(), CommandError> {
     let mut statement = snapshot
         .prepare(
-            "SELECT id, relative_path, mime_type, byte_size
-             FROM assets
-             WHERE lifecycle_state = 'ready' AND deleted_at IS NULL
-             ORDER BY id",
+            "SELECT a.id,
+                    CASE
+                      WHEN a.lifecycle_state = 'ready' THEN a.relative_path
+                      ELSE a.staged_relative_path
+                    END,
+                    a.mime_type, a.byte_size, a.lifecycle_state
+             FROM assets a
+             LEFT JOIN asset_drafts ad ON ad.id = a.draft_id
+             LEFT JOIN editor_drafts ed ON ed.id = ad.editor_draft_id
+             WHERE a.deleted_at IS NULL
+               AND (
+                 a.lifecycle_state = 'ready'
+                 OR (
+                   a.lifecycle_state = 'staged'
+                   AND ad.retention_mode = 'persistent_editor'
+                   AND ad.committed_at IS NULL AND ad.canceled_at IS NULL
+                   AND ed.state IN ('active', 'conflicted')
+                 )
+               )
+             ORDER BY a.id",
         )
         .map_err(CommandError::database)?;
     let assets = statement
@@ -503,17 +616,18 @@ fn export_asset_files(
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, i64>(3)?,
+                row.get::<_, String>(4)?,
             ))
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    for (asset_id, relative_path, mime_type, byte_size) in assets {
-        validate_managed_asset_path(&relative_path)?;
+    for (asset_id, relative_path, mime_type, byte_size, lifecycle_state) in assets {
+        validate_managed_asset_path(&relative_path, &lifecycle_state)?;
         let data = fs::read(paths.resolve_relative(&relative_path)).map_err(|_| {
             CommandError::new(
                 "missing_asset",
-                "A ready image is missing. Repair it before creating a complete backup.",
+                "A managed image is missing. Repair it before creating a complete backup.",
             )
         })?;
         if data.is_empty()
@@ -522,14 +636,14 @@ fn export_asset_files(
         {
             return Err(CommandError::new(
                 "invalid_asset",
-                "A ready image does not match its database size record.",
+                "A managed image does not match its database size record.",
             ));
         }
         let (detected_mime, _) = detect_image_bytes(&data)?;
         if detected_mime != mime_type {
             return Err(CommandError::new(
                 "invalid_asset",
-                "A ready image does not match its database file type.",
+                "A managed image does not match its database file type.",
             ));
         }
         transaction
@@ -611,7 +725,7 @@ fn validate_backup_package(
     let snapshot = Connection::open_with_flags(&temporary, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(CommandError::database)?;
     validate_snapshot_database(&snapshot)?;
-    validate_backup_assets(&package, &snapshot, None)?;
+    validate_backup_assets(&package, &snapshot, version, None)?;
     if version >= 2 {
         document_backup::validate_document_files(&package, &snapshot, None)?;
     } else if document_backup::table_exists(&snapshot, "documents")?
@@ -659,7 +773,7 @@ fn extract_backup_package(
     fs::create_dir_all(assets_path.join("staging")).map_err(CommandError::io)?;
     fs::create_dir_all(assets_path.join("quarantine")).map_err(CommandError::io)?;
     fs::create_dir_all(documents_path.join("staging")).map_err(CommandError::io)?;
-    validate_backup_assets(&package, &snapshot, Some(extraction_root))?;
+    validate_backup_assets(&package, &snapshot, version, Some(extraction_root))?;
     if version >= 2 {
         document_backup::validate_document_files(&package, &snapshot, Some(extraction_root))?;
     }
@@ -671,23 +785,47 @@ fn extract_backup_package(
 fn validate_backup_assets(
     package: &Connection,
     snapshot: &Connection,
+    version: i64,
     extraction_root: Option<&Path>,
 ) -> Result<(), CommandError> {
-    let expected: i64 = snapshot
-        .query_row(
-            "SELECT COUNT(*) FROM assets
-             WHERE lifecycle_state = 'ready' AND deleted_at IS NULL",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
+    let expected: i64 = if version >= 3 {
+        snapshot
+            .query_row(
+                "SELECT COUNT(*)
+                 FROM assets a
+                 LEFT JOIN asset_drafts ad ON ad.id = a.draft_id
+                 LEFT JOIN editor_drafts ed ON ed.id = ad.editor_draft_id
+                 WHERE a.deleted_at IS NULL
+                   AND (
+                     a.lifecycle_state = 'ready'
+                     OR (
+                       a.lifecycle_state = 'staged'
+                       AND ad.retention_mode = 'persistent_editor'
+                       AND ad.committed_at IS NULL AND ad.canceled_at IS NULL
+                       AND ed.state IN ('active', 'conflicted')
+                     )
+                   )",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?
+    } else {
+        snapshot
+            .query_row(
+                "SELECT COUNT(*) FROM assets
+                 WHERE lifecycle_state = 'ready' AND deleted_at IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?
+    };
     let actual: i64 = package
         .query_row("SELECT COUNT(*) FROM asset_files", [], |row| row.get(0))
         .map_err(CommandError::database)?;
     if expected != actual {
         return Err(CommandError::new(
             "invalid_backup",
-            "The backup does not contain every ready managed image.",
+            "The backup does not contain every managed image required by the library and its recoverable drafts.",
         ));
     }
     let mut statement = package
@@ -710,18 +848,54 @@ fn validate_backup_assets(
     for row in rows {
         let (asset_id, relative_path, mime_type, byte_size, data) =
             row.map_err(CommandError::database)?;
-        validate_managed_asset_path(&relative_path)?;
-        let stored: Option<(String, String, i64)> = snapshot
-            .query_row(
-                "SELECT relative_path, mime_type, byte_size
-                 FROM assets
-                 WHERE id = ?1 AND lifecycle_state = 'ready' AND deleted_at IS NULL",
-                [asset_id.as_str()],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .optional()
-            .map_err(CommandError::database)?;
-        if stored != Some((relative_path.clone(), mime_type.clone(), byte_size))
+        let stored: Option<(String, String, i64, String)> = if version >= 3 {
+            snapshot
+                .query_row(
+                    "SELECT CASE
+                              WHEN a.lifecycle_state = 'ready' THEN a.relative_path
+                              ELSE a.staged_relative_path
+                            END,
+                            a.mime_type, a.byte_size, a.lifecycle_state
+                     FROM assets a
+                     LEFT JOIN asset_drafts ad ON ad.id = a.draft_id
+                     LEFT JOIN editor_drafts ed ON ed.id = ad.editor_draft_id
+                     WHERE a.id = ?1 AND a.deleted_at IS NULL
+                       AND (
+                         a.lifecycle_state = 'ready'
+                         OR (
+                           a.lifecycle_state = 'staged'
+                           AND ad.retention_mode = 'persistent_editor'
+                           AND ad.committed_at IS NULL AND ad.canceled_at IS NULL
+                           AND ed.state IN ('active', 'conflicted')
+                         )
+                       )",
+                    [asset_id.as_str()],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .optional()
+                .map_err(CommandError::database)?
+        } else {
+            snapshot
+                .query_row(
+                    "SELECT relative_path, mime_type, byte_size, lifecycle_state
+                     FROM assets
+                     WHERE id = ?1 AND lifecycle_state = 'ready' AND deleted_at IS NULL",
+                    [asset_id.as_str()],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .optional()
+                .map_err(CommandError::database)?
+        };
+        let Some((stored_path, stored_mime, stored_size, lifecycle_state)) = stored else {
+            return Err(CommandError::new(
+                "invalid_backup",
+                "A packaged image is not owned by the SQLite asset ledger.",
+            ));
+        };
+        validate_managed_asset_path(&relative_path, &lifecycle_state)?;
+        if stored_path != relative_path
+            || stored_mime != mime_type
+            || stored_size != byte_size
             || data.is_empty()
             || data.len() > MAX_SINGLE_ASSET_BYTES
             || i64::try_from(data.len()).unwrap_or(i64::MAX) != byte_size
@@ -824,38 +998,33 @@ fn backup_version(connection: &Connection) -> Result<i64, CommandError> {
         .map_err(|_| CommandError::new("invalid_backup", "The backup version is invalid."))
 }
 
-fn normalize_backup_path(value: &str) -> Result<PathBuf, CommandError> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Err(CommandError::new(
-            "invalid_backup_path",
-            "Choose where to save the library backup.",
-        ));
-    }
-    let mut path = PathBuf::from(trimmed);
-    if path.extension().and_then(|value| value.to_str()) != Some("ostudybackup") {
-        path.set_extension("ostudybackup");
-    }
-    Ok(path)
-}
-
 fn pending_restore_path(paths: &AppPaths) -> PathBuf {
     paths
         .app_data_dir()
         .join("pending-library-restore.ostudybackup")
 }
 
-fn validate_managed_asset_path(value: &str) -> Result<(), CommandError> {
+fn validate_managed_asset_path(value: &str, lifecycle_state: &str) -> Result<(), CommandError> {
+    let managed_directory = match lifecycle_state {
+        "ready" => "images",
+        "staged" => "staging",
+        _ => {
+            return Err(CommandError::new(
+                "invalid_backup",
+                "A packaged image has an unsupported lifecycle state.",
+            ));
+        }
+    };
     let path = Path::new(value);
     let components = path.components().collect::<Vec<_>>();
     if components.len() != 3
         || components[0] != Component::Normal("assets".as_ref())
-        || components[1] != Component::Normal("images".as_ref())
+        || components[1] != Component::Normal(Path::new(managed_directory).as_os_str())
         || !matches!(components[2], Component::Normal(_))
     {
         return Err(CommandError::new(
             "invalid_backup",
-            "A packaged image path escapes the managed image directory.",
+            "A packaged image path escapes its managed lifecycle directory.",
         ));
     }
     Ok(())

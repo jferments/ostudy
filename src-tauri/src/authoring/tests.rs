@@ -217,6 +217,7 @@ fn bulk_entry_skips_exact_duplicates() {
                 tags: vec!["Cell".to_string()],
             },
         ],
+        editor_draft: None,
     };
     let prepared = input
         .rows

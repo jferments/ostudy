@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { Asset } from "./assets";
 import type { RichDocument } from "./common";
+import type { EditorDraftCommitRef } from "./drafts";
 
 export interface CardTemplateField {
   id: string;
@@ -60,6 +61,7 @@ export interface CreateCardTemplateInput {
   fields: CardTemplateFieldInput[];
   rules: CardTemplateRuleInput[];
   assetDraftId?: string;
+  editorDraft?: EditorDraftCommitRef;
 }
 
 export interface UpdateCardTemplateInput extends CreateCardTemplateInput {
@@ -93,6 +95,7 @@ export interface GenerateTemplateCardsInput extends PreviewTemplateCardsInput {
   deckId: string;
   tags: string[];
   assetDraftId?: string;
+  editorDraft?: EditorDraftCommitRef;
 }
 
 export interface GenerateTemplateCardsResult {

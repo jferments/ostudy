@@ -7,8 +7,26 @@ import { makeSettings } from "../test/factories";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { SettingsScreen } from "./SettingsScreen";
 
-vi.mock("../platform/files", () => ({ openFile: vi.fn(), saveFile: vi.fn() }));
-vi.mock("../ipc/backup", () => ({ exportLibraryBackup: vi.fn(), prepareLibraryRestore: vi.fn() }));
+vi.mock("../controllers/useDurableDraft", () => ({
+  useDurableDraft: () => ({
+    draftId: "d".repeat(32),
+    assetDraftId: "7".repeat(32),
+    revision: 1,
+    status: "saved",
+    errorMessage: null,
+    recovered: false,
+    hasUnsavedLocalChanges: false,
+    flush: vi.fn().mockResolvedValue(undefined),
+    discard: vi.fn().mockResolvedValue(undefined),
+    prepareCanonicalCommit: vi.fn().mockResolvedValue({ draftId: "d".repeat(32), revision: 1 }),
+    acceptCanonicalCommit: vi.fn(),
+    commit: vi.fn().mockResolvedValue(undefined),
+    restart: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
+vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn(), publishExport: vi.fn() }));
+vi.mock("../ipc/backup", () => ({ prepareLibraryBackup: vi.fn(), prepareLibraryRestore: vi.fn() }));
 vi.mock("../ipc/settings", () => ({ getAppInfo: vi.fn(), saveSettings: vi.fn() }));
 vi.mock("../ipc/aiProfiles", () => ({
   getAiProviderCatalog: vi.fn(),

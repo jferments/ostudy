@@ -7,6 +7,7 @@ import { recordWebviewDiagnostic } from "./ipc/diagnostics";
 import { ExperienceProvider } from "./ui/feedback/ExperienceProvider";
 import "./ui/foundations/index.css";
 import { OverlayProvider } from "./ui/overlays/OverlayProvider";
+import { PlatformProvider } from "./platform/PlatformProvider";
 
 window.addEventListener("error", (event) => {
   void recordWebviewDiagnostic(
@@ -26,12 +27,14 @@ if (rootElement === null) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <OverlayProvider>
+    <PlatformProvider>
+      <OverlayProvider>
       <ExperienceProvider>
         <AppErrorBoundary>
           <App />
         </AppErrorBoundary>
       </ExperienceProvider>
-    </OverlayProvider>
+      </OverlayProvider>
+    </PlatformProvider>
   </StrictMode>,
 );

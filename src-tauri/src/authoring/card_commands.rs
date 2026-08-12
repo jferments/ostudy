@@ -130,7 +130,11 @@ pub fn bulk_create_cards(
     input: BulkCreateCardsInput,
 ) -> Result<BulkCreateResultDto, CommandError> {
     validate_bulk_rows(&input.deck_id, &input.rows)?;
-    let BulkCreateCardsInput { deck_id, rows } = input;
+    let BulkCreateCardsInput {
+        deck_id,
+        rows,
+        editor_draft,
+    } = input;
     let prepared = rows
         .into_iter()
         .enumerate()
@@ -166,6 +170,15 @@ pub fn bulk_create_cards(
             created_count += 1;
         }
 
+        crate::editor_drafts::commit_canonical_editor_draft(
+            &transaction,
+            editor_draft.as_ref(),
+            crate::editor_drafts::EditorDraftKind::BulkCards,
+            None,
+            None,
+            None,
+            now,
+        )?;
         transaction.commit().map_err(CommandError::database)?;
         Ok(BulkCreateResultDto {
             created_count,

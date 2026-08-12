@@ -32,10 +32,10 @@ describe("document IPC", () => {
       .mockResolvedValueOnce({ documentId })
       .mockResolvedValueOnce({ deckId: "b".repeat(32) });
 
-    await importPdfAndGenerateFlashcards("/tmp/chapter.pdf");
+    await importPdfAndGenerateFlashcards("1".repeat(32));
 
     expect(invoke).toHaveBeenNthCalledWith(1, "import_pdf_document", {
-      input: { sourcePath: "/tmp/chapter.pdf" },
+      input: { stagedFileId: "1".repeat(32) },
     });
     expect(invoke).toHaveBeenNthCalledWith(2, "run_pdf_flashcard_generation", {
       input: { documentId },

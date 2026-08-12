@@ -6,7 +6,7 @@ import * as platformFiles from "../platform/files";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "./DocumentsScreen";
 
-vi.mock("../platform/files", () => ({ openFile: vi.fn() }));
+vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
   importPdfAndGenerateFlashcards: vi.fn(),
@@ -83,7 +83,7 @@ function renderDocuments(showToast = vi.fn(), refreshDecks = vi.fn().mockResolve
 describe("DocumentsScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(platformFiles.openFile).mockResolvedValue(null);
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([]);
     vi.mocked(documentIpc.openDocumentSource).mockResolvedValue(undefined);
     vi.mocked(documentIpc.cancelPdfFlashcardGeneration).mockResolvedValue(undefined);
@@ -99,7 +99,7 @@ describe("DocumentsScreen", () => {
 
   it("uploads one PDF, gives the short long-document toast, and creates a normal deck", async () => {
     const completed = makeDocument();
-    vi.mocked(platformFiles.openFile).mockResolvedValue("/tmp/cardiac-physiology.pdf");
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "pdf_document", detectedKind: "pdf", displayName: "cardiac-physiology.pdf", mediaType: "application/pdf", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
     vi.mocked(documentIpc.importPdfAndGenerateFlashcards).mockResolvedValue({
       document: completed,
       deckId: completed.generatedDeckId ?? "",
@@ -117,9 +117,7 @@ describe("DocumentsScreen", () => {
 
     await waitFor(() => {
       expect(showToast).toHaveBeenCalledWith("info", "Large documents can take several minutes.");
-      expect(documentIpc.importPdfAndGenerateFlashcards).toHaveBeenCalledWith(
-        "/tmp/cardiac-physiology.pdf",
-      );
+      expect(documentIpc.importPdfAndGenerateFlashcards).toHaveBeenCalledWith("1".repeat(32));
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });

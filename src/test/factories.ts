@@ -86,7 +86,6 @@ export function makeAsset(overrides: Partial<Asset> = {}): Asset {
     originalFilename: "diagram.png",
     mimeType: "image/png",
     byteSize: 128,
-    filePath: "/tmp/ostudy/diagram.png",
     createdAt: 1,
     ...overrides,
   };
