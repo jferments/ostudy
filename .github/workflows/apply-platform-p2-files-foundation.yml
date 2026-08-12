@@ -35,6 +35,15 @@ jobs:
           path = Path('scripts/apply-platform-p2-files-foundation.mjs')
           text = path.read_text()
           text = text.replace('`ExternalFilePort`', "'ExternalFilePort'")
+          start = text.index('const pathsWithDirs = paths.replace(')
+          end = text.index('const pathMethods = `', start)
+          replacement = '''const pathsWithDirs = paths.replace(
+            "        let document_staging_dir = documents_dir.join(\\\"staging\\\");\\n        std::fs::create_dir_all(&images_dir)?;\\n        std::fs::create_dir_all(&asset_staging_dir)?;\\n        std::fs::create_dir_all(&asset_quarantine_dir)?;\\n        std::fs::create_dir_all(&documents_dir)?;\\n        std::fs::create_dir_all(&document_staging_dir)?;",
+            "        let document_staging_dir = documents_dir.join(\\\"staging\\\");\\n        let transfer_imports_dir = app_data_dir.join(\\\"transfers\\\").join(\\\"imports\\\");\\n        let transfer_exports_dir = app_data_dir.join(\\\"transfers\\\").join(\\\"exports\\\");\\n        std::fs::create_dir_all(&images_dir)?;\\n        std::fs::create_dir_all(&asset_staging_dir)?;\\n        std::fs::create_dir_all(&asset_quarantine_dir)?;\\n        std::fs::create_dir_all(&documents_dir)?;\\n        std::fs::create_dir_all(&document_staging_dir)?;\\n        std::fs::create_dir_all(&transfer_imports_dir)?;\\n        std::fs::create_dir_all(&transfer_exports_dir)?;",
+          );
+          if (pathsWithDirs === paths) throw new Error("paths.rs: directory block not found");
+          '''
+          text = text[:start] + replacement + text[end:]
           path.write_text(text)
           PY
           node ./scripts/apply-platform-p2-files-foundation.mjs
