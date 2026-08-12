@@ -13,6 +13,12 @@ function replaceExact(text, before, after, label) {
 }
 
 let external = await read("src-tauri/src/external_files.rs");
+external = replaceExact(
+  external,
+  `    path::{Component, Path},\n`,
+  `    path::{Component, Path, PathBuf},\n`,
+  "import incoming-share PathBuf",
+);
 if (!external.includes("tauri_plugin_ostudy_platform::OstudyPlatformExt")) {
   external = replaceExact(
     external,
