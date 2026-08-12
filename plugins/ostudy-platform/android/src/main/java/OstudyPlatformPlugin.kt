@@ -326,7 +326,7 @@ class OstudyPlatformPlugin(private val activity: Activity) : Plugin(activity) {
             }
             val uri = FileProvider.getUriForFile(
                 activity,
-                "${activity.packageName}.files",
+                "${activity.packageName}.fileprovider",
                 source
             )
             val share = Intent(Intent.ACTION_SEND).apply {
@@ -477,10 +477,21 @@ class OstudyPlatformPlugin(private val activity: Activity) : Plugin(activity) {
             }
             val response = incomingSummaryObject(args.token, metadata)
             response.put("path", file.canonicalPath)
-            incomingPreferences.edit().remove(args.token).apply()
             invoke.resolve(response)
         } catch (error: Exception) {
             invoke.reject("The incoming Android share could not be opened: ${safeMessage(error)}")
+        }
+    }
+
+    @Command
+    fun dismissIncomingShare(invoke: Invoke) {
+        val args = invoke.parseArgs(IncomingShareArgs::class.java)
+        try {
+            validateToken(args.token)
+            removeIncomingShare(args.token)
+            invoke.resolve()
+        } catch (error: Exception) {
+            invoke.reject("The incoming Android share could not be dismissed: ${safeMessage(error)}")
         }
     }
 
@@ -498,7 +509,11 @@ class OstudyPlatformPlugin(private val activity: Activity) : Plugin(activity) {
     private fun installLifecycleObserver() {
         val owner = activity as? LifecycleOwner ?: return
         val observer = object : DefaultLifecycleObserver {
-            override fun onResume(owner: LifecycleOwner) = emitLifecycle("resuming")
+            override fun onResume(owner: LifecycleOwner) {
+                emitLifecycle("resuming")
+                emitLifecycle("foreground")
+                publishEnvironment()
+            }
             override fun onPause(owner: LifecycleOwner) = emitLifecycle("background")
             override fun onStop(owner: LifecycleOwner) = emitLifecycle("suspending")
             override fun onDestroy(owner: LifecycleOwner) {
@@ -556,6 +571,10 @@ class OstudyPlatformPlugin(private val activity: Activity) : Plugin(activity) {
 
     private fun emitNetwork() {
         trigger("network", networkObject())
+    }
+
+    private fun publishEnvironment() {
+        trigger("environment", environmentObject())
     }
 
     private fun environmentObject(): JSObject {
