@@ -92,7 +92,20 @@ export async function getNativePlatformSnapshot(): Promise<NativePlatformSnapsho
 export async function listenToLifecycle(
   listener: (snapshot: LifecycleSnapshot) => void,
 ): Promise<UnlistenFn> {
-  return listen<LifecycleSnapshot>("ostudy-lifecycle", (event) => listener(event.payload));
+  const core = await listen<LifecycleSnapshot>("ostudy-lifecycle", (event) => listener(event.payload));
+  let android: UnlistenFn | null = null;
+  try {
+    android = pluginUnlisten(
+      await addPluginListener<LifecycleSnapshot>(PLATFORM_PLUGIN, "lifecycle", listener),
+    );
+  } catch {
+    // Desktop builds register the plugin transport but do not emit Android
+    // lifecycle events. The shared Rust stream remains authoritative there.
+  }
+  return () => {
+    core();
+    android?.();
+  };
 }
 
 export function setPlatformBackInterception(enabled: boolean): Promise<void> {
@@ -101,14 +114,6 @@ export function setPlatformBackInterception(enabled: boolean): Promise<void> {
 
 export async function listenToAndroidBack(listener: () => void): Promise<UnlistenFn> {
   return pluginUnlisten(await addPluginListener<Record<string, never>>(PLATFORM_PLUGIN, "back", listener));
-}
-
-export async function listenToAndroidLifecycle(
-  listener: (snapshot: LifecycleSnapshot) => void,
-): Promise<UnlistenFn> {
-  return pluginUnlisten(
-    await addPluginListener<LifecycleSnapshot>(PLATFORM_PLUGIN, "lifecycle", listener),
-  );
 }
 
 export async function listenToAndroidInsets(
