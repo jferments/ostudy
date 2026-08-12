@@ -295,7 +295,7 @@ external = replaceExact(
 );
 external = replaceExact(
   external,
-  `    let request = ExternalFileRequest {\n        title: "Publish ostudy export".to_string(),\n        suggested_filename: Some(stored.dto.suggested_filename.clone()),\n        filters: vec![FileFilter {`,
+  `    let request = ExternalFileRequest {\n        title: "Publish ostudy export".to_string(),\n        suggested_filename: Some(stored.dto.suggested_filename.clone()),\n        mime_types: Vec::new(),\n        filters: vec![FileFilter {`,
   `    let request = ExternalFileRequest {\n        title: "Publish ostudy export".to_string(),\n        suggested_filename: Some(stored.dto.suggested_filename.clone()),\n        mime_types: vec![stored.dto.media_type.clone()],\n        filters: vec![FileFilter {`,
   "add export MIME type",
 );
