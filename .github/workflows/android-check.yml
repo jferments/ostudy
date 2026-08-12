@@ -1,0 +1,108 @@
+name: Android check
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_emulator:
+        description: Run the official Android Emulator smoke suite on this self-hosted runner
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: android-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android-compile:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 120
+    env:
+      CI: "true"
+      CARGO_TERM_COLOR: always
+      OSTUDY_CARGO_TARGET_DIR: ${{ github.workspace }}/.android-cargo-target
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Expose user-local tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install JavaScript and native prerequisites
+        run: |
+          pnpm install --frozen-lockfile
+          ./scripts/install-native-deps.sh --pdfium-only
+          bash ./scripts/install-android-deps.sh
+          rustup target add \
+            aarch64-linux-android \
+            armv7-linux-androideabi \
+            i686-linux-android \
+            x86_64-linux-android
+          source ./scripts/android-env.sh
+          android_write_local_properties
+          android_emit_github_environment
+          echo "OSTUDY_PDFIUM_PATH=$GITHUB_WORKSPACE/src-tauri/resources/native/pdfium/libpdfium.so" >> "$GITHUB_ENV"
+
+      - name: Verify Android project and compile test packages
+        run: bash ./scripts/android-test.sh
+
+      - name: Upload Android debug artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ostudy-android-debug-${{ github.sha }}
+          path: |
+            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+            src-tauri/gen/android/app/build/reports/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  android-emulator-smoke:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_emulator == true
+    needs: android-compile
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 120
+    env:
+      CI: "true"
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Expose user-local tools
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install emulator toolchain
+        run: |
+          pnpm install --frozen-lockfile
+          bash ./scripts/install-android-deps.sh --with-emulator
+          rustup target add x86_64-linux-android
+          source ./scripts/android-env.sh
+          android_write_local_properties
+          android_emit_github_environment
+
+      - name: Run official Android Emulator smoke suite
+        run: bash ./scripts/android-emulator-smoke.sh --artifacts "$RUNNER_TEMP/android-smoke"
+
+      - name: Upload emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ostudy-android-emulator-${{ github.sha }}
+          path: ${{ runner.temp }}/android-smoke/**
+          if-no-files-found: warn
+          retention-days: 14
