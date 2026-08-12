@@ -40,7 +40,7 @@ mod paths;
 mod pdf_backend;
 mod pdf_ocr_backend;
 mod pdf_render_backend;
-mod platform;
+pub mod platform;
 mod practice;
 mod practice_selection;
 mod projections;

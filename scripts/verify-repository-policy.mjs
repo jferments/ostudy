@@ -23,8 +23,11 @@ for (const path of rustFiles) {
   if (/\breqwest\b/u.test(text) && displayPath !== "src-tauri/src/ai/gateway.rs") {
     failures.push(`${displayPath}: provider HTTP is confined to the native AI gateway transport`);
   }
-  if (/\bkeyring\b/u.test(text) && displayPath !== "src-tauri/src/ai/secrets.rs") {
-    failures.push(`${displayPath}: operating-system credentials are confined to the AI secret-store boundary`);
+  if (
+    /\bkeyring\b/u.test(text)
+    && displayPath !== "src-tauri/src/platform/desktop/secrets.rs"
+  ) {
+    failures.push(`${displayPath}: operating-system credentials are confined to the desktop secret-store adapter`);
   }
 }
 

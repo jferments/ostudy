@@ -2,6 +2,8 @@
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod desktop;
+#[cfg(any(target_os = "android", target_os = "ios"))]
+mod mobile_stub;
 
 use std::{
     path::PathBuf,
@@ -340,7 +342,7 @@ impl PlatformRuntime {
         }
         #[cfg(any(target_os = "android", target_os = "ios"))]
         {
-            compile_error!("Mobile PlatformRuntime adapters must be supplied by the generated Tauri mobile project.");
+            return mobile_stub::runtime();
         }
     }
 

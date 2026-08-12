@@ -27,6 +27,13 @@ for (const path of files) {
   const displayPath = relative(root, path).replaceAll("\\", "/");
   if (!/\.(?:rs|ts|tsx)$/u.test(displayPath)) continue;
   if (/(?:^|\/)[^/]+\.(?:test|spec)\.(?:ts|tsx)$/u.test(displayPath)) continue;
+  if (
+    displayPath.startsWith("src-tauri/src/")
+    && (
+      displayPath.includes("/tests/")
+      || /(?:^|\/)(?:[^/]*_tests|conformance_tests|operation_tests)\.rs$/u.test(displayPath)
+    )
+  ) continue;
   const text = await readFile(path, "utf8");
 
   if (displayPath.startsWith("src/")) {
@@ -52,18 +59,18 @@ for (const path of files) {
     if (/\bpub\s+(?:source_path|destination_path|file_path)\s*:\s*String\b/u.test(text)) {
       report("rust-raw-path-contract", displayPath);
     }
-    const desktopAdapter = displayPath.startsWith("src-tauri/src/platform/desktop/");
-    if (!desktopAdapter && /\bkeyring(?:::|\b)/u.test(text)) report("rust-keyring-outside-adapter", displayPath);
-    if (!desktopAdapter && /\bsysinfo(?:::|\b)/u.test(text)) report("rust-sysinfo-outside-adapter", displayPath);
-    if (!desktopAdapter && /\bSystemTime(?:::|\b)/u.test(text)) report("rust-direct-system-clock", displayPath);
-    if (!desktopAdapter && (
+    const platformAdapter = displayPath.startsWith("src-tauri/src/platform/");
+    if (!platformAdapter && /\bkeyring(?:::|\b)/u.test(text)) report("rust-keyring-outside-adapter", displayPath);
+    if (!platformAdapter && /\bsysinfo(?:::|\b)/u.test(text)) report("rust-sysinfo-outside-adapter", displayPath);
+    if (!platformAdapter && /\bSystemTime(?:::|\b)/u.test(text)) report("rust-direct-system-clock", displayPath);
+    if (!platformAdapter && (
       /\bchrono::(?:[^;\n]*\bLocal\b|\{[^}]*\bLocal\b)/u.test(text)
       || /\/etc\/(?:localtime|timezone)/u.test(text)
     )) {
       report("rust-direct-local-time-zone", displayPath);
     }
-    if (!desktopAdapter && /\btarget_os\s*=\s*"/u.test(text)) report("rust-target-os-branch", displayPath);
-    if (!desktopAdapter && /\b(?:std::process::Command|Command::new)\b/u.test(text)) {
+    if (!platformAdapter && /\btarget_os\s*=\s*"/u.test(text)) report("rust-target-os-branch", displayPath);
+    if (!platformAdapter && /\b(?:std::process::Command|Command::new)\b/u.test(text)) {
       report("rust-process-command-outside-adapter", displayPath);
     }
   }

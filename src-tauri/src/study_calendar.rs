@@ -6,12 +6,11 @@
 //! [`StudyTimeContext`] and passes it through subordinate calculations.
 
 #[cfg(test)]
-use chrono::Utc;
-use chrono::{DateTime, Datelike, Duration, NaiveDate};
+use chrono::{DateTime, Utc};
+use chrono::{Datelike, Duration, NaiveDate};
 
 use crate::{error::CommandError, util::unix_time_millis};
 
-const SECONDS_PER_LOCAL_DATE: i64 = 86_400;
 const MAX_CALENDAR_DAY_SPAN: i64 = 3_660;
 #[cfg(test)]
 const MILLIS_PER_MINUTE: i64 = 60_000;
@@ -371,15 +370,5 @@ mod tests {
             previous_year_clamped(date).expect("previous year should resolve"),
             NaiveDate::from_ymd_opt(2023, 2, 28).expect("valid date")
         );
-    }
-
-    #[test]
-    fn zone_identifier_rejects_paths_and_control_characters() {
-        assert_eq!(
-            normalize_zone_identifier("America/Los_Angeles"),
-            Some("America/Los_Angeles".to_string())
-        );
-        assert_eq!(normalize_zone_identifier("/usr/share/zoneinfo/UTC"), None);
-        assert_eq!(normalize_zone_identifier("bad\nzone"), None);
     }
 }

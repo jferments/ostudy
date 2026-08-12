@@ -1,9 +1,5 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
-fn timestamp_millis() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_millis())
+fn timestamp_millis() -> i64 {
+    crate::platform::now_utc_millis().unwrap_or_default()
 }
 
 fn record(level: &str, event: &str, message: &str) -> serde_json::Value {

@@ -90,6 +90,12 @@
       "path": "src-tauri/src/pdf_ocr_backend.rs",
       "retireInPhase": "Android/iOS",
       "reason": "Desktop Tesseract subprocess"
+    },
+    {
+      "rule": "frontend-direct-tauri-core-import",
+      "path": "src/editor/StudyRichEditor.tsx",
+      "retireInPhase": "P2",
+      "reason": "Temporary absolute asset path conversion"
     }
   ]
 }

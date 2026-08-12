@@ -120,3 +120,18 @@ fn normalize_zone_identifier(value: &str) -> Option<String> {
 fn invalid_calendar_date() -> String {
     "The requested study calendar date is outside the supported range.".to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zone_identifier_rejects_paths_and_control_characters() {
+        assert_eq!(
+            normalize_zone_identifier("America/Los_Angeles"),
+            Some("America/Los_Angeles".to_string())
+        );
+        assert_eq!(normalize_zone_identifier("/usr/share/zoneinfo/UTC"), None);
+        assert_eq!(normalize_zone_identifier("bad\nzone"), None);
+    }
+}

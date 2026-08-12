@@ -38,7 +38,8 @@ struct MobileCapabilityProvider;
 
 impl CapabilityProvider for MobileCapabilityProvider {
     fn snapshot(&self) -> PlatformCapabilitySnapshot {
-        let unavailable = || ServiceCapability::unavailable("native_mobile_adapter_not_initialized");
+        let unavailable =
+            || ServiceCapability::unavailable("native_mobile_adapter_not_initialized");
         PlatformCapabilitySnapshot {
             schema_version: 1,
             runtime_family: "mobile".to_string(),
@@ -49,8 +50,12 @@ impl CapabilityProvider for MobileCapabilityProvider {
                 external_file_export: unavailable(),
                 secure_secrets: unavailable(),
                 lifecycle_events: unavailable(),
-                local_time_zone: ServiceCapability::unavailable("native_time_zone_adapter_not_initialized"),
-                resource_observation: ServiceCapability::unavailable("native_resource_adapter_not_initialized"),
+                local_time_zone: ServiceCapability::unavailable(
+                    "native_time_zone_adapter_not_initialized",
+                ),
+                resource_observation: ServiceCapability::unavailable(
+                    "native_resource_adapter_not_initialized",
+                ),
                 native_pdf_render: unavailable(),
                 native_pdf_text_rescue: unavailable(),
                 ocr: unavailable(),
@@ -98,8 +103,9 @@ impl crate::platform::Clock for MobileSystemClock {
         let duration = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| format!("The system clock is before the Unix epoch: {error}"))?;
-        i64::try_from(duration.as_millis())
-            .map_err(|_| "The current timestamp is outside the supported integer range.".to_string())
+        i64::try_from(duration.as_millis()).map_err(|_| {
+            "The current timestamp is outside the supported integer range.".to_string()
+        })
     }
 }
 
@@ -116,13 +122,17 @@ impl TimeZoneProvider for UtcFallbackTimeZoneProvider {
     fn local_date_at(&self, utc_millis: i64) -> Result<NaiveDate, String> {
         DateTime::<Utc>::from_timestamp_millis(utc_millis)
             .map(|value| value.date_naive())
-            .ok_or_else(|| "The requested study calendar date is outside the supported range.".to_string())
+            .ok_or_else(|| {
+                "The requested study calendar date is outside the supported range.".to_string()
+            })
     }
 
     fn first_valid_instant(&self, date: NaiveDate) -> Result<i64, String> {
         date.and_hms_opt(0, 0, 0)
-            .and_then(|value| value.and_utc().timestamp_millis().try_into().ok())
-            .ok_or_else(|| "The requested study calendar date is outside the supported range.".to_string())
+            .map(|value| value.and_utc().timestamp_millis())
+            .ok_or_else(|| {
+                "The requested study calendar date is outside the supported range.".to_string()
+            })
     }
 }
 
