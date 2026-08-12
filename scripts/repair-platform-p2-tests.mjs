@@ -134,4 +134,10 @@ domain = domain
   );
 await write("src/ipc/domain-contracts.test.ts", domain);
 
+await import(new URL("./repair-platform-p2-final-tests.mjs", import.meta.url));
+await (await import("node:fs/promises")).rm(
+  join(root, "scripts", "repair-platform-p2-final-tests.mjs"),
+  { force: true },
+);
+
 console.log("Updated tests for opaque file handles and durable draft hooks.");
