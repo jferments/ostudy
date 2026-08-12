@@ -37,6 +37,16 @@ policy = policy
   .replaceAll("!desktopAdapter", "!platformAdapter");
 await write("scripts/verify-platform-boundaries.mjs", policy);
 
+let repositoryPolicy = await read("scripts/verify-repository-policy.mjs");
+repositoryPolicy = repositoryPolicy.replace(
+  '  if (/\\bkeyring\\b/u.test(text) && displayPath !== "src-tauri/src/ai/secrets.rs") {\n    failures.push(`${displayPath}: operating-system credentials are confined to the AI secret-store boundary`);\n  }',
+  '  if (\n    /\\bkeyring\\b/u.test(text)\n    && displayPath !== "src-tauri/src/platform/desktop/secrets.rs"\n  ) {\n    failures.push(`${displayPath}: operating-system credentials are confined to the desktop secret-store adapter`);\n  }',
+);
+if (!repositoryPolicy.includes("desktop secret-store adapter")) {
+  throw new Error("scripts/verify-repository-policy.mjs: keyring policy was not migrated");
+}
+await write("scripts/verify-repository-policy.mjs", repositoryPolicy);
+
 let calendar = await read("src-tauri/src/study_calendar.rs");
 calendar = calendar
   .replace("#[cfg(test)]\nuse chrono::Utc;\nuse chrono::{DateTime, Datelike, Duration, NaiveDate};", "#[cfg(test)]\nuse chrono::{DateTime, Utc};\nuse chrono::{Datelike, Duration, NaiveDate};")
