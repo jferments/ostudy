@@ -437,8 +437,6 @@ fn export_backup(
             .query_row(
                 "SELECT COUNT(*) FROM asset_drafts
                  WHERE committed_at IS NULL AND canceled_at IS NULL
-                   AND retention_mode = 'ephemeral'
-                   AND retention_mode = 'ephemeral'
                    AND retention_mode = 'ephemeral'",
                 [],
                 |row| row.get::<_, i64>(0),
@@ -594,7 +592,7 @@ fn export_asset_files(
                       WHEN a.lifecycle_state = 'ready' THEN a.relative_path
                       ELSE a.staged_relative_path
                     END,
-                    a.mime_type, a.byte_size
+                    a.mime_type, a.byte_size, a.lifecycle_state
              FROM assets a
              LEFT JOIN asset_drafts ad ON ad.id = a.draft_id
              LEFT JOIN editor_drafts ed ON ed.id = ad.editor_draft_id
@@ -618,17 +616,18 @@ fn export_asset_files(
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, i64>(3)?,
+                row.get::<_, String>(4)?,
             ))
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    for (asset_id, relative_path, mime_type, byte_size) in assets {
-        validate_managed_asset_path(&relative_path)?;
+    for (asset_id, relative_path, mime_type, byte_size, lifecycle_state) in assets {
+        validate_managed_asset_path(&relative_path, &lifecycle_state)?;
         let data = fs::read(paths.resolve_relative(&relative_path)).map_err(|_| {
             CommandError::new(
                 "missing_asset",
-                "A ready image is missing. Repair it before creating a complete backup.",
+                "A managed image is missing. Repair it before creating a complete backup.",
             )
         })?;
         if data.is_empty()
@@ -637,14 +636,14 @@ fn export_asset_files(
         {
             return Err(CommandError::new(
                 "invalid_asset",
-                "A ready image does not match its database size record.",
+                "A managed image does not match its database size record.",
             ));
         }
         let (detected_mime, _) = detect_image_bytes(&data)?;
         if detected_mime != mime_type {
             return Err(CommandError::new(
                 "invalid_asset",
-                "A ready image does not match its database file type.",
+                "A managed image does not match its database file type.",
             ));
         }
         transaction
@@ -726,7 +725,7 @@ fn validate_backup_package(
     let snapshot = Connection::open_with_flags(&temporary, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(CommandError::database)?;
     validate_snapshot_database(&snapshot)?;
-    validate_backup_assets(&package, &snapshot, None)?;
+    validate_backup_assets(&package, &snapshot, version, None)?;
     if version >= 2 {
         document_backup::validate_document_files(&package, &snapshot, None)?;
     } else if document_backup::table_exists(&snapshot, "documents")?
@@ -774,7 +773,7 @@ fn extract_backup_package(
     fs::create_dir_all(assets_path.join("staging")).map_err(CommandError::io)?;
     fs::create_dir_all(assets_path.join("quarantine")).map_err(CommandError::io)?;
     fs::create_dir_all(documents_path.join("staging")).map_err(CommandError::io)?;
-    validate_backup_assets(&package, &snapshot, Some(extraction_root))?;
+    validate_backup_assets(&package, &snapshot, version, Some(extraction_root))?;
     if version >= 2 {
         document_backup::validate_document_files(&package, &snapshot, Some(extraction_root))?;
     }
@@ -786,23 +785,47 @@ fn extract_backup_package(
 fn validate_backup_assets(
     package: &Connection,
     snapshot: &Connection,
+    version: i64,
     extraction_root: Option<&Path>,
 ) -> Result<(), CommandError> {
-    let expected: i64 = snapshot
-        .query_row(
-            "SELECT COUNT(*) FROM assets
-             WHERE lifecycle_state = 'ready' AND deleted_at IS NULL",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
+    let expected: i64 = if version >= 3 {
+        snapshot
+            .query_row(
+                "SELECT COUNT(*)
+                 FROM assets a
+                 LEFT JOIN asset_drafts ad ON ad.id = a.draft_id
+                 LEFT JOIN editor_drafts ed ON ed.id = ad.editor_draft_id
+                 WHERE a.deleted_at IS NULL
+                   AND (
+                     a.lifecycle_state = 'ready'
+                     OR (
+                       a.lifecycle_state = 'staged'
+                       AND ad.retention_mode = 'persistent_editor'
+                       AND ad.committed_at IS NULL AND ad.canceled_at IS NULL
+                       AND ed.state IN ('active', 'conflicted')
+                     )
+                   )",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?
+    } else {
+        snapshot
+            .query_row(
+                "SELECT COUNT(*) FROM assets
+                 WHERE lifecycle_state = 'ready' AND deleted_at IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?
+    };
     let actual: i64 = package
         .query_row("SELECT COUNT(*) FROM asset_files", [], |row| row.get(0))
         .map_err(CommandError::database)?;
     if expected != actual {
         return Err(CommandError::new(
             "invalid_backup",
-            "The backup does not contain every ready managed image.",
+            "The backup does not contain every managed image required by the library and its recoverable drafts.",
         ));
     }
     let mut statement = package
@@ -825,18 +848,54 @@ fn validate_backup_assets(
     for row in rows {
         let (asset_id, relative_path, mime_type, byte_size, data) =
             row.map_err(CommandError::database)?;
-        validate_managed_asset_path(&relative_path)?;
-        let stored: Option<(String, String, i64)> = snapshot
-            .query_row(
-                "SELECT relative_path, mime_type, byte_size
-                 FROM assets
-                 WHERE id = ?1 AND lifecycle_state = 'ready' AND deleted_at IS NULL",
-                [asset_id.as_str()],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .optional()
-            .map_err(CommandError::database)?;
-        if stored != Some((relative_path.clone(), mime_type.clone(), byte_size))
+        let stored: Option<(String, String, i64, String)> = if version >= 3 {
+            snapshot
+                .query_row(
+                    "SELECT CASE
+                              WHEN a.lifecycle_state = 'ready' THEN a.relative_path
+                              ELSE a.staged_relative_path
+                            END,
+                            a.mime_type, a.byte_size, a.lifecycle_state
+                     FROM assets a
+                     LEFT JOIN asset_drafts ad ON ad.id = a.draft_id
+                     LEFT JOIN editor_drafts ed ON ed.id = ad.editor_draft_id
+                     WHERE a.id = ?1 AND a.deleted_at IS NULL
+                       AND (
+                         a.lifecycle_state = 'ready'
+                         OR (
+                           a.lifecycle_state = 'staged'
+                           AND ad.retention_mode = 'persistent_editor'
+                           AND ad.committed_at IS NULL AND ad.canceled_at IS NULL
+                           AND ed.state IN ('active', 'conflicted')
+                         )
+                       )",
+                    [asset_id.as_str()],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .optional()
+                .map_err(CommandError::database)?
+        } else {
+            snapshot
+                .query_row(
+                    "SELECT relative_path, mime_type, byte_size, lifecycle_state
+                     FROM assets
+                     WHERE id = ?1 AND lifecycle_state = 'ready' AND deleted_at IS NULL",
+                    [asset_id.as_str()],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .optional()
+                .map_err(CommandError::database)?
+        };
+        let Some((stored_path, stored_mime, stored_size, lifecycle_state)) = stored else {
+            return Err(CommandError::new(
+                "invalid_backup",
+                "A packaged image is not owned by the SQLite asset ledger.",
+            ));
+        };
+        validate_managed_asset_path(&relative_path, &lifecycle_state)?;
+        if stored_path != relative_path
+            || stored_mime != mime_type
+            || stored_size != byte_size
             || data.is_empty()
             || data.len() > MAX_SINGLE_ASSET_BYTES
             || i64::try_from(data.len()).unwrap_or(i64::MAX) != byte_size
@@ -945,17 +1004,27 @@ fn pending_restore_path(paths: &AppPaths) -> PathBuf {
         .join("pending-library-restore.ostudybackup")
 }
 
-fn validate_managed_asset_path(value: &str) -> Result<(), CommandError> {
+fn validate_managed_asset_path(value: &str, lifecycle_state: &str) -> Result<(), CommandError> {
+    let managed_directory = match lifecycle_state {
+        "ready" => "images",
+        "staged" => "staging",
+        _ => {
+            return Err(CommandError::new(
+                "invalid_backup",
+                "A packaged image has an unsupported lifecycle state.",
+            ));
+        }
+    };
     let path = Path::new(value);
     let components = path.components().collect::<Vec<_>>();
     if components.len() != 3
         || components[0] != Component::Normal("assets".as_ref())
-        || components[1] != Component::Normal("images".as_ref())
+        || components[1] != Component::Normal(Path::new(managed_directory).as_os_str())
         || !matches!(components[2], Component::Normal(_))
     {
         return Err(CommandError::new(
             "invalid_backup",
-            "A packaged image path escapes the managed image directory.",
+            "A packaged image path escapes its managed lifecycle directory.",
         ));
     }
     Ok(())
