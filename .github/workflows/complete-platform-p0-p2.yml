@@ -221,6 +221,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           ./scripts/install-native-deps.sh --pdfium-only
+          echo "OSTUDY_PDFIUM_PATH=$GITHUB_WORKSPACE/src-tauri/resources/native/pdfium/libpdfium.so" >> "$GITHUB_ENV"
 
       - name: Run terminal qualification
         run: |
