@@ -23,6 +23,8 @@ const durableDraftMock = vi.hoisted(() => ({
   hasUnsavedLocalChanges: false,
   flush: vi.fn().mockResolvedValue(undefined),
   discard: vi.fn().mockResolvedValue(undefined),
+  prepareCanonicalCommit: vi.fn().mockResolvedValue({ draftId: "d".repeat(32), revision: 1 }),
+  acceptCanonicalCommit: vi.fn(),
   commit: vi.fn().mockResolvedValue(undefined),
   restart: vi.fn().mockResolvedValue(undefined),
 }));
@@ -93,7 +95,7 @@ describe("TemplatesScreen durable managed assets", () => {
     durableDraftMock.hasUnsavedLocalChanges = false;
     durableDraftMock.flush.mockResolvedValue(undefined);
     durableDraftMock.discard.mockResolvedValue(undefined);
-    durableDraftMock.commit.mockResolvedValue(undefined);
+    durableDraftMock.acceptCanonicalCommit.mockResolvedValue(undefined);
     vi.mocked(templatesIpc.listCardTemplateSummaries).mockResolvedValue([]);
     vi.mocked(templatesIpc.createCardTemplate).mockResolvedValue(savedTemplate());
   });
@@ -112,8 +114,8 @@ describe("TemplatesScreen durable managed assets", () => {
       expect(templatesIpc.createCardTemplate).toHaveBeenCalledWith(
         expect.objectContaining({ name: "Medication", assetDraftId }),
       );
-      expect(durableDraftMock.flush).toHaveBeenCalled();
-      expect(durableDraftMock.commit).toHaveBeenCalledWith(savedTemplate().id);
+      expect(durableDraftMock.prepareCanonicalCommit).toHaveBeenCalled();
+      expect(durableDraftMock.acceptCanonicalCommit).toHaveBeenCalledOnce();
     });
   });
 

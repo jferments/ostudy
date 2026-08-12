@@ -203,7 +203,7 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
     setIsSaving(true);
     setErrorMessage(null);
     try {
-      await durableDraft.flush();
+      const editorDraft = await durableDraft.prepareCanonicalCommit();
       const input = {
         name: draft.name,
         description: draft.description,
@@ -215,15 +215,18 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
           backDoc,
         })),
         assetDraftId,
+        editorDraft,
       };
-      const saved = draft.id
-        ? await controller.update({
-            ...input,
-            templateId: draft.id,
-            revision: draft.revision ?? 1,
-          })
-        : await controller.create(input);
-      await durableDraft.commit(saved.id);
+      if (draft.id) {
+        await controller.update({
+          ...input,
+          templateId: draft.id,
+          revision: draft.revision ?? 1,
+        });
+      } else {
+        await controller.create(input);
+      }
+      durableDraft.acceptCanonicalCommit();
       openRequestSequence.current += 1;
       assetDraftRef.current = null;
       setAssetDraftId(null);

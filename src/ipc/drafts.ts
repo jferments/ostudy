@@ -3,6 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 export type EditorDraftKind = "card" | "template" | "bulk_cards" | "ai_profile";
 export type EditorDraftState = "active" | "committed" | "discarded" | "conflicted";
 
+export interface EditorDraftCommitRef {
+  draftId: string;
+  revision: number;
+}
+
 export interface EditorDraft<T = Record<string, unknown>> {
   id: string;
   draftKind: EditorDraftKind;

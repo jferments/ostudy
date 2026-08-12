@@ -17,6 +17,8 @@ vi.mock("../../controllers/useDurableDraft", () => ({
     hasUnsavedLocalChanges: false,
     flush: vi.fn().mockResolvedValue(undefined),
     discard: vi.fn().mockResolvedValue(undefined),
+    prepareCanonicalCommit: vi.fn().mockResolvedValue({ draftId: "d".repeat(32), revision: 1 }),
+    acceptCanonicalCommit: vi.fn(),
     commit: vi.fn().mockResolvedValue(undefined),
     restart: vi.fn().mockResolvedValue(undefined),
   }),
@@ -94,6 +96,7 @@ describe("BulkEntryModal", () => {
       expect(cardsIpc.bulkCreateCards).toHaveBeenCalledWith({
         deckId: deck.id,
         rows: expectedRows,
+        editorDraft: { draftId: "d".repeat(32), revision: 1 },
       });
     });
   });

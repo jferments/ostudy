@@ -265,15 +265,16 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     setMutating(true);
     setErrorMessage(null);
     try {
-      await durableDraft.flush();
+      const editorDraft = await durableDraft.prepareCanonicalCommit();
       const wasExisting = selectedProfile !== null;
+      const input = { ...draft, editorDraft };
       const saved = selectedProfile
-        ? await updateAiProviderProfile(selectedProfile.id, selectedProfile.revision, draft)
-        : await createAiProviderProfile(draft);
+        ? await updateAiProviderProfile(selectedProfile.id, selectedProfile.revision, input)
+        : await createAiProviderProfile(input);
       setSelectedProfile(saved);
       setDraft(draftFromProfile(saved));
       setSelectedProfileId(saved.id);
-      await durableDraft.commit(saved.id);
+      durableDraft.acceptCanonicalCommit();
       setModels([]);
       setModelsLoaded(false);
       await loadProfiles();

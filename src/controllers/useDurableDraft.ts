@@ -7,6 +7,7 @@ import {
   openEditorDraft,
   saveEditorDraft,
   type EditorDraft,
+  type EditorDraftCommitRef,
   type EditorDraftKind,
 } from "../ipc/drafts";
 import { listenToLifecycle } from "../ipc/platform";
@@ -42,6 +43,8 @@ interface DurableDraftController<T extends Record<string, unknown>> {
   hasUnsavedLocalChanges: boolean;
   flush: () => Promise<void>;
   discard: () => Promise<void>;
+  prepareCanonicalCommit: () => Promise<EditorDraftCommitRef>;
+  acceptCanonicalCommit: () => void;
   commit: (targetEntityId?: string) => Promise<void>;
   restart: (payload: T) => Promise<void>;
 }
@@ -222,19 +225,34 @@ export function useDurableDraft<T extends Record<string, unknown>>(
     setStatus("clean");
   }, []);
 
+  const prepareCanonicalCommit = useCallback(async (): Promise<EditorDraftCommitRef> => {
+    await flush();
+    const current = draftRef.current;
+    if (!current || current.state !== "active") {
+      throw new Error("The durable editor draft is not available for its final save.");
+    }
+    return { draftId: current.id, revision: current.revision };
+  }, [flush]);
+
+  const acceptCanonicalCommit = useCallback((): void => {
+    draftRef.current = null;
+    setDraft(null);
+    pendingPayloadRef.current = null;
+    pendingAssetIdsRef.current = [];
+    savedPayloadKeyRef.current = "";
+    setRecovered(false);
+    setErrorMessage(null);
+    setStatus("clean");
+  }, []);
+
   const commit = useCallback(
     async (targetEntityId?: string): Promise<void> => {
-      await flush();
-      const current = draftRef.current;
-      if (!current) return;
+      const reference = await prepareCanonicalCommit();
       setStatus("committing");
-      await commitEditorDraft(current.id, current.revision, targetEntityId);
-      draftRef.current = null;
-      setDraft(null);
-      pendingPayloadRef.current = null;
-      setStatus("clean");
+      await commitEditorDraft(reference.draftId, reference.revision, targetEntityId);
+      acceptCanonicalCommit();
     },
-    [flush],
+    [acceptCanonicalCommit, prepareCanonicalCommit],
   );
 
   const restart = useCallback(
@@ -264,6 +282,8 @@ export function useDurableDraft<T extends Record<string, unknown>>(
       status === "locally_dirty" || status === "saving" || status === "save_failed",
     flush,
     discard,
+    prepareCanonicalCommit,
+    acceptCanonicalCommit,
     commit,
     restart,
   };

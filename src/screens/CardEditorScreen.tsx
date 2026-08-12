@@ -434,7 +434,7 @@ export function CardEditorScreen({
     setErrorMessage(null);
 
     try {
-      await durableDraft.flush();
+      const editorDraft = await durableDraft.prepareCanonicalCommit();
       if (selectedCustomTemplate) {
         const result = await controller.generate({
           deckId: selectedDeckId,
@@ -443,8 +443,9 @@ export function CardEditorScreen({
           values: templateValues,
           tags,
           assetDraftId: assetDraftId ?? undefined,
+          editorDraft,
         });
-        await durableDraft.commit();
+        durableDraft.acceptCanonicalCommit();
         markAssetDraftCommitted();
         setDirty(false);
         setTemplatePreviews([]);
@@ -481,6 +482,7 @@ export function CardEditorScreen({
           tags,
           allowDuplicate,
           assetDraftId: assetDraftId ?? undefined,
+          editorDraft,
         };
         saved =
           existing && card
@@ -500,6 +502,7 @@ export function CardEditorScreen({
           tags,
           allowDuplicate,
           assetDraftId: assetDraftId ?? undefined,
+          editorDraft,
         };
         saved =
           existing && card
@@ -511,7 +514,7 @@ export function CardEditorScreen({
             : await controller.create(input);
       }
 
-      await durableDraft.commit(saved.noteId);
+      durableDraft.acceptCanonicalCommit();
       markAssetDraftCommitted();
       setDirty(false);
       setDuplicateMatches([]);

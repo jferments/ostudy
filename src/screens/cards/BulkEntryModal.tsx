@@ -147,9 +147,9 @@ export function BulkEntryModal({
     let createdCount: number;
     let skippedDuplicates: number;
     try {
-      await durableDraft.flush();
-      const result = await bulkCreateCards({ deckId, rows: cardRows });
-      await durableDraft.commit();
+      const editorDraft = await durableDraft.prepareCanonicalCommit();
+      const result = await bulkCreateCards({ deckId, rows: cardRows, editorDraft });
+      durableDraft.acceptCanonicalCommit();
       createdCount = result.createdCount;
       skippedDuplicates = result.skippedDuplicates;
     } catch (error: unknown) {
