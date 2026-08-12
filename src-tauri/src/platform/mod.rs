@@ -6,7 +6,9 @@ mod desktop;
 mod mobile_stub;
 
 use std::{
+    future::Future,
     path::PathBuf,
+    pin::Pin,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, LazyLock, RwLock,
@@ -241,18 +243,20 @@ pub struct ExternalDestination {
     pub display_name: String,
 }
 
+pub type PlatformFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
+
 pub trait ExternalFilePort: Send + Sync {
     fn select_import(
         &self,
-        app: &AppHandle,
-        request: &ExternalFileRequest,
-    ) -> Result<Option<ExternalSource>, CommandError>;
+        app: AppHandle,
+        request: ExternalFileRequest,
+    ) -> PlatformFuture<Result<Option<ExternalSource>, CommandError>>;
 
     fn select_export(
         &self,
-        app: &AppHandle,
-        request: &ExternalFileRequest,
-    ) -> Result<Option<ExternalDestination>, CommandError>;
+        app: AppHandle,
+        request: ExternalFileRequest,
+    ) -> PlatformFuture<Result<Option<ExternalDestination>, CommandError>>;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
