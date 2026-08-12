@@ -6,6 +6,8 @@ import {
   listAiProviderProfiles,
   type AiProviderProfileSummary,
 } from "../ipc/aiProfiles";
+import { usePlatformCapabilities } from "../platform/PlatformProvider";
+import { DocumentsDevelopmentStub } from "./DocumentsDevelopmentStub";
 import { DocumentsScreen } from "./DocumentsScreen";
 import styles from "./DocumentsSection.module.css";
 
@@ -15,11 +17,21 @@ interface DocumentsSectionProps {
 }
 
 export function DocumentsSection({ refreshDecks, showToast }: DocumentsSectionProps) {
+  const capabilities = usePlatformCapabilities();
+  const documentProcessingAvailable =
+    capabilities.native === null ||
+    capabilities.native.services.nativePdfRender.state === "available";
   const [profile, setProfile] = useState<AiProviderProfileSummary | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(documentProcessingAvailable);
 
   useEffect(() => {
+    if (!documentProcessingAvailable) {
+      setProfile(null);
+      setIsLoading(false);
+      return;
+    }
     let active = true;
+    setIsLoading(true);
     void Promise.all([getAiTaskDefaults(), listAiProviderProfiles()])
       .then(([defaults, profiles]) => {
         if (!active) return;
@@ -37,7 +49,11 @@ export function DocumentsSection({ refreshDecks, showToast }: DocumentsSectionPr
     return () => {
       active = false;
     };
-  }, []);
+  }, [documentProcessingAvailable]);
+
+  if (!documentProcessingAvailable) {
+    return <DocumentsDevelopmentStub />;
+  }
 
   return (
     <div className={styles.section}>
