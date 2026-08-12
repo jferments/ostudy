@@ -18,7 +18,11 @@ case "${1:-}" in
 esac
 
 cd "$ROOT_DIR"
-bash ./scripts/android-doctor.sh "$([[ $RUN_EMULATOR == 1 ]] && printf '%s' --emulator)"
+if ((RUN_EMULATOR == 1)); then
+  bash ./scripts/android-doctor.sh --emulator
+else
+  bash ./scripts/android-doctor.sh
+fi
 android_write_local_properties
 pnpm install --frozen-lockfile
 node ./scripts/verify-android-project.mjs
@@ -41,5 +45,9 @@ app_apk="$({
   find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' \
     ! -path '*/androidTest/*' -printf '%T@ %p\n'
 } | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
+if [[ -z "$app_apk" ]]; then
+  printf 'The Android debug APK could not be located after the build.\n' >&2
+  exit 1
+fi
 bash ./scripts/verify-android-package.sh "$app_apk" debug
 printf 'OK   Android compile, unit-test, instrumentation-package, and APK checks passed.\n'
