@@ -114,10 +114,11 @@ impl ExternalFilePort for AndroidExternalFilePort {
         let app = self.app.clone();
         Box::pin(async move {
             let target_path = path_to_utf8(&target.path, "external import staging")?;
+            let mime_types = request_mime_types(&request);
             let result = tauri::async_runtime::spawn_blocking(move || {
                 app.ostudy_platform().acquire_import(AcquireImportRequest {
                     title: request.title,
-                    mime_types: request.mime_types,
+                    mime_types,
                     target_path,
                     maximum_bytes: target.maximum_bytes,
                 })
@@ -349,6 +350,32 @@ impl ResourceProbe for AndroidResourceProbe {
             foreground: true,
         }
     }
+}
+
+fn request_mime_types(request: &ExternalFileRequest) -> Vec<String> {
+    let mut values = request
+        .filters
+        .iter()
+        .flat_map(|filter| filter.extensions.iter())
+        .filter_map(|extension| match extension.to_ascii_lowercase().as_str() {
+            "png" => Some("image/png"),
+            "jpg" | "jpeg" => Some("image/jpeg"),
+            "gif" => Some("image/gif"),
+            "webp" => Some("image/webp"),
+            "pdf" => Some("application/pdf"),
+            "json" => Some("application/json"),
+            "studydeck" => Some("application/vnd.ostudy.studydeck"),
+            "ostudybackup" => Some("application/vnd.ostudy.backup"),
+            _ => None,
+        })
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    if values.is_empty() {
+        values.push("application/octet-stream".to_string());
+    }
+    values
 }
 
 fn render_locator(locator: &SecretLocator) -> String {
