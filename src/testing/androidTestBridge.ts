@@ -5,13 +5,15 @@ import {
   createSubmissionId,
   type RichDocument,
 } from "../ipc/common";
-import { createDeck, listDecks } from "../ipc/decks";
+import { createDeck, listDecks, type DeckSummary } from "../ipc/decks";
 import {
   completePracticeSession,
   markPracticeCardRevealed,
+  resumePracticeSession,
   startSelectedPractice,
   submitPracticeReview,
 } from "../ipc/practice";
+import { getUiCheckpoint, saveUiCheckpoint } from "../ipc/uiCheckpoint";
 
 const SMOKE_DECK_NAME = "Android Emulator Smoke Deck";
 
@@ -22,9 +24,18 @@ interface AndroidSmokeSnapshot {
   recentReviewCount: number;
 }
 
+interface AndroidPracticeRestoreSnapshot {
+  sessionId: string | null;
+  resumePosition: number | null;
+  revealed: boolean;
+  completed: boolean;
+}
+
 interface AndroidTestBridge {
   seedAndReview(): Promise<AndroidSmokeSnapshot>;
   snapshot(): Promise<AndroidSmokeSnapshot>;
+  beginInterruptedPractice(): Promise<AndroidPracticeRestoreSnapshot>;
+  restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot>;
 }
 
 declare global {
@@ -43,30 +54,13 @@ export function installAndroidTestBridge(): void {
   window.__OSTUDY_ANDROID_TEST__ = {
     seedAndReview,
     snapshot,
+    beginInterruptedPractice,
+    restorationSnapshot,
   };
 }
 
 async function seedAndReview(): Promise<AndroidSmokeSnapshot> {
-  const current = await listDecks();
-  let deck = current.find((candidate) => candidate.name === SMOKE_DECK_NAME);
-  if (!deck) {
-    deck = await createDeck({
-      name: SMOKE_DECK_NAME,
-      description: "Created by the official Android emulator smoke test.",
-    });
-  }
-  if (deck.generatedCardCount === 0) {
-    await createCardNote({
-      cardType: "basic",
-      deckId: deck.id,
-      frontDoc: richDocument("What platform is this smoke test exercising?"),
-      backDoc: richDocument("Android"),
-      tags: ["android-smoke"],
-      reverseEnabled: false,
-      allowDuplicate: false,
-    });
-  }
-
+  const deck = await ensureSmokeDeck();
   const session = await startSelectedPractice({
     operationId: createOperationId(),
     deckIds: [deck.id],
@@ -89,6 +83,53 @@ async function seedAndReview(): Promise<AndroidSmokeSnapshot> {
   return snapshot();
 }
 
+async function beginInterruptedPractice(): Promise<AndroidPracticeRestoreSnapshot> {
+  const deck = await ensureSmokeDeck();
+  const session = await startSelectedPractice({
+    operationId: createOperationId(),
+    deckIds: [deck.id],
+    tagIds: [],
+    shuffle: false,
+    mode: "extra",
+  });
+  const card = session.firstWindow.cards[0];
+  if (!card) throw new Error("The Android smoke deck did not produce a resumable card.");
+  await markPracticeCardRevealed(session.id, card.presentation.cardId);
+  await saveUiCheckpoint({
+    section: "practice",
+    practice: {
+      sessionId: session.id,
+      position: session.firstWindow.startPosition,
+      revealed: true,
+    },
+  });
+  return {
+    sessionId: session.id,
+    resumePosition: session.firstWindow.startPosition,
+    revealed: true,
+    completed: false,
+  };
+}
+
+async function restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot> {
+  const checkpoint = await getUiCheckpoint();
+  if (!checkpoint?.practice) {
+    return {
+      sessionId: null,
+      resumePosition: null,
+      revealed: false,
+      completed: true,
+    };
+  }
+  const restored = await resumePracticeSession(checkpoint.practice.sessionId);
+  return {
+    sessionId: restored.session.id,
+    resumePosition: restored.resumePosition,
+    revealed: restored.revealed,
+    completed: restored.completed,
+  };
+}
+
 async function snapshot(): Promise<AndroidSmokeSnapshot> {
   const [decks, reviews] = await Promise.all([listDecks(), getRecentPracticeReviews()]);
   const smoke = decks.find((deck) => deck.name === SMOKE_DECK_NAME) ?? null;
@@ -98,6 +139,32 @@ async function snapshot(): Promise<AndroidSmokeSnapshot> {
     smokeCardCount: smoke?.generatedCardCount ?? 0,
     recentReviewCount: reviews.length,
   };
+}
+
+async function ensureSmokeDeck(): Promise<DeckSummary> {
+  const current = await listDecks();
+  let deck = current.find((candidate) => candidate.name === SMOKE_DECK_NAME);
+  if (!deck) {
+    deck = await createDeck({
+      name: SMOKE_DECK_NAME,
+      description: "Created by the official Android emulator smoke test.",
+    });
+  }
+  if (deck.generatedCardCount === 0) {
+    await createCardNote({
+      cardType: "basic",
+      deckId: deck.id,
+      frontDoc: richDocument("What platform is this smoke test exercising?"),
+      backDoc: richDocument("Android"),
+      tags: ["android-smoke"],
+      reverseEnabled: false,
+      allowDuplicate: false,
+    });
+    const refreshed = (await listDecks()).find((candidate) => candidate.id === deck.id);
+    if (!refreshed) throw new Error("The Android smoke deck disappeared after card creation.");
+    deck = refreshed;
+  }
+  return deck;
 }
 
 function richDocument(text: string): RichDocument {
