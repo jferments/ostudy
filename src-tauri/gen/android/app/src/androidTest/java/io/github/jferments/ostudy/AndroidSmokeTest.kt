@@ -61,23 +61,33 @@ class AndroidSmokeTest {
                 webView,
                 "document.querySelector('[data-testid=\"nav-more\"]')?.click(); true"
             )
-            waitUntil(webView) {
-                it == "true"
-            } expression@{
-                "Boolean(document.querySelector('[data-testid=\"nav-documents\"]'))"
-            }
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "Boolean(document.querySelector('[data-testid=\"nav-documents\"]'))"
+                }
+            )
             evaluateSync(
                 webView,
                 "document.querySelector('[data-testid=\"nav-documents\"]')?.click(); true"
             )
-            waitUntil(webView) { it == "true" } {
-                "Boolean(document.querySelector('[data-testid=\"documents-development-stub\"]'))"
-            }
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "Boolean(document.querySelector('[data-testid=\"documents-development-stub\"]'))"
+                }
+            )
 
             UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
-            waitUntil(webView) { it == "true" } {
-                "Boolean(document.querySelector('h1')?.textContent?.includes('Decks'))"
-            }
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "Boolean(document.querySelector('h1')?.textContent?.includes('Decks'))"
+                }
+            )
         }
     }
 
@@ -93,9 +103,12 @@ class AndroidSmokeTest {
     }
 
     private fun waitForBridge(webView: WebView) {
-        waitUntil(webView, timeoutSeconds = 30, predicate = { it == "true" }) {
-            "typeof window.__OSTUDY_ANDROID_TEST__ === 'object'"
-        }
+        waitUntil(
+            webView,
+            timeoutSeconds = 30,
+            predicate = { it == "true" },
+            expression = { "typeof window.__OSTUDY_ANDROID_TEST__ === 'object'" }
+        )
     }
 
     private fun evaluatePromise(webView: WebView, expression: String): JSONObject {
@@ -112,9 +125,12 @@ class AndroidSmokeTest {
             })()
             """.trimIndent()
         )
-        val envelope = waitUntil(webView, timeoutSeconds = 45, predicate = { it != "null" }) {
-            "window['$key']"
-        }
+        val envelope = waitUntil(
+            webView,
+            timeoutSeconds = 45,
+            predicate = { it != "null" },
+            expression = { "window['$key']" }
+        )
         val parsed = JSONObject(decodeJavascriptString(envelope))
         assertEquals(parsed.optString("error"), true, parsed.getBoolean("ok"))
         return parsed.getJSONObject("value")
