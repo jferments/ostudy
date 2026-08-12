@@ -28,8 +28,10 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Apply backup v3 corrections
-        run: node ./scripts/run-platform-p2-backup-v3.mjs
+      - name: Apply and format backup v3 corrections
+        run: |
+          node ./scripts/run-platform-p2-backup-v3.mjs
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
 
       - name: Install and provision
         run: |
