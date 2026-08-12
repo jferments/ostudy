@@ -12,6 +12,7 @@ import androidx.test.uiautomator.UiDevice
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.FixMethodOrder
@@ -88,6 +89,41 @@ class AndroidSmokeTest {
                     "Boolean(document.querySelector('h1')?.textContent?.includes('Decks'))"
                 }
             )
+        }
+    }
+
+    @Test
+    fun d_reloadsIntoInterruptedPracticeSession() {
+        withApplication { webView ->
+            waitForBridge(webView)
+            val started = evaluatePromise(
+                webView,
+                "window.__OSTUDY_ANDROID_TEST__.beginInterruptedPractice()"
+            )
+            val sessionId = started.getString("sessionId")
+            evaluateSync(webView, "window.location.reload(); true")
+            waitForBridge(webView)
+            val restored = evaluatePromise(
+                webView,
+                "window.__OSTUDY_ANDROID_TEST__.restorationSnapshot()"
+            )
+            assertEquals(sessionId, restored.getString("sessionId"))
+            assertTrue(restored.getBoolean("revealed"))
+            assertFalse(restored.getBoolean("completed"))
+        }
+    }
+
+    @Test
+    fun e_processRestartKeepsInterruptedPracticeSession() {
+        withApplication { webView ->
+            waitForBridge(webView)
+            val restored = evaluatePromise(
+                webView,
+                "window.__OSTUDY_ANDROID_TEST__.restorationSnapshot()"
+            )
+            assertNotNull(restored.optString("sessionId").takeIf(String::isNotBlank))
+            assertTrue(restored.getBoolean("revealed"))
+            assertFalse(restored.getBoolean("completed"))
         }
     }
 
