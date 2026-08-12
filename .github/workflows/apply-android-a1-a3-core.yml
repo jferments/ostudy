@@ -29,7 +29,7 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Apply core integration
-        run: node ./scripts/apply-android-a1-a3-core.mjs
+        run: node ./scripts/run-android-a1-a3-core.mjs
 
       - name: Install JavaScript and native dependencies
         run: |
@@ -68,6 +68,7 @@ jobs:
       - name: Commit qualified integration
         run: |
           rm scripts/apply-android-a1-a3-core.mjs
+          rm scripts/run-android-a1-a3-core.mjs
           rm .github/workflows/apply-android-a1-a3-core.yml
           git diff --check
           git config user.name "ostudy automation"
