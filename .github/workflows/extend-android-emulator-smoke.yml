@@ -1,0 +1,159 @@
+name: Extend Android emulator smoke coverage
+
+on:
+  push:
+    branches:
+      - agent/android-a1-a3
+
+permissions:
+  contents: write
+
+concurrency:
+  group: extend-android-emulator-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  extend:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 15
+    steps:
+      - name: Check out Android branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/android-a1-a3
+          fetch-depth: 0
+
+      - name: Extend the test bridge and instrumentation cases
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          bridge = Path("src/testing/androidTestBridge.ts")
+          text = bridge.read_text()
+          text = text.replace(
+              'import { createDeck, listDecks, type DeckSummary } from "../ipc/decks";\n',
+              'import {\n  createDeck,\n  listDecks,\n  prepareDeckExport,\n  type DeckSummary,\n} from "../ipc/decks";\n',
+              1,
+          )
+          text = text.replace(
+              'import { getUiCheckpoint, saveUiCheckpoint } from "../ipc/uiCheckpoint";\n',
+              'import { getUiCheckpoint, saveUiCheckpoint } from "../ipc/uiCheckpoint";\nimport { publishExport, selectExternalImport } from "../platform/files";\n',
+              1,
+          )
+          text = text.replace(
+              '''  beginInterruptedPractice(): Promise<AndroidPracticeRestoreSnapshot>;
+            restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot>;
+          }''',
+              '''  beginInterruptedPractice(): Promise<AndroidPracticeRestoreSnapshot>;
+            restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot>;
+            openImportPicker(purpose: "image" | "study_content"): void;
+            openDeckExportPicker(): void;
+          }''',
+              1,
+          )
+          text = text.replace(
+              '''    beginInterruptedPractice,
+              restorationSnapshot,
+            };''',
+              '''    beginInterruptedPractice,
+              restorationSnapshot,
+              openImportPicker,
+              openDeckExportPicker,
+            };''',
+              1,
+          )
+          marker = '''async function snapshot(): Promise<AndroidSmokeSnapshot> {'''
+          addition = '''function openImportPicker(purpose: "image" | "study_content"): void {
+            void selectExternalImport(purpose).catch(() => undefined);
+          }
+
+          function openDeckExportPicker(): void {
+            void ensureSmokeDeck()
+              .then((deck) => prepareDeckExport(deck.id, createOperationId()))
+              .then((prepared) => publishExport(prepared.preparedExport.id))
+              .catch(() => undefined);
+          }
+
+          '''
+          if marker not in text:
+              raise SystemExit("Android smoke bridge insertion anchor was not found")
+          text = text.replace(marker, addition + marker, 1)
+          bridge.write_text(text)
+
+          test = Path("src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt")
+          text = test.read_text()
+          text = text.replace(
+              'import androidx.test.uiautomator.UiDevice\n',
+              'import androidx.test.uiautomator.By\nimport androidx.test.uiautomator.UiDevice\nimport androidx.test.uiautomator.Until\n',
+              1,
+          )
+          anchor = '''    private fun withApplication(block: (WebView) -> Unit) {'''
+          case = '''    @Test
+              fun f_systemImportImageAndExportPickersCancelCleanly() {
+                  withApplication { webView ->
+                      waitForBridge(webView)
+                      val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+
+                      evaluateSync(
+                          webView,
+                          "window.__OSTUDY_ANDROID_TEST__.openImportPicker('study_content'); true"
+                      )
+                      assertTrue(
+                          "Android document picker did not open for deck import",
+                          device.wait(Until.hasObject(By.pkg("com.google.android.documentsui")), 10_000)
+                      )
+                      device.pressBack()
+                      waitForBridge(webView)
+
+                      evaluateSync(
+                          webView,
+                          "window.__OSTUDY_ANDROID_TEST__.openImportPicker('image'); true"
+                      )
+                      assertTrue(
+                          "Android document picker did not open for image import",
+                          device.wait(Until.hasObject(By.pkg("com.google.android.documentsui")), 10_000)
+                      )
+                      device.pressBack()
+                      waitForBridge(webView)
+
+                      evaluateSync(
+                          webView,
+                          "window.__OSTUDY_ANDROID_TEST__.openDeckExportPicker(); true"
+                      )
+                      assertTrue(
+                          "Android create-document picker did not open for deck export",
+                          device.wait(Until.hasObject(By.pkg("com.google.android.documentsui")), 15_000)
+                      )
+                      device.pressBack()
+                      waitForBridge(webView)
+                  }
+              }
+
+          '''
+          if anchor not in text:
+              raise SystemExit("Android instrumentation insertion anchor was not found")
+          text = text.replace(anchor, case + anchor, 1)
+          test.write_text(text)
+
+          smoke = Path("scripts/android-emulator-smoke.sh")
+          text = smoke.read_text()
+          anchor = 'run_case e_processRestartKeepsInterruptedPracticeSession\n'
+          if anchor not in text:
+              raise SystemExit("Android emulator case-list anchor was not found")
+          text = text.replace(
+              anchor,
+              anchor + 'run_case f_systemImportImageAndExportPickersCancelCleanly\n',
+              1,
+          )
+          smoke.write_text(text)
+          PY
+          rm -f .github/workflows/extend-android-emulator-smoke.yml
+
+      - name: Commit extended emulator smoke coverage
+        run: |
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "test: exercise Android system file pickers"
+          git push origin HEAD:agent/android-a1-a3
