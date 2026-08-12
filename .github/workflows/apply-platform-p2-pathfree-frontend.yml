@@ -34,11 +34,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Format and qualify frontend tree
+      - name: Qualify frontend tree
         run: |
-          pnpm exec prettier --write src scripts package.json
           pnpm exec tsc -b --pretty false
-          pnpm test -- --runInBand
+          pnpm test
           node ./scripts/verify-ipc-contract.mjs
           node ./scripts/verify-repository-policy.mjs
           node ./scripts/verify-platform-boundaries.mjs
