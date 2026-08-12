@@ -4,6 +4,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Normalize only the already-retired cleanup assumption. All source-contract
+// replacements in the underlying applicator remain strict and fail closed.
 const root = fileURLToPath(new URL("..", import.meta.url));
 const applicatorPath = join(root, "scripts", "apply-platform-p2-atomic-native.mjs");
 let source = await readFile(applicatorPath, "utf8");
