@@ -29,7 +29,27 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Apply frontend migration
-        run: node ./scripts/run-platform-p2-pathfree-frontend.mjs
+        run: |
+          node ./scripts/run-platform-p2-pathfree-frontend.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/screens/DecksScreen.tsx')
+          text = path.read_text()
+          text = re.sub(r'\nfunction safeFilename\([\s\S]*?\n\}\n?$', '\n', text, count=1)
+          path.write_text(text)
+
+          for name in ['src/screens/SettingsScreen.test.tsx', 'src/screens/SettingsScreen.extended.test.tsx']:
+              path = Path(name)
+              text = path.read_text()
+              text = re.sub(
+                  r'vi\.mocked\(platformFiles\.publishExport\)\.mockResolvedValue\(\{[\s\S]*?\}\);',
+                  'vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "library.ostudybackup", destinationKind: "desktop_file", completedAt: Date.now() });',
+                  text,
+              )
+              path.write_text(text)
+          PY
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
