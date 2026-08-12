@@ -1,0 +1,51 @@
+name: Apply final staged-image contract expectation
+
+on:
+  push:
+    branches:
+      - agent/platform-portability-p0-p2
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-p0p2-domain-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    runs-on: [self-hosted, linux, x64, ostudy]
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/platform-portability-p0-p2
+          fetch-depth: 0
+
+      - name: Update final domain contract and retire workflow
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/ipc/domain-contracts.test.ts")
+          text = path.read_text()
+          old = '''    await expectInvocation(() => importImage("/tmp/image.png", draftId), "import_image", {
+                input: { filePath: "/tmp/image.png", draftId },
+              });'''
+          new = '''    await expectInvocation(() => importImage("/tmp/image.png", draftId), "import_image", {
+                input: { stagedFileId: "1".repeat(32), draftId },
+              });'''
+          if old not in text:
+              raise SystemExit("The legacy image-import contract assertion was not found")
+          path.write_text(text.replace(old, new))
+          PY
+          rm -f .github/workflows/fix-p0p2-domain-contract.yml
+
+      - name: Commit contract repair
+        run: |
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "test: expect opaque staged image identity"
+          git push origin HEAD:agent/platform-portability-p0-p2
