@@ -31,14 +31,18 @@ jobs:
       - name: Apply P1 follow-up
         run: node ./scripts/apply-platform-p1-followup.mjs
 
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install frontend and native dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          ./scripts/install-native-deps.sh --pdfium-only
 
       - name: Format and compile generated sources
         run: |
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           pnpm exec tsc -b --pretty false
           cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
+          node ./scripts/verify-repository-policy.mjs
+          node ./scripts/verify-platform-boundaries.mjs
           git diff --check
 
       - name: Commit qualified P1 implementation
