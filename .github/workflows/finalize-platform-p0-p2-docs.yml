@@ -29,7 +29,7 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Apply final maintained documentation
-        run: node ./scripts/apply-platform-p0-p2-final-docs.mjs
+        run: node ./scripts/run-platform-p0-p2-final-docs.mjs
 
       - name: Install and provision
         run: |
@@ -43,6 +43,7 @@ jobs:
       - name: Remove temporary tooling and commit
         run: |
           rm scripts/apply-platform-p0-p2-final-docs.mjs
+          rm scripts/run-platform-p0-p2-final-docs.mjs
           rm .github/workflows/finalize-platform-p0-p2-docs.yml
           git diff --check
           git config user.name "ostudy automation"
