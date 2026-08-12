@@ -132,6 +132,26 @@ jobs:
           if close < 0:
               raise SystemExit('src-tauri/src/paths.rs: impl closing brace not found')
           path.write_text(text[:close] + methods + text[close:])
+
+          path = Path('src-tauri/src/external_files.rs')
+          text = path.read_text()
+          text = text.replace(
+              'paths.resolve_relative(\n            AppPaths::staged_import_partial_relative_path',
+              'paths.resolve_relative(\n            &AppPaths::staged_import_partial_relative_path',
+          )
+          text = text.replace(
+              'paths.resolve_relative(AppPaths::staged_import_partial_relative_path(&id))',
+              'paths.resolve_relative(&AppPaths::staged_import_partial_relative_path(&id))',
+          )
+          text = text.replace(
+              'remove_unknown_transfer_files(paths.transfer_imports_dir(), &referenced)?;',
+              'remove_unknown_transfer_files(&paths.transfer_imports_dir(), &referenced)?;',
+          )
+          text = text.replace(
+              'remove_unknown_transfer_files(paths.transfer_exports_dir(), &referenced)?;',
+              'remove_unknown_transfer_files(&paths.transfer_exports_dir(), &referenced)?;',
+          )
+          path.write_text(text)
           PY
 
       - name: Install dependencies
