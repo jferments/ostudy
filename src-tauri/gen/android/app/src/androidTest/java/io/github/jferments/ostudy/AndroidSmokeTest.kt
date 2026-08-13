@@ -144,6 +144,7 @@ class AndroidSmokeTest {
                 waitForDocumentsUi(device, 10_000)
             )
             device.pressBack()
+            waitForDocumentsUiClosed(device)
             waitForBridge(webView)
 
             evaluateSync(
@@ -155,6 +156,7 @@ class AndroidSmokeTest {
                 waitForDocumentsUi(device, 10_000)
             )
             device.pressBack()
+            waitForDocumentsUiClosed(device)
             waitForBridge(webView)
 
             evaluateSync(
@@ -166,6 +168,7 @@ class AndroidSmokeTest {
                 waitForDocumentsUi(device, 15_000)
             )
             device.pressBack()
+            waitForDocumentsUiClosed(device)
             waitForBridge(webView)
         }
     }
@@ -173,6 +176,15 @@ class AndroidSmokeTest {
     private fun waitForDocumentsUi(device: UiDevice, timeoutMillis: Long): Boolean =
         device.wait(Until.hasObject(By.pkg("com.google.android.documentsui")), timeoutMillis) ||
             device.wait(Until.hasObject(By.pkg("com.android.documentsui")), 1_000)
+
+    private fun waitForDocumentsUiClosed(device: UiDevice) {
+        device.wait(Until.gone(By.pkg("com.google.android.documentsui")), 5_000)
+        device.wait(Until.gone(By.pkg("com.android.documentsui")), 5_000)
+        // DocumentsUI can disappear one main-loop turn before ActivityResult is
+        // delivered back to Tauri. Give the callback time to clear the native
+        // pending-operation slot before opening the next picker.
+        Thread.sleep(250)
+    }
 
     private fun withApplication(block: (WebView) -> Unit) {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
