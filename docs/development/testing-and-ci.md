@@ -2,13 +2,17 @@
 
 ostudy uses tiered validation locally and on self-hosted runners. Each tier answers a different question; inexpensive tiers must not be described as complete application qualification.
 
-The repository does not use GitHub-hosted operating-system runners. Shared/Linux and Android compile jobs currently target:
+The repository does not use GitHub-hosted operating-system runners. Shared/Linux jobs target the ordinary `ostudy` runner class. Android compilation additionally requires the `android` label, and the official Android Emulator requires both `android` and `kvm`:
 
 ```yaml
-runs-on: [self-hosted, linux, x64, ostudy]
+# Android compile/package
+runs-on: [self-hosted, linux, x64, ostudy, android]
+
+# Official Android Emulator
+runs-on: [self-hosted, linux, x64, ostudy, android, kvm]
 ```
 
-The official Android Emulator additionally requires a KVM-capable self-hosted runner. Third-party actions are pinned to immutable commit SHAs with a human-readable version comment.
+The custom labels are maintainer assertions about installed tooling and KVM access; `scripts/android-runner-doctor.sh` verifies those claims at job runtime. Third-party actions are pinned to immutable commit SHAs with a human-readable version comment.
 
 ## Why the tiers exist
 
@@ -106,9 +110,9 @@ The native Linux smoke test can be skipped temporarily with `OSTUDY_SKIP_NATIVE_
 ./scripts/android-test.sh
 ```
 
-This tier verifies the pinned SDK/NDK/JDK environment and Android project, then runs shared TypeScript/Rust tests, Kotlin/JVM tests, Rust Android cross-compilation, x86_64 APK generation, instrumentation-package compilation, manifest/permission checks, and 16 KiB ZIP/ELF alignment checks.
+This tier verifies the pinned SDK/NDK/JDK environment and Android project, provisions the desktop PDFium fixture needed by shared host-side Rust tests, then runs shared TypeScript/Rust tests, Kotlin/JVM tests, Rust Android cross-compilation, x86_64 APK generation, instrumentation-package compilation, manifest/permission checks, and 16 KiB ZIP/ELF alignment checks.
 
-`android-check.yml` runs this tier for Android pull requests and pushes to `main`. APKs, instrumentation packages, and Gradle reports are uploaded as short-lived diagnostic artifacts.
+`android-check.yml` runs this tier automatically for pull requests targeting `main`, pushes to `main`, and manual dispatches. The job is routed only to self-hosted runners carrying the `android` label. APKs, instrumentation packages, and Gradle reports are uploaded as short-lived diagnostic artifacts.
 
 ### Official Android Emulator smoke
 
@@ -116,7 +120,9 @@ This tier verifies the pinned SDK/NDK/JDK environment and Android project, then 
 ./scripts/android-emulator-smoke.sh
 ```
 
-The emulator tier uses the pinned API 36 Google APIs image. It installs an explicitly test-enabled x86_64 APK and instrumentation package, then verifies:
+The emulator tier uses the pinned API 36 Google APIs x86_64 image and requires a self-hosted runner carrying both `android` and `kvm`. Before starting the emulator, CI runs `scripts/android-runner-doctor.sh` to verify the SDK/NDK/JDK/Rust targets, `/dev/kvm`, emulator acceleration, memory, and disk prerequisites.
+
+The smoke suite installs an explicitly test-enabled x86_64 APK and instrumentation package, then verifies:
 
 - cold boot and SQLite migration;
 - deck/card creation;
@@ -124,17 +130,19 @@ The emulator tier uses the pinned API 36 Google APIs image. It installs an expli
 - persistence after force-stop/restart;
 - Android Documents development stub;
 - system Back behavior;
-- revealed practice restoration after WebView reload and process restart.
+- revealed practice restoration after WebView reload and process restart;
+- Android deck-import and managed-image document pickers;
+- Android Create Document export picker and clean cancellation between native operations.
 
 The test-only JavaScript bridge is opt-in at build time and forbidden in release APKs. Waydroid may be used for informal manual testing but does not replace official-emulator qualification.
 
-The emulator job is manually dispatchable because it requires KVM and is substantially more expensive than compilation. A merge that changes Android runtime, lifecycle, files, sharing, secrets, networking, or navigation should record an emulator run or explain why it was unavailable and complete the equivalent manual physical-device checklist.
+The emulator job now runs automatically after the Android compile/package job succeeds. A pull request therefore cannot obtain a complete Android qualification result unless an online self-hosted runner matches `self-hosted`, `linux`, `x64`, `ostudy`, `android`, and `kvm`. See [Android self-hosted runner setup](android-self-hosted-runner.md).
 
 ## Important test layers
 
 ### Repository contracts
 
-Static scripts protect stable boundaries such as exact versions, immutable migrations, IPC parity, self-hosted workflow policy, dependency isolation, documentation organization, Android permissions/package identity, and absence of skipped/focused/ignored tests. They should verify behaviorally meaningful ownership rules rather than brittle private helper names.
+Static scripts protect stable boundaries such as exact versions, immutable migrations, IPC parity, self-hosted workflow policy, dependency isolation, documentation organization, Android permissions/package identity, FileProvider scope, and absence of skipped/focused/ignored tests. They should verify behaviorally meaningful ownership rules rather than brittle private helper names.
 
 ### Frontend and controller tests
 
@@ -160,7 +168,7 @@ Provider fixtures use deterministic local servers rather than paid internet cred
 
 ### Native smoke tests
 
-The Linux native smoke launches the built Tauri binary through WebDriver, performs a real create and review workflow, restarts the application, and confirms persistence. The Android native smoke performs the corresponding workflow through the official emulator and additionally tests Back, system lifecycle, and mobile restoration. Mocked frontend tests cannot replace either native shell boundary.
+The Linux native smoke launches the built Tauri binary through WebDriver, performs a real create and review workflow, restarts the application, and confirms persistence. The Android native smoke performs the corresponding workflow through the official emulator and additionally tests Back, process restoration, and Android system file UI. Mocked frontend tests cannot replace either native shell boundary.
 
 ## Manual acceptance
 
@@ -184,8 +192,8 @@ Record the exact paths exercised and any unavailable platform test.
 ## CI workflows
 
 - `check.yml` selects static, fast, or full shared/Linux qualification.
-- `android-check.yml` cross-builds and package-checks Android; manual dispatch can add the official emulator smoke suite.
-- `android-package.yml` creates unsigned QA APK/AAB artifacts through explicit dispatch.
+- `android-check.yml` automatically performs Android compile/package checks and then official-emulator smoke qualification on matching Android/KVM self-hosted runners.
+- `android-package.yml` creates unsigned QA APK/AAB artifacts through explicit dispatch on an Android-capable self-hosted runner.
 - `release.yml` currently creates tagged Linux artifacts.
 
 Concurrency cancellation stops obsolete runs for the same pull request or ref. Successful runs must belong to the current head SHA. CI uses persistent build caches outside the checkout, while Git and toolchain fingerprints continue to control correctness.
