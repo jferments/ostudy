@@ -4,7 +4,8 @@ import type { ShowToast } from "../../components/Toast";
 import { prepareLibraryBackup, prepareLibraryRestore } from "../../ipc/backup";
 import { createOperationId, getErrorMessage } from "../../ipc/common";
 import { getAppInfo, type AppInfo, type AppSettings } from "../../ipc/settings";
-import { publishExport, selectExternalImport } from "../../platform/files";
+import { publishExport, selectExternalImport, shareExport } from "../../platform/files";
+import { usePlatformCapabilities } from "../../platform/PlatformProvider";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { PathRow } from "./SettingsControls";
 import styles from "./Settings.module.css";
@@ -21,6 +22,8 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
   const [restorePrepared, setRestorePrepared] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const confirm = useConfirm();
+  const capabilities = usePlatformCapabilities();
+  const canShare = capabilities.native?.services.systemShare.state === "available";
 
   useEffect(() => {
     void getAppInfo()
@@ -39,6 +42,27 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
       showToast(
         "success",
         `Backed up ${prepared.deckCount} ${prepared.deckCount === 1 ? "deck" : "decks"}, ${prepared.templateCount} ${prepared.templateCount === 1 ? "template" : "templates"}, and ${prepared.reviewCount} review ${prepared.reviewCount === 1 ? "event" : "events"}.`,
+      );
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsTransferringLibrary(false);
+    }
+  }
+
+  async function shareLibraryBackup(): Promise<void> {
+    if (isTransferringLibrary) return;
+    setIsTransferringLibrary(true);
+    setErrorMessage(null);
+    try {
+      const prepared = await prepareLibraryBackup(createOperationId());
+      const launched = await shareExport(prepared.preparedExport.id);
+      if (!launched.launched) return;
+      showToast(
+        "info",
+        `Opened system sharing for a backup containing ${prepared.deckCount} ${
+          prepared.deckCount === 1 ? "deck" : "decks"
+        }.`,
       );
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -112,6 +136,16 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
           >
             {isTransferringLibrary ? "Working…" : "Back up library"}
           </button>
+          {canShare ? (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={isTransferringLibrary}
+              onClick={() => void shareLibraryBackup()}
+            >
+              Share backup
+            </button>
+          ) : null}
           <button
             type="button"
             className="secondary-button"
