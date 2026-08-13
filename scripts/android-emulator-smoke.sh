@@ -127,6 +127,7 @@ run_case a_seedLibraryPracticeAndAnalytics
 "$adb" -s "$SERIAL" shell am force-stop io.github.jferments.ostudy.dev
 run_case b_restartPreservesLibraryAndReviewHistory
 run_case c_documentsStubAndAndroidBackReturnToDecks
+run_case c_nestedDeckAndEditorBackReturnThroughTheStack
 run_case d_reloadsIntoInterruptedPracticeSession
 "$adb" -s "$SERIAL" shell am force-stop io.github.jferments.ostudy.dev
 run_case e_processRestartKeepsInterruptedPracticeSession
