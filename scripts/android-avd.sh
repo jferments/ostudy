@@ -76,7 +76,7 @@ start_avd() {
     -avd "$AVD_NAME"
     -no-snapshot-save
     -no-boot-anim
-    -gpu swiftshader_indirect
+    -gpu swiftshader
     -no-audio
   )
   ((HEADLESS == 1)) && args+=(-no-window)
