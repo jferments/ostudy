@@ -72,15 +72,14 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
     });
   }, []);
 
-  useEffect(
-    () =>
-      registerPlatformBackHandler(() => {
-        const top = resolveTopOverlay(entriesRef.current);
-        if (!top) return false;
-        return top.requestClose("platform_back");
-      }),
-    [],
-  );
+  useEffect(() => {
+    if (topId === null) return;
+    return registerPlatformBackHandler(() => {
+      const top = resolveTopOverlay(entriesRef.current);
+      if (!top) return false;
+      return top.requestClose("platform_back");
+    });
+  }, [topId]);
 
   useEffect(() => {
     if (modalDepth === 0) return;
