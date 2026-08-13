@@ -34,6 +34,31 @@ vi.mock("./ipc/decks", () => ({
 vi.mock("./ipc/settings", () => ({
   getSettings: vi.fn(),
 }));
+vi.mock("./ipc/platform", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ipc/platform")>();
+  return {
+    ...actual,
+    listenToLifecycle: vi.fn().mockResolvedValue(() => undefined),
+  };
+});
+vi.mock("./ipc/uiCheckpoint", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ipc/uiCheckpoint")>();
+  return {
+    ...actual,
+    getUiCheckpoint: vi.fn().mockResolvedValue(null),
+    saveUiCheckpoint: vi.fn().mockImplementation(
+      async (input: import("./ipc/uiCheckpoint").SaveUiCheckpointInput) => ({
+        schemaVersion: 1 as const,
+        updatedAt: 0,
+        section: input.section,
+        deckId: input.deckId ?? null,
+        editorDraftId: input.editorDraftId ?? null,
+        practice: input.practice ?? null,
+        analytics: input.analytics ?? null,
+      }),
+    ),
+  };
+});
 
 vi.mock("./screens/DecksWorkspace", () => ({
   DecksWorkspace: ({
