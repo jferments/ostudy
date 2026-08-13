@@ -41,8 +41,8 @@ interface PracticeScreenProps {
   settings: AppSettings;
   launchRequest: PracticeLaunchRequest | null;
   onLaunchConsumed: () => void;
-  restoreCheckpoint: PracticeCheckpoint | null;
-  onRestoreConsumed: () => void;
+  restoreCheckpoint?: PracticeCheckpoint | null;
+  onRestoreConsumed?: () => void;
   onViewAnalytics: (sessionId: string, deckIds: string[]) => void;
   onEndEarly: (target: PracticeReturnTarget) => void;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
@@ -62,14 +62,15 @@ interface PendingReviewOperation {
 
 const COMMITTED_START_RETRY_CODE = "committed_practice_session_unavailable";
 const PRACTICE_WINDOW_SIZE = 50;
+const NOOP = (): void => undefined;
 
 export function PracticeScreen({
   decks,
   settings,
   launchRequest,
   onLaunchConsumed,
-  restoreCheckpoint,
-  onRestoreConsumed,
+  restoreCheckpoint = null,
+  onRestoreConsumed = NOOP,
   onViewAnalytics,
   onEndEarly,
   showToast,
