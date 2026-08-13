@@ -24,6 +24,7 @@
     "android:install-deps": "bash ./scripts/install-android-deps.sh --with-emulator",
     "android:doctor": "bash ./scripts/android-doctor.sh",
     "android:doctor:emulator": "bash ./scripts/android-doctor.sh --emulator",
+    "android:runner:doctor": "bash ./scripts/android-runner-doctor.sh",
     "android:dev": "bash ./scripts/android-dev.sh",
     "android:build:debug": "bash ./scripts/android-build.sh --debug --apk --target aarch64",
     "android:build:emulator": "bash ./scripts/android-build.sh --debug --apk --target x86_64",
