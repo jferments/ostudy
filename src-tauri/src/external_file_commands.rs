@@ -6,21 +6,17 @@
 //! share adoption. Validation, hashing, transfer ledgers, idempotency, and
 //! durable adoption remain in shared Rust.
 
+#[cfg(target_os = "android")]
+use std::{fs::OpenOptions, io::Write, path::PathBuf};
 use std::{
     fs::{self, File},
     io::Read,
     path::Path,
 };
-#[cfg(target_os = "android")]
-use std::{
-    fs::OpenOptions,
-    io::Write,
-    path::PathBuf,
-};
 
-use rusqlite::{Connection, OptionalExtension};
 #[cfg(target_os = "android")]
 use rusqlite::{params, OpenFlags};
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, State};
@@ -28,6 +24,11 @@ use tauri::{AppHandle, State};
 #[cfg(target_os = "android")]
 use tauri_plugin_ostudy_platform::OstudyPlatformExt;
 
+#[cfg(target_os = "android")]
+use crate::{
+    assets::detect_image_bytes,
+    external_files::{ExternalFileKind, ExternalImportPurpose},
+};
 use crate::{
     database::Database,
     error::CommandError,
@@ -35,11 +36,6 @@ use crate::{
     paths::AppPaths,
     platform::{PlatformRuntime, ShareSource},
     util::{unix_time_millis, validate_entity_id},
-};
-#[cfg(target_os = "android")]
-use crate::{
-    assets::detect_image_bytes,
-    external_files::{ExternalFileKind, ExternalImportPurpose},
 };
 
 #[cfg(target_os = "android")]
@@ -243,9 +239,9 @@ fn stage_private_file(
     source: &Path,
     display_name: &str,
 ) -> Result<StagedExternalFileDto, CommandError> {
-    if let Some(existing) = database.with_connection(|connection| {
-        load_import_by_operation(connection, paths, operation_id)
-    })? {
+    if let Some(existing) = database
+        .with_connection(|connection| load_import_by_operation(connection, paths, operation_id))?
+    {
         return Ok(existing);
     }
     let display_name = validate_display_name(display_name)?;
@@ -290,7 +286,8 @@ fn commit_staged_file(
     sha256: String,
     partial_path: &Path,
 ) -> Result<StagedExternalFileDto, CommandError> {
-    let relative_path = AppPaths::staged_import_relative_path(operation_id, extension(detected_kind));
+    let relative_path =
+        AppPaths::staged_import_relative_path(operation_id, extension(detected_kind));
     let ready_path = paths.resolve_relative(&relative_path);
     remove_file_if_exists(&ready_path)?;
     let now = unix_time_millis()?;
@@ -377,7 +374,17 @@ fn load_import_by_operation(
     paths: &AppPaths,
     operation_id: &str,
 ) -> Result<Option<StagedExternalFileDto>, CommandError> {
-    let row: Option<(String, String, String, String, i64, String, String, i64, String)> = connection
+    let row: Option<(
+        String,
+        String,
+        String,
+        String,
+        i64,
+        String,
+        String,
+        i64,
+        String,
+    )> = connection
         .query_row(
             "SELECT id, purpose, detected_kind, display_name, byte_size, sha256,
                     relative_path, expires_at, state
@@ -399,7 +406,8 @@ fn load_import_by_operation(
         )
         .optional()
         .map_err(CommandError::database)?;
-    let Some((id, purpose, kind, display_name, byte_size, sha256, relative, expires_at, state)) = row
+    let Some((id, purpose, kind, display_name, byte_size, sha256, relative, expires_at, state)) =
+        row
     else {
         return Ok(None);
     };
@@ -446,7 +454,8 @@ fn load_prepared_export(
         )
         .optional()
         .map_err(CommandError::database)?;
-    let Some((suggested_filename, media_type, byte_size, sha256, relative_path, state)) = row else {
+    let Some((suggested_filename, media_type, byte_size, sha256, relative_path, state)) = row
+    else {
         return Err(CommandError::new(
             "prepared_export_not_found",
             "The prepared export is no longer available.",
@@ -837,10 +846,7 @@ fn sync_directory(path: Option<&Path>) -> Result<(), CommandError> {
 }
 
 #[cfg(target_os = "android")]
-fn plugin_error(
-    operation: &str,
-    error: tauri_plugin_ostudy_platform::Error,
-) -> CommandError {
+fn plugin_error(operation: &str, error: tauri_plugin_ostudy_platform::Error) -> CommandError {
     CommandError::new(
         "android_platform_operation_failed",
         format!("The Android {operation} operation failed: {error}"),
