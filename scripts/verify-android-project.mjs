@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -24,6 +25,7 @@ const required = [
   "src-tauri/src/practice_resume.rs",
   "scripts/android-env.sh",
   "scripts/android-doctor.sh",
+  "scripts/android-runner-doctor.sh",
   "scripts/android-build.sh",
   "scripts/android-dev.sh",
   "scripts/android-avd.sh",
@@ -42,6 +44,9 @@ for (const key of [
   "ANDROID_TARGET_SDK",
   "ANDROID_BUILD_TOOLS_VERSION",
   "ANDROID_NDK_VERSION",
+  "ANDROID_GRADLE_PLUGIN_VERSION",
+  "ANDROID_GRADLE_VERSION",
+  "ANDROID_KOTLIN_VERSION",
   "ANDROID_COMMANDLINE_TOOLS_BUILD",
   "ANDROID_COMMANDLINE_TOOLS_SHA256",
   "ANDROID_PHONE_SYSTEM_IMAGE",
@@ -50,7 +55,18 @@ for (const key of [
   if (!env.has(key) || env.get(key) === "") failures.push(`versions.env is missing ${key}`);
 }
 
-if (existsSync(resolve(root, "src-tauri/gen/android/local.properties"))) {
+let trackedLocalProperties = false;
+try {
+  execFileSync(
+    "git",
+    ["ls-files", "--error-unmatch", "src-tauri/gen/android/local.properties"],
+    { cwd: root, stdio: "ignore" },
+  );
+  trackedLocalProperties = true;
+} catch {
+  trackedLocalProperties = false;
+}
+if (trackedLocalProperties) {
   failures.push("src-tauri/gen/android/local.properties must remain untracked and machine-local");
 }
 
@@ -61,6 +77,24 @@ expectContains(gradle, `targetSdk = ${env.get("ANDROID_TARGET_SDK")}`, "targetSd
 expectContains(gradle, 'applicationId = "io.github.jferments.ostudy"', "application identity");
 expectContains(gradle, 'applicationIdSuffix = ".dev"', "debug application suffix");
 expectContains(gradle, 'testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"', "instrumentation runner");
+
+const rootGradle = await read("src-tauri/gen/android/build.gradle.kts");
+expectContains(
+  rootGradle,
+  `classpath("com.android.tools.build:gradle:${env.get("ANDROID_GRADLE_PLUGIN_VERSION")}")`,
+  "Android Gradle Plugin pin",
+);
+expectContains(
+  rootGradle,
+  `classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${env.get("ANDROID_KOTLIN_VERSION")}")`,
+  "Kotlin Gradle plugin pin",
+);
+const wrapper = await read("src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties");
+expectContains(
+  wrapper,
+  `gradle-${env.get("ANDROID_GRADLE_VERSION")}-bin.zip`,
+  "Gradle wrapper pin",
+);
 
 const manifest = await read("src-tauri/gen/android/app/src/main/AndroidManifest.xml");
 for (const requiredText of [
@@ -83,6 +117,12 @@ for (const forbidden of [
   if (manifest.includes(forbidden)) failures.push(`Android manifest contains forbidden permission ${forbidden}`);
 }
 
+const fileProvider = await read("src-tauri/gen/android/app/src/main/res/xml/file_paths.xml");
+if (fileProvider.includes("external-path") || fileProvider.includes('path="."')) {
+  failures.push("Android FileProvider must expose only the app-private prepared-export directory");
+}
+expectContains(fileProvider, 'path="transfers/exports/"', "prepared-export FileProvider scope");
+
 const baseConfig = JSON.parse(await read("src-tauri/tauri.conf.json"));
 if (baseConfig.bundle?.resources) {
   failures.push("Desktop PDFium resources must not remain in the shared Tauri bundle configuration");
@@ -103,6 +143,7 @@ if (androidConfig.bundle?.resources != null) {
 const packageJson = JSON.parse(await read("package.json"));
 for (const command of [
   "android:doctor",
+  "android:runner:doctor",
   "android:dev",
   "android:build:debug",
   "android:build:aab",
