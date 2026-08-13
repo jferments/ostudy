@@ -1,0 +1,1 @@
+Build preflight: scripts/check-build-preflight.sh runs after frozen JavaScript dependency installation and before the standalone Tauri build.
