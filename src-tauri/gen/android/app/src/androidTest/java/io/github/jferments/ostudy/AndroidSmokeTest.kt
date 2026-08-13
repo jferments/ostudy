@@ -8,7 +8,9 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -126,6 +128,51 @@ class AndroidSmokeTest {
             assertFalse(restored.getBoolean("completed"))
         }
     }
+
+    @Test
+    fun f_systemImportImageAndExportPickersCancelCleanly() {
+        withApplication { webView ->
+            waitForBridge(webView)
+            val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+
+            evaluateSync(
+                webView,
+                "window.__OSTUDY_ANDROID_TEST__.openImportPicker('study_content'); true"
+            )
+            assertTrue(
+                "Android document picker did not open for deck import",
+                waitForDocumentsUi(device, 10_000)
+            )
+            device.pressBack()
+            waitForBridge(webView)
+
+            evaluateSync(
+                webView,
+                "window.__OSTUDY_ANDROID_TEST__.openImportPicker('image'); true"
+            )
+            assertTrue(
+                "Android document picker did not open for image import",
+                waitForDocumentsUi(device, 10_000)
+            )
+            device.pressBack()
+            waitForBridge(webView)
+
+            evaluateSync(
+                webView,
+                "window.__OSTUDY_ANDROID_TEST__.openDeckExportPicker(); true"
+            )
+            assertTrue(
+                "Android create-document picker did not open for deck export",
+                waitForDocumentsUi(device, 15_000)
+            )
+            device.pressBack()
+            waitForBridge(webView)
+        }
+    }
+
+    private fun waitForDocumentsUi(device: UiDevice, timeoutMillis: Long): Boolean =
+        device.wait(Until.hasObject(By.pkg("com.google.android.documentsui")), timeoutMillis) ||
+            device.wait(Until.hasObject(By.pkg("com.android.documentsui")), 1_000)
 
     private fun withApplication(block: (WebView) -> Unit) {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
