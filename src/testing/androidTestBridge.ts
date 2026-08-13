@@ -5,7 +5,12 @@ import {
   createSubmissionId,
   type RichDocument,
 } from "../ipc/common";
-import { createDeck, listDecks, type DeckSummary } from "../ipc/decks";
+import {
+  createDeck,
+  listDecks,
+  prepareDeckExport,
+  type DeckSummary,
+} from "../ipc/decks";
 import {
   completePracticeSession,
   markPracticeCardRevealed,
@@ -14,6 +19,7 @@ import {
   submitPracticeReview,
 } from "../ipc/practice";
 import { getUiCheckpoint, saveUiCheckpoint } from "../ipc/uiCheckpoint";
+import { publishExport, selectExternalImport } from "../platform/files";
 
 const SMOKE_DECK_NAME = "Android Emulator Smoke Deck";
 
@@ -36,6 +42,8 @@ interface AndroidTestBridge {
   snapshot(): Promise<AndroidSmokeSnapshot>;
   beginInterruptedPractice(): Promise<AndroidPracticeRestoreSnapshot>;
   restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot>;
+  openImportPicker(purpose: "image" | "study_content"): void;
+  openDeckExportPicker(): void;
 }
 
 declare global {
@@ -56,6 +64,8 @@ export function installAndroidTestBridge(): void {
     snapshot,
     beginInterruptedPractice,
     restorationSnapshot,
+    openImportPicker,
+    openDeckExportPicker,
   };
 }
 
@@ -128,6 +138,17 @@ async function restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot> {
     revealed: restored.revealed,
     completed: restored.completed,
   };
+}
+
+function openImportPicker(purpose: "image" | "study_content"): void {
+  void selectExternalImport(purpose).catch(() => undefined);
+}
+
+function openDeckExportPicker(): void {
+  void ensureSmokeDeck()
+    .then((deck) => prepareDeckExport(deck.id, createOperationId()))
+    .then((prepared) => publishExport(prepared.preparedExport.id))
+    .catch(() => undefined);
 }
 
 async function snapshot(): Promise<AndroidSmokeSnapshot> {
