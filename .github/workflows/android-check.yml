@@ -79,7 +79,11 @@ jobs:
       - name: Prepare emulator toolchain
         run: |
           bash ./scripts/install-android-deps.sh --with-emulator
-          rustup target add x86_64-linux-android
+          rustup target add \
+            aarch64-linux-android \
+            armv7-linux-androideabi \
+            i686-linux-android \
+            x86_64-linux-android
           source ./scripts/android-env.sh
           android_write_local_properties
           android_emit_github_environment
