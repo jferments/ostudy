@@ -38,6 +38,7 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 
 - [Development guide](development/guide.md) covers setup, repository layout, change design, and day-to-day commands.
 - [Android development architecture](development/android.md) documents the Kotlin/Rust boundary, generated project, emulator tests, package checks, and Android workflows.
+- [Android self-hosted runner](development/android-self-hosted-runner.md) explains KVM, SDK, runner labels, systemd service setup, and automated emulator qualification.
 - [Platform portability inventory](development/platform-portability-inventory.md) records the current OS assumptions and the phase responsible for removing each one.
 - [Git and pull-request workflow](development/workflow.md) defines the publication, review, merge, release, and rollback process.
 - [Testing and CI](development/testing-and-ci.md) is the authoritative description of the changed, static, fast, full, and Android validation tiers.
