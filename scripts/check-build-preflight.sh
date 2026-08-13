@@ -32,11 +32,13 @@ cargo metadata \
   --locked \
   --format-version 1 >/dev/null
 
-log "Compile-checking all Rust targets and features before the Tauri build"
-cargo check \
+log "Compile-checking and linting all Rust targets and features with warnings denied"
+cargo clippy \
   --manifest-path src-tauri/Cargo.toml \
   --locked \
   --all-targets \
-  --all-features
+  --all-features \
+  -- \
+  -D warnings
 
-printf '\nOK   Build preflight passed.\n'
+printf '\nOK   Build preflight passed with a warning-clean Rust tree.\n'
