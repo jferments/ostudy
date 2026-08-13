@@ -25,6 +25,8 @@ else
 fi
 android_write_local_properties
 pnpm install --frozen-lockfile
+./scripts/install-native-deps.sh --pdfium-only
+export OSTUDY_PDFIUM_PATH="$ROOT_DIR/src-tauri/resources/native/pdfium/libpdfium.so"
 node ./scripts/verify-android-project.mjs
 pnpm exec tsc -b --pretty false
 pnpm test
