@@ -23,6 +23,9 @@ node "$SCRIPT_DIR/verify-project-manifests.mjs"
 node "$SCRIPT_DIR/verify-ipc-contract.mjs"
 node "$SCRIPT_DIR/verify-platform-boundaries.mjs"
 
+log "Checking Rust formatting before compilation"
+cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
 log "Type-checking the shared frontend"
 pnpm exec tsc -b --pretty false
 
@@ -41,4 +44,4 @@ cargo clippy \
   -- \
   -D warnings
 
-printf '\nOK   Build preflight passed with a warning-clean Rust tree.\n'
+printf '\nOK   Build preflight passed with canonical Rust formatting and a warning-clean Rust tree.\n'
