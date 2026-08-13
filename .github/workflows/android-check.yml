@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   android-compile:
-    runs-on: [self-hosted, linux, x64, ostudy]
+    runs-on: [self-hosted, linux, x64, ostudy, android]
     timeout-minutes: 120
     env:
       CI: "true"
