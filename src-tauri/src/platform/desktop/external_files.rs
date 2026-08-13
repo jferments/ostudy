@@ -28,9 +28,9 @@ impl ExternalFilePort for DesktopExternalFilePort {
         request: ExternalFileRequest,
     ) -> PlatformFuture<Result<Option<ExternalSource>, CommandError>> {
         Box::pin(async move {
-            Ok(select_import_path(app, request).await?.map(|(path, display_name)| {
-                ExternalSource { path, display_name }
-            }))
+            Ok(select_import_path(app, request)
+                .await?
+                .map(|(path, display_name)| ExternalSource { path, display_name }))
         })
     }
 
@@ -40,9 +40,9 @@ impl ExternalFilePort for DesktopExternalFilePort {
         request: ExternalFileRequest,
     ) -> PlatformFuture<Result<Option<ExternalDestination>, CommandError>> {
         Box::pin(async move {
-            Ok(select_export_path(app, request).await?.map(|(path, display_name)| {
-                ExternalDestination { path, display_name }
-            }))
+            Ok(select_export_path(app, request)
+                .await?
+                .map(|(path, display_name)| ExternalDestination { path, display_name }))
         })
     }
 
@@ -157,7 +157,11 @@ fn source_from_file_path(value: FilePath) -> Result<(PathBuf, String), CommandEr
     Ok((path, display_name))
 }
 
-fn copy_bounded(source: &Path, destination: &Path, maximum_bytes: u64) -> Result<u64, CommandError> {
+fn copy_bounded(
+    source: &Path,
+    destination: &Path,
+    maximum_bytes: u64,
+) -> Result<u64, CommandError> {
     let source = fs::canonicalize(source).map_err(CommandError::io)?;
     if !source.is_file() {
         return Err(CommandError::new(
@@ -190,13 +194,19 @@ fn copy_bounded(source: &Path, destination: &Path, maximum_bytes: u64) -> Result
                 "The selected file is larger than this import supports.",
             ));
         }
-        output.write_all(&buffer[..count]).map_err(CommandError::io)?;
+        output
+            .write_all(&buffer[..count])
+            .map_err(CommandError::io)?;
     }
     output.sync_all().map_err(CommandError::io)?;
     Ok(copied)
 }
 
-fn publish_atomic(source: &Path, destination: &Path, maximum_bytes: u64) -> Result<u64, CommandError> {
+fn publish_atomic(
+    source: &Path,
+    destination: &Path,
+    maximum_bytes: u64,
+) -> Result<u64, CommandError> {
     if !source.is_file() {
         return Err(CommandError::new(
             "prepared_export_missing",
