@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.Delete
+
 buildscript {
     repositories {
         google()
@@ -16,6 +18,6 @@ allprojects {
     }
 }
 
-tasks.register("clean").configure {
-    delete("build")
+tasks.register<Delete>("clean") {
+    delete(rootProject.layout.buildDirectory)
 }
