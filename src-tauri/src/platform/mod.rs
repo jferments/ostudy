@@ -584,10 +584,7 @@ pub fn get_platform_capabilities(
 }
 
 #[tauri::command]
-pub fn set_platform_back_interception(
-    app: AppHandle,
-    enabled: bool,
-) -> Result<(), CommandError> {
+pub fn set_platform_back_interception(app: AppHandle, enabled: bool) -> Result<(), CommandError> {
     #[cfg(target_os = "android")]
     {
         use tauri_plugin_ostudy_platform::OstudyPlatformExt;
