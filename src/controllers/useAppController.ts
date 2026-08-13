@@ -113,32 +113,42 @@ export function useAppController() {
 
   useEffect(() => {
     const token = deckRefreshLane.begin();
-    void Promise.all([getSettings(), listDecks(), getUiCheckpoint()])
-      .then(([loadedSettings, loadedDecks, checkpoint]) => {
+    const checkpoint = getUiCheckpoint().catch((error: unknown) => {
+      console.error(
+        "Unable to restore the device navigation checkpoint:",
+        getErrorMessage(error),
+      );
+      return null;
+    });
+    void Promise.all([getSettings(), listDecks(), checkpoint])
+      .then(([loadedSettings, loadedDecks, restoredCheckpoint]) => {
         if (!deckRefreshLane.isCurrent(token)) return;
         setSavedSettings(loadedSettings);
         setActiveSettings(loadedSettings);
         setDecks(loadedDecks);
-        if (checkpoint) {
+        if (restoredCheckpoint) {
           const restoredSection =
-            checkpoint.section === "practice" && !checkpoint.practice
+            restoredCheckpoint.section === "practice" && !restoredCheckpoint.practice
               ? "decks"
-              : checkpoint.section;
+              : restoredCheckpoint.section;
           setSection(restoredSection);
-          if (checkpoint.deckId && loadedDecks.some((deck) => deck.id === checkpoint.deckId)) {
+          if (
+            restoredCheckpoint.deckId &&
+            loadedDecks.some((deck) => deck.id === restoredCheckpoint.deckId)
+          ) {
             setDeckOpenRequest({
               requestId: deckOpenRequestSequence.current,
-              deckId: checkpoint.deckId,
+              deckId: restoredCheckpoint.deckId,
             });
             deckOpenRequestSequence.current += 1;
           }
-          if (checkpoint.practice) setPracticeRestore(checkpoint.practice);
-          if (checkpoint.analytics) {
+          if (restoredCheckpoint.practice) setPracticeRestore(restoredCheckpoint.practice);
+          if (restoredCheckpoint.analytics) {
             setAnalyticsLaunch({
               requestId: analyticsRequestSequence.current,
-              range: checkpoint.analytics.range,
-              deckIds: checkpoint.analytics.deckIds,
-              tagIds: checkpoint.analytics.tagIds,
+              range: restoredCheckpoint.analytics.range,
+              deckIds: restoredCheckpoint.analytics.deckIds,
+              tagIds: restoredCheckpoint.analytics.tagIds,
             });
             analyticsRequestSequence.current += 1;
           }
@@ -192,10 +202,16 @@ export function useAppController() {
           },
         );
       }
-    }).then((dispose) => {
-      if (disposed) dispose();
-      else unlisten = dispose;
-    });
+    })
+      .then((dispose) => {
+        if (disposed) dispose();
+        else unlisten = dispose;
+      })
+      .catch((error: unknown) => {
+        if (!disposed) {
+          console.error("Unable to observe application lifecycle:", getErrorMessage(error));
+        }
+      });
     return () => {
       disposed = true;
       unlisten?.();
