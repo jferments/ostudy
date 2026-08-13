@@ -95,6 +95,60 @@ class AndroidSmokeTest {
     }
 
     @Test
+    fun c_nestedDeckAndEditorBackReturnThroughTheStack() {
+        withApplication { webView ->
+            waitForBridge(webView)
+            val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            evaluateSync(
+                webView,
+                "document.querySelector('[data-testid=\"nav-decks\"]')?.click(); true"
+            )
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "Array.from(document.querySelectorAll('.deck-card-main')).some(button => button.textContent?.includes('Android Emulator Smoke Deck'))"
+                }
+            )
+            evaluateSync(
+                webView,
+                "Array.from(document.querySelectorAll('.deck-card-main')).find(button => button.textContent?.includes('Android Emulator Smoke Deck'))?.click(); true"
+            )
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "document.querySelector('.deck-detail-header h1')?.textContent === 'Android Emulator Smoke Deck'"
+                }
+            )
+            evaluateSync(
+                webView,
+                "Array.from(document.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Add flashcard')?.click(); true"
+            )
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = { "Boolean(document.querySelector('.card-editor-screen'))" }
+            )
+
+            device.pressBack()
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = { "Boolean(document.querySelector('.deck-detail-header'))" }
+            )
+            device.pressBack()
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "Boolean(document.querySelector('.deck-grid')) && !document.querySelector('.deck-detail-header')"
+                }
+            )
+        }
+    }
+
+    @Test
     fun d_reloadsIntoInterruptedPracticeSession() {
         withApplication { webView ->
             waitForBridge(webView)
