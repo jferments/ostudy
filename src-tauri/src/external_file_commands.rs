@@ -7,14 +7,20 @@
 //! durable adoption remain in shared Rust.
 
 use std::{
-    fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    fs::{self, File},
+    io::Read,
     path::Path,
 };
 #[cfg(target_os = "android")]
-use std::path::PathBuf;
+use std::{
+    fs::OpenOptions,
+    io::Write,
+    path::PathBuf,
+};
 
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension};
+#[cfg(target_os = "android")]
+use rusqlite::{params, OpenFlags};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, State};
@@ -23,23 +29,29 @@ use tauri::{AppHandle, State};
 use tauri_plugin_ostudy_platform::OstudyPlatformExt;
 
 use crate::{
-    assets::detect_image_bytes,
     database::Database,
     error::CommandError,
-    external_files::{
-        ExternalFileKind, ExternalImportPurpose, PublishPreparedExportInput,
-        StagedExternalFileDto,
-    },
+    external_files::{PublishPreparedExportInput, StagedExternalFileDto},
     paths::AppPaths,
     platform::{PlatformRuntime, ShareSource},
     util::{unix_time_millis, validate_entity_id},
 };
+#[cfg(target_os = "android")]
+use crate::{
+    assets::detect_image_bytes,
+    external_files::{ExternalFileKind, ExternalImportPurpose},
+};
 
+#[cfg(target_os = "android")]
 const IMPORT_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
 const COPY_BUFFER_BYTES: usize = 1024 * 1024;
+#[cfg(target_os = "android")]
 const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
+#[cfg(target_os = "android")]
 const MAX_PDF_BYTES: u64 = 512 * 1024 * 1024;
+#[cfg(target_os = "android")]
 const MAX_STUDY_CONTENT_BYTES: u64 = 640 * 1024 * 1024;
+#[cfg(target_os = "android")]
 const MAX_BACKUP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Deserialize)]
@@ -222,6 +234,7 @@ pub fn dismiss_incoming_share(
     }
 }
 
+#[cfg(target_os = "android")]
 fn stage_private_file(
     database: &Database,
     paths: &AppPaths,
@@ -264,6 +277,7 @@ fn stage_private_file(
     )
 }
 
+#[cfg(target_os = "android")]
 #[allow(clippy::too_many_arguments)]
 fn commit_staged_file(
     database: &Database,
@@ -357,6 +371,7 @@ fn commit_staged_file(
     })
 }
 
+#[cfg(target_os = "android")]
 fn load_import_by_operation(
     connection: &Connection,
     paths: &AppPaths,
@@ -452,6 +467,7 @@ fn load_prepared_export(
     })
 }
 
+#[cfg(target_os = "android")]
 fn detect_kind(
     path: &Path,
     purpose: ExternalImportPurpose,
@@ -501,6 +517,7 @@ fn detect_kind(
     }
 }
 
+#[cfg(target_os = "android")]
 fn detect_study_content(path: &Path) -> Result<ExternalFileKind, CommandError> {
     let mut signature = [0_u8; 16];
     let read = File::open(path)
@@ -539,6 +556,7 @@ fn detect_study_content(path: &Path) -> Result<ExternalFileKind, CommandError> {
     }
 }
 
+#[cfg(target_os = "android")]
 fn sqlite_metadata(path: &Path, table: &str, key: &str) -> Result<Option<String>, CommandError> {
     let connection = Connection::open_with_flags(
         path,
@@ -569,6 +587,7 @@ fn sqlite_metadata(path: &Path, table: &str, key: &str) -> Result<Option<String>
         })
 }
 
+#[cfg(target_os = "android")]
 fn maximum_bytes(purpose: ExternalImportPurpose) -> u64 {
     match purpose {
         ExternalImportPurpose::Image => MAX_IMAGE_BYTES,
@@ -578,6 +597,7 @@ fn maximum_bytes(purpose: ExternalImportPurpose) -> u64 {
     }
 }
 
+#[cfg(target_os = "android")]
 fn purpose_str(purpose: ExternalImportPurpose) -> &'static str {
     match purpose {
         ExternalImportPurpose::Image => "image",
@@ -587,6 +607,7 @@ fn purpose_str(purpose: ExternalImportPurpose) -> &'static str {
     }
 }
 
+#[cfg(target_os = "android")]
 fn parse_purpose(value: &str) -> Result<ExternalImportPurpose, CommandError> {
     match value {
         "image" => Ok(ExternalImportPurpose::Image),
@@ -600,6 +621,7 @@ fn parse_purpose(value: &str) -> Result<ExternalImportPurpose, CommandError> {
     }
 }
 
+#[cfg(target_os = "android")]
 fn kind_str(kind: ExternalFileKind) -> &'static str {
     match kind {
         ExternalFileKind::Png => "png",
@@ -613,6 +635,7 @@ fn kind_str(kind: ExternalFileKind) -> &'static str {
     }
 }
 
+#[cfg(target_os = "android")]
 fn parse_kind(value: &str) -> Result<ExternalFileKind, CommandError> {
     match value {
         "png" => Ok(ExternalFileKind::Png),
@@ -630,6 +653,7 @@ fn parse_kind(value: &str) -> Result<ExternalFileKind, CommandError> {
     }
 }
 
+#[cfg(target_os = "android")]
 fn extension(kind: ExternalFileKind) -> &'static str {
     match kind {
         ExternalFileKind::Png => "png",
@@ -643,6 +667,7 @@ fn extension(kind: ExternalFileKind) -> &'static str {
     }
 }
 
+#[cfg(target_os = "android")]
 fn media_type(kind: ExternalFileKind) -> &'static str {
     match kind {
         ExternalFileKind::Png => "image/png",
@@ -656,6 +681,7 @@ fn media_type(kind: ExternalFileKind) -> &'static str {
     }
 }
 
+#[cfg(target_os = "android")]
 fn validate_display_name(value: &str) -> Result<String, CommandError> {
     let trimmed = value.trim();
     if trimmed.is_empty()
@@ -686,6 +712,7 @@ fn validate_incoming_token(value: &str) -> Result<(), CommandError> {
     Ok(())
 }
 
+#[cfg(target_os = "android")]
 fn copy_bounded(source: &Path, destination: &Path, maximum_bytes: u64) -> Result<(), CommandError> {
     let mut input = File::open(source).map_err(CommandError::io)?;
     let mut output = OpenOptions::new()
@@ -765,6 +792,7 @@ fn verify_file(path: &Path, expected_size: i64, expected_hash: &str) -> Result<(
     Ok(())
 }
 
+#[cfg(target_os = "android")]
 fn create_parent(path: &Path) -> Result<(), CommandError> {
     let parent = path.parent().ok_or_else(|| {
         CommandError::new(
@@ -775,6 +803,7 @@ fn create_parent(path: &Path) -> Result<(), CommandError> {
     fs::create_dir_all(parent).map_err(CommandError::io)
 }
 
+#[cfg(target_os = "android")]
 fn remove_file_if_exists(path: &Path) -> Result<(), CommandError> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -783,6 +812,7 @@ fn remove_file_if_exists(path: &Path) -> Result<(), CommandError> {
     }
 }
 
+#[cfg(target_os = "android")]
 fn sync_file(path: &Path) -> Result<(), CommandError> {
     OpenOptions::new()
         .read(true)
@@ -791,6 +821,7 @@ fn sync_file(path: &Path) -> Result<(), CommandError> {
         .map_err(CommandError::io)
 }
 
+#[cfg(target_os = "android")]
 fn sync_directory(path: Option<&Path>) -> Result<(), CommandError> {
     let path = path.ok_or_else(|| {
         CommandError::new(
