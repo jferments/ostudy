@@ -20,8 +20,8 @@ use tauri_plugin_ostudy_platform::{
 use crate::{
     error::CommandError,
     platform::{
-        CapabilityProvider, Clock, ExternalAcquireResult, ExternalExportSource,
-        ExternalFilePort, ExternalFileRequest, ExternalImportTarget, ExternalPublishResult,
+        CapabilityProvider, Clock, ExternalAcquireResult, ExternalExportSource, ExternalFilePort,
+        ExternalFileRequest, ExternalImportTarget, ExternalPublishResult,
         NativeServiceCapabilities, PlatformCapabilitySnapshot, PlatformFuture, PlatformRuntime,
         ResourceProbe, ResourceSnapshot, SecretBytes, SecretLocator, SecretStoreAvailability,
         SecretStoreError, SecureSecretStore, ServiceCapability, ShareLaunchResult, ShareSource,
@@ -84,9 +84,7 @@ impl CapabilityProvider for AndroidCapabilityProvider {
                 native_pdf_text_rescue: ServiceCapability::unavailable(
                     "android_document_processing_development_stub",
                 ),
-                ocr: ServiceCapability::unavailable(
-                    "android_document_processing_development_stub",
-                ),
+                ocr: ServiceCapability::unavailable("android_document_processing_development_stub"),
                 camera: ServiceCapability::unavailable("android_camera_adapter_not_implemented"),
                 qr_scan: ServiceCapability::unavailable("android_qr_adapter_not_implemented"),
                 haptics: ServiceCapability::unavailable("android_haptics_adapter_not_implemented"),
