@@ -24,7 +24,9 @@ pub struct OstudyPlatform<R: Runtime>(PluginHandle<R>);
 
 impl<R: Runtime> OstudyPlatform<R> {
     pub fn environment(&self) -> Result<EnvironmentSnapshot> {
-        self.0.run_mobile_plugin("getEnvironment", ()).map_err(Into::into)
+        self.0
+            .run_mobile_plugin("getEnvironment", ())
+            .map_err(Into::into)
     }
 
     pub fn time_zone_snapshot(&self, utc_millis: i64) -> Result<TimeZoneSnapshotResult> {
@@ -58,7 +60,9 @@ impl<R: Runtime> OstudyPlatform<R> {
     }
 
     pub fn share_file(&self, request: ShareFileRequest) -> Result<ShareFileResult> {
-        self.0.run_mobile_plugin("shareFile", request).map_err(Into::into)
+        self.0
+            .run_mobile_plugin("shareFile", request)
+            .map_err(Into::into)
     }
 
     pub fn set_back_interception(&self, enabled: bool) -> Result<()> {
