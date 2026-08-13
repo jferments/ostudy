@@ -34,6 +34,23 @@ pub struct ResumedPracticeSessionDto {
     pub completed: bool,
 }
 
+#[derive(Debug)]
+struct PracticeSessionMetadata {
+    card_count: i64,
+    shuffle: bool,
+    mode: String,
+    started_at: i64,
+    rated_count: i64,
+    correct_count: i64,
+    completed_at: Option<i64>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PendingPracticeCard {
+    position: i64,
+    revealed: bool,
+}
+
 #[tauri::command]
 pub fn resume_practice_session(
     database: State<'_, Database>,
@@ -42,36 +59,34 @@ pub fn resume_practice_session(
 ) -> Result<ResumedPracticeSessionDto, CommandError> {
     validate_entity_id(&input.session_id, "practice session")?;
     database.with_connection(|connection| {
-        let metadata: Option<(i64, i64, String, i64, i64, i64, Option<i64>)> = connection
+        let metadata = connection
             .query_row(
                 "SELECT card_count, shuffle, mode, started_at,
                         rated_count, correct_count, completed_at
                  FROM practice_sessions WHERE id = ?1",
                 [input.session_id.as_str()],
                 |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                        row.get(5)?,
-                        row.get(6)?,
-                    ))
+                    Ok(PracticeSessionMetadata {
+                        card_count: row.get(0)?,
+                        shuffle: row.get::<_, i64>(1)? != 0,
+                        mode: row.get(2)?,
+                        started_at: row.get(3)?,
+                        rated_count: row.get(4)?,
+                        correct_count: row.get(5)?,
+                        completed_at: row.get(6)?,
+                    })
                 },
             )
             .optional()
             .map_err(CommandError::database)?;
-        let Some((card_count, shuffle, mode, started_at, rated_count, correct_count, completed_at)) =
-            metadata
-        else {
+        let Some(metadata) = metadata else {
             return Err(CommandError::new(
                 "practice_session_not_found",
                 "That practice session no longer exists.",
             ));
         };
 
-        let pending: Option<(i64, i64)> = connection
+        let pending = connection
             .query_row(
                 "SELECT position, CASE WHEN revealed_at IS NULL THEN 0 ELSE 1 END
                  FROM practice_session_cards
@@ -81,15 +96,20 @@ pub fn resume_practice_session(
                  ORDER BY position ASC
                  LIMIT 1",
                 [input.session_id.as_str()],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| {
+                    Ok(PendingPracticeCard {
+                        position: row.get(0)?,
+                        revealed: row.get::<_, i64>(1)? != 0,
+                    })
+                },
             )
             .optional()
             .map_err(CommandError::database)?;
 
-        let completed = completed_at.is_some() || pending.is_none();
+        let completed = metadata.completed_at.is_some() || pending.is_none();
         let (resume_position, revealed) = pending
-            .map(|(position, revealed)| (position, revealed != 0))
-            .unwrap_or((card_count, false));
+            .map(|pending| (pending.position, pending.revealed))
+            .unwrap_or((metadata.card_count, false));
         let first_window = if completed {
             PracticeCardWindowDto {
                 start_position: resume_position,
@@ -109,16 +129,16 @@ pub fn resume_practice_session(
         Ok(ResumedPracticeSessionDto {
             session: PracticeSessionDto {
                 id: input.session_id,
-                card_count,
+                card_count: metadata.card_count,
                 first_window,
-                shuffle: shuffle != 0,
-                mode,
-                started_at,
+                shuffle: metadata.shuffle,
+                mode: metadata.mode,
+                started_at: metadata.started_at,
             },
             resume_position,
             revealed,
-            rated_count,
-            correct_count,
+            rated_count: metadata.rated_count,
+            correct_count: metadata.correct_count,
             completed,
         })
     })
