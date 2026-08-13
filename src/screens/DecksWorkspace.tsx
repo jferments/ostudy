@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import type { DeckOpenRequest } from "../App";
+import { AndroidDeckSharePanel } from "../components/AndroidDeckSharePanel";
 import type { ShowToast } from "../components/Toast";
 import type { DeckSummary } from "../ipc/decks";
 import type { AppSettings } from "../ipc/settings";
@@ -73,23 +74,26 @@ export function DecksWorkspace({
       />
 
       {deckView === "library" ? (
-        <section className="decks-global-search" aria-labelledby="all-cards-search-heading">
-          <div className="decks-global-search-heading">
-            <div>
-              <span className="eyebrow">CARD LIBRARY</span>
-              <h2 id="all-cards-search-heading">Search and filter cards</h2>
-              <p>Search every active deck or narrow the results to selected decks.</p>
+        <>
+          <AndroidDeckSharePanel decks={decks} showToast={showToast} />
+          <section className="decks-global-search" aria-labelledby="all-cards-search-heading">
+            <div className="decks-global-search-heading">
+              <div>
+                <span className="eyebrow">CARD LIBRARY</span>
+                <h2 id="all-cards-search-heading">Search and filter cards</h2>
+                <p>Search every active deck or narrow the results to selected decks.</p>
+              </div>
             </div>
-          </div>
-          <CardsScreen
-            embedded
-            decks={decks}
-            refreshDecks={refreshDecks}
-            onPracticeCards={onPracticeCards}
-            onDirtyChange={onDirtyChange}
-            showToast={showToast}
-          />
-        </section>
+            <CardsScreen
+              embedded
+              decks={decks}
+              refreshDecks={refreshDecks}
+              onPracticeCards={onPracticeCards}
+              onDirtyChange={onDirtyChange}
+              showToast={showToast}
+            />
+          </section>
+        </>
       ) : null}
 
       {bulkOpen ? (
