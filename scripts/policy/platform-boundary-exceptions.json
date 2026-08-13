@@ -3,6 +3,12 @@
   "exceptions": [
     {
       "rule": "rust-target-os-branch",
+      "path": "src-tauri/src/external_file_commands.rs",
+      "retireInPhase": "iOS external-file adapter",
+      "reason": "The command facade must delegate desktop path dialogs and Android URI streaming while preserving one shared transfer ledger and IPC name. Move the target selection into a platform-owned command adapter when the iOS implementation is added."
+    },
+    {
+      "rule": "rust-target-os-branch",
       "path": "src-tauri/src/pdf_ocr_backend.rs",
       "retireInPhase": "Android/iOS",
       "reason": "Desktop OCR adapter selection"
