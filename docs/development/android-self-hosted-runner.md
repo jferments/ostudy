@@ -1,6 +1,6 @@
 # Android self-hosted runner setup
 
-ostudy's Android CI uses a Linux x86_64 self-hosted GitHub Actions runner with direct access to KVM. The Android compile job can run on any runner labeled `ostudy`; the official-emulator job is deliberately stricter and requires all of these labels:
+ostudy's Android CI uses a Linux x86_64 self-hosted GitHub Actions runner. The Android compile/package job requires these labels:
 
 ```text
 self-hosted
@@ -8,24 +8,31 @@ linux
 x64
 ostudy
 android
+```
+
+The official-emulator job is deliberately stricter and additionally requires:
+
+```text
 kvm
 ```
 
 The `android` and `kvm` labels are assertions made by the maintainer: GitHub does not test the host's Android SDK or virtualization capabilities when a label is assigned. `scripts/android-runner-doctor.sh` performs those checks at job runtime.
 
-## Host requirements
+## Use a host-level runner for the emulator
 
-Use a Linux x86_64 machine where the runner service account can read and write `/dev/kvm`. A virtual machine is acceptable only if nested virtualization is enabled and `/dev/kvm` is actually available inside that VM. Installing KVM on the outer host alone is not sufficient for a runner process isolated inside a guest.
+Run the Android/KVM runner directly on the Linux x86_64 host where `/dev/kvm` is available to the runner account. Android's emulator documentation does not support VM-accelerated emulator execution nested inside another VM. A separate virtual-machine runner can continue to handle ordinary Linux CI, but it should not receive the `kvm` label merely because KVM is installed on the outer host.
 
-The host needs:
+The Android host needs:
 
 - the normal ostudy Linux build prerequisites;
 - JDK 17;
 - Node.js, pnpm, Rust, and rustup at the versions pinned by the repository;
 - Android command-line tools and Emulator;
-- KVM access for the runner service account.
+- direct KVM access for the runner service account.
 
 Android Studio may manage the SDK, but the IDE is not required to be running. On Linux, `scripts/android-env.sh` automatically reuses `$HOME/Android/Sdk` when `ANDROID_HOME` and `ANDROID_SDK_ROOT` are unset. The repository installer adds its pinned API 36 platform, Build Tools 36.0.0, NDK 28.2, and API 36 Google APIs x86_64 image alongside any newer SDK packages already installed.
+
+The current Android project deliberately remains on API 36 even if API 37 is installed on the host. API 37 requires a newer Android Gradle Plugin line than the A1–A3 project currently pins, so API 37 can remain installed side-by-side without changing the qualified build matrix.
 
 ## Prepare the runner account
 
@@ -88,7 +95,7 @@ When running `config.sh`, add the ostudy Android labels. The relevant part is:
 
 GitHub automatically supplies the `self-hosted`, `linux`, and `x64` default labels for a normal Linux x64 runner. Do not use `--no-default-labels` for this runner.
 
-If an older runner is already registered without the required custom labels, either add `android` and `kvm` from the GitHub runner settings or replace/reconfigure that runner. The workflow will not send emulator jobs to a runner until every label in `runs-on` matches.
+If an older host-level runner is already registered without the required custom labels, add `android` and `kvm` from the GitHub runner settings. If the existing runner is inside a VM, keep it for ordinary Linux work and register a separate host-level Android runner instead. The workflow will not send emulator jobs to a runner until every label in `runs-on` matches.
 
 ## Run the runner as a service
 
@@ -141,4 +148,4 @@ pnpm android:runner:doctor
 
 If the runner is online but the emulator doctor reports no KVM access, fix `/dev/kvm` ownership/group membership and restart the runner service after the service account receives the `kvm` group.
 
-If the runner is inside another VM, confirm nested virtualization rather than assuming host KVM is inherited by the guest.
+If an emulator job is still being routed to a virtual-machine runner, remove its `kvm` label and register the host-level Android runner instead.
