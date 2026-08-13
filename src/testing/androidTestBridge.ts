@@ -172,16 +172,17 @@ async function ensureSmokeDeck(): Promise<DeckSummary> {
     });
   }
   if (deck.generatedCardCount === 0) {
+    const deckId = deck.id;
     await createCardNote({
       cardType: "basic",
-      deckId: deck.id,
+      deckId,
       frontDoc: richDocument("What platform is this smoke test exercising?"),
       backDoc: richDocument("Android"),
       tags: ["android-smoke"],
       reverseEnabled: false,
       allowDuplicate: false,
     });
-    const refreshed = (await listDecks()).find((candidate) => candidate.id === deck.id);
+    const refreshed = (await listDecks()).find((candidate) => candidate.id === deckId);
     if (!refreshed) throw new Error("The Android smoke deck disappeared after card creation.");
     deck = refreshed;
   }
