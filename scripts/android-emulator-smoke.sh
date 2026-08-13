@@ -130,6 +130,7 @@ run_case c_documentsStubAndAndroidBackReturnToDecks
 run_case d_reloadsIntoInterruptedPracticeSession
 "$adb" -s "$SERIAL" shell am force-stop io.github.jferments.ostudy.dev
 run_case e_processRestartKeepsInterruptedPracticeSession
+run_case f_systemImportImageAndExportPickersCancelCleanly
 
 printf '\nOK   Android Emulator smoke suite passed on %s.\n' "$SERIAL"
 printf 'Diagnostics: %s\n' "$ARTIFACT_DIR"
