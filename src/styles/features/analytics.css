@@ -8,6 +8,16 @@
   margin-bottom: 4px;
 }
 
+.analytics-screen > .screen-header > .secondary-button {
+  display: inline-flex;
+  min-width: 8.5rem;
+  min-height: 44px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
 .analytics-filter-panel,
 .analytics-workload-strip {
   border: 1px solid var(--border);
