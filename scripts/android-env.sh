@@ -6,7 +6,19 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/versions.env"
 
-ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/.cache/ostudy/android-sdk}}"
+if [[ -n "${ANDROID_HOME:-}" ]]; then
+  resolved_android_home="$ANDROID_HOME"
+elif [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then
+  resolved_android_home="$ANDROID_SDK_ROOT"
+elif [[ -d "$HOME/Android/Sdk" ]]; then
+  # Android Studio's default Linux SDK location. Reuse it so the runner does not
+  # maintain a second multi-gigabyte SDK tree; ostudy still installs/validates its
+  # own pinned platform, Build Tools, NDK, and emulator image side-by-side.
+  resolved_android_home="$HOME/Android/Sdk"
+else
+  resolved_android_home="$HOME/.cache/ostudy/android-sdk"
+fi
+ANDROID_HOME="$resolved_android_home"
 ANDROID_SDK_ROOT="$ANDROID_HOME"
 NDK_HOME="${NDK_HOME:-$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION}"
 
