@@ -75,7 +75,9 @@ pub struct SaveUiCheckpointInput {
 }
 
 #[tauri::command]
-pub fn get_ui_checkpoint(paths: State<'_, AppPaths>) -> Result<Option<UiCheckpointDto>, CommandError> {
+pub fn get_ui_checkpoint(
+    paths: State<'_, AppPaths>,
+) -> Result<Option<UiCheckpointDto>, CommandError> {
     let path = checkpoint_path(paths.inner());
     let bytes = match fs::read(&path) {
         Ok(bytes) => bytes,
