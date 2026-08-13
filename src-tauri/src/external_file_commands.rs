@@ -1,15 +1,18 @@
-//! Cross-platform external-file command adapter.
+//! Cross-platform system-sharing and incoming-share command adapter.
 //!
-//! Desktop delegates to the established path-based command implementation.
-//! Android uses the private native plugin only to stream bytes across Storage
-//! Access Framework and Sharesheet boundaries; validation, hashing, transfer
-//! ledgers, idempotency, and durable adoption remain in shared Rust.
+//! File selection and publication are owned by `external_files` through the
+//! typed `ExternalFilePort`. This module contains only the platform operations
+//! that have no desktop-file equivalent: system sharing and Android incoming
+//! share adoption. Validation, hashing, transfer ledgers, idempotency, and
+//! durable adoption remain in shared Rust.
 
 use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
 };
+#[cfg(target_os = "android")]
+use std::path::PathBuf;
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -17,15 +20,15 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, State};
 
 #[cfg(target_os = "android")]
-use tauri_plugin_ostudy_platform::{AcquireImportRequest, OstudyPlatformExt, PublishExportRequest};
+use tauri_plugin_ostudy_platform::OstudyPlatformExt;
 
 use crate::{
     assets::detect_image_bytes,
     database::Database,
     error::CommandError,
     external_files::{
-        ExternalFileKind, ExternalImportPurpose, PublishPreparedExportInput, PublishReceiptDto,
-        StageExternalImportInput, StagedExternalFileDto,
+        ExternalFileKind, ExternalImportPurpose, PublishPreparedExportInput,
+        StagedExternalFileDto,
     },
     paths::AppPaths,
     platform::{PlatformRuntime, ShareSource},
@@ -75,161 +78,7 @@ struct StoredPreparedExport {
     id: String,
     suggested_filename: String,
     media_type: String,
-    byte_size: i64,
-    sha256: String,
     relative_path: String,
-}
-
-#[tauri::command]
-pub async fn select_and_stage_external_import(
-    app: AppHandle,
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    runtime: State<'_, PlatformRuntime>,
-    input: StageExternalImportInput,
-) -> Result<Option<StagedExternalFileDto>, CommandError> {
-    #[cfg(not(target_os = "android"))]
-    {
-        return crate::external_files::select_and_stage_external_import(
-            app, database, paths, runtime, input,
-        )
-        .await;
-    }
-
-    #[cfg(target_os = "android")]
-    {
-        let _ = runtime;
-        validate_entity_id(&input.operation_id, "external file selection")?;
-        if let Some(existing) = database.with_connection(|connection| {
-            load_import_by_operation(connection, paths.inner(), &input.operation_id)
-        })? {
-            return Ok(Some(existing));
-        }
-
-        let partial_relative = AppPaths::staged_import_partial_relative_path(&input.operation_id);
-        let partial_path = paths.resolve_relative(&partial_relative);
-        create_parent(&partial_path)?;
-        remove_file_if_exists(&partial_path)?;
-        let target_path = path_to_utf8(&partial_path, "external import staging")?;
-        let (title, mime_types) = import_request(input.purpose);
-        let maximum_bytes = maximum_bytes(input.purpose);
-        let plugin_app = app.clone();
-        let result = tauri::async_runtime::spawn_blocking(move || {
-            plugin_app
-                .ostudy_platform()
-                .acquire_import(AcquireImportRequest {
-                    title,
-                    mime_types,
-                    target_path,
-                    maximum_bytes,
-                })
-        })
-        .await
-        .map_err(|_| interrupted("external import"))?
-        .map_err(|error| plugin_error("external import", error))?;
-        if result.cancelled {
-            remove_file_if_exists(&partial_path)?;
-            return Ok(None);
-        }
-
-        let display_name = validate_display_name(result.display_name.as_deref().unwrap_or("selected file"))?;
-        let (byte_size, sha256) = hash_bounded_file(&partial_path, maximum_bytes)?;
-        if result.copied_bytes != u64::try_from(byte_size).unwrap_or(u64::MAX) {
-            remove_file_if_exists(&partial_path)?;
-            return Err(CommandError::new(
-                "android_external_file_size_mismatch",
-                "Android reported a different import size than the validated staging file.",
-            ));
-        }
-        let detected_kind = detect_kind(&partial_path, input.purpose)?;
-        let staged = commit_staged_file(
-            database.inner(),
-            paths.inner(),
-            &input.operation_id,
-            input.purpose,
-            detected_kind,
-            display_name,
-            byte_size,
-            sha256,
-            &partial_path,
-        )?;
-        Ok(Some(staged))
-    }
-}
-
-#[tauri::command]
-pub async fn publish_prepared_export(
-    app: AppHandle,
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    runtime: State<'_, PlatformRuntime>,
-    input: PublishPreparedExportInput,
-) -> Result<Option<PublishReceiptDto>, CommandError> {
-    #[cfg(not(target_os = "android"))]
-    {
-        return crate::external_files::publish_prepared_export(
-            app, database, paths, runtime, input,
-        )
-        .await;
-    }
-
-    #[cfg(target_os = "android")]
-    {
-        let _ = runtime;
-        validate_entity_id(&input.prepared_export_id, "prepared export")?;
-        let stored = database.with_connection(|connection| {
-            load_prepared_export(connection, paths.inner(), &input.prepared_export_id)
-        })?;
-        let source = paths.resolve_relative(&stored.relative_path);
-        let plugin_app = app.clone();
-        let request = PublishExportRequest {
-            title: "Publish ostudy export".to_string(),
-            suggested_filename: stored.suggested_filename.clone(),
-            mime_type: stored.media_type.clone(),
-            source_path: path_to_utf8(&source, "prepared export")?,
-            maximum_bytes: u64::try_from(stored.byte_size).map_err(|_| {
-                CommandError::new(
-                    "prepared_export_size_invalid",
-                    "The prepared export has an invalid recorded size.",
-                )
-            })?,
-        };
-        let result = tauri::async_runtime::spawn_blocking(move || {
-            plugin_app.ostudy_platform().publish_export(request)
-        })
-        .await
-        .map_err(|_| interrupted("export publication"))?
-        .map_err(|error| plugin_error("export publication", error))?;
-        if result.cancelled {
-            return Ok(None);
-        }
-        if result.copied_bytes != u64::try_from(stored.byte_size).unwrap_or(u64::MAX) {
-            return Err(CommandError::new(
-                "android_export_size_mismatch",
-                "Android reported a different export size than the prepared file.",
-            ));
-        }
-        let completed_at = unix_time_millis()?;
-        database.with_connection(|connection| {
-            connection
-                .execute(
-                    "UPDATE prepared_exports
-                     SET state = 'published', published_at = ?1, updated_at = ?1
-                     WHERE id = ?2 AND state IN ('prepared', 'published')",
-                    params![completed_at, stored.id],
-                )
-                .map_err(CommandError::database)?;
-            Ok(())
-        })?;
-        Ok(Some(PublishReceiptDto {
-            prepared_export_id: stored.id,
-            display_name: result
-                .display_name
-                .unwrap_or_else(|| stored.suggested_filename.clone()),
-            destination_kind: "android_document".to_string(),
-            completed_at,
-        }))
-    }
 }
 
 #[tauri::command]
@@ -521,14 +370,22 @@ fn load_import_by_operation(
             [operation_id],
             |row| {
                 Ok((
-                    row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?,
-                    row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?,
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
                 ))
             },
         )
         .optional()
         .map_err(CommandError::database)?;
-    let Some((id, purpose, kind, display_name, byte_size, sha256, relative, expires_at, state)) = row else {
+    let Some((id, purpose, kind, display_name, byte_size, sha256, relative, expires_at, state)) = row
+    else {
         return Ok(None);
     };
     if !matches!(state.as_str(), "staged" | "consumed") {
@@ -561,7 +418,16 @@ fn load_prepared_export(
             "SELECT suggested_filename, media_type, byte_size, sha256, relative_path, state
              FROM prepared_exports WHERE id = ?1",
             [id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
         )
         .optional()
         .map_err(CommandError::database)?;
@@ -582,13 +448,14 @@ fn load_prepared_export(
         id: id.to_string(),
         suggested_filename,
         media_type,
-        byte_size,
-        sha256,
         relative_path,
     })
 }
 
-fn detect_kind(path: &Path, purpose: ExternalImportPurpose) -> Result<ExternalFileKind, CommandError> {
+fn detect_kind(
+    path: &Path,
+    purpose: ExternalImportPurpose,
+) -> Result<ExternalFileKind, CommandError> {
     match purpose {
         ExternalImportPurpose::Image => {
             let mut file = File::open(path).map_err(CommandError::io)?;
@@ -600,7 +467,10 @@ fn detect_kind(path: &Path, purpose: ExternalImportPurpose) -> Result<ExternalFi
                 "image/jpeg" => Ok(ExternalFileKind::Jpeg),
                 "image/gif" => Ok(ExternalFileKind::Gif),
                 "image/webp" => Ok(ExternalFileKind::Webp),
-                _ => Err(CommandError::new("unsupported_image", "Use a supported image file.")),
+                _ => Err(CommandError::new(
+                    "unsupported_image",
+                    "Use a supported image file.",
+                )),
             }
         }
         ExternalImportPurpose::PdfDocument => {
@@ -610,7 +480,10 @@ fn detect_kind(path: &Path, purpose: ExternalImportPurpose) -> Result<ExternalFi
             if &signature == b"%PDF-" {
                 Ok(ExternalFileKind::Pdf)
             } else {
-                Err(CommandError::new("invalid_pdf", "The selected file is not a PDF."))
+                Err(CommandError::new(
+                    "invalid_pdf",
+                    "The selected file is not a PDF.",
+                ))
             }
         }
         ExternalImportPurpose::StudyContent => detect_study_content(path),
@@ -652,7 +525,10 @@ fn detect_study_content(path: &Path) -> Result<ExternalFileKind, CommandError> {
         )
     })?;
     if value.get("format").and_then(serde_json::Value::as_str) == Some("ostudy-flashcards")
-        && value.get("formatVersion").and_then(serde_json::Value::as_i64) == Some(1)
+        && value
+            .get("formatVersion")
+            .and_then(serde_json::Value::as_i64)
+            == Some(1)
     {
         Ok(ExternalFileKind::GeneratedJson)
     } else {
@@ -691,37 +567,6 @@ fn sqlite_metadata(path: &Path, table: &str, key: &str) -> Result<Option<String>
                 "The selected file does not contain valid ostudy metadata.",
             )
         })
-}
-
-fn import_request(purpose: ExternalImportPurpose) -> (String, Vec<String>) {
-    match purpose {
-        ExternalImportPurpose::Image => (
-            "Choose an image".to_string(),
-            vec!["image/png", "image/jpeg", "image/gif", "image/webp"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
-        ),
-        ExternalImportPurpose::PdfDocument => (
-            "Choose a PDF document".to_string(),
-            vec!["application/pdf".to_string()],
-        ),
-        ExternalImportPurpose::StudyContent => (
-            "Import ostudy content".to_string(),
-            vec![
-                "application/vnd.ostudy.studydeck".to_string(),
-                "application/json".to_string(),
-                "application/octet-stream".to_string(),
-            ],
-        ),
-        ExternalImportPurpose::LibraryBackup => (
-            "Choose an ostudy library backup".to_string(),
-            vec![
-                "application/vnd.ostudy.backup".to_string(),
-                "application/octet-stream".to_string(),
-            ],
-        ),
-    }
 }
 
 fn maximum_bytes(purpose: ExternalImportPurpose) -> u64 {
@@ -864,7 +709,9 @@ fn copy_bounded(source: &Path, destination: &Path, maximum_bytes: u64) -> Result
                 "The selected file exceeds the supported size limit.",
             ));
         }
-        output.write_all(&buffer[..read]).map_err(CommandError::io)?;
+        output
+            .write_all(&buffer[..read])
+            .map_err(CommandError::io)?;
     }
     output.sync_all().map_err(CommandError::io)
 }
@@ -958,15 +805,6 @@ fn sync_directory(path: Option<&Path>) -> Result<(), CommandError> {
         .map_err(CommandError::io)
 }
 
-fn path_to_utf8(path: &Path, label: &str) -> Result<String, CommandError> {
-    path.to_str().map(str::to_string).ok_or_else(|| {
-        CommandError::new(
-            "android_path_unsupported",
-            format!("The app-private {label} path is not valid UTF-8."),
-        )
-    })
-}
-
 #[cfg(target_os = "android")]
 fn plugin_error(
     operation: &str,
@@ -975,12 +813,5 @@ fn plugin_error(
     CommandError::new(
         "android_platform_operation_failed",
         format!("The Android {operation} operation failed: {error}"),
-    )
-}
-
-fn interrupted(operation: &str) -> CommandError {
-    CommandError::new(
-        "android_platform_operation_interrupted",
-        format!("The Android {operation} operation ended before returning a result."),
     )
 }
