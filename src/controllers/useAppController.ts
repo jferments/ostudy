@@ -208,7 +208,13 @@ export function useAppController() {
       void navigate("decks");
       return true;
     });
-  }, [section]);
+  }, [
+    hasUnsavedCard,
+    hasUnsavedSettings,
+    hasUnsavedTemplate,
+    savedSettings,
+    section,
+  ]);
 
   useEffect(() => {
     if (!hasUnsavedCard && !hasUnsavedTemplate && !hasUnsavedSettings) return;
