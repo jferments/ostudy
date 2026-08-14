@@ -115,7 +115,7 @@ dump_case_logcat() {
   "$adb" -s "$SERIAL" logcat -d -v threadtime > "$crash_log" 2>&1 || true
   printf '\n--- Android crash diagnostics for %s ---\n' "$method" >&2
   grep -E -i \
-    'FATAL EXCEPTION|Fatal signal|Abort message|SIGABRT|SIGSEGV|AndroidRuntime|panicked at|Rust panic|Process: io\.github\.jferments\.ostudy|io\.github\.jferments\.ostudy' \
+    'FATAL EXCEPTION|Fatal signal|Abort message|SIGABRT|SIGSEGV|AndroidRuntime|panicked at|Rust panic|Process: io\.github\.jferments\.ostudy|io\.github\.jferments\.ostudy|FORTIFY' \
     "$crash_log" | tail -n 220 >&2 || true
   printf '%s\n' "--- Last 220 logcat lines for $method ---" >&2
   tail -n 220 "$crash_log" >&2 || true
@@ -127,16 +127,20 @@ run_case() {
   local method="$1"
   local log="$ARTIFACT_DIR/${method}.txt"
 
-  # ActivityScenario intentionally leaves the Tauri Activity alive so the app's
-  # event loop is not destroyed before AndroidJUnitRunner reports its result.
-  # Own process lifecycle here instead: every case starts from a fresh process,
-  # while app-private SQLite/checkpoint data persists unless pm clear is used.
+  # The Tauri event loop owns Activity/native teardown. AndroidJUnitRunner's
+  # default MonitoringInstrumentation cleanup calls Activity.finish() before
+  # instrumentation exits, which races Tauri/Wry native teardown on Android.
+  # AndroidX Test explicitly supports opting out with the
+  # waitForActivitiesToComplete runner argument. The shell then owns lifecycle:
+  # every case starts from a force-stopped process while app-private durable data
+  # persists unless the initial pm clear intentionally resets it.
   "$adb" -s "$SERIAL" shell am force-stop "$APP_ID" >/dev/null 2>&1 || true
   "$adb" -s "$SERIAL" logcat -c
 
   printf 'Running Android smoke case %s...\n' "$method"
   set +e
   "$adb" -s "$SERIAL" shell am instrument -w -r \
+    -e waitForActivitiesToComplete false \
     -e class "io.github.jferments.ostudy.AndroidSmokeTest#$method" \
     "$runner" | tee "$log"
   local instrument_status="${PIPESTATUS[0]}"
