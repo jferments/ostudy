@@ -88,10 +88,7 @@ for library in "${libraries[@]}"; do
   done < <("$READELF" -lW "$library" | awk '$1 == "LOAD" { print $NF }')
 done
 
-# The build wrapper verifies the smoke bridge against the freshly generated
-# Vite distribution before Tauri packages it. Tauri may compress/embed web
-# assets, so absence of a JavaScript literal in an unpacked APK is not proof
-# that the bridge is absent. Keep this release scan only as defense in depth.
+# The build wrapper verifies the smoke bridge against the freshly generated Vite distribution before Tauri packages it. Tauri may compress/embed web assets, so absence of a JavaScript literal in an unpacked APK is not proof that the bridge is absent. Keep this release scan only as defense in depth.
 if [[ "$MODE" == release ]]; then
   unzip -q "$APK" -d "$temporary/release-tree"
   if grep -R -a -q '__OSTUDY_ANDROID_TEST__' "$temporary/release-tree"; then
