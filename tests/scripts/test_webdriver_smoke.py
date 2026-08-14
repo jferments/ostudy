@@ -7,6 +7,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
+MAIN_ENTRY_PATH = ROOT / "src" / "main.tsx"
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
 CREATE_CARDS_PATH = ROOT / "src" / "screens" / "flashcards" / "CreateCardsWorkspace.tsx"
 TOUR_PROVIDER_PATH = ROOT / "src" / "ui" / "tutorials" / "TourProvider.tsx"
@@ -83,6 +84,13 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
     def test_create_cards_exposes_stable_bulk_add_automation_hook(self) -> None:
         source = CREATE_CARDS_PATH.read_text(encoding="utf-8")
         self.assertIn('data-testid="bulk-add-cards"', source)
+
+    def test_android_smoke_entry_point_installs_test_bridge_only_when_requested(self) -> None:
+        source = MAIN_ENTRY_PATH.read_text(encoding="utf-8")
+        self.assertIn('import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE === "1"', source)
+        self.assertIn('import("./testing/androidTestBridge")', source)
+        self.assertIn("installAndroidTestBridge();", source)
+        self.assertNotIn('import { installAndroidTestBridge }', source)
 
     def test_android_smoke_build_cannot_auto_start_contextual_tutorials(self) -> None:
         source = TOUR_PROVIDER_PATH.read_text(encoding="utf-8")
