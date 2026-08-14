@@ -41,7 +41,7 @@ export function PracticeComplete({
   ];
 
   return (
-    <div className={`screen practice-screen ${styles.screen}`}>
+    <div className={`screen practice-screen ${styles.screen}`} data-testid="practice-complete">
       <Surface level={3} material="solid" className={styles.hero}>
         <div className={styles.artworkWrap}>
           <Artwork slot="practice.complete" />
