@@ -53,10 +53,16 @@ export function IncomingShareCoordinator({
       setQueue((current) =>
         current.some((item) => item.token === incoming.token) ? current : [...current, incoming],
       );
-    }).then((dispose) => {
-      if (disposed) dispose();
-      else unlisten = dispose;
-    });
+    })
+      .then((dispose) => {
+        if (disposed) dispose();
+        else unlisten = dispose;
+      })
+      .catch((error: unknown) => {
+        if (!disposed) {
+          console.error("Unable to register the Android incoming-share listener:", getErrorMessage(error));
+        }
+      });
     return () => {
       disposed = true;
       unlisten?.();
