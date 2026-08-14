@@ -289,7 +289,7 @@ mod tests {
         let database = Database::open_in_memory().unwrap();
         let workspace = TestWorkspace::new();
         let id = "11111111111111111111111111111111";
-        let bytes = b"partial-transfer";
+        let bytes: &[u8] = b"partial-transfer";
         let relative = AppPaths::staged_import_relative_path(id, "png");
         let partial = workspace
             .paths
@@ -300,7 +300,8 @@ mod tests {
 
         reconcile_interrupted_staging(&database, &workspace.paths).unwrap();
 
-        assert_eq!(fs::read(&ready).unwrap(), bytes);
+        let actual = fs::read(&ready).unwrap();
+        assert_eq!(actual.as_slice(), bytes);
         assert!(!partial.exists());
         assert_eq!(load_state(&database, id), "staged");
     }
@@ -310,7 +311,7 @@ mod tests {
         let database = Database::open_in_memory().unwrap();
         let workspace = TestWorkspace::new();
         let id = "22222222222222222222222222222222";
-        let bytes = b"ready-transfer";
+        let bytes: &[u8] = b"ready-transfer";
         let relative = AppPaths::staged_import_relative_path(id, "png");
         let partial = workspace
             .paths
@@ -322,7 +323,8 @@ mod tests {
 
         reconcile_interrupted_staging(&database, &workspace.paths).unwrap();
 
-        assert_eq!(fs::read(&ready).unwrap(), bytes);
+        let actual = fs::read(&ready).unwrap();
+        assert_eq!(actual.as_slice(), bytes);
         assert!(!partial.exists());
         assert_eq!(load_state(&database, id), "staged");
     }
@@ -332,7 +334,7 @@ mod tests {
         let database = Database::open_in_memory().unwrap();
         let workspace = TestWorkspace::new();
         let id = "33333333333333333333333333333333";
-        let expected = b"expected-transfer";
+        let expected: &[u8] = b"expected-transfer";
         let relative = AppPaths::staged_import_relative_path(id, "png");
         let partial = workspace
             .paths
