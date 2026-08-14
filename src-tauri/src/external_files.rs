@@ -1,37 +1,30 @@
 //! Opaque external-file staging and prepared-export publication.
 //!
 //! Platform-specific paths, content URIs, and security-scoped references stop at
-//! 'ExternalFilePort'. Shared use cases receive only managed transfer IDs and
+//! `ExternalFilePort`. Shared use cases receive only managed transfer IDs and
 //! validated app-private files.
 
 use std::{
     collections::BTreeSet,
-    fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    fs::{self, File},
+    io::Read,
     path::{Path, PathBuf},
 };
 
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use crate::{
-    assets::detect_image_bytes,
     database::Database,
     error::CommandError,
     paths::AppPaths,
-    platform::{ExternalFileRequest, FileFilter, PlatformRuntime},
     util::{unix_time_millis, validate_entity_id},
 };
 
-const IMPORT_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
 const EXPORT_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
 const COPY_BUFFER_BYTES: usize = 1024 * 1024;
-const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
-const MAX_PDF_BYTES: u64 = 512 * 1024 * 1024;
-const MAX_STUDY_CONTENT_BYTES: u64 = 640 * 1024 * 1024;
-const MAX_BACKUP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -49,58 +42,6 @@ impl ExternalImportPurpose {
             Self::PdfDocument => "pdf_document",
             Self::StudyContent => "study_content",
             Self::LibraryBackup => "library_backup",
-        }
-    }
-
-    fn maximum_bytes(self) -> u64 {
-        match self {
-            Self::Image => MAX_IMAGE_BYTES,
-            Self::PdfDocument => MAX_PDF_BYTES,
-            Self::StudyContent => MAX_STUDY_CONTENT_BYTES,
-            Self::LibraryBackup => MAX_BACKUP_BYTES,
-        }
-    }
-
-    fn request(self) -> ExternalFileRequest {
-        match self {
-            Self::Image => ExternalFileRequest {
-                title: "Choose an image".to_string(),
-                suggested_filename: None,
-                filters: vec![FileFilter {
-                    name: "Images".to_string(),
-                    extensions: vec![
-                        "png".to_string(),
-                        "jpg".to_string(),
-                        "jpeg".to_string(),
-                        "gif".to_string(),
-                        "webp".to_string(),
-                    ],
-                }],
-            },
-            Self::PdfDocument => ExternalFileRequest {
-                title: "Choose a PDF document".to_string(),
-                suggested_filename: None,
-                filters: vec![FileFilter {
-                    name: "PDF documents".to_string(),
-                    extensions: vec!["pdf".to_string()],
-                }],
-            },
-            Self::StudyContent => ExternalFileRequest {
-                title: "Import ostudy content".to_string(),
-                suggested_filename: None,
-                filters: vec![FileFilter {
-                    name: "ostudy deck or generated JSON".to_string(),
-                    extensions: vec!["studydeck".to_string(), "json".to_string()],
-                }],
-            },
-            Self::LibraryBackup => ExternalFileRequest {
-                title: "Choose an ostudy library backup".to_string(),
-                suggested_filename: None,
-                filters: vec![FileFilter {
-                    name: "ostudy library backup".to_string(),
-                    extensions: vec!["ostudybackup".to_string()],
-                }],
-            },
         }
     }
 }
@@ -142,19 +83,6 @@ impl ExternalFileKind {
             Self::Studydeck => "studydeck",
             Self::GeneratedJson => "json",
             Self::Ostudybackup => "ostudybackup",
-        }
-    }
-
-    fn media_type(self) -> &'static str {
-        match self {
-            Self::Png => "image/png",
-            Self::Jpeg => "image/jpeg",
-            Self::Gif => "image/gif",
-            Self::Webp => "image/webp",
-            Self::Pdf => "application/pdf",
-            Self::Studydeck => "application/vnd.ostudy.studydeck",
-            Self::GeneratedJson => "application/json",
-            Self::Ostudybackup => "application/vnd.ostudy.backup",
         }
     }
 
@@ -244,130 +172,7 @@ pub(crate) struct ResolvedStagedImport {
 #[derive(Clone, Debug)]
 struct StoredPreparedExport {
     dto: PreparedExportDto,
-    relative_path: String,
     summary_json: String,
-}
-
-#[tauri::command]
-pub async fn select_and_stage_external_import(
-    app: AppHandle,
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    runtime: State<'_, PlatformRuntime>,
-    input: StageExternalImportInput,
-) -> Result<Option<StagedExternalFileDto>, CommandError> {
-    validate_entity_id(&input.operation_id, "external file selection")?;
-    if let Some(existing) = database.with_connection(|connection| {
-        load_import_by_operation(connection, paths.inner(), &input.operation_id)
-    })? {
-        return Ok(Some(existing));
-    }
-
-    let Some(source) = runtime
-        .external_files()
-        .select_import(app.clone(), input.purpose.request())
-        .await?
-    else {
-        return Ok(None);
-    };
-    let source_path = fs::canonicalize(&source.path).map_err(CommandError::io)?;
-    if !source_path.is_file() {
-        return Err(CommandError::new(
-            "external_file_missing",
-            "The selected file is no longer available.",
-        ));
-    }
-    let display_name = validate_display_name(&source.display_name)?;
-    let partial_relative = AppPaths::staged_import_partial_relative_path(&input.operation_id);
-    let partial_path = paths.resolve_relative(&partial_relative);
-    create_parent(&partial_path)?;
-    remove_file_if_exists(&partial_path)?;
-    let (byte_size, sha256) =
-        copy_bounded_with_hash(&source_path, &partial_path, input.purpose.maximum_bytes())?;
-    let detected_kind = detect_kind(&partial_path, input.purpose)?;
-    let relative_path =
-        AppPaths::staged_import_relative_path(&input.operation_id, detected_kind.extension());
-    let ready_path = paths.resolve_relative(&relative_path);
-    remove_file_if_exists(&ready_path)?;
-    let now = unix_time_millis()?;
-    let expires_at = now.saturating_add(IMPORT_TTL_MS);
-
-    let insert = database.with_connection(|connection| {
-        connection
-            .execute(
-                "INSERT INTO staged_external_imports (
-                     id, operation_id, purpose, detected_kind, display_name,
-                     media_type, byte_size, sha256, relative_path, state,
-                     created_at, updated_at, expires_at
-                 ) VALUES (?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'staging', ?9, ?9, ?10)",
-                params![
-                    input.operation_id,
-                    input.purpose.as_str(),
-                    detected_kind.as_str(),
-                    display_name,
-                    detected_kind.media_type(),
-                    byte_size,
-                    sha256,
-                    relative_path,
-                    now,
-                    expires_at,
-                ],
-            )
-            .map_err(CommandError::database)?;
-        Ok(())
-    });
-    if let Err(error) = insert {
-        let _ = fs::remove_file(&partial_path);
-        if let Some(existing) = database.with_connection(|connection| {
-            load_import_by_operation(connection, paths.inner(), &input.operation_id)
-        })? {
-            return Ok(Some(existing));
-        }
-        return Err(error);
-    }
-
-    if let Err(error) = fs::rename(&partial_path, &ready_path) {
-        let _ = database.with_connection(|connection| {
-            connection
-                .execute(
-                    "UPDATE staged_external_imports SET state = 'failed', updated_at = ?1
-                     WHERE id = ?2 AND state = 'staging'",
-                    params![unix_time_millis().unwrap_or_default(), input.operation_id],
-                )
-                .map_err(CommandError::database)?;
-            Ok(())
-        });
-        return Err(CommandError::io(error));
-    }
-    sync_file(&ready_path)?;
-    sync_directory(ready_path.parent())?;
-    database.with_connection(|connection| {
-        let changed = connection
-            .execute(
-                "UPDATE staged_external_imports SET state = 'staged', updated_at = ?1
-                 WHERE id = ?2 AND state = 'staging'",
-                params![unix_time_millis()?, input.operation_id],
-            )
-            .map_err(CommandError::database)?;
-        if changed != 1 {
-            return Err(CommandError::new(
-                "external_file_state_changed",
-                "The selected file changed while it was being staged.",
-            ));
-        }
-        Ok(())
-    })?;
-
-    Ok(Some(StagedExternalFileDto {
-        id: input.operation_id,
-        purpose: input.purpose,
-        detected_kind,
-        display_name,
-        media_type: detected_kind.media_type().to_string(),
-        byte_size,
-        sha256,
-        expires_at,
-    }))
 }
 
 #[tauri::command]
@@ -409,65 +214,6 @@ pub fn release_staged_external_import(
         ))?;
     }
     Ok(())
-}
-
-#[tauri::command]
-pub async fn publish_prepared_export(
-    app: AppHandle,
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    runtime: State<'_, PlatformRuntime>,
-    input: PublishPreparedExportInput,
-) -> Result<Option<PublishReceiptDto>, CommandError> {
-    validate_entity_id(&input.prepared_export_id, "prepared export")?;
-    let stored = database.with_connection(|connection| {
-        load_prepared_export(connection, paths.inner(), &input.prepared_export_id)
-    })?;
-    let extension = Path::new(&stored.dto.suggested_filename)
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default()
-        .to_string();
-    let request = ExternalFileRequest {
-        title: "Publish ostudy export".to_string(),
-        suggested_filename: Some(stored.dto.suggested_filename.clone()),
-        filters: vec![FileFilter {
-            name: "ostudy export".to_string(),
-            extensions: if extension.is_empty() {
-                Vec::new()
-            } else {
-                vec![extension]
-            },
-        }],
-    };
-    let Some(destination) = runtime
-        .external_files()
-        .select_export(app.clone(), request)
-        .await?
-    else {
-        return Ok(None);
-    };
-    let source = paths.resolve_relative(&stored.relative_path);
-    verify_file(&source, stored.dto.byte_size, &stored.dto.sha256)?;
-    publish_atomic(&source, &destination.path)?;
-    let completed_at = unix_time_millis()?;
-    database.with_connection(|connection| {
-        connection
-            .execute(
-                "UPDATE prepared_exports
-                 SET state = 'published', published_at = ?1, updated_at = ?1
-                 WHERE id = ?2 AND state IN ('prepared', 'published')",
-                params![completed_at, input.prepared_export_id],
-            )
-            .map_err(CommandError::database)?;
-        Ok(())
-    })?;
-    Ok(Some(PublishReceiptDto {
-        prepared_export_id: stored.dto.id,
-        display_name: destination.display_name,
-        destination_kind: "desktop_file".to_string(),
-        completed_at,
-    }))
 }
 
 #[tauri::command]
@@ -688,7 +434,7 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                      WHERE state <> 'released'",
                 )
                 .map_err(CommandError::database)?;
-            let rows = statement
+            statement
                 .query_map([], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -700,8 +446,7 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                 })
                 .map_err(CommandError::database)?
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(CommandError::database)?;
-            rows
+                .map_err(CommandError::database)?
         };
         for (id, kind, relative, state, expires_at) in imports {
             let kind = ExternalFileKind::parse(&kind)?;
@@ -761,7 +506,7 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                      WHERE state <> 'released'",
                 )
                 .map_err(CommandError::database)?;
-            let rows = statement
+            statement
                 .query_map([], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -772,8 +517,7 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                 })
                 .map_err(CommandError::database)?
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(CommandError::database)?;
-            rows
+                .map_err(CommandError::database)?
         };
         for (id, relative, _state, expires_at) in exports {
             let path = paths.resolve_relative(&relative);
@@ -805,46 +549,6 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
     remove_unknown_transfer_files(&paths.transfer_imports_dir(), &referenced)?;
     remove_unknown_transfer_files(&paths.transfer_exports_dir(), &referenced)?;
     Ok(())
-}
-
-fn load_import_by_operation(
-    connection: &Connection,
-    paths: &AppPaths,
-    operation_id: &str,
-) -> Result<Option<StagedExternalFileDto>, CommandError> {
-    let id: Option<String> = connection
-        .query_row(
-            "SELECT id FROM staged_external_imports WHERE operation_id = ?1",
-            [operation_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(CommandError::database)?;
-    let Some(id) = id else {
-        return Ok(None);
-    };
-    let stored = load_staged_import(connection, &id)?;
-    if !matches!(stored.0.state.as_str(), "staged" | "consumed") {
-        return Err(CommandError::new(
-            "external_file_operation_conflict",
-            "That external-file operation identifier is no longer reusable.",
-        ));
-    }
-    verify_file(
-        &paths.resolve_relative(&stored.2),
-        stored.0.byte_size,
-        &stored.0.sha256,
-    )?;
-    Ok(Some(StagedExternalFileDto {
-        id,
-        purpose: parse_purpose(&stored.1)?,
-        detected_kind: stored.0.detected_kind,
-        display_name: stored.0.display_name,
-        media_type: stored.0.detected_kind.media_type().to_string(),
-        byte_size: stored.0.byte_size,
-        sha256: stored.0.sha256,
-        expires_at: stored.4,
-    }))
 }
 
 struct LoadedImport {
@@ -954,201 +658,8 @@ fn load_prepared_export(
             sha256: row.4,
             expires_at: row.8,
         },
-        relative_path: row.5,
         summary_json: row.7,
     })
-}
-
-fn detect_kind(
-    path: &Path,
-    purpose: ExternalImportPurpose,
-) -> Result<ExternalFileKind, CommandError> {
-    match purpose {
-        ExternalImportPurpose::Image => {
-            let mut file = File::open(path).map_err(CommandError::io)?;
-            let mut header = [0_u8; 16];
-            let read = file.read(&mut header).map_err(CommandError::io)?;
-            let (mime, _) = detect_image_bytes(&header[..read])?;
-            match mime {
-                "image/png" => Ok(ExternalFileKind::Png),
-                "image/jpeg" => Ok(ExternalFileKind::Jpeg),
-                "image/gif" => Ok(ExternalFileKind::Gif),
-                "image/webp" => Ok(ExternalFileKind::Webp),
-                _ => Err(CommandError::new(
-                    "unsupported_image",
-                    "Use a supported image file.",
-                )),
-            }
-        }
-        ExternalImportPurpose::PdfDocument => {
-            let mut file = File::open(path).map_err(CommandError::io)?;
-            let mut signature = [0_u8; 5];
-            file.read_exact(&mut signature).map_err(CommandError::io)?;
-            if &signature == b"%PDF-" {
-                Ok(ExternalFileKind::Pdf)
-            } else {
-                Err(CommandError::new(
-                    "invalid_pdf",
-                    "The selected file is not a PDF.",
-                ))
-            }
-        }
-        ExternalImportPurpose::StudyContent => detect_study_content(path),
-        ExternalImportPurpose::LibraryBackup => {
-            let format = sqlite_metadata(path, "backup_metadata", "format")?;
-            if format.as_deref() == Some("ostudy-library-backup") {
-                Ok(ExternalFileKind::Ostudybackup)
-            } else {
-                Err(CommandError::new(
-                    "invalid_backup",
-                    "The selected file is not an ostudy library backup.",
-                ))
-            }
-        }
-    }
-}
-
-fn detect_study_content(path: &Path) -> Result<ExternalFileKind, CommandError> {
-    let mut signature = [0_u8; 16];
-    let read = File::open(path)
-        .and_then(|mut file| file.read(&mut signature))
-        .map_err(CommandError::io)?;
-    if read == signature.len() && &signature == b"SQLite format 3\0" {
-        let format = sqlite_metadata(path, "package_metadata", "format")?;
-        return if format.as_deref() == Some("studydeck-sqlite") {
-            Ok(ExternalFileKind::Studydeck)
-        } else {
-            Err(CommandError::new(
-                "invalid_package",
-                "The selected SQLite file is not an ostudy deck package.",
-            ))
-        };
-    }
-    let bytes = fs::read(path).map_err(CommandError::io)?;
-    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| {
-        CommandError::new(
-            "invalid_flashcard_import_json",
-            "The selected content is neither an ostudy deck nor valid generated JSON.",
-        )
-    })?;
-    if value.get("format").and_then(serde_json::Value::as_str) == Some("ostudy-flashcards")
-        && value
-            .get("formatVersion")
-            .and_then(serde_json::Value::as_i64)
-            == Some(1)
-    {
-        Ok(ExternalFileKind::GeneratedJson)
-    } else {
-        Err(CommandError::new(
-            "unsupported_flashcard_import",
-            "The selected JSON is not a supported ostudy generated-flashcard file.",
-        ))
-    }
-}
-
-fn sqlite_metadata(path: &Path, table: &str, key: &str) -> Result<Option<String>, CommandError> {
-    let connection = Connection::open_with_flags(
-        path,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(CommandError::database)?;
-    connection
-        .pragma_update(None, "query_only", true)
-        .map_err(CommandError::database)?;
-    let sql = match table {
-        "package_metadata" => "SELECT value FROM package_metadata WHERE key = ?1",
-        "backup_metadata" => "SELECT value FROM backup_metadata WHERE key = ?1",
-        _ => {
-            return Err(CommandError::new(
-                "invalid_external_file_metadata",
-                "The external file metadata table is invalid.",
-            ));
-        }
-    };
-    connection
-        .query_row(sql, [key], |row| row.get(0))
-        .optional()
-        .map_err(|_| {
-            CommandError::new(
-                "invalid_external_file_metadata",
-                "The selected file does not contain valid ostudy metadata.",
-            )
-        })
-}
-
-fn parse_purpose(value: &str) -> Result<ExternalImportPurpose, CommandError> {
-    match value {
-        "image" => Ok(ExternalImportPurpose::Image),
-        "pdf_document" => Ok(ExternalImportPurpose::PdfDocument),
-        "study_content" => Ok(ExternalImportPurpose::StudyContent),
-        "library_backup" => Ok(ExternalImportPurpose::LibraryBackup),
-        _ => Err(CommandError::new(
-            "invalid_external_file_purpose",
-            "The staged file purpose is invalid.",
-        )),
-    }
-}
-
-fn validate_display_name(value: &str) -> Result<String, CommandError> {
-    let trimmed = value.trim();
-    if trimmed.is_empty()
-        || trimmed.chars().count() > 255
-        || trimmed
-            .chars()
-            .any(|character| character.is_control() || matches!(character, '/' | '\\' | '\0'))
-    {
-        return Err(CommandError::new(
-            "invalid_external_file_name",
-            "The selected file has an invalid name.",
-        ));
-    }
-    Ok(trimmed.to_string())
-}
-
-fn copy_bounded_with_hash(
-    source: &Path,
-    destination: &Path,
-    maximum_bytes: u64,
-) -> Result<(i64, String), CommandError> {
-    let metadata = fs::metadata(source).map_err(CommandError::io)?;
-    if metadata.len() == 0 || metadata.len() > maximum_bytes {
-        return Err(CommandError::new(
-            "external_file_size_invalid",
-            "The selected file is empty or exceeds the supported size limit.",
-        ));
-    }
-    let mut input = File::open(source).map_err(CommandError::io)?;
-    let mut output = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(destination)
-        .map_err(CommandError::io)?;
-    let mut hasher = Sha256::new();
-    let mut total = 0_u64;
-    let mut buffer = vec![0_u8; COPY_BUFFER_BYTES];
-    loop {
-        let read = input.read(&mut buffer).map_err(CommandError::io)?;
-        if read == 0 {
-            break;
-        }
-        total = total.saturating_add(read as u64);
-        if total > maximum_bytes {
-            let _ = fs::remove_file(destination);
-            return Err(CommandError::new(
-                "external_file_size_invalid",
-                "The selected file exceeds the supported size limit.",
-            ));
-        }
-        hasher.update(&buffer[..read]);
-        output
-            .write_all(&buffer[..read])
-            .map_err(CommandError::io)?;
-    }
-    output.sync_all().map_err(CommandError::io)?;
-    Ok((
-        i64::try_from(total).unwrap_or(i64::MAX),
-        format!("{:x}", hasher.finalize()),
-    ))
 }
 
 fn hash_file(path: &Path) -> Result<(i64, String), CommandError> {
@@ -1194,42 +705,6 @@ fn verify_file(path: &Path, expected_size: i64, expected_hash: &str) -> Result<(
     Ok(())
 }
 
-fn publish_atomic(source: &Path, destination: &Path) -> Result<(), CommandError> {
-    let parent = destination.parent().ok_or_else(|| {
-        CommandError::new(
-            "invalid_export_destination",
-            "Choose a valid export destination.",
-        )
-    })?;
-    if !parent.is_dir() {
-        return Err(CommandError::new(
-            "invalid_export_destination",
-            "The selected export folder is no longer available.",
-        ));
-    }
-    let temporary = destination.with_extension(format!("ostudy-partial-{}", std::process::id()));
-    remove_file_if_exists(&temporary)?;
-    fs::copy(source, &temporary).map_err(CommandError::io)?;
-    sync_file(&temporary)?;
-    if destination.exists() {
-        let backup = destination.with_extension(format!("ostudy-previous-{}", std::process::id()));
-        remove_file_if_exists(&backup)?;
-        fs::rename(destination, &backup).map_err(CommandError::io)?;
-        match fs::rename(&temporary, destination) {
-            Ok(()) => {
-                let _ = fs::remove_file(backup);
-            }
-            Err(error) => {
-                let _ = fs::rename(backup, destination);
-                return Err(CommandError::io(error));
-            }
-        }
-    } else {
-        fs::rename(&temporary, destination).map_err(CommandError::io)?;
-    }
-    sync_directory(Some(parent))
-}
-
 fn remove_unknown_transfer_files(
     directory: &Path,
     referenced: &BTreeSet<PathBuf>,
@@ -1247,28 +722,12 @@ fn remove_unknown_transfer_files(
     Ok(())
 }
 
-fn create_parent(path: &Path) -> Result<(), CommandError> {
-    let parent = path.parent().ok_or_else(|| {
-        CommandError::new(
-            "invalid_external_file_path",
-            "The managed transfer path has no parent folder.",
-        )
-    })?;
-    fs::create_dir_all(parent).map_err(CommandError::io)
-}
-
 fn remove_file_if_exists(path: &Path) -> Result<(), CommandError> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(CommandError::io(error)),
     }
-}
-
-fn sync_file(path: &Path) -> Result<(), CommandError> {
-    File::open(path)
-        .and_then(|file| file.sync_all())
-        .map_err(CommandError::io)
 }
 
 #[cfg(unix)]
