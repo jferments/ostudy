@@ -177,6 +177,36 @@ if (/^set\s+-[^\n]*e/mu.test(androidEnv)) {
   failures.push("android-env.sh must not enable errexit when sourced into an interactive shell");
 }
 
+const androidBuild = await read("scripts/android-build.sh");
+expectContains(
+  androidBuild,
+  "find \"$ROOT_DIR/dist/assets\" -maxdepth 1 -type f -name 'androidTestBridge-*.js'",
+  "smoke bridge Vite chunk verification",
+);
+expectContains(
+  androidBuild,
+  "Android smoke frontend must contain exactly one test bridge chunk",
+  "smoke bridge presence contract",
+);
+expectContains(
+  androidBuild,
+  "Normal Android frontend unexpectedly contains the emulator-only test bridge",
+  "normal Android bridge exclusion contract",
+);
+expectContains(androidBuild, "__OSTUDY_ANDROID_TEST__", "smoke bridge runtime marker check");
+
+const packageVerifier = await read("scripts/verify-android-package.sh");
+if (packageVerifier.includes("bridge_required")) {
+  failures.push(
+    "verify-android-package.sh must not infer smoke bridge presence by grepping packaged Tauri web assets",
+  );
+}
+expectContains(
+  packageVerifier,
+  "Tauri may compress/embed web assets",
+  "APK smoke-bridge observability warning",
+);
+
 const backInterception = await read("src/platform/backInterception.ts");
 expectContains(
   backInterception,
