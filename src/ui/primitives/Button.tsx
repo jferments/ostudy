@@ -1,4 +1,8 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+} from "react";
 
 import styles from "./Button.module.css";
 
@@ -9,19 +13,24 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
 }
 
-export function Button({
-  variant = "secondary",
-  size = "medium",
-  loading = false,
-  disabled,
-  className = "",
-  children,
-  ...props
-}: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  {
+    variant = "secondary",
+    size = "medium",
+    loading = false,
+    disabled,
+    className = "",
+    children,
+    type = "button",
+    ...props
+  },
+  ref,
+) {
   return (
     <button
       {...props}
-      type={props.type ?? "button"}
+      ref={ref}
+      type={type}
       className={`${styles.button} ${styles[variant]} ${styles[size]} ${className}`.trim()}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
@@ -30,4 +39,4 @@ export function Button({
       {loading ? <span className={styles.loadingLabel}>Working…</span> : null}
     </button>
   );
-}
+});
