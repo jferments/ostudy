@@ -12,6 +12,12 @@ import { OverlayProvider } from "./ui/overlays/OverlayProvider";
 const root = document.getElementById("root");
 if (!root) throw new Error("The ostudy root element is missing.");
 
+if (import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE === "1") {
+  void import("./testing/androidTestBridge").then(({ installAndroidTestBridge }) => {
+    installAndroidTestBridge();
+  });
+}
+
 createRoot(root).render(
   <StrictMode>
     <PlatformProvider>
