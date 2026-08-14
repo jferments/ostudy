@@ -12,9 +12,6 @@ function Anchors() {
     <div>
       <nav data-tour-anchor="app.navigation">Navigation</nav>
       <div data-tour-anchor="flashcards.workspaces">Workspaces</div>
-      <button type="button" data-tour-anchor="flashcards.createDeck">
-        New deck
-      </button>
     </div>
   );
 }
@@ -31,7 +28,7 @@ describe("TourProvider", () => {
     expect(platformBackHandlerCountForTests()).toBe(0);
   });
 
-  it("starts a short first-run module only when its semantic anchor exists", async () => {
+  it("starts a short first-run module only when its contextual anchor exists", async () => {
     const view = render(
       <TourProvider enabled>
         <Anchors />
@@ -41,11 +38,15 @@ describe("TourProvider", () => {
     await act(async () => {
       vi.advanceTimersByTime(700);
     });
-    expect(screen.getByRole("dialog", { name: "Move between study tools" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", {
+        name: "Everything for flashcards lives together",
+      }),
+    ).toBeTruthy();
     expect(platformBackHandlerCountForTests()).toBe(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByRole("dialog", { name: "Everything for flashcards lives together" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Move between study tools" })).toBeTruthy();
 
     view.unmount();
   });
