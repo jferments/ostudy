@@ -300,6 +300,7 @@ describe("CardsScreen", () => {
         expect.objectContaining({ deckIds: [deck.id] }),
       ),
     );
+    fireEvent.click(within(dialog).getByRole("button", { name: "View results" }));
     fireEvent.click(screen.getByRole("button", { name: "Add card" }));
     expect(await screen.findByText("Card editor")).toBeTruthy();
   });
