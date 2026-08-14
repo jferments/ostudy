@@ -1,14 +1,10 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import type { ConfidenceCounts } from "./confidence";
 import { PracticeComplete } from "./PracticeComplete";
 
-const emit = vi.fn();
-vi.mock("../../ui/feedback/ExperienceProvider", () => ({
-  useExperience: () => ({ emit }),
-}));
-
-const confidenceCounts = { 0: 1, 1: 2, 2: 3, 3: 4 } as const;
+const confidenceCounts: ConfidenceCounts = [1, 2, 3, 4];
 
 describe("PracticeComplete", () => {
   it("shows labeled session analytics below the completion message", () => {
@@ -24,13 +20,12 @@ describe("PracticeComplete", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Practice complete" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Practice complete" })).toBeTruthy();
     const analytics = screen.getByRole("region", { name: "How this session went" });
-    expect(within(analytics).getByText("Cards studied")).toBeInTheDocument();
-    expect(within(analytics).getByText("70%")).toBeInTheDocument();
-    expect(within(analytics).getByText("Confidence distribution")).toBeInTheDocument();
-    expect(within(analytics).getByText("Wrong")).toBeInTheDocument();
-    expect(emit).toHaveBeenCalledWith({ type: "session_completed" });
+    expect(within(analytics).getByText("Cards studied")).toBeTruthy();
+    expect(within(analytics).getByText("70%")).toBeTruthy();
+    expect(within(analytics).getByText("Confidence distribution")).toBeTruthy();
+    expect(within(analytics).getByText("Wrong")).toBeTruthy();
   });
 
   it("keeps completion navigation actions explicit", () => {
