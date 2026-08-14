@@ -30,6 +30,7 @@ const required = [
   "scripts/android-doctor.sh",
   "scripts/android-runner-doctor.sh",
   "scripts/android-build.sh",
+  "scripts/android-test.sh",
   "scripts/android-dev.sh",
   "scripts/android-avd.sh",
   "scripts/android-emulator-smoke.sh",
@@ -138,6 +139,26 @@ for (const token of [
   expectContains(androidEnv, token, `Android parallelism control ${token}`);
 }
 
+const androidTest = await read("scripts/android-test.sh");
+for (const task of [":app:testUniversalDebugUnitTest", ":app:assembleUniversalDebugAndroidTest"]) {
+  expectContains(androidTest, task, `flavor-qualified Android test task ${task}`);
+}
+for (const ambiguousTask of [":app:testDebugUnitTest", ":app:assembleDebugAndroidTest"]) {
+  if (androidTest.includes(ambiguousTask)) {
+    failures.push(`android-test.sh must not use ambiguous Gradle task ${ambiguousTask}`);
+  }
+}
+
+const emulatorSmoke = await read("scripts/android-emulator-smoke.sh");
+for (const task of [":app:assembleUniversalDebug", ":app:assembleUniversalDebugAndroidTest"]) {
+  expectContains(emulatorSmoke, task, `flavor-qualified emulator build task ${task}`);
+}
+for (const ambiguousTask of [":app:assembleDebug", ":app:assembleDebugAndroidTest"]) {
+  if (emulatorSmoke.includes(ambiguousTask)) {
+    failures.push(`android-emulator-smoke.sh must not use ambiguous Gradle task ${ambiguousTask}`);
+  }
+}
+
 const arrayAdapter = await read("plugins/ostudy-platform/android/src/main/java/InvokeArrayResult.kt");
 expectContains(arrayAdapter, 'envelope.put("items", result)', "Android array result envelope");
 
@@ -217,7 +238,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Android project, source-of-truth debug identity, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
+  "OK   Android project, source-of-truth debug identity, exact flavor tasks, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
 );
 
 function expectContains(text, value, label) {
