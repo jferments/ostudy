@@ -83,4 +83,57 @@ describe("useDurableDraft", () => {
     await act(async () => result.current.discard());
     expect(draftIpc.discardEditorDraft).toHaveBeenCalledWith(id, 1);
   });
+
+  it("treats Rust-reordered object keys as the same fresh payload", async () => {
+    const contextEntityId = "b".repeat(32);
+    const initialPayload = {
+      selectedDeckId: contextEntityId,
+      frontDoc: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            attrs: { textAlign: null, indent: 0 },
+          },
+        ],
+      },
+      tags: ["android"],
+    };
+    const reorderedPayload = {
+      frontDoc: {
+        content: [
+          {
+            attrs: { indent: 0, textAlign: null },
+            type: "paragraph",
+          },
+        ],
+        type: "doc",
+      },
+      selectedDeckId: contextEntityId,
+      tags: ["android"],
+    };
+    vi.mocked(draftIpc.openEditorDraft).mockResolvedValueOnce({
+      ...baseDraft,
+      draftKind: "card",
+      contextEntityId,
+      payload: reorderedPayload,
+    });
+    const onRecovered = vi.fn();
+    const { result } = renderHook(() =>
+      useDurableDraft({
+        kind: "card",
+        contextEntityId,
+        payload: initialPayload,
+        onRecovered,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("clean"));
+    expect(result.current.recovered).toBe(false);
+    expect(result.current.hasUnsavedLocalChanges).toBe(false);
+    expect(onRecovered).not.toHaveBeenCalled();
+
+    await act(async () => result.current.flush());
+    expect(draftIpc.saveEditorDraft).not.toHaveBeenCalled();
+  });
 });
