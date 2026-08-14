@@ -108,7 +108,8 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn('import("./testing/androidTestBridge")', source)
         self.assertIn("installAndroidTestBridge();", source)
         self.assertIn("setAndroidTestBridgeDiagnostic", source)
-        self.assertIn("if (!documentRoot) return false;", source)
+        self.assertIn("if (!documentRoot || !diagnostic) return false;", source)
+        self.assertIn("androidTestBridgeDiagnosticScheduled", source)
         self.assertNotIn('import { installAndroidTestBridge }', source)
 
     def test_android_smoke_bridge_wait_tolerates_empty_webview_document(self) -> None:
