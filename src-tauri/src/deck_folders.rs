@@ -145,7 +145,7 @@ fn load_organization(
                  ORDER BY sort_order ASC, name COLLATE NOCASE ASC, created_at ASC",
             )
             .map_err(CommandError::database)?;
-        let folders = statement
+        let rows = statement
             .query_map([], |row| {
                 Ok(DeckFolderDto {
                     id: row.get(0)?,
@@ -157,9 +157,8 @@ fn load_organization(
                 })
             })
             .map_err(CommandError::database)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        folders
+            .collect::<Result<Vec<_>, _>>();
+        rows.map_err(CommandError::database)?
     };
     let placements = {
         let mut statement = connection
@@ -171,7 +170,7 @@ fn load_organization(
                           sort_order ASC, name COLLATE NOCASE ASC, created_at ASC",
             )
             .map_err(CommandError::database)?;
-        let placements = statement
+        let rows = statement
             .query_map([], |row| {
                 Ok(DeckPlacementDto {
                     deck_id: row.get(0)?,
@@ -180,9 +179,8 @@ fn load_organization(
                 })
             })
             .map_err(CommandError::database)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        placements
+            .collect::<Result<Vec<_>, _>>();
+        rows.map_err(CommandError::database)?
     };
     Ok(DeckLibraryOrganizationDto {
         revision,
@@ -480,12 +478,11 @@ fn ordered_deck_ids(
              ORDER BY sort_order ASC, name COLLATE NOCASE ASC, created_at ASC",
         )
         .map_err(CommandError::database)?;
-    let ordered_ids = statement
+    let rows = statement
         .query_map(params![folder_id, excluding], |row| row.get(0))
         .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-    Ok(ordered_ids)
+        .collect::<Result<Vec<_>, _>>();
+    rows.map_err(CommandError::database)
 }
 
 fn ordered_folder_ids(
@@ -499,12 +496,11 @@ fn ordered_folder_ids(
              ORDER BY sort_order ASC, name COLLATE NOCASE ASC, created_at ASC",
         )
         .map_err(CommandError::database)?;
-    let ordered_ids = statement
+    let rows = statement
         .query_map([excluding], |row| row.get(0))
         .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-    Ok(ordered_ids)
+        .collect::<Result<Vec<_>, _>>();
+    rows.map_err(CommandError::database)
 }
 
 fn write_deck_order(
