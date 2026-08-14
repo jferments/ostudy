@@ -60,10 +60,10 @@
     --ostudy-material-chrome-saturation: 1.08;
     --ostudy-material-noise-opacity: 0.018;
     --ostudy-shadow-focus: 0 0 0 3px rgb(85 89 217 / 34%);
-    --ostudy-shadow-level1: 0 1px 2px rgb(20 25 34 / 7%), 0 8px 24px rgb(20 25 34 / 5%);
-    --ostudy-shadow-level2: 0 2px 6px rgb(20 25 34 / 9%), 0 14px 34px rgb(20 25 34 / 8%);
-    --ostudy-shadow-level3: 0 4px 12px rgb(20 25 34 / 11%), 0 22px 48px rgb(20 25 34 / 10%);
-    --ostudy-shadow-level4: 0 8px 24px rgb(20 25 34 / 15%), 0 30px 70px rgb(20 25 34 / 14%);
-    --ostudy-shadow-level5: 0 14px 38px rgb(20 25 34 / 20%), 0 44px 96px rgb(20 25 34 / 18%);
+    --ostudy-shadow-level-1: 0 1px 2px rgb(20 25 34 / 7%), 0 8px 24px rgb(20 25 34 / 5%);
+    --ostudy-shadow-level-2: 0 2px 6px rgb(20 25 34 / 9%), 0 14px 34px rgb(20 25 34 / 8%);
+    --ostudy-shadow-level-3: 0 4px 12px rgb(20 25 34 / 11%), 0 22px 48px rgb(20 25 34 / 10%);
+    --ostudy-shadow-level-4: 0 8px 24px rgb(20 25 34 / 15%), 0 30px 70px rgb(20 25 34 / 14%);
+    --ostudy-shadow-level-5: 0 14px 38px rgb(20 25 34 / 20%), 0 44px 96px rgb(20 25 34 / 18%);
   }
 }
