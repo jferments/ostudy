@@ -217,10 +217,13 @@ for (const token of [
 }
 
 for (const token of [
+  'step "Rust warnings-as-errors lint gate"',
+  "cargo clippy",
+  "-D warnings",
   'step "External file transfer and recovery contracts"',
   "external_file_",
 ]) {
-  expectContains(checkFast, token, `fast external-file qualification ${token}`);
+  expectContains(checkFast, token, `fast qualification invariant ${token}`);
 }
 
 for (const [path, text] of [
@@ -242,7 +245,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   External file imports and exports use streaming-only platform ports, recover interrupted promotion, expose cancellation outcomes, cover every import purpose, and aggregate independent picker checks.",
+  "OK   External file imports and exports use streaming-only platform ports, recover interrupted promotion, expose cancellation outcomes, cover every import purpose, aggregate independent picker checks, and enforce warning-free Rust before emulator qualification.",
 );
 
 function expectContains(text, value, label) {
