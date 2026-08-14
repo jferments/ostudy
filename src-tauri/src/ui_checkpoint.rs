@@ -165,13 +165,15 @@ fn validate_checkpoint(checkpoint: &UiCheckpointDto) -> Result<(), CommandError>
             "The device restoration checkpoint uses an unsupported format.",
         ));
     }
-    if let Some(workspace) = checkpoint.flashcards_workspace.as_deref() {
-        if !FLASHCARDS_WORKSPACES.contains(&workspace) {
-            return Err(CommandError::new(
-                "invalid_ui_checkpoint",
-                "The restored Flashcards workspace is invalid.",
-            ));
-        }
+    if checkpoint
+        .flashcards_workspace
+        .as_deref()
+        .is_some_and(|workspace| !FLASHCARDS_WORKSPACES.contains(&workspace))
+    {
+        return Err(CommandError::new(
+            "invalid_ui_checkpoint",
+            "The restored Flashcards workspace is invalid.",
+        ));
     }
     validate_optional_id(checkpoint.deck_id.as_deref(), "deck")?;
     validate_optional_id(checkpoint.editor_draft_id.as_deref(), "editor draft")?;
