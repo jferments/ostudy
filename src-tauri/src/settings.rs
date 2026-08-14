@@ -342,10 +342,15 @@ mod tests {
         database
             .with_connection(|connection| {
                 connection
-                    .execute(
-                        "INSERT INTO app_settings (key, value_json, updated_at)
-                         VALUES ('animationsEnabled', 'true', 1), ('reduceMotion', 'true', 1)",
-                        [],
+                    .execute_batch(
+                        "DELETE FROM app_settings WHERE key = 'motionPreference';
+                         INSERT INTO app_settings (key, value_json, updated_at)
+                         VALUES
+                             ('animationsEnabled', 'true', 1),
+                             ('reduceMotion', 'true', 1)
+                         ON CONFLICT(key) DO UPDATE SET
+                             value_json = excluded.value_json,
+                             updated_at = excluded.updated_at;",
                     )
                     .map_err(CommandError::database)?;
                 let loaded = load_settings(connection)?;
