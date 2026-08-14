@@ -70,7 +70,7 @@ class AndroidSmokeTest {
     }
 
     @Test
-    fun c_documentsStubAndAndroidBackReturnToDecks() {
+    fun c_documentsStubAndAndroidBackReturnToFlashcardsDecks() {
         withApplication { webView ->
             waitForBridge(webView)
             evaluateSync(
@@ -102,7 +102,8 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Boolean(document.querySelector('h1')?.textContent?.includes('Decks'))"
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
+                        "Array.from(document.querySelectorAll('main button[role=\"tab\"][aria-selected=\"true\"]')).some(button => button.textContent?.includes('Decks'))"
                 }
             )
         }
@@ -121,18 +122,19 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Array.from(document.querySelectorAll('.deck-card-main')).some(button => button.textContent?.includes('Android Emulator Smoke Deck'))"
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
+                        "Array.from(document.querySelectorAll('main button')).some(button => button.querySelector('strong')?.textContent?.trim() === 'Android Emulator Smoke Deck')"
                 }
             )
             evaluateSync(
                 webView,
-                "Array.from(document.querySelectorAll('.deck-card-main')).find(button => button.textContent?.includes('Android Emulator Smoke Deck'))?.click(); true"
+                "Array.from(document.querySelectorAll('main button')).find(button => button.querySelector('strong')?.textContent?.trim() === 'Android Emulator Smoke Deck')?.click(); true"
             )
             waitUntil(
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "document.querySelector('.deck-detail-header h1')?.textContent === 'Android Emulator Smoke Deck'"
+                    "Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck')"
                 }
             )
             evaluateSync(
@@ -150,7 +152,10 @@ class AndroidSmokeTest {
             waitUntil(
                 webView,
                 predicate = { it == "true" },
-                expression = { "Boolean(document.querySelector('.deck-detail-header'))" }
+                expression = {
+                    "!document.querySelector('.card-editor-screen') && " +
+                        "Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck')"
+                }
             )
             waitForAndroidBackReady(webView)
             device.pressBack()
@@ -158,7 +163,10 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Boolean(document.querySelector('.deck-grid')) && !document.querySelector('.deck-detail-header')"
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
+                        "Array.from(document.querySelectorAll('main button[role=\"tab\"][aria-selected=\"true\"]')).some(button => button.textContent?.includes('Decks')) && " +
+                        "Array.from(document.querySelectorAll('main button')).some(button => button.querySelector('strong')?.textContent?.trim() === 'Android Emulator Smoke Deck') && " +
+                        "!Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck')"
                 }
             )
         }
