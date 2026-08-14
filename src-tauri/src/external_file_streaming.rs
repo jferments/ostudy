@@ -723,9 +723,7 @@ fn validate_display_name(value: &str) -> Result<String, CommandError> {
 
 fn validate_media_type(value: &str) -> Result<String, CommandError> {
     let trimmed = value.trim();
-    if trimmed.is_empty()
-        || trimmed.chars().count() > 255
-        || trimmed.chars().any(char::is_control)
+    if trimmed.is_empty() || trimmed.chars().count() > 255 || trimmed.chars().any(char::is_control)
     {
         return Err(CommandError::new(
             "invalid_external_media_type",
