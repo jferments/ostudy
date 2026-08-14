@@ -25,7 +25,21 @@ vi.mock("../../ipc/settings", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../ipc/settings")>();
   return { ...actual, saveSettings: vi.fn() };
 });
-vi.mock("../DecksScreen", () => ({ DecksScreen: () => <div>Deck detail</div> }));
+vi.mock("../DecksScreen", () => ({
+  DecksScreen: ({ onViewChange }: { onViewChange?: (view: "library" | "detail" | "editor") => void }) => (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          onViewChange?.("detail");
+          onViewChange?.("library");
+        }}
+      >
+        Return to deck library
+      </button>
+    </div>
+  ),
+}));
 
 const folder = {
   id: "f".repeat(32),
@@ -64,20 +78,26 @@ const settings = {
   dailyReviewLimit: 200,
 };
 
-function renderLibrary() {
+function renderLibrary({
+  refreshDecks = vi.fn().mockResolvedValue([pharmacology, anatomy]),
+  showToast = vi.fn(),
+}: {
+  refreshDecks?: ReturnType<typeof vi.fn>;
+  showToast?: ReturnType<typeof vi.fn>;
+} = {}) {
   return render(
     <OverlayProvider>
       <DeckLibraryWorkspace
         decks={[pharmacology, anatomy]}
         settings={settings}
-        refreshDecks={vi.fn().mockResolvedValue([pharmacology, anatomy])}
+        refreshDecks={refreshDecks}
         onPracticeDeck={vi.fn()}
         openDeckRequest={null}
         onOpenDeckRequestConsumed={vi.fn()}
         onManageTemplates={vi.fn()}
         onCreateCards={vi.fn()}
         onCardDirtyChange={vi.fn()}
-        showToast={vi.fn()}
+        showToast={showToast}
       />
     </OverlayProvider>,
   );
@@ -135,6 +155,94 @@ describe("DeckLibraryWorkspace", () => {
         expectedOrganizationRevision: 4,
       }),
     );
+  });
+
+  it("stops a deck-row drop from bubbling into the parent folder drop target", async () => {
+    const moved = {
+      revision: 5,
+      folders: [folder],
+      placements: [
+        { deckId: anatomy.id, folderId: folder.id, sortOrder: 1000 },
+        { deckId: pharmacology.id, folderId: folder.id, sortOrder: 2000 },
+      ],
+    };
+    vi.mocked(folderIpc.moveDeckInLibrary).mockResolvedValue(moved);
+    renderLibrary();
+
+    const pharmacologyRow = (await screen.findByText("Pharmacology")).closest("article");
+    expect(pharmacologyRow).not.toBeNull();
+    fireEvent.drop(pharmacologyRow as HTMLElement, {
+      dataTransfer: {
+        getData: () => anatomy.id,
+      },
+    });
+
+    await waitFor(() => expect(folderIpc.moveDeckInLibrary).toHaveBeenCalledTimes(1));
+    expect(folderIpc.moveDeckInLibrary).toHaveBeenCalledWith({
+      deckId: anatomy.id,
+      targetFolderId: folder.id,
+      targetIndex: 0,
+      expectedOrganizationRevision: 4,
+    });
+  });
+
+  it("reloads the authoritative revision after a stale organization conflict", async () => {
+    const refreshed = { ...organization, revision: 5 };
+    const created = {
+      revision: 6,
+      folders: [folder, { ...folder, id: "g".repeat(32), name: "Second", sortOrder: 2000 }],
+      placements: organization.placements,
+    };
+    vi.mocked(folderIpc.getDeckLibraryOrganization)
+      .mockResolvedValueOnce(organization)
+      .mockResolvedValueOnce(refreshed);
+    vi.mocked(folderIpc.moveDeckInLibrary).mockRejectedValue({
+      code: "library_organization_changed",
+      message: "The deck library organization changed. Reload it and try again.",
+    });
+    vi.mocked(folderIpc.createDeckFolder).mockResolvedValue(created);
+    renderLibrary();
+
+    const anatomyRow = (await screen.findByText("Anatomy")).closest("article");
+    expect(anatomyRow).not.toBeNull();
+    fireEvent.click(within(anatomyRow as HTMLElement).getByRole("button", { name: "Move" }));
+    const moveDialog = await screen.findByRole("dialog", { name: "Move “Anatomy”" });
+    fireEvent.change(within(moveDialog).getByRole("combobox", { name: "Destination" }), {
+      target: { value: folder.id },
+    });
+    fireEvent.click(within(moveDialog).getByRole("button", { name: "Move deck" }));
+
+    await waitFor(() => expect(folderIpc.getDeckLibraryOrganization).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(moveDialog).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "New folder" }));
+    const folderDialog = await screen.findByRole("dialog", { name: "Create a folder" });
+    fireEvent.change(within(folderDialog).getByRole("textbox", { name: "Folder name" }), {
+      target: { value: "Second" },
+    });
+    fireEvent.click(within(folderDialog).getByRole("button", { name: "Create folder" }));
+
+    await waitFor(() =>
+      expect(folderIpc.createDeckFolder).toHaveBeenCalledWith({
+        name: "Second",
+        expectedOrganizationRevision: 5,
+      }),
+    );
+  });
+
+  it("refreshes decks and organization after returning from nested deck work", async () => {
+    const refreshDecks = vi.fn().mockResolvedValue([pharmacology, anatomy]);
+    vi.mocked(folderIpc.getDeckLibraryOrganization)
+      .mockResolvedValueOnce(organization)
+      .mockResolvedValueOnce({ ...organization, revision: 5 });
+    renderLibrary({ refreshDecks });
+
+    const deckButton = (await screen.findByText("Pharmacology")).closest("button");
+    expect(deckButton).not.toBeNull();
+    fireEvent.click(deckButton as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole("button", { name: "Return to deck library" }));
+
+    await waitFor(() => expect(refreshDecks).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(folderIpc.getDeckLibraryOrganization).toHaveBeenCalledTimes(2));
   });
 
   it("persists compact density as a presentation preference", async () => {
