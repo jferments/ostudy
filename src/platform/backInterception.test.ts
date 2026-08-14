@@ -40,10 +40,11 @@ describe("BackInterceptionSynchronizer", () => {
 
   it("retries after an apply failure", async () => {
     const synchronizer = new BackInterceptionSynchronizer();
-    const apply = vi
-      .fn<(enabled: boolean) => Promise<void>>()
-      .mockRejectedValueOnce(new Error("native unavailable"))
-      .mockResolvedValue(undefined);
+    let attempts = 0;
+    const apply = vi.fn(async (_enabled: boolean): Promise<void> => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("native unavailable");
+    });
 
     await expect(synchronizer.request(true, apply)).rejects.toThrow("native unavailable");
     await expect(synchronizer.request(true, apply)).resolves.toBeUndefined();
