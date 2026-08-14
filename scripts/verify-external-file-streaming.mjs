@@ -21,6 +21,7 @@ const androidAdapter = await read("src-tauri/src/platform/android.rs");
 const mobileStub = await read("src-tauri/src/platform/mobile_stub.rs");
 const desktopAdapter = await read("src-tauri/src/platform/desktop/external_files.rs");
 const checkStatic = await read("scripts/check-static.sh");
+const checkFast = await read("scripts/check-fast.sh");
 const androidTest = await read("scripts/android-test.sh");
 const androidBuild = await read("scripts/android-build.sh");
 
@@ -57,6 +58,9 @@ for (const token of [
   "file_matches",
   "sync_file(&ready)",
   "state = 'staging'",
+  "valid_partial_file_is_promoted_and_committed",
+  "valid_ready_file_is_kept_and_leftover_partial_is_removed",
+  "corrupt_ready_file_is_removed_and_failed",
 ]) {
   expectContains(recovery, token, `external-file crash-recovery invariant ${token}`);
 }
@@ -184,6 +188,13 @@ for (const token of [
   "g_sequentialPickerCancellationReleasesNativeOperationSlot",
 ]) {
   expectContains(smokeRunner, token, `aggregated Android smoke-runner invariant ${token}`);
+}
+
+for (const token of [
+  'step "External file transfer and recovery contracts"',
+  "external_file_",
+]) {
+  expectContains(checkFast, token, `fast external-file qualification ${token}`);
 }
 
 for (const [path, text] of [

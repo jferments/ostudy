@@ -45,6 +45,14 @@ pnpm test
 step "Rust compile check"
 cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
 
+step "External file transfer and recovery contracts"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  external_file_
+
 step "Document domain and persistence contracts"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
