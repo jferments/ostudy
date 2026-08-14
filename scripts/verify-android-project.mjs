@@ -12,6 +12,7 @@ const required = [
   "src-tauri/tauri.android.conf.json",
   "src-tauri/gen/android/gradlew",
   "src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties",
+  "src-tauri/gen/android/gradle.properties",
   "src-tauri/gen/android/app/build.gradle.kts",
   "src-tauri/gen/android/app/src/main/AndroidManifest.xml",
   "src-tauri/gen/android/app/src/main/res/xml/file_paths.xml",
@@ -20,6 +21,7 @@ const required = [
   "src-tauri/gen/android/app/src/main/res/xml/data_extraction_rules.xml",
   "plugins/ostudy-platform/Cargo.toml",
   "plugins/ostudy-platform/android/src/main/java/OstudyPlatformPlugin.kt",
+  "plugins/ostudy-platform/android/src/main/java/InvokeArrayResult.kt",
   "src-tauri/src/platform/android.rs",
   "src-tauri/src/ui_checkpoint.rs",
   "src-tauri/src/practice_resume.rs",
@@ -99,6 +101,18 @@ expectContains(
   `classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${env.get("ANDROID_KOTLIN_VERSION")}")`,
   "Kotlin Gradle plugin pin",
 );
+for (const artifact of [
+  "kotlin-stdlib",
+  "kotlin-stdlib-common",
+  "kotlin-stdlib-jdk7",
+  "kotlin-stdlib-jdk8",
+]) {
+  expectContains(
+    rootGradle,
+    `"org.jetbrains.kotlin:${artifact}:${env.get("ANDROID_KOTLIN_VERSION")}"`,
+    `${artifact} compatibility pin`,
+  );
+}
 for (const artifact of ["kotlinx-coroutines-android", "kotlinx-coroutines-core-jvm"]) {
   expectContains(
     rootGradle,
@@ -106,6 +120,26 @@ for (const artifact of ["kotlinx-coroutines-android", "kotlinx-coroutines-core-j
     `${artifact} compatibility pin`,
   );
 }
+expectContains(rootGradle, "maxParallelForks", "parallel Android JVM test configuration");
+
+const gradleProperties = await read("src-tauri/gen/android/gradle.properties");
+expectContains(gradleProperties, "org.gradle.parallel=true", "Gradle project parallelism");
+expectContains(gradleProperties, "org.gradle.caching=true", "Gradle build cache");
+
+const androidEnv = await read("scripts/android-env.sh");
+for (const token of [
+  "OSTUDY_ANDROID_JOBS",
+  "OSTUDY_GRADLE_WORKERS",
+  "CARGO_BUILD_JOBS",
+  "VITEST_MAX_WORKERS",
+  "org.gradle.workers.max",
+]) {
+  expectContains(androidEnv, token, `Android parallelism control ${token}`);
+}
+
+const arrayAdapter = await read("plugins/ostudy-platform/android/src/main/java/InvokeArrayResult.kt");
+expectContains(arrayAdapter, 'envelope.put("items", result)', "Android array result envelope");
+
 const wrapper = await read("src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties");
 expectContains(
   wrapper,
@@ -178,7 +212,9 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log("OK   Android project, toolchain pins, permissions, and platform overlays are canonical.");
+console.log(
+  "OK   Android project, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
+);
 
 function expectContains(text, value, label) {
   if (!text.includes(value)) failures.push(`Missing ${label}`);
