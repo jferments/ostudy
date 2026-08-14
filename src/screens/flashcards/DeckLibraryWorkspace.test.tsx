@@ -8,10 +8,15 @@ import * as settingsIpc from "../../ipc/settings";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
 
+const deckControllerMocks = vi.hoisted(() => ({
+  create: vi.fn(),
+  invalidate: vi.fn(),
+}));
+
 vi.mock("../../controllers/decksController", () => ({
   DecksController: class {
-    invalidate = vi.fn();
-    create = vi.fn();
+    invalidate = deckControllerMocks.invalidate;
+    create = deckControllerMocks.create;
   },
 }));
 vi.mock("../../ipc/deckFolders", () => ({
@@ -107,6 +112,7 @@ function renderLibrary({
 describe("DeckLibraryWorkspace", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    deckControllerMocks.create.mockResolvedValue(deck("c", "Created deck", 0, 0));
     vi.mocked(folderIpc.getDeckLibraryOrganization).mockResolvedValue(organization);
     vi.mocked(settingsIpc.saveSettings).mockImplementation(async (input) => input);
   });
@@ -228,6 +234,28 @@ describe("DeckLibraryWorkspace", () => {
         expectedOrganizationRevision: 5,
       }),
     );
+  });
+
+  it("does not remount the create-deck sheet after opening and returning from the new deck", async () => {
+    const createdDeck = deck("c", "Created deck", 0, 0);
+    const refreshDecks = vi.fn(async () => [pharmacology, anatomy, createdDeck]);
+    deckControllerMocks.create.mockResolvedValue(createdDeck);
+    renderLibrary({ refreshDecks });
+
+    fireEvent.click(await screen.findByRole("button", { name: "New deck" }));
+    const createDialog = await screen.findByRole("dialog", { name: "Create a deck" });
+    fireEvent.change(within(createDialog).getByRole("textbox", { name: "Name" }), {
+      target: { value: createdDeck.name },
+    });
+    fireEvent.click(within(createDialog).getByRole("button", { name: "Create deck" }));
+
+    const returnButton = await screen.findByRole("button", { name: "Return to deck library" });
+    expect(screen.queryByRole("dialog", { name: "Create a deck" })).toBeNull();
+    fireEvent.click(returnButton);
+
+    await screen.findByRole("heading", { name: "Folders" });
+    expect(screen.queryByRole("dialog", { name: "Create a deck" })).toBeNull();
+    expect(document.documentElement.dataset.overlayActive).not.toBe("true");
   });
 
   it("refreshes decks and organization after returning from nested deck work", async () => {
