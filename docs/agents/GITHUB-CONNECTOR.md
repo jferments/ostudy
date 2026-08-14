@@ -85,7 +85,27 @@ Examples:
 
 Never use one category as evidence for another.
 
-## 8. Required connector-mode handoff
+## 8. Own the CI feedback loop
+
+When the self-hosted GitHub runner can execute a repository test and the Connector can read the resulting workflow data, a Connector-backed agent should retrieve that evidence itself rather than asking the human to copy command output into the conversation.
+
+For substantial implementation work:
+
+1. publish and verify a coherent branch head;
+2. inspect workflow runs for that exact SHA;
+3. retrieve failed jobs, step status, decoded job logs, and diagnostic artifacts through the Connector;
+4. gather the complete actionable failure set available from that run before editing;
+5. repair those failures in a coherent batch on the same PR branch;
+6. publish and verify the new head;
+7. inspect the new exact-head results and repeat until the required gates are green or a concrete external blocker remains.
+
+Use the opt-in [`Agent diagnostics`](../development/agent-diagnostics.md) workflow when broader multi-failure information would reduce serial repair cycles. The agent may add the appropriate PR-body marker to its own development PR and consume the resulting logs/artifacts. The workflow is diagnostic only and does not replace authoritative merge qualification.
+
+Do not ask the human to run `pnpm check:static`, `pnpm check`, `pnpm android:smoke`, or an equivalent repository test solely to relay output when a suitable self-hosted workflow is available. Human intervention is still appropriate for manual visual/interaction judgment, physical-device behavior, protected credentials, runner-host administration, or other work that cannot be observed or performed through GitHub.
+
+GitHub Actions is asynchronous. A queued/running workflow is not a pass, and an agent must not fabricate completion. Report its exact state without aggressive polling or duplicating the same expensive test on the human's machine.
+
+## 9. Required connector-mode handoff
 
 In addition to the normal handoff requirements, report:
 
@@ -95,7 +115,8 @@ In addition to the normal handoff requirements, report:
 - the pull-request number;
 - whether each claimed mutation was verified remotely;
 - any Connector operation that failed and its exact error;
-- CI state separately from publication state.
+- CI state separately from publication state;
+- which CI logs/artifacts the agent inspected itself and which manual checks still require the human.
 
 ## Non-negotiable reasoning rules
 
@@ -105,5 +126,6 @@ Do not make these inferences:
 - "I have not seen an approval prompt, therefore writes are unavailable."
 - "CI has no runner, therefore I cannot commit."
 - "The Connector can read, so I should change its permanent permission setting before trying a write."
+- "A CI failure means the human must run the command and paste the output."
 
-The correct sequence is: **read remote state, invoke the real mutation when needed, let authorization occur at that boundary, and verify the remote result.**
+The correct sequence is: **read remote state, invoke the real mutation when needed, let authorization occur at that boundary, verify the remote result, and consume available CI evidence directly.**
