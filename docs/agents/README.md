@@ -7,6 +7,7 @@ These files provide operational instructions for automated maintainers of **ostu
 - [`ARCHITECTURE-GUARDRAILS.md`](ARCHITECTURE-GUARDRAILS.md) explains the boundaries and invariants that a change must preserve.
 - [`CODE-STANDARDS.md`](CODE-STANDARDS.md) defines TypeScript/React, Rust, SQL, shell, documentation, and dependency expectations.
 - [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md) defines how to scope, publish, implement, test, review, and hand off a change.
+- [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) defines repository access, write authorization, remote verification, and failure diagnosis for agents operating through an authenticated GitHub Connector.
 
 The maintained product and engineering references are:
 
