@@ -5,7 +5,12 @@
  * their own layers while the semantic visual system overrides their variables
  * and new UI is implemented through scoped modules.
  */
-@import "../tokens/generated/tokens.css" layer(tokens);
+@import "../tokens/generated/reference.css" layer(tokens);
+@import "../tokens/generated/component.css" layer(tokens);
+@import "../tokens/generated/theme-light.css" layer(tokens);
+@import "../tokens/generated/theme-dark.css" layer(tokens);
+@import "../tokens/generated/theme-console.css" layer(tokens);
+@import "../tokens/generated/theme-synthwave.css" layer(tokens);
 @import "../../styles/base/application.css" layer(legacy);
 @import "../../styles/features/practice.css" layer(features);
 @import "../../styles/features/cards.css" layer(features);
