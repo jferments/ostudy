@@ -644,11 +644,12 @@ mod tests {
                         description: None,
                     },
                 )?;
+                let current_revision = organization_revision(connection)?;
                 let created = create_folder(
                     connection,
                     CreateDeckFolderInput {
                         name: "Nursing".to_string(),
-                        expected_organization_revision: 1,
+                        expected_organization_revision: current_revision,
                     },
                 )?;
                 let folder = created.folders[0].clone();
