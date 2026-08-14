@@ -3,6 +3,7 @@ import type {
   MaterialPreference,
   MotionPreference,
 } from "../../ipc/settings";
+import { HelpTrigger } from "../../ui/help/HelpProvider";
 import { FontControl, RangeControl, SelectControl, ThemeOption } from "./SettingsControls";
 import previewStyles from "./AppearancePreview.module.css";
 import styles from "./Settings.module.css";
@@ -56,7 +57,13 @@ export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
       </section>
 
       <section className={styles.settingsCard}>
-        <h2>Motion and materials</h2>
+        <div className={styles.sectionHeading}>
+          <h2>Motion and materials</h2>
+          <span>
+            <HelpTrigger topicId="settings.motion" label="Help with motion preferences" />
+            <HelpTrigger topicId="settings.materialEffects" label="Help with material effects" />
+          </span>
+        </div>
         <SelectControl
           label="Motion"
           value={draft.motionPreference ?? "system"}
