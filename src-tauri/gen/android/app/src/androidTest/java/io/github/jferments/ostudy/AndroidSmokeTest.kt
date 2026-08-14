@@ -443,7 +443,7 @@ class AndroidSmokeTest {
             webView,
             predicate = { it == "true" },
             expression = {
-                "document.documentElement.dataset.androidBackInterception === 'true' && document.documentElement.dataset.overlayActive !== 'true'"
+                "document.documentElement?.dataset?.androidBackInterception === 'true' && document.documentElement?.dataset?.overlayActive !== 'true'"
             }
         )
     }
@@ -461,21 +461,40 @@ class AndroidSmokeTest {
     private fun waitForBridge(webView: WebView) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
         var latest = JSONObject()
+            .put("type", "unavailable")
+            .put("state", "not-evaluated")
+            .put("error", "")
+            .put("readyState", "unknown")
         while (System.nanoTime() < deadline) {
             val encoded = evaluateSync(
                 webView,
                 """
-                JSON.stringify({
-                  type: typeof window.__OSTUDY_ANDROID_TEST__,
-                  state: document.documentElement.dataset.androidTestBridge || 'unset',
-                  error: document.documentElement.dataset.androidTestBridgeError || '',
-                  readyState: document.readyState
-                })
+                (() => {
+                  const root = document.documentElement;
+                  return JSON.stringify({
+                    type: typeof window.__OSTUDY_ANDROID_TEST__,
+                    state: root?.dataset?.androidTestBridge || (root ? 'unset' : 'no-document-root'),
+                    error: root?.dataset?.androidTestBridgeError || '',
+                    readyState: document.readyState
+                  });
+                })()
                 """.trimIndent()
             )
-            latest = JSONObject(decodeJavascriptString(encoded))
+            val decoded = decodeJavascriptString(encoded)
+            if (decoded == "null") {
+                latest = JSONObject()
+                    .put("type", "unavailable")
+                    .put("state", "no-evaluation-result")
+                    .put("error", "")
+                    .put("readyState", "unknown")
+                Thread.sleep(100)
+                continue
+            }
+
+            latest = JSONObject(decoded)
+            if (latest.optString("type") == "object") return
+
             val state = latest.optString("state")
-            if (latest.optString("type") == "object" && state == "ready") return
             if (state == "missing" || state == "error") {
                 throw AssertionError("Android smoke bridge initialization failed: $latest")
             }
