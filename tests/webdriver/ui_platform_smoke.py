@@ -268,6 +268,99 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
     assert_no_horizontal_overflow(session_id, "wide application shell")
 
 
+def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
+    """Regress medium-desktop overflow with the full sidebar consuming workspace width."""
+    set_window_rect(session_id, 1174, 760)
+    flashcards = webdriver.find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-decks']",
+        deadline,
+    )
+    webdriver.click(session_id, flashcards)
+    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Flashcards", deadline)
+
+    create_cards = find_workspace_tab(session_id, "Create Cards", deadline)
+    webdriver.click(session_id, create_cards)
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//h2[contains(normalize-space(.), 'Add study material without leaving the Flashcards workspace')]",
+        deadline,
+    )
+    hero = execute(
+        session_id,
+        """
+        const heading = [...document.querySelectorAll('main h2')]
+          .find((node) => node.textContent?.includes('Add study material without leaving the Flashcards workspace'));
+        const surface = heading?.closest('[data-surface-level]');
+        if (!(heading instanceof HTMLElement) || !(surface instanceof HTMLElement)) return null;
+        const h = heading.getBoundingClientRect();
+        const s = surface.getBoundingClientRect();
+        return {
+          headingLeft: h.left,
+          headingRight: h.right,
+          surfaceLeft: s.left,
+          surfaceRight: s.right,
+          headingClient: heading.clientWidth,
+          headingScroll: heading.scrollWidth,
+          surfaceClient: surface.clientWidth,
+          surfaceScroll: surface.scrollWidth
+        };
+        """,
+    )
+    if not isinstance(hero, dict):
+        raise AssertionError("Could not measure the Create Cards hero at medium desktop width")
+    if (
+        float(hero["headingLeft"]) < float(hero["surfaceLeft"]) - 1
+        or float(hero["headingRight"]) > float(hero["surfaceRight"]) + 1
+        or int(hero["headingScroll"]) > int(hero["headingClient"]) + 1
+        or int(hero["surfaceScroll"]) > int(hero["surfaceClient"]) + 1
+    ):
+        raise AssertionError(f"Create Cards hero text escaped its surface: {hero!r}")
+    assert_no_horizontal_overflow(session_id, "medium Create Cards workspace")
+
+    search = find_workspace_tab(session_id, "Search", deadline)
+    webdriver.click(session_id, search)
+    webdriver.find_element(
+        session_id,
+        "css selector",
+        "section[aria-label='Card filters'] input[placeholder='Question, answer, or tag']",
+        deadline,
+    )
+    filter_bar = execute(
+        session_id,
+        """
+        const section = document.querySelector("section[aria-label='Card filters']");
+        const bar = section?.querySelector('[data-surface-level]');
+        if (!(bar instanceof HTMLElement)) return null;
+        const rect = bar.getBoundingClientRect();
+        const children = [...bar.children].filter((child) => child instanceof HTMLElement);
+        const childRects = children.map((child) => child.getBoundingClientRect());
+        return {
+          left: rect.left,
+          right: rect.right,
+          client: bar.clientWidth,
+          scroll: bar.scrollWidth,
+          minChildLeft: childRects.length ? Math.min(...childRects.map((child) => child.left)) : rect.left,
+          maxChildRight: childRects.length ? Math.max(...childRects.map((child) => child.right)) : rect.right
+        };
+        """,
+    )
+    if not isinstance(filter_bar, dict):
+        raise AssertionError("Could not measure the Search filter bar at medium desktop width")
+    if (
+        float(filter_bar["minChildLeft"]) < float(filter_bar["left"]) - 1
+        or float(filter_bar["maxChildRight"]) > float(filter_bar["right"]) + 1
+        or int(filter_bar["scroll"]) > int(filter_bar["client"]) + 1
+    ):
+        raise AssertionError(f"Search controls escaped the filter bar: {filter_bar!r}")
+    assert_no_horizontal_overflow(session_id, "medium Search workspace")
+
+    decks = find_workspace_tab(session_id, "Decks", deadline)
+    webdriver.click(session_id, decks)
+
+
 def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
     """Regress the native-select intrinsic-width overlap shown in Bulk Add."""
     deck_name = "Cardiology pharmacology respiratory physiology comprehensive review collection"
@@ -399,11 +492,12 @@ def main() -> int:
         verify_compact_navigation(session_id, deadline)
         verify_dialog_focus(session_id, deadline)
         verify_wide_navigation(session_id, deadline)
+        verify_medium_flashcards_layout(session_id, deadline)
         verify_bulk_add_containment(session_id, deadline)
         print(
-            "Native UI platform smoke passed: compact/wide navigation, Flashcards workspace "
-            "destinations, no horizontal overflow, Bulk Add control containment, dialog "
-            "focus containment, Escape dismissal, and focus restoration."
+            "Native UI platform smoke passed: compact/wide navigation, medium-width Flashcards "
+            "containment, no horizontal overflow, Bulk Add control containment, dialog focus "
+            "containment, Escape dismissal, and focus restoration."
         )
         return 0
     except Exception:
