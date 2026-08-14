@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
+# Environment helper intentionally does not change shell options. Executable
+# Android scripts enable their own `set -Eeuo pipefail`; keeping this file
+# option-neutral makes interactive sourcing safe and avoids turning on `errexit`
+# in a maintainer's login shell.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
