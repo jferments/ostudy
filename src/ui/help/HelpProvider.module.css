@@ -65,7 +65,7 @@
 
   :root[data-material="simple"] .tooltip,
   :root[data-transparency="reduced"] .tooltip {
-    background: var(--ostudy-color-surface-overlay-opaque);
+    background: var(--ostudy-color-surface-raised);
   }
 
   :root[data-motion="reduced"] .tooltip,
