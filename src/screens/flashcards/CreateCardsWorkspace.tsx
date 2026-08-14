@@ -63,8 +63,8 @@ export function CreateCardsWorkspace({
   }
 
   return (
-    <div className={styles.createLayout}>
-      <Surface level={2} className={styles.createHero}>
+    <div className={styles.createLayout} data-testid="create-cards-workspace">
+      <Surface level={2} className={styles.createHero} data-testid="create-cards-hero">
         <Artwork slot="empty.deck" />
         <div>
           <span className={styles.workspaceEyebrow}>Create cards</span>
