@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import tempfile
@@ -19,6 +20,21 @@ WEBDRIVER_URL = "http://127.0.0.1:4444"
 ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf"
 STEP_TIMEOUT_SECONDS = 30
 ANALYTICS_TIMEOUT_SECONDS = 45
+ROOT_DIR = Path(__file__).resolve().parents[2]
+TUTORIAL_REGISTRY_PATH = ROOT_DIR / "src/ui/tutorials/tutorialRegistry.ts"
+TUTORIAL_STORAGE_KEY = "ostudy.tutorials.v1"
+TRANSIENT_CLICK_ERRORS = {"element click intercepted", "element not interactable"}
+RETRYABLE_FIND_ERRORS = {"no such element", "stale element reference"}
+
+
+class WebDriverProtocolError(RuntimeError):
+    """Decoded W3C WebDriver failure, including HTTP 4xx/5xx responses."""
+
+    def __init__(self, status: int, error: str, message: str) -> None:
+        self.status = status
+        self.error = error
+        self.message = message
+        super().__init__(f"WebDriver {error} (HTTP {status}): {message}")
 
 
 def deadline_after(seconds: int = STEP_TIMEOUT_SECONDS) -> float:
@@ -29,6 +45,19 @@ def progress(message: str) -> None:
     print(f"[native-smoke] {message}", flush=True)
 
 
+def _protocol_error(decoded: Any, status: int) -> WebDriverProtocolError | None:
+    if not isinstance(decoded, dict):
+        return None
+    value = decoded.get("value")
+    if not isinstance(value, dict) or not value.get("error"):
+        return None
+    return WebDriverProtocolError(
+        status,
+        str(value.get("error")),
+        str(value.get("message") or "No WebDriver error message was provided."),
+    )
+
+
 def request(method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
     body = None if payload is None else json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
@@ -37,12 +66,32 @@ def request(method: str, path: str, payload: dict[str, Any] | None = None) -> An
         method=method,
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=15) as response:
-        decoded = json.loads(response.read().decode("utf-8"))
-    if isinstance(decoded, dict) and isinstance(decoded.get("value"), dict):
-        error = decoded["value"].get("error")
-        if error:
-            raise RuntimeError(f"WebDriver {error}: {decoded['value'].get('message', '')}")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            decoded = json.loads(response.read().decode("utf-8"))
+            status = response.status
+    except urllib.error.HTTPError as http_error:
+        raw = http_error.read().decode("utf-8", errors="replace")
+        try:
+            decoded = json.loads(raw)
+        except json.JSONDecodeError as decode_error:
+            raise WebDriverProtocolError(
+                http_error.code,
+                "http_error",
+                raw[:1_000] or http_error.reason,
+            ) from decode_error
+        protocol_error = _protocol_error(decoded, http_error.code)
+        if protocol_error is not None:
+            raise protocol_error from http_error
+        raise WebDriverProtocolError(
+            http_error.code,
+            "http_error",
+            raw[:1_000] or http_error.reason,
+        ) from http_error
+
+    protocol_error = _protocol_error(decoded, status)
+    if protocol_error is not None:
+        raise protocol_error
     return decoded.get("value") if isinstance(decoded, dict) else decoded
 
 
@@ -51,9 +100,53 @@ def wait_for_driver(deadline: float) -> None:
         try:
             request("GET", "/status")
             return
-        except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        except (
+            OSError,
+            urllib.error.URLError,
+            json.JSONDecodeError,
+            WebDriverProtocolError,
+        ):
             time.sleep(0.2)
     raise TimeoutError("tauri-driver did not become ready")
+
+
+def tutorial_versions() -> dict[str, int]:
+    """Read the current tutorial ids/versions so automation never races auto-start."""
+    source = TUTORIAL_REGISTRY_PATH.read_text(encoding="utf-8")
+    pattern = re.compile(
+        r'^\s*[A-Za-z0-9_]+:\s*\{\s*\n\s*id:\s*"([^"]+)",\s*\n\s*version:\s*(\d+),',
+        re.MULTILINE,
+    )
+    versions = {module_id: int(version) for module_id, version in pattern.findall(source)}
+    if not versions:
+        raise RuntimeError(
+            f"Could not derive tutorial module versions from {TUTORIAL_REGISTRY_PATH}"
+        )
+    return versions
+
+
+def prepare_automation_profile(session_id: str) -> None:
+    """Disable contextual tutorials in the disposable native-smoke browser profile."""
+    versions = tutorial_versions()
+    state = {
+        "schemaVersion": 1,
+        "completed": versions,
+        "dismissed": {},
+    }
+    request(
+        "POST",
+        f"/session/{session_id}/execute/sync",
+        {
+            "script": """
+                const key = arguments[0];
+                const state = arguments[1];
+                window.localStorage.setItem(key, JSON.stringify(state));
+                window.location.reload();
+                return true;
+            """,
+            "args": [TUTORIAL_STORAGE_KEY, state],
+        },
+    )
 
 
 def create_session(application: Path) -> str:
@@ -74,6 +167,7 @@ def create_session(application: Path) -> str:
     session_id = str(result.get("sessionId") or "")
     if not session_id:
         raise RuntimeError(f"New-session response did not contain a session id: {result!r}")
+    prepare_automation_profile(session_id)
     return session_id
 
 
@@ -92,7 +186,11 @@ def find_element(session_id: str, using: str, value: str, deadline: float) -> st
             )
             if isinstance(result, dict) and ELEMENT_KEY in result:
                 return str(result[ELEMENT_KEY])
-        except Exception as error:  # WebDriver reports no-such-element while React loads.
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_FIND_ERRORS:
+                raise
+            last_error = error
+        except Exception as error:
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(f"Element was not found: {using}={value}; last error: {last_error}")
@@ -123,6 +221,10 @@ def find_elements(
                 last_count = len(elements)
                 if len(elements) >= minimum:
                     return elements
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_FIND_ERRORS:
+                raise
+            last_error = error
         except Exception as error:
             last_error = error
         time.sleep(0.2)
@@ -149,7 +251,21 @@ def element_enabled(session_id: str, element_id: str) -> bool:
 
 
 def click(session_id: str, element_id: str) -> None:
-    request("POST", f"/session/{session_id}/element/{element_id}/click", {})
+    """Click with a short retry for transient WebKit hit-testing/animation races."""
+    deadline = time.monotonic() + 2.5
+    last_error: WebDriverProtocolError | None = None
+    while time.monotonic() < deadline:
+        try:
+            request("POST", f"/session/{session_id}/element/{element_id}/click", {})
+            return
+        except WebDriverProtocolError as error:
+            if error.error not in TRANSIENT_CLICK_ERRORS:
+                raise
+            last_error = error
+            time.sleep(0.1)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("WebDriver click retry ended without a result")
 
 
 def clear(session_id: str, element_id: str) -> None:
@@ -279,7 +395,11 @@ def wait_for_element_text(
                 last_text = element_text(session_id, str(result[ELEMENT_KEY]))
                 if last_text.strip() == expected:
                     return
-        except Exception as error:  # The old element may be replaced during navigation.
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_FIND_ERRORS:
+                raise
+            last_error = error
+        except Exception as error:
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(
@@ -308,15 +428,12 @@ def click_text_button(session_id: str, label: str, deadline: float) -> None:
 
 
 def verify_shell(session_id: str, deadline: float) -> None:
-    brand = find_element(
+    find_element(
         session_id,
         "css selector",
-        "aside.sidebar [data-artwork-slot='brand.logo.sidebar'] strong",
+        "aside.sidebar [data-artwork-slot='brand.logo.sidebar'][aria-label='ostudy']",
         deadline,
     )
-    brand_text = element_text(session_id, brand)
-    if brand_text.strip() != "ostudy":
-        raise AssertionError(f"Expected ostudy branding, found {brand_text!r}")
 
 
 def create_and_review_card(session_id: str) -> tuple[str, str]:
@@ -379,10 +496,6 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
     click(session_id, show_answer)
-    # The visual label is composed from nested spans, and XPath string-value
-    # concatenation does not guarantee the visual whitespace between them.
-    # Select the score through its explicit keyboard and accessible-name
-    # contract rather than depending on nested visible-text whitespace.
     medium = find_element(
         session_id,
         "css selector",
