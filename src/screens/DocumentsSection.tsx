@@ -7,6 +7,9 @@ import {
   type AiProviderProfileSummary,
 } from "../ipc/aiProfiles";
 import { usePlatformCapabilities } from "../platform/PlatformProvider";
+import { HelpTrigger } from "../ui/help/HelpProvider";
+import { Icon } from "../ui/icons/Icon";
+import { Surface } from "../ui/primitives/Surface";
 import { DocumentsDevelopmentStub } from "./DocumentsDevelopmentStub";
 import { DocumentsScreen } from "./DocumentsScreen";
 import styles from "./DocumentsSection.module.css";
@@ -55,14 +58,39 @@ export function DocumentsSection({ refreshDecks, showToast }: DocumentsSectionPr
     return <DocumentsDevelopmentStub />;
   }
 
+  const modelLabel = isLoading
+    ? "Loading…"
+    : profile?.modelId || profile?.displayName || "Not configured";
+  const providerLabel = profile?.providerLabel || profile?.displayName || "AI profile";
+
   return (
-    <div className={styles.section}>
-      <aside className={styles.providerPanel} aria-label="Current Flashcard Generation model">
-        <p className={styles.label}>Current Flashcard Generation model</p>
-        <strong>
-          {isLoading ? "Loading…" : profile?.modelId || profile?.displayName || "Not configured"}
-        </strong>
-      </aside>
+    <div className={styles.section} data-tour-anchor="documents.upload">
+      <Surface
+        as="aside"
+        level={2}
+        material="translucent"
+        className={styles.providerPanel}
+        aria-label="Current Flashcard Generation model"
+      >
+        <span className={styles.icon} aria-hidden="true">
+          <Icon name="sparkles" size={21} />
+        </span>
+        <div className={styles.providerCopy}>
+          <p className={styles.label}>Flashcard generation model</p>
+          <strong>{modelLabel}</strong>
+          <small>
+            {isLoading
+              ? "Reading the current task default"
+              : profile
+                ? `Using ${providerLabel}`
+                : "Configure a provider in Settings before generating cards"}
+          </small>
+        </div>
+        <HelpTrigger
+          topicId="documents.provider"
+          label="Help with document AI profiles"
+        />
+      </Surface>
 
       <DocumentsScreen refreshDecks={refreshDecks} showToast={showToast} />
     </div>
