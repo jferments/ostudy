@@ -10,6 +10,7 @@ KEEP_EMULATOR=0
 WIPE_DATA=1
 SERIAL="${ANDROID_SERIAL:-}"
 ARTIFACT_DIR="${OSTUDY_ANDROID_SMOKE_ARTIFACTS:-$ROOT_DIR/artifacts/android-smoke}"
+APP_ID="io.github.jferments.ostudy.dev"
 
 usage() {
   cat <<'USAGE'
@@ -108,29 +109,57 @@ if [[ -z "$runner" ]]; then
   exit 1
 fi
 
+dump_case_logcat() {
+  local method="$1"
+  local crash_log="$ARTIFACT_DIR/${method}-logcat.txt"
+  "$adb" -s "$SERIAL" logcat -d -v threadtime > "$crash_log" 2>&1 || true
+  printf '\n--- Android crash diagnostics for %s ---\n' "$method" >&2
+  grep -E -i \
+    'FATAL EXCEPTION|Fatal signal|Abort message|SIGABRT|SIGSEGV|AndroidRuntime|panicked at|Rust panic|Process: io\.github\.jferments\.ostudy|io\.github\.jferments\.ostudy' \
+    "$crash_log" | tail -n 220 >&2 || true
+  printf '%s\n' "--- Last 220 logcat lines for $method ---" >&2
+  tail -n 220 "$crash_log" >&2 || true
+  printf '%s\n' "--- End Android crash diagnostics ---" >&2
+  printf 'Full case logcat: %s\n' "$crash_log" >&2
+}
+
 run_case() {
   local method="$1"
   local log="$ARTIFACT_DIR/${method}.txt"
+
+  # ActivityScenario intentionally leaves the Tauri Activity alive so the app's
+  # event loop is not destroyed before AndroidJUnitRunner reports its result.
+  # Own process lifecycle here instead: every case starts from a fresh process,
+  # while app-private SQLite/checkpoint data persists unless pm clear is used.
+  "$adb" -s "$SERIAL" shell am force-stop "$APP_ID" >/dev/null 2>&1 || true
+  "$adb" -s "$SERIAL" logcat -c
+
   printf 'Running Android smoke case %s...\n' "$method"
+  set +e
   "$adb" -s "$SERIAL" shell am instrument -w -r \
     -e class "io.github.jferments.ostudy.AndroidSmokeTest#$method" \
     "$runner" | tee "$log"
-  grep -q '^OK (' "$log" || {
-    printf 'Android smoke case failed: %s\n' "$method" >&2
-    exit 1
-  }
+  local instrument_status="${PIPESTATUS[0]}"
+  set -e
+
+  if ((instrument_status != 0)) || ! grep -q '^OK (' "$log"; then
+    printf 'Android smoke case failed: %s (instrumentation exit %s)\n' \
+      "$method" "$instrument_status" >&2
+    dump_case_logcat "$method"
+    return 1
+  fi
 }
 
-# These cases intentionally run sequentially: later cases validate durable state
-# created by earlier ones, and several exercise process death/restart semantics.
-"$adb" -s "$SERIAL" shell pm clear io.github.jferments.ostudy.dev >/dev/null
+# Cases intentionally run sequentially. Each invocation gets a fresh Android
+# process, while durable app data remains available for restart/restoration
+# assertions. Only the initial pm clear resets the data sandbox.
+"$adb" -s "$SERIAL" shell pm clear "$APP_ID" >/dev/null
+run_case a0_appLaunchesAndTestBridgeIsReady
 run_case a_seedLibraryPracticeAndAnalytics
-"$adb" -s "$SERIAL" shell am force-stop io.github.jferments.ostudy.dev
 run_case b_restartPreservesLibraryAndReviewHistory
 run_case c_documentsStubAndAndroidBackReturnToDecks
 run_case c_nestedDeckAndEditorBackReturnThroughTheStack
 run_case d_reloadsIntoInterruptedPracticeSession
-"$adb" -s "$SERIAL" shell am force-stop io.github.jferments.ostudy.dev
 run_case e_processRestartKeepsInterruptedPracticeSession
 run_case f_systemImportImageAndExportPickersCancelCleanly
 
