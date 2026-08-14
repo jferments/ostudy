@@ -40,7 +40,7 @@
   .detail { color: var(--ostudy-color-text-muted); font-size: .72rem; line-height: 1.35; }
 
   .distribution { display: grid; min-width: 0; gap: var(--ostudy-space-3); margin: 0; }
-  .track { display: flex; width: 100%; height: 12px; overflow: hidden; border-radius: var(--ostudy-radius-pill); background: var(--ostudy-color-surface-inset); box-shadow: inset 0 0 0 1px var(--ostudy-color-border-subtle); }
+  .track { display: flex; width: 100%; height: 12px; overflow: hidden; border-radius: var(--ostudy-radius-pill); background: var(--ostudy-color-progress-track); box-shadow: inset 0 0 0 1px var(--ostudy-color-border-subtle); }
   .segment { min-width: 0; flex-basis: 0; transform-origin: left center; }
   .segment[data-tone="danger"] { background: var(--ostudy-color-status-danger); }
   .segment[data-tone="warning"] { background: var(--ostudy-color-status-warning); }
