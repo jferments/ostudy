@@ -8,7 +8,12 @@ use crate::{
 };
 
 const THEMES: &[&str] = &["light", "dark", "console", "synthwave"];
-const FONT_PRESETS: &[&str] = &["system", "humanist", "serif", "mono"];
+const FONT_PRESETS: &[&str] = &[
+    "system", "atkinson", "plex", "humanist", "serif", "mono",
+];
+const MOTION_PREFERENCES: &[&str] = &["system", "full", "reduced", "none"];
+const MATERIAL_PREFERENCES: &[&str] = &["automatic", "rich", "simple"];
+const DECK_VIEW_DENSITIES: &[&str] = &["comfortable", "compact"];
 const MAX_DAILY_LIMIT: i64 = 10_000;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -19,8 +24,12 @@ pub struct AppSettingsDto {
     pub card_font: String,
     pub ui_scale: i64,
     pub card_base_size: i64,
-    pub animations_enabled: bool,
-    pub reduce_motion: bool,
+    pub motion_preference: String,
+    pub material_preference: String,
+    pub decorative_artwork: bool,
+    pub celebrations_enabled: bool,
+    pub tutorials_enabled: bool,
+    pub deck_view_density: String,
     pub confirm_deletions: bool,
     pub practice_shuffle: bool,
     pub desired_retention: f64,
@@ -74,14 +83,30 @@ pub fn get_app_info(
 }
 
 pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDto, CommandError> {
+    let motion_preference = match get_optional_setting::<String>(connection, "motionPreference")? {
+        Some(value) => value,
+        None => legacy_motion_preference(connection)?,
+    };
     Ok(AppSettingsDto {
         theme: get_setting(connection, "theme", "dark".to_string())?,
         ui_font: get_setting(connection, "uiFont", "system".to_string())?,
         card_font: get_setting(connection, "cardFont", "system".to_string())?,
         ui_scale: get_setting(connection, "uiScale", 100_i64)?,
         card_base_size: get_setting(connection, "cardBaseSize", 18_i64)?,
-        animations_enabled: get_setting(connection, "animationsEnabled", true)?,
-        reduce_motion: get_setting(connection, "reduceMotion", false)?,
+        motion_preference,
+        material_preference: get_setting(
+            connection,
+            "materialPreference",
+            "automatic".to_string(),
+        )?,
+        decorative_artwork: get_setting(connection, "decorativeArtwork", true)?,
+        celebrations_enabled: get_setting(connection, "celebrationsEnabled", true)?,
+        tutorials_enabled: get_setting(connection, "tutorialsEnabled", true)?,
+        deck_view_density: get_setting(
+            connection,
+            "deckViewDensity",
+            "comfortable".to_string(),
+        )?,
         confirm_deletions: get_setting(connection, "confirmDeletions", true)?,
         practice_shuffle: get_setting(connection, "practiceShuffle", true)?,
         desired_retention: get_setting(connection, "desiredRetention", 0.90_f64)?,
@@ -90,7 +115,30 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
     })
 }
 
+fn legacy_motion_preference(connection: &Connection) -> Result<String, CommandError> {
+    let animations_enabled = get_setting(connection, "animationsEnabled", true)?;
+    let reduce_motion = get_setting(connection, "reduceMotion", false)?;
+    Ok(if !animations_enabled {
+        "none"
+    } else if reduce_motion {
+        "reduced"
+    } else {
+        "system"
+    }
+    .to_string())
+}
+
 fn get_setting<T>(connection: &Connection, key: &str, default: T) -> Result<T, CommandError>
+where
+    T: DeserializeOwned,
+{
+    get_optional_setting(connection, key).map(|value| value.unwrap_or(default))
+}
+
+fn get_optional_setting<T>(
+    connection: &Connection,
+    key: &str,
+) -> Result<Option<T>, CommandError>
 where
     T: DeserializeOwned,
 {
@@ -102,10 +150,9 @@ where
         )
         .optional()
         .map_err(CommandError::database)?;
-    match serialized {
-        Some(value) => serde_json::from_str(&value).map_err(CommandError::serialization),
-        None => Ok(default),
-    }
+    serialized
+        .map(|value| serde_json::from_str(&value).map_err(CommandError::serialization))
+        .transpose()
 }
 
 fn save_settings_in_connection(
@@ -124,12 +171,28 @@ fn save_settings_in_connection(
             serde_json::to_string(&settings.card_base_size),
         ),
         (
-            "animationsEnabled",
-            serde_json::to_string(&settings.animations_enabled),
+            "motionPreference",
+            serde_json::to_string(&settings.motion_preference),
         ),
         (
-            "reduceMotion",
-            serde_json::to_string(&settings.reduce_motion),
+            "materialPreference",
+            serde_json::to_string(&settings.material_preference),
+        ),
+        (
+            "decorativeArtwork",
+            serde_json::to_string(&settings.decorative_artwork),
+        ),
+        (
+            "celebrationsEnabled",
+            serde_json::to_string(&settings.celebrations_enabled),
+        ),
+        (
+            "tutorialsEnabled",
+            serde_json::to_string(&settings.tutorials_enabled),
+        ),
+        (
+            "deckViewDensity",
+            serde_json::to_string(&settings.deck_view_density),
         ),
         (
             "confirmDeletions",
@@ -165,6 +228,12 @@ fn save_settings_in_connection(
             )
             .map_err(CommandError::database)?;
     }
+    transaction
+        .execute(
+            "DELETE FROM app_settings WHERE key IN ('animationsEnabled', 'reduceMotion')",
+            [],
+        )
+        .map_err(CommandError::database)?;
     transaction.commit().map_err(CommandError::database)
 }
 
@@ -177,6 +246,24 @@ fn validate_settings(settings: &AppSettingsDto) -> Result<(), CommandError> {
     }
     validate_font(&settings.ui_font)?;
     validate_font(&settings.card_font)?;
+    validate_choice(
+        &settings.motion_preference,
+        MOTION_PREFERENCES,
+        "invalid_motion_preference",
+        "Select an available motion preference.",
+    )?;
+    validate_choice(
+        &settings.material_preference,
+        MATERIAL_PREFERENCES,
+        "invalid_material_preference",
+        "Select an available material preference.",
+    )?;
+    validate_choice(
+        &settings.deck_view_density,
+        DECK_VIEW_DENSITIES,
+        "invalid_deck_view_density",
+        "Select an available deck-list density.",
+    )?;
     if !(80..=140).contains(&settings.ui_scale) {
         return Err(CommandError::new(
             "invalid_ui_scale",
@@ -198,6 +285,19 @@ fn validate_settings(settings: &AppSettingsDto) -> Result<(), CommandError> {
         ));
     }
     validate_desired_retention(settings.desired_retention)
+}
+
+fn validate_choice(
+    value: &str,
+    choices: &[&str],
+    code: &str,
+    message: &str,
+) -> Result<(), CommandError> {
+    if choices.contains(&value) {
+        Ok(())
+    } else {
+        Err(CommandError::new(code, message))
+    }
 }
 
 fn validate_font(value: &str) -> Result<(), CommandError> {
@@ -243,6 +343,35 @@ mod tests {
             .expect("settings should reload");
         assert_eq!(loaded.daily_new_limit, 12);
         assert_eq!(loaded.daily_review_limit, 80);
+    }
+
+    #[test]
+    fn migrates_legacy_animation_preferences_when_new_setting_is_absent() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO app_settings (key, value_json, updated_at)
+                         VALUES ('animationsEnabled', 'true', 1), ('reduceMotion', 'true', 1)",
+                        [],
+                    )
+                    .map_err(CommandError::database)?;
+                let loaded = load_settings(connection)?;
+                assert_eq!(loaded.motion_preference, "reduced");
+                save_settings_in_connection(connection, &loaded)?;
+                let legacy_count: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM app_settings
+                         WHERE key IN ('animationsEnabled', 'reduceMotion')",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(legacy_count, 0);
+                Ok(())
+            })
+            .expect("legacy motion settings should migrate");
     }
 
     #[test]

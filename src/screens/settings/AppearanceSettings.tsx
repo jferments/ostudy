@@ -1,11 +1,29 @@
-import type { AppSettings } from "../../ipc/settings";
-import { FontControl, RangeControl, ThemeOption } from "./SettingsControls";
+import type {
+  AppSettings,
+  MaterialPreference,
+  MotionPreference,
+} from "../../ipc/settings";
+import { FontControl, RangeControl, SelectControl, ThemeOption } from "./SettingsControls";
+import previewStyles from "./AppearancePreview.module.css";
 import styles from "./Settings.module.css";
 
 interface AppearanceSettingsProps {
   draft: AppSettings;
   update: (patch: Partial<AppSettings>) => void;
 }
+
+const MOTION_OPTIONS: ReadonlyArray<{ value: MotionPreference; label: string }> = [
+  { value: "system", label: "Follow system" },
+  { value: "full", label: "Full motion" },
+  { value: "reduced", label: "Reduced motion" },
+  { value: "none", label: "No nonessential motion" },
+];
+
+const MATERIAL_OPTIONS: ReadonlyArray<{ value: MaterialPreference; label: string }> = [
+  { value: "automatic", label: "Automatic" },
+  { value: "rich", label: "Rich materials" },
+  { value: "simple", label: "Simple opaque materials" },
+];
 
 export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
   return (
@@ -32,48 +50,89 @@ export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
       </section>
 
       <section className={styles.settingsCard}>
-        <h2>Scale and motion</h2>
-        <RangeControl
-          label="Interface scale"
-          min={80}
-          max={140}
-          step={5}
-          value={draft.uiScale}
-          suffix="%"
-          onChange={(uiScale) => update({ uiScale })}
+        <h2>Scale</h2>
+        <RangeControl label="Interface scale" min={80} max={140} step={5} value={draft.uiScale} suffix="%" onChange={(uiScale) => update({ uiScale })} />
+        <RangeControl label="Default card text" min={12} max={32} step={1} value={draft.cardBaseSize} suffix=" px" onChange={(cardBaseSize) => update({ cardBaseSize })} />
+      </section>
+
+      <section className={styles.settingsCard}>
+        <h2>Motion and materials</h2>
+        <SelectControl
+          label="Motion"
+          value={draft.motionPreference ?? "system"}
+          options={MOTION_OPTIONS}
+          description="Reduced motion removes spatial transitions, card flips, parallax, reorder interpolation, and particle effects."
+          onChange={(motionPreference) => update({ motionPreference })}
         />
-        <RangeControl
-          label="Default card text"
-          min={12}
-          max={32}
-          step={1}
-          value={draft.cardBaseSize}
-          suffix=" px"
-          onChange={(cardBaseSize) => update({ cardBaseSize })}
+        <SelectControl
+          label="Material effects"
+          value={draft.materialPreference ?? "automatic"}
+          options={MATERIAL_OPTIONS}
+          description="Automatic uses restrained depth and translucency while respecting operating-system transparency preferences."
+          onChange={(materialPreference) => update({ materialPreference })}
         />
+      </section>
+
+      <section className={styles.settingsCard}>
+        <h2>Artwork and guidance</h2>
         <label className={styles.switchRow}>
           <span>
-            <strong>Animations and transitions</strong>
-            <small>Enable card flips and other nonessential motion effects.</small>
+            <strong>Decorative artwork</strong>
+            <small>Show mascot art and illustrated empty states. Card and document images are unaffected.</small>
           </span>
-          <input
-            type="checkbox"
-            checked={draft.animationsEnabled}
-            onChange={(event) => update({ animationsEnabled: event.currentTarget.checked })}
-          />
+          <input type="checkbox" checked={draft.decorativeArtwork ?? true} onChange={(event) => update({ decorativeArtwork: event.currentTarget.checked })} />
         </label>
         <label className={styles.switchRow}>
           <span>
-            <strong>Reduce motion</strong>
-            <small>Minimize motion even when animations are enabled.</small>
+            <strong>Celebrations</strong>
+            <small>Allow one-shot completion effects when full motion is enabled.</small>
           </span>
-          <input
-            type="checkbox"
-            checked={draft.reduceMotion}
-            onChange={(event) => update({ reduceMotion: event.currentTarget.checked })}
-          />
+          <input type="checkbox" checked={draft.celebrationsEnabled ?? true} onChange={(event) => update({ celebrationsEnabled: event.currentTarget.checked })} />
+        </label>
+        <label className={styles.switchRow}>
+          <span>
+            <strong>Contextual tutorials</strong>
+            <small>Offer short, dismissible walkthroughs for unfamiliar workflows.</small>
+          </span>
+          <input type="checkbox" checked={draft.tutorialsEnabled ?? true} onChange={(event) => update({ tutorialsEnabled: event.currentTarget.checked })} />
         </label>
       </section>
+
+      <section className={styles.fullWidthCard} aria-labelledby="appearance-preview-heading">
+        <div className={styles.sectionHeading}>
+          <div>
+            <h2 id="appearance-preview-heading">Live visual-system preview</h2>
+            <p>Representative surfaces, typography, controls, progress, and metrics use the same semantic tokens as the application.</p>
+          </div>
+        </div>
+        <AppearancePreview />
+      </section>
+    </div>
+  );
+}
+
+function AppearancePreview() {
+  return (
+    <div className={previewStyles.preview}>
+      <header className={previewStyles.chrome}>
+        <span className={previewStyles.brand}>
+          <span className={previewStyles.mark} aria-hidden="true">O</span>
+          ostudy
+        </span>
+        <button type="button">Create card</button>
+      </header>
+      <div className={previewStyles.content}>
+        <article className={previewStyles.card}>
+          <span className={previewStyles.eyebrow}>Practice</span>
+          <h3>How does spaced repetition improve recall?</h3>
+          <p>It schedules review near the point where a memory is likely to become difficult to retrieve.</p>
+          <div className={previewStyles.progress} aria-label="68 percent complete"><span /></div>
+        </article>
+        <div className={previewStyles.metrics}>
+          <article className={previewStyles.metric}><small>Ready now</small><strong>24</strong></article>
+          <article className={previewStyles.metric}><small>Studied this week</small><strong>138</strong></article>
+        </div>
+      </div>
     </div>
   );
 }

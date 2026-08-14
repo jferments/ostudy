@@ -1,0 +1,78 @@
+// Generated from src/ui/tokens by scripts/generate-ui-tokens.mjs.
+export const themeNames = ["light", "dark", "console", "synthwave"] as const;
+export type ThemeName = (typeof themeNames)[number];
+
+export const semanticTokenNames = [
+  "color.canvas",
+  "color.canvasInset",
+  "color.surface.base",
+  "color.surface.soft",
+  "color.surface.raised",
+  "color.surface.chrome",
+  "color.surface.overlay",
+  "color.surface.selected",
+  "color.surface.inverse",
+  "color.surface.highlight",
+  "color.text.primary",
+  "color.text.secondary",
+  "color.text.muted",
+  "color.text.inverse",
+  "color.text.accent",
+  "color.border.subtle",
+  "color.border.strong",
+  "color.border.accent",
+  "color.accent.base",
+  "color.accent.strong",
+  "color.accent.soft",
+  "color.accent.on",
+  "color.focus.ring",
+  "color.selection.background",
+  "color.selection.foreground",
+  "color.status.success",
+  "color.status.successSoft",
+  "color.status.warning",
+  "color.status.warningSoft",
+  "color.status.danger",
+  "color.status.dangerSoft",
+  "color.status.info",
+  "color.status.infoSoft",
+  "color.confidence.0",
+  "color.confidence.1",
+  "color.confidence.2",
+  "color.confidence.3",
+  "color.chart.1",
+  "color.chart.2",
+  "color.chart.3",
+  "color.chart.4",
+  "color.chart.5",
+  "color.chart.6",
+  "color.chart.grid",
+  "color.ambient.primary",
+  "color.ambient.secondary",
+  "color.ambient.vignette",
+  "color.noise",
+  "color.progress.track",
+  "color.progress.fill",
+  "color.overlay.scrim",
+  "material.blur.low",
+  "material.blur.medium",
+  "material.blur.high",
+  "material.noiseOpacity",
+  "material.chromeSaturation",
+  "shadow.level1",
+  "shadow.level2",
+  "shadow.level3",
+  "shadow.level4",
+  "shadow.level5",
+  "shadow.focus",
+  "glow.subtle",
+  "glow.accent",
+] as const;
+
+export type SemanticTokenName = (typeof semanticTokenNames)[number];
+
+export function tokenVariable(name: SemanticTokenName): `--ostudy-${string}` {
+  return `--ostudy-${name
+    .replace(/[A-Z]/gu, (value) => `-${value.toLowerCase()}`)
+    .replaceAll(".", "-")}`;
+}

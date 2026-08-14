@@ -1,10 +1,11 @@
-@layer reset, tokens, base, legacy, features, components, utilities;
+@layer reset, tokens, legacy, theme, base, features, components, patterns, utilities;
 
 /*
- * Global style entry point. Existing application/feature selectors are grouped
- * under semantic cascade layers while Stage 3.13 primitives and all new UI use
- * scoped CSS Modules. No feature imports a global stylesheet directly.
+ * Global style entry point. Legacy application and feature selectors remain in
+ * their own layers while the semantic visual system overrides their variables
+ * and new UI is implemented through scoped modules.
  */
+@import "../tokens/generated/tokens.css" layer(tokens);
 @import "../../styles/base/application.css" layer(legacy);
 @import "../../styles/features/practice.css" layer(features);
 @import "../../styles/features/cards.css" layer(features);
@@ -17,40 +18,40 @@
 
 @layer tokens {
   :root {
-    --space-1: 0.25rem;
-    --space-2: 0.5rem;
-    --space-3: 0.75rem;
-    --space-4: 1rem;
-    --space-5: 1.25rem;
-    --space-6: 1.5rem;
-    --space-7: 2rem;
-    --space-8: 2.5rem;
-    --control-height: 42px;
-    --touch-target-min: 44px;
-    --radius-medium: var(--radius);
-    --radius-large: 18px;
-    --on-accent: #ffffff;
+    --space-1: var(--ostudy-space-1);
+    --space-2: var(--ostudy-space-2);
+    --space-3: var(--ostudy-space-3);
+    --space-4: var(--ostudy-space-4);
+    --space-5: var(--ostudy-space-5);
+    --space-6: var(--ostudy-space-6);
+    --space-7: var(--ostudy-space-7);
+    --space-8: var(--ostudy-space-8);
+    --control-height: var(--ostudy-size-control);
+    --touch-target-min: var(--ostudy-size-touch-target);
+    --radius-medium: var(--ostudy-radius-medium);
+    --radius-large: var(--ostudy-radius-large);
+    --on-accent: var(--ostudy-color-accent-on);
     --on-danger: #ffffff;
-    --confidence-wrong: #b4233b;
-    --confidence-hard: #c45d16;
-    --confidence-medium: #d8a000;
-    --confidence-easy: #197a46;
-    --overlay-scrim: rgb(0 0 0 / 64%);
-    --elevation-panel: var(--card-shadow);
-    --elevation-overlay: var(--shadow);
-    --motion-fast: 120ms;
-    --motion-normal: 180ms;
-    --motion-slow: 320ms;
-    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-    --ease-emphasized: cubic-bezier(0.2, 0, 0, 1.2);
-    --layer-base: 0;
-    --layer-control-selected: 1;
-    --layer-control-focus: 2;
-    --layer-sticky: 100;
-    --layer-popover: 500;
-    --layer-dialog: 1000;
-    --layer-toast: 1200;
-    --layer-effects: 1300;
+    --confidence-wrong: var(--ostudy-color-confidence-0);
+    --confidence-hard: var(--ostudy-color-confidence-1);
+    --confidence-medium: var(--ostudy-color-confidence-2);
+    --confidence-easy: var(--ostudy-color-confidence-3);
+    --overlay-scrim: var(--ostudy-color-overlay-scrim);
+    --elevation-panel: var(--ostudy-shadow-level-2);
+    --elevation-overlay: var(--ostudy-shadow-level-4);
+    --motion-fast: var(--ostudy-motion-duration-fast);
+    --motion-normal: var(--ostudy-motion-duration-standard);
+    --motion-slow: var(--ostudy-motion-duration-slow);
+    --ease-standard: var(--ostudy-motion-ease-standard);
+    --ease-emphasized: var(--ostudy-motion-ease-enter);
+    --layer-base: var(--ostudy-layer-base);
+    --layer-control-selected: var(--ostudy-layer-selected);
+    --layer-control-focus: var(--ostudy-layer-focus);
+    --layer-sticky: var(--ostudy-layer-sticky);
+    --layer-popover: var(--ostudy-layer-popover);
+    --layer-dialog: var(--ostudy-layer-dialog);
+    --layer-toast: var(--ostudy-layer-toast);
+    --layer-effects: var(--ostudy-layer-effects);
     --android-safe-top: 0px;
     --android-safe-right: 0px;
     --android-safe-bottom: 0px;
@@ -61,9 +62,52 @@
     --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--android-safe-bottom));
     --safe-left: max(env(safe-area-inset-left, 0px), var(--android-safe-left));
   }
+}
 
-  :root[data-theme="console"] {
-    --on-accent: #001000;
+@layer theme {
+  :root {
+    --bg: var(--ostudy-color-canvas);
+    --surface: var(--ostudy-color-surface-base);
+    --surface-raised: var(--ostudy-color-surface-raised);
+    --surface-soft: var(--ostudy-color-surface-soft);
+    --surface-strong: var(--ostudy-color-surface-raised);
+    --surface-input: var(--ostudy-color-surface-soft);
+    --sidebar: var(--ostudy-color-surface-chrome);
+    --text: var(--ostudy-color-text-primary);
+    --text-soft: var(--ostudy-color-text-secondary);
+    --muted: var(--ostudy-color-text-muted);
+    --border: var(--ostudy-color-border-subtle);
+    --border-strong: var(--ostudy-color-border-strong);
+    --accent: var(--ostudy-color-accent-base);
+    --accent-strong: var(--ostudy-color-accent-strong);
+    --accent-soft: var(--ostudy-color-accent-soft);
+    --success: var(--ostudy-color-status-success);
+    --danger: var(--ostudy-color-status-danger);
+    --warning: var(--ostudy-color-status-warning);
+    --shadow: var(--ostudy-shadow-level-4);
+    --card-shadow: var(--ostudy-shadow-level-2);
+    --focus: var(--ostudy-shadow-focus);
+    --radius: var(--ostudy-radius-medium);
+    --radius-small: var(--ostudy-radius-small);
+  }
+
+  :root[data-material="simple"] {
+    --ostudy-color-surface-chrome: var(--ostudy-color-surface-raised);
+    --ostudy-material-blur-low: 0px;
+    --ostudy-material-blur-medium: 0px;
+    --ostudy-material-blur-high: 0px;
+    --ostudy-material-noise-opacity: 0;
+    --ostudy-material-chrome-saturation: 1;
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    :root {
+      --ostudy-color-surface-chrome: var(--ostudy-color-surface-raised);
+      --ostudy-material-blur-low: 0px;
+      --ostudy-material-blur-medium: 0px;
+      --ostudy-material-blur-high: 0px;
+      --ostudy-material-noise-opacity: 0;
+    }
   }
 }
 
@@ -76,6 +120,11 @@
 
   body {
     min-height: 100dvh;
+  }
+
+  ::selection {
+    background: var(--ostudy-color-selection-background);
+    color: var(--ostudy-color-selection-foreground);
   }
 
   button,
@@ -92,26 +141,29 @@
     max-width: 100%;
   }
 
-  :root[data-animations-enabled="false"] *,
-  :root[data-animations-enabled="false"] *::before,
-  :root[data-animations-enabled="false"] *::after,
-  :root[data-reduce-motion="true"] *,
-  :root[data-reduce-motion="true"] *::before,
-  :root[data-reduce-motion="true"] *::after {
+  :root[data-motion="none"] *,
+  :root[data-motion="none"] *::before,
+  :root[data-motion="none"] *::after {
     scroll-behavior: auto !important;
-    transition-duration: 0.001ms !important;
-    animation-duration: 0.001ms !important;
+    transition-duration: var(--ostudy-motion-duration-instant) !important;
+    animation-duration: var(--ostudy-motion-duration-instant) !important;
     animation-iteration-count: 1 !important;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    :root *,
-    :root *::before,
-    :root *::after {
-      scroll-behavior: auto !important;
-      transition-duration: 0.001ms !important;
-      animation-duration: 0.001ms !important;
-      animation-iteration-count: 1 !important;
+  :root[data-motion="reduced"] [data-motion-kind="spatial"],
+  :root[data-motion="reduced"] [data-motion-kind="spatial"]::before,
+  :root[data-motion="reduced"] [data-motion-kind="spatial"]::after {
+    transition-duration: var(--ostudy-motion-duration-instant) !important;
+    animation-duration: var(--ostudy-motion-duration-instant) !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  @media (forced-colors: active) {
+    :root {
+      --ostudy-material-noise-opacity: 0;
+      --ostudy-material-blur-low: 0px;
+      --ostudy-material-blur-medium: 0px;
+      --ostudy-material-blur-high: 0px;
     }
   }
 
@@ -121,11 +173,11 @@
     }
 
     .app-shell {
-      padding-bottom: calc(68px + var(--safe-bottom));
+      padding-bottom: calc(var(--ostudy-navigation-compact-height) + var(--safe-bottom));
     }
 
     .main-area {
-      min-height: calc(100dvh - 68px - var(--safe-bottom));
+      min-height: calc(100dvh - var(--ostudy-navigation-compact-height) - var(--safe-bottom));
     }
 
     :root[data-android-ime-visible="true"] .app-shell {

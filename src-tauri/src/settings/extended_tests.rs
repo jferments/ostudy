@@ -9,8 +9,12 @@ mod extended_tests {
             card_font: "system".to_string(),
             ui_scale: 100,
             card_base_size: 18,
-            animations_enabled: true,
-            reduce_motion: false,
+            motion_preference: "system".to_string(),
+            material_preference: "automatic".to_string(),
+            decorative_artwork: true,
+            celebrations_enabled: true,
+            tutorials_enabled: true,
+            deck_view_density: "comfortable".to_string(),
             confirm_deletions: true,
             practice_shuffle: true,
             desired_retention: 0.90,
@@ -28,8 +32,12 @@ mod extended_tests {
             card_font: "serif".to_string(),
             ui_scale: 135,
             card_base_size: 30,
-            animations_enabled: false,
-            reduce_motion: true,
+            motion_preference: "none".to_string(),
+            material_preference: "simple".to_string(),
+            decorative_artwork: false,
+            celebrations_enabled: false,
+            tutorials_enabled: false,
+            deck_view_density: "compact".to_string(),
             confirm_deletions: false,
             practice_shuffle: false,
             desired_retention: 0.96,
@@ -49,8 +57,12 @@ mod extended_tests {
         assert_eq!(loaded.card_font, expected.card_font);
         assert_eq!(loaded.ui_scale, expected.ui_scale);
         assert_eq!(loaded.card_base_size, expected.card_base_size);
-        assert_eq!(loaded.animations_enabled, expected.animations_enabled);
-        assert_eq!(loaded.reduce_motion, expected.reduce_motion);
+        assert_eq!(loaded.motion_preference, expected.motion_preference);
+        assert_eq!(loaded.material_preference, expected.material_preference);
+        assert_eq!(loaded.decorative_artwork, expected.decorative_artwork);
+        assert_eq!(loaded.celebrations_enabled, expected.celebrations_enabled);
+        assert_eq!(loaded.tutorials_enabled, expected.tutorials_enabled);
+        assert_eq!(loaded.deck_view_density, expected.deck_view_density);
         assert_eq!(loaded.confirm_deletions, expected.confirm_deletions);
         assert_eq!(loaded.practice_shuffle, expected.practice_shuffle);
         assert_eq!(loaded.desired_retention, expected.desired_retention);
@@ -67,6 +79,27 @@ mod extended_tests {
         let mut value = settings();
         value.ui_font = "custom:Bad/font".to_string();
         assert_eq!(validate_settings(&value).unwrap_err().code, "invalid_font");
+
+        let mut value = settings();
+        value.motion_preference = "constant-spin".to_string();
+        assert_eq!(
+            validate_settings(&value).unwrap_err().code,
+            "invalid_motion_preference"
+        );
+
+        let mut value = settings();
+        value.material_preference = "transparent-everything".to_string();
+        assert_eq!(
+            validate_settings(&value).unwrap_err().code,
+            "invalid_material_preference"
+        );
+
+        let mut value = settings();
+        value.deck_view_density = "microscopic".to_string();
+        assert_eq!(
+            validate_settings(&value).unwrap_err().code,
+            "invalid_deck_view_density"
+        );
 
         let mut value = settings();
         value.ui_scale = 79;
@@ -96,8 +129,12 @@ mod extended_tests {
             "cardFont": "system",
             "uiScale": 100,
             "cardBaseSize": 18,
-            "animationsEnabled": true,
-            "reduceMotion": false,
+            "motionPreference": "system",
+            "materialPreference": "automatic",
+            "decorativeArtwork": true,
+            "celebrationsEnabled": true,
+            "tutorialsEnabled": true,
+            "deckViewDensity": "comfortable",
             "confirmDeletions": true,
             "practiceShuffle": true,
             "desiredRetention": 0.9,
