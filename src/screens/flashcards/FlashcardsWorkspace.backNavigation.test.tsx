@@ -14,32 +14,39 @@ vi.mock("../CardsScreen", () => ({ CardsScreen: () => <div>Search workspace</div
 vi.mock("../TemplatesScreen", () => ({ TemplatesScreen: () => null }));
 vi.mock("./CreateCardsWorkspace", () => ({ CreateCardsWorkspace: () => null }));
 vi.mock("./TransferWorkspace", () => ({ TransferWorkspace: () => null }));
-vi.mock("../DecksScreen", async () => {
+vi.mock("./DeckLibraryWorkspace", async () => {
   const React = await import("react");
   return {
-    DecksScreen: ({
-      onViewChange,
-    }: {
-      onViewChange?: (view: "library" | "detail" | "editor") => void;
-    }) => {
+    DeckLibraryWorkspace: () => {
       const [view, setView] = React.useState<"library" | "detail" | "editor">("library");
-      React.useEffect(() => onViewChange?.(view), [onViewChange, view]);
       return (
         <div>
           <output data-testid="mock-deck-view">{view}</output>
           {view === "library" ? (
-            <button type="button" onClick={() => setView("detail")}>Open detail</button>
+            <button type="button" onClick={() => setView("detail")}>
+              Open detail
+            </button>
           ) : null}
           {view === "detail" ? (
             <>
-              <button type="button" className="back-button" onClick={() => setView("library")}>
+              <button
+                type="button"
+                className="back-button"
+                onClick={() => setView("library")}
+              >
                 Back to library
               </button>
-              <button type="button" onClick={() => setView("editor")}>Open editor</button>
+              <button type="button" onClick={() => setView("editor")}>
+                Open editor
+              </button>
             </>
           ) : null}
           {view === "editor" ? (
-            <button type="button" className="back-button" onClick={() => setView("detail")}>
+            <button
+              type="button"
+              className="back-button"
+              onClick={() => setView("detail")}
+            >
               Back to detail
             </button>
           ) : null}
