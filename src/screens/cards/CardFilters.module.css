@@ -5,14 +5,14 @@
   .sortField { display: grid; min-width: 0; gap: var(--ostudy-space-2); }
   .searchField > span:first-child,
   .sortField > span:first-child { color: var(--ostudy-color-text-secondary); font-size: .76rem; font-weight: 760; }
-  .searchControl { display: flex; min-width: 0; min-height: var(--control-height); align-items: center; gap: var(--ostudy-space-2); border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small); padding-inline: var(--ostudy-space-3); background: var(--ostudy-color-surface-inset); color: var(--ostudy-color-text-muted); }
+  .searchControl { display: flex; min-width: 0; min-height: var(--control-height); align-items: center; gap: var(--ostudy-space-2); border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small); padding-inline: var(--ostudy-space-3); background: var(--ostudy-color-canvas-inset); color: var(--ostudy-color-text-muted); }
   .searchControl:focus-within { border-color: var(--ostudy-color-border-accent); box-shadow: var(--ostudy-shadow-focus); }
   .searchControl input { min-width: 0; flex: 1; border: 0; padding: 0; background: transparent; box-shadow: none; }
   .searchControl input:focus { outline: none; box-shadow: none; }
   .scopeButton { display: inline-flex; min-width: 0; min-height: var(--control-height); align-items: center; justify-content: flex-start; gap: var(--ostudy-space-2); border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small); padding-inline: var(--ostudy-space-3); background: var(--ostudy-color-surface-raised); color: var(--ostudy-color-text-secondary); font: inherit; font-weight: 720; }
   .scopeButton span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .filterButton { white-space: nowrap; }
-  .filterCount { display: grid; min-width: 22px; height: 22px; place-items: center; border-radius: var(--ostudy-radius-pill); background: var(--ostudy-color-accent-base); color: var(--ostudy-color-text-on-accent); font-size: .7rem; font-variant-numeric: tabular-nums; }
+  .filterCount { display: grid; min-width: 22px; height: 22px; place-items: center; border-radius: var(--ostudy-radius-pill); background: var(--ostudy-color-accent-base); color: var(--ostudy-color-accent-on); font-size: .7rem; font-variant-numeric: tabular-nums; }
 
   .filterSheet { display: grid; gap: var(--ostudy-space-5); padding: var(--ostudy-space-1); }
   .group { display: grid; min-width: 0; gap: var(--ostudy-space-3); margin: 0; border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-medium); padding: var(--ostudy-space-4); }
@@ -23,7 +23,7 @@
   .scopeChoice { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; min-height: var(--touch-target-min); align-items: center; gap: var(--ostudy-space-2); border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small); padding: var(--ostudy-space-2) var(--ostudy-space-3); background: var(--ostudy-color-surface-raised); color: var(--ostudy-color-text-secondary); text-align: start; }
   .scopeChoice[aria-pressed="true"] { border-color: var(--ostudy-color-border-accent); background: var(--ostudy-color-surface-selected); color: var(--ostudy-color-text-accent); box-shadow: var(--ostudy-glow-subtle); }
   .scopeChoice small { color: var(--ostudy-color-text-muted); white-space: nowrap; }
-  .checklist { display: grid; min-width: 0; max-height: 300px; overflow: auto; border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small); background: var(--ostudy-color-surface-inset); }
+  .checklist { display: grid; min-width: 0; max-height: 300px; overflow: auto; border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small); background: var(--ostudy-color-canvas-inset); }
   .checklist label { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; min-height: var(--touch-target-min); align-items: center; gap: var(--ostudy-space-3); padding: var(--ostudy-space-2) var(--ostudy-space-3); }
   .checklist label + label { border-top: 1px solid var(--ostudy-color-border-subtle); }
   .checklist span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
