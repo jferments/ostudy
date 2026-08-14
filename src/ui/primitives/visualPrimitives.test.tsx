@@ -7,12 +7,13 @@ import { Progress } from "./Progress";
 import { Surface } from "./Surface";
 
 describe("visual-system primitives", () => {
-  it("exposes semantic surface state without leaking theme names", () => {
+  it("exposes semantic surface state without leaking theme names or undefined classes", () => {
     render(<Surface level={2} material="translucent" selected>Content</Surface>);
     const surface = screen.getByText("Content");
     expect(surface.getAttribute("data-surface-level")).toBe("2");
     expect(surface.getAttribute("data-surface-material")).toBe("translucent");
     expect(surface.getAttribute("data-selected")).toBe("true");
+    expect(surface.className.split(/\s+/u)).not.toContain("undefined");
   });
 
   it("bounds progress values while preserving the supplied maximum", () => {
