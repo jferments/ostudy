@@ -85,11 +85,17 @@ export function DeckLibraryWorkspace({
   const [detailRequest, setDetailRequest] = useState<DeckOpenRequest | null>(null);
   const requestSequence = useRef(1);
   const detailOpenedRef = useRef(false);
+  const organizationRef = useRef<DeckLibraryOrganization | null>(null);
   const organizationMutationRef = useRef(false);
   const controllerRef = useRef<DecksController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new DecksController();
   const controller = controllerRef.current;
   const confirm = useConfirm();
+
+  function applyOrganization(next: DeckLibraryOrganization): void {
+    organizationRef.current = next;
+    setOrganization(next);
+  }
 
   useEffect(() => {
     let active = true;
@@ -97,7 +103,7 @@ export function DeckLibraryWorkspace({
     void getDeckLibraryOrganization()
       .then((loaded) => {
         if (active) {
-          setOrganization(loaded);
+          applyOrganization(loaded);
           setErrorMessage(null);
         }
       })
@@ -141,7 +147,7 @@ export function DeckLibraryWorkspace({
 
   async function reloadOrganization(): Promise<DeckLibraryOrganization> {
     const loaded = await getDeckLibraryOrganization();
-    setOrganization(loaded);
+    applyOrganization(loaded);
     setErrorMessage(null);
     return loaded;
   }
@@ -169,7 +175,7 @@ export function DeckLibraryWorkspace({
       refreshed = true;
     } catch (caught: unknown) {
       refreshError = caught;
-      setOrganization(fallback);
+      applyOrganization(fallback);
     }
 
     if (getErrorCode(error) === "library_organization_changed") {
@@ -217,8 +223,8 @@ export function DeckLibraryWorkspace({
   }
 
   async function saveFolder(name: string): Promise<void> {
-    if (!organization || !folderDraft || isMutating || !beginOrganizationMutation()) return;
-    const previous = organization;
+    const previous = organizationRef.current;
+    if (!previous || !folderDraft || isMutating || !beginOrganizationMutation()) return;
     const draft = folderDraft;
     try {
       const updated =
@@ -233,7 +239,7 @@ export function DeckLibraryWorkspace({
               revision: draft.folder?.revision ?? 0,
               expectedOrganizationRevision: previous.revision,
             });
-      setOrganization(updated);
+      applyOrganization(updated);
       setFolderDraft(null);
       setAnnouncement(
         draft.mode === "create" ? `Created folder ${name}.` : `Renamed folder to ${name}.`,
@@ -246,7 +252,7 @@ export function DeckLibraryWorkspace({
   }
 
   async function removeFolder(folder: DeckFolder): Promise<void> {
-    if (!organization || isMutating) return;
+    if (!organizationRef.current || isMutating) return;
     const accepted = await confirm({
       title: `Delete “${folder.name}”?`,
       description:
@@ -254,15 +260,15 @@ export function DeckLibraryWorkspace({
       confirmLabel: "Delete folder",
       destructive: true,
     });
-    if (!accepted || !beginOrganizationMutation()) return;
-    const previous = organization;
+    const previous = organizationRef.current;
+    if (!accepted || !previous || !beginOrganizationMutation()) return;
     try {
       const updated = await deleteDeckFolder({
         folderId: folder.id,
         revision: folder.revision,
         expectedOrganizationRevision: previous.revision,
       });
-      setOrganization(updated);
+      applyOrganization(updated);
       setAnnouncement(`Deleted folder ${folder.name}. Its decks moved to Unfiled.`);
     } catch (error: unknown) {
       await recoverOrganizationAfterError(error, previous);
@@ -276,8 +282,8 @@ export function DeckLibraryWorkspace({
     targetFolderId: string | null,
     targetIndex: number,
   ): Promise<void> {
-    if (!organization || isMutating || !beginOrganizationMutation()) return;
-    const previous = organization;
+    const previous = organizationRef.current;
+    if (!previous || isMutating || !beginOrganizationMutation()) return;
     const optimistic = optimisticDeckMove(previous, deck.id, targetFolderId, targetIndex);
     setOrganization(optimistic);
     try {
@@ -287,7 +293,7 @@ export function DeckLibraryWorkspace({
         targetIndex,
         expectedOrganizationRevision: previous.revision,
       });
-      setOrganization(updated);
+      applyOrganization(updated);
       const folderName =
         targetFolderId === null
           ? "Unfiled"
@@ -302,8 +308,8 @@ export function DeckLibraryWorkspace({
   }
 
   async function reorderFolder(folder: DeckFolder, targetIndex: number): Promise<void> {
-    if (!organization || isMutating || !beginOrganizationMutation()) return;
-    const previous = organization;
+    const previous = organizationRef.current;
+    if (!previous || isMutating || !beginOrganizationMutation()) return;
     const optimistic = optimisticFolderMove(previous, folder.id, targetIndex);
     setOrganization(optimistic);
     try {
@@ -312,7 +318,7 @@ export function DeckLibraryWorkspace({
         targetIndex,
         expectedOrganizationRevision: previous.revision,
       });
-      setOrganization(updated);
+      applyOrganization(updated);
       setAnnouncement(`Moved folder ${folder.name} to position ${targetIndex + 1}.`);
     } catch (error: unknown) {
       await recoverOrganizationAfterError(error, previous);
