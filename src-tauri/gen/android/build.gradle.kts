@@ -16,6 +16,12 @@ allprojects {
         google()
         mavenCentral()
     }
+    configurations.configureEach {
+        resolutionStrategy.force(
+            "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1",
+            "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.1",
+        )
+    }
 }
 
 tasks.register<Delete>("clean") {
