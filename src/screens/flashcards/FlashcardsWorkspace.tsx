@@ -136,7 +136,12 @@ export function FlashcardsWorkspace({
       />
 
       <div className={styles.tabScroller}>
-        <div className={styles.tabList} role="tablist" aria-label="Flashcards workspaces">
+        <div
+          className={styles.tabList}
+          role="tablist"
+          aria-label="Flashcards workspaces"
+          data-tour-anchor="flashcards.workspaces"
+        >
           {WORKSPACES.map((item, index) => {
             const selected = item.value === workspace;
             return (
