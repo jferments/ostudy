@@ -131,12 +131,12 @@ describe("FlashcardsWorkspace Android Back ownership", () => {
   it("returns a secondary workspace to Decks before leaving Flashcards", async () => {
     const view = render(<Harness initial="search" />);
     await waitFor(() => expect(platformBackHandlerCountForTests()).toBe(1));
-    expect(screen.getByText("Search workspace")).toBeInTheDocument();
+    expect(screen.getByText("Search workspace")).toBeTruthy();
 
     await act(async () => {
       expect(dispatchPlatformBack()).toBe(true);
     });
-    await waitFor(() => expect(screen.getByTestId("mock-deck-view")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("mock-deck-view")).toBeTruthy());
     await waitFor(() => expect(platformBackHandlerCountForTests()).toBe(0));
     view.unmount();
   });
