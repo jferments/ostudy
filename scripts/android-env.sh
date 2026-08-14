@@ -47,16 +47,9 @@ CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$OSTUDY_ANDROID_JOBS}"
 VITEST_MAX_WORKERS="${VITEST_MAX_WORKERS:-$OSTUDY_ANDROID_JOBS}"
 OSTUDY_GRADLE_WORKERS="${OSTUDY_GRADLE_WORKERS:-$OSTUDY_ANDROID_JOBS}"
 
-# Tauri starts Gradle internally for Android builds, so pass the worker ceiling
-# through GRADLE_OPTS as well as using --max-workers on direct Gradle calls.
-if [[ " ${GRADLE_OPTS:-} " != *" org.gradle.workers.max="* ]] \
-  && [[ " ${GRADLE_OPTS:-} " != *" -Dorg.gradle.workers.max="* ]]; then
-  GRADLE_OPTS="${GRADLE_OPTS:+$GRADLE_OPTS }-Dorg.gradle.workers.max=$OSTUDY_GRADLE_WORKERS"
-fi
-
 JAVA_HOME="$resolved_java_home"
 export ANDROID_HOME ANDROID_SDK_ROOT NDK_HOME JAVA_HOME
-export OSTUDY_ANDROID_JOBS OSTUDY_GRADLE_WORKERS CARGO_BUILD_JOBS VITEST_MAX_WORKERS GRADLE_OPTS
+export OSTUDY_ANDROID_JOBS OSTUDY_GRADLE_WORKERS CARGO_BUILD_JOBS VITEST_MAX_WORKERS
 export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 android_write_local_properties() {
@@ -79,7 +72,6 @@ android_emit_github_environment() {
     printf 'OSTUDY_GRADLE_WORKERS=%s\n' "$OSTUDY_GRADLE_WORKERS"
     printf 'CARGO_BUILD_JOBS=%s\n' "$CARGO_BUILD_JOBS"
     printf 'VITEST_MAX_WORKERS=%s\n' "$VITEST_MAX_WORKERS"
-    printf 'GRADLE_OPTS=%s\n' "$GRADLE_OPTS"
   } >> "$GITHUB_ENV"
   {
     printf '%s\n' "$JAVA_HOME/bin"
