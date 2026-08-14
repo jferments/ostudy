@@ -189,12 +189,11 @@ export function TourProvider({
 
   useLayoutEffect(() => {
     if (!step) return;
+    const anchor = step.anchor;
     let target: HTMLElement | null = null;
 
     function update(): void {
-      target = document.querySelector<HTMLElement>(
-        `[data-tour-anchor="${step.anchor}"]`,
-      );
+      target = document.querySelector<HTMLElement>(`[data-tour-anchor="${anchor}"]`);
       if (!target) {
         setAnchorFound(false);
         setAnchorBox(null);
