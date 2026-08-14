@@ -10,6 +10,7 @@ import {
   type RescheduleIntent,
   type ScheduleAction,
 } from "../../ipc/scheduling";
+import { useAppearance } from "../../ui/appearance/AppearanceProvider";
 import { useExperience } from "../../ui/feedback/ExperienceProvider";
 import { Menu } from "../../ui/overlays/Menu";
 import { useOverlayContext } from "../../ui/overlays/overlayContext";
@@ -49,7 +50,7 @@ export function ActivePractice({
   isRating,
   isEnding,
   isManaging,
-  flipAnimationEnabled = false,
+  flipAnimationEnabled,
   errorMessage,
   onReveal,
   onScore,
@@ -63,7 +64,9 @@ export function ActivePractice({
   const [showingAnswer, setShowingAnswer] = useState(revealed);
   const busy = isRevealing || isRating || isEnding || isManaging;
   const { topId } = useOverlayContext();
+  const appearance = useAppearance();
   const experience = useExperience();
+  const animateFlip = flipAnimationEnabled ?? appearance.motion === "full";
   const remainingCount = Math.max(0, session.cardCount - ratedCount);
   const stackLayers = remainingCount > 3 ? 2 : remainingCount > 1 ? 1 : 0;
 
@@ -113,7 +116,7 @@ export function ActivePractice({
     setShowingAnswer((currentSide) => !currentSide);
   }
 
-  const cardSurface = flipAnimationEnabled ? (
+  const cardSurface = animateFlip ? (
     <section
       className="practice-card-surface practice-flip-card"
       data-flipped={showingAnswer}
