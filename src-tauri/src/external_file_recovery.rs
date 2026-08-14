@@ -15,12 +15,7 @@ use std::{
 use rusqlite::params;
 use sha2::{Digest, Sha256};
 
-use crate::{
-    database::Database,
-    error::CommandError,
-    paths::AppPaths,
-    util::unix_time_millis,
-};
+use crate::{database::Database, error::CommandError, paths::AppPaths, util::unix_time_millis};
 
 const HASH_BUFFER_BYTES: usize = 1024 * 1024;
 
@@ -119,12 +114,7 @@ fn staging_recovery_action(ready_is_file: bool, partial_is_file: bool) -> Stagin
     }
 }
 
-fn set_state(
-    database: &Database,
-    id: &str,
-    state: &str,
-    now: i64,
-) -> Result<(), CommandError> {
+fn set_state(database: &Database, id: &str, state: &str, now: i64) -> Result<(), CommandError> {
     database.with_connection(|connection| {
         let changed = connection
             .execute(
@@ -157,7 +147,11 @@ fn extension_for_kind(kind: &str) -> Option<&'static str> {
     }
 }
 
-fn file_matches(path: &Path, expected_size: i64, expected_hash: &str) -> Result<bool, CommandError> {
+fn file_matches(
+    path: &Path,
+    expected_size: i64,
+    expected_hash: &str,
+) -> Result<bool, CommandError> {
     if !path.is_file() {
         return Ok(false);
     }
@@ -213,7 +207,41 @@ fn sync_directory(_path: Option<&Path>) -> Result<(), CommandError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{staging_recovery_action, StagingRecoveryAction};
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
+    use rusqlite::params;
+
+    use super::*;
+
+    static NEXT_WORKSPACE: AtomicU64 = AtomicU64::new(1);
+
+    struct TestWorkspace {
+        root: PathBuf,
+        paths: AppPaths,
+    }
+
+    impl TestWorkspace {
+        fn new() -> Self {
+            let sequence = NEXT_WORKSPACE.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "ostudy-external-recovery-{}-{sequence}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&root);
+            let paths = AppPaths::new(root.clone()).unwrap();
+            Self { root, paths }
+        }
+    }
+
+    impl Drop for TestWorkspace {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
 
     #[test]
     fn ready_file_wins_after_rename_before_ledger_commit() {
@@ -241,5 +269,118 @@ mod tests {
             staging_recovery_action(false, false),
             StagingRecoveryAction::Missing
         );
+    }
+
+    #[test]
+    fn every_staged_kind_maps_to_its_canonical_extension() {
+        assert_eq!(extension_for_kind("png"), Some("png"));
+        assert_eq!(extension_for_kind("jpeg"), Some("jpg"));
+        assert_eq!(extension_for_kind("gif"), Some("gif"));
+        assert_eq!(extension_for_kind("webp"), Some("webp"));
+        assert_eq!(extension_for_kind("pdf"), Some("pdf"));
+        assert_eq!(extension_for_kind("studydeck"), Some("studydeck"));
+        assert_eq!(extension_for_kind("generated_json"), Some("json"));
+        assert_eq!(extension_for_kind("ostudybackup"), Some("ostudybackup"));
+        assert_eq!(extension_for_kind("unknown"), None);
+    }
+
+    #[test]
+    fn valid_partial_file_is_promoted_and_committed() {
+        let database = Database::open_in_memory().unwrap();
+        let workspace = TestWorkspace::new();
+        let id = "11111111111111111111111111111111";
+        let bytes = b"partial-transfer";
+        let relative = AppPaths::staged_import_relative_path(id, "png");
+        let partial = workspace
+            .paths
+            .resolve_relative(&AppPaths::staged_import_partial_relative_path(id));
+        let ready = workspace.paths.resolve_relative(&relative);
+        fs::write(&partial, bytes).unwrap();
+        insert_staging_row(&database, id, &relative, bytes);
+
+        reconcile_interrupted_staging(&database, &workspace.paths).unwrap();
+
+        assert_eq!(fs::read(&ready).unwrap(), bytes);
+        assert!(!partial.exists());
+        assert_eq!(load_state(&database, id), "staged");
+    }
+
+    #[test]
+    fn valid_ready_file_is_kept_and_leftover_partial_is_removed() {
+        let database = Database::open_in_memory().unwrap();
+        let workspace = TestWorkspace::new();
+        let id = "22222222222222222222222222222222";
+        let bytes = b"ready-transfer";
+        let relative = AppPaths::staged_import_relative_path(id, "png");
+        let partial = workspace
+            .paths
+            .resolve_relative(&AppPaths::staged_import_partial_relative_path(id));
+        let ready = workspace.paths.resolve_relative(&relative);
+        fs::write(&ready, bytes).unwrap();
+        fs::write(&partial, b"leftover-partial").unwrap();
+        insert_staging_row(&database, id, &relative, bytes);
+
+        reconcile_interrupted_staging(&database, &workspace.paths).unwrap();
+
+        assert_eq!(fs::read(&ready).unwrap(), bytes);
+        assert!(!partial.exists());
+        assert_eq!(load_state(&database, id), "staged");
+    }
+
+    #[test]
+    fn corrupt_ready_file_is_removed_and_failed() {
+        let database = Database::open_in_memory().unwrap();
+        let workspace = TestWorkspace::new();
+        let id = "33333333333333333333333333333333";
+        let expected = b"expected-transfer";
+        let relative = AppPaths::staged_import_relative_path(id, "png");
+        let partial = workspace
+            .paths
+            .resolve_relative(&AppPaths::staged_import_partial_relative_path(id));
+        let ready = workspace.paths.resolve_relative(&relative);
+        fs::write(&ready, b"corrupt").unwrap();
+        fs::write(&partial, b"leftover-partial").unwrap();
+        insert_staging_row(&database, id, &relative, expected);
+
+        reconcile_interrupted_staging(&database, &workspace.paths).unwrap();
+
+        assert!(!ready.exists());
+        assert!(!partial.exists());
+        assert_eq!(load_state(&database, id), "failed");
+    }
+
+    fn insert_staging_row(database: &Database, id: &str, relative: &str, bytes: &[u8]) {
+        let byte_size = i64::try_from(bytes.len()).unwrap();
+        let sha256 = format!("{:x}", Sha256::digest(bytes));
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO staged_external_imports (
+                             id, operation_id, purpose, detected_kind, display_name,
+                             media_type, byte_size, sha256, relative_path, state,
+                             created_at, updated_at, expires_at
+                         ) VALUES (?1, ?1, 'image', 'png', 'test.png', 'image/png',
+                                   ?2, ?3, ?4, 'staging', 1, 1, 2)",
+                        params![id, byte_size, sha256, relative],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    fn load_state(database: &Database, id: &str) -> String {
+        database
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT state FROM staged_external_imports WHERE id = ?1",
+                        [id],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap()
     }
 }
