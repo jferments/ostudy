@@ -1,0 +1,21 @@
+[package]
+name = "tauri-plugin-ostudy-platform"
+version = "0.1.0"
+edition = "2021"
+description = "Private Android platform adapters for ostudy"
+authors = ["ostudy contributors"]
+license = "MIT"
+links = "tauri-plugin-ostudy-platform"
+publish = false
+
+[build-dependencies]
+tauri-plugin = { version = "2.6.3", features = ["build"] }
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.145"
+tauri = "2.11.5"
+thiserror = "2.0.17"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-linux-android"]

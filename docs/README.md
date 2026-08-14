@@ -8,16 +8,17 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 
 - [Getting started](user-guide/getting-started.md) introduces the application, its main workspaces, and a practical first study session.
 - [AI providers](user-guide/ai-providers.md) explains local, LAN, and cloud model connections without exposing provider-specific implementation details.
-- [Documents and AI-generated flashcards](user-guide/documents-and-ai-generation.md) describes the PDF workflow, privacy boundary, retries, and current limitations.
-- [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) explains personal backups, portable deck files, and generated JSON imports.
+- [Documents and AI-generated flashcards](user-guide/documents-and-ai-generation.md) describes the desktop PDF workflow, privacy boundary, retries, and current limitations.
+- [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) explains personal backups, portable deck files, generated JSON imports, and system sharing.
 
 ## Install or build ostudy
 
 - [Installation overview](installation/README.md) summarizes current platform availability and prerequisites.
 - [Linux](installation/linux.md) is the currently qualified desktop development and release path.
+- [Android](installation/android.md) explains first-time SDK/NDK setup, emulator and physical-device development, APK/AAB builds, smoke testing, and installation.
 - [Windows](installation/windows.md) describes the source-build path and its current qualification status.
 - [macOS](installation/macos.md) describes the source-build path and its current qualification status.
-- [Android and iOS](installation/mobile.md) records planned mobile support without presenting it as a current release.
+- [Mobile platform status](installation/mobile.md) summarizes implemented Android support and planned iOS work.
 
 ## Follow the project
 
@@ -36,9 +37,11 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 ## Develop and maintain ostudy
 
 - [Development guide](development/guide.md) covers setup, repository layout, change design, and day-to-day commands.
+- [Android development architecture](development/android.md) documents the Kotlin/Rust boundary, generated project, emulator tests, package checks, and Android workflows.
+- [Android self-hosted runner](development/android-self-hosted-runner.md) explains KVM, SDK, runner labels, systemd service setup, and automated emulator qualification.
 - [Platform portability inventory](development/platform-portability-inventory.md) records the current OS assumptions and the phase responsible for removing each one.
 - [Git and pull-request workflow](development/workflow.md) defines the publication, review, merge, release, and rollback process.
-- [Testing and CI](development/testing-and-ci.md) is the authoritative description of the changed, static, fast, and full validation tiers.
+- [Testing and CI](development/testing-and-ci.md) is the authoritative description of the changed, static, fast, full, and Android validation tiers.
 - [Dependency audit](development/dependency-audit.md) records the pinned dependency graph and native runtime trust boundaries.
 - The remaining documents in [`development/`](development/) are focused acceptance and regression plans for high-risk subsystems.
 - [`agents/`](agents/) contains additional guardrails for automated maintainers; [`AGENTS.md`](../AGENTS.md) remains their repository-wide entry point.

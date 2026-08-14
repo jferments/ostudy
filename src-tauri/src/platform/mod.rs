@@ -1,5 +1,7 @@
 //! Typed operating-system capability ports and runtime composition.
 
+#[cfg(target_os = "android")]
+mod android;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod desktop;
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -232,31 +234,89 @@ pub struct ExternalFileRequest {
 }
 
 #[derive(Clone, Debug)]
-pub struct ExternalSource {
+pub struct ExternalImportTarget {
     pub path: PathBuf,
-    pub display_name: String,
+    pub maximum_bytes: u64,
 }
 
 #[derive(Clone, Debug)]
-pub struct ExternalDestination {
+pub struct ExternalAcquireResult {
+    pub display_name: String,
+    pub reported_media_type: Option<String>,
+    pub copied_bytes: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExternalExportSource {
     pub path: PathBuf,
     pub display_name: String,
+    pub media_type: String,
+    pub maximum_bytes: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExternalPublishResult {
+    pub display_name: String,
+    pub copied_bytes: u64,
+    pub destination_kind: String,
 }
 
 pub type PlatformFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 pub trait ExternalFilePort: Send + Sync {
-    fn select_import(
+    fn acquire_import(
         &self,
         app: AppHandle,
         request: ExternalFileRequest,
-    ) -> PlatformFuture<Result<Option<ExternalSource>, CommandError>>;
+        target: ExternalImportTarget,
+    ) -> PlatformFuture<Result<Option<ExternalAcquireResult>, CommandError>>;
 
-    fn select_export(
+    fn publish_export(
         &self,
         app: AppHandle,
         request: ExternalFileRequest,
-    ) -> PlatformFuture<Result<Option<ExternalDestination>, CommandError>>;
+        source: ExternalExportSource,
+    ) -> PlatformFuture<Result<Option<ExternalPublishResult>, CommandError>>;
+}
+
+#[derive(Clone, Debug)]
+pub struct ShareSource {
+    pub title: String,
+    pub path: PathBuf,
+    pub display_name: String,
+    pub media_type: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ShareLaunchResult {
+    pub launched: bool,
+    pub destination_kind: String,
+}
+
+pub trait SystemSharePort: Send + Sync {
+    fn share_file(
+        &self,
+        app: AppHandle,
+        source: ShareSource,
+    ) -> PlatformFuture<Result<ShareLaunchResult, CommandError>>;
+}
+
+#[derive(Default)]
+pub struct UnavailableSystemSharePort;
+
+impl SystemSharePort for UnavailableSystemSharePort {
+    fn share_file(
+        &self,
+        _app: AppHandle,
+        _source: ShareSource,
+    ) -> PlatformFuture<Result<ShareLaunchResult, CommandError>> {
+        Box::pin(async {
+            Err(CommandError::new(
+                "system_share_unavailable",
+                "This build does not provide a native system share sheet.",
+            ))
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -336,6 +396,7 @@ pub struct PlatformRuntime {
     clock: Arc<dyn Clock>,
     time_zone: Arc<dyn TimeZoneProvider>,
     resources: Arc<dyn ResourceProbe>,
+    system_share: Arc<dyn SystemSharePort>,
 }
 
 impl PlatformRuntime {
@@ -350,6 +411,18 @@ impl PlatformRuntime {
         }
     }
 
+    pub fn for_app(app: AppHandle) -> Self {
+        #[cfg(target_os = "android")]
+        {
+            android::runtime(app)
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = app;
+            Self::current()
+        }
+    }
+
     pub(crate) fn from_parts(
         capabilities: Arc<dyn CapabilityProvider>,
         external_files: Arc<dyn ExternalFilePort>,
@@ -357,6 +430,7 @@ impl PlatformRuntime {
         clock: Arc<dyn Clock>,
         time_zone: Arc<dyn TimeZoneProvider>,
         resources: Arc<dyn ResourceProbe>,
+        system_share: Arc<dyn SystemSharePort>,
     ) -> Self {
         let lifecycle = Arc::new(LifecycleCoordinator::new(Arc::clone(&clock)));
         Self {
@@ -367,6 +441,7 @@ impl PlatformRuntime {
             clock,
             time_zone,
             resources,
+            system_share,
         }
     }
 
@@ -380,6 +455,10 @@ impl PlatformRuntime {
 
     pub fn secure_secret_store(&self) -> Arc<dyn SecureSecretStore> {
         Arc::clone(&self.secure_secrets)
+    }
+
+    pub fn system_share(&self) -> Arc<dyn SystemSharePort> {
+        Arc::clone(&self.system_share)
     }
 
     pub fn lifecycle(&self) -> Arc<LifecycleCoordinator> {
@@ -450,6 +529,27 @@ pub fn get_platform_capabilities(
     runtime: State<'_, PlatformRuntime>,
 ) -> PlatformCapabilitySnapshot {
     runtime.capabilities()
+}
+
+#[tauri::command]
+pub fn set_platform_back_interception(app: AppHandle, enabled: bool) -> Result<(), CommandError> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_ostudy_platform::OstudyPlatformExt;
+        app.ostudy_platform()
+            .set_back_interception(enabled)
+            .map_err(|error| {
+                CommandError::new(
+                    "android_back_interception_failed",
+                    format!("Android Back interception could not be updated: {error}"),
+                )
+            })
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, enabled);
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -51,10 +51,15 @@
     --layer-dialog: 1000;
     --layer-toast: 1200;
     --layer-effects: 1300;
-    --safe-top: env(safe-area-inset-top, 0px);
-    --safe-right: env(safe-area-inset-right, 0px);
-    --safe-bottom: env(safe-area-inset-bottom, 0px);
-    --safe-left: env(safe-area-inset-left, 0px);
+    --android-safe-top: 0px;
+    --android-safe-right: 0px;
+    --android-safe-bottom: 0px;
+    --android-safe-left: 0px;
+    --android-ime-bottom: 0px;
+    --safe-top: max(env(safe-area-inset-top, 0px), var(--android-safe-top));
+    --safe-right: max(env(safe-area-inset-right, 0px), var(--android-safe-right));
+    --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--android-safe-bottom));
+    --safe-left: max(env(safe-area-inset-left, 0px), var(--android-safe-left));
   }
 
   :root[data-theme="console"] {
@@ -80,9 +85,6 @@
     touch-action: manipulation;
   }
 
-  /* Native selects size themselves from their longest option unless explicitly
-     allowed to shrink. Keep all form controls bounded by their layout cell so
-     long deck/model names cannot overlap adjacent grid or flex content. */
   input,
   select,
   textarea {
@@ -114,12 +116,25 @@
   }
 
   @media (max-width: 760px) {
+    :root {
+      --touch-target-min: 48px;
+    }
+
     .app-shell {
       padding-bottom: calc(68px + var(--safe-bottom));
     }
 
     .main-area {
       min-height: calc(100dvh - 68px - var(--safe-bottom));
+    }
+
+    :root[data-android-ime-visible="true"] .app-shell {
+      padding-bottom: var(--android-ime-bottom);
+    }
+
+    :root[data-android-ime-visible="true"] nav[aria-label="Main navigation"] {
+      visibility: hidden;
+      pointer-events: none;
     }
   }
 
@@ -134,9 +149,6 @@
 }
 
 @layer features {
-  /* The Bulk Add destination selector must fill only its own grid track. The
-     generic min/max bounds above prevent intrinsic option width from escaping;
-     width: 100% makes the intended two-column geometry explicit. */
   .bulk-entry-controls > label > select {
     width: 100%;
     min-width: 0;

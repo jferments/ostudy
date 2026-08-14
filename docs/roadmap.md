@@ -13,15 +13,22 @@ The following capabilities are already present in the active codebase:
 - FSRS scheduling, workload controls, voluntary and due-only study, and detailed learning analytics;
 - portable deck exchange, generated JSON import, and complete personal-library backup including recoverable unfinished authoring drafts;
 - configurable llama.cpp/Unsloth and DeepSeek provider profiles with native credential and network boundaries;
-- a managed PDF library and an initial document-to-flashcard generation workflow;
+- a managed PDF library and an initial document-to-flashcard generation workflow on desktop;
 - responsive shared UI foundations, themes, keyboard behavior, and accessibility primitives;
+- a buildable Android application with authoring, practice, analytics, system file/share integration, process restoration, and Keystore-backed credentials;
 - tiered local and self-hosted CI validation.
 
 Historical stage plans are kept under [`history/`](history/) for project archaeology. They are not the current roadmap.
 
 ## Completed portability foundation (P0-P2)
 
-The shared runtime now exposes typed platform capabilities for external files, secure secrets, lifecycle, time zones, and resource observation. External imports are staged into managed storage, exports are prepared before publication, card images use opaque asset identities, and card/template/bulk/AI-profile metadata editors retain bounded device-local drafts across process loss. Final authoring saves retire the exact flushed draft inside the canonical SQLite transaction, and backup format version 3 restores persistent drafts with their staged images. Android, iOS, Windows, and macOS adapters and packaging remain later platform phases.
+The shared runtime exposes typed platform capabilities for external files, secure secrets, lifecycle, time zones, and resource observation. External imports are staged into managed storage, exports are prepared before publication, card images use opaque asset identities, and card/template/bulk/AI-profile metadata editors retain bounded device-local drafts across process loss. Final authoring saves retire the exact flushed draft inside the canonical SQLite transaction, and backup format version 3 restores persistent drafts with their staged images.
+
+## Completed Android application foundation (A1-A3)
+
+The generated Tauri Android shell now boots the shared application and uses a private Kotlin plugin for Android-only APIs. Android supports ordinary deck/card/template authoring, practice, analytics, durable drafts, interrupted-practice restoration, managed images, Storage Access Framework import/export, outgoing and confirmed incoming system shares, complete backup/restore, Android Keystore credentials, connectivity observations, system Back, safe areas, and software-keyboard insets.
+
+The repository includes pinned SDK/NDK tooling, Android project/package verifiers, unsigned APK/AAB workflows, and an official API 36 emulator smoke suite. PDF import, rendering, OCR, and AI document generation remain an explicit Android development stub and are the next Android-specific platform phase rather than hidden partial functionality.
 
 ## Current priorities
 
@@ -29,17 +36,21 @@ The shared runtime now exposes typed platform capabilities for external files, s
 
 PDF generation is the newest large subsystem and remains the most important reliability target. Work in this area includes improving extraction quality, OCR recovery, provider compatibility, progress reporting, cancellation, retries, diagnostic clarity, generated-card quality, and behavior on large or unusual documents. The goal is not merely to make one test PDF succeed, but to make failures understandable and recoverable without corrupting the local library.
 
-### 2. Refine everyday authoring and review ergonomics
+### 2. Add Android document processing
 
-Autosaved card, template, bulk-entry, and AI-profile metadata drafts now recover after interruption and participate in complete-library backup. Remaining improvements include richer image sizing and alignment, clearer multi-draft management, and a carefully designed undo-last-review operation that restores an exact prior schedule state without rewriting historical evidence incorrectly.
+Android now covers the ordinary study application but intentionally omits PDF/document processing. The next Android phase requires a native page renderer, independent text rescue, on-device OCR, bounded mobile work planning, lifecycle-safe checkpoints, and representative document-corpus testing without weakening the shared document validation pipeline.
 
-### 3. Broaden desktop qualification
+### 3. Refine everyday authoring and review ergonomics
 
-Ubuntu/Debian Linux is currently the primary qualified path. Windows and macOS need repeatable setup, native dependency packaging, automated checks, release artifacts, and platform-specific acceptance testing before they can be presented as equally supported desktop releases.
+Autosaved card, template, bulk-entry, and AI-profile metadata drafts recover after interruption and participate in complete-library backup. Remaining improvements include richer image sizing and alignment, clearer multi-draft management, and a carefully designed undo-last-review operation that restores an exact prior schedule state without rewriting historical evidence incorrectly.
 
-### 4. Continue accessibility and responsive refinement
+### 4. Broaden desktop qualification
 
-The shared UI foundation already supports compact layouts, keyboard operation, reduced motion, safe-area-aware overlays, and theme tokens. The remaining work is a systematic screen-by-screen audit, especially around dense analytics, document workflows, touch interaction, high interface scaling, and assistive technology.
+Ubuntu/Debian Linux is the primary qualified desktop path. Windows and macOS need repeatable setup, native dependency packaging, automated checks, release artifacts, and platform-specific acceptance testing before they can be presented as equally supported desktop releases.
+
+### 5. Continue accessibility and responsive refinement
+
+The shared UI foundation supports compact layouts, keyboard operation, reduced motion, safe-area-aware overlays, Android system insets, touch targets, and theme tokens. Remaining work is a systematic screen-by-screen audit, especially around dense analytics, document workflows, high interface scaling, and assistive technology on both desktop and mobile.
 
 ## Next product capabilities
 
@@ -67,9 +78,13 @@ Use deterministic analytics and optional AI interpretation to identify weak area
 
 Synchronization between a learner's own devices is planned. The design must preserve local ownership, support reliable conflict resolution, avoid requiring a single proprietary service, and protect credentials and private study material. The exact transport and encryption design has not yet been accepted, so current documentation does not claim that sync exists.
 
-### Android and iOS
+### iOS, Windows, and macOS
 
-Native mobile applications are planned after the document, storage, and desktop boundaries are stable enough to support platform adapters cleanly. Mobile work includes filesystem/content-URI handling, native PDF rendering and OCR, lifecycle-safe long-running tasks, backup/share sheets, touch-first navigation, and platform packaging. No installable Android or iOS release is currently available.
+iOS still needs its Swift platform adapters and Xcode packaging. Windows and macOS need repeatable native qualification and signed packaging. All should reuse the platform/runtime boundaries proven by Linux and Android rather than fork shared study behavior.
+
+### Android release distribution
+
+Android can be built, installed, and emulator-tested from the repository. Public Play distribution still requires a permanent release signing key, Play App Signing enrollment, store metadata, privacy declarations, and a signed release qualification workflow.
 
 ## Later possibilities
 

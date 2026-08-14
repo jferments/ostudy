@@ -290,5 +290,14 @@ export function useDurableDraft<T extends Record<string, unknown>>(
 }
 
 function stableJson(value: unknown): string {
-  return JSON.stringify(value);
+  return JSON.stringify(value, (_key, nested) => {
+    if (nested === null || typeof nested !== "object" || Array.isArray(nested)) {
+      return nested;
+    }
+    return Object.fromEntries(
+      Object.entries(nested as Record<string, unknown>).sort(([left], [right]) =>
+        left < right ? -1 : left > right ? 1 : 0,
+      ),
+    );
+  });
 }

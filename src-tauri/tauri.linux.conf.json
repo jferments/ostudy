@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/native/pdfium/*": "native/pdfium/"
+    }
+  }
+}

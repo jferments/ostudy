@@ -36,15 +36,20 @@ mod document_store;
 mod documents;
 mod editor_drafts;
 mod error;
+mod external_file_commands;
+mod external_file_recovery;
+mod external_file_streaming;
 mod external_files;
 mod library_backup;
 mod logging;
 mod paths;
 mod pdf_backend;
 mod pdf_ocr_backend;
+#[cfg_attr(mobile, allow(dead_code))]
 mod pdf_render_backend;
 pub mod platform;
 mod practice;
+mod practice_resume;
 mod practice_selection;
 mod projections;
 mod schedule_controls;
@@ -55,6 +60,7 @@ mod studyability;
 mod studydeck;
 mod system_resources;
 mod task_cancellation;
+mod ui_checkpoint;
 mod util;
 mod workload;
 
@@ -87,6 +93,7 @@ static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
 pub fn run() {
     tauri::Builder::default()
         .register_uri_scheme_protocol("ostudy-asset", asset_protocol::respond)
+        .plugin(tauri_plugin_ostudy_platform::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -100,13 +107,15 @@ pub fn run() {
             let pending_restore =
                 library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
-            let platform_runtime = platform::PlatformRuntime::current();
+            let platform_runtime = platform::PlatformRuntime::for_app(app.handle().clone());
             platform::install_global(platform_runtime.clone()).map_err(io::Error::other)?;
             let ai_runtime = AiRuntimeState::new(platform_runtime.secure_secret_store())
                 .map_err(io::Error::other)?;
             let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
                 .map_err(|error| io::Error::other(error.to_string()))?;
 
+            external_file_recovery::reconcile_interrupted_staging(&database, &paths)
+                .map_err(|error| io::Error::other(error.message))?;
             external_files::reconcile_startup(&database, &paths)
                 .map_err(|error| io::Error::other(error.message))?;
             editor_drafts::reconcile_startup(&database)
@@ -242,10 +251,18 @@ pub fn run() {
             settings::save_settings,
             settings::get_app_info,
             platform::get_platform_capabilities,
-            external_files::select_and_stage_external_import,
+            platform::set_platform_back_interception,
+            ui_checkpoint::get_ui_checkpoint,
+            ui_checkpoint::save_ui_checkpoint,
+            ui_checkpoint::clear_ui_checkpoint,
+            external_file_streaming::stream_select_and_stage_external_import,
             external_files::release_staged_external_import,
-            external_files::publish_prepared_export,
+            external_file_streaming::stream_publish_prepared_export,
+            external_file_commands::share_prepared_export,
             external_files::release_prepared_export,
+            external_file_commands::list_incoming_shares,
+            external_file_commands::stage_incoming_share,
+            external_file_commands::dismiss_incoming_share,
             editor_drafts::open_editor_draft,
             editor_drafts::save_editor_draft,
             editor_drafts::discard_editor_draft,
@@ -277,6 +294,7 @@ pub fn run() {
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
             practice_selection::start_card_practice,
+            practice_resume::resume_practice_session,
             practice_selection::get_practice_card_window,
             practice_selection::refresh_practice_after_card_edit,
             practice::mark_practice_card_viewed,

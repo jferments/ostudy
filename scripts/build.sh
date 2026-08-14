@@ -35,6 +35,9 @@ pnpm run verify:versions
 [[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]] || \
   die "Expected esbuild $ESBUILD_VERSION, found $(pnpm exec esbuild --version)."
 
+log "Running deterministic compile preflight"
+bash "$SCRIPT_DIR/check-build-preflight.sh"
+
 log "Building the standalone ostudy application with $CARGO_BUILD_JOBS Cargo jobs"
 # Tauri forwards arguments after `--` to Cargo. `--locked` makes a stale or
 # inconsistent Cargo.lock fail explicitly instead of silently rewriting it.

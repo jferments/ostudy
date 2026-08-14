@@ -11,12 +11,44 @@ const failures = [];
 const rustFiles = (await collectFiles(join(root, "src-tauri", "src"))).filter((path) =>
   path.endsWith(".rs"),
 );
-const rustText = (await Promise.all(rustFiles.map((path) => readFile(path, "utf8")))).join("\n");
-const renamedCommands = new Map();
-for (const match of rustText.matchAll(
-  /#\[tauri::command\s*\(\s*rename\s*=\s*"([a-z][a-z0-9_]*)"\s*\)\]\s*pub\s+fn\s+([a-z][a-z0-9_]*)/gu,
-)) {
-  renamedCommands.set(match[2], match[1]);
+
+// Tauri's command macro emits helper symbols derived from the public command
+// name. Two definitions with the same command name can therefore fail at Rust
+// macro expansion even when the functions live in different modules. Track
+// definitions explicitly rather than inferring them only from generate_handler.
+const commandDefinitions = new Map();
+const definitionsByFunction = new Map();
+const commandPattern =
+  /#\[tauri::command(?<attribute>\s*\([^\]]*\))?\]\s*pub(?:\([^)]*\))?\s+(?:async\s+)?fn\s+(?<function>[a-z][a-z0-9_]*)/gu;
+for (const path of rustFiles) {
+  const text = await readFile(path, "utf8");
+  const displayPath = relative(root, path).replaceAll("\\", "/");
+  for (const match of text.matchAll(commandPattern)) {
+    const functionName = match.groups?.function;
+    if (!functionName) continue;
+    const rename = match.groups?.attribute?.match(
+      /\brename\s*=\s*"([a-z][a-z0-9_]*)"/u,
+    )?.[1];
+    const commandName = rename ?? functionName;
+    const definition = { functionName, commandName, displayPath };
+
+    const commandLocations = commandDefinitions.get(commandName) ?? [];
+    commandLocations.push(definition);
+    commandDefinitions.set(commandName, commandLocations);
+
+    const functionLocations = definitionsByFunction.get(functionName) ?? [];
+    functionLocations.push(definition);
+    definitionsByFunction.set(functionName, functionLocations);
+  }
+}
+
+for (const [commandName, definitions] of commandDefinitions) {
+  if (definitions.length <= 1) continue;
+  failures.push(
+    `Tauri command is defined more than once: ${commandName} (${definitions
+      .map((definition) => definition.displayPath)
+      .join(", ")})`,
+  );
 }
 
 const handlerBody = rustRoot.match(/tauri::generate_handler!\s*\[([\s\S]*?)\]\s*\)/u)?.[1];
@@ -32,7 +64,22 @@ if (handlerBody) {
       failures.push(`Invalid Tauri command registry entry: ${entry}`);
       continue;
     }
-    const command = renamedCommands.get(functionName) ?? functionName;
+
+    const definitions = definitionsByFunction.get(functionName) ?? [];
+    if (definitions.length === 0) {
+      failures.push(`Registered Tauri command does not resolve to a #[tauri::command] function: ${entry}`);
+      continue;
+    }
+    if (definitions.length > 1) {
+      failures.push(
+        `Registered Tauri command name is ambiguous: ${entry} (${definitions
+          .map((definition) => definition.displayPath)
+          .join(", ")})`,
+      );
+      continue;
+    }
+
+    const command = definitions[0].commandName;
     if (registered.has(command)) failures.push(`Tauri command is registered twice: ${command}`);
     registered.add(command);
   }
@@ -94,7 +141,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `OK   IPC contract: ${registered.size} registered commands exactly match frontend invoke wrappers; obsolete commands are absent.`,
+  `OK   IPC contract: ${commandDefinitions.size} unique native command definitions, ${registered.size} registered commands, and frontend invoke wrappers agree.`,
 );
 
 async function collectFiles(directory) {

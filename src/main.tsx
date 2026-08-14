@@ -4,10 +4,11 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { recordWebviewDiagnostic } from "./ipc/diagnostics";
+import { PlatformProvider } from "./platform/PlatformProvider";
+import { installAndroidTestBridge } from "./testing/androidTestBridge";
 import { ExperienceProvider } from "./ui/feedback/ExperienceProvider";
 import "./ui/foundations/index.css";
 import { OverlayProvider } from "./ui/overlays/OverlayProvider";
-import { PlatformProvider } from "./platform/PlatformProvider";
 
 window.addEventListener("error", (event) => {
   void recordWebviewDiagnostic(
@@ -19,6 +20,8 @@ window.addEventListener("unhandledrejection", (event) => {
   void recordWebviewDiagnostic("webview_unhandled_rejection", event.reason);
 });
 
+installAndroidTestBridge();
+
 const rootElement = document.getElementById("root");
 
 if (rootElement === null) {
@@ -29,11 +32,11 @@ createRoot(rootElement).render(
   <StrictMode>
     <PlatformProvider>
       <OverlayProvider>
-      <ExperienceProvider>
-        <AppErrorBoundary>
-          <App />
-        </AppErrorBoundary>
-      </ExperienceProvider>
+        <ExperienceProvider>
+          <AppErrorBoundary>
+            <App />
+          </AppErrorBoundary>
+        </ExperienceProvider>
       </OverlayProvider>
     </PlatformProvider>
   </StrictMode>,

@@ -46,6 +46,7 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
               key={item.section}
               type="button"
               className={styles.compactButton}
+              data-testid={`nav-${item.section}`}
               data-active={isActive(item.section, section)}
               aria-current={isActive(item.section, section) ? "page" : undefined}
               onClick={() => navigate(item.section)}
@@ -57,6 +58,7 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
           <button
             type="button"
             className={styles.compactButton}
+            data-testid="nav-more"
             data-active={!COMPACT_SECTIONS.has(section) && !isActive("decks", section)}
             aria-expanded={moreOpen}
             onClick={() => setMoreOpen(true)}
@@ -69,7 +71,12 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
           <Sheet title="More" description="Additional ostudy sections" onClose={() => setMoreOpen(false)}>
             <div className={styles.moreList}>
               {ITEMS.filter((item) => !COMPACT_SECTIONS.has(item.section)).map((item) => (
-                <button key={item.section} type="button" onClick={() => navigate(item.section)}>
+                <button
+                  key={item.section}
+                  type="button"
+                  data-testid={`nav-${item.section}`}
+                  onClick={() => navigate(item.section)}
+                >
                   <span aria-hidden="true">{item.icon}</span>
                   <span>{item.label}</span>
                 </button>
@@ -91,6 +98,7 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
           <button
             key={item.section}
             type="button"
+            data-testid={`nav-${item.section}`}
             className={isActive(item.section, section) ? "nav-button active" : "nav-button"}
             aria-current={isActive(item.section, section) ? "page" : undefined}
             onClick={() => navigate(item.section)}

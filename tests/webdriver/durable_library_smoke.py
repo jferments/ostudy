@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Restoration-aware entry point for the durable native WebDriver smoke."""
+
+from __future__ import annotations
+
+import json
+
+import smoke as webdriver
+
+
+def verify_persistence_after_restart(
+    session_id: str,
+    deck_name: str,
+    question: str,
+) -> None:
+    """Verify A2 UI restoration, then navigate explicitly to durable library state."""
+    webdriver.progress("Verifying restored Analytics checkpoint after restart")
+    deadline = webdriver.deadline_after(webdriver.ANALYTICS_TIMEOUT_SECONDS)
+    webdriver.verify_shell(session_id, deadline)
+    webdriver.wait_for_element_text(
+        session_id,
+        "css selector",
+        "main h1",
+        "Analytics",
+        deadline,
+    )
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        "//section[contains(@class, 'recent-review-panel')]"
+        f"//strong[normalize-space(.)={json.dumps(question)}]",
+        deadline,
+    )
+
+    webdriver.progress("Navigating to Decks to verify deck and card persistence")
+    deadline = webdriver.deadline_after()
+    decks_button = webdriver.find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-decks']",
+        deadline,
+    )
+    webdriver.click(session_id, decks_button)
+    webdriver.wait_for_element_text(
+        session_id,
+        "css selector",
+        "main h1",
+        "Decks",
+        deadline,
+    )
+    deck_button = webdriver.find_element(
+        session_id,
+        "xpath",
+        "//section[@aria-label='Deck library']"
+        f"//button[contains(normalize-space(.), {json.dumps(deck_name)})]",
+        deadline,
+    )
+    webdriver.click(session_id, deck_button)
+    webdriver.wait_for_element_text(
+        session_id,
+        "css selector",
+        "main h1",
+        deck_name,
+        deadline,
+    )
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        f"//strong[normalize-space(.)={json.dumps(question)}]",
+        deadline,
+    )
+
+    webdriver.progress("Verifying persisted review analytics after restart")
+    deadline = webdriver.deadline_after(webdriver.ANALYTICS_TIMEOUT_SECONDS)
+    analytics_button = webdriver.find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-analytics']",
+        deadline,
+    )
+    webdriver.click(session_id, analytics_button)
+    webdriver.wait_for_element_text(
+        session_id,
+        "css selector",
+        "main h1",
+        "Analytics",
+        deadline,
+    )
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        "//section[contains(@class, 'recent-review-panel')]"
+        f"//strong[normalize-space(.)={json.dumps(question)}]",
+        deadline,
+    )
+
+    webdriver.progress("Verifying post-restart navigation")
+    deadline = webdriver.deadline_after()
+    settings_button = webdriver.find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-settings']",
+        deadline,
+    )
+    webdriver.click(session_id, settings_button)
+    webdriver.wait_for_element_text(
+        session_id,
+        "css selector",
+        "main h1",
+        "Settings",
+        deadline,
+    )
+
+
+if __name__ == "__main__":
+    webdriver.verify_persistence_after_restart = verify_persistence_after_restart
+    raise SystemExit(webdriver.main())

@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 import type { DeckOpenRequest } from "../App";
+import { AndroidDeckSharePanel } from "../components/AndroidDeckSharePanel";
 import type { ShowToast } from "../components/Toast";
 import type { DeckSummary } from "../ipc/decks";
 import type { AppSettings } from "../ipc/settings";
+import { registerPlatformBackHandler } from "../platform/backNavigation";
 import { CardsScreen } from "./CardsScreen";
 import { DecksScreen } from "./DecksScreen";
 import { BulkEntryModal } from "./cards/BulkEntryModal";
@@ -37,6 +39,25 @@ export function DecksWorkspace({
 }: DecksWorkspaceProps) {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [deckView, setDeckView] = useState<DeckWorkspaceView>("library");
+  const nestedDeckView = deckView !== "library";
+
+  useLayoutEffect(() => {
+    if (!nestedDeckView) return;
+    return registerPlatformBackHandler(() => {
+      // Detail and editor are one continuous nested navigation scope. Keep one
+      // handler registered while moving between them so a physical Android Back
+      // gesture can never arrive in a detail -> editor effect-cleanup gap.
+      // DecksScreen and CardEditorScreen already centralize their safe exit
+      // behavior in the visible Back controls (including dirty-draft prompts),
+      // so Android Back reuses that exact path.
+      const back = document.querySelector<HTMLButtonElement>(
+        ".decks-workspace .back-button:not([disabled])",
+      );
+      if (!back) return false;
+      back.click();
+      return true;
+    });
+  }, [nestedDeckView]);
 
   return (
     <div className="decks-workspace">
@@ -55,23 +76,26 @@ export function DecksWorkspace({
       />
 
       {deckView === "library" ? (
-        <section className="decks-global-search" aria-labelledby="all-cards-search-heading">
-          <div className="decks-global-search-heading">
-            <div>
-              <span className="eyebrow">CARD LIBRARY</span>
-              <h2 id="all-cards-search-heading">Search and filter cards</h2>
-              <p>Search every active deck or narrow the results to selected decks.</p>
+        <>
+          <AndroidDeckSharePanel decks={decks} showToast={showToast} />
+          <section className="decks-global-search" aria-labelledby="all-cards-search-heading">
+            <div className="decks-global-search-heading">
+              <div>
+                <span className="eyebrow">CARD LIBRARY</span>
+                <h2 id="all-cards-search-heading">Search and filter cards</h2>
+                <p>Search every active deck or narrow the results to selected decks.</p>
+              </div>
             </div>
-          </div>
-          <CardsScreen
-            embedded
-            decks={decks}
-            refreshDecks={refreshDecks}
-            onPracticeCards={onPracticeCards}
-            onDirtyChange={onDirtyChange}
-            showToast={showToast}
-          />
-        </section>
+            <CardsScreen
+              embedded
+              decks={decks}
+              refreshDecks={refreshDecks}
+              onPracticeCards={onPracticeCards}
+              onDirtyChange={onDirtyChange}
+              showToast={showToast}
+            />
+          </section>
+        </>
       ) : null}
 
       {bulkOpen ? (

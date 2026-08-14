@@ -32,6 +32,15 @@ export interface PracticeSession {
   startedAt: number;
 }
 
+export interface ResumedPracticeSession {
+  session: PracticeSession;
+  resumePosition: number;
+  revealed: boolean;
+  ratedCount: number;
+  correctCount: number;
+  completed: boolean;
+}
+
 export interface PracticeWorkloadOverview {
   newLimit: number;
   reviewLimit: number;
@@ -129,6 +138,12 @@ export async function startSelectedPractice(input: StartPracticeInput): Promise<
 
 export async function startCardPractice(input: StartCardPracticeInput): Promise<PracticeSession> {
   return invoke<PracticeSession>("start_card_practice", { input });
+}
+
+export async function resumePracticeSession(sessionId: string): Promise<ResumedPracticeSession> {
+  return invoke<ResumedPracticeSession>("resume_practice_session", {
+    input: { sessionId },
+  });
 }
 
 export async function getPracticeCardWindow(

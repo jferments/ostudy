@@ -32,6 +32,7 @@ const allowedRootEntries = new Set([
   "docs",
   "index.html",
   "package.json",
+  "plugins",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
   "run-app.sh",
@@ -57,6 +58,32 @@ for (const entry of [...rootEntries].sort()) {
       `${entry}: tracked top-level entry is not a conventional repository entry point or tool-discovered configuration; place subject-specific material under docs/, scripts/, tests/, or the owning source directory`,
     );
   }
+}
+
+// Native Tauri plugins are independent Rust/Gradle source packages rather than
+// application modules, so `plugins/` is a canonical source root. Keep it just as
+// constrained as the other top-level roots instead of allowing arbitrary
+// subject-specific directories to accumulate there.
+const allowedPluginEntries = new Set(["plugins/ostudy-platform"]);
+const pluginEntries = new Set(
+  trackedFiles
+    .filter((path) => path.startsWith("plugins/"))
+    .map((path) => path.split("/").slice(0, 2).join("/")),
+);
+for (const entry of [...pluginEntries].sort()) {
+  if (!allowedPluginEntries.has(entry)) {
+    failures.push(`${entry}: unrecognized top-level native plugin package`);
+  }
+}
+for (const path of [
+  "plugins/ostudy-platform/Cargo.toml",
+  "plugins/ostudy-platform/build.rs",
+  "plugins/ostudy-platform/permissions/default.toml",
+  "plugins/ostudy-platform/src/lib.rs",
+  "plugins/ostudy-platform/android/build.gradle.kts",
+  "plugins/ostudy-platform/android/src/main/java/OstudyPlatformPlugin.kt",
+]) {
+  if (!tracked.has(path)) failures.push(`Required native platform plugin source is missing: ${path}`);
 }
 
 const allowedDocsEntries = new Set([

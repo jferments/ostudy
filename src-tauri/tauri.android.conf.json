@@ -1,0 +1,18 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ostudy",
+        "resizable": true,
+        "fullscreen": false
+      }
+    ]
+  },
+  "bundle": {
+    "android": {
+      "minSdkVersion": 28,
+      "debugApplicationIdSuffix": ".dev"
+    }
+  }
+}

@@ -17,6 +17,16 @@ from typing import Any
 
 WEBDRIVER_URL = "http://127.0.0.1:4444"
 ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf"
+STEP_TIMEOUT_SECONDS = 30
+ANALYTICS_TIMEOUT_SECONDS = 45
+
+
+def deadline_after(seconds: int = STEP_TIMEOUT_SECONDS) -> float:
+    return time.monotonic() + seconds
+
+
+def progress(message: str) -> None:
+    print(f"[native-smoke] {message}", flush=True)
 
 
 def request(method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
@@ -295,11 +305,13 @@ def verify_shell(session_id: str, deadline: float) -> None:
         raise AssertionError(f"Expected ostudy branding, found {brand_text!r}")
 
 
-def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
+def create_and_review_card(session_id: str) -> tuple[str, str]:
     deck_name = "Native smoke deck"
     question = "What does the native smoke test persist?"
     answer = "A deck, a card, and one accepted review."
 
+    progress("Creating a deck")
+    deadline = deadline_after()
     click_text_button(session_id, "New deck", deadline)
     set_input_text(
         session_id,
@@ -317,6 +329,8 @@ def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
     click(session_id, create_button)
     wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
 
+    progress("Creating and verifying a flashcard")
+    deadline = deadline_after()
     click_text_button(session_id, "Add flashcard", deadline)
     set_rich_editor_text(session_id, 0, question, deadline)
     set_rich_editor_text(session_id, 1, answer, deadline)
@@ -335,6 +349,8 @@ def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
         deadline,
     )
 
+    progress("Completing one review")
+    deadline = deadline_after()
     practice_button = find_element(
         session_id,
         "xpath",
@@ -368,12 +384,15 @@ def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
         deadline,
     )
 
+    progress("Verifying analytics and chart data")
+    deadline = deadline_after(ANALYTICS_TIMEOUT_SECONDS)
     click_text_button(session_id, "View analytics", deadline)
     wait_for_element_text(session_id, "css selector", "main h1", "Analytics", deadline)
     find_element(
         session_id,
         "xpath",
-        f"//*[normalize-space(.)={json.dumps(question)}]",
+        "//section[contains(@class, 'recent-review-panel')]"
+        f"//strong[normalize-space(.)={json.dumps(question)}]",
         deadline,
     )
     click_text_button(session_id, "View chart data", deadline)
@@ -384,6 +403,7 @@ def create_and_review_card(session_id: str, deadline: float) -> tuple[str, str]:
         "Data represented in the learning progress chart",
         deadline,
     )
+    progress("Analytics verification completed")
     return deck_name, question
 
 
@@ -391,8 +411,9 @@ def verify_persistence_after_restart(
     session_id: str,
     deck_name: str,
     question: str,
-    deadline: float,
 ) -> None:
+    progress("Verifying deck and card persistence after restart")
+    deadline = deadline_after()
     verify_shell(session_id, deadline)
     deck_button = find_element(
         session_id,
@@ -409,6 +430,8 @@ def verify_persistence_after_restart(
         deadline,
     )
 
+    progress("Verifying persisted review analytics after restart")
+    deadline = deadline_after(ANALYTICS_TIMEOUT_SECONDS)
     analytics_button = find_element(
         session_id,
         "xpath",
@@ -420,10 +443,13 @@ def verify_persistence_after_restart(
     find_element(
         session_id,
         "xpath",
-        f"//*[normalize-space(.)={json.dumps(question)}]",
+        "//section[contains(@class, 'recent-review-panel')]"
+        f"//strong[normalize-space(.)={json.dumps(question)}]",
         deadline,
     )
 
+    progress("Verifying post-restart navigation")
+    deadline = deadline_after()
     settings_button = find_element(
         session_id,
         "xpath",
@@ -443,6 +469,7 @@ def main() -> int:
         raise FileNotFoundError(application)
 
     session_id: str | None = None
+    progress("Starting tauri-driver")
     with tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False) as driver_log:
         log_path = Path(driver_log.name)
         driver = subprocess.Popen(
@@ -454,21 +481,17 @@ def main() -> int:
         )
 
     try:
-        wait_for_driver(time.monotonic() + 20)
+        wait_for_driver(deadline_after(20))
+        progress("Opening the first native application session")
         session_id = create_session(application)
-        deadline = time.monotonic() + 45
-        verify_shell(session_id, deadline)
-        deck_name, question = create_and_review_card(session_id, deadline)
+        verify_shell(session_id, deadline_after())
+        deck_name, question = create_and_review_card(session_id)
 
+        progress("Restarting the native application session")
         delete_session(session_id)
         session_id = None
         session_id = create_session(application)
-        verify_persistence_after_restart(
-            session_id,
-            deck_name,
-            question,
-            time.monotonic() + 45,
-        )
+        verify_persistence_after_restart(session_id, deck_name, question)
 
         print(
             "Native smoke test passed: created a deck and card, accepted a review, "

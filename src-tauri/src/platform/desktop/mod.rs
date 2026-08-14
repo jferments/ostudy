@@ -17,5 +17,6 @@ pub(super) fn runtime() -> PlatformRuntime {
         clock,
         Arc::new(time::SystemTimeZoneProvider),
         Arc::new(resources::SysinfoResourceProbe),
+        Arc::new(crate::platform::UnavailableSystemSharePort),
     )
 }

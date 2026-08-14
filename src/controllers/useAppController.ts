@@ -4,7 +4,14 @@ import type { ShowToast, ToastMessage } from "../components/Toast";
 import type { AnalyticsRange } from "../ipc/analytics";
 import { getErrorMessage } from "../ipc/common";
 import { listDecks, type DeckSummary } from "../ipc/decks";
+import { listenToLifecycle } from "../ipc/platform";
 import { getSettings, type AppSettings } from "../ipc/settings";
+import {
+  getUiCheckpoint,
+  saveUiCheckpoint,
+  type PracticeCheckpoint,
+} from "../ipc/uiCheckpoint";
+import { registerPlatformBackHandler } from "../platform/backNavigation";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import {
   hasActivePracticeSession,
@@ -74,6 +81,7 @@ export function useAppController() {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastSequence = useRef(1);
   const [practiceLaunch, setPracticeLaunch] = useState<PracticeLaunchRequest | null>(null);
+  const [practiceRestore, setPracticeRestore] = useState<PracticeCheckpoint | null>(null);
   const practiceRequestSequence = useRef(1);
   const [deckOpenRequest, setDeckOpenRequest] = useState<DeckOpenRequest | null>(null);
   const deckOpenRequestSequence = useRef(1);
@@ -99,17 +107,52 @@ export function useAppController() {
   }, [deckRefreshLane]);
 
   const consumePracticeLaunch = useCallback(() => setPracticeLaunch(null), []);
+  const consumePracticeRestore = useCallback(() => setPracticeRestore(null), []);
   const consumeDeckOpenRequest = useCallback(() => setDeckOpenRequest(null), []);
   const consumeAnalyticsLaunch = useCallback(() => setAnalyticsLaunch(null), []);
 
   useEffect(() => {
     const token = deckRefreshLane.begin();
-    void Promise.all([getSettings(), listDecks()])
-      .then(([loadedSettings, loadedDecks]) => {
+    const checkpoint = getUiCheckpoint().catch((error: unknown) => {
+      console.error(
+        "Unable to restore the device navigation checkpoint:",
+        getErrorMessage(error),
+      );
+      return null;
+    });
+    void Promise.all([getSettings(), listDecks(), checkpoint])
+      .then(([loadedSettings, loadedDecks, restoredCheckpoint]) => {
         if (!deckRefreshLane.isCurrent(token)) return;
         setSavedSettings(loadedSettings);
         setActiveSettings(loadedSettings);
         setDecks(loadedDecks);
+        if (restoredCheckpoint) {
+          const restoredSection =
+            restoredCheckpoint.section === "practice" && !restoredCheckpoint.practice
+              ? "decks"
+              : restoredCheckpoint.section;
+          setSection(restoredSection);
+          if (
+            restoredCheckpoint.deckId &&
+            loadedDecks.some((deck) => deck.id === restoredCheckpoint.deckId)
+          ) {
+            setDeckOpenRequest({
+              requestId: deckOpenRequestSequence.current,
+              deckId: restoredCheckpoint.deckId,
+            });
+            deckOpenRequestSequence.current += 1;
+          }
+          if (restoredCheckpoint.practice) setPracticeRestore(restoredCheckpoint.practice);
+          if (restoredCheckpoint.analytics) {
+            setAnalyticsLaunch({
+              requestId: analyticsRequestSequence.current,
+              range: restoredCheckpoint.analytics.range,
+              deckIds: restoredCheckpoint.analytics.deckIds,
+              tagIds: restoredCheckpoint.analytics.tagIds,
+            });
+            analyticsRequestSequence.current += 1;
+          }
+        }
         setFatalError(null);
       })
       .catch((error: unknown) => {
@@ -119,6 +162,75 @@ export function useAppController() {
         if (deckRefreshLane.isCurrent(token)) setIsLoading(false);
       });
   }, [deckRefreshLane]);
+
+  useEffect(() => {
+    if (isLoading || section === "practice") return;
+    const analytics =
+      section === "analytics" && analyticsLaunch
+        ? {
+            range: analyticsLaunch.range,
+            deckIds: analyticsLaunch.deckIds,
+            tagIds: analyticsLaunch.tagIds,
+          }
+        : undefined;
+    void saveUiCheckpoint({
+      section,
+      deckId: deckOpenRequest?.deckId,
+      analytics,
+    }).catch((error: unknown) => {
+      console.error("Unable to save the device navigation checkpoint:", getErrorMessage(error));
+    });
+  }, [analyticsLaunch, deckOpenRequest?.deckId, isLoading, section]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listenToLifecycle((snapshot) => {
+      if (
+        section !== "practice" &&
+        (snapshot.phase === "background" ||
+          snapshot.phase === "suspending" ||
+          snapshot.phase === "termination_requested")
+      ) {
+        void saveUiCheckpoint({ section, deckId: deckOpenRequest?.deckId }).catch(
+          (error: unknown) => {
+            console.error(
+              "Unable to save the lifecycle navigation checkpoint:",
+              getErrorMessage(error),
+            );
+          },
+        );
+      }
+    })
+      .then((dispose) => {
+        if (disposed) dispose();
+        else unlisten = dispose;
+      })
+      .catch((error: unknown) => {
+        if (!disposed) {
+          console.error("Unable to observe application lifecycle:", getErrorMessage(error));
+        }
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [deckOpenRequest?.deckId, isLoading, section]);
+
+  useEffect(() => {
+    if (section === "decks") return;
+    return registerPlatformBackHandler(() => {
+      void navigate("decks");
+      return true;
+    });
+  }, [
+    hasUnsavedCard,
+    hasUnsavedSettings,
+    hasUnsavedTemplate,
+    savedSettings,
+    section,
+  ]);
 
   useEffect(() => {
     if (!hasUnsavedCard && !hasUnsavedTemplate && !hasUnsavedSettings) return;
@@ -216,7 +328,10 @@ export function useAppController() {
     if (next === section && next !== "practice") return;
     if (!(await confirmPracticeTermination(next))) return;
     if (!(await canLeaveCurrentSection())) return;
-    if (next === "practice") nextPracticeRequest([], [], [], false, "scheduled", null);
+    if (next === "practice") {
+      setPracticeRestore(null);
+      nextPracticeRequest([], [], [], false, "scheduled", null);
+    }
     if (next === "analytics") {
       const requestId = analyticsRequestSequence.current;
       analyticsRequestSequence.current += 1;
@@ -233,6 +348,7 @@ export function useAppController() {
     origin: "library" | "detail" = "library",
   ): Promise<void> {
     if (!(await canLeaveCurrentSection())) return;
+    setPracticeRestore(null);
     nextPracticeRequest(
       [deckId],
       [],
@@ -248,6 +364,7 @@ export function useAppController() {
     if (!(await canLeaveCurrentSection())) return;
     const returnTarget: PracticeReturnTarget | null =
       section === "practice" ? null : { section };
+    setPracticeRestore(null);
     nextPracticeRequest(deckIds, tagIds, [], true, "scheduled", returnTarget);
     setSection("practice");
   }
@@ -256,11 +373,13 @@ export function useAppController() {
     if (cardIds.length === 0 || !(await canLeaveCurrentSection())) return;
     const returnTarget: PracticeReturnTarget | null =
       section === "practice" ? null : { section };
+    setPracticeRestore(null);
     nextPracticeRequest([], [], cardIds, true, "scheduled", returnTarget);
     setSection("practice");
   }
 
   function returnFromPractice(target: PracticeReturnTarget): void {
+    setPracticeRestore(null);
     if (target.section === "decks" && target.deckId) {
       const requestId = deckOpenRequestSequence.current;
       deckOpenRequestSequence.current += 1;
@@ -273,6 +392,7 @@ export function useAppController() {
   }
 
   function viewSessionAnalytics(sessionId: string, deckIds: string[]): void {
+    setPracticeRestore(null);
     const requestId = analyticsRequestSequence.current;
     analyticsRequestSequence.current += 1;
     setAnalyticsLaunch({
@@ -302,11 +422,13 @@ export function useAppController() {
     toast,
     setToast,
     practiceLaunch,
+    practiceRestore,
     deckOpenRequest,
     analyticsLaunch,
     showToast,
     refreshDecks,
     consumePracticeLaunch,
+    consumePracticeRestore,
     consumeDeckOpenRequest,
     consumeAnalyticsLaunch,
     navigate,
