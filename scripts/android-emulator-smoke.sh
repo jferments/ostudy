@@ -86,8 +86,8 @@ bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
   ./gradlew --no-daemon \
     --parallel \
     --max-workers "$OSTUDY_GRADLE_WORKERS" \
-    :app:assembleDebug \
-    :app:assembleDebugAndroidTest
+    :app:assembleUniversalDebug \
+    :app:assembleUniversalDebugAndroidTest
 )
 
 app_apk="$({
