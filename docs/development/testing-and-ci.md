@@ -46,6 +46,19 @@ This is a development aid, not merge qualification. It compares the branch and w
 
 The routing is conservative. When the script cannot prove that a narrow selection is sufficient, it chooses the broader tier.
 
+## Development diagnostic sweep
+
+```bash
+./scripts/check-diagnostic.sh --profile core --output-dir .diagnostics/core
+./scripts/check-diagnostic.sh --profile android --output-dir .diagnostics/android
+```
+
+The diagnostic sweep exists to reduce avoidable one-error-at-a-time repair cycles. Unlike the authoritative fail-fast gates, it continues across independent checks and records each as `PASS`, `FAIL`, or `BLOCKED`. It writes per-gate logs, `diagnostics.json`, and `summary.md` so a human or Connector-backed agent can diagnose several unrelated defects from one runner pass.
+
+A `BLOCKED` gate is one whose declared prerequisite did not pass. For example, an emulator smoke test cannot run meaningfully when no test APK can be built. The diagnostic sweep avoids hiding independent errors, but it does not invent results across genuine dependency boundaries.
+
+The GitHub `Agent diagnostics` workflow is opt-in by PR-body marker and uses only self-hosted runners. `core` uses the ordinary ostudy runner; `android` uses the Android/KVM runner; `all` enables both. The workflow has read-only repository permissions, never commits code, and does not replace normal qualification. See [Agent-driven diagnostics](agent-diagnostics.md) for markers, artifact format, and the Connector-backed repair loop.
+
 ## Static qualification
 
 ```bash
@@ -193,16 +206,17 @@ Record the exact paths exercised and any unavailable platform test.
 
 - `check.yml` selects static, fast, or full shared/Linux qualification.
 - `android-check.yml` automatically performs Android compile/package checks and then official-emulator smoke qualification on matching Android/KVM self-hosted runners.
+- `agent-diagnostics.yml` opt-in collects independent development failures and uploads structured evidence without replacing authoritative qualification.
 - `android-package.yml` creates unsigned QA APK/AAB artifacts through explicit dispatch on an Android-capable self-hosted runner.
 - `release.yml` currently creates tagged Linux artifacts.
 
-Concurrency cancellation stops obsolete runs for the same pull request or ref. Successful runs must belong to the current head SHA. CI uses persistent build caches outside the checkout, while Git and toolchain fingerprints continue to control correctness.
+Concurrency cancellation stops obsolete runs for the same pull request or ref. Diagnostic concurrency is isolated to the diagnostic workflow and does not cancel the authoritative `Check` or `Android check` workflows. Successful runs must belong to the current head SHA. CI uses persistent build caches outside the checkout, while Git and toolchain fingerprints continue to control correctness.
 
 ## Failure artifacts and diagnostics
 
-On failure, workflows write bounded summaries and upload relevant logs. Android failures may additionally include Gradle reports, APKs, Logcat, screenshots, and UI hierarchy dumps.
+On failure, workflows write bounded summaries and upload relevant logs. The opt-in agent diagnostic workflow additionally uploads one log per gate, `results.tsv`, `diagnostics.json`, and `summary.md`. Android failures may additionally include Gradle reports, APKs, Logcat, screenshots, and UI hierarchy dumps.
 
-Diagnostic export excludes the SQLite library, cards, tags, templates, managed images, source PDFs, OCR/source text, provider prompts or responses, credentials, Keystore plaintext, and Authorization headers.
+Connector-backed agents are expected to retrieve available job logs and artifacts themselves before asking a human to reproduce a CI-capable test locally. Diagnostic export excludes the SQLite library, cards, tags, templates, managed images, source PDFs, OCR/source text, provider prompts or responses, credentials, Keystore plaintext, and Authorization headers.
 
 ## Release qualification
 
