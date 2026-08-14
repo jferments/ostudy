@@ -226,7 +226,9 @@ describe("App shell", () => {
     await screen.findByRole("heading", { name: "Decks mock" });
     fireEvent.click(screen.getByRole("button", { name: "Open Search workspace" }));
 
-    expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("search");
+    await waitFor(() =>
+      expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("search"),
+    );
     expect(screen.getByRole("button", { name: "Flashcards" }).getAttribute("aria-current")).toBe(
       "page",
     );
