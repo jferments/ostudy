@@ -101,8 +101,8 @@ describe("DeckLibraryWorkspace", () => {
           Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
-    expect(screen.getByText("Pharmacology")).toBeInTheDocument();
-    expect(screen.getByText("Anatomy")).toBeInTheDocument();
+    expect(screen.getByText("Pharmacology")).toBeTruthy();
+    expect(screen.getByText("Anatomy")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Practice" })).toHaveLength(2);
   });
 
