@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ShowToast } from "../../components/Toast";
 import type { DeckSummary } from "../../ipc/decks";
 import * as folderIpc from "../../ipc/deckFolders";
 import * as settingsIpc from "../../ipc/settings";
@@ -79,11 +80,11 @@ const settings = {
 };
 
 function renderLibrary({
-  refreshDecks = vi.fn().mockResolvedValue([pharmacology, anatomy]),
+  refreshDecks = vi.fn(async () => [pharmacology, anatomy]),
   showToast = vi.fn(),
 }: {
-  refreshDecks?: ReturnType<typeof vi.fn>;
-  showToast?: ReturnType<typeof vi.fn>;
+  refreshDecks?: () => Promise<DeckSummary[]>;
+  showToast?: ShowToast;
 } = {}) {
   return render(
     <OverlayProvider>
@@ -230,7 +231,7 @@ describe("DeckLibraryWorkspace", () => {
   });
 
   it("refreshes decks and organization after returning from nested deck work", async () => {
-    const refreshDecks = vi.fn().mockResolvedValue([pharmacology, anatomy]);
+    const refreshDecks = vi.fn(async () => [pharmacology, anatomy]);
     vi.mocked(folderIpc.getDeckLibraryOrganization)
       .mockResolvedValueOnce(organization)
       .mockResolvedValueOnce({ ...organization, revision: 5 });
