@@ -443,7 +443,7 @@ class AndroidSmokeTest {
             webView,
             predicate = { it == "true" },
             expression = {
-                "document.documentElement?.dataset?.androidBackInterception === 'true' && document.documentElement?.dataset?.overlayActive !== 'true'"
+                "document.documentElement?.dataset != null && document.documentElement.dataset.androidBackInterception === 'true' && document.documentElement.dataset.overlayActive !== 'true'"
             }
         )
     }
