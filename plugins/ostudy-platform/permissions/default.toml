@@ -2,4 +2,7 @@
 
 [default]
 description = "Allows the trusted ostudy WebView to receive native Android platform events."
-permissions = []
+permissions = [
+  "allow-register-listener",
+  "allow-remove-listener",
+]
