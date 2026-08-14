@@ -17,11 +17,10 @@ def verify_persistence_after_restart(
     webdriver.progress("Verifying restored Analytics checkpoint after restart")
     deadline = webdriver.deadline_after(webdriver.ANALYTICS_TIMEOUT_SECONDS)
     webdriver.verify_shell(session_id, deadline)
-    webdriver.wait_for_element_text(
+    webdriver.find_element(
         session_id,
         "css selector",
-        "main h1",
-        "Analytics",
+        webdriver.ANALYTICS_SCREEN_SELECTOR,
         deadline,
     )
     webdriver.find_element(
@@ -41,11 +40,10 @@ def verify_persistence_after_restart(
         deadline,
     )
     webdriver.click(session_id, decks_button)
-    webdriver.wait_for_element_text(
+    webdriver.find_element(
         session_id,
         "css selector",
-        "main h1",
-        "Flashcards",
+        "main .flashcards-workspace",
         deadline,
     )
     webdriver.find_element(
@@ -78,11 +76,10 @@ def verify_persistence_after_restart(
         deadline,
     )
     webdriver.click(session_id, analytics_button)
-    webdriver.wait_for_element_text(
+    webdriver.find_element(
         session_id,
         "css selector",
-        "main h1",
-        "Analytics",
+        webdriver.ANALYTICS_SCREEN_SELECTOR,
         deadline,
     )
     webdriver.find_element(
@@ -102,11 +99,10 @@ def verify_persistence_after_restart(
         deadline,
     )
     webdriver.click(session_id, settings_button)
-    webdriver.wait_for_element_text(
+    webdriver.find_element(
         session_id,
         "css selector",
-        "main h1",
-        "Settings",
+        "main .settings-screen",
         deadline,
     )
 
