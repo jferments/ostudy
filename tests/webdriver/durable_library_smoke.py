@@ -8,50 +8,6 @@ import json
 import smoke as webdriver
 
 
-_original_click = webdriver.click
-
-
-def dismiss_optional_tutorial(session_id: str) -> bool:
-    """Dismiss the optional first-run guide when it would intercept smoke actions."""
-    result = webdriver.request(
-        "POST",
-        f"/session/{session_id}/elements",
-        {
-            "using": "css selector",
-            "value": "button[aria-label='Close tutorial']",
-        },
-    )
-    if not isinstance(result, list):
-        return False
-    close_button = next(
-        (
-            str(item[webdriver.ELEMENT_KEY])
-            for item in result
-            if isinstance(item, dict) and webdriver.ELEMENT_KEY in item
-        ),
-        None,
-    )
-    if close_button is None:
-        return False
-    _original_click(session_id, close_button)
-    return True
-
-
-def tutorial_aware_click(session_id: str, element_id: str) -> None:
-    """Click the requested control without letting an optional tutorial race the test."""
-    dismiss_optional_tutorial(session_id)
-    try:
-        _original_click(session_id, element_id)
-    except Exception:
-        # A contextual tutorial can auto-start 500-700 ms after its anchor
-        # appears, including after this function's proactive check. Recover
-        # only when that overlay actually appeared; unrelated click failures
-        # remain visible to the smoke test.
-        if not dismiss_optional_tutorial(session_id):
-            raise
-        _original_click(session_id, element_id)
-
-
 def verify_persistence_after_restart(
     session_id: str,
     deck_name: str,
@@ -156,6 +112,5 @@ def verify_persistence_after_restart(
 
 
 if __name__ == "__main__":
-    webdriver.click = tutorial_aware_click
     webdriver.verify_persistence_after_restart = verify_persistence_after_restart
     raise SystemExit(webdriver.main())
