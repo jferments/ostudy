@@ -41,7 +41,8 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 - [Android self-hosted runner](development/android-self-hosted-runner.md) explains KVM, SDK, runner labels, systemd service setup, and automated emulator qualification.
 - [Platform portability inventory](development/platform-portability-inventory.md) records the current OS assumptions and the phase responsible for removing each one.
 - [Git and pull-request workflow](development/workflow.md) defines the publication, review, merge, release, and rollback process.
-- [Testing and CI](development/testing-and-ci.md) is the authoritative description of the changed, static, fast, full, and Android validation tiers.
+- [Testing and CI](development/testing-and-ci.md) is the authoritative description of the changed, static, fast, full, Android, and diagnostic validation tiers.
+- [Agent-driven diagnostics](development/agent-diagnostics.md) explains the opt-in multi-failure CI sweep and Connector-backed repair loop.
 - [Dependency audit](development/dependency-audit.md) records the pinned dependency graph and native runtime trust boundaries.
 - The remaining documents in [`development/`](development/) are focused acceptance and regression plans for high-risk subsystems.
 - [`agents/`](agents/) contains additional guardrails for automated maintainers; [`AGENTS.md`](../AGENTS.md) remains their repository-wide entry point.
