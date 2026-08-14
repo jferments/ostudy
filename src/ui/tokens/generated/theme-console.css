@@ -60,10 +60,10 @@
     --ostudy-material-chrome-saturation: 1;
     --ostudy-material-noise-opacity: 0.014;
     --ostudy-shadow-focus: 0 0 0 3px rgb(105 242 143 / 38%);
-    --ostudy-shadow-level1: 0 0 0 1px rgb(105 242 143 / 8%), 0 8px 18px rgb(0 0 0 / 24%);
-    --ostudy-shadow-level2: 0 0 0 1px rgb(105 242 143 / 11%), 0 12px 26px rgb(0 0 0 / 30%);
-    --ostudy-shadow-level3: 0 0 0 1px rgb(105 242 143 / 14%), 0 18px 38px rgb(0 0 0 / 36%);
-    --ostudy-shadow-level4: 0 0 0 1px rgb(105 242 143 / 18%), 0 24px 52px rgb(0 0 0 / 44%);
-    --ostudy-shadow-level5: 0 0 0 1px rgb(105 242 143 / 22%), 0 34px 76px rgb(0 0 0 / 52%);
+    --ostudy-shadow-level-1: 0 0 0 1px rgb(105 242 143 / 8%), 0 8px 18px rgb(0 0 0 / 24%);
+    --ostudy-shadow-level-2: 0 0 0 1px rgb(105 242 143 / 11%), 0 12px 26px rgb(0 0 0 / 30%);
+    --ostudy-shadow-level-3: 0 0 0 1px rgb(105 242 143 / 14%), 0 18px 38px rgb(0 0 0 / 36%);
+    --ostudy-shadow-level-4: 0 0 0 1px rgb(105 242 143 / 18%), 0 24px 52px rgb(0 0 0 / 44%);
+    --ostudy-shadow-level-5: 0 0 0 1px rgb(105 242 143 / 22%), 0 34px 76px rgb(0 0 0 / 52%);
   }
 }
