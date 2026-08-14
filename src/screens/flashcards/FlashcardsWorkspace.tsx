@@ -16,13 +16,11 @@ import { Icon, type IconName } from "../../ui/icons/Icon";
 import { RouteTransition } from "../../ui/motion/Motion";
 import { PageHeader, PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { CardsScreen } from "../CardsScreen";
-import { DecksScreen } from "../DecksScreen";
 import { TemplatesScreen } from "../TemplatesScreen";
 import { CreateCardsWorkspace } from "./CreateCardsWorkspace";
+import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
 import { TransferWorkspace } from "./TransferWorkspace";
 import styles from "./FlashcardsWorkspace.module.css";
-
-type DeckView = "library" | "detail" | "editor";
 
 interface FlashcardsWorkspaceProps {
   workspace: FlashcardsWorkspaceName;
@@ -65,20 +63,41 @@ export function FlashcardsWorkspace({
   onTemplateDirtyChange,
   showToast,
 }: FlashcardsWorkspaceProps) {
-  const [deckView, setDeckView] = useState<DeckView>("library");
+  const [deckNested, setDeckNested] = useState(false);
   const buttonsRef = useRef<Array<HTMLButtonElement | null>>([]);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const workspaceChangeRef = useRef(onWorkspaceChange);
 
   useLayoutEffect(() => {
     workspaceChangeRef.current = onWorkspaceChange;
   }, [onWorkspaceChange]);
 
+  useLayoutEffect(() => {
+    if (workspace !== "decks" || !panelRef.current) {
+      setDeckNested(false);
+      return;
+    }
+    const panel = panelRef.current;
+    const update = () => {
+      setDeckNested(Boolean(panel.querySelector(".back-button:not([disabled])")));
+    };
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(panel, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["disabled"],
+    });
+    return () => observer.disconnect();
+  }, [workspace]);
+
   useEffect(() => {
-    if (workspace === "decks" && deckView === "library") return;
+    if (workspace === "decks" && !deckNested) return;
     return registerPlatformBackHandler(() => {
-      if (workspace === "decks" && deckView !== "library") {
-        const back = document.querySelector<HTMLButtonElement>(
-          ".flashcards-workspace .back-button:not([disabled])",
+      if (workspace === "decks") {
+        const back = panelRef.current?.querySelector<HTMLButtonElement>(
+          ".back-button:not([disabled])",
         );
         if (!back) return false;
         back.click();
@@ -87,7 +106,7 @@ export function FlashcardsWorkspace({
       void workspaceChangeRef.current("decks");
       return true;
     });
-  }, [deckView, workspace]);
+  }, [deckNested, workspace]);
 
   function activateAt(index: number): void {
     const item = WORKSPACES[index];
@@ -143,50 +162,55 @@ export function FlashcardsWorkspace({
         </div>
       </div>
 
-      <RouteTransition routeKey={workspace} relation="sibling" className={styles.panel}>
-        {workspace === "decks" ? (
-          <DecksScreen
-            decks={decks}
-            settings={settings}
-            refreshDecks={refreshDecks}
-            onPracticeDeck={onPracticeDeck}
-            openDeckRequest={openDeckRequest}
-            onOpenDeckRequestConsumed={onOpenDeckRequestConsumed}
-            onManageTemplates={() => onWorkspaceChange("templates")}
-            onBulkAdd={() => onWorkspaceChange("create")}
-            onViewChange={setDeckView}
-            onDirtyChange={onCardDirtyChange}
-            showToast={showToast}
-          />
-        ) : null}
-        {workspace === "templates" ? (
-          <TemplatesScreen
-            onBack={() => onWorkspaceChange("decks")}
-            onDirtyChange={onTemplateDirtyChange}
-            showToast={showToast}
-          />
-        ) : null}
-        {workspace === "search" ? (
-          <CardsScreen
-            decks={decks}
-            refreshDecks={refreshDecks}
-            onPracticeCards={onPracticeCards}
-            onDirtyChange={onCardDirtyChange}
-            showToast={showToast}
-          />
-        ) : null}
-        {workspace === "transfer" ? (
-          <TransferWorkspace decks={decks} refreshDecks={refreshDecks} showToast={showToast} />
-        ) : null}
-        {workspace === "create" ? (
-          <CreateCardsWorkspace
-            decks={decks}
-            refreshDecks={refreshDecks}
-            onDirtyChange={onCardDirtyChange}
-            showToast={showToast}
-          />
-        ) : null}
-      </RouteTransition>
+      <div ref={panelRef}>
+        <RouteTransition routeKey={workspace} relation="sibling" className={styles.panel}>
+          {workspace === "decks" ? (
+            <DeckLibraryWorkspace
+              decks={decks}
+              settings={settings}
+              refreshDecks={refreshDecks}
+              onPracticeDeck={onPracticeDeck}
+              openDeckRequest={openDeckRequest}
+              onOpenDeckRequestConsumed={onOpenDeckRequestConsumed}
+              onManageTemplates={() => onWorkspaceChange("templates")}
+              onCreateCards={() => onWorkspaceChange("create")}
+              onCardDirtyChange={onCardDirtyChange}
+              showToast={showToast}
+            />
+          ) : null}
+          {workspace === "templates" ? (
+            <TemplatesScreen
+              onBack={() => onWorkspaceChange("decks")}
+              onDirtyChange={onTemplateDirtyChange}
+              showToast={showToast}
+            />
+          ) : null}
+          {workspace === "search" ? (
+            <CardsScreen
+              decks={decks}
+              refreshDecks={refreshDecks}
+              onPracticeCards={onPracticeCards}
+              onDirtyChange={onCardDirtyChange}
+              showToast={showToast}
+            />
+          ) : null}
+          {workspace === "transfer" ? (
+            <TransferWorkspace
+              decks={decks}
+              refreshDecks={refreshDecks}
+              showToast={showToast}
+            />
+          ) : null}
+          {workspace === "create" ? (
+            <CreateCardsWorkspace
+              decks={decks}
+              refreshDecks={refreshDecks}
+              onDirtyChange={onCardDirtyChange}
+              showToast={showToast}
+            />
+          ) : null}
+        </RouteTransition>
+      </div>
     </PageScaffold>
   );
 }
