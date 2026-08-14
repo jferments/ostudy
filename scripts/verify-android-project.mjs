@@ -79,12 +79,6 @@ expectContains(gradle, `compileSdk = ${env.get("ANDROID_COMPILE_SDK")}`, "compil
 expectContains(gradle, `minSdk = ${env.get("ANDROID_MIN_SDK")}`, "minSdk pin");
 expectContains(gradle, `targetSdk = ${env.get("ANDROID_TARGET_SDK")}`, "targetSdk pin");
 expectContains(gradle, 'applicationId = "io.github.jferments.ostudy"', "application identity");
-expectPattern(
-  gradle,
-  /applicationIdSuffix\s*=\s*["']\.dev["']/u,
-  "debug application suffix .dev",
-  "applicationIdSuffix",
-);
 expectContains(
   gradle,
   'testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"',
@@ -194,6 +188,9 @@ const androidConfig = JSON.parse(await read("src-tauri/tauri.android.conf.json")
 if (androidConfig.bundle?.android?.minSdkVersion !== Number(env.get("ANDROID_MIN_SDK"))) {
   failures.push("Tauri Android minSdkVersion does not match versions.env");
 }
+if (androidConfig.bundle?.android?.debugApplicationIdSuffix !== ".dev") {
+  failures.push("Tauri Android debugApplicationIdSuffix must be .dev");
+}
 if (androidConfig.bundle?.resources != null) {
   failures.push("Android Tauri configuration must not bundle PDFium resources during A1-A3");
 }
@@ -220,21 +217,11 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Android project, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
+  "OK   Android project, source-of-truth debug identity, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
 );
 
 function expectContains(text, value, label) {
   if (!text.includes(value)) failures.push(`Missing ${label}`);
-}
-
-function expectPattern(text, pattern, label, diagnosticToken) {
-  if (pattern.test(text)) return;
-  const matchingLines = text
-    .split(/\r?\n/u)
-    .filter((line) => line.includes(diagnosticToken))
-    .map((line) => line.trim());
-  const diagnostic = matchingLines.length > 0 ? matchingLines.join(" | ") : "no matching declaration found";
-  failures.push(`Missing ${label}; ${diagnosticToken}: ${diagnostic}`);
 }
 
 async function read(path) {
