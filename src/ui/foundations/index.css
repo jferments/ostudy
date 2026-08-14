@@ -146,6 +146,12 @@
     max-width: 100%;
   }
 
+  select {
+    min-height: var(--control-height);
+    padding-block: var(--ostudy-space-2);
+    line-height: 1.35;
+  }
+
   :root[data-motion="none"] *,
   :root[data-motion="none"] *::before,
   :root[data-motion="none"] *::after {
