@@ -523,13 +523,12 @@ def main() -> int:
     try:
         webdriver.wait_for_driver(time.monotonic() + 20)
         session_id = webdriver.create_session(application)
-        deadline = time.monotonic() + 60
-        webdriver.verify_shell(session_id, deadline)
-        verify_compact_navigation(session_id, deadline)
-        verify_dialog_focus(session_id, deadline)
-        verify_wide_navigation(session_id, deadline)
-        verify_medium_flashcards_layout(session_id, deadline)
-        verify_bulk_add_containment(session_id, deadline)
+        webdriver.verify_shell(session_id, webdriver.deadline_after())
+        verify_compact_navigation(session_id, webdriver.deadline_after(45))
+        verify_dialog_focus(session_id, webdriver.deadline_after())
+        verify_wide_navigation(session_id, webdriver.deadline_after())
+        verify_medium_flashcards_layout(session_id, webdriver.deadline_after(45))
+        verify_bulk_add_containment(session_id, webdriver.deadline_after(45))
         print(
             "Native UI platform smoke passed: compact/wide navigation, medium-width Flashcards "
             "containment, no horizontal overflow, Bulk Add control containment, dialog focus "
