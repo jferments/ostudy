@@ -45,8 +45,30 @@ struct StoredPreparedTransfer {
     suggested_filename: String,
     media_type: String,
     byte_size: i64,
+    relative_path: String,
+}
+
+#[derive(Debug)]
+struct StagedImportRow {
+    id: String,
+    purpose: String,
+    kind: String,
+    display_name: String,
+    byte_size: i64,
     sha256: String,
     relative_path: String,
+    expires_at: i64,
+    state: String,
+}
+
+#[derive(Debug)]
+struct PreparedTransferRow {
+    suggested_filename: String,
+    media_type: String,
+    byte_size: i64,
+    sha256: String,
+    relative_path: String,
+    state: String,
 }
 
 #[tauri::command]
@@ -411,60 +433,52 @@ fn load_import_by_operation(
     paths: &AppPaths,
     operation_id: &str,
 ) -> Result<Option<StagedExternalFileDto>, CommandError> {
-    let row: Option<(
-        String,
-        String,
-        String,
-        String,
-        i64,
-        String,
-        String,
-        i64,
-        String,
-    )> = connection
+    let row = connection
         .query_row(
             "SELECT id, purpose, detected_kind, display_name, byte_size, sha256,
                     relative_path, expires_at, state
              FROM staged_external_imports WHERE operation_id = ?1",
             [operation_id],
             |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                    row.get(6)?,
-                    row.get(7)?,
-                    row.get(8)?,
-                ))
+                Ok(StagedImportRow {
+                    id: row.get(0)?,
+                    purpose: row.get(1)?,
+                    kind: row.get(2)?,
+                    display_name: row.get(3)?,
+                    byte_size: row.get(4)?,
+                    sha256: row.get(5)?,
+                    relative_path: row.get(6)?,
+                    expires_at: row.get(7)?,
+                    state: row.get(8)?,
+                })
             },
         )
         .optional()
         .map_err(CommandError::database)?;
-    let Some((id, purpose, kind, display_name, byte_size, sha256, relative, expires_at, state)) =
-        row
-    else {
+    let Some(row) = row else {
         return Ok(None);
     };
-    if !matches!(state.as_str(), "staged" | "consumed") {
+    if !matches!(row.state.as_str(), "staged" | "consumed") {
         return Err(CommandError::new(
             "external_file_operation_conflict",
             "That external-file operation identifier is no longer reusable.",
         ));
     }
-    verify_file(&paths.resolve_relative(&relative), byte_size, &sha256)?;
-    let detected_kind = parse_kind(&kind)?;
+    verify_file(
+        &paths.resolve_relative(&row.relative_path),
+        row.byte_size,
+        &row.sha256,
+    )?;
+    let detected_kind = parse_kind(&row.kind)?;
     Ok(Some(StagedExternalFileDto {
-        id,
-        purpose: parse_purpose(&purpose)?,
+        id: row.id,
+        purpose: parse_purpose(&row.purpose)?,
         detected_kind,
-        display_name,
+        display_name: row.display_name,
         media_type: media_type(detected_kind).to_string(),
-        byte_size,
-        sha256,
-        expires_at,
+        byte_size: row.byte_size,
+        sha256: row.sha256,
+        expires_at: row.expires_at,
     }))
 }
 
@@ -473,45 +487,47 @@ fn load_prepared_transfer(
     paths: &AppPaths,
     id: &str,
 ) -> Result<StoredPreparedTransfer, CommandError> {
-    let row: Option<(String, String, i64, String, String, String)> = connection
+    let row = connection
         .query_row(
             "SELECT suggested_filename, media_type, byte_size, sha256, relative_path, state
              FROM prepared_exports WHERE id = ?1",
             [id],
             |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                ))
+                Ok(PreparedTransferRow {
+                    suggested_filename: row.get(0)?,
+                    media_type: row.get(1)?,
+                    byte_size: row.get(2)?,
+                    sha256: row.get(3)?,
+                    relative_path: row.get(4)?,
+                    state: row.get(5)?,
+                })
             },
         )
         .optional()
         .map_err(CommandError::database)?;
-    let Some((suggested_filename, media_type_value, byte_size, sha256, relative_path, state)) = row
-    else {
+    let Some(row) = row else {
         return Err(CommandError::new(
             "prepared_export_not_found",
             "The prepared export is no longer available.",
         ));
     };
-    if !matches!(state.as_str(), "prepared" | "published") {
+    if !matches!(row.state.as_str(), "prepared" | "published") {
         return Err(CommandError::new(
             "prepared_export_unavailable",
             "The prepared export is no longer available.",
         ));
     }
-    verify_file(&paths.resolve_relative(&relative_path), byte_size, &sha256)?;
+    verify_file(
+        &paths.resolve_relative(&row.relative_path),
+        row.byte_size,
+        &row.sha256,
+    )?;
     Ok(StoredPreparedTransfer {
         id: id.to_string(),
-        suggested_filename: validate_display_name(&suggested_filename)?,
-        media_type: validate_media_type(&media_type_value)?,
-        byte_size,
-        sha256,
-        relative_path,
+        suggested_filename: validate_display_name(&row.suggested_filename)?,
+        media_type: validate_media_type(&row.media_type)?,
+        byte_size: row.byte_size,
+        relative_path: row.relative_path,
     })
 }
 
@@ -814,6 +830,21 @@ mod tests {
     use super::*;
 
     static NEXT_FILE: AtomicU64 = AtomicU64::new(1);
+
+    #[test]
+    fn every_import_purpose_has_a_bounded_platform_request() {
+        for purpose in [
+            ExternalImportPurpose::Image,
+            ExternalImportPurpose::PdfDocument,
+            ExternalImportPurpose::StudyContent,
+            ExternalImportPurpose::LibraryBackup,
+        ] {
+            let request = import_request(purpose);
+            assert!(!request.title.is_empty());
+            assert!(!request.filters.is_empty());
+            assert!(maximum_import_bytes(purpose) > 0);
+        }
+    }
 
     #[test]
     fn rejects_adapter_byte_count_mismatches_before_ledger_commit() {
