@@ -146,6 +146,12 @@ pub struct IncomingShareSummary {
     pub byte_size: u64,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IncomingShareListResult {
+    pub items: Vec<IncomingShareSummary>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IncomingShareRequest {
