@@ -459,12 +459,29 @@ class AndroidSmokeTest {
     }
 
     private fun waitForBridge(webView: WebView) {
-        waitUntil(
-            webView,
-            timeoutSeconds = 30,
-            predicate = { it == "true" },
-            expression = { "typeof window.__OSTUDY_ANDROID_TEST__ === 'object'" }
-        )
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        var latest = JSONObject()
+        while (System.nanoTime() < deadline) {
+            val encoded = evaluateSync(
+                webView,
+                """
+                JSON.stringify({
+                  type: typeof window.__OSTUDY_ANDROID_TEST__,
+                  state: document.documentElement.dataset.androidTestBridge || 'unset',
+                  error: document.documentElement.dataset.androidTestBridgeError || '',
+                  readyState: document.readyState
+                })
+                """.trimIndent()
+            )
+            latest = JSONObject(decodeJavascriptString(encoded))
+            val state = latest.optString("state")
+            if (latest.optString("type") == "object" && state == "ready") return
+            if (state == "missing" || state == "error") {
+                throw AssertionError("Android smoke bridge initialization failed: $latest")
+            }
+            Thread.sleep(100)
+        }
+        throw AssertionError("Timed out waiting for Android smoke bridge. Last snapshot: $latest")
     }
 
     private fun evaluatePromise(webView: WebView, expression: String): JSONObject {
