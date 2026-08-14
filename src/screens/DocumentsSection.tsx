@@ -61,7 +61,6 @@ export function DocumentsSection({ refreshDecks, showToast }: DocumentsSectionPr
   const modelLabel = isLoading
     ? "Loading…"
     : profile?.modelId || profile?.displayName || "Not configured";
-  const providerLabel = profile?.providerLabel || profile?.displayName || "AI profile";
 
   return (
     <div className={styles.section} data-tour-anchor="documents.upload">
@@ -76,14 +75,14 @@ export function DocumentsSection({ refreshDecks, showToast }: DocumentsSectionPr
           <Icon name="sparkles" size={21} />
         </span>
         <div className={styles.providerCopy}>
-          <p className={styles.label}>Flashcard generation model</p>
+          <p className={styles.label}>Current Flashcard Generation model</p>
           <strong>{modelLabel}</strong>
           <small>
             {isLoading
               ? "Reading the current task default"
               : profile
-                ? `Using ${providerLabel}`
-                : "Configure a provider in Settings before generating cards"}
+                ? "Selected in Settings"
+                : "Configure a provider before generating cards"}
           </small>
         </div>
         <HelpTrigger
