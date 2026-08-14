@@ -166,9 +166,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "842ab270202dd3e936216e57878cc2b3f503059d78fc1476b4fdeb9a05fbb54e",
         sql: include_str!("../migrations/0025_durable_editor_drafts.sql"),
     },
+    Migration {
+        version: 26,
+        name: "deck_folders",
+        checksum: "520068fae65d32d3de6926b7864cb088d3466754e8b6fcfebff4c17380cfbf3e",
+        sql: include_str!("../migrations/0026_deck_folders.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 25;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 26;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -508,6 +514,8 @@ mod tests {
                     "document_generation_windows",
                     "document_outline_checkpoints",
                     "document_generation_checkpoints",
+                    "deck_folders",
+                    "library_organization",
                 ] {
                     let exists: i64 = connection
                         .query_row(
@@ -518,6 +526,17 @@ mod tests {
                         .map_err(CommandError::database)?;
                     assert_eq!(exists, 1, "missing table {table}");
                 }
+                let folder_column_exists: i64 = connection
+                    .query_row(
+                        "SELECT EXISTS(
+                             SELECT 1 FROM pragma_table_info('decks') WHERE name = 'folder_id'
+                         )",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(folder_column_exists, 1, "missing decks.folder_id");
+
                 let metadata: (String, String) = connection
                     .query_row(
                         "SELECT source_format, source_unit_kind FROM documents LIMIT 1",
