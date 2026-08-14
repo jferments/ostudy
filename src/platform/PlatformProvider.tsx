@@ -52,20 +52,24 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     const disposers: Array<() => void> = [];
     let disposed = false;
     const synchronizer = backInterceptionRef.current;
+    const root = document.documentElement;
+    root.dataset.androidBackListener = "pending";
+
+    function isAndroid(): boolean {
+      return getPlatformCapabilities().native?.operatingSystem === "android";
+    }
 
     function requestBackInterception(enabled: boolean): void {
       void synchronizer.request(enabled, applyBackInterception).catch((error: unknown) => {
-        if (!disposed && getPlatformCapabilities().native?.operatingSystem === "android") {
+        if (!disposed && isAndroid()) {
           console.error("Unable to update Android Back interception:", getErrorMessage(error));
         }
       });
     }
 
-    const backStack = subscribePlatformBackStack((count) => {
-      requestBackInterception(count > 0);
-    });
-    disposers.push(backStack);
-
+    // Native interception must never be enabled before the plugin event channel
+    // exists. Otherwise Kotlin can correctly consume a physical Back gesture
+    // while no JavaScript listener is registered to dispatch the shared stack.
     void listenToAndroidBack(() => {
       const consumed = dispatchPlatformBack();
       if (!consumed) {
@@ -76,14 +80,28 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       }
     })
       .then((dispose) => {
-        if (disposed) dispose();
-        else disposers.push(dispose);
+        if (disposed) {
+          dispose();
+          return;
+        }
+        disposers.push(dispose);
+        root.dataset.androidBackListener = "ready";
+        const backStack = subscribePlatformBackStack((count) => {
+          requestBackInterception(count > 0);
+        });
+        disposers.push(backStack);
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (!disposed) {
+          root.dataset.androidBackListener = "error";
+          if (isAndroid()) {
+            console.error("Unable to register the Android Back listener:", getErrorMessage(error));
+          }
+        }
+      });
 
     void listenToAndroidInsets((insets) => {
       updateAndroidInsets(insets);
-      const root = document.documentElement;
       root.style.setProperty("--android-safe-top", `${Math.max(0, insets.top)}px`);
       root.style.setProperty("--android-safe-right", `${Math.max(0, insets.right)}px`);
       root.style.setProperty("--android-safe-bottom", `${Math.max(0, insets.bottom)}px`);
@@ -95,20 +113,29 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
         if (disposed) dispose();
         else disposers.push(dispose);
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (!disposed && isAndroid()) {
+          console.error("Unable to register the Android insets listener:", getErrorMessage(error));
+        }
+      });
 
     void listenToAndroidNetwork(updateAndroidNetwork)
       .then((dispose) => {
         if (disposed) dispose();
         else disposers.push(dispose);
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (!disposed && isAndroid()) {
+          console.error("Unable to register the Android network listener:", getErrorMessage(error));
+        }
+      });
 
     return () => {
       disposed = true;
       for (const dispose of disposers.splice(0)) dispose();
       void synchronizer.request(false, applyBackInterception).catch(() => undefined);
-      delete document.documentElement.dataset.androidImeVisible;
+      delete root.dataset.androidBackListener;
+      delete root.dataset.androidImeVisible;
     };
   }, [applyBackInterception]);
 
