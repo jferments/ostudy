@@ -23,7 +23,7 @@ ChartJS.register(CategoryScale, LinearScale, LineController, LineElement, PointE
 interface ProgressChartProps {
   buckets: TimelineBucket[];
   range: AnalyticsRange;
-  reduceMotion: boolean;
+  reduceMotion?: boolean;
 }
 
 const compactDateFormatter = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
@@ -32,7 +32,7 @@ const monthFormatter = new Intl.DateTimeFormat(undefined, { month: "short", year
 type ChartPoint = number | null;
 type LineChartData = ChartData<"line", ChartPoint[], string>;
 
-export function ProgressChart({ buckets, range, reduceMotion }: ProgressChartProps) {
+export function ProgressChart({ buckets, range, reduceMotion = false }: ProgressChartProps) {
   const animationsEnabled = useAnimationsEnabled();
   const motionDisabled = reduceMotion || !animationsEnabled;
   const colors = readChartColors();
