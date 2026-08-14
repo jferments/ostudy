@@ -15,11 +15,11 @@ import {
   listenToAndroidNetwork,
   setPlatformBackInterception,
 } from "../ipc/platform";
+import { BackInterceptionSynchronizer } from "./backInterception";
 import {
   dispatchPlatformBack,
   subscribePlatformBackStack,
 } from "./backNavigation";
-import { BackInterceptionSynchronizer } from "./backInterception";
 import {
   getPlatformCapabilities,
   initializePlatformCapabilities,
@@ -33,10 +33,7 @@ const PlatformContext = createContext<PlatformCapabilities>(getPlatformCapabilit
 
 export function PlatformProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState(getPlatformCapabilities);
-  const backInterceptionRef = useRef<BackInterceptionSynchronizer | null>(null);
-  if (backInterceptionRef.current === null) {
-    backInterceptionRef.current = new BackInterceptionSynchronizer();
-  }
+  const backInterceptionRef = useRef(new BackInterceptionSynchronizer());
 
   const applyBackInterception = useCallback(async (enabled: boolean): Promise<void> => {
     await setPlatformBackInterception(enabled);
