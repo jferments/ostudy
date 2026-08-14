@@ -450,12 +450,44 @@ class AndroidSmokeTest {
 
     private fun withApplication(block: (WebView) -> Unit) {
         val scenario = ActivityScenario.launch(MainActivity::class.java)
+        block(waitForWebView(scenario))
+    }
+
+    private fun waitForWebView(scenario: ActivityScenario<MainActivity>): WebView {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
         var webView: WebView? = null
-        scenario.onActivity { activity ->
-            webView = findWebView(activity)
+        var latestViewTree = "Activity has not been inspected yet."
+
+        while (System.nanoTime() < deadline) {
+            scenario.onActivity { activity ->
+                val decorView = activity.window.decorView
+                webView = findWebView(decorView)
+                latestViewTree = describeViewTree(decorView)
+            }
+            webView?.let { return it }
+            Thread.sleep(50)
         }
-        val target = requireNotNull(webView) { "The Tauri WebView was not found." }
-        block(target)
+
+        throw AssertionError(
+            "Timed out waiting for the Tauri WebView to attach. Last view tree: $latestViewTree"
+        )
+    }
+
+    private fun describeViewTree(root: View): String {
+        val nodes = mutableListOf<String>()
+        collectViewTree(root, depth = 0, nodes = nodes)
+        return nodes.joinToString(separator = " | ")
+    }
+
+    private fun collectViewTree(view: View, depth: Int, nodes: MutableList<String>) {
+        if (nodes.size >= 40) return
+        nodes.add("${"  ".repeat(depth)}${view.javaClass.simpleName}")
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                collectViewTree(view.getChildAt(index), depth + 1, nodes)
+                if (nodes.size >= 40) return
+            }
+        }
     }
 
     private fun waitForBridge(webView: WebView) {
