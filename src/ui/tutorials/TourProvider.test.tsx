@@ -61,7 +61,9 @@ describe("TourProvider", () => {
       vi.advanceTimersByTime(700);
     });
 
-    expect(dispatchPlatformBack()).toBe(true);
+    await act(async () => {
+      expect(dispatchPlatformBack()).toBe(true);
+    });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(window.localStorage.getItem("ostudy.tutorials.v1")).toContain("orientation");
     view.unmount();
