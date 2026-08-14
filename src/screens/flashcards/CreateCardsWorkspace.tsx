@@ -83,7 +83,7 @@ export function CreateCardsWorkspace({
         {deck ? (
           <div className={styles.createActions}>
             <Button variant="primary" size="large" onClick={() => setEditorOpen(true)}><Icon name="plus" size={20} /> Create one card</Button>
-            <Button size="large" onClick={() => setBulkOpen(true)}><Icon name="cards" size={20} /> Bulk add</Button>
+            <Button data-testid="bulk-add-cards" size="large" onClick={() => setBulkOpen(true)}><Icon name="cards" size={20} /> Bulk add</Button>
           </div>
         ) : (
           <p>Create an active deck before adding flashcards.</p>
