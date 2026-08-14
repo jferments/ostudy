@@ -186,6 +186,11 @@ expectContains(
 );
 expectContains(
   emulatorSmoke,
+  "-e waitForActivitiesToComplete false",
+  "AndroidJUnitRunner activity-finisher opt-out for Tauri lifecycle ownership",
+);
+expectContains(
+  emulatorSmoke,
   "run_case a0_appLaunchesAndTestBridgeIsReady",
   "launch-only Android smoke case",
 );
