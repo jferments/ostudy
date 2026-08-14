@@ -20,6 +20,8 @@ Kotlin may interact with Android's document provider, Sharesheet, Keystore, life
 
 The generated Android project lives under `src-tauri/gen/android`. Custom native behavior lives in `plugins/ostudy-platform`; keep `MainActivity` minimal so regenerating the Tauri shell remains manageable.
 
+Android values that Tauri exposes as configuration belong in `src-tauri/tauri.android.conf.json`, not in hand-edited generated Gradle state. In particular, the debug package suffix is owned by `bundle.android.debugApplicationIdSuffix = ".dev"`. Tauri may refresh `src-tauri/gen/android/app/build.gradle.kts`; package verification confirms the resulting debug APK still uses `io.github.jferments.ostudy.dev`.
+
 ## A1–A3 capability boundary
 
 Supported Android capabilities:
@@ -91,7 +93,9 @@ Every Android change continues to run the Linux full gate. Vitest and Rust tests
 
 - required generated/native files;
 - SDK/NDK/API pins;
-- package identity;
+- source-of-truth debug package identity;
+- Kotlin/coroutines compatibility pins;
+- Android build parallelism controls;
 - manifest permissions;
 - backup exclusions;
 - FileProvider authority;
@@ -112,7 +116,11 @@ Every Android change continues to run the Linux full gate. Vitest and Rust tests
 
 ### Kotlin and instrumentation compilation
 
-`android-test.sh` runs Kotlin/JVM tests, builds the instrumentation APK, and verifies the x86_64 debug APK. The application test source is under:
+`android-test.sh` first resolves the Kotlin dependency graph and compile-checks the private Android plugin, then runs shared TypeScript/Rust qualification, builds the instrumentation APK, and verifies the x86_64 debug APK.
+
+By default Android qualification uses all logical CPUs reported by the host. `OSTUDY_ANDROID_JOBS` can lower that ceiling on memory-constrained machines. Vitest files, Cargo compilation/tests, independent Gradle subprojects, and JVM test forks use the shared worker budget. Stateful emulator instrumentation remains sequential because restart/restoration cases intentionally depend on state produced by earlier cases.
+
+The application test source is under:
 
 ```text
 src-tauri/gen/android/app/src/androidTest/
@@ -150,9 +158,10 @@ When the pinned Tauri CLI requires regeneration:
 1. create a clean branch from `main`;
 2. run `pnpm tauri android init --ci`;
 3. compare generated Gradle, manifest, and Kotlin files rather than accepting them blindly;
-4. reapply only documented ostudy customizations;
-5. run `verify-android-project.mjs`;
-6. run `android-test.sh` and the official emulator smoke suite;
-7. verify Linux remains green.
+4. keep supported Android identity/build options in `tauri.android.conf.json` instead of reapplying them as generated-file edits;
+5. reapply only documented generated-project customizations that Tauri does not expose as configuration;
+6. run `verify-android-project.mjs`;
+7. run `android-test.sh` and the official emulator smoke suite;
+8. verify Linux remains green.
 
 The generated directory is committed because reproducibility and review are more important than minimizing generated files.
