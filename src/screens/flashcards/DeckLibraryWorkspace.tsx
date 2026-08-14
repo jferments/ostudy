@@ -10,7 +10,7 @@ import {
 import type { DeckOpenRequest } from "../../App";
 import type { ShowToast } from "../../components/Toast";
 import { DecksController } from "../../controllers/decksController";
-import { getErrorMessage } from "../../ipc/common";
+import { getErrorCode, getErrorMessage } from "../../ipc/common";
 import type { DeckSummary } from "../../ipc/decks";
 import {
   createDeckFolder,
@@ -85,6 +85,7 @@ export function DeckLibraryWorkspace({
   const [detailRequest, setDetailRequest] = useState<DeckOpenRequest | null>(null);
   const requestSequence = useRef(1);
   const detailOpenedRef = useRef(false);
+  const organizationMutationRef = useRef(false);
   const controllerRef = useRef<DecksController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new DecksController();
   const controller = controllerRef.current;
@@ -141,7 +142,57 @@ export function DeckLibraryWorkspace({
   async function reloadOrganization(): Promise<DeckLibraryOrganization> {
     const loaded = await getDeckLibraryOrganization();
     setOrganization(loaded);
+    setErrorMessage(null);
     return loaded;
+  }
+
+  function beginOrganizationMutation(): boolean {
+    if (organizationMutationRef.current) return false;
+    organizationMutationRef.current = true;
+    setIsMutating(true);
+    return true;
+  }
+
+  function finishOrganizationMutation(): void {
+    organizationMutationRef.current = false;
+    setIsMutating(false);
+  }
+
+  async function recoverOrganizationAfterError(
+    error: unknown,
+    fallback: DeckLibraryOrganization,
+  ): Promise<void> {
+    let refreshed = false;
+    let refreshError: unknown = null;
+    try {
+      await reloadOrganization();
+      refreshed = true;
+    } catch (caught: unknown) {
+      refreshError = caught;
+      setOrganization(fallback);
+    }
+
+    if (getErrorCode(error) === "library_organization_changed") {
+      showToast(
+        refreshed ? "info" : "error",
+        refreshed
+          ? "The deck library changed while that action was running. The latest organization is loaded now; try the action again."
+          : `The deck library changed and automatic refresh failed: ${getErrorMessage(refreshError)}`,
+      );
+      return;
+    }
+    showToast("error", getErrorMessage(error));
+  }
+
+  async function refreshLibraryAfterDetail(): Promise<void> {
+    const results = await Promise.allSettled([refreshDecks(), reloadOrganization()]);
+    const failed = results.find((result) => result.status === "rejected");
+    if (failed?.status === "rejected") {
+      showToast(
+        "info",
+        `The deck change was saved, but the library could not fully refresh: ${getErrorMessage(failed.reason)}`,
+      );
+    }
   }
 
   function openDeck(deckId: string): void {
@@ -166,30 +217,31 @@ export function DeckLibraryWorkspace({
   }
 
   async function saveFolder(name: string): Promise<void> {
-    if (!organization || !folderDraft || isMutating) return;
-    setIsMutating(true);
+    if (!organization || !folderDraft || isMutating || !beginOrganizationMutation()) return;
+    const previous = organization;
+    const draft = folderDraft;
     try {
       const updated =
-        folderDraft.mode === "create"
+        draft.mode === "create"
           ? await createDeckFolder({
               name,
-              expectedOrganizationRevision: organization.revision,
+              expectedOrganizationRevision: previous.revision,
             })
           : await updateDeckFolder({
-              folderId: folderDraft.folder?.id ?? "",
+              folderId: draft.folder?.id ?? "",
               name,
-              revision: folderDraft.folder?.revision ?? 0,
-              expectedOrganizationRevision: organization.revision,
+              revision: draft.folder?.revision ?? 0,
+              expectedOrganizationRevision: previous.revision,
             });
       setOrganization(updated);
       setFolderDraft(null);
       setAnnouncement(
-        folderDraft.mode === "create" ? `Created folder ${name}.` : `Renamed folder to ${name}.`,
+        draft.mode === "create" ? `Created folder ${name}.` : `Renamed folder to ${name}.`,
       );
     } catch (error: unknown) {
-      showToast("error", getErrorMessage(error));
+      await recoverOrganizationAfterError(error, previous);
     } finally {
-      setIsMutating(false);
+      finishOrganizationMutation();
     }
   }
 
@@ -202,20 +254,20 @@ export function DeckLibraryWorkspace({
       confirmLabel: "Delete folder",
       destructive: true,
     });
-    if (!accepted) return;
-    setIsMutating(true);
+    if (!accepted || !beginOrganizationMutation()) return;
+    const previous = organization;
     try {
       const updated = await deleteDeckFolder({
         folderId: folder.id,
         revision: folder.revision,
-        expectedOrganizationRevision: organization.revision,
+        expectedOrganizationRevision: previous.revision,
       });
       setOrganization(updated);
       setAnnouncement(`Deleted folder ${folder.name}. Its decks moved to Unfiled.`);
     } catch (error: unknown) {
-      showToast("error", getErrorMessage(error));
+      await recoverOrganizationAfterError(error, previous);
     } finally {
-      setIsMutating(false);
+      finishOrganizationMutation();
     }
   }
 
@@ -224,11 +276,10 @@ export function DeckLibraryWorkspace({
     targetFolderId: string | null,
     targetIndex: number,
   ): Promise<void> {
-    if (!organization || isMutating) return;
+    if (!organization || isMutating || !beginOrganizationMutation()) return;
     const previous = organization;
     const optimistic = optimisticDeckMove(previous, deck.id, targetFolderId, targetIndex);
     setOrganization(optimistic);
-    setIsMutating(true);
     try {
       const updated = await moveDeckInLibrary({
         deckId: deck.id,
@@ -244,19 +295,17 @@ export function DeckLibraryWorkspace({
       setAnnouncement(`Moved ${deck.name} to ${folderName}, position ${targetIndex + 1}.`);
       setMoveDraft(null);
     } catch (error: unknown) {
-      setOrganization(previous);
-      showToast("error", `${getErrorMessage(error)} The previous order was restored.`);
+      await recoverOrganizationAfterError(error, previous);
     } finally {
-      setIsMutating(false);
+      finishOrganizationMutation();
     }
   }
 
   async function reorderFolder(folder: DeckFolder, targetIndex: number): Promise<void> {
-    if (!organization || isMutating) return;
+    if (!organization || isMutating || !beginOrganizationMutation()) return;
     const previous = organization;
     const optimistic = optimisticFolderMove(previous, folder.id, targetIndex);
     setOrganization(optimistic);
-    setIsMutating(true);
     try {
       const updated = await moveDeckFolder({
         folderId: folder.id,
@@ -266,10 +315,9 @@ export function DeckLibraryWorkspace({
       setOrganization(updated);
       setAnnouncement(`Moved folder ${folder.name} to position ${targetIndex + 1}.`);
     } catch (error: unknown) {
-      setOrganization(previous);
-      showToast("error", `${getErrorMessage(error)} The previous order was restored.`);
+      await recoverOrganizationAfterError(error, previous);
     } finally {
-      setIsMutating(false);
+      finishOrganizationMutation();
     }
   }
 
@@ -292,6 +340,8 @@ export function DeckLibraryWorkspace({
     targetIndex: number,
   ): void {
     event.preventDefault();
+    event.stopPropagation();
+    if (organizationMutationRef.current) return;
     const deckId = event.dataTransfer.getData("application/x-ostudy-deck-id");
     const deck = decks.find((candidate) => candidate.id === deckId);
     if (deck) void moveDeck(deck, targetFolderId, targetIndex);
@@ -314,6 +364,7 @@ export function DeckLibraryWorkspace({
           if (view === "library" && detailOpenedRef.current) {
             detailOpenedRef.current = false;
             setDetailRequest(null);
+            void refreshLibraryAfterDetail();
           }
         }}
         onDirtyChange={onCardDirtyChange}
