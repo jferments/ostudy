@@ -8,6 +8,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
 MAIN_ENTRY_PATH = ROOT / "src" / "main.tsx"
+ANDROID_PACKAGE_VERIFIER_PATH = ROOT / "scripts" / "verify-android-package.sh"
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
 CREATE_CARDS_PATH = ROOT / "src" / "screens" / "flashcards" / "CreateCardsWorkspace.tsx"
 TOUR_PROVIDER_PATH = ROOT / "src" / "ui" / "tutorials" / "TourProvider.tsx"
@@ -91,6 +92,12 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn('import("./testing/androidTestBridge")', source)
         self.assertIn("installAndroidTestBridge();", source)
         self.assertNotIn('import { installAndroidTestBridge }', source)
+
+    def test_android_package_verifier_requires_bridge_for_flagged_debug_builds(self) -> None:
+        source = ANDROID_PACKAGE_VERIFIER_PATH.read_text(encoding="utf-8")
+        self.assertIn('VITE_OSTUDY_ANDROID_TEST_BRIDGE', source)
+        self.assertIn('Android smoke APK is missing the emulator-only test bridge.', source)
+        self.assertIn('Release APK contains the emulator-only Android test bridge.', source)
 
     def test_android_smoke_build_cannot_auto_start_contextual_tutorials(self) -> None:
         source = TOUR_PROVIDER_PATH.read_text(encoding="utf-8")
