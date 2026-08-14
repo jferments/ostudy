@@ -30,6 +30,7 @@ const required = [
   "scripts/android-doctor.sh",
   "scripts/android-runner-doctor.sh",
   "scripts/android-build.sh",
+  "scripts/android-gradle-postbuild.sh",
   "scripts/android-test.sh",
   "scripts/android-dev.sh",
   "scripts/android-avd.sh",
@@ -138,25 +139,46 @@ for (const token of [
 ]) {
   expectContains(androidEnv, token, `Android parallelism control ${token}`);
 }
+if (/^set\s+-[^\n]*e/mu.test(androidEnv)) {
+  failures.push("android-env.sh must not enable errexit when sourced into an interactive shell");
+}
+
+const postbuild = await read("scripts/android-gradle-postbuild.sh");
+for (const token of [
+  "-PabiList=x86_64",
+  "-ParchList=x86_64",
+  "-PtargetList=x86_64",
+  "-x :app:rustBuildUniversalDebug",
+  "-x :app:rustBuildX86_64Debug",
+  ":app:testUniversalDebugUnitTest",
+  ":app:assembleUniversalDebugAndroidTest",
+]) {
+  expectContains(postbuild, token, `Android Gradle postbuild invariant ${token}`);
+}
+expectContains(
+  postbuild,
+  ":tauri-plugin-ostudy-platform:testDebugUnitTest",
+  "platform plugin JVM unit-test task",
+);
 
 const androidTest = await read("scripts/android-test.sh");
-for (const task of [":app:testUniversalDebugUnitTest", ":app:assembleUniversalDebugAndroidTest"]) {
-  expectContains(androidTest, task, `flavor-qualified Android test task ${task}`);
-}
-for (const ambiguousTask of [":app:testDebugUnitTest", ":app:assembleDebugAndroidTest"]) {
-  if (androidTest.includes(ambiguousTask)) {
-    failures.push(`android-test.sh must not use ambiguous Gradle task ${ambiguousTask}`);
-  }
+expectContains(
+  androidTest,
+  "android-gradle-postbuild.sh test-packages",
+  "Android test postbuild wrapper",
+);
+if (androidTest.includes(":app:rustBuild")) {
+  failures.push("android-test.sh must not invoke generated Tauri rustBuild tasks directly");
 }
 
 const emulatorSmoke = await read("scripts/android-emulator-smoke.sh");
-for (const task of [":app:assembleUniversalDebug", ":app:assembleUniversalDebugAndroidTest"]) {
-  expectContains(emulatorSmoke, task, `flavor-qualified emulator build task ${task}`);
-}
-for (const ambiguousTask of [":app:assembleDebug", ":app:assembleDebugAndroidTest"]) {
-  if (emulatorSmoke.includes(ambiguousTask)) {
-    failures.push(`android-emulator-smoke.sh must not use ambiguous Gradle task ${ambiguousTask}`);
-  }
+expectContains(
+  emulatorSmoke,
+  "android-gradle-postbuild.sh instrumentation-package",
+  "Android emulator instrumentation postbuild wrapper",
+);
+if (emulatorSmoke.includes(":app:rustBuild")) {
+  failures.push("android-emulator-smoke.sh must not invoke generated Tauri rustBuild tasks directly");
 }
 
 const arrayAdapter = await read("plugins/ostudy-platform/android/src/main/java/InvokeArrayResult.kt");
@@ -238,7 +260,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Android project, source-of-truth debug identity, exact flavor tasks, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
+  "OK   Android project, Tauri/Gradle build boundary, source-of-truth debug identity, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
 );
 
 function expectContains(text, value, label) {
