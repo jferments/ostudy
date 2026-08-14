@@ -8,6 +8,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const failures = [];
 
 const lib = await read("src-tauri/src/lib.rs");
+const ledger = await read("src-tauri/src/external_files.rs");
 const transfer = await read("src-tauri/src/external_file_streaming.rs");
 const recovery = await read("src-tauri/src/external_file_recovery.rs");
 const platformPort = await read("src-tauri/src/platform/mod.rs");
@@ -41,6 +42,16 @@ for (const legacy of [
 ]) {
   if (lib.includes(legacy)) {
     failures.push(`Legacy path-based command remains registered: ${legacy}`);
+  }
+}
+for (const legacy of [
+  "pub async fn select_and_stage_external_import(",
+  "pub async fn publish_prepared_export(",
+  "copy_bounded_with_hash(",
+  "publish_atomic(",
+]) {
+  if (ledger.includes(legacy)) {
+    failures.push(`Retired path-based transfer implementation remains in external_files.rs: ${legacy}`);
   }
 }
 
@@ -97,6 +108,16 @@ for (const [method, resultType] of [
     failures.push(`ExternalFilePort.${method} must be a required trait method with no default body`);
   }
 }
+for (const legacy of [
+  "fn select_import(",
+  "fn select_export(",
+  "struct ExternalSource",
+  "struct ExternalDestination",
+]) {
+  if (platformPort.includes(legacy)) {
+    failures.push(`ExternalFilePort still exposes retired path-based API: ${legacy}`);
+  }
+}
 if (platformPort.includes("external_file_streaming_unavailable")) {
   failures.push("ExternalFilePort must not provide a default unavailable streaming implementation");
 }
@@ -107,6 +128,11 @@ for (const [name, adapter] of [
 ]) {
   for (const method of ["fn acquire_import(", "fn publish_export("]) {
     expectContains(adapter, method, `${name} required streaming adapter ${method}`);
+  }
+  for (const legacy of ["fn select_import(", "fn select_export("]) {
+    if (adapter.includes(legacy)) {
+      failures.push(`${name} adapter still implements retired path-based API ${legacy}`);
+    }
   }
 }
 for (const token of [
@@ -216,7 +242,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   External file imports and exports use mandatory streaming ports, recover interrupted promotion, expose cancellation outcomes, cover every import purpose, and aggregate independent picker checks.",
+  "OK   External file imports and exports use streaming-only platform ports, recover interrupted promotion, expose cancellation outcomes, cover every import purpose, and aggregate independent picker checks.",
 );
 
 function expectContains(text, value, label) {
