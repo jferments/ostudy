@@ -77,6 +77,44 @@ def wait_for_absent(
     raise TimeoutError(f"Element remained present: {using}={value}")
 
 
+def overlay_snapshot(session_id: str) -> dict[str, Any]:
+    snapshot = execute(
+        session_id,
+        """
+        const dialogs = [...document.querySelectorAll("dialog[open], [role='dialog'][aria-modal='true']")]
+          .map((dialog) => ({
+            label: (dialog.getAttribute('aria-label') || dialog.textContent || '').trim().slice(0, 160),
+            tag: dialog.tagName,
+          }));
+        const root = document.getElementById('root');
+        return {
+          overlayActive: document.documentElement.dataset.overlayActive === 'true',
+          rootInert: Boolean(root?.hasAttribute('inert')),
+          dialogCount: dialogs.length,
+          dialogs,
+        };
+        """,
+    )
+    if not isinstance(snapshot, dict):
+        raise AssertionError(f"Unexpected overlay snapshot: {snapshot!r}")
+    return snapshot
+
+
+def wait_for_overlay_inactive(session_id: str, deadline: float, label: str) -> None:
+    """Require top-layer teardown before interacting with background controls."""
+    last: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        last = overlay_snapshot(session_id)
+        if (
+            last.get("overlayActive") is False
+            and last.get("rootInert") is False
+            and int(last.get("dialogCount", 0)) == 0
+        ):
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"Overlay remained active before {label}: {last!r}")
+
+
 def wait_for_focus(session_id: str, element_id: str, deadline: float) -> None:
     """Wait for React's queued post-showModal initial-focus step to settle."""
     while time.monotonic() < deadline:
@@ -180,6 +218,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     )
     webdriver.click(session_id, settings)
     webdriver.find_element(session_id, "css selector", "main .settings-screen", deadline)
+    wait_for_overlay_inactive(session_id, deadline, "compact Settings assertions")
     assert_no_horizontal_overflow(session_id, "compact Settings screen")
 
     flashcards = webdriver.find_element(
@@ -224,6 +263,7 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
 
     send_key(session_id, ESCAPE_KEY)
     wait_for_absent(session_id, "css selector", "[role='dialog']", deadline)
+    wait_for_overlay_inactive(session_id, deadline, "create-deck focus restoration")
     wait_for_active_label(session_id, "New deck", deadline)
 
 
@@ -379,6 +419,7 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
     )
     webdriver.click(session_id, create)
     webdriver.wait_for_main_heading(session_id, deck_name, deadline)
+    wait_for_overlay_inactive(session_id, deadline, "new deck detail assertions")
 
     back = webdriver.find_element(
         session_id,
@@ -388,6 +429,7 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
     )
     webdriver.click(session_id, back)
     webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
+    wait_for_overlay_inactive(session_id, deadline, "Flashcards tabs after returning from new deck")
 
     create_cards = find_workspace_tab(session_id, "Create Cards", deadline)
     webdriver.click(session_id, create_cards)
@@ -456,6 +498,7 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
 
     send_key(session_id, ESCAPE_KEY)
     wait_for_absent(session_id, "css selector", "[role='dialog']", deadline)
+    wait_for_overlay_inactive(session_id, deadline, "Bulk Add dismissal")
 
 
 def main() -> int:
