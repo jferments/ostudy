@@ -24,6 +24,7 @@ Before editing code, read:
 - `docs/agents/ARCHITECTURE-GUARDRAILS.md`;
 - `docs/agents/CODE-STANDARDS.md`;
 - `docs/agents/WORKFLOW-AND-VALIDATION.md`;
+- `docs/agents/GITHUB-CONNECTOR.md` when operating through an authenticated GitHub Connector;
 - the active architecture, development, reference, testing, and ADR documents relevant to the requested change.
 
 Documents under `docs/history/` are project archaeology, not current instructions.
@@ -85,6 +86,22 @@ Documents under `docs/history/` are project archaeology, not current instruction
 - Generated-import, backup, and document tests must use isolated temporary storage and must never point at the user's live ostudy data directory.
 - Do not describe planned providers, platforms, sync, tutoring, quizzes, or study guides as shipped.
 
+## GitHub Connector discipline
+
+When operating through an authenticated GitHub Connector on this private repository:
+
+- use Connector reads as the source of truth for the repository, intended base, branch, pull request, and remote head state;
+- do not use `gh`, anonymous HTTP, scraping, temporary transfer repositories, an unrelated local checkout, or CI runner availability to infer Connector access;
+- treat repository read access and authorization for a concrete write as separate concerns;
+- do not infer that writes are unavailable merely because an approval prompt has not appeared;
+- do not change the Connector to permanent or unrestricted write access merely to bypass per-change authorization;
+- at the first intended mutation, invoke the actual Connector write operation and let its authorization boundary handle any required approval;
+- only an actual rejected Connector mutation establishes a Connector write failure; report the exact operation and error;
+- after every meaningful publication step, verify the remote branch/head through GitHub before claiming that a commit or file change exists;
+- keep publication state separate from CI state: a missing or mismatched runner may block validation but does not establish that branch, commit, or PR writes are unavailable.
+
+A local patch, generated diff, or proposed commit message is not remote publication. Follow `docs/agents/GITHUB-CONNECTOR.md` for the complete connector-mode workflow.
+
 ## Documentation discipline
 
 - `README.md` is a product overview and quick start, not an implementation ledger.
@@ -140,5 +157,7 @@ Every completed change must report:
 - manual behavior actually exercised or still required;
 - known limitations, migration/compatibility effects, rollback concerns, and residual risks;
 - the requested merge method.
+
+For Connector-backed work, verify every claimed remote mutation through GitHub and report publication state separately from CI/runner state.
 
 An agent's work is a proposal until a human reviews and merges it.
