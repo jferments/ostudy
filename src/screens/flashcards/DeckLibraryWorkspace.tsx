@@ -123,6 +123,8 @@ export function DeckLibraryWorkspace({
   useEffect(() => {
     if (!openDeckRequest) return;
     detailOpenedRef.current = false;
+    setFolderDraft(null);
+    setMoveDraft(null);
     setDetailRequest(openDeckRequest);
     onOpenDeckRequestConsumed();
   }, [onOpenDeckRequestConsumed, openDeckRequest]);
@@ -221,6 +223,8 @@ export function DeckLibraryWorkspace({
 
   function openDeck(deckId: string): void {
     detailOpenedRef.current = false;
+    setFolderDraft(null);
+    setMoveDraft(null);
     setDetailRequest({ requestId: requestSequence.current, deckId });
     requestSequence.current += 1;
   }
@@ -230,8 +234,17 @@ export function DeckLibraryWorkspace({
     setIsMutating(true);
     try {
       const deck = await controller.create({ name, description });
-      await Promise.all([refreshDecks(), reloadOrganization()]);
-      showToast("success", `Created “${deck.name}”.`);
+      setFolderDraft(null);
+      const results = await Promise.allSettled([refreshDecks(), reloadOrganization()]);
+      const failed = results.find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") {
+        showToast(
+          "info",
+          `Created “${deck.name}”, but the library could not fully refresh: ${getErrorMessage(failed.reason)}`,
+        );
+      } else {
+        showToast("success", `Created “${deck.name}”.`);
+      }
       openDeck(deck.id);
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
