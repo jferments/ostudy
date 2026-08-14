@@ -22,6 +22,7 @@ const required = [
   "src-tauri/gen/android/app/src/main/res/xml/data_extraction_rules.xml",
   "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
   "plugins/ostudy-platform/Cargo.toml",
+  "plugins/ostudy-platform/build.rs",
   "plugins/ostudy-platform/permissions/default.toml",
   "plugins/ostudy-platform/android/build.gradle.kts",
   "plugins/ostudy-platform/android/src/main/java/OstudyPlatformPlugin.kt",
@@ -148,6 +149,14 @@ for (const permission of ["allow-register-listener", "allow-remove-listener"]) {
     platformPermissions,
     `"${permission}"`,
     `platform plugin event permission ${permission}`,
+  );
+}
+const platformBuild = await read("plugins/ostudy-platform/build.rs");
+for (const command of ["register_listener", "remove_listener"]) {
+  expectContains(
+    platformBuild,
+    `"${command}"`,
+    `generated platform plugin listener permission command ${command}`,
   );
 }
 
@@ -372,7 +381,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Android project, plugin event ACL, synchronized Back state, instrumentation lifecycle ownership, Tauri/Gradle build boundary, source-of-truth debug identity, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
+  "OK   Android project, generated plugin event ACL, synchronized Back state, instrumentation lifecycle ownership, Tauri/Gradle build boundary, source-of-truth debug identity, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
 );
 
 function expectContains(text, value, label) {
