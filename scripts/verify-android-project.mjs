@@ -47,6 +47,7 @@ for (const key of [
   "ANDROID_GRADLE_PLUGIN_VERSION",
   "ANDROID_GRADLE_VERSION",
   "ANDROID_KOTLIN_VERSION",
+  "ANDROID_COROUTINES_VERSION",
   "ANDROID_COMMANDLINE_TOOLS_BUILD",
   "ANDROID_COMMANDLINE_TOOLS_SHA256",
   "ANDROID_PHONE_SYSTEM_IMAGE",
@@ -75,8 +76,17 @@ expectContains(gradle, `compileSdk = ${env.get("ANDROID_COMPILE_SDK")}`, "compil
 expectContains(gradle, `minSdk = ${env.get("ANDROID_MIN_SDK")}`, "minSdk pin");
 expectContains(gradle, `targetSdk = ${env.get("ANDROID_TARGET_SDK")}`, "targetSdk pin");
 expectContains(gradle, 'applicationId = "io.github.jferments.ostudy"', "application identity");
-expectContains(gradle, 'applicationIdSuffix = ".dev"', "debug application suffix");
-expectContains(gradle, 'testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"', "instrumentation runner");
+expectPattern(
+  gradle,
+  /applicationIdSuffix\s*=\s*["']\.dev["']/u,
+  "debug application suffix .dev",
+  "applicationIdSuffix",
+);
+expectContains(
+  gradle,
+  'testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"',
+  "instrumentation runner",
+);
 
 const rootGradle = await read("src-tauri/gen/android/build.gradle.kts");
 expectContains(
@@ -89,6 +99,13 @@ expectContains(
   `classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${env.get("ANDROID_KOTLIN_VERSION")}")`,
   "Kotlin Gradle plugin pin",
 );
+for (const artifact of ["kotlinx-coroutines-android", "kotlinx-coroutines-core-jvm"]) {
+  expectContains(
+    rootGradle,
+    `"org.jetbrains.kotlinx:${artifact}:${env.get("ANDROID_COROUTINES_VERSION")}"`,
+    `${artifact} compatibility pin`,
+  );
+}
 const wrapper = await read("src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties");
 expectContains(
   wrapper,
@@ -165,6 +182,16 @@ console.log("OK   Android project, toolchain pins, permissions, and platform ove
 
 function expectContains(text, value, label) {
   if (!text.includes(value)) failures.push(`Missing ${label}`);
+}
+
+function expectPattern(text, pattern, label, diagnosticToken) {
+  if (pattern.test(text)) return;
+  const matchingLines = text
+    .split(/\r?\n/u)
+    .filter((line) => line.includes(diagnosticToken))
+    .map((line) => line.trim());
+  const diagnostic = matchingLines.length > 0 ? matchingLines.join(" | ") : "no matching declaration found";
+  failures.push(`Missing ${label}; ${diagnosticToken}: ${diagnostic}`);
 }
 
 async function read(path) {
