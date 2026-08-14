@@ -1,4 +1,4 @@
-@layer effects {
+@layer overlays {
   .effectsLayer {
     position: fixed;
     z-index: var(--ostudy-layer-effects);
