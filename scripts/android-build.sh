@@ -57,6 +57,18 @@ bash ./scripts/android-doctor.sh
 node ./scripts/verify-external-file-streaming.mjs
 android_write_local_properties
 
+# The Tauri CLI rewrites parts of the committed generated Android project while
+# materializing a build. Preserve the reviewed manifest template verbatim so a
+# build does not leave the source checkout dirty, including when the build fails.
+manifest="$ROOT_DIR/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+manifest_backup="$(mktemp)"
+cp -- "$manifest" "$manifest_backup"
+restore_generated_sources() {
+  cp -- "$manifest_backup" "$manifest"
+  rm -f -- "$manifest_backup"
+}
+trap restore_generated_sources EXIT
+
 targets=("$TARGET")
 if [[ "$TARGET" == all ]]; then
   targets=(aarch64 armv7 i686 x86_64)
