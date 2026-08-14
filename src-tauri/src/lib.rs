@@ -43,7 +43,7 @@ mod logging;
 mod paths;
 mod pdf_backend;
 mod pdf_ocr_backend;
-#[cfg_attr(any(target_os = "android", target_os = "ios"), allow(dead_code))]
+#[cfg_attr(mobile, allow(dead_code))]
 mod pdf_render_backend;
 pub mod platform;
 mod practice;
