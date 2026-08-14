@@ -171,7 +171,14 @@ class AndroidSmokeTest {
                 "window.__OSTUDY_ANDROID_TEST__.beginInterruptedPractice()"
             )
             val sessionId = started.getString("sessionId")
-            evaluateSync(webView, "window.location.reload(); true")
+            // Remove the old-page bridge before scheduling the reload. Without
+            // this boundary waitForBridge can observe the still-live old page,
+            // start the restoration promise there, and then lose its result when
+            // navigation replaces that JavaScript context.
+            evaluateSync(
+                webView,
+                "delete window.__OSTUDY_ANDROID_TEST__; window.location.reload(); true"
+            )
             waitForBridge(webView)
             val restored = evaluatePromise(
                 webView,
