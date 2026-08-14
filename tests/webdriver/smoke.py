@@ -263,11 +263,98 @@ def element_enabled(session_id: str, element_id: str) -> bool:
     return request("GET", f"/session/{session_id}/element/{element_id}/enabled") is True
 
 
+def _element_hit_test(session_id: str, element_id: str) -> dict[str, Any]:
+    """Scroll an element into a stable viewport position and identify its top hit target."""
+    result = request(
+        "POST",
+        f"/session/{session_id}/execute/sync",
+        {
+            "script": """
+                const element = arguments[0];
+                if (!(element instanceof HTMLElement)) {
+                  return { ready: false, reason: 'not_html_element' };
+                }
+                element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+                const rect = element.getBoundingClientRect();
+                const style = getComputedStyle(element);
+                const x = Math.min(window.innerWidth - 1, Math.max(0, rect.left + rect.width / 2));
+                const y = Math.min(window.innerHeight - 1, Math.max(0, rect.top + rect.height / 2));
+                const top = document.elementFromPoint(x, y);
+                const disabled = element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true';
+                const inViewport = rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth;
+                const visible = style.display !== 'none' && style.visibility !== 'hidden' && style.pointerEvents !== 'none';
+                const ownsHit = Boolean(top && (top === element || element.contains(top)));
+                return {
+                  ready: Boolean(inViewport && visible && !disabled && ownsHit),
+                  disabled,
+                  display: style.display,
+                  visibility: style.visibility,
+                  pointerEvents: style.pointerEvents,
+                  rect: {
+                    left: rect.left,
+                    top: rect.top,
+                    width: rect.width,
+                    height: rect.height
+                  },
+                  topTag: top?.tagName ?? null,
+                  topText: (top?.textContent || '').trim().slice(0, 120),
+                  topTestId: top instanceof HTMLElement ? top.dataset.testid ?? null : null,
+                  topClass: top instanceof HTMLElement && typeof top.className === 'string' ? top.className.slice(0, 180) : null
+                };
+            """,
+            "args": [{ELEMENT_KEY: element_id}],
+        },
+    )
+    if not isinstance(result, dict):
+        raise RuntimeError(f"Unexpected WebDriver hit-test result: {result!r}")
+    return result
+
+
+def _hit_signature(hit: dict[str, Any]) -> tuple[float, float, float, float] | None:
+    rect = hit.get("rect")
+    if not isinstance(rect, dict):
+        return None
+    try:
+        return tuple(
+            round(float(rect[key]), 1)
+            for key in ("left", "top", "width", "height")
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def click(session_id: str, element_id: str) -> None:
-    """Click with a short retry for transient WebKit hit-testing/animation races."""
-    deadline = time.monotonic() + 2.5
+    """Click only after WebKit reports a stable, unobstructed hit target."""
+    deadline = time.monotonic() + 5
     last_error: WebDriverProtocolError | None = None
+    last_hit: dict[str, Any] | None = None
+    stable_signature: tuple[float, float, float, float] | None = None
+    stable_samples = 0
+
     while time.monotonic() < deadline:
+        hit = _element_hit_test(session_id, element_id)
+        last_hit = hit
+        if hit.get("ready") is not True:
+            stable_signature = None
+            stable_samples = 0
+            time.sleep(0.1)
+            continue
+
+        signature = _hit_signature(hit)
+        if signature is None:
+            stable_signature = None
+            stable_samples = 0
+            time.sleep(0.1)
+            continue
+        if signature == stable_signature:
+            stable_samples += 1
+        else:
+            stable_signature = signature
+            stable_samples = 1
+        if stable_samples < 2:
+            time.sleep(0.1)
+            continue
+
         try:
             request("POST", f"/session/{session_id}/element/{element_id}/click", {})
             return
@@ -275,10 +362,24 @@ def click(session_id: str, element_id: str) -> None:
             if error.error not in TRANSIENT_CLICK_ERRORS:
                 raise
             last_error = error
+            stable_samples = 0
             time.sleep(0.1)
+
+    if last_hit is not None and last_hit.get("ready") is not True:
+        raise RuntimeError(
+            "Element never became hit-testable before click: "
+            + json.dumps(last_hit, sort_keys=True)
+        )
     if last_error is not None:
-        raise last_error
-    raise RuntimeError("WebDriver click retry ended without a result")
+        raise WebDriverProtocolError(
+            last_error.status,
+            last_error.error,
+            f"{last_error.message} Last hit test: {json.dumps(last_hit, sort_keys=True)}",
+        )
+    raise RuntimeError(
+        "WebDriver click never reached a stable target: "
+        + json.dumps(last_hit, sort_keys=True)
+    )
 
 
 def clear(session_id: str, element_id: str) -> None:
