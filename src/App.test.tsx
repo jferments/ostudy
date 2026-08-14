@@ -1,10 +1,17 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AnalyticsLaunchRequest, DeckOpenRequest, PracticeLaunchRequest, PracticeReturnTarget } from "./App";
+import type {
+  AnalyticsLaunchRequest,
+  DeckOpenRequest,
+  PracticeLaunchRequest,
+  PracticeReturnTarget,
+} from "./App";
 import App from "./App";
 import * as decksIpc from "./ipc/decks";
 import * as settingsIpc from "./ipc/settings";
+import * as checkpointIpc from "./ipc/uiCheckpoint";
+import type { FlashcardsWorkspaceName } from "./navigation/flashcardsRoutes";
 import { makeDeck, makeSettings, resetTestEntityIds } from "./test/factories";
 import { OverlayProvider } from "./ui/overlays/OverlayProvider";
 
@@ -28,12 +35,8 @@ vi.mock("./ipc/common", () => ({
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected startup error",
 }));
-vi.mock("./ipc/decks", () => ({
-  listDecks: vi.fn(),
-}));
-vi.mock("./ipc/settings", () => ({
-  getSettings: vi.fn(),
-}));
+vi.mock("./ipc/decks", () => ({ listDecks: vi.fn() }));
+vi.mock("./ipc/settings", () => ({ getSettings: vi.fn() }));
 vi.mock("./ipc/platform", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./ipc/platform")>();
   return {
@@ -51,6 +54,7 @@ vi.mock("./ipc/uiCheckpoint", async (importOriginal) => {
         schemaVersion: 1 as const,
         updatedAt: 0,
         section: input.section,
+        flashcardsWorkspace: input.flashcardsWorkspace ?? null,
         deckId: input.deckId ?? null,
         editorDraftId: input.editorDraftId ?? null,
         practice: input.practice ?? null,
@@ -60,38 +64,38 @@ vi.mock("./ipc/uiCheckpoint", async (importOriginal) => {
   };
 });
 
-vi.mock("./screens/DecksWorkspace", () => ({
-  DecksWorkspace: ({
+vi.mock("./screens/flashcards/FlashcardsWorkspace", () => ({
+  FlashcardsWorkspace: ({
+    workspace,
     decks,
+    onWorkspaceChange,
     onPracticeDeck,
     openDeckRequest,
-    onDirtyChange,
+    onCardDirtyChange,
   }: {
+    workspace: FlashcardsWorkspaceName;
     decks: decksIpc.DeckSummary[];
+    onWorkspaceChange: (workspace: FlashcardsWorkspaceName) => void;
     onPracticeDeck: (deckId: string, origin: "library" | "detail") => void;
     openDeckRequest: DeckOpenRequest | null;
-    onDirtyChange: (dirty: boolean) => void;
+    onCardDirtyChange: (dirty: boolean) => void;
   }) => (
     <section>
       <h1>Decks mock</h1>
       <span>{decks.map((deck) => deck.name).join(",")}</span>
+      <output aria-label="Flashcards workspace">{workspace}</output>
       <output aria-label="Deck open request">{openDeckRequest?.deckId ?? "none"}</output>
-      <button type="button" onClick={() => onDirtyChange(true)}>
+      <button type="button" onClick={() => onCardDirtyChange(true)}>
         Mark card dirty
+      </button>
+      <button type="button" onClick={() => onWorkspaceChange("search")}>
+        Open Search workspace
       </button>
       <button type="button" onClick={() => onPracticeDeck(decks[0]?.id ?? "", "detail")}>
         Practice deck mock
       </button>
     </section>
   ),
-}));
-
-vi.mock("./screens/CardsScreen", () => ({
-  CardsScreen: () => <h1>Search mock</h1>,
-}));
-
-vi.mock("./screens/TemplatesScreen", () => ({
-  TemplatesScreen: () => <h1>Templates mock</h1>,
 }));
 
 vi.mock("./screens/PracticeScreen", () => ({
@@ -134,11 +138,7 @@ vi.mock("./screens/PracticeScreen", () => ({
 }));
 
 vi.mock("./screens/AnalyticsScreen", () => ({
-  AnalyticsScreen: ({
-    launchRequest,
-  }: {
-    launchRequest: AnalyticsLaunchRequest | null;
-  }) => (
+  AnalyticsScreen: ({ launchRequest }: { launchRequest: AnalyticsLaunchRequest | null }) => (
     <section>
       <h1>Analytics mock</h1>
       <output aria-label="Analytics launch">
@@ -152,6 +152,9 @@ vi.mock("./screens/AnalyticsScreen", () => ({
   ),
 }));
 
+vi.mock("./screens/DocumentsSection", () => ({
+  DocumentsSection: () => <h1>Documents mock</h1>,
+}));
 vi.mock("./screens/SettingsScreen", () => ({
   SettingsScreen: () => <h1>Settings mock</h1>,
 }));
@@ -168,20 +171,16 @@ describe("App shell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetTestEntityIds();
+    vi.mocked(checkpointIpc.getUiCheckpoint).mockResolvedValue(null);
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-animations-enabled");
     document.documentElement.removeAttribute("data-reduce-motion");
   });
 
-  it("loads the local settings and deck library before rendering navigation", async () => {
+  it("loads local settings and the deck library before rendering navigation", async () => {
     const deck = makeDeck({ name: "Cardiology" });
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(
-      makeSettings({
-        theme: "console",
-        animationsEnabled: false,
-        reduceMotion: true,
-        uiScale: 110,
-      }),
+      makeSettings({ theme: "console", motionPreference: "none", uiScale: 110 }),
     );
     vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
 
@@ -192,7 +191,7 @@ describe("App shell", () => {
     expect(screen.getByText("Cardiology")).toBeTruthy();
     expect(document.documentElement.dataset.theme).toBe("console");
     expect(document.documentElement.dataset.animationsEnabled).toBe("false");
-    expect(document.documentElement.dataset.reduceMotion).toBe("true");
+    expect(document.documentElement.dataset.reduceMotion).toBe("false");
     expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe("1.1");
   });
 
@@ -219,6 +218,40 @@ describe("App shell", () => {
     expect(screen.getByLabelText("Analytics launch").textContent).toBe("7d||");
   });
 
+  it("changes Flashcards workspaces without creating a top-level section", async () => {
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
+
+    renderApp();
+    await screen.findByRole("heading", { name: "Decks mock" });
+    fireEvent.click(screen.getByRole("button", { name: "Open Search workspace" }));
+
+    expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("search");
+    expect(screen.getByRole("button", { name: "Flashcards" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("normalizes a legacy Cards checkpoint into the Search workspace", async () => {
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
+    vi.mocked(checkpointIpc.getUiCheckpoint).mockResolvedValue({
+      schemaVersion: 1,
+      updatedAt: 1,
+      section: "cards",
+      flashcardsWorkspace: null,
+      deckId: null,
+      editorDraftId: null,
+      practice: null,
+      analytics: null,
+    });
+
+    renderApp();
+    await screen.findByRole("heading", { name: "Decks mock" });
+    expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("search");
+  });
+
   it("launches exact deck practice from the deck screen", async () => {
     const deck = makeDeck({ name: "Pharmacology" });
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
@@ -229,7 +262,9 @@ describe("App shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Practice deck mock" }));
 
     expect(await screen.findByRole("heading", { name: "Practice mock" })).toBeTruthy();
-    expect(screen.getByLabelText("Practice launch").textContent).toBe(`${deck.id}||true|extra|decks|${deck.id}`);
+    expect(screen.getByLabelText("Practice launch").textContent).toBe(
+      `${deck.id}||true|extra|decks|${deck.id}`,
+    );
   });
 
   it("returns an early-ended deck-detail practice session to that exact deck", async () => {
@@ -270,9 +305,7 @@ describe("App shell", () => {
     renderApp();
 
     expect(
-      await screen.findByRole("heading", {
-        name: "ostudy could not open the library",
-      }),
+      await screen.findByRole("heading", { name: "ostudy could not open the library" }),
     ).toBeTruthy();
     expect(screen.getByText("Database unavailable")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();

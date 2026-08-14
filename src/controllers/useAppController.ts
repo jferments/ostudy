@@ -11,6 +11,7 @@ import {
   saveUiCheckpoint,
   type PracticeCheckpoint,
 } from "../ipc/uiCheckpoint";
+import type { FlashcardsWorkspaceName } from "../navigation/flashcardsRoutes";
 import { registerPlatformBackHandler } from "../platform/backNavigation";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import {
@@ -31,6 +32,7 @@ export type AppSection =
 export interface PracticeReturnTarget {
   section: Exclude<AppSection, "practice">;
   deckId?: string;
+  flashcardsWorkspace?: FlashcardsWorkspaceName;
 }
 
 export interface DeckOpenRequest {
@@ -62,8 +64,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cardFont: "system",
   uiScale: 100,
   cardBaseSize: 18,
-  animationsEnabled: true,
-  reduceMotion: false,
+  motionPreference: "system",
+  materialPreference: "automatic",
+  decorativeArtwork: true,
+  celebrationsEnabled: true,
+  tutorialsEnabled: true,
+  deckViewDensity: "comfortable",
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
@@ -71,8 +77,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dailyReviewLimit: 200,
 };
 
+interface NormalizedDestination {
+  section: AppSection;
+  flashcardsWorkspace?: FlashcardsWorkspaceName;
+}
+
 export function useAppController() {
   const [section, setSection] = useState<AppSection>("decks");
+  const [flashcardsWorkspace, setFlashcardsWorkspace] =
+    useState<FlashcardsWorkspaceName>("decks");
   const [decks, setDecks] = useState<DeckSummary[]>([]);
   const [savedSettings, setSavedSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [activeSettings, setActiveSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -123,19 +136,29 @@ export function useAppController() {
     void Promise.all([getSettings(), listDecks(), checkpoint])
       .then(([loadedSettings, loadedDecks, restoredCheckpoint]) => {
         if (!deckRefreshLane.isCurrent(token)) return;
-        setSavedSettings(loadedSettings);
-        setActiveSettings(loadedSettings);
+        const normalizedSettings = normalizeSettings(loadedSettings);
+        setSavedSettings(normalizedSettings);
+        setActiveSettings(normalizedSettings);
         setDecks(loadedDecks);
         if (restoredCheckpoint) {
+          const restored = normalizeDestination(restoredCheckpoint.section);
           const restoredSection =
-            restoredCheckpoint.section === "practice" && !restoredCheckpoint.practice
+            restored.section === "practice" && !restoredCheckpoint.practice
               ? "decks"
-              : restoredCheckpoint.section;
+              : restored.section;
+          const restoredWorkspace =
+            restoredSection === "decks"
+              ? restoredCheckpoint.flashcardsWorkspace ??
+                restored.flashcardsWorkspace ??
+                "decks"
+              : "decks";
           setSection(restoredSection);
+          setFlashcardsWorkspace(restoredWorkspace);
           if (
             restoredCheckpoint.deckId &&
             loadedDecks.some((deck) => deck.id === restoredCheckpoint.deckId)
           ) {
+            setFlashcardsWorkspace("decks");
             setDeckOpenRequest({
               requestId: deckOpenRequestSequence.current,
               deckId: restoredCheckpoint.deckId,
@@ -175,12 +198,19 @@ export function useAppController() {
         : undefined;
     void saveUiCheckpoint({
       section,
+      flashcardsWorkspace: section === "decks" ? flashcardsWorkspace : undefined,
       deckId: deckOpenRequest?.deckId,
       analytics,
     }).catch((error: unknown) => {
       console.error("Unable to save the device navigation checkpoint:", getErrorMessage(error));
     });
-  }, [analyticsLaunch, deckOpenRequest?.deckId, isLoading, section]);
+  }, [
+    analyticsLaunch,
+    deckOpenRequest?.deckId,
+    flashcardsWorkspace,
+    isLoading,
+    section,
+  ]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -193,14 +223,16 @@ export function useAppController() {
           snapshot.phase === "suspending" ||
           snapshot.phase === "termination_requested")
       ) {
-        void saveUiCheckpoint({ section, deckId: deckOpenRequest?.deckId }).catch(
-          (error: unknown) => {
-            console.error(
-              "Unable to save the lifecycle navigation checkpoint:",
-              getErrorMessage(error),
-            );
-          },
-        );
+        void saveUiCheckpoint({
+          section,
+          flashcardsWorkspace: section === "decks" ? flashcardsWorkspace : undefined,
+          deckId: deckOpenRequest?.deckId,
+        }).catch((error: unknown) => {
+          console.error(
+            "Unable to save the lifecycle navigation checkpoint:",
+            getErrorMessage(error),
+          );
+        });
       }
     })
       .then((dispose) => {
@@ -216,7 +248,7 @@ export function useAppController() {
       disposed = true;
       unlisten?.();
     };
-  }, [deckOpenRequest?.deckId, isLoading, section]);
+  }, [deckOpenRequest?.deckId, flashcardsWorkspace, isLoading, section]);
 
   useEffect(() => {
     if (section === "decks") return;
@@ -256,7 +288,10 @@ export function useAppController() {
   }
 
   async function confirmDiscardTemplate(): Promise<boolean> {
-    if (section !== "templates" || !hasUnsavedTemplate) return true;
+    const templateWorkspaceOpen =
+      section === "templates" ||
+      (section === "decks" && flashcardsWorkspace === "templates");
+    if (!templateWorkspaceOpen || !hasUnsavedTemplate) return true;
     const accepted = await confirm({
       title: "Discard template changes?",
       description: "The unsaved changes to this card template will be lost.",
@@ -325,22 +360,45 @@ export function useAppController() {
   }
 
   async function navigate(next: AppSection): Promise<void> {
-    if (next === section && next !== "practice") return;
-    if (!(await confirmPracticeTermination(next))) return;
+    const destination = normalizeDestination(next);
+    const alreadyThere =
+      destination.section === section &&
+      (destination.section !== "decks" ||
+        destination.flashcardsWorkspace === undefined ||
+        destination.flashcardsWorkspace === flashcardsWorkspace);
+    if (alreadyThere && destination.section !== "practice") return;
+    if (!(await confirmPracticeTermination(destination.section))) return;
     if (!(await canLeaveCurrentSection())) return;
-    if (next === "practice") {
+    if (destination.section === "practice") {
       setPracticeRestore(null);
       nextPracticeRequest([], [], [], false, "scheduled", null);
     }
-    if (next === "analytics") {
+    if (destination.section === "analytics") {
       const requestId = analyticsRequestSequence.current;
       analyticsRequestSequence.current += 1;
       setAnalyticsLaunch({ requestId, range: "7d", deckIds: [], tagIds: [] });
     }
-    if (next === "decks" || next === "cards") {
-      void refreshDecks().catch((error: unknown) => showToast("error", getErrorMessage(error)));
+    if (destination.section === "decks") {
+      setFlashcardsWorkspace(destination.flashcardsWorkspace ?? "decks");
+      void refreshDecks().catch((error: unknown) =>
+        showToast("error", getErrorMessage(error)),
+      );
     }
-    setSection(next);
+    setSection(destination.section);
+  }
+
+  async function navigateFlashcardsWorkspace(
+    next: FlashcardsWorkspaceName,
+  ): Promise<void> {
+    if (section === "decks" && next === flashcardsWorkspace) return;
+    if (!(await canLeaveCurrentSection())) return;
+    setSection("decks");
+    setFlashcardsWorkspace(next);
+    if (next === "decks" || next === "search" || next === "create") {
+      void refreshDecks().catch((error: unknown) =>
+        showToast("error", getErrorMessage(error)),
+      );
+    }
   }
 
   async function practiceDeck(
@@ -355,7 +413,9 @@ export function useAppController() {
       [],
       true,
       "extra",
-      origin === "detail" ? { section: "decks", deckId } : { section: "decks" },
+      origin === "detail"
+        ? { section: "decks", deckId, flashcardsWorkspace: "decks" }
+        : { section: "decks", flashcardsWorkspace: "decks" },
     );
     setSection("practice");
   }
@@ -363,7 +423,12 @@ export function useAppController() {
   async function practiceScope(deckIds: string[], tagIds: string[]): Promise<void> {
     if (!(await canLeaveCurrentSection())) return;
     const returnTarget: PracticeReturnTarget | null =
-      section === "practice" ? null : { section };
+      section === "practice"
+        ? null
+        : {
+            section,
+            ...(section === "decks" ? { flashcardsWorkspace } : {}),
+          };
     setPracticeRestore(null);
     nextPracticeRequest(deckIds, tagIds, [], true, "scheduled", returnTarget);
     setSection("practice");
@@ -372,7 +437,12 @@ export function useAppController() {
   async function practiceCards(cardIds: string[]): Promise<void> {
     if (cardIds.length === 0 || !(await canLeaveCurrentSection())) return;
     const returnTarget: PracticeReturnTarget | null =
-      section === "practice" ? null : { section };
+      section === "practice"
+        ? null
+        : {
+            section,
+            ...(section === "decks" ? { flashcardsWorkspace } : {}),
+          };
     setPracticeRestore(null);
     nextPracticeRequest([], [], cardIds, true, "scheduled", returnTarget);
     setSection("practice");
@@ -380,15 +450,21 @@ export function useAppController() {
 
   function returnFromPractice(target: PracticeReturnTarget): void {
     setPracticeRestore(null);
-    if (target.section === "decks" && target.deckId) {
+    const destination = normalizeDestination(target.section);
+    const workspace =
+      target.flashcardsWorkspace ?? destination.flashcardsWorkspace ?? "decks";
+    if (destination.section === "decks" && target.deckId) {
       const requestId = deckOpenRequestSequence.current;
       deckOpenRequestSequence.current += 1;
       setDeckOpenRequest({ requestId, deckId: target.deckId });
     }
-    if (target.section === "decks" || target.section === "cards") {
-      void refreshDecks().catch((error: unknown) => showToast("error", getErrorMessage(error)));
+    if (destination.section === "decks") {
+      setFlashcardsWorkspace(target.deckId ? "decks" : workspace);
+      void refreshDecks().catch((error: unknown) =>
+        showToast("error", getErrorMessage(error)),
+      );
     }
-    setSection(target.section);
+    setSection(destination.section);
   }
 
   function viewSessionAnalytics(sessionId: string, deckIds: string[]): void {
@@ -406,14 +482,16 @@ export function useAppController() {
   }
 
   function saveSettingsLocally(settings: AppSettings): void {
-    setSavedSettings(settings);
-    setActiveSettings(settings);
+    const normalized = normalizeSettings(settings);
+    setSavedSettings(normalized);
+    setActiveSettings(normalized);
     // Settings owns a combined dirty state. Saving ordinary preferences must not
     // clear an unrelated AI profile or credential draft.
   }
 
   return {
     section,
+    flashcardsWorkspace,
     decks,
     savedSettings,
     activeSettings,
@@ -432,6 +510,7 @@ export function useAppController() {
     consumeDeckOpenRequest,
     consumeAnalyticsLaunch,
     navigate,
+    navigateFlashcardsWorkspace,
     practiceDeck,
     practiceScope,
     practiceCards,
@@ -442,5 +521,41 @@ export function useAppController() {
     setHasUnsavedSettings,
     setActiveSettings,
     saveSettingsLocally,
+  };
+}
+
+function normalizeDestination(section: AppSection): NormalizedDestination {
+  if (section === "cards") return { section: "decks", flashcardsWorkspace: "search" };
+  if (section === "templates") {
+    return { section: "decks", flashcardsWorkspace: "templates" };
+  }
+  return { section };
+}
+
+function normalizeSettings(settings: AppSettings): AppSettings {
+  const motionPreference =
+    settings.motionPreference ??
+    (settings.animationsEnabled === false
+      ? "none"
+      : settings.reduceMotion
+        ? "reduced"
+        : "system");
+  return {
+    theme: settings.theme,
+    uiFont: settings.uiFont,
+    cardFont: settings.cardFont,
+    uiScale: settings.uiScale,
+    cardBaseSize: settings.cardBaseSize,
+    motionPreference,
+    materialPreference: settings.materialPreference ?? "automatic",
+    decorativeArtwork: settings.decorativeArtwork ?? true,
+    celebrationsEnabled: settings.celebrationsEnabled ?? true,
+    tutorialsEnabled: settings.tutorialsEnabled ?? true,
+    deckViewDensity: settings.deckViewDensity ?? "comfortable",
+    confirmDeletions: settings.confirmDeletions,
+    practiceShuffle: settings.practiceShuffle,
+    desiredRetention: settings.desiredRetention,
+    dailyNewLimit: settings.dailyNewLimit,
+    dailyReviewLimit: settings.dailyReviewLimit,
   };
 }
