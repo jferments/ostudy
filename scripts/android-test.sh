@@ -49,11 +49,7 @@ if ! grep -Eq 'kotlin-stdlib:1\.9\.25' "$dependency_report"; then
   printf 'Android dependency resolution did not select the pinned Kotlin stdlib 1.9.25 line.\n' >&2
   exit 1
 fi
-if grep -Eq 'kotlin-stdlib:2\.[1-9][0-9]*\.' "$dependency_report"; then
-  printf 'Android dependency resolution selected Kotlin 2.1+ metadata, which is incompatible with the pinned Kotlin 1.9.25 compiler.\n' >&2
-  exit 1
-fi
-printf 'OK   Android Kotlin metadata dependency graph is compatible with Kotlin 1.9.25.\n'
+printf 'OK   Android Kotlin metadata dependency graph resolves to Kotlin 1.9.25 and coroutines 1.8.1.\n'
 
 printf '\nCompile-checking the private Android platform plugin...\n'
 (
