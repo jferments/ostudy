@@ -93,17 +93,17 @@ describe("DecksWorkspace Android Back ownership", () => {
     expect(counts).toEqual([0, 1]);
 
     fireEvent.click(screen.getByRole("button", { name: "Open editor" }));
-    await waitFor(() => expect(screen.getByTestId("mock-deck-view")).toHaveTextContent("editor"));
+    await waitFor(() => expect(screen.getByTestId("mock-deck-view").textContent).toBe("editor"));
     expect(platformBackHandlerCountForTests()).toBe(1);
     expect(counts).toEqual([0, 1]);
 
     expect(dispatchPlatformBack()).toBe(true);
-    await waitFor(() => expect(screen.getByTestId("mock-deck-view")).toHaveTextContent("detail"));
+    await waitFor(() => expect(screen.getByTestId("mock-deck-view").textContent).toBe("detail"));
     expect(platformBackHandlerCountForTests()).toBe(1);
     expect(counts).toEqual([0, 1]);
 
     expect(dispatchPlatformBack()).toBe(true);
-    await waitFor(() => expect(screen.getByTestId("mock-deck-view")).toHaveTextContent("library"));
+    await waitFor(() => expect(screen.getByTestId("mock-deck-view").textContent).toBe("library"));
     await waitFor(() => expect(platformBackHandlerCountForTests()).toBe(0));
     expect(counts).toEqual([0, 1, 0]);
 
