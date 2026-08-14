@@ -80,26 +80,19 @@ export ANDROID_SERIAL="$SERIAL"
 "$adb" -s "$SERIAL" logcat -c
 printf 'Building the x86_64 Android smoke APK and instrumentation package...\n'
 export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
+# Tauri owns the Rust/JNI compilation and its temporary CLI socket. The Gradle
+# postbuild wrapper then reuses that x86_64 JNI output while building only the
+# instrumentation package, excluding generated rustBuild tasks.
 bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
-(
-  cd src-tauri/gen/android
-  ./gradlew --no-daemon \
-    --parallel \
-    --max-workers "$OSTUDY_GRADLE_WORKERS" \
-    :app:assembleUniversalDebug \
-    :app:assembleUniversalDebugAndroidTest
-)
+bash ./scripts/android-gradle-postbuild.sh instrumentation-package
 
-app_apk="$({
-  find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' \
-    ! -path '*/androidTest/*' -printf '%T@ %p\n'
-} | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
+app_apk="$ROOT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
 test_apk="$({
-  find src-tauri/gen/android/app/build/outputs/apk/androidTest -type f -name '*.apk' \
-    -printf '%T@ %p\n' 2>/dev/null || true
+  find src-tauri/gen/android/app/build/outputs/apk/androidTest/universal/debug \
+    -type f -name '*.apk' -printf '%T@ %p\n' 2>/dev/null || true
 } | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
-if [[ -z "$app_apk" || -z "$test_apk" ]]; then
-  printf 'Could not locate the Android application and instrumentation APKs.\n' >&2
+if [[ ! -f "$app_apk" || -z "$test_apk" || ! -f "$test_apk" ]]; then
+  printf 'Could not locate the UniversalDebug Android application and instrumentation APKs.\n' >&2
   exit 1
 fi
 
