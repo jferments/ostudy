@@ -6,7 +6,11 @@ This process applies to human contributors and automated maintainers. The mechan
 
 ## 1. Establish the exact base
 
-Start from the current intended base, normally `origin/main`, and record its commit SHA. In a local checkout:
+Start from the current intended base, normally `origin/main`, and record its commit SHA.
+
+### Local checkout mode
+
+In a local checkout:
 
 ```bash
 cd ~/code/ostudy
@@ -29,7 +33,15 @@ git worktree add -b "$BRANCH" "$WORKTREE" "$BASE_SHA"
 cd "$WORKTREE"
 ```
 
-A connector-backed environment may create the remote branch directly. Private repository access must use the authenticated connector or credential path supplied by the environment; do not substitute anonymous scraping, temporary transfer repositories, or opaque payload branches.
+### Authenticated GitHub Connector mode
+
+A connector-backed environment must use the authenticated Connector as the source of truth for remote repository state. Use Connector reads to resolve the private repository, fetch the intended base, and record its exact SHA. Do not substitute `gh` availability, anonymous scraping, temporary transfer repositories, CI runner state, or an unrelated local checkout for Connector state.
+
+Read access and authorization for a concrete write are separate. The absence of an approval prompt is not evidence that writes are unavailable. When the task reaches its first intended mutation, invoke the actual Connector branch/file/commit operation and let the Connector authorization layer handle any required approval. Do not change the Connector to permanent or unrestricted write access merely to bypass that boundary.
+
+Only an actual rejected Connector mutation establishes a Connector write failure. Report the exact operation and error. After a successful mutation, verify the resulting remote branch or head SHA before claiming publication.
+
+See [`../agents/GITHUB-CONNECTOR.md`](../agents/GITHUB-CONNECTOR.md) for the complete connector-specific procedure.
 
 ## 2. Publish one focused branch
 
@@ -39,17 +51,21 @@ Use a short-lived branch that identifies the work, normally:
 agent/<description>
 ```
 
-Publish it before substantial implementation:
+In a local checkout, publish it before substantial implementation:
 
 ```bash
 git push -u origin HEAD
 ```
+
+In Connector mode, create the task branch from the recorded base SHA through the Connector, then verify the remote branch state.
 
 Do not develop directly on `main`. Do not create competing replacement branches for ordinary test failures. A new branch is appropriate only when the existing branch is genuinely unrecoverable or the scope has become a separate change.
 
 ## 3. Make the first meaningful commit
 
 The first commit may be an acceptance-test skeleton, an ADR, a migration shell, a documentation index, or another small piece that truthfully establishes the task. It should not pretend that an unimplemented feature is complete.
+
+In a local checkout:
 
 ```bash
 git add <paths>
@@ -58,7 +74,9 @@ git commit -m "chore: scaffold <change>"
 git push
 ```
 
-Publishing early makes the task inspectable and recoverable without encouraging large, opaque commits.
+In Connector mode, create or update the intended files on the task branch, then verify the resulting remote head SHA.
+
+Publishing early makes the task inspectable and recoverable without encouraging large, opaque commits. A generated local patch is not publication.
 
 ## 4. Open a draft pull request
 
@@ -108,6 +126,8 @@ Consume complete failure information from a meaningful branch head before making
 
 A static parse, mocked frontend test, or successful build step must not be reported as a successful native application test.
 
+Repository publication and CI availability are separate. A missing, busy, offline, or mismatched self-hosted runner may block validation, but it does not establish that GitHub branch, commit, or pull-request writes are unavailable.
+
 ## 7. Qualify the completed head
 
 When implementation is complete, run:
@@ -124,13 +144,15 @@ Then launch the standalone artifact produced by the gate:
 
 Manually exercise the changed workflow, including relevant persistence after restart, keyboard and touch behavior, compact and wide layouts, themes, pending/cancel/error states, migration of existing data, and import/export or backup compatibility.
 
-Inspect exactly what the pull request proposes:
+In a local checkout, inspect exactly what the pull request proposes:
 
 ```bash
 git diff --name-status origin/main...HEAD
 git diff --stat origin/main...HEAD
 git log --oneline origin/main..HEAD
 ```
+
+In Connector mode, inspect the remote PR changed-file list/diff and verify its current head SHA through GitHub.
 
 A green workflow run qualifies only the commit it tested. A later push invalidates an older successful result.
 
@@ -148,13 +170,15 @@ Update the pull-request description with:
 - manual workflows actually exercised;
 - migration, compatibility, backup, rollback, known limitation, and residual-risk notes.
 
+For Connector-backed work, also distinguish publication state from validation state: report the remote branch/head and PR state separately from CI runner/workflow results.
+
 Mark the pull request ready only when its published head is complete and the required automated gate has passed. Human review and acceptance remain necessary even when an automated maintainer wrote the code.
 
 ## 9. Merge and synchronize
 
 The normal merge method is **Squash and merge** after exact-head CI and human acceptance both pass. An automated maintainer does not merge its own pull request unless the repository owner explicitly requests that operation.
 
-After merge:
+After merge in a local checkout:
 
 ```bash
 git switch main
@@ -230,5 +254,7 @@ A task handoff is complete when it identifies:
 - CI state for the current head;
 - manual acceptance performed or still required;
 - limitations, compatibility effects, rollback concerns, and merge method.
+
+For Connector-backed work, every claimed remote mutation must be verified through GitHub, and any failed Connector operation must be reported with its exact error rather than inferred from local or CI state.
 
 The durable result is the published branch and pull request, not a promise to provide code later.

@@ -5,6 +5,10 @@ Agents must work as reviewable contributors, not as autonomous maintainers of
 
 ## 1. Establish the exact starting point
 
+Choose the repository-access mode before editing.
+
+### Local checkout
+
 ```bash
 git switch main
 git status --short
@@ -16,6 +20,31 @@ git switch -c <type>/<short-description>
 
 Stop before destructive synchronization if the working tree contains changes
 that are not part of the task. Record the base commit SHA in the handoff.
+
+### Authenticated GitHub Connector
+
+When operating through an authenticated GitHub Connector, do not use local
+shell state as a proxy for remote repository state. Use Connector reads to
+resolve `jferments/ostudy`, fetch the intended base, and record the exact base
+SHA. Then use the actual Connector mutation when the task reaches its first
+write and let the Connector's authorization boundary handle any required user
+approval.
+
+Read access, concrete write authorization, CI runner availability, and local
+checkout state are separate concerns. In particular:
+
+- a successful read does not prove or disprove authorization for a later write;
+- not seeing an approval prompt does not mean writes are unavailable;
+- an unavailable CI runner does not prevent publishing a branch or commit;
+- do not change the Connector to permanent/unrestricted write access simply to
+  avoid a write prompt;
+- only an actual failed Connector mutation establishes a Connector write
+  failure, and the exact error must be reported.
+
+After each meaningful Connector mutation, verify the resulting remote branch or
+head SHA before claiming that the change was published. See
+[`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) for the complete connector-specific
+workflow.
 
 ## 2. Define the change before editing
 
@@ -39,7 +68,7 @@ documentation before selecting an implementation.
 - Avoid dependency changes and broad refactors unless they are the task.
 - Update affected documentation and ADRs in the same branch.
 
-Inspect continuously:
+In a local checkout, inspect continuously:
 
 ```bash
 git status --short
@@ -47,6 +76,9 @@ git diff --check
 git diff --stat
 git diff
 ```
+
+In Connector mode, inspect the remote branch and proposed diff through GitHub
+instead of inferring state from an unrelated local checkout.
 
 ## 4. Validate in layers
 
@@ -88,7 +120,7 @@ Additional checks depend on the change:
 
 ## 5. Review the exact proposed commit
 
-Stage specific files whenever practical:
+In a local checkout, stage specific files whenever practical:
 
 ```bash
 git add <paths>
@@ -98,7 +130,8 @@ git diff --cached
 ```
 
 Confirm that no secrets, personal data, generated build output, unrelated
-formatting, or accidental lockfile changes are staged.
+formatting, or accidental lockfile changes are staged. In Connector mode,
+inspect the exact changed-file list and remote diff for the same hazards.
 
 Use a behavioral commit message, for example:
 
@@ -106,7 +139,7 @@ Use a behavioral commit message, for example:
 docs: standardize project name and add agent guidance
 ```
 
-After committing:
+After committing locally:
 
 ```bash
 git diff --name-only origin/main...HEAD
@@ -114,11 +147,19 @@ git diff --stat origin/main...HEAD
 git log --oneline origin/main..HEAD
 ```
 
+In Connector mode, verify the same information from the remote branch/PR and
+record the current remote head SHA.
+
 ## 6. Push and propose; do not self-merge
+
+In a local checkout:
 
 ```bash
 git push -u origin HEAD
 ```
+
+In Connector mode, create or update the remote task branch through the
+Connector and verify its resulting head SHA.
 
 Open a pull request against `main`. The description must include:
 
@@ -143,6 +184,9 @@ Use precise statements:
 - **Inspected:** code or output was reviewed without execution.
 - **Not run:** the check was unavailable or outside the environment.
 - **Manually verified:** the named behavior was actually exercised.
+- **Published:** the Connector or remote Git operation confirmed the resulting
+  branch/head state.
 
 Never say that code is fully tested merely because it parses, compiles, or looks
-correct.
+correct. Never say that a Connector mutation exists remotely merely because a
+local patch or proposed change was generated.
