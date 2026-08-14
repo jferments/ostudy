@@ -114,7 +114,7 @@ export function PracticeComplete({
 
       <div className={styles.actions}>
         <button type="button" className="primary-button" onClick={onViewAnalytics}>
-          View full analytics
+          View analytics
         </button>
         <button type="button" className="secondary-button" onClick={onChooseDecks}>
           Back to practice
