@@ -10,6 +10,21 @@ SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
 MAIN_ENTRY_PATH = ROOT / "src" / "main.tsx"
 ANDROID_BUILD_PATH = ROOT / "scripts" / "android-build.sh"
 ANDROID_PACKAGE_VERIFIER_PATH = ROOT / "scripts" / "verify-android-package.sh"
+ANDROID_SMOKE_TEST_PATH = (
+    ROOT
+    / "src-tauri"
+    / "gen"
+    / "android"
+    / "app"
+    / "src"
+    / "androidTest"
+    / "java"
+    / "io"
+    / "github"
+    / "jferments"
+    / "ostudy"
+    / "AndroidSmokeTest.kt"
+)
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
 CREATE_CARDS_PATH = ROOT / "src" / "screens" / "flashcards" / "CreateCardsWorkspace.tsx"
 TOUR_PROVIDER_PATH = ROOT / "src" / "ui" / "tutorials" / "TourProvider.tsx"
@@ -92,7 +107,17 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn('import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE === "1"', source)
         self.assertIn('import("./testing/androidTestBridge")', source)
         self.assertIn("installAndroidTestBridge();", source)
+        self.assertIn("setAndroidTestBridgeDiagnostic", source)
+        self.assertIn("if (!documentRoot) return false;", source)
         self.assertNotIn('import { installAndroidTestBridge }', source)
+
+    def test_android_smoke_bridge_wait_tolerates_empty_webview_document(self) -> None:
+        source = ANDROID_SMOKE_TEST_PATH.read_text(encoding="utf-8")
+        self.assertIn("root?.dataset?.androidTestBridge", source)
+        self.assertIn('if (decoded == "null")', source)
+        self.assertIn('if (latest.optString("type") == "object") return', source)
+        self.assertIn("document.documentElement?.dataset != null", source)
+        self.assertNotIn('latest.optString("type") == "object" && state == "ready"', source)
 
     def test_android_build_verifies_smoke_bridge_at_frontend_boundary(self) -> None:
         build = ANDROID_BUILD_PATH.read_text(encoding="utf-8")
