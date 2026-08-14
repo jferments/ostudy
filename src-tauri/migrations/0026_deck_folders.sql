@@ -24,3 +24,32 @@ CREATE TABLE library_organization (
 INSERT INTO library_organization (singleton_id, revision, updated_at)
 SELECT 1, 1, COALESCE(MAX(updated_at), 0)
 FROM decks;
+
+CREATE TRIGGER deck_library_revision_after_insert
+AFTER INSERT ON decks
+BEGIN
+    UPDATE library_organization
+    SET revision = revision + 1,
+        updated_at = MAX(updated_at, NEW.updated_at)
+    WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER deck_library_revision_after_delete
+AFTER DELETE ON decks
+BEGIN
+    UPDATE library_organization
+    SET revision = revision + 1,
+        updated_at = MAX(updated_at, OLD.updated_at)
+    WHERE singleton_id = 1;
+END;
+
+CREATE TRIGGER deck_library_revision_after_visibility_change
+AFTER UPDATE OF deleted_at, archived_at ON decks
+WHEN OLD.deleted_at IS NOT NEW.deleted_at
+  OR OLD.archived_at IS NOT NEW.archived_at
+BEGIN
+    UPDATE library_organization
+    SET revision = revision + 1,
+        updated_at = MAX(updated_at, NEW.updated_at)
+    WHERE singleton_id = 1;
+END;
