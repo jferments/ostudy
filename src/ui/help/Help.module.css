@@ -75,7 +75,7 @@
   .tooltipRoot:focus-within .tooltip {
     opacity: 1;
     transform: translate(-50%, 0);
-    transition-delay: 360ms;
+    transition-delay: var(--ostudy-tooltip-delay);
   }
   :root[data-motion="none"] .tooltip {
     transition: none;
