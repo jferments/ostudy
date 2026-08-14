@@ -127,7 +127,7 @@ Every Android change continues to run the Linux full gate. Vitest and Rust tests
 
 ### Kotlin and instrumentation compilation
 
-`android-test.sh` first resolves the Kotlin dependency graph and compile-checks the private Android plugin, then runs shared TypeScript/Rust qualification, builds the instrumentation APK, and verifies the x86_64 debug APK.
+`android-test.sh` first runs the shared TypeScript/Rust qualification, then builds the x86_64 debug application through the Tauri CLI. That Tauri-owned build initializes transient generated Gradle state such as `tauri.settings.gradle`; only after that boundary does the script resolve the Kotlin dependency graph, compile-check the private Android plugin, build the instrumentation APK, and verify the debug APK. The transient Tauri Gradle settings remain ignored and are never treated as committed source-of-truth.
 
 By default Android qualification uses all logical CPUs reported by the host. `OSTUDY_ANDROID_JOBS` can lower that ceiling on memory-constrained machines. Vitest files, Cargo compilation/tests, independent Gradle subprojects, and JVM test forks use the shared worker budget.
 
