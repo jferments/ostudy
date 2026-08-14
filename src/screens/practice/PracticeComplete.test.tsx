@@ -44,7 +44,7 @@ describe("PracticeComplete", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "View full analytics" }));
+    fireEvent.click(screen.getByRole("button", { name: "View analytics" }));
     fireEvent.click(screen.getByRole("button", { name: "Back to practice" }));
     fireEvent.click(screen.getByRole("button", { name: "Practice this scope again" }));
     expect(onViewAnalytics).toHaveBeenCalledTimes(1);
