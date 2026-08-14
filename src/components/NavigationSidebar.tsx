@@ -1,8 +1,8 @@
 import { useState } from "react";
 
 import type { AppSection } from "../controllers/useAppController";
-import { Icon, type IconName } from "../ui/icons/Icon";
 import { useMediaQuery } from "../ui/hooks/useMediaQuery";
+import { Icon, type IconName } from "../ui/icons/Icon";
 import { Sheet } from "../ui/overlays/Dialog";
 import { BrandLockup } from "./Brand";
 import styles from "./NavigationSidebar.module.css";
@@ -23,7 +23,9 @@ const ITEMS: ReadonlyArray<{ section: AppSection; icon: IconName; label: string 
 const COMPACT_SECTIONS = new Set<AppSection>(["decks", "practice", "analytics"]);
 
 function isActive(item: AppSection, current: AppSection): boolean {
-  if (item === "decks") return current === "decks" || current === "cards" || current === "templates";
+  if (item === "decks") {
+    return current === "decks" || current === "cards" || current === "templates";
+  }
   return item === current;
 }
 
@@ -40,7 +42,11 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
     const primary = ITEMS.filter((item) => COMPACT_SECTIONS.has(item.section));
     return (
       <>
-        <nav className={styles.compactNav} aria-label="Main navigation">
+        <nav
+          className={styles.compactNav}
+          aria-label="Main navigation"
+          data-tour-anchor="app.navigation"
+        >
           {primary.map((item) => (
             <button
               key={item.section}
@@ -68,10 +74,19 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
           </button>
         </nav>
         {moreOpen ? (
-          <Sheet title="More" description="Additional ostudy sections" onClose={() => setMoreOpen(false)}>
+          <Sheet
+            title="More"
+            description="Additional ostudy sections"
+            onClose={() => setMoreOpen(false)}
+          >
             <div className={styles.moreList}>
               {ITEMS.filter((item) => !COMPACT_SECTIONS.has(item.section)).map((item) => (
-                <button key={item.section} type="button" data-testid={`nav-${item.section}`} onClick={() => navigate(item.section)}>
+                <button
+                  key={item.section}
+                  type="button"
+                  data-testid={`nav-${item.section}`}
+                  onClick={() => navigate(item.section)}
+                >
                   <Icon name={item.icon} size={22} />
                   <span>{item.label}</span>
                 </button>
@@ -86,7 +101,11 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
   return (
     <aside className={`sidebar ${styles.sidebar}`}>
       <BrandLockup />
-      <nav className={`sidebar-nav ${styles.sidebarNav}`} aria-label="Main navigation">
+      <nav
+        className={`sidebar-nav ${styles.sidebarNav}`}
+        aria-label="Main navigation"
+        data-tour-anchor="app.navigation"
+      >
         {ITEMS.map((item) => {
           const active = isActive(item.section, section);
           return (
@@ -98,7 +117,9 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
               aria-current={active ? "page" : undefined}
               onClick={() => navigate(item.section)}
             >
-              <span className={styles.navIcon}><Icon name={item.icon} size={21} /></span>
+              <span className={styles.navIcon}>
+                <Icon name={item.icon} size={21} />
+              </span>
               <span className={styles.navLabel}>{item.label}</span>
             </button>
           );
