@@ -92,22 +92,24 @@ if ((RUN_EMULATOR == 1)); then
   exec bash ./scripts/android-emulator-smoke.sh
 fi
 
+# Build Rust/JNI exactly once through Tauri. Direct Gradle work that follows must
+# reuse this output instead of re-entering `android-studio-script` after Tauri's
+# temporary CLI socket has been closed.
 export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
 bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
-(
-  cd src-tauri/gen/android
-  ./gradlew --no-daemon \
-    --parallel \
-    --max-workers "$OSTUDY_GRADLE_WORKERS" \
-    :app:testUniversalDebugUnitTest \
-    :app:assembleUniversalDebugAndroidTest
-)
-app_apk="$({
-  find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' \
-    ! -path '*/androidTest/*' -printf '%T@ %p\n'
+bash ./scripts/android-gradle-postbuild.sh test-packages
+
+app_apk="$ROOT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
+test_apk="$({
+  find src-tauri/gen/android/app/build/outputs/apk/androidTest/universal/debug \
+    -type f -name '*.apk' -printf '%T@ %p\n' 2>/dev/null || true
 } | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
-if [[ -z "$app_apk" ]]; then
-  printf 'The Android debug APK could not be located after the build.\n' >&2
+if [[ ! -f "$app_apk" ]]; then
+  printf 'The expected universal x86_64 Android debug APK is missing: %s\n' "$app_apk" >&2
+  exit 1
+fi
+if [[ -z "$test_apk" || ! -f "$test_apk" ]]; then
+  printf 'The UniversalDebug Android instrumentation APK could not be located.\n' >&2
   exit 1
 fi
 bash ./scripts/verify-android-package.sh "$app_apk" debug
