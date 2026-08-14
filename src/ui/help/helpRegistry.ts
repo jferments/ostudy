@@ -25,28 +25,28 @@ export interface HelpTopic {
 export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
   "flashcards.folders": {
     id: "flashcards.folders",
-    title: "Organizing decks into folders",
-    summary: "Folders group related decks without changing their cards or review history.",
+    title: "Deck folders",
+    summary: "Folders organize decks without changing their cards, schedules, or review history.",
     details:
-      "Move a deck with its drag handle, keyboard move commands, or the Move to folder menu. Deleting a folder returns its decks to Unfiled unless you explicitly delete the decks separately.",
-    documentation: "getting-started#organize-flashcards",
+      "A deck belongs to at most one folder. Dragging is optional: the Move action and up/down controls provide the same operation. Deleting a folder moves its decks to Unfiled and does not delete cards or historical learning evidence.",
+    documentation: "Flashcards and deck organization",
     tutorialModuleId: "orientation",
   },
   "flashcards.deckDensity": {
     id: "flashcards.deckDensity",
     title: "Deck list density",
-    summary: "Comfortable view emphasizes visual summaries; compact view fits more decks on screen.",
+    summary: "Comfortable view emphasizes visual summaries; Compact view fits more decks on screen.",
     details:
-      "Density changes presentation only. It does not alter deck order, schedules, cards, or review history.",
-    documentation: "getting-started#deck-library",
+      "Density changes presentation only. It does not alter deck order, schedules, cards, or review history, and it can be chosen independently on each device.",
+    documentation: "Customizing the Flashcards library",
   },
   "flashcards.search.studyState": {
     id: "flashcards.search.studyState",
     title: "Study-state filters",
-    summary: "Narrow cards by due status, review history, or scheduling state.",
+    summary: "Availability, status, and last-studied filters describe different parts of a card's schedule.",
     details:
       "Ready now follows the current local study calendar. Suspended and buried cards are excluded from ordinary study until resumed or unburied. Applied filters remain visible as removable chips.",
-    documentation: "getting-started#search-and-filter",
+    documentation: "Searching, filtering, and bulk card management",
     tutorialModuleId: "search",
   },
   "flashcards.search.selection": {
@@ -55,7 +55,7 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     summary: "Select visible cards or every card matching the current filters.",
     details:
       "Select visible affects only loaded rows. Select all matching resolves the complete filtered set before performing a bulk action.",
-    documentation: "getting-started#bulk-card-management",
+    documentation: "Searching, filtering, and bulk card management",
   },
   "templates.layout": {
     id: "templates.layout",
@@ -63,15 +63,15 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     summary: "A template defines reusable fields and how they appear on generated card sides.",
     details:
       "Fields store study content. Rules place those fields on question and answer sides without executing scripts or arbitrary HTML.",
-    documentation: "getting-started#card-templates",
+    documentation: "Card templates and reusable layouts",
   },
   "documents.provider": {
     id: "documents.provider",
-    title: "Flashcard-generation model",
-    summary: "Documents use the provider profile selected for flashcard generation.",
+    title: "Document AI profile",
+    summary: "Documents use the profile selected for the Flashcard Generation task in Settings.",
     details:
-      "Provider credentials remain in the native secret-storage boundary. The document screen only shows the selected profile and processing status.",
-    documentation: "documents-and-ai-generation#select-a-model",
+      "Provider credentials remain in the native secret-storage boundary. The source is adopted into managed local storage before processing, and generated cards become an ordinary editable deck.",
+    documentation: "Documents and AI-generated flashcards",
     tutorialModuleId: "documents",
   },
   "documents.processing": {
@@ -80,16 +80,16 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     summary: "ostudy stores the source locally, extracts structure, and creates a normal deck.",
     details:
       "Large files can take time. You can stop generation, retry recoverable failures, and keep the source document for future generation passes.",
-    documentation: "documents-and-ai-generation#processing-states",
+    documentation: "Documents and AI-generated flashcards",
     tutorialModuleId: "documents",
   },
   "practice.confidence": {
     id: "practice.confidence",
-    title: "Confidence scores",
+    title: "Confidence ratings",
     summary: "Use 0 for Wrong, 1 for Hard, 2 for Medium, and 3 for Easy.",
     details:
-      "Choose the score that matches actual recall. ostudy uses the response and review history to schedule the individual generated card's next presentation.",
-    documentation: "getting-started#practice",
+      "Choose the score that matches actual recall. The rating updates the individual generated card's schedule and appends an immutable review event.",
+    documentation: "Practice, confidence, and scheduling",
     tutorialModuleId: "practice",
   },
   "practice.dailyLimits": {
@@ -98,7 +98,7 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     summary: "Daily limits manage workload without deleting or permanently hiding due cards.",
     details:
       "Scheduled study respects the limits. Extra practice remains available when you intentionally choose a deck or custom scope.",
-    documentation: "getting-started#daily-workload",
+    documentation: "Practice, confidence, and scheduling",
   },
   "settings.materialEffects": {
     id: "settings.materialEffects",
@@ -106,7 +106,7 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     summary: "Material effects control depth, translucency, blur, and texture independently from motion.",
     details:
       "Automatic uses restrained effects and follows reduced-transparency or forced-color preferences. Simple materials use opaque surfaces and no grain.",
-    documentation: "getting-started#appearance",
+    documentation: "Themes, motion, typography, and visual accessibility",
   },
   "settings.motion": {
     id: "settings.motion",
@@ -115,6 +115,6 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
       "Motion can follow the operating system, use full spatial feedback, reduce motion, or turn nonessential motion off.",
     details:
       "Reduced motion removes card flips, parallax, spatial route movement, reorder interpolation, and particle celebrations while preserving clear state changes.",
-    documentation: "getting-started#appearance",
+    documentation: "Themes, motion, typography, and visual accessibility",
   },
 };
