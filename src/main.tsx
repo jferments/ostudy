@@ -14,28 +14,37 @@ if (!root) throw new Error("The ostudy root element is missing.");
 
 type AndroidTestBridgeDiagnosticState = "loading" | "ready" | "missing" | "error";
 
+let androidTestBridgeDiagnostic:
+  | { state: AndroidTestBridgeDiagnosticState; error?: unknown }
+  | null = null;
+let androidTestBridgeDiagnosticScheduled = false;
+
 function setAndroidTestBridgeDiagnostic(
   state: AndroidTestBridgeDiagnosticState,
   error?: unknown,
 ): void {
+  androidTestBridgeDiagnostic = { state, error };
+
   const apply = () => {
     const documentRoot = document.documentElement;
-    if (!documentRoot) return false;
-    documentRoot.dataset.androidTestBridge = state;
-    if (error === undefined) {
+    const diagnostic = androidTestBridgeDiagnostic;
+    if (!documentRoot || !diagnostic) return false;
+    documentRoot.dataset.androidTestBridge = diagnostic.state;
+    if (diagnostic.error === undefined) {
       delete documentRoot.dataset.androidTestBridgeError;
     } else {
       documentRoot.dataset.androidTestBridgeError =
-        error instanceof Error ? error.message : String(error);
+        diagnostic.error instanceof Error ? diagnostic.error.message : String(diagnostic.error);
     }
     return true;
   };
 
-  if (!apply()) {
-    document.addEventListener("DOMContentLoaded", () => {
-      apply();
-    }, { once: true });
-  }
+  if (apply() || androidTestBridgeDiagnosticScheduled) return;
+  androidTestBridgeDiagnosticScheduled = true;
+  document.addEventListener("DOMContentLoaded", () => {
+    androidTestBridgeDiagnosticScheduled = false;
+    apply();
+  }, { once: true });
 }
 
 if (import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE === "1") {
