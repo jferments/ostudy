@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FlashcardsWorkspaceName } from "../../navigation/flashcardsRoutes";
@@ -106,10 +106,14 @@ describe("FlashcardsWorkspace Android Back ownership", () => {
     await waitFor(() => expect(screen.getByTestId("mock-deck-view").textContent).toBe("editor"));
     expect(platformBackHandlerCountForTests()).toBe(1);
 
-    expect(dispatchPlatformBack()).toBe(true);
+    await act(async () => {
+      expect(dispatchPlatformBack()).toBe(true);
+    });
     await waitFor(() => expect(screen.getByTestId("mock-deck-view").textContent).toBe("detail"));
 
-    expect(dispatchPlatformBack()).toBe(true);
+    await act(async () => {
+      expect(dispatchPlatformBack()).toBe(true);
+    });
     await waitFor(() => expect(screen.getByTestId("mock-deck-view").textContent).toBe("library"));
     await waitFor(() => expect(platformBackHandlerCountForTests()).toBe(0));
 
@@ -122,7 +126,9 @@ describe("FlashcardsWorkspace Android Back ownership", () => {
     await waitFor(() => expect(platformBackHandlerCountForTests()).toBe(1));
     expect(screen.getByText("Search workspace")).toBeInTheDocument();
 
-    expect(dispatchPlatformBack()).toBe(true);
+    await act(async () => {
+      expect(dispatchPlatformBack()).toBe(true);
+    });
     await waitFor(() => expect(screen.getByTestId("mock-deck-view")).toBeInTheDocument());
     await waitFor(() => expect(platformBackHandlerCountForTests()).toBe(0));
     view.unmount();
