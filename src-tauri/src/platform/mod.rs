@@ -304,31 +304,17 @@ pub trait ExternalFilePort: Send + Sync {
 
     fn acquire_import(
         &self,
-        _app: AppHandle,
-        _request: ExternalFileRequest,
-        _target: ExternalImportTarget,
-    ) -> PlatformFuture<Result<Option<ExternalAcquireResult>, CommandError>> {
-        Box::pin(async {
-            Err(CommandError::new(
-                "external_file_streaming_unavailable",
-                "This build does not provide streaming external-file acquisition.",
-            ))
-        })
-    }
+        app: AppHandle,
+        request: ExternalFileRequest,
+        target: ExternalImportTarget,
+    ) -> PlatformFuture<Result<Option<ExternalAcquireResult>, CommandError>>;
 
     fn publish_export(
         &self,
-        _app: AppHandle,
-        _request: ExternalFileRequest,
-        _source: ExternalExportSource,
-    ) -> PlatformFuture<Result<Option<ExternalPublishResult>, CommandError>> {
-        Box::pin(async {
-            Err(CommandError::new(
-                "external_file_streaming_unavailable",
-                "This build does not provide streaming external-file publication.",
-            ))
-        })
-    }
+        app: AppHandle,
+        request: ExternalFileRequest,
+        source: ExternalExportSource,
+    ) -> PlatformFuture<Result<Option<ExternalPublishResult>, CommandError>>;
 }
 
 #[derive(Clone, Debug)]
