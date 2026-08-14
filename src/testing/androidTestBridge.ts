@@ -51,6 +51,7 @@ interface AndroidFileOperationSnapshot {
   sequence: number;
   kind: AndroidFileOperationKind | null;
   phase: AndroidFileOperationPhase;
+  cancelled: boolean | null;
   error: string | null;
 }
 
@@ -74,6 +75,7 @@ let fileOperation: AndroidFileOperationSnapshot = {
   sequence: 0,
   kind: null,
   phase: "idle",
+  cancelled: null,
   error: null,
 };
 
@@ -168,38 +170,41 @@ async function restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot> {
 
 function startImportPicker(purpose: ExternalImportPurpose): AndroidFileOperationSnapshot {
   const kind = `${purpose}_import` as AndroidFileOperationKind;
-  return startTrackedFileOperation(kind, async () => {
-    await selectExternalImport(purpose);
-  });
+  return startTrackedFileOperation(
+    kind,
+    async () => (await selectExternalImport(purpose)) === null,
+  );
 }
 
 function startDeckExportPicker(): AndroidFileOperationSnapshot {
   return startTrackedFileOperation("deck_export", async () => {
     const deck = await ensureSmokeDeck();
     const prepared = await prepareDeckExport(deck.id, createOperationId());
-    await publishExport(prepared.preparedExport.id);
+    return (await publishExport(prepared.preparedExport.id)) === null;
   });
 }
 
 function startTrackedFileOperation(
   kind: AndroidFileOperationKind,
-  operation: () => Promise<void>,
+  operation: () => Promise<boolean>,
 ): AndroidFileOperationSnapshot {
   const sequence = fileOperation.sequence + 1;
   fileOperation = {
     sequence,
     kind,
     phase: "pending",
+    cancelled: null,
     error: null,
   };
   void Promise.resolve()
     .then(operation)
-    .then(() => {
+    .then((cancelled) => {
       if (fileOperation.sequence !== sequence) return;
       fileOperation = {
         sequence,
         kind,
         phase: "settled",
+        cancelled,
         error: null,
       };
     })
@@ -209,6 +214,7 @@ function startTrackedFileOperation(
         sequence,
         kind,
         phase: "error",
+        cancelled: null,
         error: getErrorMessage(error),
       };
     });
