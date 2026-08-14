@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native Stage 3.13 responsive/overlay smoke using the W3C WebDriver protocol."""
+"""Native responsive/overlay smoke using the W3C WebDriver protocol."""
 
 from __future__ import annotations
 
@@ -134,12 +134,22 @@ def assert_no_horizontal_overflow(session_id: str, label: str) -> None:
         )
 
 
+def find_workspace_tab(session_id: str, label: str, deadline: float) -> str:
+    return webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//*[@role='tablist' and @aria-label='Flashcards workspaces']"
+        f"//button[@role='tab' and normalize-space(.)={json.dumps(label)}]",
+        deadline,
+    )
+
+
 def verify_compact_navigation(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 390, 700)
     more = webdriver.find_element(
         session_id,
-        "xpath",
-        "//nav[@aria-label='Main navigation']//button[normalize-space(.)='•••More' or contains(normalize-space(.), 'More')]",
+        "css selector",
+        "button[data-testid='nav-more']",
         deadline,
     )
     assert_no_horizontal_overflow(session_id, "compact navigation")
@@ -160,12 +170,12 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         """,
     )
     if int(removed_destinations) != 0:
-        raise AssertionError("Compact More sheet still exposed Search/Filter or Templates as top-level destinations")
+        raise AssertionError("Compact More sheet still exposed Flashcards workspaces as top-level destinations")
 
     settings = webdriver.find_element(
         session_id,
-        "xpath",
-        "//*[@role='dialog']//button[contains(normalize-space(.), 'Settings')]",
+        "css selector",
+        "button[data-testid='nav-settings']",
         deadline,
     )
     webdriver.click(session_id, settings)
@@ -178,26 +188,20 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     )
     assert_no_horizontal_overflow(session_id, "compact Settings screen")
 
-    decks = webdriver.find_element(
+    flashcards = webdriver.find_element(
         session_id,
-        "xpath",
-        "//nav[@aria-label='Main navigation']//button[contains(normalize-space(.), 'Decks')]",
+        "css selector",
+        "button[data-testid='nav-decks']",
         deadline,
     )
-    webdriver.click(session_id, decks)
-    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Decks", deadline)
-    webdriver.find_element(
-        session_id,
-        "xpath",
-        "//main//button[normalize-space(.)='Manage templates']",
-        deadline,
-    )
-    webdriver.find_element(
-        session_id,
-        "xpath",
-        "//main//*[normalize-space(.)='Search and filter cards']",
-        deadline,
-    )
+    webdriver.click(session_id, flashcards)
+    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Flashcards", deadline)
+    find_workspace_tab(session_id, "Decks", deadline)
+    find_workspace_tab(session_id, "Templates", deadline)
+    find_workspace_tab(session_id, "Search", deadline)
+    find_workspace_tab(session_id, "Import/Export", deadline)
+    find_workspace_tab(session_id, "Create Cards", deadline)
+    assert_no_horizontal_overflow(session_id, "compact Flashcards workspace")
 
 
 def verify_dialog_focus(session_id: str, deadline: float) -> None:
@@ -211,7 +215,7 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
     name_input = webdriver.find_element(
         session_id,
         "css selector",
-        "input[placeholder='NCLEX Pharmacology']",
+        "dialog input[data-autofocus='true']",
         deadline,
     )
     wait_for_focus(session_id, name_input, deadline)
@@ -233,8 +237,14 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 1100, 720)
     webdriver.find_element(
         session_id,
-        "xpath",
-        "//nav[@aria-label='Main navigation']//button[contains(normalize-space(.), 'Settings')]",
+        "css selector",
+        "button[data-testid='nav-settings']",
+        deadline,
+    )
+    webdriver.find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-decks']",
         deadline,
     )
     more_count = execute(
@@ -249,12 +259,12 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
         return [...document.querySelectorAll("nav[aria-label='Main navigation'] button")]
           .filter((button) => {
             const label = button.textContent || '';
-            return label.includes('Templates') || label.includes('Search/Filter');
+            return label.includes('Templates') || label.includes('Search/Filter') || label.includes('Create Cards');
           }).length;
         """,
     )
     if int(removed_count) != 0:
-        raise AssertionError("Wide navigation still exposed Search/Filter or Templates as top-level destinations")
+        raise AssertionError("Wide navigation exposed Flashcards workspaces as top-level destinations")
     assert_no_horizontal_overflow(session_id, "wide application shell")
 
 
@@ -271,7 +281,7 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
     webdriver.set_input_text(
         session_id,
         "css selector",
-        "input[placeholder='NCLEX Pharmacology']",
+        "dialog input[data-autofocus='true']",
         deck_name,
         deadline,
     )
@@ -282,7 +292,7 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, create)
-    webdriver.wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
+    webdriver.wait_for_main_heading(session_id, deck_name, deadline)
 
     back = webdriver.find_element(
         session_id,
@@ -291,8 +301,16 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, back)
-    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Decks", deadline)
+    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Flashcards", deadline)
 
+    create_cards = find_workspace_tab(session_id, "Create Cards", deadline)
+    webdriver.click(session_id, create_cards)
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//*[self::h2 or self::span][contains(normalize-space(.), 'Add study material') or normalize-space(.)='Create cards']",
+        deadline,
+    )
     bulk_add = webdriver.find_element(
         session_id,
         "xpath",
@@ -383,7 +401,7 @@ def main() -> int:
         verify_wide_navigation(session_id, deadline)
         verify_bulk_add_containment(session_id, deadline)
         print(
-            "Native UI platform smoke passed: compact/wide navigation, Decks workspace "
+            "Native UI platform smoke passed: compact/wide navigation, Flashcards workspace "
             "destinations, no horizontal overflow, Bulk Add control containment, dialog "
             "focus containment, Escape dismissal, and focus restoration."
         )
