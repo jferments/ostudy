@@ -54,6 +54,7 @@ fi
 
 cd "$ROOT_DIR"
 bash ./scripts/android-doctor.sh
+node ./scripts/verify-external-file-streaming.mjs
 android_write_local_properties
 
 targets=("$TARGET")

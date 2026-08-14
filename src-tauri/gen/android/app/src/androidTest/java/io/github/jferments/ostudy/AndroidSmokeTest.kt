@@ -210,55 +210,133 @@ class AndroidSmokeTest {
             waitForBridge(webView)
             val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 
-            evaluateSync(
+            val deckImport = startFileOperation(
                 webView,
-                "window.__OSTUDY_ANDROID_TEST__.openImportPicker('study_content'); true"
+                "window.__OSTUDY_ANDROID_TEST__.startImportPicker('study_content')"
             )
-            assertTrue(
-                "Android document picker did not open for deck import",
-                waitForDocumentsUi(device, 10_000)
+            waitForDocumentsUiOrFailure(
+                webView,
+                device,
+                deckImport,
+                timeoutMillis = 20_000,
+                label = "Android deck import picker"
             )
             device.pressBack()
             waitForDocumentsUiClosed(device)
             waitForBridge(webView)
+            waitForFileOperationSettled(webView, deckImport, "Android deck import")
 
-            evaluateSync(
+            val imageImport = startFileOperation(
                 webView,
-                "window.__OSTUDY_ANDROID_TEST__.openImportPicker('image'); true"
+                "window.__OSTUDY_ANDROID_TEST__.startImportPicker('image')"
             )
-            assertTrue(
-                "Android document picker did not open for image import",
-                waitForDocumentsUi(device, 10_000)
+            waitForDocumentsUiOrFailure(
+                webView,
+                device,
+                imageImport,
+                timeoutMillis = 20_000,
+                label = "Android image import picker"
             )
             device.pressBack()
             waitForDocumentsUiClosed(device)
             waitForBridge(webView)
+            waitForFileOperationSettled(webView, imageImport, "Android image import")
 
-            evaluateSync(
+            val deckExport = startFileOperation(
                 webView,
-                "window.__OSTUDY_ANDROID_TEST__.openDeckExportPicker(); true"
+                "window.__OSTUDY_ANDROID_TEST__.startDeckExportPicker()"
             )
-            assertTrue(
-                "Android create-document picker did not open for deck export",
-                waitForDocumentsUi(device, 15_000)
+            waitForDocumentsUiOrFailure(
+                webView,
+                device,
+                deckExport,
+                timeoutMillis = 30_000,
+                label = "Android deck export picker"
             )
             device.pressBack()
             waitForDocumentsUiClosed(device)
             waitForBridge(webView)
+            waitForFileOperationSettled(webView, deckExport, "Android deck export")
         }
     }
 
-    private fun waitForDocumentsUi(device: UiDevice, timeoutMillis: Long): Boolean =
-        device.wait(Until.hasObject(By.pkg("com.google.android.documentsui")), timeoutMillis) ||
-            device.wait(Until.hasObject(By.pkg("com.android.documentsui")), 1_000)
+    private fun startFileOperation(webView: WebView, expression: String): Int {
+        val snapshot = evaluateJsonObject(webView, expression)
+        assertEquals(snapshot.optString("error"), "pending", snapshot.getString("phase"))
+        return snapshot.getInt("sequence")
+    }
+
+    private fun waitForDocumentsUiOrFailure(
+        webView: WebView,
+        device: UiDevice,
+        sequence: Int,
+        timeoutMillis: Long,
+        label: String
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        var latest = fileOperationSnapshot(webView)
+        while (System.nanoTime() < deadline) {
+            if (documentsUiVisible(device)) return
+            latest = fileOperationSnapshot(webView)
+            if (latest.optInt("sequence") == sequence && latest.optString("phase") == "error") {
+                throw AssertionError(
+                    "$label failed before opening: ${latest.optString("error", "unknown error")}"
+                )
+            }
+            Thread.sleep(100)
+        }
+        throw AssertionError(
+            "$label did not open. operationPhase=${latest.optString("phase")} " +
+                "operationError=${latest.optString("error", "none")}"
+        )
+    }
+
+    private fun waitForFileOperationSettled(
+        webView: WebView,
+        sequence: Int,
+        label: String
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
+        var latest = fileOperationSnapshot(webView)
+        while (System.nanoTime() < deadline) {
+            latest = fileOperationSnapshot(webView)
+            if (latest.optInt("sequence") == sequence) {
+                when (latest.optString("phase")) {
+                    "settled" -> return
+                    "error" -> throw AssertionError(
+                        "$label failed after picker result: " +
+                            latest.optString("error", "unknown error")
+                    )
+                }
+            }
+            Thread.sleep(100)
+        }
+        throw AssertionError(
+            "$label did not settle after the picker closed. " +
+                "operationPhase=${latest.optString("phase")} " +
+                "operationError=${latest.optString("error", "none")}"
+        )
+    }
+
+    private fun fileOperationSnapshot(webView: WebView): JSONObject =
+        evaluateJsonObject(
+            webView,
+            "window.__OSTUDY_ANDROID_TEST__.fileOperationSnapshot()"
+        )
+
+    private fun evaluateJsonObject(webView: WebView, expression: String): JSONObject {
+        val encoded = evaluateSync(webView, "JSON.stringify($expression)")
+        return JSONObject(decodeJavascriptString(encoded))
+    }
+
+    private fun documentsUiVisible(device: UiDevice): Boolean =
+        device.hasObject(By.pkg("com.google.android.documentsui")) ||
+            device.hasObject(By.pkg("com.android.documentsui"))
 
     private fun waitForDocumentsUiClosed(device: UiDevice) {
         device.wait(Until.gone(By.pkg("com.google.android.documentsui")), 5_000)
         device.wait(Until.gone(By.pkg("com.android.documentsui")), 5_000)
-        // DocumentsUI can disappear one main-loop turn before ActivityResult is
-        // delivered back to Tauri. Give the callback time to clear the native
-        // pending-operation slot before opening the next picker.
-        Thread.sleep(250)
+        assertFalse("Android DocumentsUI did not close", documentsUiVisible(device))
     }
 
     private fun waitForAndroidBackReady(webView: WebView) {

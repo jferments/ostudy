@@ -29,6 +29,7 @@ fi
 android_write_local_properties
 pnpm install --frozen-lockfile
 node ./scripts/verify-android-project.mjs
+node ./scripts/verify-external-file-streaming.mjs
 
 printf '\nVerifying Android Kotlin/coroutines dependency compatibility...\n'
 dependency_report="$(mktemp -t ostudy-android-dependencies.XXXXXXXX)"

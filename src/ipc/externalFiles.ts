@@ -63,7 +63,7 @@ export async function selectAndStageExternalImport(
   purpose: ExternalImportPurpose,
   operationId = createOperationId(),
 ): Promise<StagedExternalFile | null> {
-  return invoke<StagedExternalFile | null>("select_and_stage_external_import", {
+  return invoke<StagedExternalFile | null>("stream_select_and_stage_external_import", {
     input: { operationId, purpose },
   });
 }
@@ -75,7 +75,7 @@ export async function releaseStagedExternalImport(stagedFileId: string): Promise
 export async function publishPreparedExport(
   preparedExportId: string,
 ): Promise<PublishReceipt | null> {
-  return invoke<PublishReceipt | null>("publish_prepared_export", {
+  return invoke<PublishReceipt | null>("stream_publish_prepared_export", {
     input: { preparedExportId },
   });
 }

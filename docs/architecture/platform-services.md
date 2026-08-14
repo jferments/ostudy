@@ -35,6 +35,8 @@ Viewport width, hover, pointer precision, safe areas, and reduced-motion prefere
 
 Imports are copied into app-private staging before validation or long-running work. The application receives an opaque staged-file ID and safe metadata. Exports are built and validated privately before a platform publisher asks where to save or share them.
 
+The registered application commands always use `ExternalFilePort.acquire_import` and `ExternalFilePort.publish_export`. The platform adapter owns both system selection and the byte transfer into or out of a bounded app-private file. Shared Rust then verifies the adapter-reported byte count, hashes and validates imported content, and commits the transfer ledger. Legacy desktop path-selection methods are compatibility-only and are not registered as product commands.
+
 Durable domain objects never contain a desktop path, Android content URI, or iOS document-provider URL.
 
 ## Managed content URLs

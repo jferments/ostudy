@@ -37,6 +37,7 @@ mod documents;
 mod editor_drafts;
 mod error;
 mod external_file_commands;
+mod external_file_streaming;
 mod external_files;
 mod library_backup;
 mod logging;
@@ -251,9 +252,9 @@ pub fn run() {
             ui_checkpoint::get_ui_checkpoint,
             ui_checkpoint::save_ui_checkpoint,
             ui_checkpoint::clear_ui_checkpoint,
-            external_files::select_and_stage_external_import,
+            external_file_streaming::stream_select_and_stage_external_import,
             external_files::release_staged_external_import,
-            external_files::publish_prepared_export,
+            external_file_streaming::stream_publish_prepared_export,
             external_file_commands::share_prepared_export,
             external_files::release_prepared_export,
             external_file_commands::list_incoming_shares,

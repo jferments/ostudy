@@ -3,6 +3,7 @@ import { createCardNote } from "../ipc/cards";
 import {
   createOperationId,
   createSubmissionId,
+  getErrorMessage,
   type RichDocument,
 } from "../ipc/common";
 import {
@@ -37,13 +38,24 @@ interface AndroidPracticeRestoreSnapshot {
   completed: boolean;
 }
 
+type AndroidFileOperationKind = "study_content_import" | "image_import" | "deck_export";
+type AndroidFileOperationPhase = "idle" | "pending" | "settled" | "error";
+
+interface AndroidFileOperationSnapshot {
+  sequence: number;
+  kind: AndroidFileOperationKind | null;
+  phase: AndroidFileOperationPhase;
+  error: string | null;
+}
+
 interface AndroidTestBridge {
   seedAndReview(): Promise<AndroidSmokeSnapshot>;
   snapshot(): Promise<AndroidSmokeSnapshot>;
   beginInterruptedPractice(): Promise<AndroidPracticeRestoreSnapshot>;
   restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot>;
-  openImportPicker(purpose: "image" | "study_content"): void;
-  openDeckExportPicker(): void;
+  startImportPicker(purpose: "image" | "study_content"): AndroidFileOperationSnapshot;
+  startDeckExportPicker(): AndroidFileOperationSnapshot;
+  fileOperationSnapshot(): AndroidFileOperationSnapshot;
 }
 
 declare global {
@@ -51,6 +63,13 @@ declare global {
     __OSTUDY_ANDROID_TEST__?: AndroidTestBridge;
   }
 }
+
+let fileOperation: AndroidFileOperationSnapshot = {
+  sequence: 0,
+  kind: null,
+  phase: "idle",
+  error: null,
+};
 
 /**
  * Installs a narrow E2E bridge only in APKs built explicitly for emulator
@@ -64,8 +83,9 @@ export function installAndroidTestBridge(): void {
     snapshot,
     beginInterruptedPractice,
     restorationSnapshot,
-    openImportPicker,
-    openDeckExportPicker,
+    startImportPicker,
+    startDeckExportPicker,
+    fileOperationSnapshot,
   };
 }
 
@@ -140,15 +160,60 @@ async function restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot> {
   };
 }
 
-function openImportPicker(purpose: "image" | "study_content"): void {
-  void selectExternalImport(purpose).catch(() => undefined);
+function startImportPicker(
+  purpose: "image" | "study_content",
+): AndroidFileOperationSnapshot {
+  const kind: AndroidFileOperationKind =
+    purpose === "image" ? "image_import" : "study_content_import";
+  return startTrackedFileOperation(kind, async () => {
+    await selectExternalImport(purpose);
+  });
 }
 
-function openDeckExportPicker(): void {
-  void ensureSmokeDeck()
-    .then((deck) => prepareDeckExport(deck.id, createOperationId()))
-    .then((prepared) => publishExport(prepared.preparedExport.id))
-    .catch(() => undefined);
+function startDeckExportPicker(): AndroidFileOperationSnapshot {
+  return startTrackedFileOperation("deck_export", async () => {
+    const deck = await ensureSmokeDeck();
+    const prepared = await prepareDeckExport(deck.id, createOperationId());
+    await publishExport(prepared.preparedExport.id);
+  });
+}
+
+function startTrackedFileOperation(
+  kind: AndroidFileOperationKind,
+  operation: () => Promise<void>,
+): AndroidFileOperationSnapshot {
+  const sequence = fileOperation.sequence + 1;
+  fileOperation = {
+    sequence,
+    kind,
+    phase: "pending",
+    error: null,
+  };
+  void Promise.resolve()
+    .then(operation)
+    .then(() => {
+      if (fileOperation.sequence !== sequence) return;
+      fileOperation = {
+        sequence,
+        kind,
+        phase: "settled",
+        error: null,
+      };
+    })
+    .catch((error: unknown) => {
+      if (fileOperation.sequence !== sequence) return;
+      fileOperation = {
+        sequence,
+        kind,
+        phase: "error",
+        error: getErrorMessage(error),
+      };
+    });
+  return fileOperationSnapshot();
+}
+
+function fileOperationSnapshot(): AndroidFileOperationSnapshot {
+  return { ...fileOperation };
 }
 
 async function snapshot(): Promise<AndroidSmokeSnapshot> {
