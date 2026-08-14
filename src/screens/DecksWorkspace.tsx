@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 import type { DeckOpenRequest } from "../App";
 import { AndroidDeckSharePanel } from "../components/AndroidDeckSharePanel";
@@ -41,7 +41,7 @@ export function DecksWorkspace({
   const [deckView, setDeckView] = useState<DeckWorkspaceView>("library");
   const nestedDeckView = deckView !== "library";
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!nestedDeckView) return;
     return registerPlatformBackHandler(() => {
       // Detail and editor are one continuous nested navigation scope. Keep one
