@@ -441,8 +441,8 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
     )
     bulk_add = webdriver.find_element(
         session_id,
-        "xpath",
-        "//main//button[normalize-space(.)='Bulk add']",
+        "css selector",
+        "main button[data-testid='bulk-add-cards']",
         deadline,
     )
     webdriver.click(session_id, bulk_add)
