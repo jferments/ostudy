@@ -1,0 +1,54 @@
+name: Final native UI repair
+
+on:
+  push:
+    branches:
+      - agent/ui-foundation-overhaul-u0-u9
+    paths:
+      - scripts/finalize-ui-native-v2.py
+      - .github/workflows/ui-native-finalize-v2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: final-native-ui-repair
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: self-hosted
+    steps:
+      - name: Check out the branch and PR 45 history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/ui-foundation-overhaul-u0-u9
+
+      - name: Generate the final native patch
+        run: python3 scripts/finalize-ui-native-v2.py
+
+      - name: Format Rust sources
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Verify the generated diff
+        run: git diff --check
+
+      - name: Commit the native patch and remove all one-time finalizers
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/src/database.rs src-tauri/src/lib.rs \
+            src-tauri/src/deck_folders.rs src-tauri/src/ui_checkpoint.rs \
+            src-tauri/src/stage34_35_regression_tests.rs \
+            src/screens/flashcards/DeckLibraryWorkspace.tsx \
+            scripts/verify-project-manifests.mjs
+          git rm -f --ignore-unmatch \
+            scripts/finalize-ui-native-v2.py \
+            .github/workflows/ui-native-finalize-v2.yml \
+            scripts/finalize-ui-branch.py \
+            .github/workflows/ui-branch-finalizer.yml
+          git commit -m "fix: finalize native folder and restoration integration"
+          git push origin HEAD:agent/ui-foundation-overhaul-u0-u9
