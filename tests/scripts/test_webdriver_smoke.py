@@ -8,6 +8,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
 MAIN_ENTRY_PATH = ROOT / "src" / "main.tsx"
+ANDROID_BUILD_PATH = ROOT / "scripts" / "android-build.sh"
 ANDROID_PACKAGE_VERIFIER_PATH = ROOT / "scripts" / "verify-android-package.sh"
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
 CREATE_CARDS_PATH = ROOT / "src" / "screens" / "flashcards" / "CreateCardsWorkspace.tsx"
@@ -93,11 +94,31 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn("installAndroidTestBridge();", source)
         self.assertNotIn('import { installAndroidTestBridge }', source)
 
-    def test_android_package_verifier_requires_bridge_for_flagged_debug_builds(self) -> None:
-        source = ANDROID_PACKAGE_VERIFIER_PATH.read_text(encoding="utf-8")
-        self.assertIn('VITE_OSTUDY_ANDROID_TEST_BRIDGE', source)
-        self.assertIn('Android smoke APK is missing the emulator-only test bridge.', source)
-        self.assertIn('Release APK contains the emulator-only Android test bridge.', source)
+    def test_android_build_verifies_smoke_bridge_at_frontend_boundary(self) -> None:
+        build = ANDROID_BUILD_PATH.read_text(encoding="utf-8")
+        package_verifier = ANDROID_PACKAGE_VERIFIER_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("VITE_OSTUDY_ANDROID_TEST_BRIDGE=1", build)
+        self.assertIn("androidTestBridge-*.js", build)
+        self.assertIn("__OSTUDY_ANDROID_TEST__", build)
+        self.assertIn(
+            "Android smoke frontend must contain exactly one test bridge chunk",
+            build,
+        )
+        self.assertIn(
+            "Normal Android frontend unexpectedly contains the emulator-only test bridge",
+            build,
+        )
+
+        self.assertNotIn(
+            "Android smoke APK is missing the emulator-only test bridge",
+            package_verifier,
+        )
+        self.assertNotIn("VITE_OSTUDY_ANDROID_TEST_BRIDGE", package_verifier)
+        self.assertIn(
+            "Release APK exposes the emulator-only Android test bridge marker",
+            package_verifier,
+        )
 
     def test_android_smoke_build_cannot_auto_start_contextual_tutorials(self) -> None:
         source = TOUR_PROVIDER_PATH.read_text(encoding="utf-8")
