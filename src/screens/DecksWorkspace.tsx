@@ -39,15 +39,17 @@ export function DecksWorkspace({
 }: DecksWorkspaceProps) {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [deckView, setDeckView] = useState<DeckWorkspaceView>("library");
+  const nestedDeckView = deckView !== "library";
 
   useEffect(() => {
-    if (deckView === "library") return;
+    if (!nestedDeckView) return;
     return registerPlatformBackHandler(() => {
+      // Detail and editor are one continuous nested navigation scope. Keep one
+      // handler registered while moving between them so a physical Android Back
+      // gesture can never arrive in a detail -> editor effect-cleanup gap.
       // DecksScreen and CardEditorScreen already centralize their safe exit
-      // behavior in the visible Back controls (including dirty-draft prompts).
-      // Reusing that control keeps Android hardware Back and pointer/keyboard
-      // navigation on the exact same code path instead of duplicating discard
-      // and durable-draft semantics in this workspace wrapper.
+      // behavior in the visible Back controls (including dirty-draft prompts),
+      // so Android Back reuses that exact path.
       const back = document.querySelector<HTMLButtonElement>(
         ".decks-workspace .back-button:not([disabled])",
       );
@@ -55,7 +57,7 @@ export function DecksWorkspace({
       back.click();
       return true;
     });
-  }, [deckView]);
+  }, [nestedDeckView]);
 
   return (
     <div className="decks-workspace">
