@@ -1,24 +1,115 @@
-@layer components {
+@layer effects {
   .effectsLayer {
     position: fixed;
-    z-index: var(--layer-effects);
+    z-index: var(--ostudy-layer-effects);
     inset: 0;
+    overflow: hidden;
     pointer-events: none;
     contain: strict;
   }
 
-  .effectsLayer[data-effect="session_completed"]::after {
+  .effectsLayer::before {
     position: absolute;
     inset: 0;
+    background: radial-gradient(
+      circle at 50% 46%,
+      var(--ostudy-color-accent-soft),
+      transparent 34%
+    );
     content: "";
     opacity: 0;
-    background: radial-gradient(circle at 50% 45%, var(--accent-soft), transparent 46%);
-    animation: completionPulse 420ms var(--ease-emphasized);
   }
 
-  @keyframes completionPulse {
-    0% { opacity: 0; transform: scale(0.96); }
-    45% { opacity: 1; }
-    100% { opacity: 0; transform: scale(1.04); }
+  .effectsLayer[data-effect="review_committed"]::before {
+    animation: feedbackPulse 420ms var(--ostudy-motion-ease-exit);
+  }
+
+  .effectsLayer[data-effect="session_completed"]::before {
+    background: radial-gradient(
+      circle at 50% 42%,
+      color-mix(in srgb, var(--ostudy-color-status-success) 18%, transparent),
+      transparent 48%
+    );
+    animation: completionGlow 900ms var(--ostudy-motion-ease-exit);
+  }
+
+  .confetti {
+    position: absolute;
+    inset-block-start: -24px;
+    inset-inline-start: var(--confetti-x);
+    width: 8px;
+    height: 13px;
+    border-radius: 2px;
+    background: var(--ostudy-color-accent-base);
+    opacity: 0;
+    transform: translate3d(0, -20px, 0) rotate(0deg);
+    animation: confettiFall 1.05s var(--ostudy-motion-ease-standard)
+      var(--confetti-delay) both;
+    will-change: transform, opacity;
+  }
+
+  .confetti:nth-child(4n + 1) {
+    background: var(--ostudy-color-status-success);
+  }
+  .confetti:nth-child(4n + 2) {
+    background: var(--ostudy-color-status-warning);
+  }
+  .confetti:nth-child(4n + 3) {
+    background: var(--ostudy-color-status-danger);
+  }
+
+  @keyframes feedbackPulse {
+    0% {
+      opacity: 0;
+      transform: scale(.96);
+    }
+    35% {
+      opacity: .48;
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.04);
+    }
+  }
+
+  @keyframes completionGlow {
+    0% {
+      opacity: 0;
+      transform: scale(.8);
+    }
+    30% {
+      opacity: .8;
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.18);
+    }
+  }
+
+  @keyframes confettiFall {
+    0% {
+      opacity: 0;
+      transform: translate3d(0, -24px, 0) rotate(0deg);
+    }
+    12% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translate3d(
+          var(--confetti-drift),
+          var(--confetti-distance),
+          0
+        )
+        rotate(var(--confetti-rotation));
+    }
+  }
+
+  :root[data-motion="reduced"] .effectsLayer::before,
+  :root[data-motion="none"] .effectsLayer::before,
+  :root[data-motion="reduced"] .confetti,
+  :root[data-motion="none"] .confetti {
+    display: none;
+    animation: none;
   }
 }
