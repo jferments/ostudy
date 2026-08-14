@@ -37,6 +37,7 @@ mod documents;
 mod editor_drafts;
 mod error;
 mod external_file_commands;
+mod external_file_recovery;
 mod external_file_streaming;
 mod external_files;
 mod library_backup;
@@ -113,6 +114,8 @@ pub fn run() {
             let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
                 .map_err(|error| io::Error::other(error.to_string()))?;
 
+            external_file_recovery::reconcile_interrupted_staging(&database, &paths)
+                .map_err(|error| io::Error::other(error.message))?;
             external_files::reconcile_startup(&database, &paths)
                 .map_err(|error| io::Error::other(error.message))?;
             editor_drafts::reconcile_startup(&database)
