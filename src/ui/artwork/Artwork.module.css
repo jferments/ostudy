@@ -11,7 +11,10 @@
   .artwork svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 14px 22px color-mix(in srgb, var(--ostudy-color-ambient-vignette) 28%, transparent)); }
   .fallback { min-height: 92px; border: 1px dashed var(--ostudy-color-border-strong); border-radius: var(--ostudy-radius-large); background: var(--ostudy-color-surface-soft); }
   .brand { --ostudy-artwork-max: 220px; }
+  .empty { --ostudy-artwork-max: 280px; }
   .completion { --ostudy-artwork-max: var(--ostudy-artwork-completion-max-width, 340px); }
+  .tutorial { --ostudy-artwork-max: 280px; }
+  .status { --ostudy-artwork-max: 260px; }
 
   :root[data-motion="full"] .artwork:not(.brand) svg { animation: artwork-enter var(--ostudy-motion-duration-slow) var(--ostudy-motion-ease-enter) both; }
   :root[data-motion="reduced"] .artwork svg,
