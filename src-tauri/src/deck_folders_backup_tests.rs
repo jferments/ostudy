@@ -56,11 +56,9 @@ fn database_snapshot_preserves_folder_membership_and_ordering() {
             assert_eq!(restored_deck, (Some(folder_id), 2000));
 
             let violation_count: i64 = restored
-                .query_row(
-                    "SELECT COUNT(*) FROM pragma_foreign_key_check",
-                    [],
-                    |row| row.get(0),
-                )
+                .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                    row.get(0)
+                })
                 .map_err(CommandError::database)?;
             assert_eq!(violation_count, 0);
             Ok(())
