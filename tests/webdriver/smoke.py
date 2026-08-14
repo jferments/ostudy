@@ -311,7 +311,7 @@ def verify_shell(session_id: str, deadline: float) -> None:
     brand = find_element(
         session_id,
         "css selector",
-        "[data-artwork-slot='brand.logo.sidebar'] strong",
+        "aside.sidebar [data-artwork-slot='brand.logo.sidebar'] strong",
         deadline,
     )
     brand_text = element_text(session_id, brand)
