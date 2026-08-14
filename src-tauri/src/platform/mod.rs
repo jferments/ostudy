@@ -234,18 +234,6 @@ pub struct ExternalFileRequest {
 }
 
 #[derive(Clone, Debug)]
-pub struct ExternalSource {
-    pub path: PathBuf,
-    pub display_name: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct ExternalDestination {
-    pub path: PathBuf,
-    pub display_name: String,
-}
-
-#[derive(Clone, Debug)]
 pub struct ExternalImportTarget {
     pub path: PathBuf,
     pub maximum_bytes: u64,
@@ -276,32 +264,6 @@ pub struct ExternalPublishResult {
 pub type PlatformFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 pub trait ExternalFilePort: Send + Sync {
-    fn select_import(
-        &self,
-        _app: AppHandle,
-        _request: ExternalFileRequest,
-    ) -> PlatformFuture<Result<Option<ExternalSource>, CommandError>> {
-        Box::pin(async {
-            Err(CommandError::new(
-                "external_file_adapter_unavailable",
-                "This build does not provide path-based external-file selection.",
-            ))
-        })
-    }
-
-    fn select_export(
-        &self,
-        _app: AppHandle,
-        _request: ExternalFileRequest,
-    ) -> PlatformFuture<Result<Option<ExternalDestination>, CommandError>> {
-        Box::pin(async {
-            Err(CommandError::new(
-                "external_file_adapter_unavailable",
-                "This build does not provide path-based export destinations.",
-            ))
-        })
-    }
-
     fn acquire_import(
         &self,
         app: AppHandle,
