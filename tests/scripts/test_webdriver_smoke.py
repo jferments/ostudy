@@ -8,6 +8,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
+CREATE_CARDS_PATH = ROOT / "src" / "screens" / "flashcards" / "CreateCardsWorkspace.tsx"
 TOUR_PROVIDER_PATH = ROOT / "src" / "ui" / "tutorials" / "TourProvider.tsx"
 SPEC = importlib.util.spec_from_file_location("ostudy_webdriver_smoke", SMOKE_PATH)
 if SPEC is None or SPEC.loader is None:
@@ -53,12 +54,35 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertEqual(state["completed"], smoke.tutorial_versions())
         self.assertEqual(state["dismissed"], {})
 
+    def test_click_requires_two_stable_hit_tests_before_w3c_click(self) -> None:
+        hit = {
+            "ready": True,
+            "rect": {"left": 10, "top": 20, "width": 120, "height": 44},
+        }
+        with (
+            mock.patch.object(smoke, "_element_hit_test", side_effect=[hit, hit]) as hit_test,
+            mock.patch.object(smoke, "request", return_value=None) as request,
+            mock.patch.object(smoke.time, "sleep"),
+        ):
+            smoke.click("session-1", "element-1")
+
+        self.assertEqual(hit_test.call_count, 2)
+        request.assert_called_once_with(
+            "POST",
+            "/session/session-1/element/element-1/click",
+            {},
+        )
+
     def test_native_smoke_uses_structural_practice_completion_contract(self) -> None:
         harness = SMOKE_PATH.read_text(encoding="utf-8")
         completion = PRACTICE_COMPLETE_PATH.read_text(encoding="utf-8")
         self.assertIn('data-testid="practice-complete"', completion)
         self.assertIn("PRACTICE_COMPLETE_SELECTOR", harness)
         self.assertNotIn('"Session complete"', harness)
+
+    def test_create_cards_exposes_stable_bulk_add_automation_hook(self) -> None:
+        source = CREATE_CARDS_PATH.read_text(encoding="utf-8")
+        self.assertIn('data-testid="bulk-add-cards"', source)
 
     def test_android_smoke_build_cannot_auto_start_contextual_tutorials(self) -> None:
         source = TOUR_PROVIDER_PATH.read_text(encoding="utf-8")
