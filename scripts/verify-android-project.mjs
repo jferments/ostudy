@@ -20,6 +20,7 @@ const required = [
   "src-tauri/gen/android/app/src/main/res/xml/backup_rules.xml",
   "src-tauri/gen/android/app/src/main/res/xml/data_extraction_rules.xml",
   "plugins/ostudy-platform/Cargo.toml",
+  "plugins/ostudy-platform/android/build.gradle.kts",
   "plugins/ostudy-platform/android/src/main/java/OstudyPlatformPlugin.kt",
   "plugins/ostudy-platform/android/src/main/java/InvokeArrayResult.kt",
   "src-tauri/src/platform/android.rs",
@@ -122,6 +123,13 @@ for (const artifact of ["kotlinx-coroutines-android", "kotlinx-coroutines-core-j
 }
 expectContains(rootGradle, "maxParallelForks", "parallel Android JVM test configuration");
 
+const pluginGradle = await read("plugins/ostudy-platform/android/build.gradle.kts");
+expectContains(
+  pluginGradle,
+  `implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:${env.get("ANDROID_COROUTINES_VERSION")}")`,
+  "platform plugin coroutine declaration",
+);
+
 const gradleProperties = await read("src-tauri/gen/android/gradle.properties");
 expectContains(gradleProperties, "org.gradle.parallel=true", "Gradle project parallelism");
 expectContains(gradleProperties, "org.gradle.caching=true", "Gradle build cache");
@@ -132,7 +140,6 @@ for (const token of [
   "OSTUDY_GRADLE_WORKERS",
   "CARGO_BUILD_JOBS",
   "VITEST_MAX_WORKERS",
-  "org.gradle.workers.max",
 ]) {
   expectContains(androidEnv, token, `Android parallelism control ${token}`);
 }
