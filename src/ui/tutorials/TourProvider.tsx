@@ -52,6 +52,8 @@ interface AnchorBox {
 }
 
 const STORAGE_KEY = "ostudy.tutorials.v1";
+const CONTEXTUAL_AUTO_START_ENABLED =
+  import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE !== "1";
 const EMPTY_STATE: StoredTutorialState = {
   schemaVersion: 1,
   completed: {},
@@ -148,7 +150,7 @@ export function TourProvider({
   }, [close, enabled, start]);
 
   useEffect(() => {
-    if (!enabled || active) return;
+    if (!enabled || active || !CONTEXTUAL_AUTO_START_ENABLED) return;
 
     function findContextualModule(): TutorialModuleId | null {
       for (const moduleId of tutorialModuleOrder) {
