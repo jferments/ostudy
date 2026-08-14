@@ -111,13 +111,11 @@ run_gate() {
   printf ' %q' "$@" >> "$log"
   printf '\n\n' >> "$log"
 
-  set +e
   (
     cd "$ROOT_DIR"
     timeout --signal=TERM --kill-after=30s "$timeout_value" "$@"
   ) >> "$log" 2>&1
   exit_code=$?
-  set -e
 
   if [[ "$exit_code" -eq 0 ]]; then
     printf 'PASS    %s\n' "$name"
@@ -156,14 +154,46 @@ run_core() {
 run_android() {
   run_gate "android-install-deps" "android" "" "30m" bash ./scripts/install-android-deps.sh --with-emulator
   run_gate "android-rust-targets" "android" "" "15m" rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-  run_gate "android-runner-doctor" "android" "android-install-deps" "15m" bash ./scripts/android-runner-doctor.sh
+  run_gate "android-pnpm-install" "android" "" "20m" pnpm install --frozen-lockfile
+  run_gate "android-runner-doctor" "android" "android-install-deps android-rust-targets" "15m" bash ./scripts/android-runner-doctor.sh
   run_gate "android-project" "android" "android-install-deps" "10m" node ./scripts/verify-android-project.mjs
   run_gate "android-streaming-contract" "android" "" "5m" node ./scripts/verify-external-file-streaming.mjs
-  run_gate "android-gradle-dependencies" "android" "android-install-deps" "20m" bash -lc 'source ./scripts/android-env.sh; android_write_local_properties; cd src-tauri/gen/android; ./gradlew --no-daemon --parallel --max-workers "$OSTUDY_GRADLE_WORKERS" :tauri-plugin-ostudy-platform:dependencies --configuration debugCompileClasspath'
-  run_gate "android-kotlin-compile" "android" "android-install-deps" "30m" bash -lc 'source ./scripts/android-env.sh; android_write_local_properties; cd src-tauri/gen/android; ./gradlew --no-daemon --parallel --max-workers "$OSTUDY_GRADLE_WORKERS" :tauri-plugin-ostudy-platform:compileDebugKotlin'
-  run_gate "android-debug-build" "android" "android-install-deps android-rust-targets android-project" "75m" bash -lc 'source ./scripts/android-env.sh; android_write_local_properties; export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1; bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge'
-  run_gate "android-test-packages" "android" "android-debug-build" "30m" bash -lc 'source ./scripts/android-env.sh; android_write_local_properties; bash ./scripts/android-gradle-postbuild.sh test-packages'
-  run_gate "android-emulator-smoke" "android" "android-debug-build android-runner-doctor" "90m" bash ./scripts/android-emulator-smoke.sh --artifacts "$OUTPUT_DIR/android-smoke"
+  run_gate "android-gradle-dependencies" "android" "android-install-deps" "20m" bash -lc '
+    set -euo pipefail
+    source ./scripts/android-env.sh
+    android_write_local_properties
+    report="$(mktemp -t ostudy-android-diagnostic-deps.XXXXXXXX)"
+    trap '\''rm -f -- "$report"'\'' EXIT
+    (
+      cd src-tauri/gen/android
+      ./gradlew --no-daemon --parallel --max-workers "$OSTUDY_GRADLE_WORKERS" \
+        :tauri-plugin-ostudy-platform:dependencies --configuration debugCompileClasspath
+    ) | tee "$report"
+    grep -Eq '\''kotlinx-coroutines-core-jvm:1\.8\.1'\'' "$report"
+    grep -Eq '\''kotlin-stdlib:1\.9\.25'\'' "$report"
+  '
+  run_gate "android-kotlin-compile" "android" "android-install-deps" "30m" bash -lc '
+    set -euo pipefail
+    source ./scripts/android-env.sh
+    android_write_local_properties
+    cd src-tauri/gen/android
+    ./gradlew --no-daemon --parallel --max-workers "$OSTUDY_GRADLE_WORKERS" \
+      :tauri-plugin-ostudy-platform:compileDebugKotlin
+  '
+  run_gate "android-debug-build" "android" "android-install-deps android-rust-targets android-pnpm-install android-project android-gradle-dependencies android-kotlin-compile" "75m" bash -lc '
+    set -euo pipefail
+    source ./scripts/android-env.sh
+    android_write_local_properties
+    export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
+    bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
+  '
+  run_gate "android-test-packages" "android" "android-debug-build" "30m" bash -lc '
+    set -euo pipefail
+    source ./scripts/android-env.sh
+    android_write_local_properties
+    bash ./scripts/android-gradle-postbuild.sh test-packages
+  '
+  run_gate "android-emulator-smoke" "android" "android-debug-build android-test-packages android-runner-doctor" "90m" bash ./scripts/android-emulator-smoke.sh --artifacts "$OUTPUT_DIR/android-smoke"
 }
 
 case "$PROFILE" in
@@ -179,10 +209,13 @@ case "$PROFILE" in
     ;;
 esac
 
-node "$SCRIPT_DIR/summarize-diagnostics.mjs" \
+if ! node "$SCRIPT_DIR/summarize-diagnostics.mjs" \
   --results "$RESULTS_FILE" \
   --output-dir "$OUTPUT_DIR" \
-  --profile "$PROFILE"
+  --profile "$PROFILE"; then
+  printf 'Diagnostic summarization failed. Raw gate results remain in %s.\n' "$RESULTS_FILE" >&2
+  exit 2
+fi
 
 printf '\nDiagnostic sweep complete: %s failed, %s blocked.\n' "$FAILED" "$BLOCKED"
 printf 'Summary: %s\n' "$OUTPUT_DIR/summary.md"
