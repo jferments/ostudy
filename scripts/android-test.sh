@@ -28,33 +28,7 @@ else
 fi
 android_write_local_properties
 pnpm install --frozen-lockfile
-./scripts/install-native-deps.sh --pdfium-only
-export OSTUDY_PDFIUM_PATH="$ROOT_DIR/src-tauri/resources/native/pdfium/libpdfium.so"
 node ./scripts/verify-android-project.mjs
-
-printf '\nType-checking shared frontend...\n'
-pnpm exec tsc -b --pretty false
-
-printf '\nRunning Vitest with up to %s workers...\n' "$VITEST_MAX_WORKERS"
-pnpm exec vitest run --maxWorkers "$VITEST_MAX_WORKERS"
-
-printf '\nChecking Rust with %s compiler jobs...\n' "$CARGO_BUILD_JOBS"
-cargo check \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-targets \
-  --all-features \
-  --jobs "$CARGO_BUILD_JOBS"
-
-printf '\nRunning Rust tests with %s compiler jobs and %s test threads...\n' \
-  "$CARGO_BUILD_JOBS" "$OSTUDY_ANDROID_JOBS"
-cargo test \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-features \
-  --jobs "$CARGO_BUILD_JOBS" \
-  -- \
-  --test-threads "$OSTUDY_ANDROID_JOBS"
 
 printf '\nVerifying Android Kotlin/coroutines dependency compatibility...\n'
 dependency_report="$(mktemp -t ostudy-android-dependencies.XXXXXXXX)"
@@ -80,6 +54,43 @@ if grep -Eq 'kotlin-stdlib:2\.[1-9][0-9]*\.' "$dependency_report"; then
   exit 1
 fi
 printf 'OK   Android Kotlin metadata dependency graph is compatible with Kotlin 1.9.25.\n'
+
+printf '\nCompile-checking the private Android platform plugin...\n'
+(
+  cd src-tauri/gen/android
+  ./gradlew --no-daemon \
+    --parallel \
+    --max-workers "$OSTUDY_GRADLE_WORKERS" \
+    :tauri-plugin-ostudy-platform:compileDebugKotlin
+)
+printf 'OK   Android platform plugin Kotlin compilation passed.\n'
+
+./scripts/install-native-deps.sh --pdfium-only
+export OSTUDY_PDFIUM_PATH="$ROOT_DIR/src-tauri/resources/native/pdfium/libpdfium.so"
+
+printf '\nType-checking shared frontend...\n'
+pnpm exec tsc -b --pretty false
+
+printf '\nRunning Vitest with up to %s workers...\n' "$VITEST_MAX_WORKERS"
+pnpm exec vitest run --maxWorkers "$VITEST_MAX_WORKERS"
+
+printf '\nChecking Rust with %s compiler jobs...\n' "$CARGO_BUILD_JOBS"
+cargo check \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-targets \
+  --all-features \
+  --jobs "$CARGO_BUILD_JOBS"
+
+printf '\nRunning Rust tests with %s compiler jobs and %s test threads...\n' \
+  "$CARGO_BUILD_JOBS" "$OSTUDY_ANDROID_JOBS"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --jobs "$CARGO_BUILD_JOBS" \
+  -- \
+  --test-threads "$OSTUDY_ANDROID_JOBS"
 
 if ((RUN_EMULATOR == 1)); then
   exec bash ./scripts/android-emulator-smoke.sh
