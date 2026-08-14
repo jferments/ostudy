@@ -1,11 +1,33 @@
-import type {
-  AppSettings,
-  MaterialPreference,
-  MotionPreference,
-} from "../../ipc/settings";
+import type { ThemeName } from "../tokens/generated/tokenNames";
 
+export type MotionPreference = "system" | "full" | "reduced" | "none";
+export type MaterialPreference = "automatic" | "rich" | "simple";
 export type ResolvedMotion = "full" | "reduced" | "none";
 export type ResolvedMaterial = "rich" | "standard" | "simple";
+
+/**
+ * Presentation-only settings consumed by the shared visual system.
+ *
+ * Keep this structural contract inside src/ui so appearance primitives never
+ * depend on the Tauri IPC layer. The durable AppSettings object is a superset
+ * and can be passed here without an adapter.
+ */
+export interface AppearanceSettings {
+  theme: ThemeName;
+  uiFont: string;
+  cardFont: string;
+  uiScale: number;
+  cardBaseSize: number;
+  motionPreference?: MotionPreference;
+  materialPreference?: MaterialPreference;
+  decorativeArtwork?: boolean;
+  celebrationsEnabled?: boolean;
+  tutorialsEnabled?: boolean;
+  /** Transitional compatibility with settings written before motionPreference. */
+  animationsEnabled?: boolean;
+  /** Transitional compatibility with settings written before motionPreference. */
+  reduceMotion?: boolean;
+}
 
 export interface AppearanceEnvironment {
   systemReducedMotion: boolean;
@@ -16,7 +38,7 @@ export interface AppearanceEnvironment {
 }
 
 export interface AppearanceProfile {
-  theme: AppSettings["theme"];
+  theme: ThemeName;
   motion: ResolvedMotion;
   material: ResolvedMaterial;
   artworkEnabled: boolean;
@@ -28,7 +50,7 @@ export interface AppearanceProfile {
 }
 
 export function resolveAppearanceProfile(
-  settings: AppSettings,
+  settings: AppearanceSettings,
   environment: AppearanceEnvironment,
 ): AppearanceProfile {
   const motionPreference =
@@ -82,7 +104,7 @@ export function resolveMaterial(
   return preference === "rich" ? "rich" : "standard";
 }
 
-export function resolveFontFamily(value: string, theme: AppSettings["theme"]): string {
+export function resolveFontFamily(value: string, theme: ThemeName): string {
   const presets: Record<string, string> = {
     system: "var(--ostudy-font-family-system)",
     atkinson: "var(--ostudy-font-family-study)",
