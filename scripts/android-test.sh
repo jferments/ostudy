@@ -33,6 +33,30 @@ pnpm test
 cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
 cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
 
+printf '\nVerifying Android Kotlin/coroutines dependency compatibility...\n'
+dependency_report="$(mktemp -t ostudy-android-dependencies.XXXXXXXX)"
+trap 'rm -f -- "$dependency_report"' EXIT
+(
+  cd src-tauri/gen/android
+  ./gradlew --no-daemon \
+    :tauri-plugin-ostudy-platform:dependencyInsight \
+    --configuration debugCompileClasspath \
+    --dependency org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm
+  ./gradlew --no-daemon \
+    :tauri-plugin-ostudy-platform:dependencyInsight \
+    --configuration debugCompileClasspath \
+    --dependency org.jetbrains.kotlin:kotlin-stdlib
+) | tee "$dependency_report"
+if ! grep -Eq 'kotlinx-coroutines-core-jvm:1\.8\.1' "$dependency_report"; then
+  printf 'Android dependency resolution did not select the audited coroutines 1.8.1 line.\n' >&2
+  exit 1
+fi
+if grep -Eq 'kotlin-stdlib:2\.[1-9][0-9]*\.' "$dependency_report"; then
+  printf 'Android dependency resolution selected Kotlin 2.1+ metadata, which is incompatible with the pinned Kotlin 1.9.25 compiler.\n' >&2
+  exit 1
+fi
+printf 'OK   Android Kotlin metadata dependency graph is compatible with Kotlin 1.9.25.\n'
+
 if ((RUN_EMULATOR == 1)); then
   exec bash ./scripts/android-emulator-smoke.sh
 fi
