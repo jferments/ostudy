@@ -57,7 +57,9 @@ The Rust wrapper in `plugins/ostudy-platform/src/mobile.rs` exposes typed method
 
 ### External files
 
-Rust creates an app-private staging or prepared-export path and supplies a byte limit. Kotlin opens the system picker and streams the selected URI to or from that path. Rust then verifies size, hash, content-derived type, package format, ledger state, and transaction semantics.
+Rust creates an app-private staging or prepared-export path and supplies a byte limit. Kotlin opens the system picker and streams the selected URI to or from that path. Rust then verifies the adapter-reported byte count, actual size, hash, content-derived type, package format, ledger state, and transaction semantics.
+
+The registered frontend commands route every image, PDF, study-content, backup, and prepared-export operation through `ExternalFilePort.acquire_import` or `ExternalFilePort.publish_export`. Desktop and Android therefore exercise the same shared transfer ledger and validators; legacy path-selection methods are not registered as product commands. `scripts/verify-external-file-streaming.mjs` enforces that route before static qualification and before every Android build.
 
 Neither React nor durable Rust entities store Android `content://` URIs.
 
@@ -102,6 +104,15 @@ Every Android change continues to run the Linux full gate. Vitest and Rust tests
 - Android/Linux Tauri overlays;
 - package scripts and plugin dependency.
 
+`node scripts/verify-external-file-streaming.mjs` additionally verifies that:
+
+- registered frontend commands use streaming platform ports rather than desktop path selection;
+- Android implements both bounded import and export methods;
+- the emulator bridge exposes asynchronous file-operation failures;
+- every supported import purpose has a smoke case;
+- picker cancellation waits for the native result instead of sleeping for a fixed interval;
+- the smoke runner aggregates independent failures from one APK build.
+
 ### APK verification
 
 `verify-android-package.sh` checks:
@@ -118,7 +129,9 @@ Every Android change continues to run the Linux full gate. Vitest and Rust tests
 
 `android-test.sh` first resolves the Kotlin dependency graph and compile-checks the private Android plugin, then runs shared TypeScript/Rust qualification, builds the instrumentation APK, and verifies the x86_64 debug APK.
 
-By default Android qualification uses all logical CPUs reported by the host. `OSTUDY_ANDROID_JOBS` can lower that ceiling on memory-constrained machines. Vitest files, Cargo compilation/tests, independent Gradle subprojects, and JVM test forks use the shared worker budget. Stateful emulator instrumentation remains sequential because restart/restoration cases intentionally depend on state produced by earlier cases.
+By default Android qualification uses all logical CPUs reported by the host. `OSTUDY_ANDROID_JOBS` can lower that ceiling on memory-constrained machines. Vitest files, Cargo compilation/tests, independent Gradle subprojects, and JVM test forks use the shared worker budget.
+
+Emulator methods still execute one at a time because restart and restoration checks intentionally cross process boundaries. The shell runner no longer stops at the first assertion: it records independent failures, skips only cases whose explicit prerequisite failed, and prints one aggregate result after all viable cases finish. This prevents one expensive APK build from revealing only the first of several unrelated platform defects.
 
 The application test source is under:
 
@@ -136,9 +149,12 @@ src-tauri/gen/android/app/src/androidTest/
 - persistence after force-stop/restart;
 - Documents development stub;
 - Android Back handling;
-- interrupted revealed-practice restoration after WebView reload and process restart.
+- interrupted revealed-practice restoration after WebView reload and process restart;
+- Storage Access Framework launch and cancellation for study-content, image, PDF, and library-backup imports;
+- prepared deck export through `ACTION_CREATE_DOCUMENT`;
+- release of the native pending-operation slot across sequential picker cancellations.
 
-The smoke-only JavaScript bridge is enabled at build time with `VITE_OSTUDY_ANDROID_TEST_BRIDGE=1`; normal builds do not expose it and release verification rejects it.
+The smoke-only JavaScript bridge is enabled at build time with `VITE_OSTUDY_ANDROID_TEST_BRIDGE=1`; normal builds do not expose it and release verification rejects it. The bridge reports `pending`, `settled`, or `error` for each file operation so an IPC or native-adapter error is surfaced directly instead of being misreported as a missing system picker.
 
 Waydroid may be used for informal manual tests but is not accepted as the release qualification environment.
 
