@@ -30,6 +30,17 @@ import java.util.concurrent.TimeUnit
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 class AndroidSmokeTest {
     @Test
+    fun a0_appLaunchesAndTestBridgeIsReady() {
+        withApplication { webView ->
+            waitForBridge(webView)
+            val bridgeType = decodeJavascriptString(
+                evaluateSync(webView, "typeof window.__OSTUDY_ANDROID_TEST__")
+            )
+            assertEquals("object", bridgeType)
+        }
+    }
+
+    @Test
     fun a_seedLibraryPracticeAndAnalytics() {
         withApplication { webView ->
             waitForBridge(webView)
@@ -241,14 +252,18 @@ class AndroidSmokeTest {
     }
 
     private fun withApplication(block: (WebView) -> Unit) {
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            var webView: WebView? = null
-            scenario.onActivity { activity ->
-                webView = findWebView(activity)
-            }
-            val target = requireNotNull(webView) { "The Tauri WebView was not found." }
-            block(target)
+        // Do not close ActivityScenario from inside the instrumentation process.
+        // Destroying the only Tauri Activity is an application lifecycle event
+        // and may tear down the Android event loop before AndroidJUnitRunner can
+        // report the test result. The shell smoke runner owns deterministic
+        // process cleanup with `am force-stop` between cases instead.
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        var webView: WebView? = null
+        scenario.onActivity { activity ->
+            webView = findWebView(activity)
         }
+        val target = requireNotNull(webView) { "The Tauri WebView was not found." }
+        block(target)
     }
 
     private fun waitForBridge(webView: WebView) {
