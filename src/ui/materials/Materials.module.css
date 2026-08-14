@@ -47,10 +47,14 @@
   }
 
   .cardStack { position: relative; min-width: 0; isolation: isolate; }
-  .cardStackContent { position: relative; z-index: 3; min-width: 0; }
+  .cardStackContent {
+    position: relative;
+    z-index: var(--ostudy-layer-selected);
+    min-width: 0;
+  }
   .backingCard {
     position: absolute;
-    z-index: 1;
+    z-index: var(--ostudy-layer-base);
     inset: 0;
     border: 1px solid var(--ostudy-color-border-subtle);
     border-radius: var(--ostudy-practice-card-radius);
