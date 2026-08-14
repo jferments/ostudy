@@ -227,8 +227,7 @@ describe("App shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Search workspace" }));
 
     expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("search");
-    expect(screen.getByRole("button", { name: "Flashcards" })).toHaveAttribute(
-      "aria-current",
+    expect(screen.getByRole("button", { name: "Flashcards" }).getAttribute("aria-current")).toBe(
       "page",
     );
   });
