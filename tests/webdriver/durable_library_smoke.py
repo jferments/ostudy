@@ -32,7 +32,7 @@ def verify_persistence_after_restart(
         deadline,
     )
 
-    webdriver.progress("Navigating to Decks to verify deck and card persistence")
+    webdriver.progress("Navigating to Flashcards > Decks to verify deck and card persistence")
     deadline = webdriver.deadline_after()
     decks_button = webdriver.find_element(
         session_id,
@@ -45,24 +45,23 @@ def verify_persistence_after_restart(
         session_id,
         "css selector",
         "main h1",
-        "Decks",
+        "Flashcards",
+        deadline,
+    )
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//*[@role='tab' and @aria-selected='true'][contains(normalize-space(.), 'Decks')]",
         deadline,
     )
     deck_button = webdriver.find_element(
         session_id,
         "xpath",
-        "//section[@aria-label='Deck library']"
-        f"//button[contains(normalize-space(.), {json.dumps(deck_name)})]",
+        f"//main//button[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
         deadline,
     )
     webdriver.click(session_id, deck_button)
-    webdriver.wait_for_element_text(
-        session_id,
-        "css selector",
-        "main h1",
-        deck_name,
-        deadline,
-    )
+    webdriver.wait_for_main_heading(session_id, deck_name, deadline)
     webdriver.find_element(
         session_id,
         "xpath",
