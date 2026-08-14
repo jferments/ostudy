@@ -102,9 +102,11 @@ impl<R: Runtime> OstudyPlatform<R> {
     }
 
     pub fn list_incoming_shares(&self) -> Result<Vec<IncomingShareSummary>> {
-        self.0
+        let result: IncomingShareListResult = self
+            .0
             .run_mobile_plugin("listIncomingShares", ())
-            .map_err(Into::into)
+            .map_err(crate::Error::from)?;
+        Ok(result.items)
     }
 
     pub fn take_incoming_share(&self, token: String) -> Result<TakenIncomingShare> {
