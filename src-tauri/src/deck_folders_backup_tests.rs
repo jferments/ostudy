@@ -31,8 +31,7 @@ fn database_snapshot_preserves_folder_membership_and_ordering() {
 
             let mut restored = Connection::open_in_memory().map_err(CommandError::database)?;
             {
-                let mut backup = Backup::new(source, &mut restored)
-                    .map_err(CommandError::database)?;
+                let backup = Backup::new(source, &mut restored).map_err(CommandError::database)?;
                 backup
                     .run_to_completion(128, Duration::from_millis(1), None)
                     .map_err(CommandError::database)?;
