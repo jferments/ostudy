@@ -9,13 +9,10 @@ source "$SCRIPT_DIR/android-env.sh"
 APK="${1:-}"
 MODE="${2:-debug}"
 if [[ -z "$APK" || ! -f "$APK" ]]; then
-  printf 'Usage: ./scripts/verify-android-package.sh <apk> [debug|smoke|release]\n' >&2
+  printf 'Usage: ./scripts/verify-android-package.sh <apk> [debug|release]\n' >&2
   exit 2
 fi
-case "$MODE" in
-  debug|smoke|release) ;;
-  *) printf 'Mode must be debug, smoke, or release.\n' >&2; exit 2 ;;
-esac
+case "$MODE" in debug|release) ;; *) printf 'Mode must be debug or release.\n' >&2; exit 2 ;; esac
 
 AAPT="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"
 ZIPALIGN="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/zipalign"
@@ -32,7 +29,7 @@ permissions="$($AAPT dump permissions "$APK")"
 listing="$(unzip -Z1 "$APK")"
 
 expected_package="io.github.jferments.ostudy"
-[[ "$MODE" != release ]] && expected_package+=".dev"
+[[ "$MODE" == debug ]] && expected_package+=".dev"
 actual_package="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$badging")"
 min_sdk="$(sed -n "s/^sdkVersion:'\([^']*\)'.*/\1/p" <<< "$badging")"
 target_sdk="$(sed -n "s/^targetSdkVersion:'\([^']*\)'.*/\1/p" <<< "$badging")"
@@ -91,24 +88,14 @@ for library in "${libraries[@]}"; do
   done < <("$READELF" -lW "$library" | awk '$1 == "LOAD" { print $NF }')
 done
 
-bridge_required=0
-if [[ "$MODE" == smoke || ( "$MODE" == debug && "${VITE_OSTUDY_ANDROID_TEST_BRIDGE:-}" == 1 ) ]]; then
-  bridge_required=1
-fi
-if [[ "$MODE" == release || "$bridge_required" == 1 ]]; then
-  package_tree="$temporary/package-tree"
-  unzip -q "$APK" -d "$package_tree"
-  bridge_present=0
-  if grep -R -a -q '__OSTUDY_ANDROID_TEST__' "$package_tree"; then
-    bridge_present=1
-  fi
-
-  if [[ "$MODE" == release && "$bridge_present" == 1 ]]; then
-    printf 'Release APK contains the emulator-only Android test bridge.\n' >&2
-    exit 1
-  fi
-  if [[ "$bridge_required" == 1 && "$bridge_present" == 0 ]]; then
-    printf 'Android smoke APK is missing the emulator-only test bridge.\n' >&2
+# The build wrapper verifies the smoke bridge against the freshly generated
+# Vite distribution before Tauri packages it. Tauri may compress/embed web
+# assets, so absence of a JavaScript literal in an unpacked APK is not proof
+# that the bridge is absent. Keep this release scan only as defense in depth.
+if [[ "$MODE" == release ]]; then
+  unzip -q "$APK" -d "$temporary/release-tree"
+  if grep -R -a -q '__OSTUDY_ANDROID_TEST__' "$temporary/release-tree"; then
+    printf 'Release APK exposes the emulator-only Android test bridge marker.\n' >&2
     exit 1
   fi
 fi
