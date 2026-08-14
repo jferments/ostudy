@@ -98,6 +98,46 @@ SHA; an older green run does not qualify a newer commit. `OSTUDY_FORCE_CHECK=1`
 forces re-execution when exact-tree cache reuse should be bypassed. For a release
 candidate, also run `./scripts/release-check.sh`.
 
+### Agent-driven diagnostic loop
+
+The authoritative gates above intentionally fail fast. For substantial work,
+a Connector-backed agent should use the opt-in multi-failure diagnostic workflow
+when one-error-at-a-time discovery is slowing development. See
+[`../development/agent-diagnostics.md`](../development/agent-diagnostics.md).
+
+A development PR opts in through its body:
+
+```text
+<!-- agent-diagnostics:core -->
+<!-- agent-diagnostics:android -->
+<!-- agent-diagnostics:all -->
+```
+
+The agent owns the feedback cycle when the self-hosted runner can perform the
+check:
+
+1. publish and verify the exact branch head;
+2. inspect the diagnostic and authoritative workflow runs for that SHA;
+3. retrieve failed job steps, decoded logs, and uploaded evidence through the
+   GitHub Connector;
+4. collect all actionable independent failures exposed by that run before
+   editing;
+5. repair them in a coherent batch on the same branch;
+6. publish and verify the new head, then inspect its exact-head results;
+7. continue until required qualification is green or a concrete external
+   blocker remains.
+
+Do not ask the human to run a repository test solely to relay output when an
+available self-hosted workflow can run it and the Connector can read the result.
+The human still owns manual visual/interaction acceptance, physical-device
+checks, protected credentials, and runner-host administration that cannot be
+performed or observed through GitHub.
+
+A `BLOCKED` diagnostic gate is not a hidden failure: it means a declared
+prerequisite did not pass. Fix the prerequisite and rerun; a newly exposed
+failure in the dependent gate is then a genuine dependency boundary rather than
+avoidable serial discovery.
+
 Manually exercise the affected UI path with `./run-app.sh`. For UI work, include
 keyboard behavior, pending/error states, and all relevant themes. For persistence
 work, restart the application and verify the stored result.
@@ -181,6 +221,12 @@ Use precise statements:
 
 - **Passed:** the named command completed successfully in the current
   environment.
+- **Failed:** the named command executed and returned a failure for the stated
+  exact head.
+- **Blocked:** a diagnostic gate did not execute because a declared prerequisite
+  failed.
+- **Queued/Running:** an asynchronous workflow has not completed and must not be
+  reported as passed.
 - **Inspected:** code or output was reviewed without execution.
 - **Not run:** the check was unavailable or outside the environment.
 - **Manually verified:** the named behavior was actually exercised.
@@ -189,4 +235,5 @@ Use precise statements:
 
 Never say that code is fully tested merely because it parses, compiles, or looks
 correct. Never say that a Connector mutation exists remotely merely because a
-local patch or proposed change was generated.
+local patch or proposed change was generated. Never convert an asynchronous
+queued/running workflow into an invented result.
