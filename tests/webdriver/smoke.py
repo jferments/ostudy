@@ -25,6 +25,10 @@ TUTORIAL_REGISTRY_PATH = ROOT_DIR / "src/ui/tutorials/tutorialRegistry.ts"
 TUTORIAL_STORAGE_KEY = "ostudy.tutorials.v1"
 TRANSIENT_CLICK_ERRORS = {"element click intercepted", "element not interactable"}
 RETRYABLE_FIND_ERRORS = {"no such element", "stale element reference"}
+RETRYABLE_PROFILE_ERRORS = {"no such window", "unknown error"}
+PRACTICE_COMPLETE_SELECTOR = "main [data-testid='practice-complete']"
+ANALYTICS_SCREEN_SELECTOR = "main .analytics-screen"
+CHART_DATA_SELECTOR = "main .chart-data-table"
 
 
 class WebDriverProtocolError(RuntimeError):
@@ -133,20 +137,33 @@ def prepare_automation_profile(session_id: str) -> None:
         "completed": versions,
         "dismissed": {},
     }
-    request(
-        "POST",
-        f"/session/{session_id}/execute/sync",
-        {
-            "script": """
-                const key = arguments[0];
-                const state = arguments[1];
-                window.localStorage.setItem(key, JSON.stringify(state));
-                window.location.reload();
-                return true;
-            """,
-            "args": [TUTORIAL_STORAGE_KEY, state],
-        },
-    )
+    deadline = time.monotonic() + 5
+    last_error: WebDriverProtocolError | None = None
+    while time.monotonic() < deadline:
+        try:
+            request(
+                "POST",
+                f"/session/{session_id}/execute/sync",
+                {
+                    "script": """
+                        const key = arguments[0];
+                        const state = arguments[1];
+                        window.localStorage.setItem(key, JSON.stringify(state));
+                        window.location.reload();
+                        return true;
+                    """,
+                    "args": [TUTORIAL_STORAGE_KEY, state],
+                },
+            )
+            return
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_PROFILE_ERRORS:
+                raise
+            last_error = error
+            time.sleep(0.1)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("WebDriver automation profile preparation ended without a result")
 
 
 def create_session(application: Path) -> str:
@@ -190,8 +207,6 @@ def find_element(session_id: str, using: str, value: str, deadline: float) -> st
             if error.error not in RETRYABLE_FIND_ERRORS:
                 raise
             last_error = error
-        except Exception as error:
-            last_error = error
         time.sleep(0.2)
     raise TimeoutError(f"Element was not found: {using}={value}; last error: {last_error}")
 
@@ -224,8 +239,6 @@ def find_elements(
         except WebDriverProtocolError as error:
             if error.error not in RETRYABLE_FIND_ERRORS:
                 raise
-            last_error = error
-        except Exception as error:
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(
@@ -304,7 +317,11 @@ def set_input_text(
                 if last_value == text:
                     return element
                 time.sleep(0.1)
-        except Exception as error:
+        except TimeoutError as error:
+            last_error = error
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_FIND_ERRORS:
+                raise
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(
@@ -342,7 +359,11 @@ def set_rich_editor_text(
                 if last_text == text:
                     return element
                 time.sleep(0.1)
-        except Exception as error:
+        except TimeoutError as error:
+            last_error = error
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_FIND_ERRORS:
+                raise
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(
@@ -366,7 +387,11 @@ def wait_for_enabled_element(
             last_enabled = element_enabled(session_id, element)
             if last_enabled:
                 return element
-        except Exception as error:
+        except TimeoutError as error:
+            last_error = error
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_FIND_ERRORS:
+                raise
             last_error = error
         time.sleep(0.1)
     raise TimeoutError(
@@ -398,8 +423,6 @@ def wait_for_element_text(
         except WebDriverProtocolError as error:
             if error.error not in RETRYABLE_FIND_ERRORS:
                 raise
-            last_error = error
-        except Exception as error:
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(
@@ -503,18 +526,18 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
     click(session_id, medium)
-    wait_for_element_text(
-        session_id,
-        "css selector",
-        "main h1",
-        "Session complete",
-        deadline,
-    )
+    find_element(session_id, "css selector", PRACTICE_COMPLETE_SELECTOR, deadline)
 
     progress("Verifying analytics and chart data")
     deadline = deadline_after(ANALYTICS_TIMEOUT_SECONDS)
-    click_text_button(session_id, "View analytics", deadline)
-    wait_for_element_text(session_id, "css selector", "main h1", "Analytics", deadline)
+    view_analytics = find_element(
+        session_id,
+        "css selector",
+        f"{PRACTICE_COMPLETE_SELECTOR} .primary-button",
+        deadline,
+    )
+    click(session_id, view_analytics)
+    find_element(session_id, "css selector", ANALYTICS_SCREEN_SELECTOR, deadline)
     find_element(
         session_id,
         "xpath",
@@ -522,14 +545,14 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         f"//strong[normalize-space(.)={json.dumps(question)}]",
         deadline,
     )
-    click_text_button(session_id, "View chart data", deadline)
-    wait_for_element_text(
+    chart_data_button = find_element(
         session_id,
         "css selector",
-        ".chart-data-table caption",
-        "Data represented in the learning progress chart",
+        "main section[aria-labelledby='progress-heading'] button[aria-expanded]",
         deadline,
     )
+    click(session_id, chart_data_button)
+    find_element(session_id, "css selector", CHART_DATA_SELECTOR, deadline)
     progress("Analytics verification completed")
     return deck_name, question
 
@@ -574,7 +597,7 @@ def verify_persistence_after_restart(
         deadline,
     )
     click(session_id, analytics_button)
-    wait_for_element_text(session_id, "css selector", "main h1", "Analytics", deadline)
+    find_element(session_id, "css selector", ANALYTICS_SCREEN_SELECTOR, deadline)
     find_element(
         session_id,
         "xpath",
