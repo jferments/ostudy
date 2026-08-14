@@ -146,9 +146,9 @@ run_core() {
   run_gate "cargo-metadata" "core" "" "10m" cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 --locked
   run_gate "vitest" "core" "pnpm-install" "30m" pnpm test
   run_gate "cargo-check" "core" "cargo-metadata pdfium-runtime" "30m" cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
-  run_gate "clippy" "core" "cargo-metadata pdfium-runtime" "45m" cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
-  run_gate "rust-tests" "core" "cargo-metadata pdfium-runtime" "60m" cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
-  run_gate "frontend-build" "core" "pnpm-install" "20m" pnpm run build
+  run_gate "clippy" "core" "cargo-check" "45m" cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
+  run_gate "rust-tests" "core" "cargo-check" "60m" cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
+  run_gate "frontend-build" "core" "pnpm-install typescript" "20m" pnpm run build
 }
 
 run_android() {
@@ -158,7 +158,7 @@ run_android() {
   run_gate "android-runner-doctor" "android" "android-install-deps android-rust-targets" "15m" bash ./scripts/android-runner-doctor.sh
   run_gate "android-project" "android" "android-install-deps" "10m" node ./scripts/verify-android-project.mjs
   run_gate "android-streaming-contract" "android" "" "5m" node ./scripts/verify-external-file-streaming.mjs
-  run_gate "android-gradle-dependencies" "android" "android-install-deps" "20m" bash -lc '
+  run_gate "android-gradle-dependencies" "android" "android-install-deps" "20m" bash -c '
     set -euo pipefail
     source ./scripts/android-env.sh
     android_write_local_properties
@@ -172,7 +172,7 @@ run_android() {
     grep -Eq '\''kotlinx-coroutines-core-jvm:1\.8\.1'\'' "$report"
     grep -Eq '\''kotlin-stdlib:1\.9\.25'\'' "$report"
   '
-  run_gate "android-kotlin-compile" "android" "android-install-deps" "30m" bash -lc '
+  run_gate "android-kotlin-compile" "android" "android-install-deps" "30m" bash -c '
     set -euo pipefail
     source ./scripts/android-env.sh
     android_write_local_properties
@@ -180,14 +180,14 @@ run_android() {
     ./gradlew --no-daemon --parallel --max-workers "$OSTUDY_GRADLE_WORKERS" \
       :tauri-plugin-ostudy-platform:compileDebugKotlin
   '
-  run_gate "android-debug-build" "android" "android-install-deps android-rust-targets android-pnpm-install android-project android-gradle-dependencies android-kotlin-compile" "75m" bash -lc '
+  run_gate "android-debug-build" "android" "android-install-deps android-rust-targets android-pnpm-install android-kotlin-compile" "75m" bash -c '
     set -euo pipefail
     source ./scripts/android-env.sh
     android_write_local_properties
     export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
     bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
   '
-  run_gate "android-test-packages" "android" "android-debug-build" "30m" bash -lc '
+  run_gate "android-test-packages" "android" "android-debug-build" "30m" bash -c '
     set -euo pipefail
     source ./scripts/android-env.sh
     android_write_local_properties
