@@ -7,6 +7,8 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
+PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
+TOUR_PROVIDER_PATH = ROOT / "src" / "ui" / "tutorials" / "TourProvider.tsx"
 SPEC = importlib.util.spec_from_file_location("ostudy_webdriver_smoke", SMOKE_PATH)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError(f"Could not load native WebDriver harness from {SMOKE_PATH}")
@@ -50,6 +52,18 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertEqual(state["schemaVersion"], 1)
         self.assertEqual(state["completed"], smoke.tutorial_versions())
         self.assertEqual(state["dismissed"], {})
+
+    def test_native_smoke_uses_structural_practice_completion_contract(self) -> None:
+        harness = SMOKE_PATH.read_text(encoding="utf-8")
+        completion = PRACTICE_COMPLETE_PATH.read_text(encoding="utf-8")
+        self.assertIn('data-testid="practice-complete"', completion)
+        self.assertIn("PRACTICE_COMPLETE_SELECTOR", harness)
+        self.assertNotIn('"Session complete"', harness)
+
+    def test_android_smoke_build_cannot_auto_start_contextual_tutorials(self) -> None:
+        source = TOUR_PROVIDER_PATH.read_text(encoding="utf-8")
+        self.assertIn("VITE_OSTUDY_ANDROID_TEST_BRIDGE", source)
+        self.assertIn("CONTEXTUAL_AUTO_START_ENABLED", source)
 
 
 if __name__ == "__main__":
