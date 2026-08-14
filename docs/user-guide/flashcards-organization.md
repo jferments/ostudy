@@ -14,17 +14,17 @@ Switching between these workspaces changes presentation state only. The active w
 
 Folders provide one optional organization level above decks. A deck belongs to at most one folder; a deck without a folder appears under **Unfiled decks**. Folders do not own cards and do not alter scheduling or analytics attribution.
 
-Creating, renaming, moving, reordering, or deleting a folder is a transactional native operation. Each organization snapshot has a revision number. A write based on a stale revision fails visibly and the interface restores the previous order rather than silently overwriting another window's change.
+Creating, renaming, moving, reordering, or deleting a folder is a transactional native operation. Each organization snapshot has a revision number. A write based on a stale revision fails visibly instead of silently overwriting another window's change. The interface immediately reloads the authoritative organization snapshot so a subsequent action uses the current revision rather than repeatedly retrying stale state.
 
 Deleting a folder moves its decks to Unfiled. It never deletes those decks, their cards, review history, schedules, tags, assets, or analytics.
 
-Deck creation, archive changes, restoration, soft deletion, and permanent purge also advance the shared organization revision. This prevents an apparently unrelated deck operation from leaving a stale drag or reorder operation eligible to commit.
+Deck creation, archive changes, restoration, soft deletion, and permanent purge also advance the shared organization revision. The Decks workspace refreshes organization state when those lifecycle changes appear in the deck list, including after returning from nested deck editing or using Undo. This prevents an apparently unrelated deck operation from leaving a stale drag or reorder operation eligible to commit.
 
 ## Moving and ordering
 
 Pointer users can drag a deck by its dedicated handle. Dragging is an enhancement rather than a required input method. Every deck also exposes a **Move** action and explicit up/down controls. Folders have equivalent up/down controls.
 
-The native command receives the target folder, target index, and expected organization revision. It rewrites the affected sequence to stable spaced sort values inside one immediate transaction. If the operation fails, the optimistic interface order is rolled back and an error explains that the previous order was restored.
+Nested drop targets stop propagation once a deck row or folder accepts a drop, so one pointer gesture can issue at most one revisioned move. The native command receives the target folder, target index, and expected organization revision. It rewrites the affected sequence to stable spaced sort values inside one immediate transaction. If the operation fails, the optimistic presentation is replaced with the authoritative native snapshot before the interface accepts another organization mutation.
 
 ## Comfortable and compact views
 
