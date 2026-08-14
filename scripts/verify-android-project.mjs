@@ -15,15 +15,18 @@ const required = [
   "src-tauri/gen/android/gradle.properties",
   "src-tauri/gen/android/app/build.gradle.kts",
   "src-tauri/gen/android/app/src/main/AndroidManifest.xml",
+  "src-tauri/gen/android/app/src/main/java/io/github/jferments/ostudy/MainActivity.kt",
   "src-tauri/gen/android/app/src/main/res/xml/file_paths.xml",
   "src-tauri/gen/android/app/src/main/res/xml/network_security_config.xml",
   "src-tauri/gen/android/app/src/main/res/xml/backup_rules.xml",
   "src-tauri/gen/android/app/src/main/res/xml/data_extraction_rules.xml",
   "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
   "plugins/ostudy-platform/Cargo.toml",
+  "plugins/ostudy-platform/permissions/default.toml",
   "plugins/ostudy-platform/android/build.gradle.kts",
   "plugins/ostudy-platform/android/src/main/java/OstudyPlatformPlugin.kt",
   "plugins/ostudy-platform/android/src/main/java/InvokeArrayResult.kt",
+  "src/components/IncomingShareCoordinator.tsx",
   "src/platform/PlatformProvider.tsx",
   "src/platform/backInterception.ts",
   "src/platform/backInterception.test.ts",
@@ -91,6 +94,15 @@ expectContains(
   "instrumentation runner",
 );
 
+const mainActivity = await read(
+  "src-tauri/gen/android/app/src/main/java/io/github/jferments/ostudy/MainActivity.kt",
+);
+expectContains(
+  mainActivity,
+  "override val handleBackNavigation: Boolean = false",
+  "exclusive ostudy Android Back ownership over Wry browser-history Back",
+);
+
 const rootGradle = await read("src-tauri/gen/android/build.gradle.kts");
 expectContains(
   rootGradle,
@@ -130,6 +142,15 @@ expectContains(
   "platform plugin coroutine declaration",
 );
 
+const platformPermissions = await read("plugins/ostudy-platform/permissions/default.toml");
+for (const permission of ["allow-register-listener", "allow-remove-listener"]) {
+  expectContains(
+    platformPermissions,
+    `"${permission}"`,
+    `platform plugin event permission ${permission}`,
+  );
+}
+
 const gradleProperties = await read("src-tauri/gen/android/gradle.properties");
 expectContains(gradleProperties, "org.gradle.parallel=true", "Gradle project parallelism");
 expectContains(gradleProperties, "org.gradle.caching=true", "Gradle build cache");
@@ -163,6 +184,30 @@ expectContains(
   platformProvider,
   "dataset.androidBackInterception",
   "acknowledged Android Back interception diagnostic state",
+);
+expectContains(
+  platformProvider,
+  'root.dataset.androidBackListener = "ready";',
+  "acknowledged Android Back plugin-listener readiness",
+);
+expectContains(
+  platformProvider,
+  'root.dataset.androidBackListener = "ready";\n        const backStack = subscribePlatformBackStack',
+  "listener-before-interception Android Back ordering",
+);
+for (const diagnostic of [
+  "Unable to register the Android Back listener:",
+  "Unable to register the Android insets listener:",
+  "Unable to register the Android network listener:",
+]) {
+  expectContains(platformProvider, diagnostic, `Android plugin listener diagnostic ${diagnostic}`);
+}
+
+const incomingShareCoordinator = await read("src/components/IncomingShareCoordinator.tsx");
+expectContains(
+  incomingShareCoordinator,
+  "Unable to register the Android incoming-share listener:",
+  "incoming-share plugin listener diagnostic",
 );
 
 const postbuild = await read("scripts/android-gradle-postbuild.sh");
@@ -327,7 +372,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Android project, synchronized Back state, instrumentation lifecycle ownership, Tauri/Gradle build boundary, source-of-truth debug identity, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
+  "OK   Android project, plugin event ACL, synchronized Back state, instrumentation lifecycle ownership, Tauri/Gradle build boundary, source-of-truth debug identity, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
 );
 
 function expectContains(text, value, label) {
