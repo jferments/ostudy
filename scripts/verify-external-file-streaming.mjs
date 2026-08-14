@@ -9,6 +9,8 @@ const failures = [];
 
 const lib = await read("src-tauri/src/lib.rs");
 const transfer = await read("src-tauri/src/external_file_streaming.rs");
+const recovery = await read("src-tauri/src/external_file_recovery.rs");
+const platformPort = await read("src-tauri/src/platform/mod.rs");
 const ipc = await read("src/ipc/externalFiles.ts");
 const bridge = await read("src/testing/androidTestBridge.ts");
 const smoke = await read(
@@ -16,6 +18,8 @@ const smoke = await read(
 );
 const smokeRunner = await read("scripts/android-emulator-smoke.sh");
 const androidAdapter = await read("src-tauri/src/platform/android.rs");
+const mobileStub = await read("src-tauri/src/platform/mobile_stub.rs");
+const desktopAdapter = await read("src-tauri/src/platform/desktop/external_files.rs");
 const checkStatic = await read("scripts/check-static.sh");
 const androidTest = await read("scripts/android-test.sh");
 const androidBuild = await read("scripts/android-build.sh");
@@ -39,6 +43,24 @@ for (const legacy of [
   }
 }
 
+const recoveryIndex = lib.indexOf("external_file_recovery::reconcile_interrupted_staging");
+const generalReconcileIndex = lib.indexOf("external_files::reconcile_startup");
+if (recoveryIndex < 0) {
+  failures.push("External-file crash recovery is not registered at startup");
+} else if (generalReconcileIndex < 0 || recoveryIndex > generalReconcileIndex) {
+  failures.push("Interrupted external-file staging must recover before general transfer reconciliation");
+}
+for (const token of [
+  "StagingRecoveryAction::Ready",
+  "StagingRecoveryAction::PromotePartial",
+  "StagingRecoveryAction::Missing",
+  "file_matches",
+  "sync_file(&ready)",
+  "state = 'staging'",
+]) {
+  expectContains(recovery, token, `external-file crash-recovery invariant ${token}`);
+}
+
 for (const token of [
   ".acquire_import(",
   "ExternalImportTarget",
@@ -59,6 +81,37 @@ for (const forbidden of [".select_import(", ".select_export("]) {
   }
 }
 
+for (const [method, resultType] of [
+  ["acquire_import", "ExternalAcquireResult"],
+  ["publish_export", "ExternalPublishResult"],
+]) {
+  const requiredMethod = new RegExp(
+    `fn\\s+${method}\\s*\\([\\s\\S]*?\\)\\s*->\\s*PlatformFuture<Result<Option<${resultType}>,\\s*CommandError>>\\s*;`,
+    "u",
+  );
+  if (!requiredMethod.test(platformPort)) {
+    failures.push(`ExternalFilePort.${method} must be a required trait method with no default body`);
+  }
+}
+if (platformPort.includes("external_file_streaming_unavailable")) {
+  failures.push("ExternalFilePort must not provide a default unavailable streaming implementation");
+}
+for (const [name, adapter] of [
+  ["Android", androidAdapter],
+  ["desktop", desktopAdapter],
+  ["mobile fallback", mobileStub],
+]) {
+  for (const method of ["fn acquire_import(", "fn publish_export("]) {
+    expectContains(adapter, method, `${name} required streaming adapter ${method}`);
+  }
+}
+for (const token of [
+  "app.ostudy_platform().acquire_import",
+  "app.ostudy_platform().publish_export",
+]) {
+  expectContains(androidAdapter, token, `Android streaming adapter invariant ${token}`);
+}
+
 expectContains(
   ipc,
   '"stream_select_and_stage_external_import"',
@@ -76,20 +129,13 @@ for (const legacy of ['"select_and_stage_external_import"', '"publish_prepared_e
 }
 
 for (const token of [
-  "fn acquire_import(",
-  "fn publish_export(",
-  "app.ostudy_platform().acquire_import",
-  "app.ostudy_platform().publish_export",
-]) {
-  expectContains(androidAdapter, token, `Android streaming adapter invariant ${token}`);
-}
-
-for (const token of [
   "fileOperationSnapshot",
   "startImportPicker",
   "startDeckExportPicker",
   'phase: "pending"',
   'phase: "error"',
+  "cancelled: boolean | null",
+  "=== null",
   '"image_import"',
   '"pdf_document_import"',
   '"study_content_import"',
@@ -102,10 +148,14 @@ if (bridge.includes(".catch(() => undefined)")) {
 }
 
 for (const token of [
-  "waitForDocumentsUiOrFailure",
-  "waitForFileOperationSettled",
+  "waitForPickerOrFailure",
+  "waitForFileOperationCancelled",
   "fileOperationSnapshot",
   "startFileOperation",
+  "documentPickerPackages",
+  "Intent.ACTION_OPEN_DOCUMENT",
+  "Intent.ACTION_CREATE_DOCUMENT",
+  'getBoolean("cancelled")',
   "f_studyContentImportPickerCancelsCleanly",
   "f_imageImportPickerCancelsCleanly",
   "f_pdfImportPickerCancelsCleanly",
@@ -155,7 +205,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   External file imports and exports use the streaming port, expose test failures, cover every import purpose, and aggregate independent picker checks.",
+  "OK   External file imports and exports use mandatory streaming ports, recover interrupted promotion, expose cancellation outcomes, cover every import purpose, and aggregate independent picker checks.",
 );
 
 function expectContains(text, value, label) {
