@@ -37,7 +37,7 @@ for (const path of requiredFiles) {
 const governedCss = [
   "src/ui/feedback/experience.module.css",
   "src/ui/tutorials/TourProvider.module.css",
-  "src/ui/help/HelpProvider.module.css",
+  "src/ui/help/Help.module.css",
   "src/ui/patterns/Metrics.module.css",
   "src/screens/flashcards/FlashcardsWorkspace.module.css",
   "src/screens/flashcards/DeckLibraryWorkspace.module.css",
