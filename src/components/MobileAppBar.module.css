@@ -1,0 +1,23 @@
+@layer components {
+  .bar { display: none; }
+  @media (max-width: 760px) {
+    .bar {
+      position: fixed;
+      z-index: var(--ostudy-layer-sticky);
+      inset-block-start: 0;
+      inset-inline: 0;
+      display: grid;
+      grid-template-columns: minmax(70px, 1fr) auto minmax(70px, 1fr);
+      min-height: calc(var(--ostudy-navigation-app-bar-height) + var(--safe-top));
+      align-items: end;
+      gap: var(--ostudy-space-2);
+      border-bottom: 1px solid var(--ostudy-color-border-subtle);
+      padding: var(--safe-top) max(14px, var(--safe-right)) 8px max(14px, var(--safe-left));
+      background: var(--ostudy-color-surface-chrome);
+      box-shadow: var(--ostudy-shadow-level-2);
+      backdrop-filter: blur(var(--ostudy-material-blur-medium)) saturate(var(--ostudy-material-chrome-saturation));
+    }
+    .title { overflow: hidden; color: var(--ostudy-color-text-primary); font-size: .92rem; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+    .spacer { min-width: 0; }
+  }
+}
