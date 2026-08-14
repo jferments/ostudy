@@ -169,7 +169,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 26,
         name: "deck_folders",
-        checksum: "520068fae65d32d3de6926b7864cb088d3466754e8b6fcfebff4c17380cfbf3e",
+        checksum: "4361a6ea23c1fe910b078b5edfb98c1a44a5dd6e3c307df1f0436db6076bcc58",
         sql: include_str!("../migrations/0026_deck_folders.sql"),
     },
 ];
@@ -536,6 +536,23 @@ mod tests {
                     )
                     .map_err(CommandError::database)?;
                 assert_eq!(folder_column_exists, 1, "missing decks.folder_id");
+                for trigger in [
+                    "deck_library_revision_after_insert",
+                    "deck_library_revision_after_delete",
+                    "deck_library_revision_after_visibility_change",
+                ] {
+                    let exists: i64 = connection
+                        .query_row(
+                            "SELECT EXISTS(
+                                 SELECT 1 FROM sqlite_master
+                                 WHERE type = 'trigger' AND name = ?1
+                             )",
+                            [trigger],
+                            |row| row.get(0),
+                        )
+                        .map_err(CommandError::database)?;
+                    assert_eq!(exists, 1, "missing trigger {trigger}");
+                }
 
                 let metadata: (String, String) = connection
                     .query_row(
