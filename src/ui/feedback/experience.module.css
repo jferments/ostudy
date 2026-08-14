@@ -21,7 +21,8 @@
   }
 
   .effectsLayer[data-effect="review_committed"]::before {
-    animation: feedbackPulse 420ms var(--ostudy-motion-ease-exit);
+    animation: feedbackPulse var(--ostudy-motion-duration-slow)
+      var(--ostudy-motion-ease-exit);
   }
 
   .effectsLayer[data-effect="session_completed"]::before {
@@ -30,7 +31,8 @@
       color-mix(in srgb, var(--ostudy-color-status-success) 18%, transparent),
       transparent 48%
     );
-    animation: completionGlow 900ms var(--ostudy-motion-ease-exit);
+    animation: completionGlow var(--ostudy-motion-duration-celebration)
+      var(--ostudy-motion-ease-exit);
   }
 
   .confetti {
@@ -43,8 +45,8 @@
     background: var(--ostudy-color-accent-base);
     opacity: 0;
     transform: translate3d(0, -20px, 0) rotate(0deg);
-    animation: confettiFall 1.05s var(--ostudy-motion-ease-standard)
-      var(--confetti-delay) both;
+    animation: confettiFall var(--ostudy-motion-duration-celebration)
+      var(--ostudy-motion-ease-standard) var(--confetti-delay) both;
     will-change: transform, opacity;
   }
 
