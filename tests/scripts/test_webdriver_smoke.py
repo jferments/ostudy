@@ -120,6 +120,16 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn("document.documentElement?.dataset != null", source)
         self.assertNotIn('latest.optString("type") == "object" && state == "ready"', source)
 
+    def test_android_smoke_waits_for_webview_attachment(self) -> None:
+        source = ANDROID_SMOKE_TEST_PATH.read_text(encoding="utf-8")
+        self.assertIn("block(waitForWebView(scenario))", source)
+        self.assertIn("private fun waitForWebView", source)
+        self.assertIn("TimeUnit.SECONDS.toNanos(15)", source)
+        self.assertIn("scenario.onActivity", source)
+        self.assertIn("Timed out waiting for the Tauri WebView to attach", source)
+        self.assertIn("describeViewTree", source)
+        self.assertNotIn('requireNotNull(webView) { "The Tauri WebView was not found." }', source)
+
     def test_android_build_verifies_smoke_bridge_at_frontend_boundary(self) -> None:
         build = ANDROID_BUILD_PATH.read_text(encoding="utf-8")
         package_verifier = ANDROID_PACKAGE_VERIFIER_PATH.read_text(encoding="utf-8")
