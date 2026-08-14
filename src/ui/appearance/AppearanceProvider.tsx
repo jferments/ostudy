@@ -6,11 +6,11 @@ import {
   useMemo,
 } from "react";
 
-import type { AppSettings } from "../../ipc/settings";
 import { usePlatformCapabilities } from "../../platform/PlatformProvider";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import {
   type AppearanceProfile,
+  type AppearanceSettings,
   resolveAppearanceProfile,
   resolveFontFamily,
 } from "./appearanceTypes";
@@ -33,7 +33,7 @@ export function AppearanceProvider({
   settings,
   children,
 }: {
-  settings: AppSettings;
+  settings: AppearanceSettings;
   children: ReactNode;
 }) {
   const capabilities = usePlatformCapabilities();
@@ -49,7 +49,14 @@ export function AppearanceProvider({
         coarsePointer: capabilities.coarsePointer,
         hoverAvailable: capabilities.hoverAvailable,
       }),
-    [capabilities.coarsePointer, capabilities.hoverAvailable, forcedColors, settings, systemReducedMotion, systemReducedTransparency],
+    [
+      capabilities.coarsePointer,
+      capabilities.hoverAvailable,
+      forcedColors,
+      settings,
+      systemReducedMotion,
+      systemReducedTransparency,
+    ],
   );
 
   useLayoutEffect(() => {
@@ -76,7 +83,14 @@ export function AppearanceProvider({
       resolveFontFamily(settings.cardFont, settings.theme),
     );
     root.style.colorScheme = settings.theme === "light" ? "light" : "dark";
-  }, [profile, settings.cardBaseSize, settings.cardFont, settings.theme, settings.uiFont, settings.uiScale]);
+  }, [
+    profile,
+    settings.cardBaseSize,
+    settings.cardFont,
+    settings.theme,
+    settings.uiFont,
+    settings.uiScale,
+  ]);
 
   return <AppearanceContext.Provider value={profile}>{children}</AppearanceContext.Provider>;
 }
