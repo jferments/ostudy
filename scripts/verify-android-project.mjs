@@ -19,6 +19,7 @@ const required = [
   "src-tauri/gen/android/app/src/main/res/xml/network_security_config.xml",
   "src-tauri/gen/android/app/src/main/res/xml/backup_rules.xml",
   "src-tauri/gen/android/app/src/main/res/xml/data_extraction_rules.xml",
+  "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
   "plugins/ostudy-platform/Cargo.toml",
   "plugins/ostudy-platform/android/build.gradle.kts",
   "plugins/ostudy-platform/android/src/main/java/OstudyPlatformPlugin.kt",
@@ -177,8 +178,33 @@ expectContains(
   "android-gradle-postbuild.sh instrumentation-package",
   "Android emulator instrumentation postbuild wrapper",
 );
+expectContains(emulatorSmoke, "dump_case_logcat", "automatic Android crash-log diagnostics");
+expectContains(
+  emulatorSmoke,
+  'shell am force-stop "$APP_ID"',
+  "shell-owned Android instrumentation process cleanup",
+);
+expectContains(
+  emulatorSmoke,
+  "run_case a0_appLaunchesAndTestBridgeIsReady",
+  "launch-only Android smoke case",
+);
 if (emulatorSmoke.includes(":app:rustBuild")) {
   failures.push("android-emulator-smoke.sh must not invoke generated Tauri rustBuild tasks directly");
+}
+
+const androidSmokeTest = await read(
+  "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
+);
+expectContains(
+  androidSmokeTest,
+  "fun a0_appLaunchesAndTestBridgeIsReady()",
+  "Android launch/bridge instrumentation case",
+);
+if (androidSmokeTest.includes("ActivityScenario.launch(MainActivity::class.java).use")) {
+  failures.push(
+    "AndroidSmokeTest must not close the Tauri Activity from inside instrumentation; shell process cleanup owns Activity destruction",
+  );
 }
 
 const arrayAdapter = await read("plugins/ostudy-platform/android/src/main/java/InvokeArrayResult.kt");
@@ -260,7 +286,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Android project, Tauri/Gradle build boundary, source-of-truth debug identity, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
+  "OK   Android project, instrumentation lifecycle ownership, Tauri/Gradle build boundary, source-of-truth debug identity, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
 );
 
 function expectContains(text, value, label) {
