@@ -243,6 +243,21 @@ expectContains(
   "android-gradle-postbuild.sh test-packages",
   "Android test postbuild wrapper",
 );
+expectContains(
+  androidTest,
+  'generated_settings="$ROOT_DIR/src-tauri/gen/android/tauri.settings.gradle"',
+  "transient Tauri Gradle settings guard",
+);
+expectContains(
+  androidTest,
+  "bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge\nverify_gradle_contracts",
+  "Tauri build before direct Gradle qualification",
+);
+expectContains(
+  androidTest,
+  "bash ./scripts/android-emulator-smoke.sh\n  verify_gradle_contracts",
+  "emulator Tauri build before direct Gradle qualification",
+);
 if (androidTest.includes(":app:rustBuild")) {
   failures.push("android-test.sh must not invoke generated Tauri rustBuild tasks directly");
 }
