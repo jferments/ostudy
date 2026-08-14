@@ -81,6 +81,9 @@ export ANDROID_SERIAL="$SERIAL"
 "$adb" -s "$SERIAL" logcat -c
 printf 'Building the x86_64 Android smoke APK and instrumentation package...\n'
 export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
+# Tauri owns Rust/JNI compilation and its temporary CLI socket. The Gradle
+# postbuild wrapper reuses that x86_64 output while excluding generated
+# rustBuild tasks that cannot outlive the parent Tauri process.
 bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
 bash ./scripts/android-gradle-postbuild.sh instrumentation-package
 
@@ -124,6 +127,9 @@ run_case() {
   local method="$1"
   local log="$ARTIFACT_DIR/${method}.txt"
 
+  # The Tauri event loop owns Activity/native teardown. AndroidJUnitRunner's
+  # default activity finisher races Wry teardown, so instrumentation opts out
+  # and this shell gives each case a fresh process with durable app data intact.
   "$adb" -s "$SERIAL" shell am force-stop "$APP_ID" >/dev/null 2>&1 || true
   "$adb" -s "$SERIAL" logcat -c
 
@@ -161,10 +167,17 @@ skip_case() {
   printf 'SKIP Android smoke case %s: %s\n' "$method" "$reason"
 }
 
+# Reset the sandbox once, then preserve SQLite/app-private state across fresh
+# processes. Independent cases continue after a failure; only cases with an
+# explicit failed prerequisite are skipped. This exposes multiple defects from
+# one expensive APK build without turning dependency failures into noise.
 "$adb" -s "$SERIAL" shell pm clear "$APP_ID" >/dev/null
 
 launch_ok=1
-record_case a0_appLaunchesAndTestBridgeIsReady || launch_ok=0
+if ! run_case a0_appLaunchesAndTestBridgeIsReady; then
+  failed_cases+=("a0_appLaunchesAndTestBridgeIsReady")
+  launch_ok=0
+fi
 if ((launch_ok == 0)); then
   for method in \
     a_seedLibraryPracticeAndAnalytics \
