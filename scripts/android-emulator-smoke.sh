@@ -41,6 +41,8 @@ while (($#)); do
 done
 
 cd "$ROOT_DIR"
+printf 'Android emulator build parallelism: %s Gradle workers, %s Cargo jobs.\n' \
+  "$OSTUDY_GRADLE_WORKERS" "$CARGO_BUILD_JOBS"
 bash ./scripts/android-doctor.sh --emulator
 android_write_local_properties
 mkdir -p "$ARTIFACT_DIR"
@@ -81,7 +83,11 @@ export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
 bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
 (
   cd src-tauri/gen/android
-  ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest
+  ./gradlew --no-daemon \
+    --parallel \
+    --max-workers "$OSTUDY_GRADLE_WORKERS" \
+    :app:assembleDebug \
+    :app:assembleDebugAndroidTest
 )
 
 app_apk="$({
@@ -122,6 +128,8 @@ run_case() {
   }
 }
 
+# These cases intentionally run sequentially: later cases validate durable state
+# created by earlier ones, and several exercise process death/restart semantics.
 "$adb" -s "$SERIAL" shell pm clear io.github.jferments.ostudy.dev >/dev/null
 run_case a_seedLibraryPracticeAndAnalytics
 "$adb" -s "$SERIAL" shell am force-stop io.github.jferments.ostudy.dev
