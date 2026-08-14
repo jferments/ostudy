@@ -179,13 +179,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, settings)
-    webdriver.wait_for_element_text(
-        session_id,
-        "css selector",
-        "main h1",
-        "Settings",
-        deadline,
-    )
+    webdriver.find_element(session_id, "css selector", "main .settings-screen", deadline)
     assert_no_horizontal_overflow(session_id, "compact Settings screen")
 
     flashcards = webdriver.find_element(
@@ -195,7 +189,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, flashcards)
-    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Flashcards", deadline)
+    webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
     find_workspace_tab(session_id, "Decks", deadline)
     find_workspace_tab(session_id, "Templates", deadline)
     find_workspace_tab(session_id, "Search", deadline)
@@ -278,22 +272,21 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, flashcards)
-    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Flashcards", deadline)
+    webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
 
     create_cards = find_workspace_tab(session_id, "Create Cards", deadline)
     webdriver.click(session_id, create_cards)
     webdriver.find_element(
         session_id,
-        "xpath",
-        "//main//h2[contains(normalize-space(.), 'Add study material without leaving the Flashcards workspace')]",
+        "css selector",
+        "main [data-testid='create-cards-workspace']",
         deadline,
     )
     hero = execute(
         session_id,
         """
-        const heading = [...document.querySelectorAll('main h2')]
-          .find((node) => node.textContent?.includes('Add study material without leaving the Flashcards workspace'));
-        const surface = heading?.closest('[data-surface-level]');
+        const surface = document.querySelector("main [data-testid='create-cards-hero']");
+        const heading = surface?.querySelector('h2');
         if (!(heading instanceof HTMLElement) || !(surface instanceof HTMLElement)) return null;
         const h = heading.getBoundingClientRect();
         const s = surface.getBoundingClientRect();
@@ -325,7 +318,7 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     webdriver.find_element(
         session_id,
         "css selector",
-        "section[aria-label='Card filters'] input[placeholder='Question, answer, or tag']",
+        "main section[aria-label='Card filters']",
         deadline,
     )
     filter_bar = execute(
@@ -394,14 +387,14 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, back)
-    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Flashcards", deadline)
+    webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
 
     create_cards = find_workspace_tab(session_id, "Create Cards", deadline)
     webdriver.click(session_id, create_cards)
     webdriver.find_element(
         session_id,
-        "xpath",
-        "//main//*[self::h2 or self::span][contains(normalize-space(.), 'Add study material') or normalize-space(.)='Create cards']",
+        "css selector",
+        "main [data-testid='create-cards-workspace']",
         deadline,
     )
     bulk_add = webdriver.find_element(
@@ -413,8 +406,8 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
     webdriver.click(session_id, bulk_add)
     webdriver.find_element(
         session_id,
-        "xpath",
-        "//*[@role='dialog']//*[normalize-space(.)='Bulk add cards']",
+        "css selector",
+        "[role='table'][aria-label='Bulk cards']",
         deadline,
     )
 
