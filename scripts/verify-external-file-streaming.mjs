@@ -14,6 +14,7 @@ const bridge = await read("src/testing/androidTestBridge.ts");
 const smoke = await read(
   "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
 );
+const smokeRunner = await read("scripts/android-emulator-smoke.sh");
 const androidAdapter = await read("src-tauri/src/platform/android.rs");
 const checkStatic = await read("scripts/check-static.sh");
 const androidTest = await read("scripts/android-test.sh");
@@ -89,6 +90,10 @@ for (const token of [
   "startDeckExportPicker",
   'phase: "pending"',
   'phase: "error"',
+  '"image_import"',
+  '"pdf_document_import"',
+  '"study_content_import"',
+  '"library_backup_import"',
 ]) {
   expectContains(bridge, token, `Android bridge operation-state invariant ${token}`);
 }
@@ -101,11 +106,34 @@ for (const token of [
   "waitForFileOperationSettled",
   "fileOperationSnapshot",
   "startFileOperation",
+  "f_studyContentImportPickerCancelsCleanly",
+  "f_imageImportPickerCancelsCleanly",
+  "f_pdfImportPickerCancelsCleanly",
+  "f_libraryBackupImportPickerCancelsCleanly",
+  "f_deckExportPickerCancelsCleanly",
+  "g_sequentialPickerCancellationReleasesNativeOperationSlot",
 ]) {
   expectContains(smoke, token, `Android picker synchronization invariant ${token}`);
 }
 if (smoke.includes("Thread.sleep(250)")) {
   failures.push("Android picker sequencing must use acknowledged operation state, not a fixed delay");
+}
+if (smoke.includes("f_systemImportImageAndExportPickersCancelCleanly")) {
+  failures.push("Independent Android picker checks must not remain hidden inside one fail-fast test");
+}
+
+for (const token of [
+  "failed_cases=()",
+  "skipped_cases=()",
+  "record_case",
+  "f_studyContentImportPickerCancelsCleanly",
+  "f_imageImportPickerCancelsCleanly",
+  "f_pdfImportPickerCancelsCleanly",
+  "f_libraryBackupImportPickerCancelsCleanly",
+  "f_deckExportPickerCancelsCleanly",
+  "g_sequentialPickerCancellationReleasesNativeOperationSlot",
+]) {
+  expectContains(smokeRunner, token, `aggregated Android smoke-runner invariant ${token}`);
 }
 
 for (const [path, text] of [
@@ -127,7 +155,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   External file imports and exports use the streaming port, expose test failures, and synchronize picker cancellation by acknowledged operation state.",
+  "OK   External file imports and exports use the streaming port, expose test failures, cover every import purpose, and aggregate independent picker checks.",
 );
 
 function expectContains(text, value, label) {

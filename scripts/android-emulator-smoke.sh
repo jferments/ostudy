@@ -81,9 +81,6 @@ export ANDROID_SERIAL="$SERIAL"
 "$adb" -s "$SERIAL" logcat -c
 printf 'Building the x86_64 Android smoke APK and instrumentation package...\n'
 export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
-# Tauri owns the Rust/JNI compilation and its temporary CLI socket. The Gradle
-# postbuild wrapper then reuses that x86_64 JNI output while building only the
-# instrumentation package, excluding generated rustBuild tasks.
 bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
 bash ./scripts/android-gradle-postbuild.sh instrumentation-package
 
@@ -127,13 +124,6 @@ run_case() {
   local method="$1"
   local log="$ARTIFACT_DIR/${method}.txt"
 
-  # The Tauri event loop owns Activity/native teardown. AndroidJUnitRunner's
-  # default MonitoringInstrumentation cleanup calls Activity.finish() before
-  # instrumentation exits, which races Tauri/Wry native teardown on Android.
-  # AndroidX Test explicitly supports opting out with the
-  # waitForActivitiesToComplete runner argument. The shell then owns lifecycle:
-  # every case starts from a force-stopped process while app-private durable data
-  # persists unless the initial pm clear intentionally resets it.
   "$adb" -s "$SERIAL" shell am force-stop "$APP_ID" >/dev/null 2>&1 || true
   "$adb" -s "$SERIAL" logcat -c
 
@@ -154,18 +144,88 @@ run_case() {
   fi
 }
 
-# Cases intentionally run sequentially. Each invocation gets a fresh Android
-# process, while durable app data remains available for restart/restoration
-# assertions. Only the initial pm clear resets the data sandbox.
+failed_cases=()
+skipped_cases=()
+record_case() {
+  local method="$1"
+  if run_case "$method"; then
+    return 0
+  fi
+  failed_cases+=("$method")
+  return 1
+}
+skip_case() {
+  local method="$1"
+  local reason="$2"
+  skipped_cases+=("$method: $reason")
+  printf 'SKIP Android smoke case %s: %s\n' "$method" "$reason"
+}
+
 "$adb" -s "$SERIAL" shell pm clear "$APP_ID" >/dev/null
-run_case a0_appLaunchesAndTestBridgeIsReady
-run_case a_seedLibraryPracticeAndAnalytics
-run_case b_restartPreservesLibraryAndReviewHistory
-run_case c_documentsStubAndAndroidBackReturnToDecks
-run_case c_nestedDeckAndEditorBackReturnThroughTheStack
-run_case d_reloadsIntoInterruptedPracticeSession
-run_case e_processRestartKeepsInterruptedPracticeSession
-run_case f_systemImportImageAndExportPickersCancelCleanly
+
+launch_ok=1
+record_case a0_appLaunchesAndTestBridgeIsReady || launch_ok=0
+if ((launch_ok == 0)); then
+  for method in \
+    a_seedLibraryPracticeAndAnalytics \
+    b_restartPreservesLibraryAndReviewHistory \
+    c_documentsStubAndAndroidBackReturnToDecks \
+    c_nestedDeckAndEditorBackReturnThroughTheStack \
+    d_reloadsIntoInterruptedPracticeSession \
+    e_processRestartKeepsInterruptedPracticeSession \
+    f_studyContentImportPickerCancelsCleanly \
+    f_imageImportPickerCancelsCleanly \
+    f_pdfImportPickerCancelsCleanly \
+    f_libraryBackupImportPickerCancelsCleanly \
+    f_deckExportPickerCancelsCleanly \
+    g_sequentialPickerCancellationReleasesNativeOperationSlot
+  do
+    skip_case "$method" "the application/bridge launch prerequisite failed"
+  done
+else
+  seed_ok=1
+  record_case a_seedLibraryPracticeAndAnalytics || seed_ok=0
+  record_case c_documentsStubAndAndroidBackReturnToDecks || true
+
+  if ((seed_ok == 1)); then
+    record_case b_restartPreservesLibraryAndReviewHistory || true
+    record_case c_nestedDeckAndEditorBackReturnThroughTheStack || true
+  else
+    skip_case b_restartPreservesLibraryAndReviewHistory "library seeding failed"
+    skip_case c_nestedDeckAndEditorBackReturnThroughTheStack "the seeded deck is unavailable"
+  fi
+
+  restoration_ok=1
+  record_case d_reloadsIntoInterruptedPracticeSession || restoration_ok=0
+  if ((restoration_ok == 1)); then
+    record_case e_processRestartKeepsInterruptedPracticeSession || true
+  else
+    skip_case e_processRestartKeepsInterruptedPracticeSession \
+      "the interrupted practice-session prerequisite failed"
+  fi
+
+  for method in \
+    f_studyContentImportPickerCancelsCleanly \
+    f_imageImportPickerCancelsCleanly \
+    f_pdfImportPickerCancelsCleanly \
+    f_libraryBackupImportPickerCancelsCleanly \
+    f_deckExportPickerCancelsCleanly \
+    g_sequentialPickerCancellationReleasesNativeOperationSlot
+  do
+    record_case "$method" || true
+  done
+fi
+
+if ((${#skipped_cases[@]} > 0)); then
+  printf '\nAndroid smoke cases skipped because a prerequisite failed:\n'
+  printf '  - %s\n' "${skipped_cases[@]}"
+fi
+if ((${#failed_cases[@]} > 0)); then
+  printf '\nAndroid Emulator smoke suite failed in %s case(s):\n' "${#failed_cases[@]}" >&2
+  printf '  - %s\n' "${failed_cases[@]}" >&2
+  printf 'Diagnostics: %s\n' "$ARTIFACT_DIR" >&2
+  exit 1
+fi
 
 printf '\nOK   Android Emulator smoke suite passed on %s.\n' "$SERIAL"
 printf 'Diagnostics: %s\n' "$ARTIFACT_DIR"

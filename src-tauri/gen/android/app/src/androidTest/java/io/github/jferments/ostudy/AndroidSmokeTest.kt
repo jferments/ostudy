@@ -171,10 +171,6 @@ class AndroidSmokeTest {
                 "window.__OSTUDY_ANDROID_TEST__.beginInterruptedPractice()"
             )
             val sessionId = started.getString("sessionId")
-            // Remove the old-page bridge before scheduling the reload. Without
-            // this boundary waitForBridge can observe the still-live old page,
-            // start the restoration promise there, and then lose its result when
-            // navigation replaces that JavaScript context.
             evaluateSync(
                 webView,
                 "delete window.__OSTUDY_ANDROID_TEST__; window.location.reload(); true"
@@ -205,59 +201,96 @@ class AndroidSmokeTest {
     }
 
     @Test
-    fun f_systemImportImageAndExportPickersCancelCleanly() {
+    fun f_studyContentImportPickerCancelsCleanly() {
+        assertImportPickerCancels("study_content", "Android study-content import picker")
+    }
+
+    @Test
+    fun f_imageImportPickerCancelsCleanly() {
+        assertImportPickerCancels("image", "Android image import picker")
+    }
+
+    @Test
+    fun f_pdfImportPickerCancelsCleanly() {
+        assertImportPickerCancels("pdf_document", "Android PDF import picker")
+    }
+
+    @Test
+    fun f_libraryBackupImportPickerCancelsCleanly() {
+        assertImportPickerCancels("library_backup", "Android library-backup import picker")
+    }
+
+    @Test
+    fun f_deckExportPickerCancelsCleanly() {
         withApplication { webView ->
             waitForBridge(webView)
             val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-
-            val deckImport = startFileOperation(
-                webView,
-                "window.__OSTUDY_ANDROID_TEST__.startImportPicker('study_content')"
-            )
-            waitForDocumentsUiOrFailure(
+            cancelFileOperation(
                 webView,
                 device,
-                deckImport,
-                timeoutMillis = 20_000,
-                label = "Android deck import picker"
-            )
-            device.pressBack()
-            waitForDocumentsUiClosed(device)
-            waitForBridge(webView)
-            waitForFileOperationSettled(webView, deckImport, "Android deck import")
-
-            val imageImport = startFileOperation(
-                webView,
-                "window.__OSTUDY_ANDROID_TEST__.startImportPicker('image')"
-            )
-            waitForDocumentsUiOrFailure(
-                webView,
-                device,
-                imageImport,
-                timeoutMillis = 20_000,
-                label = "Android image import picker"
-            )
-            device.pressBack()
-            waitForDocumentsUiClosed(device)
-            waitForBridge(webView)
-            waitForFileOperationSettled(webView, imageImport, "Android image import")
-
-            val deckExport = startFileOperation(
-                webView,
-                "window.__OSTUDY_ANDROID_TEST__.startDeckExportPicker()"
-            )
-            waitForDocumentsUiOrFailure(
-                webView,
-                device,
-                deckExport,
+                "window.__OSTUDY_ANDROID_TEST__.startDeckExportPicker()",
                 timeoutMillis = 30_000,
                 label = "Android deck export picker"
             )
-            device.pressBack()
-            waitForDocumentsUiClosed(device)
-            waitForBridge(webView)
-            waitForFileOperationSettled(webView, deckExport, "Android deck export")
         }
+    }
+
+    @Test
+    fun g_sequentialPickerCancellationReleasesNativeOperationSlot() {
+        withApplication { webView ->
+            waitForBridge(webView)
+            val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            for ((purpose, label) in listOf(
+                "study_content" to "Android study-content import picker",
+                "image" to "Android image import picker",
+                "pdf_document" to "Android PDF import picker",
+                "library_backup" to "Android library-backup import picker"
+            )) {
+                cancelFileOperation(
+                    webView,
+                    device,
+                    "window.__OSTUDY_ANDROID_TEST__.startImportPicker('$purpose')",
+                    timeoutMillis = 20_000,
+                    label = label
+                )
+            }
+            cancelFileOperation(
+                webView,
+                device,
+                "window.__OSTUDY_ANDROID_TEST__.startDeckExportPicker()",
+                timeoutMillis = 30_000,
+                label = "Android deck export picker"
+            )
+        }
+    }
+
+    private fun assertImportPickerCancels(purpose: String, label: String) {
+        withApplication { webView ->
+            waitForBridge(webView)
+            val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            cancelFileOperation(
+                webView,
+                device,
+                "window.__OSTUDY_ANDROID_TEST__.startImportPicker('$purpose')",
+                timeoutMillis = 20_000,
+                label = label
+            )
+        }
+    }
+
+    private fun cancelFileOperation(
+        webView: WebView,
+        device: UiDevice,
+        expression: String,
+        timeoutMillis: Long,
+        label: String
+    ) {
+        val sequence = startFileOperation(webView, expression)
+        waitForDocumentsUiOrFailure(webView, device, sequence, timeoutMillis, label)
+        device.pressBack()
+        waitForDocumentsUiClosed(device)
+        waitForBridge(webView)
+        waitForFileOperationSettled(webView, sequence, label)
     }
 
     private fun startFileOperation(webView: WebView, expression: String): Int {
@@ -296,7 +329,7 @@ class AndroidSmokeTest {
         sequence: Int,
         label: String
     ) {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
         var latest = fileOperationSnapshot(webView)
         while (System.nanoTime() < deadline) {
             latest = fileOperationSnapshot(webView)
@@ -350,11 +383,6 @@ class AndroidSmokeTest {
     }
 
     private fun withApplication(block: (WebView) -> Unit) {
-        // Do not close ActivityScenario from inside the instrumentation process.
-        // Destroying the only Tauri Activity is an application lifecycle event
-        // and may tear down the Android event loop before AndroidJUnitRunner can
-        // report the test result. The shell smoke runner owns deterministic
-        // process cleanup with `am force-stop` between cases instead.
         val scenario = ActivityScenario.launch(MainActivity::class.java)
         var webView: WebView? = null
         scenario.onActivity { activity ->

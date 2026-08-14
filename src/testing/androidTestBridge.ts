@@ -12,6 +12,7 @@ import {
   prepareDeckExport,
   type DeckSummary,
 } from "../ipc/decks";
+import type { ExternalImportPurpose } from "../ipc/externalFiles";
 import {
   completePracticeSession,
   markPracticeCardRevealed,
@@ -38,7 +39,12 @@ interface AndroidPracticeRestoreSnapshot {
   completed: boolean;
 }
 
-type AndroidFileOperationKind = "study_content_import" | "image_import" | "deck_export";
+type AndroidFileOperationKind =
+  | "image_import"
+  | "pdf_document_import"
+  | "study_content_import"
+  | "library_backup_import"
+  | "deck_export";
 type AndroidFileOperationPhase = "idle" | "pending" | "settled" | "error";
 
 interface AndroidFileOperationSnapshot {
@@ -53,7 +59,7 @@ interface AndroidTestBridge {
   snapshot(): Promise<AndroidSmokeSnapshot>;
   beginInterruptedPractice(): Promise<AndroidPracticeRestoreSnapshot>;
   restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot>;
-  startImportPicker(purpose: "image" | "study_content"): AndroidFileOperationSnapshot;
+  startImportPicker(purpose: ExternalImportPurpose): AndroidFileOperationSnapshot;
   startDeckExportPicker(): AndroidFileOperationSnapshot;
   fileOperationSnapshot(): AndroidFileOperationSnapshot;
 }
@@ -160,11 +166,8 @@ async function restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot> {
   };
 }
 
-function startImportPicker(
-  purpose: "image" | "study_content",
-): AndroidFileOperationSnapshot {
-  const kind: AndroidFileOperationKind =
-    purpose === "image" ? "image_import" : "study_content_import";
+function startImportPicker(purpose: ExternalImportPurpose): AndroidFileOperationSnapshot {
+  const kind = `${purpose}_import` as AndroidFileOperationKind;
   return startTrackedFileOperation(kind, async () => {
     await selectExternalImport(purpose);
   });
