@@ -1,0 +1,48 @@
+{
+  "surface": {
+    "interactiveLift": { "$type": "dimension", "$value": "-1px" },
+    "pressedTranslate": { "$type": "dimension", "$value": "1px" },
+    "pressedScale": { "$type": "number", "$value": "0.975" },
+    "specularOpacity": { "$type": "number", "$value": "0.16" }
+  },
+  "button": {
+    "height": { "$type": "dimension", "$value": "{size.control}" },
+    "radius": { "$type": "dimension", "$value": "{radius.small}" },
+    "pressScaleX": { "$type": "number", "$value": "0.982" },
+    "pressScaleY": { "$type": "number", "$value": "0.965" }
+  },
+  "navigation": {
+    "wideWidth": { "$type": "dimension", "$value": "248px" },
+    "mediumWidth": { "$type": "dimension", "$value": "88px" },
+    "compactHeight": { "$type": "dimension", "$value": "68px" },
+    "appBarHeight": { "$type": "dimension", "$value": "56px" }
+  },
+  "motion": {
+    "routeDistance": { "$type": "dimension", "$value": "16px" },
+    "tabDistance": { "$type": "dimension", "$value": "8px" },
+    "sheetDistance": { "$type": "dimension", "$value": "24px" },
+    "parallaxBackground": { "$type": "dimension", "$value": "3px" },
+    "parallaxMidground": { "$type": "dimension", "$value": "5px" }
+  },
+  "practiceCard": {
+    "radius": { "$type": "dimension", "$value": "{radius.xlarge}" },
+    "stackOffsetX": { "$type": "dimension", "$value": "7px" },
+    "stackOffsetY": { "$type": "dimension", "$value": "9px" },
+    "stackRotation": { "$type": "number", "$value": "0.55" },
+    "progressHeight": { "$type": "dimension", "$value": "8px" }
+  },
+  "tooltip": {
+    "maxWidth": { "$type": "dimension", "$value": "320px" },
+    "delay": { "$type": "duration", "$value": "360ms" }
+  },
+  "artwork": {
+    "emptyMaxWidth": { "$type": "dimension", "$value": "280px" },
+    "completionMaxWidth": { "$type": "dimension", "$value": "340px" }
+  },
+  "layout": {
+    "readingWidth": { "$type": "dimension", "$value": "{size.contentReading}" },
+    "workspaceWidth": { "$type": "dimension", "$value": "{size.contentWorkspace}" },
+    "wideWidth": { "$type": "dimension", "$value": "{size.contentWide}" },
+    "pageGutter": { "$type": "dimension", "$value": "clamp(18px, 4vw, 48px)" }
+  }
+}
