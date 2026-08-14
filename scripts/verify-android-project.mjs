@@ -24,6 +24,9 @@ const required = [
   "plugins/ostudy-platform/android/build.gradle.kts",
   "plugins/ostudy-platform/android/src/main/java/OstudyPlatformPlugin.kt",
   "plugins/ostudy-platform/android/src/main/java/InvokeArrayResult.kt",
+  "src/platform/PlatformProvider.tsx",
+  "src/platform/backInterception.ts",
+  "src/platform/backInterception.test.ts",
   "src-tauri/src/platform/android.rs",
   "src-tauri/src/ui_checkpoint.rs",
   "src-tauri/src/practice_resume.rs",
@@ -144,6 +147,24 @@ if (/^set\s+-[^\n]*e/mu.test(androidEnv)) {
   failures.push("android-env.sh must not enable errexit when sourced into an interactive shell");
 }
 
+const backInterception = await read("src/platform/backInterception.ts");
+expectContains(
+  backInterception,
+  "while (this.applied !== this.desired)",
+  "serialized Android Back interception convergence loop",
+);
+const platformProvider = await read("src/platform/PlatformProvider.tsx");
+expectContains(
+  platformProvider,
+  "new BackInterceptionSynchronizer()",
+  "Android Back interception synchronizer",
+);
+expectContains(
+  platformProvider,
+  "dataset.androidBackInterception",
+  "acknowledged Android Back interception diagnostic state",
+);
+
 const postbuild = await read("scripts/android-gradle-postbuild.sh");
 for (const token of [
   "-PabiList=x86_64",
@@ -205,6 +226,21 @@ expectContains(
   androidSmokeTest,
   "fun a0_appLaunchesAndTestBridgeIsReady()",
   "Android launch/bridge instrumentation case",
+);
+expectContains(
+  androidSmokeTest,
+  "waitForAndroidBackReady(webView)",
+  "Android hardware-Back synchronization checkpoint",
+);
+expectContains(
+  androidSmokeTest,
+  "dataset.androidBackInterception === 'true'",
+  "Android native Back acknowledgement wait",
+);
+expectContains(
+  androidSmokeTest,
+  "dataset.overlayActive !== 'true'",
+  "Android overlay Back-stack cleanup wait",
 );
 if (androidSmokeTest.includes("ActivityScenario.launch(MainActivity::class.java).use")) {
   failures.push(
@@ -291,7 +327,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Android project, instrumentation lifecycle ownership, Tauri/Gradle build boundary, source-of-truth debug identity, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
+  "OK   Android project, synchronized Back state, instrumentation lifecycle ownership, Tauri/Gradle build boundary, source-of-truth debug identity, toolchain pins, Kotlin wire/runtime compatibility, parallelism, permissions, and platform overlays are canonical.",
 );
 
 function expectContains(text, value, label) {
