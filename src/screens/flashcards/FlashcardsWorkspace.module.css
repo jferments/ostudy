@@ -1,10 +1,11 @@
 @layer components {
   .workspace { --page-width: 100%; }
   .tabScroller { overflow-x: auto; margin: 0 calc(var(--ostudy-layout-page-gutter) * -1) var(--ostudy-space-6); padding-inline: var(--ostudy-layout-page-gutter); scrollbar-width: thin; }
-  .tabList { display: flex; width: max-content; min-width: 100%; gap: var(--ostudy-space-2); border-bottom: 1px solid var(--ostudy-color-border-subtle); }
-  .tab { position: relative; display: inline-flex; min-height: 48px; align-items: center; gap: var(--ostudy-space-2); border: 0; padding: 0 var(--ostudy-space-4); background: transparent; color: var(--ostudy-color-text-muted); font: inherit; font-weight: 730; white-space: nowrap; }
+  .tabList { display: flex; width: max-content; min-width: 100%; align-items: end; gap: var(--ostudy-space-2); border-bottom: 1px solid var(--ostudy-color-border-subtle); }
+  .tab { position: relative; display: inline-flex; min-height: 48px; align-items: center; gap: var(--ostudy-space-2); border: 1px solid var(--ostudy-color-border-subtle); border-bottom-color: transparent; border-radius: var(--ostudy-radius-medium) var(--ostudy-radius-medium) 0 0; padding: 0 var(--ostudy-space-4); background: var(--ostudy-color-surface-soft); color: var(--ostudy-color-text-secondary); font: inherit; font-weight: 820; white-space: nowrap; transition: border-color var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard), background var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard), color var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard); }
+  .tab:hover { border-color: var(--ostudy-color-border-accent); border-bottom-color: transparent; background: var(--ostudy-color-surface-raised); color: var(--ostudy-color-text-primary); }
   .tab::after { position: absolute; inset-inline: var(--ostudy-space-3); inset-block-end: -1px; height: 3px; border-radius: var(--ostudy-radius-pill); background: var(--ostudy-color-accent-base); content: ""; opacity: 0; transform: scaleX(.5); transition: opacity var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard), transform var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard); }
-  .tab[data-selected="true"] { color: var(--ostudy-color-text-accent); }
+  .tab[data-selected="true"] { border-color: var(--ostudy-color-border-accent); border-bottom-color: var(--ostudy-color-surface-selected); background: var(--ostudy-color-surface-selected); color: var(--ostudy-color-text-accent); font-weight: 860; box-shadow: var(--ostudy-glow-subtle); }
   .tab[data-selected="true"]::after { opacity: 1; transform: scaleX(1); box-shadow: var(--ostudy-glow-accent); }
   .tab:focus-visible { outline: none; box-shadow: var(--ostudy-shadow-focus); }
   .panel { min-width: 0; }
@@ -41,6 +42,8 @@
   .createActions { align-items: stretch; }
   .createActions > * { flex: 1 1 180px; }
 
+  :root[data-motion="reduced"] .tab,
+  :root[data-motion="none"] .tab,
   :root[data-motion="reduced"] .tab::after,
   :root[data-motion="none"] .tab::after { transition: none; }
 
