@@ -145,7 +145,7 @@ fn load_organization(
                  ORDER BY sort_order ASC, name COLLATE NOCASE ASC, created_at ASC",
             )
             .map_err(CommandError::database)?;
-        statement
+        let folders = statement
             .query_map([], |row| {
                 Ok(DeckFolderDto {
                     id: row.get(0)?,
@@ -158,7 +158,8 @@ fn load_organization(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        folders
     };
     let placements = {
         let mut statement = connection
@@ -170,7 +171,7 @@ fn load_organization(
                           sort_order ASC, name COLLATE NOCASE ASC, created_at ASC",
             )
             .map_err(CommandError::database)?;
-        statement
+        let placements = statement
             .query_map([], |row| {
                 Ok(DeckPlacementDto {
                     deck_id: row.get(0)?,
@@ -180,7 +181,8 @@ fn load_organization(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        placements
     };
     Ok(DeckLibraryOrganizationDto {
         revision,
@@ -478,11 +480,12 @@ fn ordered_deck_ids(
              ORDER BY sort_order ASC, name COLLATE NOCASE ASC, created_at ASC",
         )
         .map_err(CommandError::database)?;
-    statement
+    let ordered_ids = statement
         .query_map(params![folder_id, excluding], |row| row.get(0))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(ordered_ids)
 }
 
 fn ordered_folder_ids(
@@ -496,11 +499,12 @@ fn ordered_folder_ids(
              ORDER BY sort_order ASC, name COLLATE NOCASE ASC, created_at ASC",
         )
         .map_err(CommandError::database)?;
-    statement
+    let ordered_ids = statement
         .query_map([excluding], |row| row.get(0))
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(ordered_ids)
 }
 
 fn write_deck_order(
