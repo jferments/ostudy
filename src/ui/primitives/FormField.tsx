@@ -6,6 +6,8 @@ import {
   useId,
 } from "react";
 
+import { HelpTrigger } from "../help/HelpProvider";
+import type { HelpTopicId } from "../help/helpRegistry";
 import styles from "./shared.module.css";
 
 interface FormFieldProps {
@@ -13,6 +15,7 @@ interface FormFieldProps {
   description?: string;
   error?: string | null;
   required?: boolean;
+  helpTopic?: HelpTopicId;
   children: ReactElement<{
     id?: string;
     "aria-describedby"?: string;
@@ -22,12 +25,13 @@ interface FormFieldProps {
   className?: string;
 }
 
-/** Associates labels, descriptions, errors, and validation state consistently. */
+/** Associates labels, contextual help, descriptions, errors, and validation state. */
 export function FormField({
   label,
   description,
   error,
   required = false,
+  helpTopic,
   children,
   className = "",
 }: FormFieldProps) {
@@ -42,14 +46,13 @@ export function FormField({
   return (
     <label className={`${styles.field} ${className}`.trim()} htmlFor={inputId}>
       <span className={styles.label}>
-        {label}
-        {required ? <span aria-hidden="true"> *</span> : null}
-      </span>
-      {description ? (
-        <span id={descriptionId} className={styles.description}>
-          {description}
+        <span>
+          {label}
+          {required ? <span aria-hidden="true"> *</span> : null}
         </span>
-      ) : null}
+        {helpTopic ? <HelpTrigger topicId={helpTopic} label={`Help for ${label}`} /> : null}
+      </span>
+      {description ? <span id={descriptionId} className={styles.description}>{description}</span> : null}
       {isValidElement(children)
         ? cloneElement(children, {
             id: inputId,
@@ -58,24 +61,12 @@ export function FormField({
             "aria-invalid": error ? true : children.props["aria-invalid"],
           })
         : children}
-      {error ? (
-        <span id={errorId} className={styles.error} role="alert">
-          {error}
-        </span>
-      ) : null}
+      {error ? <span id={errorId} className={styles.error} role="alert">{error}</span> : null}
     </label>
   );
 }
 
-export function FieldGroup({
-  label,
-  description,
-  children,
-}: {
-  label: string;
-  description?: string;
-  children: ReactNode;
-}) {
+export function FieldGroup({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return (
     <fieldset className={styles.fieldGroup}>
       <legend>{label}</legend>

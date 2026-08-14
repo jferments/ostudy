@@ -1,0 +1,21 @@
+@layer components {
+  .artwork,
+  .fallback {
+    display: grid;
+    width: min(100%, var(--ostudy-artwork-max, 280px));
+    min-width: 0;
+    place-items: center;
+    color: var(--ostudy-color-text-accent);
+  }
+
+  .artwork svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 14px 22px color-mix(in srgb, var(--ostudy-color-ambient-vignette) 28%, transparent)); }
+  .fallback { min-height: 92px; border: 1px dashed var(--ostudy-color-border-strong); border-radius: var(--ostudy-radius-large); background: var(--ostudy-color-surface-soft); }
+  .brand { --ostudy-artwork-max: 220px; }
+  .completion { --ostudy-artwork-max: var(--ostudy-artwork-completion-max-width, 340px); }
+
+  :root[data-motion="full"] .artwork:not(.brand) svg { animation: artwork-enter var(--ostudy-motion-duration-slow) var(--ostudy-motion-ease-enter) both; }
+  :root[data-motion="reduced"] .artwork svg,
+  :root[data-motion="none"] .artwork svg { animation: none; }
+
+  @keyframes artwork-enter { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+}
