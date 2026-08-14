@@ -1,14 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { IconButton } from "../icons/IconButton";
 import { artworkManifest } from "../artwork/artworkManifest";
+import { IconButton } from "../icons/IconButton";
 import { FilterSummary } from "./WorkspacePatterns";
 
 describe("UI infrastructure", () => {
   it("requires an accessible name for icon-only actions", () => {
     render(<IconButton icon="search" label="Search flashcards" />);
-    expect(screen.getByRole("button", { name: "Search flashcards" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search flashcards" })).toBeTruthy();
   });
 
   it("registers semantic artwork slots independently from asset filenames", () => {
@@ -24,7 +24,7 @@ describe("UI infrastructure", () => {
         onClear={() => undefined}
       />,
     );
-    expect(screen.getByRole("button", { name: "Remove Ready now filter" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Clear all" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove Ready now filter" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Clear all" })).toBeTruthy();
   });
 });
