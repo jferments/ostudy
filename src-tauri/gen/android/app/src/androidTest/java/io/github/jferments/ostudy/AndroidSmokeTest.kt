@@ -1,6 +1,9 @@
 package io.github.jferments.ostudy
 
 import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -10,7 +13,6 @@ import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -229,6 +231,7 @@ class AndroidSmokeTest {
                 webView,
                 device,
                 "window.__OSTUDY_ANDROID_TEST__.startDeckExportPicker()",
+                action = Intent.ACTION_CREATE_DOCUMENT,
                 timeoutMillis = 30_000,
                 label = "Android deck export picker"
             )
@@ -250,6 +253,7 @@ class AndroidSmokeTest {
                     webView,
                     device,
                     "window.__OSTUDY_ANDROID_TEST__.startImportPicker('$purpose')",
+                    action = Intent.ACTION_OPEN_DOCUMENT,
                     timeoutMillis = 20_000,
                     label = label
                 )
@@ -258,6 +262,7 @@ class AndroidSmokeTest {
                 webView,
                 device,
                 "window.__OSTUDY_ANDROID_TEST__.startDeckExportPicker()",
+                action = Intent.ACTION_CREATE_DOCUMENT,
                 timeoutMillis = 30_000,
                 label = "Android deck export picker"
             )
@@ -272,6 +277,7 @@ class AndroidSmokeTest {
                 webView,
                 device,
                 "window.__OSTUDY_ANDROID_TEST__.startImportPicker('$purpose')",
+                action = Intent.ACTION_OPEN_DOCUMENT,
                 timeoutMillis = 20_000,
                 label = label
             )
@@ -282,15 +288,24 @@ class AndroidSmokeTest {
         webView: WebView,
         device: UiDevice,
         expression: String,
+        action: String,
         timeoutMillis: Long,
         label: String
     ) {
+        val pickerPackages = documentPickerPackages(action)
         val sequence = startFileOperation(webView, expression)
-        waitForDocumentsUiOrFailure(webView, device, sequence, timeoutMillis, label)
+        waitForPickerOrFailure(
+            webView,
+            device,
+            sequence,
+            pickerPackages,
+            timeoutMillis,
+            label
+        )
         device.pressBack()
-        waitForDocumentsUiClosed(device)
+        waitForPickerClosed(device, pickerPackages, label)
         waitForBridge(webView)
-        waitForFileOperationSettled(webView, sequence, label)
+        waitForFileOperationCancelled(webView, sequence, label)
     }
 
     private fun startFileOperation(webView: WebView, expression: String): Int {
@@ -299,32 +314,50 @@ class AndroidSmokeTest {
         return snapshot.getInt("sequence")
     }
 
-    private fun waitForDocumentsUiOrFailure(
+    private fun waitForPickerOrFailure(
         webView: WebView,
         device: UiDevice,
         sequence: Int,
+        pickerPackages: Set<String>,
         timeoutMillis: Long,
         label: String
     ) {
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
         var latest = fileOperationSnapshot(webView)
         while (System.nanoTime() < deadline) {
-            if (documentsUiVisible(device)) return
+            if (pickerVisible(device, pickerPackages)) return
             latest = fileOperationSnapshot(webView)
             if (latest.optInt("sequence") == sequence && latest.optString("phase") == "error") {
                 throw AssertionError(
                     "$label failed before opening: ${latest.optString("error", "unknown error")}"
                 )
             }
+            if (latest.optInt("sequence") == sequence && latest.optString("phase") == "settled") {
+                throw AssertionError("$label settled before its system activity was observed: $latest")
+            }
             Thread.sleep(100)
         }
         throw AssertionError(
-            "$label did not open. operationPhase=${latest.optString("phase")} " +
+            "$label did not open. candidatePackages=$pickerPackages " +
+                "operationPhase=${latest.optString("phase")} " +
                 "operationError=${latest.optString("error", "none")}"
         )
     }
 
-    private fun waitForFileOperationSettled(
+    private fun waitForPickerClosed(
+        device: UiDevice,
+        pickerPackages: Set<String>,
+        label: String
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+        while (System.nanoTime() < deadline) {
+            if (!pickerVisible(device, pickerPackages)) return
+            Thread.sleep(100)
+        }
+        throw AssertionError("$label did not close after Android Back")
+    }
+
+    private fun waitForFileOperationCancelled(
         webView: WebView,
         sequence: Int,
         label: String
@@ -335,7 +368,13 @@ class AndroidSmokeTest {
             latest = fileOperationSnapshot(webView)
             if (latest.optInt("sequence") == sequence) {
                 when (latest.optString("phase")) {
-                    "settled" -> return
+                    "settled" -> {
+                        assertTrue(
+                            "$label resolved without reporting cancellation: $latest",
+                            latest.getBoolean("cancelled")
+                        )
+                        return
+                    }
                     "error" -> throw AssertionError(
                         "$label failed after picker result: " +
                             latest.optString("error", "unknown error")
@@ -345,10 +384,39 @@ class AndroidSmokeTest {
             Thread.sleep(100)
         }
         throw AssertionError(
-            "$label did not settle after the picker closed. " +
+            "$label did not settle after cancellation. " +
                 "operationPhase=${latest.optString("phase")} " +
                 "operationError=${latest.optString("error", "none")}"
         )
+    }
+
+    private fun documentPickerPackages(action: String): Set<String> {
+        val packageManager =
+            InstrumentationRegistry.getInstrumentation().targetContext.packageManager
+        val intent = Intent(action).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+        }
+        val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.queryIntentActivities(
+                intent,
+                PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        }
+        val packages = linkedSetOf<String>()
+        resolved.mapNotNullTo(packages) { it.activityInfo?.packageName }
+        packages.add("com.google.android.documentsui")
+        packages.add("com.android.documentsui")
+        return packages
+    }
+
+    private fun pickerVisible(device: UiDevice, pickerPackages: Set<String>): Boolean {
+        val current = device.currentPackageName
+        if (current != null && current in pickerPackages) return true
+        return pickerPackages.any { device.hasObject(By.pkg(it)) }
     }
 
     private fun fileOperationSnapshot(webView: WebView): JSONObject =
@@ -360,16 +428,6 @@ class AndroidSmokeTest {
     private fun evaluateJsonObject(webView: WebView, expression: String): JSONObject {
         val encoded = evaluateSync(webView, "JSON.stringify($expression)")
         return JSONObject(decodeJavascriptString(encoded))
-    }
-
-    private fun documentsUiVisible(device: UiDevice): Boolean =
-        device.hasObject(By.pkg("com.google.android.documentsui")) ||
-            device.hasObject(By.pkg("com.android.documentsui"))
-
-    private fun waitForDocumentsUiClosed(device: UiDevice) {
-        device.wait(Until.gone(By.pkg("com.google.android.documentsui")), 5_000)
-        device.wait(Until.gone(By.pkg("com.android.documentsui")), 5_000)
-        assertFalse("Android DocumentsUI did not close", documentsUiVisible(device))
     }
 
     private fun waitForAndroidBackReady(webView: WebView) {
