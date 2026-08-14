@@ -207,5 +207,6 @@ export const semanticTokenNames = [
 export type SemanticTokenName = (typeof semanticTokenNames)[number];
 
 export function tokenVariable(name: ReferenceTokenName | ComponentTokenName | SemanticTokenName): `--ostudy-${string}` {
-  return `--ostudy-${name.replace(/[A-Z]/gu, (value) => `-${value.toLowerCase()}`).replaceAll(".", "-")}`;
+  const normalized = name.replace(/[A-Z]/gu, (value) => `-${value.toLowerCase()}`).replaceAll(".", "-").replace(/([a-z])(\d)/gu, "$1-$2");
+  return `--ostudy-${normalized}`;
 }
