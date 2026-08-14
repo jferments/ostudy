@@ -29,10 +29,11 @@ export function Surface({
   children,
   ...props
 }: SurfaceProps) {
+  const toneClass = tone === "neutral" ? "" : styles[tone];
   return (
     <Element
       {...props}
-      className={`${styles.surface} ${styles[`level${level}`]} ${styles[material]} ${styles[tone]} ${interactive ? styles.interactive : ""} ${selected ? styles.selected : ""} ${inset ? styles.inset : ""} ${className}`.trim()}
+      className={`${styles.surface} ${styles[`level${level}`]} ${styles[material]} ${toneClass} ${interactive ? styles.interactive : ""} ${selected ? styles.selected : ""} ${inset ? styles.inset : ""} ${className}`.trim()}
       data-surface-level={level}
       data-surface-material={material}
       data-selected={selected || undefined}
