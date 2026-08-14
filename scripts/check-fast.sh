@@ -45,6 +45,9 @@ pnpm test
 step "Rust compile check"
 cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
 
+step "Rust warnings-as-errors lint gate"
+cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
+
 step "External file transfer and recovery contracts"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
