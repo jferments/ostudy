@@ -147,12 +147,9 @@
     }
   }
 
-  :root[data-material="simple"] .popover,
-  @media (prefers-reduced-transparency: reduce) {
-    .popover {
-      background: var(--ostudy-color-surface-raised);
-      backdrop-filter: none;
-    }
+  :root[data-material="simple"] .popover {
+    background: var(--ostudy-color-surface-raised);
+    backdrop-filter: none;
   }
 
   :root[data-motion="reduced"] .spotlight,
@@ -162,6 +159,13 @@
   :root[data-motion="reduced"] .popover,
   :root[data-motion="none"] .popover {
     animation: none;
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .popover {
+      background: var(--ostudy-color-surface-raised);
+      backdrop-filter: none;
+    }
   }
 
   @media (max-width: 560px) {
