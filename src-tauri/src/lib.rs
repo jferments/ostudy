@@ -66,6 +66,8 @@ mod util;
 mod workload;
 
 #[cfg(test)]
+mod deck_folders_backup_tests;
+#[cfg(test)]
 mod document_backup_tests;
 #[cfg(test)]
 mod document_pdf_tests;
