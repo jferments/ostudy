@@ -16,6 +16,7 @@ import { createPortal } from "react-dom";
 
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
 import { Icon } from "../icons/Icon";
+import { useOverlayContext } from "../overlays/overlayContext";
 import { Button } from "../primitives/Button";
 import {
   tutorialModuleOrder,
@@ -77,6 +78,7 @@ export function TourProvider({
   const actionRef = useRef<HTMLButtonElement | null>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const autoStartTimer = useRef<number | null>(null);
+  const { topId } = useOverlayContext();
 
   const persist = useCallback((next: StoredTutorialState) => {
     setStored(next);
@@ -235,7 +237,7 @@ export function TourProvider({
   }, [active, dismiss]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || topId !== null) return;
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -243,7 +245,7 @@ export function TourProvider({
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [active, dismiss]);
+  }, [active, dismiss, topId]);
 
   function completeModule(): void {
     if (!module) return;
@@ -315,7 +317,10 @@ export function TourProvider({
                     <Icon name="close" size={18} />
                   </button>
                 </header>
-                <div className={styles.progress} aria-label={`Step ${active.stepIndex + 1} of ${module.steps.length}`}>
+                <div
+                  className={styles.progress}
+                  aria-label={`Step ${active.stepIndex + 1} of ${module.steps.length}`}
+                >
                   {module.steps.map((candidate, index) => (
                     <span
                       key={candidate.id}
