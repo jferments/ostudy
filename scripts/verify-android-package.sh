@@ -91,7 +91,11 @@ for library in "${libraries[@]}"; do
   done < <("$READELF" -lW "$library" | awk '$1 == "LOAD" { print $NF }')
 done
 
-if [[ "$MODE" == release || "$MODE" == smoke ]]; then
+bridge_required=0
+if [[ "$MODE" == smoke || ( "$MODE" == debug && "${VITE_OSTUDY_ANDROID_TEST_BRIDGE:-}" == 1 ) ]]; then
+  bridge_required=1
+fi
+if [[ "$MODE" == release || "$bridge_required" == 1 ]]; then
   package_tree="$temporary/package-tree"
   unzip -q "$APK" -d "$package_tree"
   bridge_present=0
@@ -103,7 +107,7 @@ if [[ "$MODE" == release || "$MODE" == smoke ]]; then
     printf 'Release APK contains the emulator-only Android test bridge.\n' >&2
     exit 1
   fi
-  if [[ "$MODE" == smoke && "$bridge_present" == 0 ]]; then
+  if [[ "$bridge_required" == 1 && "$bridge_present" == 0 ]]; then
     printf 'Android smoke APK is missing the emulator-only test bridge.\n' >&2
     exit 1
   fi
