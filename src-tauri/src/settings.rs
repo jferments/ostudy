@@ -8,9 +8,7 @@ use crate::{
 };
 
 const THEMES: &[&str] = &["light", "dark", "console", "synthwave"];
-const FONT_PRESETS: &[&str] = &[
-    "system", "atkinson", "plex", "humanist", "serif", "mono",
-];
+const FONT_PRESETS: &[&str] = &["system", "atkinson", "plex", "humanist", "serif", "mono"];
 const MOTION_PREFERENCES: &[&str] = &["system", "full", "reduced", "none"];
 const MATERIAL_PREFERENCES: &[&str] = &["automatic", "rich", "simple"];
 const DECK_VIEW_DENSITIES: &[&str] = &["comfortable", "compact"];
@@ -102,11 +100,7 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         decorative_artwork: get_setting(connection, "decorativeArtwork", true)?,
         celebrations_enabled: get_setting(connection, "celebrationsEnabled", true)?,
         tutorials_enabled: get_setting(connection, "tutorialsEnabled", true)?,
-        deck_view_density: get_setting(
-            connection,
-            "deckViewDensity",
-            "comfortable".to_string(),
-        )?,
+        deck_view_density: get_setting(connection, "deckViewDensity", "comfortable".to_string())?,
         confirm_deletions: get_setting(connection, "confirmDeletions", true)?,
         practice_shuffle: get_setting(connection, "practiceShuffle", true)?,
         desired_retention: get_setting(connection, "desiredRetention", 0.90_f64)?,
@@ -135,10 +129,7 @@ where
     get_optional_setting(connection, key).map(|value| value.unwrap_or(default))
 }
 
-fn get_optional_setting<T>(
-    connection: &Connection,
-    key: &str,
-) -> Result<Option<T>, CommandError>
+fn get_optional_setting<T>(connection: &Connection, key: &str) -> Result<Option<T>, CommandError>
 where
     T: DeserializeOwned,
 {
