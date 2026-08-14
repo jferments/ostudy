@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { OverlayProvider } from "../overlays/OverlayProvider";
@@ -28,11 +28,13 @@ describe("HelpProvider", () => {
 
   it("opens a topic requested by a tutorial or another semantic caller", async () => {
     renderHelp();
-    window.dispatchEvent(
-      new CustomEvent("ostudy:open-help", {
-        detail: { topicId: "flashcards.search.studyState" },
-      }),
-    );
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent("ostudy:open-help", {
+          detail: { topicId: "flashcards.search.studyState" },
+        }),
+      );
+    });
     expect(await screen.findByRole("dialog", { name: "Study-state filters" })).toBeTruthy();
   });
 
