@@ -19,6 +19,10 @@ allprojects {
     }
     configurations.configureEach {
         resolutionStrategy.force(
+            "org.jetbrains.kotlin:kotlin-stdlib:1.9.25",
+            "org.jetbrains.kotlin:kotlin-stdlib-common:1.9.25",
+            "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.25",
+            "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.25",
             "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1",
             "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.1",
         )
