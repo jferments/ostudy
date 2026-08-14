@@ -549,10 +549,7 @@ fn write_folder_order(
     Ok(())
 }
 
-fn renormalize_folder_order(
-    transaction: &Transaction<'_>,
-    now: i64,
-) -> Result<(), CommandError> {
+fn renormalize_folder_order(transaction: &Transaction<'_>, now: i64) -> Result<(), CommandError> {
     let order = ordered_folder_ids(transaction, None)?;
     write_folder_order(transaction, &order, now)
 }
