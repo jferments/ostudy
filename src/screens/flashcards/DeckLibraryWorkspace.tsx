@@ -87,6 +87,7 @@ export function DeckLibraryWorkspace({
   const detailOpenedRef = useRef(false);
   const organizationRef = useRef<DeckLibraryOrganization | null>(null);
   const organizationMutationRef = useRef(false);
+  const lastDeckLifecycleSignatureRef = useRef<string | null>(null);
   const controllerRef = useRef<DecksController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new DecksController();
   const controller = controllerRef.current;
@@ -142,8 +143,25 @@ export function DeckLibraryWorkspace({
     () => decks.filter((deck) => deck.archivedAt !== null),
     [decks],
   );
+  const deckLifecycleSignature = useMemo(
+    () =>
+      decks
+        .map((deck) => `${deck.id}:${deck.archivedAt ?? "active"}`)
+        .sort()
+        .join("|"),
+    [decks],
+  );
   const orderedFolders = organization?.folders ?? [];
   const unfiledDecks = orderedDecksForFolder(activeDecks, placementByDeck, null);
+
+  useEffect(() => {
+    const previous = lastDeckLifecycleSignatureRef.current;
+    lastDeckLifecycleSignatureRef.current = deckLifecycleSignature;
+    if (previous === null || previous === deckLifecycleSignature) return;
+    void reloadOrganization().catch((error: unknown) => {
+      setErrorMessage(getErrorMessage(error));
+    });
+  }, [deckLifecycleSignature]);
 
   async function reloadOrganization(): Promise<DeckLibraryOrganization> {
     const loaded = await getDeckLibraryOrganization();
