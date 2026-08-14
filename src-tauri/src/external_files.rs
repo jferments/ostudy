@@ -434,7 +434,7 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                      WHERE state <> 'released'",
                 )
                 .map_err(CommandError::database)?;
-            statement
+            let rows = statement
                 .query_map([], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -446,7 +446,8 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                 })
                 .map_err(CommandError::database)?
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(CommandError::database)?
+                .map_err(CommandError::database)?;
+            rows
         };
         for (id, kind, relative, state, expires_at) in imports {
             let kind = ExternalFileKind::parse(&kind)?;
@@ -506,7 +507,7 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                      WHERE state <> 'released'",
                 )
                 .map_err(CommandError::database)?;
-            statement
+            let rows = statement
                 .query_map([], |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -517,7 +518,8 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                 })
                 .map_err(CommandError::database)?
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(CommandError::database)?
+                .map_err(CommandError::database)?;
+            rows
         };
         for (id, relative, _state, expires_at) in exports {
             let path = paths.resolve_relative(&relative);
