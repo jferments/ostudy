@@ -93,6 +93,7 @@ class AndroidSmokeTest {
                     "Boolean(document.querySelector('[data-testid=\"documents-development-stub\"]'))"
                 }
             )
+            waitForAndroidBackReady(webView)
 
             UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
             waitUntil(
@@ -142,12 +143,14 @@ class AndroidSmokeTest {
                 expression = { "Boolean(document.querySelector('.card-editor-screen'))" }
             )
 
+            waitForAndroidBackReady(webView)
             device.pressBack()
             waitUntil(
                 webView,
                 predicate = { it == "true" },
                 expression = { "Boolean(document.querySelector('.deck-detail-header'))" }
             )
+            waitForAndroidBackReady(webView)
             device.pressBack()
             waitUntil(
                 webView,
@@ -249,6 +252,16 @@ class AndroidSmokeTest {
         // delivered back to Tauri. Give the callback time to clear the native
         // pending-operation slot before opening the next picker.
         Thread.sleep(250)
+    }
+
+    private fun waitForAndroidBackReady(webView: WebView) {
+        waitUntil(
+            webView,
+            predicate = { it == "true" },
+            expression = {
+                "document.documentElement.dataset.androidBackInterception === 'true' && document.documentElement.dataset.overlayActive !== 'true'"
+            }
+        )
     }
 
     private fun withApplication(block: (WebView) -> Unit) {
