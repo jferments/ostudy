@@ -288,6 +288,15 @@ def wait_for_element_text(
     )
 
 
+def wait_for_main_heading(session_id: str, expected: str, deadline: float) -> None:
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//*[self::h1 or self::h2][normalize-space(.)={json.dumps(expected)}]",
+        deadline,
+    )
+
+
 def click_text_button(session_id: str, label: str, deadline: float) -> None:
     element = find_element(
         session_id,
@@ -299,7 +308,12 @@ def click_text_button(session_id: str, label: str, deadline: float) -> None:
 
 
 def verify_shell(session_id: str, deadline: float) -> None:
-    brand = find_element(session_id, "css selector", ".brand-block strong", deadline)
+    brand = find_element(
+        session_id,
+        "css selector",
+        "[data-artwork-slot='brand.logo.sidebar'] strong",
+        deadline,
+    )
     brand_text = element_text(session_id, brand)
     if brand_text.strip() != "ostudy":
         raise AssertionError(f"Expected ostudy branding, found {brand_text!r}")
@@ -316,7 +330,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     set_input_text(
         session_id,
         "css selector",
-        "input[placeholder='NCLEX Pharmacology']",
+        "dialog input[data-autofocus='true']",
         deck_name,
         deadline,
     )
@@ -327,7 +341,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
     click(session_id, create_button)
-    wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
+    wait_for_main_heading(session_id, deck_name, deadline)
 
     progress("Creating and verifying a flashcard")
     deadline = deadline_after()
@@ -341,7 +355,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
     click(session_id, save_button)
-    wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
+    wait_for_main_heading(session_id, deck_name, deadline)
     find_element(
         session_id,
         "xpath",
@@ -415,14 +429,22 @@ def verify_persistence_after_restart(
     progress("Verifying deck and card persistence after restart")
     deadline = deadline_after()
     verify_shell(session_id, deadline)
+    decks_button = find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-decks']",
+        deadline,
+    )
+    click(session_id, decks_button)
+    wait_for_element_text(session_id, "css selector", "main h1", "Flashcards", deadline)
     deck_button = find_element(
         session_id,
         "xpath",
-        f"//button[contains(normalize-space(.), {json.dumps(deck_name)})]",
+        f"//main//button[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
         deadline,
     )
     click(session_id, deck_button)
-    wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
+    wait_for_main_heading(session_id, deck_name, deadline)
     find_element(
         session_id,
         "xpath",
@@ -434,8 +456,8 @@ def verify_persistence_after_restart(
     deadline = deadline_after(ANALYTICS_TIMEOUT_SECONDS)
     analytics_button = find_element(
         session_id,
-        "xpath",
-        "//nav[@aria-label='Main navigation']//button[contains(normalize-space(.), 'Analytics')]",
+        "css selector",
+        "button[data-testid='nav-analytics']",
         deadline,
     )
     click(session_id, analytics_button)
@@ -452,8 +474,8 @@ def verify_persistence_after_restart(
     deadline = deadline_after()
     settings_button = find_element(
         session_id,
-        "xpath",
-        "//nav[@aria-label='Main navigation']//button[contains(normalize-space(.), 'Settings')]",
+        "css selector",
+        "button[data-testid='nav-settings']",
         deadline,
     )
     click(session_id, settings_button)
