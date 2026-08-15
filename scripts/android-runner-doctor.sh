@@ -121,7 +121,8 @@ fi
 
 if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
   ok "running inside GitHub Actions as ${RUNNER_NAME:-unknown-runner}"
-  printf 'INFO workflow expects runner labels: self-hosted, linux, x64, ostudy, android, kvm\n'
+  printf 'INFO Android compile workflow expects: self-hosted, linux, x64, ostudy-android\n'
+  printf 'INFO emulator workflow additionally expects: kvm\n'
   printf 'INFO emulator image: %s\n' "$SYSTEM_IMAGE"
 fi
 
