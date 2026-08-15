@@ -55,7 +55,7 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
             self.assertEqual(payload["cases"][0]["durationMs"], 1200)
             self.assertIn("picker.txt", payload["artifacts"])
 
-    def test_android_qualification_is_tauri_first_and_reuses_built_apks(self) -> None:
+    def test_android_qualification_is_tauri_first_and_reuses_exact_built_apks(self) -> None:
         android_test = (ROOT / "scripts" / "android-test.sh").read_text(encoding="utf-8")
         x86 = android_test.index("ostudy_android_gate_build_x86_smoke")
         gradle = android_test.index("ostudy_android_gate_gradle_contracts")
@@ -69,7 +69,11 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("actions/download-artifact@", workflow)
-        self.assertIn("ostudy-android-build-${{ github.sha }}", workflow)
+        self.assertIn("stage-android-smoke-artifacts.sh", workflow)
+        self.assertIn("ostudy-android-smoke-apks-${{ github.sha }}", workflow)
+        self.assertIn("ostudy-smoke-app.apk", workflow)
+        self.assertIn("ostudy-smoke-test.apk", workflow)
+        self.assertIn("sha256sum --check SHA256SUMS", workflow)
         self.assertIn("--app-apk", workflow)
         self.assertIn("--test-apk", workflow)
         self.assertIn("android-min-sdk-smoke", workflow)
