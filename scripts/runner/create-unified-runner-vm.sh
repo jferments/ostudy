@@ -36,6 +36,8 @@ Configuration is supplied through environment variables:
 
 The script refuses to overwrite an existing libvirt domain or storage path.
 It creates no host mounts, passthrough devices, runner registration, or secrets.
+Passphrase-protected SSH administration keys must be loaded into ssh-agent
+before creation because readiness probes deliberately use BatchMode.
 EOF
 }
 
@@ -48,7 +50,7 @@ if (($#)); then
   exit 2
 fi
 
-for command_name in sudo curl sha256sum qemu-img cloud-localds virt-install virsh python3 ssh; do
+for command_name in sudo curl sha256sum qemu-img cloud-localds virt-install virsh python3 ssh ssh-keygen ssh-add; do
   command -v "$command_name" >/dev/null 2>&1 || {
     printf 'Missing required command: %s\n' "$command_name" >&2
     exit 1
@@ -64,6 +66,20 @@ done
   printf 'Matching SSH private key not found: %s\n' "$SSH_PRIVATE_KEY_PATH" >&2
   exit 1
 }
+
+# Readiness checks are noninteractive by design. If the administration key is
+# encrypted, require its matching public key to already be present in the local
+# ssh-agent before we create anything persistent.
+if ! ssh-keygen -y -P '' -f "$SSH_PRIVATE_KEY_PATH" >/dev/null 2>&1; then
+  public_body="$(awk 'NF >= 2 {print $2; exit}' "$SSH_PUBLIC_KEY_PATH")"
+  if [[ -z "$public_body" ]] \
+    || ! ssh-add -L 2>/dev/null | awk 'NF >= 2 {print $2}' | grep -Fxq "$public_body"; then
+    printf 'The SSH administration key is passphrase-protected and is not loaded in ssh-agent.\n' >&2
+    printf 'Load it first, then rerun creation:\n' >&2
+    printf '  ssh-add -t 4h %q\n' "$SSH_PRIVATE_KEY_PATH" >&2
+    exit 1
+  fi
+fi
 
 "$SCRIPT_DIR/host-preflight.sh"
 
@@ -178,6 +194,11 @@ write_files:
       KbdInteractiveAuthentication no
       PermitRootLogin no
       AllowUsers $ADMIN_USER
+      AllowAgentForwarding no
+      AllowTcpForwarding no
+      X11Forwarding no
+      PermitTunnel no
+      GatewayPorts no
   - path: /etc/sysctl.d/90-ostudy-runner.conf
     owner: root:root
     permissions: '0644'
@@ -267,30 +288,13 @@ done
 }
 
 printf 'Guest IP: %s\n' "$guest_ip"
-printf 'Waiting for SSH and cloud-init completion...\n'
-while ((SECONDS < deadline)); do
-  if ssh \
-    -i "$SSH_PRIVATE_KEY_PATH" \
-    -o BatchMode=yes \
-    -o ConnectTimeout=5 \
-    -o StrictHostKeyChecking=accept-new \
-    "$ADMIN_USER@$guest_ip" \
-    'cloud-init status --wait && test -f /var/lib/cloud/instance/ostudy-runner-cloud-init-complete' >/dev/null 2>&1; then
-    break
-  fi
-  sleep 3
-done
-
-if ! ssh \
-  -i "$SSH_PRIVATE_KEY_PATH" \
-  -o BatchMode=yes \
-  -o ConnectTimeout=5 \
-  -o StrictHostKeyChecking=accept-new \
-  "$ADMIN_USER@$guest_ip" \
-  'cloud-init status --wait && test -f /var/lib/cloud/instance/ostudy-runner-cloud-init-complete'; then
-  printf 'VM is running, but cloud-init/SSH did not complete within the deadline.\n' >&2
-  exit 1
-fi
+OSTUDY_VM_NAME="$VM_NAME" \
+OSTUDY_LIBVIRT_URI="$LIBVIRT_URI" \
+OSTUDY_VM_ADMIN_USER="$ADMIN_USER" \
+OSTUDY_VM_SSH_PUBLIC_KEY="$SSH_PUBLIC_KEY_PATH" \
+OSTUDY_VM_GUEST_IP="$guest_ip" \
+OSTUDY_VM_WAIT_SECONDS="$WAIT_SECONDS" \
+  "$SCRIPT_DIR/wait-unified-runner-vm.sh"
 
 printf '\nOK   Created isolated unified runner VM.\n'
 printf 'Connect with:\n  ssh -i %q %q\n' "$SSH_PRIVATE_KEY_PATH" "$ADMIN_USER@$guest_ip"
