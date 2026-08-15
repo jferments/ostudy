@@ -37,7 +37,7 @@ for path in "${changed_paths[@]}"; do
       ;;
     docs/README.md|docs/development/*.md)
       ;;
-    scripts/runner/*)
+    scripts/runner/*|scripts/verify-project-manifests.mjs)
       ;;
     *)
       violations+=("$path")
@@ -48,9 +48,9 @@ done
 if ((${#violations[@]} > 0)); then
   printf '\nInfrastructure-only scope violation. These paths are not allowed in this PR:\n' >&2
   printf '  %s\n' "${violations[@]}" >&2
-  printf '\nAllowed paths are CI workflow YAML, docs/README.md, docs/development/*.md, and scripts/runner/*.\n' >&2
+  printf '\nAllowed paths are CI workflow YAML, runner/development documentation, scripts/runner/*, and the project-manifest CI policy verifier.\n' >&2
   printf 'Application, Android app/test, plugin, migration, dependency-manifest, and product-source changes require a separate reviewed task.\n' >&2
   exit 1
 fi
 
-printf '\nOK   Every changed path is confined to runner/CI infrastructure and its documentation.\n'
+printf '\nOK   Every changed path is confined to runner/CI infrastructure and its documentation/policy contract.\n'
