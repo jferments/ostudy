@@ -5,6 +5,10 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/android-env.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/qualification-gates.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/android-qualification-gates.sh"
 
 RUN_EMULATOR=0
 case "${1:-}" in
@@ -27,91 +31,67 @@ else
   bash ./scripts/android-doctor.sh
 fi
 android_write_local_properties
-pnpm install --frozen-lockfile
-node ./scripts/verify-android-project.mjs
-node ./scripts/verify-external-file-streaming.mjs
 
-printf '\nVerifying Android Kotlin/coroutines dependency compatibility...\n'
-dependency_report="$(mktemp -t ostudy-android-dependencies.XXXXXXXX)"
-trap 'rm -f -- "$dependency_report"' EXIT
-(
-  cd src-tauri/gen/android
-  ./gradlew --no-daemon \
-    --parallel \
-    --max-workers "$OSTUDY_GRADLE_WORKERS" \
-    :tauri-plugin-ostudy-platform:dependencies \
-    --configuration debugCompileClasspath
-) | tee "$dependency_report"
-if ! grep -Eq 'kotlinx-coroutines-core-jvm:1\.8\.1' "$dependency_report"; then
-  printf 'Android dependency resolution did not select the audited coroutines 1.8.1 line.\n' >&2
-  exit 1
-fi
-if ! grep -Eq 'kotlin-stdlib:1\.9\.25' "$dependency_report"; then
-  printf 'Android dependency resolution did not select the pinned Kotlin stdlib 1.9.25 line.\n' >&2
-  exit 1
-fi
-printf 'OK   Android Kotlin metadata dependency graph resolves to Kotlin 1.9.25 and coroutines 1.8.1.\n'
+printf '\nInstalling frozen JavaScript dependencies...\n'
+ostudy_gate_pnpm_install
 
-printf '\nCompile-checking the private Android platform plugin...\n'
-(
-  cd src-tauri/gen/android
-  ./gradlew --no-daemon \
-    --parallel \
-    --max-workers "$OSTUDY_GRADLE_WORKERS" \
-    :tauri-plugin-ostudy-platform:compileDebugKotlin
-)
-printf 'OK   Android platform plugin Kotlin compilation passed.\n'
+printf '\nVerifying Android project contracts...\n'
+ostudy_android_gate_project_contracts
 
-./scripts/install-native-deps.sh --pdfium-only
+printf '\nProvisioning the audited host PDFium fixture...\n'
+ostudy_gate_pdfium_runtime
 export OSTUDY_PDFIUM_PATH="$ROOT_DIR/src-tauri/resources/native/pdfium/libpdfium.so"
 
 printf '\nType-checking shared frontend...\n'
-pnpm exec tsc -b --pretty false
+ostudy_gate_typescript
 
 printf '\nRunning Vitest with up to %s workers...\n' "$VITEST_MAX_WORKERS"
 pnpm exec vitest run --maxWorkers "$VITEST_MAX_WORKERS"
 
-printf '\nChecking Rust with %s compiler jobs...\n' "$CARGO_BUILD_JOBS"
-cargo check \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-targets \
-  --all-features \
-  --jobs "$CARGO_BUILD_JOBS"
+printf '\nChecking shared Rust with %s compiler jobs...\n' "$CARGO_BUILD_JOBS"
+ostudy_gate_cargo_check
 
-printf '\nRunning Rust tests with %s compiler jobs and %s test threads...\n' \
-  "$CARGO_BUILD_JOBS" "$OSTUDY_ANDROID_JOBS"
-cargo test \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-features \
-  --jobs "$CARGO_BUILD_JOBS" \
-  -- \
-  --test-threads "$OSTUDY_ANDROID_JOBS"
+printf '\nRunning shared Rust tests with %s test threads...\n' "$OSTUDY_ANDROID_JOBS"
+ostudy_gate_rust_tests "$OSTUDY_ANDROID_JOBS"
 
+# Catch missing or accidentally leaked smoke-bridge wiring before paying for a
+# native Android build. This operates only on Vite output and therefore cannot
+# be fooled by Tauri's APK asset embedding/compression.
+printf '\nPreflighting Android smoke frontend boundaries...\n'
+ostudy_android_gate_smoke_frontend
+
+# Exercise the physical-device architecture before the emulator build. The
+# x86_64 smoke build intentionally runs last because Tauri may reuse a common
+# universal APK path; keeping x86_64 last leaves the artifacts used by emulator
+# qualification intact.
+printf '\nBuilding and verifying arm64 Android debug package...\n'
+ostudy_android_gate_build_arm64_debug
+ostudy_android_gate_verify_latest_app
+
+# Tauri must initialize transient tauri.settings.gradle and the private plugin
+# graph before any direct Gradle command is legal.
+printf '\nBuilding x86_64 Android smoke package through Tauri...\n'
+ostudy_android_gate_build_x86_smoke
+
+printf '\nVerifying Tauri-initialized Gradle dependency/Kotlin contracts...\n'
+ostudy_android_gate_gradle_contracts
+
+printf '\nRunning Android JVM, Lint, and instrumentation-package qualification...\n'
+ostudy_android_gate_test_packages
+ostudy_android_gate_verify_test_packages
+
+printf '\nVerifying Android build cleanliness...\n'
+ostudy_android_gate_build_cleanliness
+
+app_apk="$(ostudy_android_find_app_apk)"
+test_apk="$(ostudy_android_find_test_apk)"
 if ((RUN_EMULATOR == 1)); then
-  exec bash ./scripts/android-emulator-smoke.sh
+  printf '\nRunning emulator smoke against the already-built APKs...\n'
+  bash ./scripts/android-emulator-smoke.sh \
+    --app-apk "$app_apk" \
+    --test-apk "$test_apk"
+  ostudy_android_gate_build_cleanliness
 fi
 
-# Build Rust/JNI exactly once through Tauri. Direct Gradle work that follows must
-# reuse this output instead of re-entering `android-studio-script` after Tauri's
-# temporary CLI socket has been closed.
-export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
-bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
-bash ./scripts/android-gradle-postbuild.sh test-packages
-
-app_apk="$ROOT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
-test_apk="$({
-  find src-tauri/gen/android/app/build/outputs/apk/androidTest/universal/debug \
-    -type f -name '*.apk' -printf '%T@ %p\n' 2>/dev/null || true
-} | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
-if [[ ! -f "$app_apk" ]]; then
-  printf 'The expected universal x86_64 Android debug APK is missing: %s\n' "$app_apk" >&2
-  exit 1
-fi
-if [[ -z "$test_apk" || ! -f "$test_apk" ]]; then
-  printf 'The UniversalDebug Android instrumentation APK could not be located.\n' >&2
-  exit 1
-fi
-bash ./scripts/verify-android-package.sh "$app_apk" debug
-printf 'OK   Android compile, parallel unit-test, instrumentation-package, and APK checks passed.\n'
+printf 'OK   Android shared checks, arm64 package, Tauri-first Gradle/Lint tests, x86_64 instrumentation package%s passed.\n' \
+  "$([[ "$RUN_EMULATOR" == 1 ]] && printf ', and emulator smoke' || true)"
