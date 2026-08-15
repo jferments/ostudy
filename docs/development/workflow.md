@@ -124,11 +124,11 @@ Consume complete failure information from a meaningful branch head before making
 5. push the correction to the same pull request;
 6. review the new exact-head result.
 
-For substantial Connector-backed work, prefer the opt-in [agent diagnostic sweep](agent-diagnostics.md) when fail-fast CI is exposing independent defects one at a time. Add the appropriate PR-body marker (`agent-diagnostics:core`, `agent-diagnostics:android`, or `agent-diagnostics:all`), then let the self-hosted workflow collect independent failures, per-gate logs, a Markdown summary, and machine-readable JSON evidence.
+For substantial Connector-backed work, prefer the integrated [agent diagnostic mode](agent-diagnostics.md) when fail-fast CI is exposing independent defects one at a time. Add the appropriate draft-PR body marker (`agent-diagnostics:core`, `agent-diagnostics:android`, or `agent-diagnostics:all`). The existing `Check` and `Android check` workflows then substitute the requested multi-failure development pass instead of starting another competing workflow on the same self-hosted runner.
 
 A Connector-backed agent is responsible for consuming that CI evidence itself when the self-hosted runner can execute the relevant test. It should inspect workflow runs for the exact head, retrieve failed jobs/steps/logs/artifacts, fix the complete actionable failure set in a coherent batch, publish the same branch, and repeat against the new exact head. Do not make the human run `pnpm check:static`, `pnpm check`, `pnpm android:smoke`, or an equivalent repository command merely to paste output back when GitHub CI can provide the same evidence directly.
 
-The diagnostic sweep does not eliminate genuine dependency boundaries. If a valid Android APK cannot be built, emulator execution is `BLOCKED`; after the build is repaired, a later run may expose a runtime failure that could not have existed as an executable test earlier.
+The diagnostic sweep does not eliminate genuine dependency boundaries. If a valid Android APK cannot be built, emulator execution is `BLOCKED`; after the build is repaired, a later run may expose a runtime failure that could not have existed as an executable test earlier. Android diagnostics must preserve Tauri-first ownership: direct Gradle dependency/Kotlin/Lint/JVM/instrumentation work runs only after the Tauri Android build has initialized the transient project state and JNI output.
 
 A static parse, mocked frontend test, or successful build step must not be reported as a successful native application test. A queued/running workflow must not be reported as passed.
 
@@ -160,7 +160,7 @@ git log --oneline origin/main..HEAD
 
 In Connector mode, inspect the remote PR changed-file list/diff and verify its current head SHA through GitHub.
 
-A green diagnostic sweep is not merge qualification. The exact head must still pass the repository's authoritative shared and platform-specific workflows. A green workflow run qualifies only the commit it tested; a later push invalidates an older successful result.
+A green diagnostic sweep is not merge qualification. The exact head must still pass the repository's authoritative shared and platform-specific workflows. Ready-for-review pull requests ignore diagnostic substitution and run the normal full gates. A green workflow run qualifies only the commit it tested; a later push invalidates an older successful result.
 
 ## 8. Prepare for review
 
