@@ -18,6 +18,7 @@ artifacts/
 .diagnostics/
 .android-cargo-target/
 .android-emulator.pid
+.android-emulator-*.pid
 *.log
 *.tar.gz
 .DS_Store
