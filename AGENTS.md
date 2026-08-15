@@ -98,7 +98,9 @@ When operating through an authenticated GitHub Connector on this private reposit
 - at the first intended mutation, invoke the actual Connector write operation and let its authorization boundary handle any required approval;
 - only an actual rejected Connector mutation establishes a Connector write failure; report the exact operation and error;
 - after every meaningful publication step, verify the remote branch/head through GitHub before claiming that a commit or file change exists;
-- keep publication state separate from CI state: a missing or mismatched runner may block validation but does not establish that branch, commit, or PR writes are unavailable.
+- keep publication state separate from CI state: a missing or mismatched runner may block validation but does not establish that branch, commit, or PR writes are unavailable;
+- when a self-hosted workflow can execute a repository test and the Connector can read its evidence, retrieve the jobs, decoded logs, and artifacts directly instead of asking the human to run the command merely to relay output;
+- for substantial draft work, use the integrated diagnostic marker when broad failure discovery will reduce serial repair cycles, then repair the complete actionable failure batch on the same branch before requalifying the new exact head.
 
 A local patch, generated diff, or proposed commit message is not remote publication. Follow `docs/agents/GITHUB-CONNECTOR.md` for the complete connector-mode workflow.
 
@@ -132,12 +134,16 @@ Use the repository's tiered model instead of repeatedly running the most expensi
 
 ```bash
 ./scripts/check-changed.sh  # iteration aid based on the current diff
-./scripts/check-static.sh   # repository, docs, IPC, type, and format contracts
-./scripts/check-fast.sh     # static + complete frontend tests + Rust compile
+./scripts/check-static.sh   # repository, docs, UI tokens, IPC, type, format contracts
+./scripts/check-fast.sh     # static + complete frontend tests + Rust high-return gates
 ./scripts/check.sh          # authoritative full merge qualification
 ```
 
-Draft pull requests run the fast tier; ready pull requests run the full tier on the self-hosted runner. A green result qualifies only the exact commit SHA it ran against. Use `OSTUDY_FORCE_CHECK=1` when an exact-tree cache must be bypassed. For release qualification, also run `./scripts/release-check.sh`.
+Draft pull requests normally run the fast tier; ready pull requests run the full tier on the self-hosted runner. A draft PR may opt into integrated core and/or Android multi-failure diagnostics with the documented PR-body marker; that substitution is a development aid only. Ready-for-review pull requests return to the authoritative full shared and platform-specific workflows even if a diagnostic marker remains.
+
+A green result qualifies only the exact commit SHA it ran against. Use `OSTUDY_FORCE_CHECK=1` when an exact-tree cache must be bypassed. For release qualification, also run `./scripts/release-check.sh`.
+
+For Android work, preserve Tauri-first build ownership: do not run direct Gradle dependency, Kotlin, Lint, JVM, or instrumentation qualification before the Tauri Android build initializes the transient Gradle/private-plugin state and JNI output. Ordinary Android qualification covers arm64 package output, x86_64 emulator artifacts, Android Lint, tracked-source cleanliness, package policy, and official-emulator smoke; minimum-SDK smoke is periodic/manual rather than a second emulator on every PR.
 
 The full Rust tier includes generated `.ostudy.json` conformance, migrations, package/backup behavior, scheduling and analytics invariants, provider contracts, document-processing tests, and native WebDriver persistence. Manually exercise every affected user workflow. Static inspection or a successful frontend build must never be reported as a successful native Tauri test.
 
@@ -158,6 +164,6 @@ Every completed change must report:
 - known limitations, migration/compatibility effects, rollback concerns, and residual risks;
 - the requested merge method.
 
-For Connector-backed work, verify every claimed remote mutation through GitHub and report publication state separately from CI/runner state.
+For Connector-backed work, verify every claimed remote mutation through GitHub, report publication state separately from CI/runner state, and state which CI logs/artifacts were consumed directly versus which manual checks still require human execution.
 
 An agent's work is a proposal until a human reviews and merges it.
