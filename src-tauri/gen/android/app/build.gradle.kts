@@ -82,9 +82,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
 
     testImplementation("junit:junit:4.13.2")
-    // The instrumentation-only DocumentsProvider runs in the test APK process,
-    // not the target application process, so it needs its own Kotlin runtime.
-    androidTestImplementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.25")
     androidTestImplementation("androidx.test:core-ktx:1.6.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
