@@ -29,6 +29,18 @@ ostudy_android_gate_gradle_contracts() {
   bash "$OSTUDY_ANDROID_GATE_SCRIPT_DIR/android-gradle-contracts.sh"
 }
 
+ostudy_android_gate_jvm_tests() {
+  bash "$OSTUDY_ANDROID_GATE_SCRIPT_DIR/android-gradle-postbuild.sh" jvm-tests
+}
+
+ostudy_android_gate_lint() {
+  bash "$OSTUDY_ANDROID_GATE_SCRIPT_DIR/android-gradle-postbuild.sh" lint
+}
+
+ostudy_android_gate_instrumentation_package() {
+  bash "$OSTUDY_ANDROID_GATE_SCRIPT_DIR/android-gradle-postbuild.sh" instrumentation-package
+}
+
 ostudy_android_gate_test_packages() {
   bash "$OSTUDY_ANDROID_GATE_SCRIPT_DIR/android-gradle-postbuild.sh" test-packages
 }
