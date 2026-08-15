@@ -73,7 +73,7 @@ class AndroidDocumentsProviderSmokeTest {
             val exportResult = waitForSettledOperation(webView, exportSequence, "Android deck export")
             assertFalse(exportResult.getBoolean("cancelled"))
             val result = exportResult.getJSONObject("result")
-            assertEquals("android_document_provider", result.getString("destinationKind"))
+            assertEquals("android_document", result.getString("destinationKind"))
             assertTrue(result.getLong("byteSize") > 0L)
 
             val exported = waitForExportedFile(instrumentation.context)
