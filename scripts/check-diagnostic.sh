@@ -146,8 +146,16 @@ run_android() {
     "android-install-deps android-rust-targets android-pnpm-install android-project android-smoke-frontend" 90m \
     ostudy_android_gate_build_x86_smoke
   android_gate android-gradle-contracts "android-x86-smoke-build" 35m ostudy_android_gate_gradle_contracts
-  android_gate android-gradle-lint-tests "android-x86-smoke-build" 60m ostudy_android_gate_test_packages
-  android_gate android-test-packages "android-gradle-lint-tests" 10m ostudy_android_gate_verify_test_packages
+
+  # These postbuild concerns are deliberately independent in diagnostic mode.
+  # A lint defect must not hide a JVM-test result or prevent a valid test APK
+  # from exposing emulator/runtime failures in the same runner pass.
+  android_gate android-jvm-tests "android-x86-smoke-build" 35m ostudy_android_gate_jvm_tests
+  android_gate android-lint "android-x86-smoke-build" 45m ostudy_android_gate_lint
+  android_gate android-instrumentation-package "android-x86-smoke-build" 45m \
+    ostudy_android_gate_instrumentation_package
+  android_gate android-test-packages "android-instrumentation-package" 10m \
+    ostudy_android_gate_verify_test_packages
   android_gate android-build-cleanliness "" 5m ostudy_android_gate_build_cleanliness
   run_gate android-smoke-artifacts android "android-test-packages" 2m bash -Eeuo pipefail -c '
     source ./scripts/android-qualification-gates.sh
