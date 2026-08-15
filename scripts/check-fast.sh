@@ -9,6 +9,8 @@ source "$ROOT_DIR/versions.env"
 source "$SCRIPT_DIR/check-state.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/cargo-target.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/qualification-gates.sh"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
@@ -33,62 +35,35 @@ else
 fi
 
 step "Provision audited PDFium runtime"
-"$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
+ostudy_gate_pdfium_runtime
 
 prepare_cargo_target "$ROOT_DIR"
 printf 'Cargo target: %s\n' "$CARGO_TARGET_DIR"
 printf 'Cargo parallel jobs: %s\n' "$CARGO_BUILD_JOBS"
 
 step "React tests"
-pnpm test
+ostudy_gate_vitest
 
 step "Rust compile check"
-cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
+ostudy_gate_cargo_check
 
 step "Rust warnings-as-errors lint gate"
-cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
+ostudy_gate_clippy
 
 step "External file transfer and recovery contracts"
-cargo test \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-features \
-  --lib \
-  external_file_
+ostudy_gate_external_file_tests
 
 step "Document domain and persistence contracts"
-cargo test \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-features \
-  --lib \
-  document_
+ostudy_gate_document_tests
 
 step "PDF extraction, rendering, and OCR contracts"
-cargo test \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-features \
-  --lib \
-  pdf_
+ostudy_gate_pdf_tests
 
 step "Latest-schema migration contract"
-cargo test \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-features \
-  --lib \
-  database::tests::migrations_and_repairs_are_idempotent_and_reach_latest_schema \
-  -- --exact
+ostudy_gate_latest_schema_test
 
 step "Forward-upgrade integrity contract"
-cargo test \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-features \
-  --lib \
-  database::tests::released_schema_upgrades_forward_without_losing_integrity \
-  -- --exact
+ostudy_gate_forward_upgrade_test
 
 ostudy_write_check_stamp fast
 trap - ERR
