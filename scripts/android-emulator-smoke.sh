@@ -11,6 +11,10 @@ WIPE_DATA=1
 SERIAL="${ANDROID_SERIAL:-}"
 ARTIFACT_DIR="${OSTUDY_ANDROID_SMOKE_ARTIFACTS:-$ROOT_DIR/artifacts/android-smoke}"
 APP_ID="io.github.jferments.ostudy.dev"
+APP_APK=""
+TEST_APK=""
+AVD_NAME="$ANDROID_PHONE_AVD"
+SYSTEM_IMAGE="$ANDROID_PHONE_SYSTEM_IMAGE"
 
 usage() {
   cat <<'USAGE'
@@ -25,6 +29,10 @@ Options:
   --keep-emulator       Do not stop an emulator started by this script.
   --no-wipe             Reuse the AVD data image.
   --artifacts <dir>     Diagnostic output directory.
+  --app-apk <path>      Reuse a prebuilt smoke-enabled application APK.
+  --test-apk <path>     Reuse the matching prebuilt instrumentation APK.
+  --avd-name <name>     Use another AVD name.
+  --system-image <pkg>  System image used when the requested AVD must be created.
   -h, --help            Show this help.
 USAGE
 }
@@ -35,38 +43,83 @@ while (($#)); do
     --keep-emulator) KEEP_EMULATOR=1 ;;
     --no-wipe) WIPE_DATA=0 ;;
     --artifacts) shift; ARTIFACT_DIR="${1:?--artifacts requires a path}" ;;
+    --app-apk) shift; APP_APK="${1:?--app-apk requires a path}" ;;
+    --test-apk) shift; TEST_APK="${1:?--test-apk requires a path}" ;;
+    --avd-name) shift; AVD_NAME="${1:?--avd-name requires a value}" ;;
+    --system-image) shift; SYSTEM_IMAGE="${1:?--system-image requires a value}" ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'Unknown smoke-test option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
   shift
 done
 
+if [[ -n "$APP_APK" || -n "$TEST_APK" ]]; then
+  if [[ -z "$APP_APK" || -z "$TEST_APK" ]]; then
+    printf 'Both --app-apk and --test-apk are required when reusing prebuilt smoke artifacts.\n' >&2
+    exit 2
+  fi
+  APP_APK="$(readlink -f "$APP_APK")"
+  TEST_APK="$(readlink -f "$TEST_APK")"
+fi
+
 cd "$ROOT_DIR"
-printf 'Android emulator build parallelism: %s Gradle workers, %s Cargo jobs.\n' \
+printf 'Android emulator parallelism: %s Gradle workers, %s Cargo jobs.\n' \
   "$OSTUDY_GRADLE_WORKERS" "$CARGO_BUILD_JOBS"
 bash ./scripts/android-doctor.sh --emulator
 android_write_local_properties
+rm -rf -- "$ARTIFACT_DIR"
 mkdir -p "$ARTIFACT_DIR"
-rm -f "$ARTIFACT_DIR"/*
+
+RESULTS_TSV="$ARTIFACT_DIR/android-smoke-results.tsv"
+printf 'case\tstatus\tprerequisite\tduration_ms\tlog\n' > "$RESULTS_TSV"
 
 adb="$ANDROID_HOME/platform-tools/adb"
 started_emulator=0
+sanitize_field() {
+  printf '%s' "$1" | tr '\t\r\n' '   '
+}
+record_result() {
+  local method="$1" status="$2" prerequisite="$3" duration_ms="$4" log="$5"
+  printf '%s\t%s\t%s\t%s\t%s\n' \
+    "$(sanitize_field "$method")" \
+    "$(sanitize_field "$status")" \
+    "$(sanitize_field "$prerequisite")" \
+    "$(sanitize_field "$duration_ms")" \
+    "$(sanitize_field "$log")" \
+    >> "$RESULTS_TSV"
+}
+
 cleanup() {
+  local status=$?
   set +e
+  local api_level="" page_size=""
   if [[ -n "$SERIAL" ]]; then
     "$adb" -s "$SERIAL" logcat -d > "$ARTIFACT_DIR/logcat.txt" 2>&1
     "$adb" -s "$SERIAL" exec-out screencap -p > "$ARTIFACT_DIR/final-screen.png" 2>/dev/null
     "$adb" -s "$SERIAL" shell uiautomator dump /sdcard/ostudy-window.xml >/dev/null 2>&1
     "$adb" -s "$SERIAL" pull /sdcard/ostudy-window.xml "$ARTIFACT_DIR/window.xml" >/dev/null 2>&1
+    api_level="$($adb -s "$SERIAL" shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r')"
+    page_size="$($adb -s "$SERIAL" shell getconf PAGE_SIZE 2>/dev/null | tr -d '\r')"
   fi
+  node "$SCRIPT_DIR/summarize-android-smoke.mjs" \
+    --results "$RESULTS_TSV" \
+    --artifact-dir "$ARTIFACT_DIR" \
+    --output "$ARTIFACT_DIR/android-smoke-results.json" \
+    --exit-code "$status" \
+    --serial "$SERIAL" \
+    --api-level "$api_level" \
+    --page-size "$page_size" \
+    > "$ARTIFACT_DIR/result-summary.txt" 2>&1 || true
   if ((started_emulator == 1 && KEEP_EMULATOR == 0)); then
     bash ./scripts/android-avd.sh stop >/dev/null 2>&1
   fi
+  trap - EXIT
+  exit "$status"
 }
 trap cleanup EXIT
 
 if [[ -z "$SERIAL" ]]; then
-  start_args=(start --headless)
+  start_args=(start --headless --name "$AVD_NAME" --system-image "$SYSTEM_IMAGE")
   ((WIPE_DATA == 1)) && start_args+=(--wipe-data)
   bash ./scripts/android-avd.sh "${start_args[@]}"
   started_emulator=1
@@ -79,27 +132,30 @@ fi
 export ANDROID_SERIAL="$SERIAL"
 
 "$adb" -s "$SERIAL" logcat -c
-printf 'Building the x86_64 Android smoke APK and instrumentation package...\n'
-export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
-# Tauri owns Rust/JNI compilation and its temporary CLI socket. The Gradle
-# postbuild wrapper reuses that x86_64 output while excluding generated
-# rustBuild tasks that cannot outlive the parent Tauri process.
-bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
-bash ./scripts/android-gradle-postbuild.sh instrumentation-package
-
-app_apk="$ROOT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
-test_apk="$({
-  find src-tauri/gen/android/app/build/outputs/apk/androidTest/universal/debug \
-    -type f -name '*.apk' -printf '%T@ %p\n' 2>/dev/null || true
-} | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
-if [[ ! -f "$app_apk" || -z "$test_apk" || ! -f "$test_apk" ]]; then
-  printf 'Could not locate the UniversalDebug Android application and instrumentation APKs.\n' >&2
+if [[ -z "$APP_APK" ]]; then
+  printf 'Building x86_64 Android smoke APK and instrumentation package...\n'
+  export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
+  bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
+  bash ./scripts/android-gradle-postbuild.sh instrumentation-package
+  APP_APK="$({
+    find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' \
+      ! -path '*/androidTest/*' -printf '%T@ %p\n' 2>/dev/null || true
+  } | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
+  TEST_APK="$({
+    find src-tauri/gen/android/app/build/outputs/apk/androidTest -type f -name '*.apk' \
+      -printf '%T@ %p\n' 2>/dev/null || true
+  } | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
+else
+  printf 'Reusing prebuilt Android smoke APKs.\n'
+fi
+if [[ ! -f "$APP_APK" || ! -f "$TEST_APK" ]]; then
+  printf 'Could not locate Android application and instrumentation APKs.\n' >&2
   exit 1
 fi
 
-bash ./scripts/verify-android-package.sh "$app_apk" debug | tee "$ARTIFACT_DIR/package-verification.txt"
-"$adb" -s "$SERIAL" install -r -t "$app_apk" | tee "$ARTIFACT_DIR/install-app.txt"
-"$adb" -s "$SERIAL" install -r -t "$test_apk" | tee "$ARTIFACT_DIR/install-test.txt"
+bash ./scripts/verify-android-package.sh "$APP_APK" debug | tee "$ARTIFACT_DIR/package-verification.txt"
+"$adb" -s "$SERIAL" install -r -t "$APP_APK" | tee "$ARTIFACT_DIR/install-app.txt"
+"$adb" -s "$SERIAL" install -r -t "$TEST_APK" | tee "$ARTIFACT_DIR/install-test.txt"
 
 runner="$($adb -s "$SERIAL" shell pm list instrumentation | tr -d '\r' |
   sed -n 's/^instrumentation:\([^ ]*\) (target=io.github.jferments.ostudy.dev)$/\1/p' | head -n 1)"
@@ -126,28 +182,31 @@ dump_case_logcat() {
 run_case() {
   local method="$1"
   local log="$ARTIFACT_DIR/${method}.txt"
+  local started finished duration instrument_status
 
-  # The Tauri event loop owns Activity/native teardown. AndroidJUnitRunner's
-  # default activity finisher races Wry teardown, so instrumentation opts out
-  # and this shell gives each case a fresh process with durable app data intact.
   "$adb" -s "$SERIAL" shell am force-stop "$APP_ID" >/dev/null 2>&1 || true
   "$adb" -s "$SERIAL" logcat -c
 
   printf 'Running Android smoke case %s...\n' "$method"
+  started="$(date +%s%3N)"
   set +e
   "$adb" -s "$SERIAL" shell am instrument -w -r \
     -e waitForActivitiesToComplete false \
     -e class "io.github.jferments.ostudy.AndroidSmokeTest#$method" \
     "$runner" | tee "$log"
-  local instrument_status="${PIPESTATUS[0]}"
+  instrument_status="${PIPESTATUS[0]}"
   set -e
+  finished="$(date +%s%3N)"
+  duration=$((finished - started))
 
   if ((instrument_status != 0)) || ! grep -q '^OK (' "$log"; then
+    record_result "$method" "FAIL" "" "$duration" "${method}.txt"
     printf 'Android smoke case failed: %s (instrumentation exit %s)\n' \
       "$method" "$instrument_status" >&2
     dump_case_logcat "$method"
     return 1
   fi
+  record_result "$method" "PASS" "" "$duration" "${method}.txt"
 }
 
 failed_cases=()
@@ -164,25 +223,20 @@ skip_case() {
   local method="$1"
   local reason="$2"
   skipped_cases+=("$method: $reason")
+  record_result "$method" "SKIP" "$reason" "" ""
   printf 'SKIP Android smoke case %s: %s\n' "$method" "$reason"
 }
 
-# Reset the sandbox once, then preserve SQLite/app-private state across fresh
-# processes. Independent cases continue after a failure; only cases with an
-# explicit failed prerequisite are skipped. This exposes multiple defects from
-# one expensive APK build without turning dependency failures into noise.
+# Reset once, then preserve SQLite/app-private state across fresh processes.
 "$adb" -s "$SERIAL" shell pm clear "$APP_ID" >/dev/null
 
 launch_ok=1
-if ! run_case a0_appLaunchesAndTestBridgeIsReady; then
-  failed_cases+=("a0_appLaunchesAndTestBridgeIsReady")
-  launch_ok=0
-fi
+record_case a0_appLaunchesAndTestBridgeIsReady || launch_ok=0
 if ((launch_ok == 0)); then
   for method in \
     a_seedLibraryPracticeAndAnalytics \
     b_restartPreservesLibraryAndReviewHistory \
-    c_documentsStubAndAndroidBackReturnToDecks \
+    c_documentsStubAndAndroidBackReturnToFlashcardsDecks \
     c_nestedDeckAndEditorBackReturnThroughTheStack \
     d_reloadsIntoInterruptedPracticeSession \
     e_processRestartKeepsInterruptedPracticeSession \
@@ -191,14 +245,15 @@ if ((launch_ok == 0)); then
     f_pdfImportPickerCancelsCleanly \
     f_libraryBackupImportPickerCancelsCleanly \
     f_deckExportPickerCancelsCleanly \
-    g_sequentialPickerCancellationReleasesNativeOperationSlot
+    g_sequentialPickerCancellationReleasesNativeOperationSlot \
+    h_documentProviderRoundTripStreamsImportsAndExport
   do
     skip_case "$method" "the application/bridge launch prerequisite failed"
   done
 else
   seed_ok=1
   record_case a_seedLibraryPracticeAndAnalytics || seed_ok=0
-  record_case c_documentsStubAndAndroidBackReturnToDecks || true
+  record_case c_documentsStubAndAndroidBackReturnToFlashcardsDecks || true
 
   if ((seed_ok == 1)); then
     record_case b_restartPreservesLibraryAndReviewHistory || true
@@ -223,7 +278,8 @@ else
     f_pdfImportPickerCancelsCleanly \
     f_libraryBackupImportPickerCancelsCleanly \
     f_deckExportPickerCancelsCleanly \
-    g_sequentialPickerCancellationReleasesNativeOperationSlot
+    g_sequentialPickerCancellationReleasesNativeOperationSlot \
+    h_documentProviderRoundTripStreamsImportsAndExport
   do
     record_case "$method" || true
   done
