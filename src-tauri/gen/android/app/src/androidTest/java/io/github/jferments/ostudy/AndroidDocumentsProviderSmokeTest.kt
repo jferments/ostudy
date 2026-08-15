@@ -118,8 +118,8 @@ class AndroidDocumentsProviderSmokeTest {
         // A direct accessibility click on an image tile is DocumentsUI's preview
         // action and can launch an external viewer. Select through the file row's
         // dedicated `icon` hotspot instead, matching DocumentsUI's own test bot,
-        // then explicitly invoke the Open action so every MIME type follows the
-        // same ACTION_OPEN_DOCUMENT result path.
+        // then explicitly invoke the selection action so every MIME type follows
+        // the same ACTION_OPEN_DOCUMENT result path.
         var container: UiObject2? = fixtureObject
         var selectionHotspot: UiObject2? = null
         for (depth in 0 until 10) {
@@ -137,7 +137,7 @@ class AndroidDocumentsProviderSmokeTest {
         requireNotNull(device.wait(Until.findObject(By.text("1 selected")), 10_000)) {
             "Android DocumentsUI did not enter single-selection mode for $fixture"
         }
-        pressOpen(device, pickerPackages)
+        pressSelectedDocumentAction(device, pickerPackages)
     }
 
     private fun waitForDocumentFixture(device: UiDevice, fixture: String, timeoutMs: Long): UiObject2? {
@@ -170,17 +170,19 @@ class AndroidDocumentsProviderSmokeTest {
         root.click()
     }
 
-    private fun pressOpen(device: UiDevice, pickerPackages: Set<String>) {
+    private fun pressSelectedDocumentAction(device: UiDevice, pickerPackages: Set<String>) {
         for (packageName in pickerPackages) {
-            for (resource in listOf("action_menu_open", "menu_open")) {
+            for (resource in listOf("action_menu_select", "action_menu_open", "menu_open")) {
                 device.findObject(By.res(packageName, resource))?.let {
                     it.click()
                     return
                 }
             }
         }
-        val byText = requireNotNull(device.findObject(By.text("Open"))) {
-            "Android DocumentsUI did not expose its Open action after selecting a fixture"
+        val byText = requireNotNull(
+            device.findObject(By.text("Select")) ?: device.findObject(By.text("Open"))
+        ) {
+            "Android DocumentsUI did not expose its Select/Open action after selecting a fixture"
         }
         byText.click()
     }
