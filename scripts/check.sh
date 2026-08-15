@@ -9,6 +9,8 @@ source "$ROOT_DIR/versions.env"
 source "$SCRIPT_DIR/check-state.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/cargo-target.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/qualification-gates.sh"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
@@ -32,7 +34,7 @@ else
 fi
 
 step "Verify audited PDFium runtime"
-"$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
+ostudy_gate_pdfium_runtime
 
 step "Native environment qualification"
 if [[ "${OSTUDY_SKIP_NATIVE_SMOKE:-0}" == "1" ]]; then
@@ -44,13 +46,13 @@ printf 'Cargo target: %s\n' "$CARGO_TARGET_DIR"
 printf 'Cargo parallel jobs: %s\n' "$CARGO_BUILD_JOBS"
 
 step "Frontend production build"
-pnpm run build
+ostudy_gate_frontend_build
 
 step "Rust linting"
-cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
+ostudy_gate_clippy
 
 step "Rust unit, integration, and migration-fixture tests"
-cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
+ostudy_gate_rust_tests
 
 step "Standalone Tauri build"
 pnpm tauri build --debug --no-bundle --ci -- --locked
