@@ -211,51 +211,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Expose user-local tools
+      - name: Expose user-local tools and configure cache
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           mkdir -p "$OSTUDY_CARGO_TARGET_DIR"
 
-      - name: Prepare API-minimum emulator toolchain
+      - name: Run maintained minimum-SDK compatibility smoke
         run: |
-          bash ./scripts/install-android-deps.sh --with-min-emulator
-          rustup target add \
-            aarch64-linux-android \
-            armv7-linux-androideabi \
-            i686-linux-android \
-            x86_64-linux-android
-          source ./scripts/android-env.sh
-          android_write_local_properties
-          android_emit_github_environment
-          bash ./scripts/android-runner-doctor.sh --system-image "$ANDROID_MIN_SYSTEM_IMAGE"
-
-      - name: Build one smoke package and instrumentation package
-        run: |
-          pnpm install --frozen-lockfile
-          node ./scripts/verify-android-project.mjs
-          bash ./scripts/android-smoke-frontend-preflight.sh
-          bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
-          bash ./scripts/android-gradle-contracts.sh
-          bash ./scripts/android-gradle-postbuild.sh test-packages
-          bash ./scripts/verify-build-cleanliness.sh
-
-      - name: Run minimum-SDK compatibility smoke
-        run: |
-          source ./scripts/android-env.sh
-          app_apk="$({
-            find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' \
-              ! -path '*/androidTest/*' -printf '%T@ %p\n' 2>/dev/null || true
-          } | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
-          test_apk="$({
-            find src-tauri/gen/android/app/build/outputs/apk/androidTest -type f -name '*.apk' \
-              -printf '%T@ %p\n' 2>/dev/null || true
-          } | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
-          bash ./scripts/android-emulator-smoke.sh \
-            --app-apk "$app_apk" \
-            --test-apk "$test_apk" \
-            --avd-name "$ANDROID_MIN_AVD" \
-            --system-image "$ANDROID_MIN_SYSTEM_IMAGE" \
+          bash ./scripts/android-min-sdk-smoke.sh \
             --artifacts "$RUNNER_TEMP/android-min-sdk-smoke"
 
       - name: Upload minimum-SDK smoke evidence
