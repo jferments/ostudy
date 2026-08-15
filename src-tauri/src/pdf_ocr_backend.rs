@@ -11,7 +11,9 @@ use oxidize_pdf::{
     OcrResult,
 };
 
-use crate::{pdf_render_backend, task_cancellation};
+use crate::task_cancellation;
+#[cfg(target_os = "android")]
+use crate::pdf_render_backend;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use std::{
