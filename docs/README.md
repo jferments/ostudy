@@ -38,7 +38,9 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 
 - [Development guide](development/guide.md) covers setup, repository layout, change design, and day-to-day commands.
 - [Android development architecture](development/android.md) documents the Kotlin/Rust boundary, generated project, emulator tests, package checks, and Android workflows.
-- [Android self-hosted runner](development/android-self-hosted-runner.md) explains KVM, SDK, runner labels, systemd service setup, and automated emulator qualification.
+- [Current Android self-hosted runner](development/android-self-hosted-runner.md) documents the existing split runner arrangement that remains active until replacement cutover.
+- [Unified Linux/Android runner architecture and roadmap](development/unified-linux-android-runner.md) defines the proposed isolated single-VM replacement, security boundary, workflow model, staged validation, and rollback.
+- [Unified runner installation walkthrough](development/unified-runner-setup.md) gives the step-by-step ML-tower, libvirt, nested-KVM, guest bootstrap, snapshot, and GitHub registration procedure.
 - [Platform portability inventory](development/platform-portability-inventory.md) records the current OS assumptions and the phase responsible for removing each one.
 - [Git and pull-request workflow](development/workflow.md) defines the publication, review, merge, release, and rollback process.
 - [Testing and CI](development/testing-and-ci.md) is the authoritative description of the changed, static, fast, full, and Android validation tiers.
