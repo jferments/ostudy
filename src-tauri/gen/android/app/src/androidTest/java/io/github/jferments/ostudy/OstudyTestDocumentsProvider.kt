@@ -32,7 +32,7 @@ class OstudyTestDocumentsProvider : DocumentsProvider() {
             add(Root.COLUMN_SUMMARY, "ostudy instrumentation fixtures")
             add(Root.COLUMN_FLAGS, Root.FLAG_LOCAL_ONLY or Root.FLAG_SUPPORTS_CREATE)
             add(Root.COLUMN_MIME_TYPES, "*/*")
-            add(Root.COLUMN_AVAILABLE_BYTES, fixtureDirectory(requireContext()).usableSpace)
+            add(Root.COLUMN_AVAILABLE_BYTES, fixtureDirectory(requireProviderContext()).usableSpace)
         }
         return cursor
     }
@@ -50,7 +50,7 @@ class OstudyTestDocumentsProvider : DocumentsProvider() {
     ): Cursor {
         require(parentDocumentId == ROOT_ID) { "Unknown test document root: $parentDocumentId" }
         val cursor = MatrixCursor(projection ?: DOCUMENT_PROJECTION)
-        fixtureDirectory(requireContext())
+        fixtureDirectory(requireProviderContext())
             .listFiles()
             .orEmpty()
             .sortedBy { it.name }
@@ -73,7 +73,7 @@ class OstudyTestDocumentsProvider : DocumentsProvider() {
     override fun createDocument(parentDocumentId: String, mimeType: String, displayName: String): String {
         require(parentDocumentId == ROOT_ID) { "Files may only be created in the test fixture root." }
         val safeName = sanitizeDisplayName(displayName)
-        val directory = fixtureDirectory(requireContext())
+        val directory = fixtureDirectory(requireProviderContext())
         var file = File(directory, safeName)
         var suffix = 2
         while (file.exists()) {
@@ -107,7 +107,7 @@ class OstudyTestDocumentsProvider : DocumentsProvider() {
                 add(Document.COLUMN_DISPLAY_NAME, ROOT_TITLE)
                 add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR)
                 add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE)
-                add(Document.COLUMN_SIZE, fixtureDirectory(requireContext()).length())
+                add(Document.COLUMN_SIZE, fixtureDirectory(requireProviderContext()).length())
             }
             return
         }
@@ -130,10 +130,11 @@ class OstudyTestDocumentsProvider : DocumentsProvider() {
         require(documentId.startsWith(FILE_PREFIX)) { "Unknown test document: $documentId" }
         val name = documentId.removePrefix(FILE_PREFIX)
         require(name.isNotBlank() && name == File(name).name) { "Unsafe test document ID." }
-        return File(fixtureDirectory(requireContext()), name)
+        return File(fixtureDirectory(requireProviderContext()), name)
     }
 
-    private fun requireContext(): Context = requireNotNull(context) { "DocumentsProvider context is unavailable." }
+    private fun requireProviderContext(): Context =
+        requireNotNull(context) { "DocumentsProvider context is unavailable." }
 
     companion object {
         const val AUTHORITY = "io.github.jferments.ostudy.dev.test.documents"
