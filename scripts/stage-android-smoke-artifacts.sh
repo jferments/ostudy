@@ -24,10 +24,10 @@ rm -rf -- "$DESTINATION"
 mkdir -p "$DESTINATION"
 cp -- "$app_apk" "$DESTINATION/ostudy-smoke-app.apk"
 cp -- "$test_apk" "$DESTINATION/ostudy-smoke-test.apk"
-sha256sum \
-  "$DESTINATION/ostudy-smoke-app.apk" \
-  "$DESTINATION/ostudy-smoke-test.apk" \
-  > "$DESTINATION/SHA256SUMS"
+(
+  cd "$DESTINATION"
+  sha256sum ostudy-smoke-app.apk ostudy-smoke-test.apk > SHA256SUMS
+)
 printf 'source_app=%s\nsource_test=%s\n' \
   "${app_apk#"$ROOT_DIR/"}" \
   "${test_apk#"$ROOT_DIR/"}" \
