@@ -117,16 +117,26 @@ jobs:
       - name: Verify shared code, arm64 package, x86 smoke package, Gradle, Lint, and instrumentation
         run: bash ./scripts/android-test.sh
 
-      - name: Upload reusable Android build products
+      - name: Stage exact emulator APK pair
+        run: bash ./scripts/stage-android-smoke-artifacts.sh "$RUNNER_TEMP/ostudy-android-smoke-apks"
+
+      - name: Upload reusable Android smoke APKs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ostudy-android-smoke-apks-${{ github.sha }}
+          path: ${{ runner.temp }}/ostudy-android-smoke-apks/**
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Android Gradle reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ostudy-android-build-${{ github.sha }}
+          name: ostudy-android-reports-${{ github.sha }}
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
             src-tauri/gen/android/app/build/reports/**
             plugins/ostudy-platform/android/build/reports/**
-          if-no-files-found: warn
+          if-no-files-found: ignore
           retention-days: 7
 
   android-emulator-smoke:
@@ -159,32 +169,24 @@ jobs:
           android_emit_github_environment
           bash ./scripts/android-runner-doctor.sh
 
-      - name: Download compile-job APKs
+      - name: Download exact compile-job APK pair
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ostudy-android-build-${{ github.sha }}
-          path: ${{ runner.temp }}/ostudy-android-build
+          name: ostudy-android-smoke-apks-${{ github.sha }}
+          path: ${{ runner.temp }}/ostudy-android-smoke-apks
 
-      - name: Resolve reusable smoke APKs
-        id: apks
+      - name: Verify downloaded APK pair
         run: |
-          app_apk="$({
-            find "$RUNNER_TEMP/ostudy-android-build" -type f -name '*.apk' \
-              ! -path '*/androidTest/*' -printf '%T@ %p\n' 2>/dev/null || true
-          } | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
-          test_apk="$({
-            find "$RUNNER_TEMP/ostudy-android-build" -type f -name '*.apk' \
-              -path '*/androidTest/*' -printf '%T@ %p\n' 2>/dev/null || true
-          } | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
-          [[ -f "$app_apk" && -f "$test_apk" ]]
-          echo "app_apk=$app_apk" >> "$GITHUB_OUTPUT"
-          echo "test_apk=$test_apk" >> "$GITHUB_OUTPUT"
+          cd "$RUNNER_TEMP/ostudy-android-smoke-apks"
+          sha256sum --check SHA256SUMS
+          test -f ostudy-smoke-app.apk
+          test -f ostudy-smoke-test.apk
 
       - name: Run official Android Emulator smoke suite without rebuilding
         run: |
           bash ./scripts/android-emulator-smoke.sh \
-            --app-apk "${{ steps.apks.outputs.app_apk }}" \
-            --test-apk "${{ steps.apks.outputs.test_apk }}" \
+            --app-apk "$RUNNER_TEMP/ostudy-android-smoke-apks/ostudy-smoke-app.apk" \
+            --test-apk "$RUNNER_TEMP/ostudy-android-smoke-apks/ostudy-smoke-test.apk" \
             --artifacts "$RUNNER_TEMP/android-smoke"
 
       - name: Upload emulator diagnostics and structured case results
