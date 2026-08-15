@@ -8,15 +8,19 @@ source "$SCRIPT_DIR/android-env.sh"
 
 MODE="${1:-}"
 case "$MODE" in
-  test-packages|instrumentation-package) ;;
+  test-packages|jvm-tests|lint|instrumentation-package) ;;
   -h|--help|"")
     cat <<'USAGE'
-Usage: ./scripts/android-gradle-postbuild.sh <test-packages|instrumentation-package>
+Usage: ./scripts/android-gradle-postbuild.sh <test-packages|jvm-tests|lint|instrumentation-package>
 
 Runs Gradle-only work after `android-build.sh` has already built the x86_64
 Rust library through the Tauri CLI. The wrapper deliberately excludes Tauri's
 generated rustBuild tasks because those tasks require the temporary CLI socket
 owned by the parent `tauri android build` process.
+
+`test-packages` is the authoritative fail-fast bundle. The narrower modes let
+diagnostic orchestration execute JVM tests, Android Lint, and instrumentation
+assembly independently so one category does not hide unrelated failures.
 USAGE
     [[ -n "$MODE" ]] && exit 0 || exit 2
     ;;
@@ -52,18 +56,34 @@ gradle_args=(
   -x :app:rustBuildX86_64Debug
 )
 
-tasks=(
-  :app:assembleUniversalDebugAndroidTest
-)
-if [[ "$MODE" == test-packages ]]; then
-  tasks=(
-    :tauri-plugin-ostudy-platform:testDebugUnitTest
-    :tauri-plugin-ostudy-platform:lintDebug
-    :app:testUniversalDebugUnitTest
-    :app:lintUniversalDebug
-    :app:assembleUniversalDebugAndroidTest
-  )
-fi
+case "$MODE" in
+  jvm-tests)
+    tasks=(
+      :tauri-plugin-ostudy-platform:testDebugUnitTest
+      :app:testUniversalDebugUnitTest
+    )
+    ;;
+  lint)
+    tasks=(
+      :tauri-plugin-ostudy-platform:lintDebug
+      :app:lintUniversalDebug
+    )
+    ;;
+  instrumentation-package)
+    tasks=(
+      :app:assembleUniversalDebugAndroidTest
+    )
+    ;;
+  test-packages)
+    tasks=(
+      :tauri-plugin-ostudy-platform:testDebugUnitTest
+      :tauri-plugin-ostudy-platform:lintDebug
+      :app:testUniversalDebugUnitTest
+      :app:lintUniversalDebug
+      :app:assembleUniversalDebugAndroidTest
+    )
+    ;;
+esac
 
 printf 'Running Android Gradle postbuild (%s) with %s workers; Rust rebuild tasks are excluded.\n' \
   "$MODE" "$OSTUDY_GRADLE_WORKERS"
