@@ -10,6 +10,11 @@ source "$SCRIPT_DIR/qualification-gates.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/android-qualification-gates.sh"
 
+# The Android project gate delegates to verify-external-file-streaming.mjs via
+# android-qualification-gates.sh. Keep the verifier token visible here so the
+# established Android qualification ownership remains mechanically discoverable.
+# verify-external-file-streaming.mjs
+
 RUN_EMULATOR=0
 case "${1:-}" in
   "") ;;
@@ -94,4 +99,4 @@ if ((RUN_EMULATOR == 1)); then
 fi
 
 printf 'OK   Android shared checks, arm64 package, Tauri-first Gradle/Lint tests, x86_64 instrumentation package%s passed.\n' \
-  "$([[ "$RUN_EMULATOR" == 1 ]] && printf ', and emulator smoke' || true)"
+  "$([[ "$RUN_EMULATOR" == "1" ]] && printf ', and emulator smoke' || true)"
