@@ -6,6 +6,22 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/android-env.sh"
 
+SYSTEM_IMAGE="$ANDROID_PHONE_SYSTEM_IMAGE"
+while (($#)); do
+  case "$1" in
+    --system-image) shift; SYSTEM_IMAGE="${1:?--system-image requires a package}" ;;
+    -h|--help)
+      printf 'Usage: ./scripts/android-runner-doctor.sh [--system-image SDK_PACKAGE]\n'
+      exit 0
+      ;;
+    *)
+      printf 'Usage: ./scripts/android-runner-doctor.sh [--system-image SDK_PACKAGE]\n' >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
 failures=0
 ok() { printf 'OK   %s\n' "$*"; }
 warn() { printf 'WARN %s\n' "$*"; }
@@ -18,6 +34,7 @@ bash "$SCRIPT_DIR/android-doctor.sh" --emulator || failures=$((failures + 1))
 adb="$ANDROID_HOME/platform-tools/adb"
 emulator="$ANDROID_HOME/emulator/emulator"
 sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+system_image_path="$ANDROID_HOME/${SYSTEM_IMAGE//;/\/}"
 
 if [[ -e /dev/kvm ]]; then
   if [[ -r /dev/kvm && -w /dev/kvm ]]; then
@@ -51,7 +68,7 @@ for required_path in \
   "$ANDROID_HOME/platforms/android-$ANDROID_COMPILE_SDK" \
   "$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION" \
   "$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" \
-  "$ANDROID_HOME/system-images/android-$ANDROID_COMPILE_SDK/google_apis/x86_64"; do
+  "$system_image_path"; do
   if [[ -e "$required_path" ]]; then
     ok "$required_path"
   else
@@ -66,7 +83,7 @@ if [[ -x "$sdkmanager" ]]; then
     "platforms;android-$ANDROID_COMPILE_SDK" \
     "build-tools;$ANDROID_BUILD_TOOLS_VERSION" \
     "ndk;$ANDROID_NDK_VERSION" \
-    "$ANDROID_PHONE_SYSTEM_IMAGE"; do
+    "$SYSTEM_IMAGE"; do
     if grep -Fq "$package" <<< "$installed"; then
       ok "SDK package $package"
     else
@@ -105,6 +122,7 @@ fi
 if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
   ok "running inside GitHub Actions as ${RUNNER_NAME:-unknown-runner}"
   printf 'INFO workflow expects runner labels: self-hosted, linux, x64, ostudy, android, kvm\n'
+  printf 'INFO emulator image: %s\n' "$SYSTEM_IMAGE"
 fi
 
 if [[ -x "$adb" ]]; then
