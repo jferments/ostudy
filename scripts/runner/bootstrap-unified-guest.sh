@@ -103,14 +103,23 @@ id "$RUNNER_USER" >/dev/null 2>&1 || {
   sudo useradd --create-home --shell /bin/bash "$RUNNER_USER"
 }
 sudo usermod -aG kvm "$RUNNER_USER"
+# Explicitly own each pnpm path component. `install -d` may create missing
+# intermediate directories as root when invoked through sudo; a resumed
+# bootstrap must repair those parents before pnpm runs as the runner account.
 sudo install -d -o "$RUNNER_USER" -g "$RUNNER_USER" -m 0750 \
+  "$RUNNER_HOME/.local" \
+  "$RUNNER_HOME/.local/bin" \
+  "$RUNNER_HOME/.local/share" \
+  "$RUNNER_HOME/.local/share/pnpm" \
+  "$RUNNER_HOME/.local/share/pnpm/bin" \
+  "$RUNNER_HOME/.config" \
+  "$RUNNER_HOME/.config/pnpm" \
   "$RUNNER_HOME/actions-runner" \
   "$RUNNER_HOME/.cache/ostudy/cargo-target" \
   "$RUNNER_HOME/.cache/gradle" \
   "$RUNNER_HOME/.cache/pnpm/store" \
   "$RUNNER_HOME/.cargo" \
   "$RUNNER_HOME/.rustup" \
-  "$RUNNER_HOME/.local/bin" \
   "$ANDROID_HOME_VALUE"
 
 work_dir="$(mktemp -d -t ostudy-guest-bootstrap.XXXXXXXX)"
