@@ -195,6 +195,33 @@ sudo -u "$RUNNER_USER" -H env \
     i686-linux-android \
     x86_64-linux-android
 
+# Reuse the repository's existing audited Linux setup contract: WebDriver
+# qualification requires the exact tauri-driver version pinned in versions.env.
+# Only compile it when the installed version differs so resumed bootstraps stay
+# cheap after the first successful installation.
+installed_driver="$(
+  sudo -u "$RUNNER_USER" -H env \
+    HOME="$RUNNER_HOME" \
+    RUSTUP_HOME="$RUNNER_HOME/.rustup" \
+    CARGO_HOME="$RUNNER_HOME/.cargo" \
+    PATH="$RUNNER_HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin" \
+    cargo install --list |
+    sed -n 's/^tauri-driver v\([^:]*\):$/\1/p' |
+    head -n 1
+)"
+if [[ "$installed_driver" != "$TAURI_DRIVER_VERSION" ]]; then
+  printf 'Installing tauri-driver %s for native WebDriver qualification...\n' "$TAURI_DRIVER_VERSION"
+  sudo -u "$RUNNER_USER" -H env \
+    HOME="$RUNNER_HOME" \
+    RUSTUP_HOME="$RUNNER_HOME/.rustup" \
+    CARGO_HOME="$RUNNER_HOME/.cargo" \
+    PATH="$RUNNER_HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin" \
+    CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}" \
+    cargo install tauri-driver --version "$TAURI_DRIVER_VERSION" --locked --force
+else
+  printf 'tauri-driver %s is already installed.\n' "$TAURI_DRIVER_VERSION"
+fi
+
 # pnpm v11 stores global executables below PNPM_HOME/bin. Keep both the pnpm
 # home and its global-bin directory on PATH for bootstrap commands and for the
 # eventual runner service environment.
