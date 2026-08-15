@@ -46,32 +46,33 @@ private const val MAX_OCR_SOURCE_BYTES = 64L * 1024L * 1024L
 private const val MIN_OCR_TIMEOUT_SECONDS = 1
 private const val MAX_OCR_TIMEOUT_SECONDS = 180
 private const val PDF_POINTS_PER_INCH = 72.0
+private val JOB_ID_PATTERN = Regex("[A-Za-z0-9_-]{1,128}")
 
-@InvokeArg
-class OpenPdfArgs {
-    lateinit var sourcePath: String
-}
-
-@InvokeArg
-class RenderPdfPageArgs {
+@InvokeArg class OpenPdfArgs { lateinit var sourcePath: String }
+@InvokeArg class RenderPdfPageArgs {
     lateinit var token: String
     var pageNumber: Int = 0
     var dpi: Int = 0
     lateinit var targetPath: String
     var maximumBytes: Long = 0
 }
-
-@InvokeArg
-class ClosePdfArgs {
-    lateinit var token: String
-}
-
-@InvokeArg
-class RecognizeImageArgs {
+@InvokeArg class ClosePdfArgs { lateinit var token: String }
+@InvokeArg class RecognizeImageArgs {
     lateinit var sourcePath: String
     var language: String = "en"
     var timeoutSeconds: Int = 0
 }
+@InvokeArg class BeginBackgroundExecutionArgs {
+    lateinit var jobId: String
+    lateinit var title: String
+    lateinit var detail: String
+}
+@InvokeArg class UpdateBackgroundExecutionArgs {
+    lateinit var jobId: String
+    lateinit var detail: String
+    var progressPercent: Int? = null
+}
+@InvokeArg class EndBackgroundExecutionArgs { lateinit var jobId: String }
 
 @TauriPlugin
 class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
@@ -91,12 +92,53 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun documentCapabilities(invoke: Invoke) {
-        val result = JSObject()
-        result.put("pdfRenderAvailable", true)
-        result.put("ocrAvailable", true)
-        result.put("rendererEngine", PDF_RENDER_ENGINE)
-        result.put("ocrEngine", OCR_ENGINE)
-        invoke.resolve(result)
+        invoke.resolve(JSObject().apply {
+            put("pdfRenderAvailable", true)
+            put("ocrAvailable", true)
+            put("rendererEngine", PDF_RENDER_ENGINE)
+            put("ocrEngine", OCR_ENGINE)
+        })
+    }
+
+    @Command
+    fun beginBackgroundExecution(invoke: Invoke) {
+        val args = invoke.parseArgs(BeginBackgroundExecutionArgs::class.java)
+        try {
+            validateJobId(args.jobId)
+            OstudyDocumentExecutionService.begin(activity, args.jobId, args.title, args.detail)
+            invoke.resolve()
+        } catch (error: Exception) {
+            invoke.reject("Android could not begin foreground document execution: ${safeMessage(error)}")
+        }
+    }
+
+    @Command
+    fun updateBackgroundExecution(invoke: Invoke) {
+        val args = invoke.parseArgs(UpdateBackgroundExecutionArgs::class.java)
+        try {
+            validateJobId(args.jobId)
+            OstudyDocumentExecutionService.update(
+                activity,
+                args.jobId,
+                args.detail,
+                args.progressPercent?.coerceIn(0, 100),
+            )
+            invoke.resolve()
+        } catch (error: Exception) {
+            invoke.reject("Android could not update foreground document execution: ${safeMessage(error)}")
+        }
+    }
+
+    @Command
+    fun endBackgroundExecution(invoke: Invoke) {
+        val args = invoke.parseArgs(EndBackgroundExecutionArgs::class.java)
+        try {
+            validateJobId(args.jobId)
+            OstudyDocumentExecutionService.end(activity, args.jobId)
+            invoke.resolve()
+        } catch (error: Exception) {
+            invoke.reject("Android could not end foreground document execution: ${safeMessage(error)}")
+        }
     }
 
     @Command
@@ -106,9 +148,7 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
             try {
                 val source = validatePrivateFile(args.sourcePath, "PDF source")
                 val descriptor = ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY)
-                val renderer = try {
-                    PdfRenderer(descriptor)
-                } catch (error: Exception) {
+                val renderer = try { PdfRenderer(descriptor) } catch (error: Exception) {
                     descriptor.close()
                     throw error
                 }
@@ -116,15 +156,14 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
                 if (pageCount !in 1..MAX_PDF_PAGES) {
                     renderer.close()
                     descriptor.close()
-                    throw IllegalArgumentException(
-                        "The PDF must contain between 1 and $MAX_PDF_PAGES pages."
-                    )
+                    throw IllegalArgumentException("The PDF must contain between 1 and $MAX_PDF_PAGES pages.")
                 }
                 val token = UUID.randomUUID().toString().replace("-", "")
                 sessions[token] = PdfSession(descriptor, renderer)
-                val response = JSObject()
-                response.put("token", token)
-                response.put("pageCount", pageCount)
+                val response = JSObject().apply {
+                    put("token", token)
+                    put("pageCount", pageCount)
+                }
                 withContext(Dispatchers.Main) { invoke.resolve(response) }
             } catch (error: Exception) {
                 withContext(Dispatchers.Main) {
@@ -152,35 +191,26 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
                 target = validatePrivatePath(args.targetPath)
                 target.parentFile?.mkdirs()
                 val response = synchronized(session.lock) {
-                    val pageCount = session.renderer.pageCount
-                    require(args.pageNumber in 1..pageCount) {
+                    require(args.pageNumber in 1..session.renderer.pageCount) {
                         "The requested page is outside the PDF page range."
                     }
                     session.renderer.openPage(args.pageNumber - 1).use { page ->
                         val width = scaledDimension(page.width, args.dpi)
                         val height = scaledDimension(page.height, args.dpi)
-                        val pixels = width.toLong() * height.toLong()
-                        require(pixels in 1..MAX_RENDER_PIXELS) {
+                        require(width.toLong() * height.toLong() in 1..MAX_RENDER_PIXELS) {
                             "The requested page exceeds Android's bounded PDF bitmap budget."
                         }
                         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                         try {
                             bitmap.eraseColor(Color.WHITE)
-                            page.render(
-                                bitmap,
-                                null,
-                                null,
-                                PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
-                            )
+                            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                             FileOutputStream(target, false).use { output ->
                                 require(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
                                     "Android could not encode the rendered PDF page."
                                 }
                                 output.fd.sync()
                             }
-                        } finally {
-                            bitmap.recycle()
-                        }
+                        } finally { bitmap.recycle() }
                         val byteSize = target.length()
                         require(byteSize in 1..args.maximumBytes) {
                             "The rendered PDF page exceeds ostudy's image safety limit."
@@ -197,9 +227,7 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
             } catch (error: Exception) {
                 target?.delete()
                 withContext(Dispatchers.Main) {
-                    invoke.reject(
-                        "Android could not render PDF page ${args.pageNumber}: ${safeMessage(error)}"
-                    )
+                    invoke.reject("Android could not render PDF page ${args.pageNumber}: ${safeMessage(error)}")
                 }
             }
         }
@@ -234,38 +262,29 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
                     "The OCR image exceeds ostudy's image safety limit."
                 }
                 val dimensions = imageDimensions(source)
-                val pixels = dimensions.first.toLong() * dimensions.second.toLong()
                 require(
                     dimensions.first in 1..MAX_RENDER_DIMENSION &&
                         dimensions.second in 1..MAX_RENDER_DIMENSION &&
-                        pixels in 1..MAX_RENDER_PIXELS
-                ) {
-                    "The OCR image dimensions exceed Android's bounded image budget."
-                }
-
+                        dimensions.first.toLong() * dimensions.second.toLong() in 1..MAX_RENDER_PIXELS
+                ) { "The OCR image dimensions exceed Android's bounded image budget." }
                 val started = System.nanoTime()
                 val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
                 val recognized = try {
-                    val image = InputImage.fromFilePath(activity, Uri.fromFile(source))
                     Tasks.await(
-                        recognizer.process(image),
+                        recognizer.process(InputImage.fromFilePath(activity, Uri.fromFile(source))),
                         args.timeoutSeconds.toLong(),
-                        TimeUnit.SECONDS
+                        TimeUnit.SECONDS,
                     )
-                } finally {
-                    recognizer.close()
+                } finally { recognizer.close() }
+                val response = JSObject().apply {
+                    put("text", recognized.text)
+                    put("confidence", meanConfidence(recognized))
+                    put("engine", OCR_ENGINE)
+                    put("language", dominantLanguage(recognized, args.language))
+                    put("width", dimensions.first)
+                    put("height", dimensions.second)
+                    put("durationMillis", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started))
                 }
-                val response = JSObject()
-                response.put("text", recognized.text)
-                response.put("confidence", meanConfidence(recognized))
-                response.put("engine", OCR_ENGINE)
-                response.put("language", dominantLanguage(recognized, args.language))
-                response.put("width", dimensions.first)
-                response.put("height", dimensions.second)
-                response.put(
-                    "durationMillis",
-                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
-                )
                 withContext(Dispatchers.Main) { invoke.resolve(response) }
             } catch (error: Exception) {
                 withContext(Dispatchers.Main) {
@@ -293,33 +312,19 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     private fun meanConfidence(text: Text): Double {
-        var sum = 0.0
-        var samples = 0
-        for (block in text.textBlocks) {
-            for (line in block.lines) {
-                for (element in line.elements) {
-                    val confidence = element.confidence.toDouble()
-                    if (confidence.isFinite() && confidence > 0.0) {
-                        sum += confidence.coerceIn(0.0, 1.0)
-                        samples += 1
-                    }
-                }
-            }
-        }
-        if (samples > 0) return (sum / samples.toDouble()).coerceIn(0.0, 1.0)
+        val values = text.textBlocks.flatMap { it.lines }.flatMap { it.elements }
+            .map { it.confidence.toDouble() }
+            .filter { it.isFinite() && it > 0.0 }
+        if (values.isNotEmpty()) return values.average().coerceIn(0.0, 1.0)
         return if (text.text.isBlank()) 0.0 else 0.5
     }
 
     private fun dominantLanguage(text: Text, requested: String): String {
         val counts = linkedMapOf<String, Int>()
-        for (block in text.textBlocks) {
-            for (line in block.lines) {
-                for (element in line.elements) {
-                    val language = element.recognizedLanguage
-                    if (language.isNotBlank() && language != "und") {
-                        counts[language] = (counts[language] ?: 0) + 1
-                    }
-                }
+        for (element in text.textBlocks.flatMap { it.lines }.flatMap { it.elements }) {
+            val language = element.recognizedLanguage
+            if (language.isNotBlank() && language != "und") {
+                counts[language] = (counts[language] ?: 0) + 1
             }
         }
         return counts.maxByOrNull { it.value }?.key
@@ -348,15 +353,12 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
-    private fun closeSession(token: String) {
-        sessions.remove(token)?.close()
+    private fun validateJobId(jobId: String) {
+        require(JOB_ID_PATTERN.matches(jobId)) { "The document job identity is invalid." }
     }
 
-    private fun closeAllSessions() {
-        val active = sessions.keys.toList()
-        for (token in active) closeSession(token)
-    }
-
+    private fun closeSession(token: String) { sessions.remove(token)?.close() }
+    private fun closeAllSessions() { sessions.keys.toList().forEach(::closeSession) }
     private fun safeMessage(error: Throwable): String =
         (error.message ?: error::class.java.simpleName)
             .filter { !it.isISOControl() || it == ' ' }
@@ -365,7 +367,7 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
     private data class PdfSession(
         val descriptor: ParcelFileDescriptor,
         val renderer: PdfRenderer,
-        val lock: Any = Any()
+        val lock: Any = Any(),
     ) {
         fun close() {
             synchronized(lock) {
