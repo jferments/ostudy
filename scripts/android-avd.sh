@@ -65,6 +65,19 @@ connected_emulator_serial_for_avd() {
   return 1
 }
 
+wait_for_avd_disconnect() {
+  local deadline
+  deadline=$((SECONDS + 30))
+  while ((SECONDS < deadline)); do
+    if [[ -z "$(connected_emulator_serial_for_avd || true)" ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  printf 'Android emulator %s did not disconnect within 30 seconds.\n' "$AVD_NAME" >&2
+  return 1
+}
+
 create_avd() {
   bash "$SCRIPT_DIR/android-doctor.sh" --emulator
   if "$emulator" -list-avds | grep -Fxq "$AVD_NAME"; then
@@ -94,9 +107,14 @@ start_avd() {
   local serial
   serial="$(connected_emulator_serial_for_avd || true)"
   if [[ -n "$serial" ]]; then
-    printf 'Android emulator %s is already connected as %s.\n' "$AVD_NAME" "$serial"
-    wait_for_boot
-    return
+    if ((WIPE == 0)); then
+      printf 'Android emulator %s is already connected as %s.\n' "$AVD_NAME" "$serial"
+      wait_for_boot
+      return
+    fi
+    printf 'Restarting Android emulator %s with a clean data image.\n' "$AVD_NAME"
+    stop_avd >/dev/null
+    wait_for_avd_disconnect
   fi
 
   args=(
