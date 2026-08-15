@@ -158,4 +158,31 @@ impl<R: Runtime> OstudyPlatform<R> {
             .run_mobile_plugin("recognizeImage", request)
             .map_err(Into::into)
     }
+
+    pub fn begin_background_execution(
+        &self,
+        request: BeginBackgroundExecutionRequest,
+    ) -> Result<()> {
+        self.documents
+            .run_mobile_plugin("beginBackgroundExecution", request)
+            .map_err(Into::into)
+    }
+
+    pub fn update_background_execution(
+        &self,
+        request: UpdateBackgroundExecutionRequest,
+    ) -> Result<()> {
+        self.documents
+            .run_mobile_plugin("updateBackgroundExecution", request)
+            .map_err(Into::into)
+    }
+
+    pub fn end_background_execution(&self, job_id: String) -> Result<()> {
+        self.documents
+            .run_mobile_plugin(
+                "endBackgroundExecution",
+                EndBackgroundExecutionRequest { job_id },
+            )
+            .map_err(Into::into)
+    }
 }
