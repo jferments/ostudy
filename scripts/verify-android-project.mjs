@@ -109,6 +109,11 @@ expectContains(
   'testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"',
   "instrumentation runner",
 );
+expectContains(
+  gradle,
+  `androidTestImplementation("org.jetbrains.kotlin:kotlin-stdlib:${env.get("ANDROID_KOTLIN_VERSION")}")`,
+  "instrumentation APK Kotlin runtime pin",
+);
 
 const mainActivity = await read(
   "src-tauri/gen/android/app/src/main/java/io/github/jferments/ostudy/MainActivity.kt",
