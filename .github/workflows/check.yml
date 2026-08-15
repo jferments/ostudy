@@ -3,7 +3,7 @@ name: Check
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    types: [opened, synchronize, reopened, edited, ready_for_review, converted_to_draft]
   push:
     branches: [main]
   workflow_dispatch:
@@ -16,6 +16,7 @@ on:
         options:
           - static
           - fast
+          - diagnostic
           - full
       apply_candidates:
         description: Explicitly commit canonical Cargo.lock and rustfmt output to the selected branch
@@ -34,11 +35,12 @@ jobs:
   check:
     if: github.event_name != 'workflow_dispatch' || inputs.apply_candidates != true
     runs-on: [self-hosted, linux, x64, ostudy]
-    timeout-minutes: 45
+    timeout-minutes: 150
 
     env:
       CI: "true"
       CARGO_TERM_COLOR: always
+      OSTUDY_DIAGNOSTIC_PR: ${{ github.event.pull_request.number || '' }}
 
     steps:
       - name: Check out repository
@@ -68,9 +70,14 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_GATE: ${{ inputs.gate || 'full' }}
           PR_DRAFT: ${{ github.event.pull_request.draft || false }}
+          PR_BODY: ${{ github.event.pull_request.body || '' }}
         run: |
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             gate="$DISPATCH_GATE"
+          elif [[ "$EVENT_NAME" == "pull_request" && "$PR_DRAFT" == "true" ]] \
+            && { [[ "$PR_BODY" == *'<!-- agent-diagnostics:core -->'* ]] \
+              || [[ "$PR_BODY" == *'<!-- agent-diagnostics:all -->'* ]]; }; then
+            gate="diagnostic"
           elif [[ "$EVENT_NAME" == "pull_request" && "$PR_DRAFT" == "true" ]]; then
             gate="fast"
           else
@@ -86,10 +93,36 @@ jobs:
           bash ./scripts/check-static.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"
 
       - name: Run fast high-return checks
-        if: steps.gate.outputs.gate != 'static'
+        if: steps.gate.outputs.gate == 'fast' || steps.gate.outputs.gate == 'full'
         run: |
           set -o pipefail
           bash ./scripts/check-fast.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-fast-check.log"
+
+      - name: Run multi-failure core diagnostic sweep
+        if: steps.gate.outputs.gate == 'diagnostic'
+        run: |
+          bash ./scripts/check-diagnostic.sh \
+            --profile core \
+            --output-dir "$RUNNER_TEMP/ostudy-agent-diagnostics"
+
+      - name: Publish diagnostic summary
+        if: always() && steps.gate.outputs.gate == 'diagnostic'
+        run: |
+          summary="$RUNNER_TEMP/ostudy-agent-diagnostics/summary.md"
+          if [[ -f "$summary" ]]; then
+            cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '## ostudy agent diagnostics\n\nNo summary was produced; inspect the job log.\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload core diagnostic evidence
+        if: always() && steps.gate.outputs.gate == 'diagnostic'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ostudy-agent-diagnostics-core-${{ github.event.pull_request.number || 'dispatch' }}-${{ github.sha }}
+          path: ${{ runner.temp }}/ostudy-agent-diagnostics/**
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Run full qualification gate
         if: steps.gate.outputs.gate == 'full'
@@ -99,8 +132,8 @@ jobs:
           set -o pipefail
           ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-full-check.log"
 
-      - name: Summarize qualification failure
-        if: failure()
+      - name: Summarize authoritative qualification failure
+        if: failure() && steps.gate.outputs.gate != 'diagnostic'
         run: |
           node ./scripts/summarize-check-failure.mjs \
             "$RUNNER_TEMP/ostudy-static-check.log" \
@@ -108,12 +141,12 @@ jobs:
             "$RUNNER_TEMP/ostudy-full-check.log" \
             >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Export diagnostics after a failure
-        if: failure()
+      - name: Export authoritative diagnostics after a failure
+        if: failure() && steps.gate.outputs.gate != 'diagnostic'
         run: ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-diagnostics.tar.gz"
 
-      - name: Upload failure diagnostics
-        if: failure()
+      - name: Upload authoritative failure diagnostics
+        if: failure() && steps.gate.outputs.gate != 'diagnostic'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ostudy-check-diagnostics
