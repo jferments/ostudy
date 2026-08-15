@@ -134,11 +134,11 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
         )
         self.assertIn(".android-emulator-*.pid", ignore)
 
-    def test_system_picker_success_contract_is_instrumentation_only(self) -> None:
+    def test_system_picker_success_contract_is_java_runtime_independent(self) -> None:
         test_manifest = (
             ROOT / "src-tauri" / "gen" / "android" / "app" / "src" / "androidTest" / "AndroidManifest.xml"
         ).read_text(encoding="utf-8")
-        provider = (
+        provider_path = (
             ROOT
             / "src-tauri"
             / "gen"
@@ -151,8 +151,10 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
             / "github"
             / "jferments"
             / "ostudy"
-            / "OstudyTestDocumentsProvider.kt"
-        ).read_text(encoding="utf-8")
+            / "OstudyTestDocumentsProvider.java"
+        )
+        provider = provider_path.read_text(encoding="utf-8")
+        old_provider = provider_path.with_suffix(".kt")
         smoke = (
             ROOT
             / "src-tauri"
@@ -169,7 +171,10 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
             / "AndroidDocumentsProviderSmokeTest.kt"
         ).read_text(encoding="utf-8")
         self.assertIn("android.content.action.DOCUMENTS_PROVIDER", test_manifest)
-        self.assertIn("class OstudyTestDocumentsProvider : DocumentsProvider()", provider)
+        self.assertIn("public final class OstudyTestDocumentsProvider extends DocumentsProvider", provider)
+        self.assertNotIn("kotlin.", provider)
+        self.assertNotIn("androidx.", provider)
+        self.assertFalse(old_provider.exists())
         self.assertIn("android-fixture.ostudy.json", provider)
         self.assertIn("android-fixture.png", provider)
         self.assertIn("android-fixture.pdf", provider)
