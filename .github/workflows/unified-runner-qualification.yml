@@ -39,13 +39,16 @@ jobs:
     env:
       CI: "true"
       CARGO_TERM_COLOR: always
+      QUALIFIED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
-      - name: Check out repository
+      - name: Check out exact source head
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ env.QUALIFIED_SHA }}
           clean: true
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Expose pinned user toolchains and persistent caches
         run: |
@@ -56,6 +59,9 @@ jobs:
           mkdir -p \
             "$HOME/.cache/ostudy/gradle" \
             "$HOME/.cache/ostudy/cargo-target"
+
+      - name: Verify exact checkout
+        run: test "$(git rev-parse HEAD)" = "$QUALIFIED_SHA"
 
       - name: Enforce runner-infrastructure-only pull-request scope
         env:
@@ -116,7 +122,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ostudy-unified-runner-${{ github.sha }}
+          name: ostudy-unified-runner-${{ env.QUALIFIED_SHA }}
           path: |
             ${{ runner.temp }}/ostudy-unified-diagnostics.tar.gz
             ${{ runner.temp }}/android-smoke/**
@@ -133,7 +139,7 @@ jobs:
           {
             echo '# Unified runner qualification'
             echo
-            echo "- Head: \`$GITHUB_SHA\`"
+            echo "- Head: \`$QUALIFIED_SHA\`"
             echo "- Runner: \`$RUNNER_NAME\`"
             echo "- Lane: \`$LANE\`"
             echo "- Status: **$JOB_STATUS**"
