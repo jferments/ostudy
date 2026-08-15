@@ -75,6 +75,24 @@ printf 'case\tstatus\tprerequisite\tduration_ms\tlog\n' > "$RESULTS_TSV"
 
 adb="$ANDROID_HOME/platform-tools/adb"
 started_emulator=0
+
+connected_emulator_name() {
+  local serial="$1"
+  "$adb" -s "$serial" emu avd name 2>/dev/null | tr -d '\r' | awk 'NF && $0 != "OK" { print; exit }'
+}
+
+serial_for_avd() {
+  local serial
+  while read -r serial; do
+    [[ -n "$serial" ]] || continue
+    if [[ "$(connected_emulator_name "$serial")" == "$AVD_NAME" ]]; then
+      printf '%s\n' "$serial"
+      return 0
+    fi
+  done < <("$adb" devices | awk 'NR > 1 && $1 ~ /^emulator-/ && $2 == "device" { print $1 }')
+  return 1
+}
+
 sanitize_field() {
   printf '%s' "$1" | tr '\t\r\n' '   '
 }
@@ -111,7 +129,7 @@ cleanup() {
     --page-size "$page_size" \
     > "$ARTIFACT_DIR/result-summary.txt" 2>&1 || true
   if ((started_emulator == 1 && KEEP_EMULATOR == 0)); then
-    bash ./scripts/android-avd.sh stop >/dev/null 2>&1
+    bash ./scripts/android-avd.sh stop --name "$AVD_NAME" >/dev/null 2>&1
   fi
   trap - EXIT
   exit "$status"
@@ -119,14 +137,20 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ -z "$SERIAL" ]]; then
+  # The CI AVD is identified by its configured name, not by whichever emulator
+  # happens to be the first adb device. This allows a developer's unrelated
+  # Android Studio emulator to remain running on the same bare-metal host.
+  preexisting_serial="$(serial_for_avd || true)"
   start_args=(start --headless --name "$AVD_NAME" --system-image "$SYSTEM_IMAGE")
   ((WIPE_DATA == 1)) && start_args+=(--wipe-data)
   bash ./scripts/android-avd.sh "${start_args[@]}"
-  started_emulator=1
-  SERIAL="$($adb devices | awk 'NR > 1 && $2 == "device" && $1 ~ /^emulator-/ { print $1; exit }')"
+  if [[ -z "$preexisting_serial" ]]; then
+    started_emulator=1
+  fi
+  SERIAL="$(serial_for_avd || true)"
 fi
 if [[ -z "$SERIAL" ]]; then
-  printf 'No Android emulator or device is available.\n' >&2
+  printf 'No Android emulator or device is available for requested AVD %s.\n' "$AVD_NAME" >&2
   exit 1
 fi
 export ANDROID_SERIAL="$SERIAL"
