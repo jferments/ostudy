@@ -27,14 +27,14 @@ await mkdir(absoluteOutput, { recursive: true });
 const raw = await readFile(absoluteResults, "utf8");
 const lines = raw.split(/\r?\n/u).filter(Boolean);
 const [headerLine, ...rows] = lines;
-const expectedHeader = "name\tprofile\tstatus\texit_code\tdependencies\tlog";
+const expectedHeader = "name\tprofile\tstatus\texit_code\tduration_ms\tdependencies\tlog";
 if (headerLine !== expectedHeader) {
   throw new Error(`Unexpected diagnostic results header: ${headerLine ?? "<missing>"}`);
 }
 
 const gates = [];
 for (const row of rows) {
-  const [name, gateProfile, status, exitCode, dependencies, logPath] = row.split("\t");
+  const [name, gateProfile, status, exitCode, durationMs, dependencies, logPath] = row.split("\t");
   if (!name || !gateProfile || !status || !logPath) {
     throw new Error(`Malformed diagnostic result row: ${row}`);
   }
@@ -51,6 +51,7 @@ for (const row of rows) {
     profile: gateProfile,
     status,
     exitCode: exitCode === "" ? null : Number(exitCode),
+    durationMs: durationMs === "" ? null : Number(durationMs),
     dependencies: dependencies ? dependencies.split(/\s+/u).filter(Boolean) : [],
     log: logPath,
     highlights: extractHighlights(logText),
@@ -63,6 +64,7 @@ const counts = Object.fromEntries(
     gates.filter((gate) => gate.status === status).length,
   ]),
 );
+const elapsedMs = gates.reduce((sum, gate) => sum + (gate.durationMs ?? 0), 0);
 
 const payload = {
   schemaVersion: 1,
@@ -74,6 +76,7 @@ const payload = {
     : null,
   runner: process.env.RUNNER_NAME ?? null,
   counts,
+  elapsedMs,
   gates,
 };
 
@@ -89,11 +92,12 @@ summary.push(`- Profile: \`${profile}\``);
 summary.push(`- Commit: \`${payload.commit ?? "unknown"}\``);
 summary.push(`- Runner: \`${payload.runner ?? "unknown"}\``);
 summary.push(`- Results: **${counts.pass} passed**, **${counts.fail} failed**, **${counts.blocked} blocked**`, "");
-summary.push("| Gate | Profile | Result | Exit | Dependencies |");
-summary.push("| --- | --- | --- | ---: | --- |");
+summary.push("| Gate | Profile | Result | Time | Exit | Dependencies |");
+summary.push("| --- | --- | --- | ---: | ---: | --- |");
 for (const gate of gates) {
   const dependencies = gate.dependencies.length > 0 ? gate.dependencies.map((item) => `\`${item}\``).join(", ") : "—";
-  summary.push(`| \`${gate.name}\` | ${gate.profile} | **${gate.status}** | ${gate.exitCode ?? "—"} | ${dependencies} |`);
+  const duration = gate.durationMs === null ? "—" : `${(gate.durationMs / 1000).toFixed(1)}s`;
+  summary.push(`| \`${gate.name}\` | ${gate.profile} | **${gate.status}** | ${duration} | ${gate.exitCode ?? "—"} | ${dependencies} |`);
 }
 
 const failures = gates.filter((gate) => gate.status === "FAIL");
@@ -145,6 +149,7 @@ function extractHighlights(text) {
       /BUILD FAILED/u.test(line) ||
       /Execution failed for task/u.test(line) ||
       /Compilation error/u.test(line) ||
+      /Android smoke case failed/u.test(line) ||
       /Exception|Traceback \(most recent call last\)/u.test(line);
 
     if (!trigger) continue;
@@ -153,10 +158,7 @@ function extractHighlights(text) {
     }
   }
 
-  if (selected.size === 0) {
-    return source.filter(Boolean).slice(-25);
-  }
-
+  if (selected.size === 0) return source.filter(Boolean).slice(-25);
   return [...selected]
     .sort((left, right) => left - right)
     .map((index) => source[index].trimEnd())
