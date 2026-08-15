@@ -18,7 +18,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -98,8 +97,9 @@ class AndroidDocumentsProviderSmokeTest {
         val pickerPackages = documentPickerPackages(Intent.ACTION_OPEN_DOCUMENT)
         waitForPicker(device, pickerPackages, "Android $purpose import picker")
         openFixtureRoot(device)
-        val fixtureObject = device.wait(Until.findObject(By.text(fixture)), 10_000)
-        assertNotNull("System picker did not display $fixture", fixtureObject)
+        val fixtureObject = requireNotNull(
+            device.wait(Until.findObject(By.text(fixture)), 10_000)
+        ) { "System picker did not display $fixture" }
         fixtureObject.click()
         waitForPickerClosed(device, pickerPackages, "Android $purpose import picker")
         waitForBridge(webView)
@@ -118,17 +118,15 @@ class AndroidDocumentsProviderSmokeTest {
             return
         }
 
-        val rootButton =
+        val rootButton = requireNotNull(
             device.findObject(By.desc("Show roots"))
                 ?: device.findObject(By.descContains("roots"))
                 ?: device.findObject(By.desc("Navigate up"))
-        assertNotNull("Android DocumentsUI did not expose its roots navigation control", rootButton)
+        ) { "Android DocumentsUI did not expose its roots navigation control" }
         rootButton.click()
-        val root = device.wait(
-            Until.findObject(By.text(OstudyTestDocumentsProvider.ROOT_TITLE)),
-            10_000
-        )
-        assertNotNull("Android DocumentsUI did not expose the ostudy test provider root", root)
+        val root = requireNotNull(
+            device.wait(Until.findObject(By.text(OstudyTestDocumentsProvider.ROOT_TITLE)), 10_000)
+        ) { "Android DocumentsUI did not expose the ostudy test provider root" }
         root.click()
     }
 
@@ -139,8 +137,9 @@ class AndroidDocumentsProviderSmokeTest {
                 return
             }
         }
-        val byText = device.findObject(By.text("Save")) ?: device.findObject(By.text("Create"))
-        assertNotNull("Android DocumentsUI did not expose its save action", byText)
+        val byText = requireNotNull(
+            device.findObject(By.text("Save")) ?: device.findObject(By.text("Create"))
+        ) { "Android DocumentsUI did not expose its save action" }
         byText.click()
     }
 
