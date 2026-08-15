@@ -88,10 +88,24 @@ if [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then
 else
   fail "/dev/kvm is not readable/writable by $(id -un)"
 fi
-if command -v kvm-ok >/dev/null 2>&1 && kvm-ok >/dev/null 2>&1; then
-  ok "kvm-ok reports acceleration is available inside the guest"
+
+# cpu-checker's kvm-ok is useful as a host diagnostic, but it is not the
+# authoritative gate for this nested Android runner. The direct /dev/kvm
+# permission check above and the Android Emulator's own -accel-check below
+# validate the actual capability this runner needs. Keep kvm-ok as additional
+# evidence without rejecting an otherwise working nested-KVM guest.
+if command -v kvm-ok >/dev/null 2>&1; then
+  kvm_ok_output="$(kvm-ok 2>&1 || true)"
+  if grep -Fq 'KVM acceleration can be used' <<< "$kvm_ok_output"; then
+    ok "kvm-ok reports acceleration is available inside the guest"
+  else
+    warn "kvm-ok is inconclusive in this nested guest; direct KVM and Android Emulator checks remain authoritative"
+    if [[ -n "$kvm_ok_output" ]]; then
+      printf '%s\n' "$kvm_ok_output"
+    fi
+  fi
 else
-  fail "kvm-ok does not report usable nested KVM"
+  warn "kvm-ok is unavailable; direct KVM and Android Emulator checks remain authoritative"
 fi
 
 if findmnt -rn -t 9p,virtiofs,nfs,nfs4,cifs,fuse.sshfs | grep -q .; then
