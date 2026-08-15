@@ -314,6 +314,12 @@ class AndroidSmokeTest {
         waitForPickerClosed(device, pickerPackages, label)
         waitForBridge(webView)
         waitForFileOperationCancelled(webView, sequence, label)
+        // Resolving the JS invoke proves the plugin callback ran, but the
+        // ActivityResult registry can still have UI-thread bookkeeping queued.
+        // Drain that observable queue before the sequential smoke starts another
+        // picker so we test operation-slot reuse rather than callback overlap.
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        device.waitForIdle(5_000)
     }
 
     private fun startFileOperation(webView: WebView, expression: String): Int {
@@ -473,30 +479,9 @@ class AndroidSmokeTest {
         )
     }
 
-    private fun describeViewTree(root: View): String {
-        val nodes = mutableListOf<String>()
-        collectViewTree(root, depth = 0, nodes = nodes)
-        return nodes.joinToString(separator = " | ")
-    }
-
-    private fun collectViewTree(view: View, depth: Int, nodes: MutableList<String>) {
-        if (nodes.size >= 40) return
-        nodes.add("${"  ".repeat(depth)}${view.javaClass.simpleName}")
-        if (view is ViewGroup) {
-            for (index in 0 until view.childCount) {
-                collectViewTree(view.getChildAt(index), depth + 1, nodes)
-                if (nodes.size >= 40) return
-            }
-        }
-    }
-
     private fun waitForBridge(webView: WebView) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
         var latest = JSONObject()
-            .put("type", "unavailable")
-            .put("state", "not-evaluated")
-            .put("error", "")
-            .put("readyState", "unknown")
         while (System.nanoTime() < deadline) {
             val encoded = evaluateSync(
                 webView,
@@ -514,20 +499,12 @@ class AndroidSmokeTest {
             )
             val decoded = decodeJavascriptString(encoded)
             if (decoded == "null") {
-                latest = JSONObject()
-                    .put("type", "unavailable")
-                    .put("state", "no-evaluation-result")
-                    .put("error", "")
-                    .put("readyState", "unknown")
                 Thread.sleep(100)
                 continue
             }
-
             latest = JSONObject(decoded)
             if (latest.optString("type") == "object") return
-
-            val state = latest.optString("state")
-            if (state == "missing" || state == "error") {
+            if (latest.optString("state") in setOf("missing", "error")) {
                 throw AssertionError("Android smoke bridge initialization failed: $latest")
             }
             Thread.sleep(100)
@@ -536,28 +513,46 @@ class AndroidSmokeTest {
     }
 
     private fun evaluatePromise(webView: WebView, expression: String): JSONObject {
-        val key = "__ostudySmoke${UUID.randomUUID().toString().replace("-", "")}"
-        evaluateSync(
-            webView,
-            """
+        val id = UUID.randomUUID().toString()
+        val script = """
             (() => {
-              window['$key'] = null;
+              window.__OSTUDY_ANDROID_TEST_RESULTS__ = window.__OSTUDY_ANDROID_TEST_RESULTS__ || {};
+              window.__OSTUDY_ANDROID_TEST_RESULTS__['$id'] = { state: 'pending' };
               Promise.resolve($expression)
-                .then(value => { window['$key'] = JSON.stringify({ ok: true, value }); })
-                .catch(error => { window['$key'] = JSON.stringify({ ok: false, error: String(error) }); });
+                .then(value => {
+                  window.__OSTUDY_ANDROID_TEST_RESULTS__['$id'] = { state: 'ok', value };
+                })
+                .catch(error => {
+                  window.__OSTUDY_ANDROID_TEST_RESULTS__['$id'] = {
+                    state: 'error',
+                    error: String(error?.stack || error)
+                  };
+                });
               return true;
             })()
-            """.trimIndent()
-        )
-        val envelope = waitUntil(
-            webView,
-            timeoutSeconds = 45,
-            predicate = { it != "null" },
-            expression = { "window['$key']" }
-        )
-        val parsed = JSONObject(decodeJavascriptString(envelope))
-        assertEquals(parsed.optString("error"), true, parsed.getBoolean("ok"))
-        return parsed.getJSONObject("value")
+        """.trimIndent()
+        evaluateSync(webView, script)
+
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        while (System.nanoTime() < deadline) {
+            val encoded = evaluateSync(
+                webView,
+                "JSON.stringify(window.__OSTUDY_ANDROID_TEST_RESULTS__?.['$id'] || null)"
+            )
+            val decoded = decodeJavascriptString(encoded)
+            if (decoded != "null") {
+                val state = JSONObject(decoded)
+                when (state.getString("state")) {
+                    "ok" -> {
+                        evaluateSync(webView, "delete window.__OSTUDY_ANDROID_TEST_RESULTS__['$id']; true")
+                        return state.getJSONObject("value")
+                    }
+                    "error" -> throw AssertionError(state.getString("error"))
+                }
+            }
+            Thread.sleep(100)
+        }
+        throw AssertionError("Timed out waiting for Android smoke bridge promise")
     }
 
     private fun waitUntil(
@@ -565,15 +560,15 @@ class AndroidSmokeTest {
         timeoutSeconds: Long = 15,
         predicate: (String) -> Boolean,
         expression: () -> String
-    ): String {
+    ) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
         var latest = "null"
         while (System.nanoTime() < deadline) {
-            latest = evaluateSync(webView, expression())
-            if (predicate(latest)) return latest
-            Thread.sleep(100)
+            latest = decodeJavascriptString(evaluateSync(webView, expression()))
+            if (predicate(latest)) return
+            Thread.sleep(75)
         }
-        throw AssertionError("Timed out waiting for JavaScript expression. Last result: $latest")
+        throw AssertionError("Timed out waiting for Android UI state. Last value: $latest")
     }
 
     private fun evaluateSync(webView: WebView, script: String): String {
@@ -594,8 +589,7 @@ class AndroidSmokeTest {
         return JSONArray("[$value]").getString(0)
     }
 
-    private fun findWebView(activity: Activity): WebView? =
-        findWebView(activity.window.decorView)
+    private fun findWebView(activity: Activity): WebView? = findWebView(activity.window.decorView)
 
     private fun findWebView(view: View): WebView? {
         if (view is WebView) return view
@@ -605,5 +599,22 @@ class AndroidSmokeTest {
             }
         }
         return null
+    }
+
+    private fun describeViewTree(root: View): String {
+        val nodes = mutableListOf<String>()
+        collectViewTree(root, 0, nodes)
+        return nodes.joinToString(" | ")
+    }
+
+    private fun collectViewTree(view: View, depth: Int, nodes: MutableList<String>) {
+        if (nodes.size >= 40) return
+        nodes.add("${"  ".repeat(depth)}${view.javaClass.simpleName}")
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                collectViewTree(view.getChildAt(index), depth + 1, nodes)
+                if (nodes.size >= 40) return
+            }
+        }
     }
 }
