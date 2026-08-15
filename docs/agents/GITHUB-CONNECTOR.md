@@ -2,7 +2,7 @@
 
 This document defines the repository-access workflow for ChatGPT or another agent operating through an authenticated GitHub Connector rather than a normal local checkout.
 
-The repository invariants in [`../../AGENTS.md`](../../AGENTS.md), [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md), and [`../development/workflow.md`](../development/workflow.md) still apply. This document only defines how to establish and verify GitHub state in a connector-backed environment.
+The repository invariants in [`../../AGENTS.md`](../../AGENTS.md), [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md), and [`../development/workflow.md`](../development/workflow.md) still apply. This document only defines how to establish, mutate, verify, and qualify GitHub state in a connector-backed environment.
 
 ## 1. Choose connector mode explicitly
 
@@ -99,7 +99,7 @@ For substantial implementation work:
 6. publish and verify the new head;
 7. inspect the new exact-head results and repeat until the required gates are green or a concrete external blocker remains.
 
-Use the opt-in [`Agent diagnostics`](../development/agent-diagnostics.md) workflow when broader multi-failure information would reduce serial repair cycles. The agent may add the appropriate PR-body marker to its own development PR and consume the resulting logs/artifacts. The workflow is diagnostic only and does not replace authoritative merge qualification.
+Use the opt-in [diagnostic mode](../development/agent-diagnostics.md) when broader multi-failure information would reduce serial repair cycles. Diagnostic mode is integrated into the standard `Check` and `Android check` workflows: on draft PRs, a body marker substitutes the appropriate multi-failure development pass for the ordinary draft gate instead of launching duplicate CI. Ready-for-review PRs always return to authoritative qualification.
 
 Do not ask the human to run `pnpm check:static`, `pnpm check`, `pnpm android:smoke`, or an equivalent repository test solely to relay output when a suitable self-hosted workflow is available. Human intervention is still appropriate for manual visual/interaction judgment, physical-device behavior, protected credentials, runner-host administration, or other work that cannot be observed or performed through GitHub.
 
