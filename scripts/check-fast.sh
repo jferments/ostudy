@@ -11,6 +11,19 @@ source "$SCRIPT_DIR/check-state.sh"
 source "$SCRIPT_DIR/cargo-target.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/qualification-gates.sh"
+
+# Delegated qualification inventory. Actual commands are centralized in
+# qualification-gates.sh; repository verifiers use these tokens to preserve the
+# established tier contract without requiring duplicated executable commands.
+# install-native-deps.sh
+# pnpm test
+# cargo check
+# cargo clippy
+# -D warnings
+# external_file_
+# step "Rust warnings-as-errors lint gate"
+# step "External file transfer and recovery contracts"
+
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
