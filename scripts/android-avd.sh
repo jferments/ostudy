@@ -13,7 +13,6 @@ SYSTEM_IMAGE="$ANDROID_PHONE_SYSTEM_IMAGE"
 HEADLESS=0
 WIPE=0
 TIMEOUT_SECONDS=240
-PID_FILE="$ROOT_DIR/.android-emulator.pid"
 
 usage() {
   cat <<'USAGE'
@@ -44,14 +43,26 @@ done
 adb="$ANDROID_HOME/platform-tools/adb"
 emulator="$ANDROID_HOME/emulator/emulator"
 avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
-
-connected_emulator_serial() {
-  "$adb" devices | awk 'NR > 1 && $2 == "device" && $1 ~ /^emulator-/ { print $1; exit }'
-}
+safe_avd_name="$(printf '%s' "$AVD_NAME" | tr -c 'A-Za-z0-9._-' '_')"
+PID_FILE="$ROOT_DIR/.android-emulator-${safe_avd_name}.pid"
+LOG_FILE="$ROOT_DIR/android-emulator-${safe_avd_name}.log"
 
 connected_emulator_name() {
   local serial="$1"
   "$adb" -s "$serial" emu avd name 2>/dev/null | tr -d '\r' | awk 'NF && $0 != "OK" { print; exit }'
+}
+
+connected_emulator_serial_for_avd() {
+  local serial current_name
+  while read -r serial; do
+    [[ -n "$serial" ]] || continue
+    current_name="$(connected_emulator_name "$serial")"
+    if [[ "$current_name" == "$AVD_NAME" ]]; then
+      printf '%s\n' "$serial"
+      return 0
+    fi
+  done < <("$adb" devices | awk 'NR > 1 && $1 ~ /^emulator-/ && $2 == "device" { print $1 }')
+  return 1
 }
 
 create_avd() {
@@ -80,18 +91,12 @@ start_avd() {
     create_avd
   fi
 
-  local serial current_name
-  serial="$(connected_emulator_serial)"
+  local serial
+  serial="$(connected_emulator_serial_for_avd || true)"
   if [[ -n "$serial" ]]; then
-    current_name="$(connected_emulator_name "$serial")"
-    if [[ "$current_name" == "$AVD_NAME" ]]; then
-      printf 'Android emulator %s is already connected as %s.\n' "$AVD_NAME" "$serial"
-      wait_for_boot
-      return
-    fi
-    printf 'Stopping connected emulator %s before starting requested AVD %s.\n' \
-      "${current_name:-$serial}" "$AVD_NAME"
-    stop_avd >/dev/null
+    printf 'Android emulator %s is already connected as %s.\n' "$AVD_NAME" "$serial"
+    wait_for_boot
+    return
   fi
 
   args=(
@@ -104,23 +109,19 @@ start_avd() {
   ((HEADLESS == 1)) && args+=(-no-window)
   ((WIPE == 1)) && args+=(-wipe-data)
   printf 'Starting Android Emulator %s (%s)...\n' "$AVD_NAME" "$SYSTEM_IMAGE"
-  "$emulator" "${args[@]}" > "$ROOT_DIR/android-emulator.log" 2>&1 &
+  "$emulator" "${args[@]}" > "$LOG_FILE" 2>&1 &
   printf '%s\n' "$!" > "$PID_FILE"
   wait_for_boot
 }
 
 wait_for_boot() {
   "$adb" start-server >/dev/null
+  local deadline serial current_name
   deadline=$((SECONDS + TIMEOUT_SECONDS))
-  serial=""
   while ((SECONDS < deadline)); do
-    serial="$(connected_emulator_serial)"
+    serial="$(connected_emulator_serial_for_avd || true)"
     if [[ -n "$serial" ]] && [[ "$($adb -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then
       current_name="$(connected_emulator_name "$serial")"
-      if [[ -n "$current_name" && "$current_name" != "$AVD_NAME" ]]; then
-        printf 'Connected emulator is %s, expected %s.\n' "$current_name" "$AVD_NAME" >&2
-        exit 1
-      fi
       "$adb" -s "$serial" shell input keyevent 82 >/dev/null 2>&1 || true
       "$adb" -s "$serial" shell settings put global window_animation_scale 0 >/dev/null
       "$adb" -s "$serial" shell settings put global transition_animation_scale 0 >/dev/null
@@ -134,22 +135,32 @@ wait_for_boot() {
     fi
     sleep 2
   done
-  printf 'Android Emulator did not finish booting within %s seconds.\n' "$TIMEOUT_SECONDS" >&2
-  tail -n 100 "$ROOT_DIR/android-emulator.log" >&2 || true
+  printf 'Android Emulator %s did not finish booting within %s seconds.\n' "$AVD_NAME" "$TIMEOUT_SECONDS" >&2
+  tail -n 100 "$LOG_FILE" >&2 || true
   exit 1
 }
 
 stop_avd() {
-  mapfile -t serials < <("$adb" devices | awk 'NR > 1 && $1 ~ /^emulator-/ { print $1 }')
-  for serial in "${serials[@]}"; do
-    "$adb" -s "$serial" emu kill >/dev/null 2>&1 || true
-  done
+  local serial stopped=0 pid
+  while read -r serial; do
+    [[ -n "$serial" ]] || continue
+    if [[ "$(connected_emulator_name "$serial")" == "$AVD_NAME" ]]; then
+      "$adb" -s "$serial" emu kill >/dev/null 2>&1 || true
+      stopped=1
+    fi
+  done < <("$adb" devices | awk 'NR > 1 && $1 ~ /^emulator-/ { print $1 }')
+
   if [[ -f "$PID_FILE" ]]; then
     pid="$(cat "$PID_FILE")"
     kill "$pid" >/dev/null 2>&1 || true
     rm -f "$PID_FILE"
+    stopped=1
   fi
-  printf 'Stopped Android emulator processes.\n'
+  if ((stopped == 1)); then
+    printf 'Stopped Android emulator %s.\n' "$AVD_NAME"
+  else
+    printf 'Android emulator %s was not running.\n' "$AVD_NAME"
+  fi
 }
 
 status_avd() {
