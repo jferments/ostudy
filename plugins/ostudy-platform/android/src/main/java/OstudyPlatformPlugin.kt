@@ -26,6 +26,7 @@ import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import app.tauri.Logger
 import app.tauri.annotation.ActivityCallback
@@ -227,16 +228,21 @@ class OstudyPlatformPlugin(private val activity: Activity) : Plugin(activity) {
         val args = pendingImport
         pendingImport = null
         if (args == null) {
-            invoke.reject("The Android document-picker state was lost.")
+            deliverWhenResumed {
+                invoke.reject("The Android document-picker state was lost.")
+            }
             return
         }
         if (result.resultCode == Activity.RESULT_CANCELED) {
-            invoke.resolve(cancelledTransfer())
+            val response = cancelledTransfer()
+            deliverWhenResumed { invoke.resolve(response) }
             return
         }
         val uri = result.data?.data
         if (result.resultCode != Activity.RESULT_OK || uri == null) {
-            invoke.reject("The Android document picker did not return a readable file.")
+            deliverWhenResumed {
+                invoke.reject("The Android document picker did not return a readable file.")
+            }
             return
         }
         ioScope.launch {
@@ -247,10 +253,10 @@ class OstudyPlatformPlugin(private val activity: Activity) : Plugin(activity) {
                 response.put("displayName", queryDisplayName(uri) ?: "selected file")
                 response.put("reportedMediaType", activity.contentResolver.getType(uri))
                 response.put("copiedBytes", copied)
-                withContext(Dispatchers.Main) { invoke.resolve(response) }
+                deliverWhenResumed { invoke.resolve(response) }
             } catch (error: Exception) {
                 File(args.targetPath).delete()
-                withContext(Dispatchers.Main) {
+                deliverWhenResumed {
                     invoke.reject("The selected Android document could not be copied: ${safeMessage(error)}")
                 }
             }
@@ -286,16 +292,21 @@ class OstudyPlatformPlugin(private val activity: Activity) : Plugin(activity) {
         val args = pendingExport
         pendingExport = null
         if (args == null) {
-            invoke.reject("The Android save-dialog state was lost.")
+            deliverWhenResumed {
+                invoke.reject("The Android save-dialog state was lost.")
+            }
             return
         }
         if (result.resultCode == Activity.RESULT_CANCELED) {
-            invoke.resolve(cancelledTransfer())
+            val response = cancelledTransfer()
+            deliverWhenResumed { invoke.resolve(response) }
             return
         }
         val uri = result.data?.data
         if (result.resultCode != Activity.RESULT_OK || uri == null) {
-            invoke.reject("The Android document provider did not return a writable destination.")
+            deliverWhenResumed {
+                invoke.reject("The Android document provider did not return a writable destination.")
+            }
             return
         }
         ioScope.launch {
@@ -306,9 +317,9 @@ class OstudyPlatformPlugin(private val activity: Activity) : Plugin(activity) {
                 response.put("cancelled", false)
                 response.put("displayName", queryDisplayName(uri) ?: args.suggestedFilename)
                 response.put("copiedBytes", copied)
-                withContext(Dispatchers.Main) { invoke.resolve(response) }
+                deliverWhenResumed { invoke.resolve(response) }
             } catch (error: Exception) {
-                withContext(Dispatchers.Main) {
+                deliverWhenResumed {
                     invoke.reject("The prepared export could not be written: ${safeMessage(error)}")
                 }
             }
@@ -504,6 +515,32 @@ class OstudyPlatformPlugin(private val activity: Activity) : Plugin(activity) {
         }
         component.onBackPressedDispatcher.addCallback(component, callback)
         backCallback = callback
+    }
+
+    private fun deliverWhenResumed(deliver: () -> Unit) {
+        val owner = activity as? LifecycleOwner
+        if (owner == null) {
+            activity.runOnUiThread { deliver() }
+            return
+        }
+        activity.runOnUiThread {
+            if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                deliver()
+                return@runOnUiThread
+            }
+            if (owner.lifecycle.currentState == Lifecycle.State.DESTROYED) return@runOnUiThread
+            val observer = object : DefaultLifecycleObserver {
+                override fun onResume(owner: LifecycleOwner) {
+                    owner.lifecycle.removeObserver(this)
+                    deliver()
+                }
+
+                override fun onDestroy(owner: LifecycleOwner) {
+                    owner.lifecycle.removeObserver(this)
+                }
+            }
+            owner.lifecycle.addObserver(observer)
+        }
     }
 
     private fun installLifecycleObserver() {
