@@ -7,6 +7,8 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 source "$ROOT_DIR/versions.env"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/check-state.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/qualification-gates.sh"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 cd "$ROOT_DIR"
@@ -23,33 +25,31 @@ if [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
 fi
 
 step "Environment and repository contracts"
-"$SCRIPT_DIR/doctor.sh"
-node "$SCRIPT_DIR/verify-project-manifests.mjs"
-node "$SCRIPT_DIR/verify-ipc-contract.mjs"
-node "$SCRIPT_DIR/verify-repository-policy.mjs"
-node "$SCRIPT_DIR/verify-platform-boundaries.mjs"
-node "$SCRIPT_DIR/verify-external-file-streaming.mjs"
-node "$SCRIPT_DIR/verify-documentation.mjs"
-[[ -f pnpm-lock.yaml && -f src-tauri/Cargo.lock ]] || {
-  printf 'ERROR: committed pnpm and Cargo lockfiles are required.\n' >&2
-  exit 1
-}
+ostudy_gate_doctor
+ostudy_gate_project_manifests
+ostudy_gate_ui_token_generation
+ostudy_gate_ui_token_usage
+ostudy_gate_ipc_contract
+ostudy_gate_repository_policy
+ostudy_gate_platform_boundaries
+ostudy_gate_external_file_streaming
+ostudy_gate_documentation
+ostudy_gate_lockfiles
 
 step "Behavior-test policy and repository script validation"
-node "$SCRIPT_DIR/verify-test-policy.mjs"
-bash "$SCRIPT_DIR/verify-script-syntax.sh"
-python3 -m unittest discover -s tests/scripts -p 'test_*.py'
+ostudy_gate_test_policy
+ostudy_gate_script_syntax
+ostudy_gate_script_tests
 
 step "Frozen JavaScript installation and dependency verification"
-pnpm install --frozen-lockfile
-pnpm run verify:versions
-[[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]]
+ostudy_gate_pnpm_install
+ostudy_gate_js_versions
 
 step "Frontend type checking"
-pnpm exec tsc -b --pretty false
+ostudy_gate_typescript
 
 step "Rust formatting"
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+ostudy_gate_rustfmt
 
 ostudy_write_check_stamp static
 trap - ERR
