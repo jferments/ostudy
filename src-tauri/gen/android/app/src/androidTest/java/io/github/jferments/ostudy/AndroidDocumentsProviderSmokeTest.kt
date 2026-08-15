@@ -13,6 +13,7 @@ import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import org.json.JSONArray
 import org.json.JSONObject
@@ -91,9 +92,9 @@ class AndroidDocumentsProviderSmokeTest {
         val pickerPackages = documentPickerPackages(Intent.ACTION_OPEN_DOCUMENT)
         waitForPicker(device, pickerPackages, "Android $purpose import picker")
         openFixtureRoot(device)
-        val fixtureObject = requireNotNull(
-            device.wait(Until.findObject(By.text(fixture)), 10_000)
-        ) { "System picker did not display $fixture" }
+        val fixtureObject = requireNotNull(waitForDocumentFixture(device, fixture, 10_000)) {
+            "System picker did not display $fixture"
+        }
         fixtureObject.click()
         waitForPickerClosed(device, pickerPackages, "Android $purpose import picker")
         waitForBridge(webView)
@@ -104,6 +105,18 @@ class AndroidDocumentsProviderSmokeTest {
         assertEquals(fixture, result.getString("displayName"))
         assertEquals(expectedKind, result.getString("detectedKind"))
         assertTrue(result.getLong("byteSize") > 0L)
+    }
+
+    private fun waitForDocumentFixture(device: UiDevice, fixture: String, timeoutMs: Long): UiObject2? {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+        while (System.nanoTime() < deadline) {
+            device.findObject(By.text(fixture))?.let { return it }
+            // DocumentsUI uses visible TextViews in list mode but exposes image
+            // tiles primarily through an accessibility description in grid mode.
+            device.findObject(By.descContains(fixture))?.let { return it }
+            Thread.sleep(100)
+        }
+        return null
     }
 
     private fun openFixtureRoot(device: UiDevice) {
