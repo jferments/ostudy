@@ -30,8 +30,9 @@ cd "$ROOT_DIR"
 android_write_local_properties
 
 native_lib="$ROOT_DIR/src-tauri/gen/android/app/src/main/jniLibs/x86_64/libostudy_lib.so"
-if [[ ! -e "$native_lib" ]]; then
-  printf 'The x86_64 Tauri native library is missing: %s\n' "$native_lib" >&2
+generated_settings="$ROOT_DIR/src-tauri/gen/android/tauri.settings.gradle"
+if [[ ! -e "$native_lib" || ! -f "$generated_settings" ]]; then
+  printf 'The Tauri-initialized x86_64 Android build state is incomplete.\n' >&2
   printf 'Run ./scripts/android-build.sh --debug --apk --target x86_64 first.\n' >&2
   exit 1
 fi
@@ -57,7 +58,9 @@ tasks=(
 if [[ "$MODE" == test-packages ]]; then
   tasks=(
     :tauri-plugin-ostudy-platform:testDebugUnitTest
+    :tauri-plugin-ostudy-platform:lintDebug
     :app:testUniversalDebugUnitTest
+    :app:lintUniversalDebug
     :app:assembleUniversalDebugAndroidTest
   )
 fi
