@@ -87,25 +87,25 @@ change stabilizes:
 
 ```bash
 ./scripts/check-changed.sh  # diff-aware iteration helper
-./scripts/check-static.sh   # manifests, IPC, policy, typecheck, rustfmt
-./scripts/check-fast.sh     # static + all frontend tests + locked Rust compile
+./scripts/check-static.sh   # manifests, UI tokens, IPC, policy, typecheck, rustfmt
+./scripts/check-fast.sh     # static + frontend/Rust high-return gates
 ./scripts/check.sh          # full merge qualification and native smoke
 ```
 
-Draft pull requests are expected to pass the fast tier. Marking a pull request
-ready triggers full qualification. Always inspect the result for the exact head
-SHA; an older green run does not qualify a newer commit. `OSTUDY_FORCE_CHECK=1`
+Draft pull requests normally run the fast tier. Marking a pull request ready
+triggers full qualification. Always inspect the result for the exact head SHA;
+an older green run does not qualify a newer commit. `OSTUDY_FORCE_CHECK=1`
 forces re-execution when exact-tree cache reuse should be bypassed. For a release
 candidate, also run `./scripts/release-check.sh`.
 
 ### Agent-driven diagnostic loop
 
-The authoritative gates above intentionally fail fast. For substantial work,
-a Connector-backed agent should use the opt-in multi-failure diagnostic workflow
+The authoritative gates intentionally fail fast. For substantial work, a
+Connector-backed agent should use the integrated multi-failure diagnostic mode
 when one-error-at-a-time discovery is slowing development. See
 [`../development/agent-diagnostics.md`](../development/agent-diagnostics.md).
 
-A development PR opts in through its body:
+A draft development PR opts in through its body:
 
 ```text
 <!-- agent-diagnostics:core -->
@@ -113,30 +113,44 @@ A development PR opts in through its body:
 <!-- agent-diagnostics:all -->
 ```
 
+These markers modify the standard `Check` and `Android check` workflows rather
+than launching a duplicate diagnostic workflow. On a draft PR, `core`
+substitutes the core diagnostic sweep for the normal fast job, `android`
+substitutes Android diagnostics for the normal Android build/emulator chain,
+and `all` substitutes both. Ready-for-review PRs ignore diagnostic substitution
+and run authoritative qualification.
+
 The agent owns the feedback cycle when the self-hosted runner can perform the
 check:
 
 1. publish and verify the exact branch head;
-2. inspect the diagnostic and authoritative workflow runs for that SHA;
+2. inspect the standard workflow runs for that SHA;
 3. retrieve failed job steps, decoded logs, and uploaded evidence through the
    GitHub Connector;
 4. collect all actionable independent failures exposed by that run before
    editing;
 5. repair them in a coherent batch on the same branch;
 6. publish and verify the new head, then inspect its exact-head results;
-7. continue until required qualification is green or a concrete external
-   blocker remains.
+7. continue until development diagnostics converge, then require authoritative
+   qualification before handoff.
 
 Do not ask the human to run a repository test solely to relay output when an
 available self-hosted workflow can run it and the Connector can read the result.
-The human still owns manual visual/interaction acceptance, physical-device
-checks, protected credentials, and runner-host administration that cannot be
-performed or observed through GitHub.
+The human still owns manual visual/interaction acceptance, physical-device or
+OEM-specific checks, protected credentials, and runner-host administration that
+cannot be performed or observed through GitHub.
 
 A `BLOCKED` diagnostic gate is not a hidden failure: it means a declared
 prerequisite did not pass. Fix the prerequisite and rerun; a newly exposed
 failure in the dependent gate is then a genuine dependency boundary rather than
 avoidable serial discovery.
+
+For Android work, never use direct Gradle qualification as a substitute for
+Tauri initialization. The Tauri x86_64 build must create the transient Gradle
+settings/private-plugin graph and JNI output before Gradle dependency, Kotlin,
+Lint, JVM, or instrumentation-package tasks run. When emulator evidence exists,
+inspect the structured smoke JSON, per-case logs, Logcat, screenshot, and UI
+hierarchy before asking the human to reproduce the failure.
 
 Manually exercise the affected UI path with `./run-app.sh`. For UI work, include
 keyboard behavior, pending/error states, and all relevant themes. For persistence
@@ -156,7 +170,12 @@ Additional checks depend on the change:
 - **Import/export change:** round-trip existing packages and verify title,
   assets, IDs, schedules, and excluded personal history.
 - **UI change:** test empty/loading/error states, keyboard access, repeated
-  clicks, and Light/Dark/Console/Synthwave rendering.
+  clicks, stable automation hooks, and Light/Dark/Console/Synthwave rendering.
+- **Android change:** verify arm64 compile/package, x86_64 smoke package,
+  Tauri-first Gradle/Kotlin/Lint/JVM contracts, package policy, source
+  cleanliness, and official-emulator behavior; use the periodic minimum-SDK
+  smoke for compatibility coverage rather than adding a second emulator to
+  every PR.
 
 ## 5. Review the exact proposed commit
 
