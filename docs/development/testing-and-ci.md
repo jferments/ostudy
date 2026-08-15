@@ -2,15 +2,15 @@
 
 ostudy uses tiered validation locally and on self-hosted runners. Each tier answers a different question; inexpensive tiers must not be described as complete application qualification.
 
-The repository does not use GitHub-hosted operating-system runners. Shared/Linux jobs target the ordinary `ostudy` runner class. Android compilation additionally requires the `android` label, and official-emulator work requires both `android` and `kvm`:
+The repository does not use GitHub-hosted operating-system runners. Shared/Linux jobs target the ordinary `ostudy` runner class, while Android build/package work targets the dedicated bare-metal `ostudy-android` runner class. Emulator-capable Android work additionally requires `kvm`:
 
 ```yaml
 runs-on: [self-hosted, linux, x64, ostudy]
-runs-on: [self-hosted, linux, x64, ostudy, android]
-runs-on: [self-hosted, linux, x64, ostudy, android, kvm]
+runs-on: [self-hosted, linux, x64, ostudy-android]
+runs-on: [self-hosted, linux, x64, ostudy-android, kvm]
 ```
 
-The custom labels are maintainer assertions about installed tooling and KVM access; runtime doctor scripts verify them. Third-party actions are pinned to immutable commit SHAs with human-readable version comments.
+The two custom runner classes are intentionally disjoint. The `ostudy` runner may live inside a VM for shared/Linux qualification; `ostudy-android` runs on the host with the Android SDK/NDK and direct `/dev/kvm` access. Custom labels are maintainer assertions, so runtime doctor scripts verify Android/KVM capabilities rather than trusting labels alone. Third-party actions are pinned to immutable commit SHAs with human-readable version comments.
 
 ## Validation model
 
@@ -210,9 +210,9 @@ Routine CI command execution and log relaying are not manual acceptance. A Conne
 
 ## CI workflows
 
-- `check.yml` selects static, fast, diagnostic, or full shared/Linux qualification. Diagnostic substitution applies only to draft PRs.
-- `android-check.yml` performs either draft Android diagnostics or the authoritative build-once → artifact-reuse emulator chain; it also owns scheduled/manual API-28 compatibility smoke.
-- `android-package.yml` creates explicitly requested unsigned QA APK/AAB artifacts on an Android-capable self-hosted runner.
+- `check.yml` selects static, fast, diagnostic, or full shared/Linux qualification on the `ostudy` runner class. Diagnostic substitution applies only to draft PRs.
+- `android-check.yml` runs on the dedicated `ostudy-android` host and performs either draft Android diagnostics or the authoritative build-once → artifact-reuse emulator chain; it also owns scheduled/manual API-28 compatibility smoke.
+- `android-package.yml` creates explicitly requested unsigned QA APK/AAB artifacts on the dedicated Android runner.
 - `release.yml` currently creates tagged Linux artifacts.
 
 Concurrency cancellation stops obsolete work for the same pull request/ref. Successful runs qualify only the exact head they tested.
