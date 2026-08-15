@@ -94,6 +94,7 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
         self.assertIn(compile_selector, package_workflow)
         self.assertNotIn(old_selector_fragment, check_workflow)
         self.assertNotIn(old_selector_fragment, package_workflow)
+        self.assertNotIn("OSTUDY_CARGO_TARGET_DIR: $HOME/", check_workflow)
 
     def test_diagnostic_android_dag_is_tauri_first_and_collects_postbuild_failures_independently(self) -> None:
         diagnostic = (ROOT / "scripts" / "check-diagnostic.sh").read_text(encoding="utf-8")
@@ -115,6 +116,23 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
         self.assertIn(":app:testUniversalDebugUnitTest", postbuild)
         self.assertIn(":app:lintUniversalDebug", postbuild)
         self.assertIn(":app:assembleUniversalDebugAndroidTest", postbuild)
+
+    def test_ci_avd_lifecycle_is_scoped_to_the_requested_avd(self) -> None:
+        avd = (ROOT / "scripts" / "android-avd.sh").read_text(encoding="utf-8")
+        smoke = (ROOT / "scripts" / "android-emulator-smoke.sh").read_text(encoding="utf-8")
+        ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+
+        self.assertIn("connected_emulator_serial_for_avd", avd)
+        self.assertIn('PID_FILE="$ROOT_DIR/.android-emulator-${safe_avd_name}.pid"', avd)
+        self.assertIn('if [[ "$(connected_emulator_name "$serial")" == "$AVD_NAME" ]]', avd)
+        self.assertIn("serial_for_avd", smoke)
+        self.assertIn('android-avd.sh stop --name "$AVD_NAME"', smoke)
+        self.assertIn('SERIAL="$(serial_for_avd || true)"', smoke)
+        self.assertNotIn(
+            "awk 'NR > 1 && $2 == \"device\" && $1 ~ /^emulator-/ { print $1; exit }'",
+            smoke,
+        )
+        self.assertIn(".android-emulator-*.pid", ignore)
 
     def test_system_picker_success_contract_is_instrumentation_only(self) -> None:
         test_manifest = (
