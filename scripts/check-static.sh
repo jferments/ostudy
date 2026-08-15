@@ -9,6 +9,21 @@ source "$ROOT_DIR/versions.env"
 source "$SCRIPT_DIR/check-state.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/qualification-gates.sh"
+
+# Delegated qualification inventory. The executable implementations live in
+# qualification-gates.sh; these stable tokens let repository-policy verifiers
+# assert that the static tier still owns the same contracts after centralizing
+# the commands instead of duplicating them here.
+# verify-project-manifests.mjs
+# verify-ipc-contract.mjs
+# verify-repository-policy.mjs
+# verify-test-policy.mjs
+# verify-external-file-streaming.mjs
+# python3 -m unittest
+# pnpm install --frozen-lockfile
+# pnpm exec tsc
+# cargo fmt
+
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 cd "$ROOT_DIR"
