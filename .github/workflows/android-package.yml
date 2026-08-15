@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   package:
-    runs-on: [self-hosted, linux, x64, ostudy, android]
+    runs-on: [self-hosted, linux, x64, ostudy-android]
     timeout-minutes: 120
     env:
       CI: "true"
