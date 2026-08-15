@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as cardsIpc from "../ipc/cards";
@@ -175,7 +175,9 @@ describe("CardsScreen", () => {
   it("sends status filters and displays Needs more practice", async () => {
     renderScreen();
     expect(await screen.findByText("Needs more practice")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Status"), {
+    fireEvent.click(screen.getByRole("button", { name: /All filters/u }));
+    const dialog = await screen.findByRole("dialog", { name: "Filter flashcards" });
+    fireEvent.change(within(dialog).getByLabelText("Status"), {
       target: { value: "suspended" },
     });
     await waitFor(() =>
@@ -290,13 +292,15 @@ describe("CardsScreen", () => {
   it("enables Add card only for one selected active deck", async () => {
     renderScreen();
     await screen.findByText("What reverses warfarin?");
-    fireEvent.click(screen.getByText("All active decks", { selector: "summary" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Pharmacology/u }));
+    fireEvent.click(screen.getByRole("button", { name: "All active decks" }));
+    const dialog = await screen.findByRole("dialog", { name: "Filter flashcards" });
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Pharmacology/u }));
     await waitFor(() =>
       expect(cardsIpc.searchCards).toHaveBeenLastCalledWith(
         expect.objectContaining({ deckIds: [deck.id] }),
       ),
     );
+    fireEvent.click(within(dialog).getByRole("button", { name: "View results" }));
     fireEvent.click(screen.getByRole("button", { name: "Add card" }));
     expect(await screen.findByText("Card editor")).toBeTruthy();
   });

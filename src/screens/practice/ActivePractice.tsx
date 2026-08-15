@@ -10,11 +10,13 @@ import {
   type RescheduleIntent,
   type ScheduleAction,
 } from "../../ipc/scheduling";
+import { useAppearance } from "../../ui/appearance/AppearanceProvider";
 import { useExperience } from "../../ui/feedback/ExperienceProvider";
 import { Menu } from "../../ui/overlays/Menu";
 import { useOverlayContext } from "../../ui/overlays/overlayContext";
 import { Progress } from "../../ui/primitives/Progress";
 import type { ConfidenceScore } from "./confidence";
+import styles from "./ActivePractice.module.css";
 
 interface ActivePracticeProps {
   session: PracticeSession;
@@ -48,7 +50,7 @@ export function ActivePractice({
   isRating,
   isEnding,
   isManaging,
-  flipAnimationEnabled = false,
+  flipAnimationEnabled,
   errorMessage,
   onReveal,
   onScore,
@@ -62,7 +64,11 @@ export function ActivePractice({
   const [showingAnswer, setShowingAnswer] = useState(revealed);
   const busy = isRevealing || isRating || isEnding || isManaging;
   const { topId } = useOverlayContext();
+  const appearance = useAppearance();
   const experience = useExperience();
+  const animateFlip = flipAnimationEnabled ?? appearance.motion === "full";
+  const remainingCount = Math.max(0, session.cardCount - ratedCount);
+  const stackLayers = remainingCount > 3 ? 2 : remainingCount > 1 ? 1 : 0;
 
   useEffect(() => {
     setShowingAnswer(revealed);
@@ -70,7 +76,9 @@ export function ActivePractice({
 
   useEffect(() => {
     if (revealed) ratingPanelRef.current?.focus();
-    if (revealed && !wasRevealed.current) experience.emit({ type: "answer_revealed" });
+    if (revealed && !wasRevealed.current) {
+      experience.emit({ type: "answer_revealed" });
+    }
     wasRevealed.current = revealed;
   }, [experience, revealed]);
 
@@ -108,6 +116,75 @@ export function ActivePractice({
     setShowingAnswer((currentSide) => !currentSide);
   }
 
+  const cardSurface = animateFlip ? (
+    <section
+      className="practice-card-surface practice-flip-card"
+      data-flipped={showingAnswer}
+      role="button"
+      tabIndex={0}
+      aria-label={!revealed ? "Reveal answer" : showingAnswer ? "Show question" : "Show answer"}
+      aria-disabled={busy ? "true" : undefined}
+      onClick={(event) => {
+        const target = event.target;
+        if (
+          target instanceof HTMLElement &&
+          target.closest("a, button, input, textarea, select")
+        ) {
+          return;
+        }
+        activateAnimatedCard();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== " " && event.key !== "Enter") return;
+        event.preventDefault();
+        event.stopPropagation();
+        activateAnimatedCard();
+      }}
+    >
+      <div className="practice-flip-inner">
+        <div className="practice-flip-face practice-flip-front" aria-hidden={showingAnswer}>
+          <span className="practice-side-label">Question</span>
+          <RichTextView
+            document={current.presentation.frontDoc}
+            assets={current.presentation.assets}
+            onLinkError={onLinkError}
+          />
+          {!showingAnswer ? (
+            <small className="practice-flip-hint">Click the card to flip it</small>
+          ) : null}
+        </div>
+        <div className="practice-flip-face practice-flip-back" aria-hidden={!showingAnswer}>
+          <span className="practice-side-label">Answer</span>
+          <RichTextView
+            document={current.presentation.backDoc}
+            assets={current.presentation.assets}
+            onLinkError={onLinkError}
+          />
+        </div>
+      </div>
+    </section>
+  ) : (
+    <section className="practice-card-surface">
+      <span className="practice-side-label">Question</span>
+      <RichTextView
+        document={current.presentation.frontDoc}
+        assets={current.presentation.assets}
+        onLinkError={onLinkError}
+      />
+      {revealed ? (
+        <>
+          <div className="practice-answer-divider" />
+          <span className="practice-side-label">Answer</span>
+          <RichTextView
+            document={current.presentation.backDoc}
+            assets={current.presentation.assets}
+            onLinkError={onLinkError}
+          />
+        </>
+      ) : null}
+    </section>
+  );
+
   return (
     <div className="screen practice-screen active-practice-screen">
       <header className="practice-session-header">
@@ -123,10 +200,10 @@ export function ActivePractice({
           <div className="practice-session-meta">
             <span
               className="practice-progress-chip"
-              aria-label={`${position + 1} of ${session.cardCount} cards, ${ratedCount} reviewed`}
+              aria-label={`${position + 1} of ${session.cardCount} cards, ${ratedCount} studied, ${remainingCount} remaining`}
             >
-              <strong>{position + 1} / {session.cardCount}</strong>
-              <span>· {ratedCount} reviewed</span>
+              <strong>{ratedCount} studied</strong>
+              <span>· {remainingCount} remaining</span>
             </span>
             {current.needsMorePractice ? (
               <span className="schedule-status-badge needs-practice">Needs more practice</span>
@@ -177,83 +254,28 @@ export function ActivePractice({
         </div>
       </header>
 
-      <Progress
-        className="practice-progress-track"
-        label="Practice session progress"
-        value={Math.min(position + 1, session.cardCount)}
-        max={session.cardCount}
-      />
+      <div className={styles.progressRow}>
+        <Progress
+          className="practice-progress-track"
+          label="Practice session progress"
+          value={ratedCount}
+          max={session.cardCount}
+        />
+        <span aria-hidden="true">
+          {Math.round((ratedCount / Math.max(1, session.cardCount)) * 100)}%
+        </span>
+      </div>
 
       {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
 
-      {flipAnimationEnabled ? (
-        <section
-          className="practice-card-surface practice-flip-card"
-          data-flipped={showingAnswer}
-          role="button"
-          tabIndex={0}
-          aria-label={!revealed ? "Reveal answer" : showingAnswer ? "Show question" : "Show answer"}
-          aria-disabled={busy ? "true" : undefined}
-          onClick={(event) => {
-            const target = event.target;
-            if (
-              target instanceof HTMLElement &&
-              target.closest("a, button, input, textarea, select")
-            ) {
-              return;
-            }
-            activateAnimatedCard();
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== " " && event.key !== "Enter") return;
-            event.preventDefault();
-            event.stopPropagation();
-            activateAnimatedCard();
-          }}
-        >
-          <div className="practice-flip-inner">
-            <div className="practice-flip-face practice-flip-front" aria-hidden={showingAnswer}>
-              <span className="practice-side-label">Question</span>
-              <RichTextView
-                document={current.presentation.frontDoc}
-                assets={current.presentation.assets}
-                onLinkError={onLinkError}
-              />
-              {!showingAnswer ? (
-                <small className="practice-flip-hint">Click the card to flip it</small>
-              ) : null}
-            </div>
-            <div className="practice-flip-face practice-flip-back" aria-hidden={!showingAnswer}>
-              <span className="practice-side-label">Answer</span>
-              <RichTextView
-                document={current.presentation.backDoc}
-                assets={current.presentation.assets}
-                onLinkError={onLinkError}
-              />
-            </div>
-          </div>
-        </section>
-      ) : (
-        <section className="practice-card-surface">
-          <span className="practice-side-label">Question</span>
-          <RichTextView
-            document={current.presentation.frontDoc}
-            assets={current.presentation.assets}
-            onLinkError={onLinkError}
-          />
-          {revealed ? (
-            <>
-              <div className="practice-answer-divider" />
-              <span className="practice-side-label">Answer</span>
-              <RichTextView
-                document={current.presentation.backDoc}
-                assets={current.presentation.assets}
-                onLinkError={onLinkError}
-              />
-            </>
-          ) : null}
-        </section>
-      )}
+      <div
+        key={current.presentation.cardId}
+        className={styles.stack}
+        data-layers={stackLayers}
+        data-tour-anchor="practice.card"
+      >
+        {cardSurface}
+      </div>
 
       {!revealed ? (
         <div className="practice-primary-action">
@@ -272,6 +294,7 @@ export function ActivePractice({
           tabIndex={-1}
           className="review-rating-panel confidence-rating-panel"
           aria-labelledby="confidence-rating-heading"
+          data-tour-anchor="practice.confidence"
         >
           <div className="confidence-rating-heading">
             <h2 id="confidence-rating-heading">How difficult was that answer?</h2>

@@ -214,11 +214,11 @@ describe("ActivePractice", () => {
     expect(onScheduleAction).toHaveBeenNthCalledWith(4, "reset");
   });
 
-  it("reports visible card progress with one-based semantics", () => {
+  it("reports studied-card progress before the current card is reviewed", () => {
     renderActive();
 
     const progress = screen.getByRole("progressbar", { name: "Practice session progress" });
-    expect(progress.getAttribute("aria-valuenow")).toBe("1");
+    expect(progress.getAttribute("aria-valuenow")).toBe("0");
     expect(progress.getAttribute("aria-valuemax")).toBe("1");
   });
 
@@ -228,7 +228,7 @@ describe("ActivePractice", () => {
     expect(screen.getByText("EXTRA PRACTICE")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Cardiology" })).toBeTruthy();
     expect(screen.getByText("Needs more practice")).toBeTruthy();
-    expect(screen.getByLabelText("1 of 1 cards, 0 reviewed")).toBeTruthy();
+    expect(screen.getByLabelText("1 of 1 cards, 0 studied, 1 remaining")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Schedule" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "End session" }).className).toContain(
       "practice-end-button",

@@ -42,6 +42,16 @@ for (const path of testFiles) {
           pattern: /\b(?:fdescribe|fit|xdescribe|xit|xtest)\s*\(/gu,
           message: "focused or disabled JavaScript test alias",
         },
+        {
+          pattern: /\.toBeInTheDocument\s*\(/gu,
+          message:
+            "unsupported jest-dom matcher toBeInTheDocument; use repository-native DOM assertions unless jest-dom is explicitly adopted",
+        },
+        {
+          pattern: /\.toHaveAttribute\s*\(/gu,
+          message:
+            "unsupported jest-dom matcher toHaveAttribute; assert getAttribute() directly unless jest-dom is explicitly adopted",
+        },
       ],
       failures,
     );
@@ -108,7 +118,7 @@ if (failures.length > 0) {
 console.log(
   `OK   Test policy: ${frontendTests} frontend tests, ${rustTests} Rust tests, ` +
     `${pythonTests > 0 ? `${pythonTests} Python tests` : "1 native Python smoke workflow"}; ` +
-    "no focused, skipped, ignored, conditional, or placeholder tests.",
+    "no focused, skipped, ignored, conditional, placeholder, or unconfigured jest-dom tests.",
 );
 
 async function collectFiles(directory) {

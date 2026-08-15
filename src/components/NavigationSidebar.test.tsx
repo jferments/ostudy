@@ -34,11 +34,11 @@ function renderNavigation(compact: boolean, onNavigate = vi.fn()) {
 }
 
 describe("NavigationSidebar", () => {
-  it("renders every section directly in wide layouts", () => {
+  it("renders every primary section directly in wide layouts", () => {
     renderNavigation(false);
 
     const navigation = screen.getByRole("navigation", { name: "Main navigation" });
-    for (const label of ["Decks", "Documents", "Practice", "Analytics", "Settings"]) {
+    for (const label of ["Flashcards", "Documents", "Practice", "Analytics", "Settings"]) {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     }
     expect(navigation).toBeTruthy();
@@ -47,10 +47,10 @@ describe("NavigationSidebar", () => {
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
   });
 
-  it("preserves the established compact priorities and exposes Documents through More", async () => {
+  it("preserves compact priorities and exposes Documents through More", async () => {
     const onNavigate = renderNavigation(true);
 
-    for (const label of ["Decks", "Practice", "Analytics", "More"]) {
+    for (const label of ["Flashcards", "Practice", "Analytics", "More"]) {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     }
     expect(screen.queryByRole("button", { name: "Documents" })).toBeNull();

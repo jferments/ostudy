@@ -3,32 +3,48 @@
     position: relative;
     display: inline-flex;
     min-height: var(--control-height);
+    overflow: hidden;
     align-items: center;
     justify-content: center;
     gap: var(--space-2);
     border: 1px solid transparent;
-    border-radius: var(--radius-small);
+    border-radius: var(--ostudy-radius-small);
     padding: 0 var(--space-4);
     font: inherit;
     font-weight: 760;
     cursor: pointer;
+    isolation: isolate;
     transition:
-      transform var(--motion-fast) var(--ease-standard),
-      background var(--motion-fast) var(--ease-standard),
-      border-color var(--motion-fast) var(--ease-standard);
+      transform var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-press),
+      background var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
+      border-color var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
+      box-shadow var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard);
+  }
+
+  .button::after {
+    position: absolute;
+    inset: -70% -40%;
+    background: linear-gradient(105deg, transparent 38%, var(--ostudy-color-surface-highlight) 49%, transparent 60%);
+    content: "";
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-45%) rotate(6deg);
+    transition: opacity var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard), transform var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-standard);
   }
 
   .button:disabled { cursor: not-allowed; opacity: 0.55; }
   .button:hover:not(:disabled) { transform: translateY(-1px); }
-  .button:focus-visible { outline: none; box-shadow: var(--focus); }
+  .button:hover:not(:disabled)::after { opacity: 0.45; transform: translateX(36%) rotate(6deg); }
+  .button:active:not(:disabled) { transform: translateY(1px) scaleX(var(--ostudy-button-press-scale-x)) scaleY(var(--ostudy-button-press-scale-y)); }
+  .button:focus-visible { outline: none; box-shadow: var(--ostudy-shadow-focus); }
 
-  .primary { border-color: var(--accent-strong); background: var(--accent-strong); color: var(--on-accent); }
-  .primary:hover:not(:disabled) { background: var(--accent); }
-  .secondary { border-color: var(--border-strong); background: var(--surface-raised); color: var(--text); }
-  .secondary:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-soft); }
-  .ghost { background: transparent; color: var(--accent); }
-  .ghost:hover:not(:disabled) { background: var(--accent-soft); }
-  .danger { border-color: var(--danger); background: var(--danger); color: var(--on-danger); }
+  .primary { border-color: var(--ostudy-color-accent-strong); background: var(--ostudy-color-accent-base); color: var(--ostudy-color-accent-on); box-shadow: var(--ostudy-shadow-level-1); }
+  .primary:hover:not(:disabled) { background: var(--ostudy-color-accent-strong); }
+  .secondary { border-color: var(--ostudy-color-border-strong); background: var(--ostudy-color-surface-raised); color: var(--ostudy-color-text-primary); box-shadow: var(--ostudy-shadow-level-1); }
+  .secondary:hover:not(:disabled) { border-color: var(--ostudy-color-border-accent); background: var(--ostudy-color-surface-soft); }
+  .ghost { background: transparent; color: var(--ostudy-color-text-accent); }
+  .ghost:hover:not(:disabled) { background: var(--ostudy-color-accent-soft); }
+  .danger { border-color: var(--ostudy-color-status-danger); background: var(--ostudy-color-status-danger); color: var(--on-danger); }
 
   .small { min-height: 34px; padding-inline: var(--space-3); font-size: 0.82rem; }
   .medium { min-height: var(--control-height); }
@@ -37,6 +53,11 @@
 
   .hiddenLabel { visibility: hidden; }
   .loadingLabel { position: absolute; inset: 0; display: grid; place-items: center; }
+
+  :root[data-motion="reduced"] .button::after,
+  :root[data-motion="none"] .button::after { display: none; }
+  :root[data-motion="reduced"] .button,
+  :root[data-motion="none"] .button { transform: none; }
 
   @media (pointer: coarse) {
     .button { min-height: var(--touch-target-min); }

@@ -1,0 +1,82 @@
+@layer components {
+  .progressRow {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--ostudy-space-3);
+    color: var(--ostudy-color-text-muted);
+    font-size: .75rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stack {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    min-height: clamp(170px, 34vh, 420px);
+    flex: 1 1 auto;
+    isolation: isolate;
+    margin-block: var(--ostudy-space-3);
+    perspective: 1200px;
+  }
+
+  .stack::before,
+  .stack::after {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-large);
+    background: var(--ostudy-color-surface-soft);
+    box-shadow: var(--ostudy-shadow-level-1);
+    content: "";
+    pointer-events: none;
+    transition:
+      transform var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-standard),
+      opacity var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-standard);
+  }
+
+  .stack::before {
+    opacity: 0;
+    transform: translate3d(0, 5px, -1px) rotate(.35deg) scale(.994);
+  }
+
+  .stack::after {
+    opacity: 0;
+    transform: translate3d(0, 10px, -2px) rotate(-.45deg) scale(.986);
+  }
+
+  .stack[data-layers="1"]::before,
+  .stack[data-layers="2"]::before { opacity: .9; }
+  .stack[data-layers="2"]::after { opacity: .68; }
+
+  .stack > :global(.practice-card-surface) {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    min-height: inherit;
+    animation: stackEnter var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-enter);
+    box-shadow: var(--ostudy-shadow-level-3), var(--ostudy-glow-subtle);
+  }
+
+  @keyframes stackEnter {
+    from { opacity: .86; transform: translate3d(8px, 0, 0) scale(.992); }
+    to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  }
+
+  :root[data-motion="reduced"] .stack::before,
+  :root[data-motion="reduced"] .stack::after,
+  :root[data-motion="none"] .stack::before,
+  :root[data-motion="none"] .stack::after { transition: none; }
+
+  :root[data-motion="reduced"] .stack > :global(.practice-card-surface),
+  :root[data-motion="none"] .stack > :global(.practice-card-surface) { animation: none; }
+
+  @media (max-width: 760px) {
+    .progressRow { gap: var(--ostudy-space-2); }
+    .stack { min-height: clamp(190px, 42vh, 430px); margin-block: var(--ostudy-space-2); }
+    .stack::before { transform: translate3d(0, 4px, -1px) scale(.994); }
+    .stack::after { transform: translate3d(0, 8px, -2px) scale(.988); }
+  }
+}

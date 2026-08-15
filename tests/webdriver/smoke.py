@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import tempfile
@@ -19,6 +20,25 @@ WEBDRIVER_URL = "http://127.0.0.1:4444"
 ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecf"
 STEP_TIMEOUT_SECONDS = 30
 ANALYTICS_TIMEOUT_SECONDS = 45
+ROOT_DIR = Path(__file__).resolve().parents[2]
+TUTORIAL_REGISTRY_PATH = ROOT_DIR / "src/ui/tutorials/tutorialRegistry.ts"
+TUTORIAL_STORAGE_KEY = "ostudy.tutorials.v1"
+TRANSIENT_CLICK_ERRORS = {"element click intercepted", "element not interactable"}
+RETRYABLE_FIND_ERRORS = {"no such element", "stale element reference"}
+RETRYABLE_PROFILE_ERRORS = {"no such window", "unknown error"}
+PRACTICE_COMPLETE_SELECTOR = "main [data-testid='practice-complete']"
+ANALYTICS_SCREEN_SELECTOR = "main .analytics-screen"
+CHART_DATA_SELECTOR = "main .chart-data-table"
+
+
+class WebDriverProtocolError(RuntimeError):
+    """Decoded W3C WebDriver failure, including HTTP 4xx/5xx responses."""
+
+    def __init__(self, status: int, error: str, message: str) -> None:
+        self.status = status
+        self.error = error
+        self.message = message
+        super().__init__(f"WebDriver {error} (HTTP {status}): {message}")
 
 
 def deadline_after(seconds: int = STEP_TIMEOUT_SECONDS) -> float:
@@ -29,6 +49,19 @@ def progress(message: str) -> None:
     print(f"[native-smoke] {message}", flush=True)
 
 
+def _protocol_error(decoded: Any, status: int) -> WebDriverProtocolError | None:
+    if not isinstance(decoded, dict):
+        return None
+    value = decoded.get("value")
+    if not isinstance(value, dict) or not value.get("error"):
+        return None
+    return WebDriverProtocolError(
+        status,
+        str(value.get("error")),
+        str(value.get("message") or "No WebDriver error message was provided."),
+    )
+
+
 def request(method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
     body = None if payload is None else json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
@@ -37,12 +70,32 @@ def request(method: str, path: str, payload: dict[str, Any] | None = None) -> An
         method=method,
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=15) as response:
-        decoded = json.loads(response.read().decode("utf-8"))
-    if isinstance(decoded, dict) and isinstance(decoded.get("value"), dict):
-        error = decoded["value"].get("error")
-        if error:
-            raise RuntimeError(f"WebDriver {error}: {decoded['value'].get('message', '')}")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            decoded = json.loads(response.read().decode("utf-8"))
+            status = response.status
+    except urllib.error.HTTPError as http_error:
+        raw = http_error.read().decode("utf-8", errors="replace")
+        try:
+            decoded = json.loads(raw)
+        except json.JSONDecodeError as decode_error:
+            raise WebDriverProtocolError(
+                http_error.code,
+                "http_error",
+                raw[:1_000] or http_error.reason,
+            ) from decode_error
+        protocol_error = _protocol_error(decoded, http_error.code)
+        if protocol_error is not None:
+            raise protocol_error from http_error
+        raise WebDriverProtocolError(
+            http_error.code,
+            "http_error",
+            raw[:1_000] or http_error.reason,
+        ) from http_error
+
+    protocol_error = _protocol_error(decoded, status)
+    if protocol_error is not None:
+        raise protocol_error
     return decoded.get("value") if isinstance(decoded, dict) else decoded
 
 
@@ -51,9 +104,66 @@ def wait_for_driver(deadline: float) -> None:
         try:
             request("GET", "/status")
             return
-        except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        except (
+            OSError,
+            urllib.error.URLError,
+            json.JSONDecodeError,
+            WebDriverProtocolError,
+        ):
             time.sleep(0.2)
     raise TimeoutError("tauri-driver did not become ready")
+
+
+def tutorial_versions() -> dict[str, int]:
+    """Read the current tutorial ids/versions so automation never races auto-start."""
+    source = TUTORIAL_REGISTRY_PATH.read_text(encoding="utf-8")
+    pattern = re.compile(
+        r'^\s*[A-Za-z0-9_]+:\s*\{\s*\n\s*id:\s*"([^"]+)",\s*\n\s*version:\s*(\d+),',
+        re.MULTILINE,
+    )
+    versions = {module_id: int(version) for module_id, version in pattern.findall(source)}
+    if not versions:
+        raise RuntimeError(
+            f"Could not derive tutorial module versions from {TUTORIAL_REGISTRY_PATH}"
+        )
+    return versions
+
+
+def prepare_automation_profile(session_id: str) -> None:
+    """Disable contextual tutorials in the disposable native-smoke browser profile."""
+    versions = tutorial_versions()
+    state = {
+        "schemaVersion": 1,
+        "completed": versions,
+        "dismissed": {},
+    }
+    deadline = time.monotonic() + 5
+    last_error: WebDriverProtocolError | None = None
+    while time.monotonic() < deadline:
+        try:
+            request(
+                "POST",
+                f"/session/{session_id}/execute/sync",
+                {
+                    "script": """
+                        const key = arguments[0];
+                        const state = arguments[1];
+                        window.localStorage.setItem(key, JSON.stringify(state));
+                        window.location.reload();
+                        return true;
+                    """,
+                    "args": [TUTORIAL_STORAGE_KEY, state],
+                },
+            )
+            return
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_PROFILE_ERRORS:
+                raise
+            last_error = error
+            time.sleep(0.1)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("WebDriver automation profile preparation ended without a result")
 
 
 def create_session(application: Path) -> str:
@@ -74,6 +184,7 @@ def create_session(application: Path) -> str:
     session_id = str(result.get("sessionId") or "")
     if not session_id:
         raise RuntimeError(f"New-session response did not contain a session id: {result!r}")
+    prepare_automation_profile(session_id)
     return session_id
 
 
@@ -92,7 +203,9 @@ def find_element(session_id: str, using: str, value: str, deadline: float) -> st
             )
             if isinstance(result, dict) and ELEMENT_KEY in result:
                 return str(result[ELEMENT_KEY])
-        except Exception as error:  # WebDriver reports no-such-element while React loads.
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_FIND_ERRORS:
+                raise
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(f"Element was not found: {using}={value}; last error: {last_error}")
@@ -123,7 +236,9 @@ def find_elements(
                 last_count = len(elements)
                 if len(elements) >= minimum:
                     return elements
-        except Exception as error:
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_FIND_ERRORS:
+                raise
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(
@@ -148,8 +263,123 @@ def element_enabled(session_id: str, element_id: str) -> bool:
     return request("GET", f"/session/{session_id}/element/{element_id}/enabled") is True
 
 
+def _element_hit_test(session_id: str, element_id: str) -> dict[str, Any]:
+    """Scroll an element into a stable viewport position and identify its top hit target."""
+    result = request(
+        "POST",
+        f"/session/{session_id}/execute/sync",
+        {
+            "script": """
+                const element = arguments[0];
+                if (!(element instanceof HTMLElement)) {
+                  return { ready: false, reason: 'not_html_element' };
+                }
+                element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+                const rect = element.getBoundingClientRect();
+                const style = getComputedStyle(element);
+                const x = Math.min(window.innerWidth - 1, Math.max(0, rect.left + rect.width / 2));
+                const y = Math.min(window.innerHeight - 1, Math.max(0, rect.top + rect.height / 2));
+                const top = document.elementFromPoint(x, y);
+                const disabled = element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true';
+                const inViewport = rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth;
+                const visible = style.display !== 'none' && style.visibility !== 'hidden' && style.pointerEvents !== 'none';
+                const ownsHit = Boolean(top && (top === element || element.contains(top)));
+                return {
+                  ready: Boolean(inViewport && visible && !disabled && ownsHit),
+                  disabled,
+                  display: style.display,
+                  visibility: style.visibility,
+                  pointerEvents: style.pointerEvents,
+                  rect: {
+                    left: rect.left,
+                    top: rect.top,
+                    width: rect.width,
+                    height: rect.height
+                  },
+                  topTag: top?.tagName ?? null,
+                  topText: (top?.textContent || '').trim().slice(0, 120),
+                  topTestId: top instanceof HTMLElement ? top.dataset.testid ?? null : null,
+                  topClass: top instanceof HTMLElement && typeof top.className === 'string' ? top.className.slice(0, 180) : null
+                };
+            """,
+            "args": [{ELEMENT_KEY: element_id}],
+        },
+    )
+    if not isinstance(result, dict):
+        raise RuntimeError(f"Unexpected WebDriver hit-test result: {result!r}")
+    return result
+
+
+def _hit_signature(hit: dict[str, Any]) -> tuple[float, float, float, float] | None:
+    rect = hit.get("rect")
+    if not isinstance(rect, dict):
+        return None
+    try:
+        return tuple(
+            round(float(rect[key]), 1)
+            for key in ("left", "top", "width", "height")
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def click(session_id: str, element_id: str) -> None:
-    request("POST", f"/session/{session_id}/element/{element_id}/click", {})
+    """Click only after WebKit reports a stable, unobstructed hit target."""
+    deadline = time.monotonic() + 5
+    last_error: WebDriverProtocolError | None = None
+    last_hit: dict[str, Any] | None = None
+    stable_signature: tuple[float, float, float, float] | None = None
+    stable_samples = 0
+
+    while time.monotonic() < deadline:
+        hit = _element_hit_test(session_id, element_id)
+        last_hit = hit
+        if hit.get("ready") is not True:
+            stable_signature = None
+            stable_samples = 0
+            time.sleep(0.1)
+            continue
+
+        signature = _hit_signature(hit)
+        if signature is None:
+            stable_signature = None
+            stable_samples = 0
+            time.sleep(0.1)
+            continue
+        if signature == stable_signature:
+            stable_samples += 1
+        else:
+            stable_signature = signature
+            stable_samples = 1
+        if stable_samples < 2:
+            time.sleep(0.1)
+            continue
+
+        try:
+            request("POST", f"/session/{session_id}/element/{element_id}/click", {})
+            return
+        except WebDriverProtocolError as error:
+            if error.error not in TRANSIENT_CLICK_ERRORS:
+                raise
+            last_error = error
+            stable_samples = 0
+            time.sleep(0.1)
+
+    if last_hit is not None and last_hit.get("ready") is not True:
+        raise RuntimeError(
+            "Element never became hit-testable before click: "
+            + json.dumps(last_hit, sort_keys=True)
+        )
+    if last_error is not None:
+        raise WebDriverProtocolError(
+            last_error.status,
+            last_error.error,
+            f"{last_error.message} Last hit test: {json.dumps(last_hit, sort_keys=True)}",
+        )
+    raise RuntimeError(
+        "WebDriver click never reached a stable target: "
+        + json.dumps(last_hit, sort_keys=True)
+    )
 
 
 def clear(session_id: str, element_id: str) -> None:
@@ -188,7 +418,11 @@ def set_input_text(
                 if last_value == text:
                     return element
                 time.sleep(0.1)
-        except Exception as error:
+        except TimeoutError as error:
+            last_error = error
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_FIND_ERRORS:
+                raise
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(
@@ -226,7 +460,11 @@ def set_rich_editor_text(
                 if last_text == text:
                     return element
                 time.sleep(0.1)
-        except Exception as error:
+        except TimeoutError as error:
+            last_error = error
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_FIND_ERRORS:
+                raise
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(
@@ -250,7 +488,11 @@ def wait_for_enabled_element(
             last_enabled = element_enabled(session_id, element)
             if last_enabled:
                 return element
-        except Exception as error:
+        except TimeoutError as error:
+            last_error = error
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_FIND_ERRORS:
+                raise
             last_error = error
         time.sleep(0.1)
     raise TimeoutError(
@@ -279,12 +521,23 @@ def wait_for_element_text(
                 last_text = element_text(session_id, str(result[ELEMENT_KEY]))
                 if last_text.strip() == expected:
                     return
-        except Exception as error:  # The old element may be replaced during navigation.
+        except WebDriverProtocolError as error:
+            if error.error not in RETRYABLE_FIND_ERRORS:
+                raise
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(
         f"Expected {using}={value} to contain {expected!r}; "
         f"last text: {last_text!r}; last error: {last_error}"
+    )
+
+
+def wait_for_main_heading(session_id: str, expected: str, deadline: float) -> None:
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//*[self::h1 or self::h2][normalize-space(.)={json.dumps(expected)}]",
+        deadline,
     )
 
 
@@ -299,10 +552,12 @@ def click_text_button(session_id: str, label: str, deadline: float) -> None:
 
 
 def verify_shell(session_id: str, deadline: float) -> None:
-    brand = find_element(session_id, "css selector", ".brand-block strong", deadline)
-    brand_text = element_text(session_id, brand)
-    if brand_text.strip() != "ostudy":
-        raise AssertionError(f"Expected ostudy branding, found {brand_text!r}")
+    find_element(
+        session_id,
+        "css selector",
+        "aside.sidebar [data-artwork-slot='brand.logo.sidebar'][aria-label='ostudy']",
+        deadline,
+    )
 
 
 def create_and_review_card(session_id: str) -> tuple[str, str]:
@@ -316,7 +571,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     set_input_text(
         session_id,
         "css selector",
-        "input[placeholder='NCLEX Pharmacology']",
+        "dialog input[data-autofocus='true']",
         deck_name,
         deadline,
     )
@@ -327,7 +582,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
     click(session_id, create_button)
-    wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
+    wait_for_main_heading(session_id, deck_name, deadline)
 
     progress("Creating and verifying a flashcard")
     deadline = deadline_after()
@@ -341,7 +596,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
     click(session_id, save_button)
-    wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
+    wait_for_main_heading(session_id, deck_name, deadline)
     find_element(
         session_id,
         "xpath",
@@ -365,10 +620,6 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
     click(session_id, show_answer)
-    # The visual label is composed from nested spans, and XPath string-value
-    # concatenation does not guarantee the visual whitespace between them.
-    # Select the score through its explicit keyboard and accessible-name
-    # contract rather than depending on nested visible-text whitespace.
     medium = find_element(
         session_id,
         "css selector",
@@ -376,18 +627,18 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
     click(session_id, medium)
-    wait_for_element_text(
-        session_id,
-        "css selector",
-        "main h1",
-        "Session complete",
-        deadline,
-    )
+    find_element(session_id, "css selector", PRACTICE_COMPLETE_SELECTOR, deadline)
 
     progress("Verifying analytics and chart data")
     deadline = deadline_after(ANALYTICS_TIMEOUT_SECONDS)
-    click_text_button(session_id, "View analytics", deadline)
-    wait_for_element_text(session_id, "css selector", "main h1", "Analytics", deadline)
+    view_analytics = find_element(
+        session_id,
+        "css selector",
+        f"{PRACTICE_COMPLETE_SELECTOR} .primary-button",
+        deadline,
+    )
+    click(session_id, view_analytics)
+    find_element(session_id, "css selector", ANALYTICS_SCREEN_SELECTOR, deadline)
     find_element(
         session_id,
         "xpath",
@@ -395,14 +646,14 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         f"//strong[normalize-space(.)={json.dumps(question)}]",
         deadline,
     )
-    click_text_button(session_id, "View chart data", deadline)
-    wait_for_element_text(
+    chart_data_button = find_element(
         session_id,
         "css selector",
-        ".chart-data-table caption",
-        "Data represented in the learning progress chart",
+        "main section[aria-labelledby='progress-heading'] button[aria-expanded]",
         deadline,
     )
+    click(session_id, chart_data_button)
+    find_element(session_id, "css selector", CHART_DATA_SELECTOR, deadline)
     progress("Analytics verification completed")
     return deck_name, question
 
@@ -415,14 +666,22 @@ def verify_persistence_after_restart(
     progress("Verifying deck and card persistence after restart")
     deadline = deadline_after()
     verify_shell(session_id, deadline)
+    decks_button = find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-decks']",
+        deadline,
+    )
+    click(session_id, decks_button)
+    wait_for_element_text(session_id, "css selector", "main h1", "Flashcards", deadline)
     deck_button = find_element(
         session_id,
         "xpath",
-        f"//button[contains(normalize-space(.), {json.dumps(deck_name)})]",
+        f"//main//button[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
         deadline,
     )
     click(session_id, deck_button)
-    wait_for_element_text(session_id, "css selector", "main h1", deck_name, deadline)
+    wait_for_main_heading(session_id, deck_name, deadline)
     find_element(
         session_id,
         "xpath",
@@ -434,12 +693,12 @@ def verify_persistence_after_restart(
     deadline = deadline_after(ANALYTICS_TIMEOUT_SECONDS)
     analytics_button = find_element(
         session_id,
-        "xpath",
-        "//nav[@aria-label='Main navigation']//button[contains(normalize-space(.), 'Analytics')]",
+        "css selector",
+        "button[data-testid='nav-analytics']",
         deadline,
     )
     click(session_id, analytics_button)
-    wait_for_element_text(session_id, "css selector", "main h1", "Analytics", deadline)
+    find_element(session_id, "css selector", ANALYTICS_SCREEN_SELECTOR, deadline)
     find_element(
         session_id,
         "xpath",
@@ -452,8 +711,8 @@ def verify_persistence_after_restart(
     deadline = deadline_after()
     settings_button = find_element(
         session_id,
-        "xpath",
-        "//nav[@aria-label='Main navigation']//button[contains(normalize-space(.), 'Settings')]",
+        "css selector",
+        "button[data-testid='nav-settings']",
         deadline,
     )
     click(session_id, settings_button)

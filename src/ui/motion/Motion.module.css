@@ -1,0 +1,21 @@
+@layer components {
+  .presence { min-width: 0; animation: presence-enter var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-enter) both; }
+  .presence[data-state="exiting"] { pointer-events: none; animation: presence-exit var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-exit) both; }
+
+  .route { min-width: 0; animation-duration: var(--ostudy-motion-duration-slow); animation-timing-function: var(--ostudy-motion-ease-enter); animation-fill-mode: both; }
+  .route[data-direction="forward"][data-relation="hierarchy"] { animation-name: route-forward; }
+  .route[data-direction="back"][data-relation="hierarchy"] { animation-name: route-back; }
+  .route[data-relation="sibling"] { animation-name: route-sibling; animation-duration: var(--ostudy-motion-duration-standard); }
+  .route[data-direction="neutral"] { animation-name: presence-enter; }
+
+  :root[data-motion="reduced"] .presence,
+  :root[data-motion="reduced"] .route { animation-name: presence-enter; animation-duration: var(--ostudy-motion-duration-fast); }
+  :root[data-motion="none"] .presence,
+  :root[data-motion="none"] .route { animation: none; }
+
+  @keyframes presence-enter { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes presence-exit { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes route-forward { from { opacity: 0; transform: translateX(var(--ostudy-motion-route-distance)); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes route-back { from { opacity: 0; transform: translateX(calc(var(--ostudy-motion-route-distance) * -1)); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes route-sibling { from { opacity: 0; transform: translateX(var(--ostudy-motion-tab-distance)); } to { opacity: 1; transform: translateX(0); } }
+}
