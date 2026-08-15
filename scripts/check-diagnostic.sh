@@ -91,12 +91,12 @@ run_gate() {
 shared_gate() {
   local name="$1" dependencies="$2" timeout_value="$3" function_name="$4"
   run_gate "$name" "core" "$dependencies" "$timeout_value" \
-    bash -c "source ./scripts/qualification-gates.sh; $function_name"
+    bash -Eeuo pipefail -c "source ./scripts/qualification-gates.sh; $function_name"
 }
 android_gate() {
   local name="$1" dependencies="$2" timeout_value="$3" function_name="$4"
   run_gate "$name" "android" "$dependencies" "$timeout_value" \
-    bash -c "source ./scripts/android-qualification-gates.sh; $function_name"
+    bash -Eeuo pipefail -c "source ./scripts/android-qualification-gates.sh; $function_name"
 }
 
 run_core() {
@@ -149,7 +149,7 @@ run_android() {
   android_gate android-gradle-lint-tests "android-x86-smoke-build" 60m ostudy_android_gate_test_packages
   android_gate android-test-packages "android-gradle-lint-tests" 10m ostudy_android_gate_verify_test_packages
   android_gate android-build-cleanliness "" 5m ostudy_android_gate_build_cleanliness
-  run_gate android-smoke-artifacts android "android-test-packages" 2m bash -c '
+  run_gate android-smoke-artifacts android "android-test-packages" 2m bash -Eeuo pipefail -c '
     source ./scripts/android-qualification-gates.sh
     app_apk="$(ostudy_android_find_app_apk)"
     test_apk="$(ostudy_android_find_test_apk)"
@@ -157,8 +157,8 @@ run_android() {
   '
 
   local app_apk test_apk
-  app_apk="$(bash -c 'source ./scripts/android-qualification-gates.sh; ostudy_android_find_app_apk' 2>/dev/null || true)"
-  test_apk="$(bash -c 'source ./scripts/android-qualification-gates.sh; ostudy_android_find_test_apk' 2>/dev/null || true)"
+  app_apk="$(bash -Eeuo pipefail -c 'source ./scripts/android-qualification-gates.sh; ostudy_android_find_app_apk' 2>/dev/null || true)"
+  test_apk="$(bash -Eeuo pipefail -c 'source ./scripts/android-qualification-gates.sh; ostudy_android_find_test_apk' 2>/dev/null || true)"
   run_gate android-emulator-smoke android \
     "android-smoke-artifacts android-runner-doctor" 110m \
     bash ./scripts/android-emulator-smoke.sh \
