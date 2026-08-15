@@ -134,7 +134,13 @@ check_exact_version() {
   fi
 }
 
-for command_name in node npm pnpm rustup rustc cargo tauri-driver java javac git curl python3; do
+# Keep the VM bootstrap contract at least as strict as the repository's
+# known-good native Linux doctor. In particular, xvfb-run delegates Xauthority
+# setup to xauth, so checking only for xvfb-run is not sufficient on a clean VM.
+for command_name in \
+  git curl jq node npm pnpm python3 rustup rustc cargo rustfmt cargo-clippy \
+  pkg-config sqlite3 sha256sum tar xvfb-run xauth WebKitWebDriver tauri-driver \
+  java javac; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command is missing: $command_name"
 done
 
@@ -143,7 +149,35 @@ command -v npm >/dev/null 2>&1 && check_exact_version npm "$(npm --version)" "$N
 command -v pnpm >/dev/null 2>&1 && check_exact_version pnpm "$(pnpm --version)" "$PNPM_VERSION"
 command -v rustc >/dev/null 2>&1 && check_exact_version rustc "$(rustc --version | awk '{print $2}')" "$RUST_VERSION"
 command -v cargo >/dev/null 2>&1 && check_exact_version cargo "$(cargo --version | awk '{print $2}')" "$CARGO_VERSION"
-command -v tauri-driver >/dev/null 2>&1 && check_exact_version tauri-driver "$(tauri-driver --version | awk '{print $2}')" "$TAURI_DRIVER_VERSION"
+if command -v cargo >/dev/null 2>&1 && command -v tauri-driver >/dev/null 2>&1; then
+  tauri_driver_version="$(
+    cargo install --list |
+      sed -n 's/^tauri-driver v\([^:]*\):$/\1/p' |
+      head -n 1
+  )"
+  check_exact_version tauri-driver "$tauri_driver_version" "$TAURI_DRIVER_VERSION"
+fi
+
+if command -v pkg-config >/dev/null 2>&1; then
+  if pkg-config --exists webkit2gtk-4.1; then
+    ok "webkit2gtk-4.1 development files are available ($(pkg-config --modversion webkit2gtk-4.1))"
+  else
+    fail "webkit2gtk-4.1 development files are missing"
+  fi
+  if pkg-config --exists openssl; then
+    ok "OpenSSL development files are available ($(pkg-config --modversion openssl))"
+  else
+    fail "OpenSSL development files are missing"
+  fi
+fi
+
+if command -v dpkg-query >/dev/null 2>&1; then
+  if dpkg-query -W -f='${Status}' libxdo-dev 2>/dev/null | grep -Fxq 'install ok installed'; then
+    ok "libxdo-dev is installed"
+  else
+    fail "libxdo-dev is missing; native Linux qualification must match scripts/setup-ubuntu.sh"
+  fi
+fi
 
 if command -v javac >/dev/null 2>&1; then
   java_major="$(javac -version 2>&1 | sed -E 's/^javac ([0-9]+).*/\1/')"
