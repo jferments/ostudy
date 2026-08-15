@@ -29,7 +29,11 @@ jobs:
   qualify:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      contains(github.event.pull_request.body || '', '<!-- unified-runner:')
+      contains(github.event.pull_request.body || '', '<!-- unified-runner:preflight -->') ||
+      contains(github.event.pull_request.body || '', '<!-- unified-runner:linux-fast -->') ||
+      contains(github.event.pull_request.body || '', '<!-- unified-runner:linux-full -->') ||
+      contains(github.event.pull_request.body || '', '<!-- unified-runner:android-full -->') ||
+      contains(github.event.pull_request.body || '', '<!-- unified-runner:all-full -->')
     runs-on: [self-hosted, linux, x64, ostudy-unified]
     timeout-minutes: 240
     env:
