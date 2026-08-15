@@ -1,17 +1,15 @@
 @layer components {
-  .track {
-    width: 100%;
-    height: 5px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: var(--surface-soft);
-  }
-
-  .track span {
-    display: block;
-    height: 100%;
-    border-radius: inherit;
-    background: linear-gradient(90deg, var(--accent-strong), var(--accent));
-    transition: width var(--motion-normal) var(--ease-standard);
-  }
+  .root { display: grid; min-width: 0; gap: var(--ostudy-space-2); }
+  .text { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--ostudy-space-3); color: var(--ostudy-color-text-secondary); font-size: 0.82rem; }
+  .track { width: 100%; overflow: hidden; border-radius: var(--ostudy-radius-pill); background: var(--ostudy-color-progress-track); }
+  .small { height: 4px; }
+  .medium { height: 7px; }
+  .large { height: 10px; }
+  .track span { display: block; width: 100%; height: 100%; border-radius: inherit; background: var(--progress-color, var(--ostudy-color-progress-fill)); transform: scaleX(var(--progress-value)); transform-origin: left; transition: transform var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-standard); }
+  .accent { --progress-color: var(--ostudy-color-progress-fill); }
+  .success { --progress-color: var(--ostudy-color-status-success); }
+  .warning { --progress-color: var(--ostudy-color-status-warning); }
+  .danger { --progress-color: var(--ostudy-color-status-danger); }
+  :root[data-motion="reduced"] .track span,
+  :root[data-motion="none"] .track span { transition-duration: var(--ostudy-motion-duration-instant); }
 }

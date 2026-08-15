@@ -70,7 +70,7 @@ class AndroidSmokeTest {
     }
 
     @Test
-    fun c_documentsStubAndAndroidBackReturnToDecks() {
+    fun c_documentsStubAndAndroidBackReturnToFlashcardsDecks() {
         withApplication { webView ->
             waitForBridge(webView)
             evaluateSync(
@@ -102,7 +102,8 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Boolean(document.querySelector('h1')?.textContent?.includes('Decks'))"
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
+                        "Array.from(document.querySelectorAll('main button[role=\"tab\"][aria-selected=\"true\"]')).some(button => button.textContent?.includes('Decks'))"
                 }
             )
         }
@@ -121,18 +122,19 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Array.from(document.querySelectorAll('.deck-card-main')).some(button => button.textContent?.includes('Android Emulator Smoke Deck'))"
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
+                        "Array.from(document.querySelectorAll('main button')).some(button => button.querySelector('strong')?.textContent?.trim() === 'Android Emulator Smoke Deck')"
                 }
             )
             evaluateSync(
                 webView,
-                "Array.from(document.querySelectorAll('.deck-card-main')).find(button => button.textContent?.includes('Android Emulator Smoke Deck'))?.click(); true"
+                "Array.from(document.querySelectorAll('main button')).find(button => button.querySelector('strong')?.textContent?.trim() === 'Android Emulator Smoke Deck')?.click(); true"
             )
             waitUntil(
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "document.querySelector('.deck-detail-header h1')?.textContent === 'Android Emulator Smoke Deck'"
+                    "Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck')"
                 }
             )
             evaluateSync(
@@ -150,7 +152,10 @@ class AndroidSmokeTest {
             waitUntil(
                 webView,
                 predicate = { it == "true" },
-                expression = { "Boolean(document.querySelector('.deck-detail-header'))" }
+                expression = {
+                    "!document.querySelector('.card-editor-screen') && " +
+                        "Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck')"
+                }
             )
             waitForAndroidBackReady(webView)
             device.pressBack()
@@ -158,7 +163,10 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Boolean(document.querySelector('.deck-grid')) && !document.querySelector('.deck-detail-header')"
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
+                        "Array.from(document.querySelectorAll('main button[role=\"tab\"][aria-selected=\"true\"]')).some(button => button.textContent?.includes('Decks')) && " +
+                        "Array.from(document.querySelectorAll('main button')).some(button => button.querySelector('strong')?.textContent?.trim() === 'Android Emulator Smoke Deck') && " +
+                        "!Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck')"
                 }
             )
         }
@@ -435,28 +443,96 @@ class AndroidSmokeTest {
             webView,
             predicate = { it == "true" },
             expression = {
-                "document.documentElement.dataset.androidBackInterception === 'true' && document.documentElement.dataset.overlayActive !== 'true'"
+                "document.documentElement?.dataset != null && document.documentElement.dataset.androidBackInterception === 'true' && document.documentElement.dataset.overlayActive !== 'true'"
             }
         )
     }
 
     private fun withApplication(block: (WebView) -> Unit) {
         val scenario = ActivityScenario.launch(MainActivity::class.java)
+        block(waitForWebView(scenario))
+    }
+
+    private fun waitForWebView(scenario: ActivityScenario<MainActivity>): WebView {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
         var webView: WebView? = null
-        scenario.onActivity { activity ->
-            webView = findWebView(activity)
+        var latestViewTree = "Activity has not been inspected yet."
+
+        while (System.nanoTime() < deadline) {
+            scenario.onActivity { activity ->
+                val decorView = activity.window.decorView
+                webView = findWebView(decorView)
+                latestViewTree = describeViewTree(decorView)
+            }
+            webView?.let { return it }
+            Thread.sleep(50)
         }
-        val target = requireNotNull(webView) { "The Tauri WebView was not found." }
-        block(target)
+
+        throw AssertionError(
+            "Timed out waiting for the Tauri WebView to attach. Last view tree: $latestViewTree"
+        )
+    }
+
+    private fun describeViewTree(root: View): String {
+        val nodes = mutableListOf<String>()
+        collectViewTree(root, depth = 0, nodes = nodes)
+        return nodes.joinToString(separator = " | ")
+    }
+
+    private fun collectViewTree(view: View, depth: Int, nodes: MutableList<String>) {
+        if (nodes.size >= 40) return
+        nodes.add("${"  ".repeat(depth)}${view.javaClass.simpleName}")
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                collectViewTree(view.getChildAt(index), depth + 1, nodes)
+                if (nodes.size >= 40) return
+            }
+        }
     }
 
     private fun waitForBridge(webView: WebView) {
-        waitUntil(
-            webView,
-            timeoutSeconds = 30,
-            predicate = { it == "true" },
-            expression = { "typeof window.__OSTUDY_ANDROID_TEST__ === 'object'" }
-        )
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        var latest = JSONObject()
+            .put("type", "unavailable")
+            .put("state", "not-evaluated")
+            .put("error", "")
+            .put("readyState", "unknown")
+        while (System.nanoTime() < deadline) {
+            val encoded = evaluateSync(
+                webView,
+                """
+                (() => {
+                  const root = document.documentElement;
+                  return JSON.stringify({
+                    type: typeof window.__OSTUDY_ANDROID_TEST__,
+                    state: root?.dataset?.androidTestBridge || (root ? 'unset' : 'no-document-root'),
+                    error: root?.dataset?.androidTestBridgeError || '',
+                    readyState: document.readyState
+                  });
+                })()
+                """.trimIndent()
+            )
+            val decoded = decodeJavascriptString(encoded)
+            if (decoded == "null") {
+                latest = JSONObject()
+                    .put("type", "unavailable")
+                    .put("state", "no-evaluation-result")
+                    .put("error", "")
+                    .put("readyState", "unknown")
+                Thread.sleep(100)
+                continue
+            }
+
+            latest = JSONObject(decoded)
+            if (latest.optString("type") == "object") return
+
+            val state = latest.optString("state")
+            if (state == "missing" || state == "error") {
+                throw AssertionError("Android smoke bridge initialization failed: $latest")
+            }
+            Thread.sleep(100)
+        }
+        throw AssertionError("Timed out waiting for Android smoke bridge. Last snapshot: $latest")
     }
 
     private fun evaluatePromise(webView: WebView, expression: String): JSONObject {

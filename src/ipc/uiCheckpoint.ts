@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { AnalyticsRange } from "./analytics";
+import type { FlashcardsWorkspaceName } from "../navigation/flashcardsRoutes";
 
 export type CheckpointSection =
   | "decks"
@@ -27,6 +28,7 @@ export interface UiCheckpoint {
   schemaVersion: 1;
   updatedAt: number;
   section: CheckpointSection;
+  flashcardsWorkspace: FlashcardsWorkspaceName | null;
   deckId: string | null;
   editorDraftId: string | null;
   practice: PracticeCheckpoint | null;
@@ -35,6 +37,7 @@ export interface UiCheckpoint {
 
 export interface SaveUiCheckpointInput {
   section: CheckpointSection;
+  flashcardsWorkspace?: FlashcardsWorkspaceName;
   deckId?: string;
   editorDraftId?: string;
   practice?: PracticeCheckpoint;

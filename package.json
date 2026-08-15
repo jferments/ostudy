@@ -35,6 +35,7 @@
     "verify:versions": "node ./scripts/verify-js-dependencies.mjs",
     "verify:manifests": "node ./scripts/verify-project-manifests.mjs",
     "verify:docs": "node ./scripts/verify-documentation.mjs",
+    "verify:ui-tokens": "node ./scripts/generate-ui-tokens.mjs --check && node ./scripts/verify-ui-token-usage.mjs",
     "verify:platform": "node ./scripts/verify-platform-boundaries.mjs",
     "verify:android": "node ./scripts/verify-android-project.mjs",
     "verify:contracts": "node ./scripts/verify-ipc-contract.mjs && node ./scripts/verify-repository-policy.mjs && node ./scripts/verify-platform-boundaries.mjs"

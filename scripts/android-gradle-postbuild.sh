@@ -36,6 +36,14 @@ if [[ ! -e "$native_lib" ]]; then
   exit 1
 fi
 
+generated_settings="$ROOT_DIR/src-tauri/gen/android/tauri.settings.gradle"
+if [[ ! -f "$generated_settings" ]]; then
+  printf 'The Tauri-generated Android Gradle settings are missing: %s\n' \
+    "$generated_settings" >&2
+  printf 'Run ./scripts/android-build.sh --debug --apk --target x86_64 first.\n' >&2
+  exit 1
+fi
+
 # Direct Gradle invocations do not own the temporary Tauri CLI WebSocket used by
 # `tauri android android-studio-script`. Reuse the already-built JNI library and
 # keep the direct graph x86_64-only, while still allowing Gradle/Kotlin/JVM work

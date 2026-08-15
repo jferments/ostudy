@@ -27,8 +27,12 @@ const DEFAULTS: AppSettings = {
   cardFont: "system",
   uiScale: 100,
   cardBaseSize: 18,
-  animationsEnabled: true,
-  reduceMotion: false,
+  motionPreference: "system",
+  materialPreference: "automatic",
+  decorativeArtwork: true,
+  celebrationsEnabled: true,
+  tutorialsEnabled: true,
+  deckViewDensity: "comfortable",
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
@@ -80,7 +84,12 @@ export function SettingsScreen({
         cardFont: DEFAULTS.cardFont,
         uiScale: DEFAULTS.uiScale,
         cardBaseSize: DEFAULTS.cardBaseSize,
-        reduceMotion: DEFAULTS.reduceMotion,
+        motionPreference: DEFAULTS.motionPreference,
+        materialPreference: DEFAULTS.materialPreference,
+        decorativeArtwork: DEFAULTS.decorativeArtwork,
+        celebrationsEnabled: DEFAULTS.celebrationsEnabled,
+        tutorialsEnabled: DEFAULTS.tutorialsEnabled,
+        deckViewDensity: DEFAULTS.deckViewDensity,
       });
     }
     if (activeTab === "review") {
@@ -140,6 +149,13 @@ export function SettingsScreen({
     },
   ];
 
+  const defaultsLabel =
+    activeTab === "appearance"
+      ? "appearance"
+      : activeTab === "review"
+        ? "scheduling"
+        : "safety";
+
   return (
     <div className="screen settings-screen" aria-busy={isSaving || aiController.mutating}>
       <header className="screen-header compact-screen-header">
@@ -155,7 +171,7 @@ export function SettingsScreen({
               disabled={isSaving}
               onClick={restoreCurrentDefaults}
             >
-              Restore {activeTab === "appearance" ? "appearance" : activeTab === "review" ? "scheduling" : "safety"} defaults
+              Restore {defaultsLabel} defaults
             </button>
           ) : null}
           {preferencesDirty ? (
@@ -172,7 +188,9 @@ export function SettingsScreen({
       </header>
 
       {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
-      {preferencesDirty ? <div className="inline-alert info-alert">Previewing unsaved preferences.</div> : null}
+      {preferencesDirty ? (
+        <div className="inline-alert info-alert">Previewing unsaved preferences.</div>
+      ) : null}
 
       <Tabs
         value={activeTab}

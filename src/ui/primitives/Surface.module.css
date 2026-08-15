@@ -1,0 +1,77 @@
+@layer components {
+  .surface {
+    position: relative;
+    min-width: 0;
+    border: 1px solid var(--ostudy-color-border-subtle);
+    color: var(--ostudy-color-text-primary);
+    isolation: isolate;
+  }
+
+  .surface::before {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, var(--ostudy-color-surface-highlight), transparent 42%);
+    content: "";
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  .level0 { border-radius: 0; box-shadow: none; }
+  .level1 { border-radius: var(--ostudy-radius-medium); box-shadow: var(--ostudy-shadow-level-1); }
+  .level2 { border-radius: var(--ostudy-radius-large); box-shadow: var(--ostudy-shadow-level-2); }
+  .level3 { border-radius: var(--ostudy-radius-large); box-shadow: var(--ostudy-shadow-level-3); }
+  .level4 { border-radius: var(--ostudy-radius-large); box-shadow: var(--ostudy-shadow-level-4); }
+  .level5 { border-radius: var(--ostudy-radius-xlarge); box-shadow: var(--ostudy-shadow-level-5); }
+
+  .solid { background: var(--ostudy-color-surface-base); }
+  .soft { background: var(--ostudy-color-surface-soft); }
+  .translucent,
+  .chrome {
+    background: var(--ostudy-color-surface-chrome);
+    backdrop-filter: blur(var(--ostudy-material-blur-medium)) saturate(var(--ostudy-material-chrome-saturation));
+  }
+  .overlay { background: var(--ostudy-color-surface-overlay); }
+
+  .accent { border-color: color-mix(in srgb, var(--ostudy-color-accent-base) 48%, var(--ostudy-color-border-subtle)); }
+  .success { border-color: color-mix(in srgb, var(--ostudy-color-status-success) 48%, var(--ostudy-color-border-subtle)); }
+  .warning { border-color: color-mix(in srgb, var(--ostudy-color-status-warning) 48%, var(--ostudy-color-border-subtle)); }
+  .danger { border-color: color-mix(in srgb, var(--ostudy-color-status-danger) 48%, var(--ostudy-color-border-subtle)); }
+
+  .interactive {
+    cursor: pointer;
+    transition:
+      transform var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
+      border-color var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
+      box-shadow var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard);
+  }
+
+  .interactive:hover {
+    border-color: var(--ostudy-color-border-strong);
+    transform: translateY(var(--ostudy-surface-interactive-lift));
+  }
+
+  .interactive:active {
+    transform: translateY(var(--ostudy-surface-pressed-translate)) scale(var(--ostudy-surface-pressed-scale));
+  }
+
+  .selected {
+    border-color: var(--ostudy-color-border-accent);
+    background: var(--ostudy-color-surface-selected);
+    box-shadow: var(--ostudy-shadow-level-2), var(--ostudy-glow-accent);
+  }
+
+  .inset {
+    box-shadow: 0 1px 0 var(--ostudy-color-surface-highlight) inset;
+  }
+
+  :root[data-material="simple"] .surface::before,
+  :root[data-motion="reduced"] .interactive,
+  :root[data-motion="none"] .interactive {
+    transform: none;
+  }
+
+  @media (forced-colors: active) {
+    .surface { border: 1px solid CanvasText; forced-color-adjust: auto; }
+  }
+}

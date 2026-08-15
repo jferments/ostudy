@@ -1,0 +1,112 @@
+@layer components {
+  .helpButton {
+    display: inline-grid;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    place-items: center;
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-pill);
+    padding: 0;
+    background: var(--ostudy-color-surface-soft);
+    color: var(--ostudy-color-text-muted);
+  }
+  .helpButton:hover {
+    border-color: var(--ostudy-color-border-accent);
+    color: var(--ostudy-color-text-accent);
+  }
+  .helpButton:focus-visible {
+    outline: none;
+    box-shadow: var(--ostudy-shadow-focus);
+  }
+
+  .sheetBody {
+    display: grid;
+    min-width: 0;
+    gap: var(--ostudy-space-4);
+    padding: var(--ostudy-space-5) var(--ostudy-space-6);
+  }
+  .sheetBody p {
+    min-width: 0;
+    margin: 0;
+    color: var(--ostudy-color-text-secondary);
+    line-height: 1.58;
+    overflow-wrap: anywhere;
+  }
+  .sheetBody code {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-small);
+    padding: var(--ostudy-space-3);
+    background: var(--ostudy-color-surface-soft);
+    color: var(--ostudy-color-text-muted);
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .sheetActions {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--ostudy-space-2);
+  }
+
+  .tooltipRoot {
+    position: relative;
+    display: inline-flex;
+    min-width: 0;
+  }
+  .tooltip {
+    position: absolute;
+    z-index: var(--ostudy-layer-popover);
+    inset-block-end: calc(100% + 8px);
+    inset-inline-start: 50%;
+    width: max-content;
+    max-width: min(320px, calc(100vw - 32px));
+    padding: 7px 10px;
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-small);
+    background: var(--ostudy-color-surface-overlay);
+    box-shadow: var(--ostudy-shadow-level-3);
+    color: var(--ostudy-color-text-primary);
+    font-size: .78rem;
+    line-height: 1.35;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 4px);
+    transition:
+      opacity var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
+      transform var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard);
+  }
+  .tooltipRoot:hover .tooltip,
+  .tooltipRoot:focus-within .tooltip {
+    opacity: 1;
+    transform: translate(-50%, 0);
+    transition-delay: var(--ostudy-tooltip-delay);
+  }
+  :root[data-motion="none"] .tooltip {
+    transition: none;
+  }
+
+  @media (hover: none), (pointer: coarse) {
+    .tooltip {
+      display: none;
+    }
+    .helpButton {
+      width: var(--touch-target-min);
+      height: var(--touch-target-min);
+    }
+  }
+
+  @media (max-width: 520px) {
+    .sheetBody {
+      padding: var(--ostudy-space-4);
+    }
+    .sheetActions {
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+  }
+}

@@ -136,9 +136,12 @@ for (const path of frontendProductionFiles) {
     failures.push(`${displayPath}: platform-specific Tauri plugins may only be imported by src/platform adapters`);
   }
 
+  const ownsOverlaySemantics =
+    displayPath.startsWith("src/ui/overlays/")
+    || displayPath === "src/ui/tutorials/TourProvider.tsx";
   if (
     (/<dialog\b/u.test(text) || /role\s*=\s*["'](?:dialog|alertdialog)["']/u.test(text))
-    && !displayPath.startsWith("src/ui/overlays/")
+    && !ownsOverlaySemantics
   ) {
     failures.push(`${displayPath}: feature code may not hand-write dialog semantics; use shared overlay primitives`);
   }

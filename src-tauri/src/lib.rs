@@ -16,6 +16,7 @@ mod cards;
 mod data_repairs;
 mod database;
 mod deck_cards;
+mod deck_folders;
 mod decks;
 mod deletion;
 mod deletion_commands;
@@ -64,6 +65,8 @@ mod ui_checkpoint;
 mod util;
 mod workload;
 
+#[cfg(test)]
+mod deck_folders_backup_tests;
 #[cfg(test)]
 mod document_backup_tests;
 #[cfg(test)]
@@ -218,6 +221,12 @@ pub fn run() {
             decks::create_deck,
             decks::update_deck,
             decks::set_deck_archived,
+            deck_folders::get_deck_library_organization,
+            deck_folders::create_deck_folder,
+            deck_folders::update_deck_folder,
+            deck_folders::delete_deck_folder,
+            deck_folders::move_deck_in_library,
+            deck_folders::move_deck_folder,
             deletion_commands::delete_deck_with_undo,
             deck_cards::list_deck_card_summaries,
             deletion_commands::delete_card_with_undo,

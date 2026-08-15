@@ -23,6 +23,7 @@ const CHECKPOINT_SCHEMA_VERSION: i64 = 1;
 const MAX_CHECKPOINT_BYTES: usize = 64 * 1024;
 const DEVICE_STATE_DIRECTORY: &str = "device-state";
 const CHECKPOINT_FILENAME: &str = "ui-checkpoint-v1.json";
+const FLASHCARDS_WORKSPACES: &[&str] = &["decks", "templates", "search", "transfer", "create"];
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -58,6 +59,7 @@ pub struct UiCheckpointDto {
     pub schema_version: i64,
     pub updated_at: i64,
     pub section: CheckpointSection,
+    pub flashcards_workspace: Option<String>,
     pub deck_id: Option<String>,
     pub editor_draft_id: Option<String>,
     pub practice: Option<PracticeCheckpoint>,
@@ -68,6 +70,7 @@ pub struct UiCheckpointDto {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SaveUiCheckpointInput {
     pub section: CheckpointSection,
+    pub flashcards_workspace: Option<String>,
     pub deck_id: Option<String>,
     pub editor_draft_id: Option<String>,
     pub practice: Option<PracticeCheckpoint>,
@@ -111,6 +114,7 @@ pub fn save_ui_checkpoint(
         schema_version: CHECKPOINT_SCHEMA_VERSION,
         updated_at: unix_time_millis()?,
         section: input.section,
+        flashcards_workspace: input.flashcards_workspace,
         deck_id: input.deck_id,
         editor_draft_id: input.editor_draft_id,
         practice: input.practice,
@@ -159,6 +163,16 @@ fn validate_checkpoint(checkpoint: &UiCheckpointDto) -> Result<(), CommandError>
         return Err(CommandError::new(
             "unsupported_ui_checkpoint",
             "The device restoration checkpoint uses an unsupported format.",
+        ));
+    }
+    if checkpoint
+        .flashcards_workspace
+        .as_deref()
+        .is_some_and(|workspace| !FLASHCARDS_WORKSPACES.contains(&workspace))
+    {
+        return Err(CommandError::new(
+            "invalid_ui_checkpoint",
+            "The restored Flashcards workspace is invalid.",
         ));
     }
     validate_optional_id(checkpoint.deck_id.as_deref(), "deck")?;
@@ -251,6 +265,7 @@ mod tests {
           "schemaVersion":1,
           "updatedAt":1,
           "section":"decks",
+          "flashcardsWorkspace":"decks",
           "deckId":null,
           "editorDraftId":null,
           "practice":null,
@@ -266,6 +281,7 @@ mod tests {
             schema_version: 1,
             updated_at: 1,
             section: CheckpointSection::Practice,
+            flashcards_workspace: Some("decks".to_string()),
             deck_id: None,
             editor_draft_id: None,
             practice: Some(PracticeCheckpoint {
@@ -276,5 +292,23 @@ mod tests {
             analytics: None,
         };
         validate_checkpoint(&checkpoint).expect("checkpoint should be valid");
+    }
+
+    #[test]
+    fn checkpoint_rejects_unknown_flashcards_workspace() {
+        let checkpoint = UiCheckpointDto {
+            schema_version: 1,
+            updated_at: 1,
+            section: CheckpointSection::Decks,
+            flashcards_workspace: Some("hidden-admin".to_string()),
+            deck_id: None,
+            editor_draft_id: None,
+            practice: None,
+            analytics: None,
+        };
+        assert_eq!(
+            validate_checkpoint(&checkpoint).unwrap_err().code,
+            "invalid_ui_checkpoint"
+        );
     }
 }

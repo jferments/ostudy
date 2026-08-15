@@ -1,0 +1,77 @@
+@layer components {
+  .ambient {
+    position: fixed;
+    z-index: var(--ostudy-layer-base);
+    inset: 0;
+    overflow: hidden;
+    background: var(--ostudy-color-canvas);
+    pointer-events: none;
+  }
+
+  .ambientBack,
+  .ambientMiddle,
+  .noise,
+  .vignette { position: absolute; inset: -8%; }
+
+  .ambientBack {
+    background:
+      radial-gradient(circle at 14% 4%, var(--ostudy-color-ambient-primary), transparent 42%),
+      radial-gradient(circle at 88% 12%, var(--ostudy-color-ambient-secondary), transparent 40%);
+    opacity: 0.46;
+    transform: translate(
+      calc(var(--ambient-pointer-x, 0) * var(--ostudy-motion-parallax-background)),
+      calc(var(--ambient-pointer-y, 0) * var(--ostudy-motion-parallax-background))
+    );
+    transition: transform var(--ostudy-motion-duration-slow) var(--ostudy-motion-ease-standard);
+  }
+
+  .ambientMiddle {
+    background: linear-gradient(135deg, transparent 0 46%, var(--ostudy-color-surface-highlight) 72%, transparent 100%);
+    opacity: 0.2;
+    transform: translate(
+      calc(var(--ambient-pointer-x, 0) * var(--ostudy-motion-parallax-midground)),
+      calc(var(--ambient-pointer-y, 0) * var(--ostudy-motion-parallax-midground))
+    );
+  }
+
+  .noise {
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.92' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.32'/%3E%3C/svg%3E");
+    mix-blend-mode: soft-light;
+    opacity: var(--ostudy-material-noise-opacity);
+  }
+
+  .vignette {
+    inset: 0;
+    background: radial-gradient(circle at center, transparent 54%, var(--ostudy-color-ambient-vignette));
+  }
+
+  .cardStack { position: relative; min-width: 0; isolation: isolate; }
+  .cardStackContent {
+    position: relative;
+    z-index: var(--ostudy-layer-selected);
+    min-width: 0;
+  }
+  .backingCard {
+    position: absolute;
+    z-index: var(--ostudy-layer-base);
+    inset: 0;
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-practice-card-radius);
+    background: var(--ostudy-color-surface-soft);
+    box-shadow: var(--ostudy-shadow-level-1);
+    pointer-events: none;
+    transition: transform var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-reorder), opacity var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-standard);
+  }
+  .backingOne { transform: translate(var(--ostudy-practice-card-stack-offset-x), var(--ostudy-practice-card-stack-offset-y)) rotate(var(--ostudy-practice-card-stack-rotation)); opacity: 0.78; }
+  .backingTwo { transform: translate(calc(var(--ostudy-practice-card-stack-offset-x) * 2), calc(var(--ostudy-practice-card-stack-offset-y) * 2)) rotate(calc(var(--ostudy-practice-card-stack-rotation) * -1)); opacity: 0.46; }
+
+  :root[data-motion="reduced"] .ambientBack,
+  :root[data-motion="reduced"] .ambientMiddle,
+  :root[data-motion="none"] .ambientBack,
+  :root[data-motion="none"] .ambientMiddle { transform: none; transition: none; }
+  :root[data-motion="reduced"] .backingCard,
+  :root[data-motion="none"] .backingCard { transition: none; }
+  :root[data-material="simple"] .noise,
+  :root[data-contrast="forced"] .noise { display: none; }
+}
