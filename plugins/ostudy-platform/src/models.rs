@@ -167,3 +167,70 @@ pub struct TakenIncomingShare {
     pub byte_size: u64,
     pub path: String,
 }
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentCapabilitiesResult {
+    pub pdf_render_available: bool,
+    pub ocr_available: bool,
+    pub renderer_engine: String,
+    pub ocr_engine: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenPdfRequest {
+    pub source_path: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenPdfResult {
+    pub token: String,
+    pub page_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderPdfPageRequest {
+    pub token: String,
+    pub page_number: u32,
+    pub dpi: u32,
+    pub target_path: String,
+    pub maximum_bytes: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderPdfPageResult {
+    pub page_number: u32,
+    pub width: u32,
+    pub height: u32,
+    pub byte_size: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClosePdfRequest {
+    pub token: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecognizeImageRequest {
+    pub source_path: String,
+    pub language: String,
+    pub timeout_seconds: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecognizeImageResult {
+    pub text: String,
+    pub confidence: f64,
+    pub engine: String,
+    pub language: String,
+    pub width: u32,
+    pub height: u32,
+    pub duration_millis: u64,
+}
