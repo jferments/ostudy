@@ -170,6 +170,21 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
             / "ostudy"
             / "AndroidDocumentsProviderSmokeTest.kt"
         ).read_text(encoding="utf-8")
+        cancellation_smoke = (
+            ROOT
+            / "src-tauri"
+            / "gen"
+            / "android"
+            / "app"
+            / "src"
+            / "androidTest"
+            / "java"
+            / "io"
+            / "github"
+            / "jferments"
+            / "ostudy"
+            / "AndroidSmokeTest.kt"
+        ).read_text(encoding="utf-8")
         self.assertIn("android.content.action.DOCUMENTS_PROVIDER", test_manifest)
         self.assertIn("public final class OstudyTestDocumentsProvider extends DocumentsProvider", provider)
         self.assertNotIn("kotlin.", provider)
@@ -182,6 +197,12 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
         self.assertIn('purpose = "study_content"', smoke)
         self.assertIn('purpose = "image"', smoke)
         self.assertIn('purpose = "pdf_document"', smoke)
+        self.assertIn('By.res(packageName, "icon")', smoke)
+        self.assertIn('By.text("1 selected")', smoke)
+        self.assertIn('"action_menu_open"', smoke)
+        self.assertIn("waitForPickerCallbackIdle", smoke)
+        self.assertIn("waitForIdleSync()", smoke)
+        self.assertIn("waitForIdleSync()", cancellation_smoke)
 
 
 if __name__ == "__main__":
