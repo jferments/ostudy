@@ -38,10 +38,12 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 
 - [Development guide](development/guide.md) covers setup, repository layout, change design, and day-to-day commands.
 - [Android development architecture](development/android.md) documents the Kotlin/Rust boundary, generated project, emulator tests, package checks, and Android workflows.
-- [Android self-hosted runner](development/android-self-hosted-runner.md) explains KVM, SDK, runner labels, systemd service setup, and automated emulator qualification.
+- [Unified Linux/Android runner](development/unified-linux-android-runner.md) documents the isolated single-VM CI architecture, security boundary, nested-KVM qualification, workflow model, recovery, and rollback.
+- [Unified runner setup and operations](development/unified-runner-setup.md) gives the maintained ML-tower/libvirt provisioning, registration, service-management, snapshot, and retirement procedure.
+- [Legacy split Android runner notes](development/android-self-hosted-runner.md) records the retired split-runner topology and migration context.
 - [Platform portability inventory](development/platform-portability-inventory.md) records the current OS assumptions and the phase responsible for removing each one.
 - [Git and pull-request workflow](development/workflow.md) defines the publication, review, merge, release, and rollback process.
-- [Testing and CI](development/testing-and-ci.md) is the authoritative description of the changed, static, fast, full, and Android validation tiers.
+- [Testing and CI](development/testing-and-ci.md) is the authoritative description of validation tiers and the unified automated workflow.
 - [Dependency audit](development/dependency-audit.md) records the pinned dependency graph and native runtime trust boundaries.
 - The remaining documents in [`development/`](development/) are focused acceptance and regression plans for high-risk subsystems.
 - [`agents/`](agents/) contains additional guardrails for automated maintainers; [`AGENTS.md`](../AGENTS.md) remains their repository-wide entry point.

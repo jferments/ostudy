@@ -1,0 +1,146 @@
+name: Unified runner qualification
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: Qualification lane to run on the unified runner
+        required: true
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - linux-fast
+          - linux-full
+          - android-full
+          - all-full
+
+concurrency:
+  group: unified-runner-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.body || '', '<!-- unified-runner:preflight -->') ||
+      contains(github.event.pull_request.body || '', '<!-- unified-runner:linux-fast -->') ||
+      contains(github.event.pull_request.body || '', '<!-- unified-runner:linux-full -->') ||
+      contains(github.event.pull_request.body || '', '<!-- unified-runner:android-full -->') ||
+      contains(github.event.pull_request.body || '', '<!-- unified-runner:all-full -->')
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 240
+    env:
+      CI: "true"
+      CARGO_TERM_COLOR: always
+      QUALIFIED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ env.QUALIFIED_SHA }}
+          clean: true
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Expose pinned user toolchains and persistent caches
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          mkdir -p \
+            "$HOME/.cache/ostudy/gradle" \
+            "$HOME/.cache/ostudy/cargo-target"
+
+      - name: Verify exact checkout
+        run: test "$(git rev-parse HEAD)" = "$QUALIFIED_SHA"
+
+      - name: Enforce runner-infrastructure-only pull-request scope
+        env:
+          INFRA_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          INFRA_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          bash ./scripts/runner/verify-infrastructure-scope.sh \
+            "$INFRA_BASE_SHA" \
+            "$INFRA_HEAD_SHA"
+
+      - name: Select shadow qualification lane
+        id: lane
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_LANE: ${{ inputs.lane || 'preflight' }}
+          PR_BODY: ${{ github.event.pull_request.body || '' }}
+        run: |
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            lane="$DISPATCH_LANE"
+          elif [[ "$PR_BODY" == *'<!-- unified-runner:all-full -->'* ]]; then
+            lane=all-full
+          elif [[ "$PR_BODY" == *'<!-- unified-runner:android-full -->'* ]]; then
+            lane=android-full
+          elif [[ "$PR_BODY" == *'<!-- unified-runner:linux-full -->'* ]]; then
+            lane=linux-full
+          elif [[ "$PR_BODY" == *'<!-- unified-runner:linux-fast -->'* ]]; then
+            lane=linux-fast
+          else
+            lane=preflight
+          fi
+          printf 'lane=%s\n' "$lane" >> "$GITHUB_OUTPUT"
+          printf 'Selected unified-runner lane: %s\n' "$lane"
+
+      - name: Verify isolated unified runner resources and nested KVM
+        run: bash ./scripts/runner/guest-preflight.sh
+
+      - name: Run Linux fast qualification
+        if: steps.lane.outputs.lane == 'linux-fast'
+        run: bash ./scripts/check-fast.sh
+
+      - name: Run authoritative Linux qualification
+        if: steps.lane.outputs.lane == 'linux-full' || steps.lane.outputs.lane == 'all-full'
+        run: bash ./scripts/check.sh
+
+      - name: Run authoritative Android compile and package qualification
+        if: steps.lane.outputs.lane == 'android-full' || steps.lane.outputs.lane == 'all-full'
+        run: bash ./scripts/android-test.sh
+
+      - name: Run authoritative Android Emulator smoke qualification
+        if: steps.lane.outputs.lane == 'android-full' || steps.lane.outputs.lane == 'all-full'
+        run: bash ./scripts/android-emulator-smoke.sh --artifacts "$RUNNER_TEMP/android-smoke"
+
+      - name: Export Linux diagnostics after failure
+        if: failure()
+        run: bash ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-unified-diagnostics.tar.gz"
+
+      - name: Upload bounded failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ostudy-unified-runner-${{ env.QUALIFIED_SHA }}
+          path: |
+            ${{ runner.temp }}/ostudy-unified-diagnostics.tar.gz
+            ${{ runner.temp }}/android-smoke/**
+            src-tauri/gen/android/app/build/reports/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Publish exact-head qualification summary
+        if: always()
+        env:
+          LANE: ${{ steps.lane.outputs.lane }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo '# Unified runner qualification'
+            echo
+            echo "- Head: \`$QUALIFIED_SHA\`"
+            echo "- Runner: \`$RUNNER_NAME\`"
+            echo "- Lane: \`$LANE\`"
+            echo "- Status: **$JOB_STATUS**"
+          } >> "$GITHUB_STEP_SUMMARY"

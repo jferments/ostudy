@@ -1,213 +1,137 @@
 # Testing and CI
 
-ostudy uses tiered validation locally and on self-hosted runners. Each tier answers a different question; inexpensive tiers must not be described as complete application qualification.
+ostudy uses tiered validation locally and one isolated self-hosted Linux runner for automated Linux/Tauri and Android qualification. Inexpensive tiers help iteration; only the authoritative full gates qualify a merge.
 
-The repository does not use GitHub-hosted operating-system runners. Shared/Linux jobs target the ordinary `ostudy` runner class. Android compilation additionally requires the `android` label, and the official Android Emulator requires both `android` and `kvm`:
+## Runner architecture
 
-```yaml
-# Android compile/package
-runs-on: [self-hosted, linux, x64, ostudy, android]
-
-# Official Android Emulator
-runs-on: [self-hosted, linux, x64, ostudy, android, kvm]
-```
-
-The custom labels are maintainer assertions about installed tooling and KVM access; `scripts/android-runner-doctor.sh` verifies those claims at job runtime. Third-party actions are pinned to immutable commit SHAs with a human-readable version comment.
-
-## Why the tiers exist
-
-The complete Tauri build, Rust suite, native WebDriver workflow, Android cross-build, Gradle tests, and emulator boot are valuable but expensive. Running all of them after every small edit wastes time and obscures the first useful failure. Shared tiers progress from cheap structural guarantees to full native behavior:
+Automated qualification runs on the repository-scoped `ostudy-ci-unified` runner with:
 
 ```text
-changed → static → fast → full
+self-hosted
+linux
+x64
+ostudy-unified
 ```
 
-Android adds a target-specific path:
+The runner is an Ubuntu 24.04 libvirt/QEMU/KVM virtual machine on `ML-tower`. It runs Linux/Tauri checks directly and the official Android Emulator through nested KVM. The VM has no host filesystem share, no forwarded SSH agent, no Docker/libvirt host-control socket, no signing credentials, and no personal ostudy data.
 
-```text
-Android project contracts → cross-build/package → official-emulator smoke
-```
+See [Unified Linux and Android self-hosted runner](unified-linux-android-runner.md) for the architecture and [Unified runner setup](unified-runner-setup.md) for provisioning and recovery.
 
-An exact-tree stamp allows a later shared tier to reuse an earlier successful result only when source, relevant untracked files, deletions, tool versions, and platform still match. `OSTUDY_FORCE_CHECK=1` disables reuse when testing the gate itself or investigating a suspicious cache result.
+## Local validation tiers
 
-## Changed-file iteration
+Use the repository tiers in increasing order:
 
 ```bash
 ./scripts/check-changed.sh
-```
-
-This is a development aid, not merge qualification. It compares the branch and working tree with `origin/main` when available and routes the change:
-
-- documentation-only changes run documentation and static repository contracts;
-- frontend-only changes run static checks and changed Vitest selection;
-- Rust-only changes run static checks, locked compile checking, and focused library tests;
-- document-related Rust changes add focused document contract filters;
-- migrations, manifests, workflows, scripts, native dependencies, Android project files, or mixed changes escalate to the fast or target-specific tier.
-
-The routing is conservative. When the script cannot prove that a narrow selection is sufficient, it chooses the broader tier.
-
-## Static qualification
-
-```bash
 ./scripts/check-static.sh
-```
-
-The static tier verifies:
-
-- pinned environment and manifest relationships;
-- committed JavaScript and Cargo lockfiles;
-- migration registration and checksums;
-- frontend IPC names against the native command registry;
-- direct Tauri invocation limited to typed domain gateways;
-- repository module, provider-network, credential, UI, workflow, and test policies;
-- documentation links, stale canonical paths, and top-level organization;
-- Bash and Node syntax plus Python script behavior tests;
-- frozen JavaScript installation and exact direct dependency versions;
-- TypeScript project checking;
-- canonical Rust formatting.
-
-This tier is the minimum check for a documentation reorganization because a moved file can break agent instructions, issue forms, scripts, or reader navigation even when no executable source changed.
-
-## Fast qualification
-
-```bash
 ./scripts/check-fast.sh
-```
-
-The fast tier reuses a matching static result, provisions or verifies the pinned PDFium runtime, then runs:
-
-- the complete frontend Vitest suite;
-- locked Rust compile checking for the supported target and feature set;
-- focused document contracts that protect source-format, semantic-window, provider, OCR, rendering, and checkpoint boundaries.
-
-Draft pull requests use the fast tier. Controller tests deliberately resolve independent reads out of order and verify that obsolete successes and errors cannot replace newer screen state. Mutation tests preserve committed success when a later reconciliation read fails.
-
-## Full shared/Linux qualification
-
-```bash
 ./scripts/check.sh
 ```
 
-The full tier reuses a matching fast result and adds:
+`check-changed.sh` is an iteration aid. It inspects the current diff and chooses a conservative focused check when one is safe.
 
-- native environment qualification, including WebKit/WebDriver and native runtime checks;
-- production frontend build;
-- Clippy with warnings denied;
-- all Rust unit, integration, migration, import/export, backup, scheduling, analytics, AI, and document tests;
-- standalone Tauri build with locked Cargo dependencies;
-- resolved Rust dependency verification;
-- a native WebDriver create → practice → restart → persistence workflow.
+`check-static.sh` verifies repository policy, manifests and lockfiles, migrations, typed IPC, dependency boundaries, documentation links, workflow policy, TypeScript checking, Rust formatting, and script syntax/contracts.
 
-This remains the authoritative shared/local merge gate. Android changes must pass it because Android reuses the same application and domain code.
+`check-fast.sh` adds the complete frontend test suite, locked Rust compilation, and high-return document/platform contracts.
 
-The native Linux smoke test can be skipped temporarily with `OSTUDY_SKIP_NATIVE_SMOKE=1`, but the pull request must state that it was skipped and why. CI normally runs it.
+`check.sh` is the authoritative Linux/shared merge gate. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, and the native WebDriver persistence smoke test.
+
+Successful check stamps are keyed by the exact source tree, relevant untracked files, tool versions, and platform. Set `OSTUDY_FORCE_CHECK=1` when deliberately bypassing exact-tree reuse.
 
 ## Android qualification
 
-### Compile and package tier
+Android uses the same shared application and domain code, so ready changes must pass both the Linux full gate and the Android gates.
+
+Compile/package qualification:
 
 ```bash
 ./scripts/android-test.sh
 ```
 
-This tier verifies the pinned SDK/NDK/JDK environment and Android project, provisions the desktop PDFium fixture needed by shared host-side Rust tests, then runs shared TypeScript/Rust tests, Kotlin/JVM tests, Rust Android cross-compilation, x86_64 APK generation, instrumentation-package compilation, manifest/permission checks, and 16 KiB ZIP/ELF alignment checks.
+This verifies the pinned SDK/NDK/JDK environment and generated Android project, runs the shared test contracts required by the Android build, compiles the Android Rust targets and Kotlin/Gradle project, builds the debug APK and instrumentation package, and verifies package/permission/alignment constraints.
 
-`android-check.yml` runs this tier automatically for pull requests targeting `main`, pushes to `main`, and manual dispatches. The job is routed only to self-hosted runners carrying the `android` label. APKs, instrumentation packages, and Gradle reports are uploaded as short-lived diagnostic artifacts.
-
-### Official Android Emulator smoke
+Official emulator qualification:
 
 ```bash
 ./scripts/android-emulator-smoke.sh
 ```
 
-The emulator tier uses the pinned API 36 Google APIs x86_64 image and requires a self-hosted runner carrying both `android` and `kvm`. Before starting the emulator, CI runs `scripts/android-runner-doctor.sh` to verify the SDK/NDK/JDK/Rust targets, `/dev/kvm`, emulator acceleration, memory, and disk prerequisites.
+The smoke suite boots the pinned API 36 Google APIs x86_64 emulator using KVM acceleration and verifies native launch, SQLite migration, study workflows, persistence/restart behavior, Android Back, process restoration, and Android system document picker/import/export behavior. It uses a fresh AVD data image by default.
 
-The smoke suite installs an explicitly test-enabled x86_64 APK and instrumentation package, then verifies:
+The smoke-only JavaScript bridge is enabled only for test APKs and is rejected by release package verification.
 
-- cold boot and SQLite migration;
-- deck/card creation;
-- practice review and analytics;
-- persistence after force-stop/restart;
-- Android Documents development stub;
-- system Back behavior;
-- revealed practice restoration after WebView reload and process restart;
-- Android deck-import and managed-image document pickers;
-- Android Create Document export picker and clean cancellation between native operations.
+## Automatic GitHub Actions behavior
 
-The test-only JavaScript bridge is opt-in at build time and forbidden in release APKs. Waydroid may be used for informal manual testing but does not replace official-emulator qualification.
+`.github/workflows/check.yml` is the single automatic qualification workflow. A single serialized job matches the one-runner topology and avoids having Linux and Android jobs queue behind each other while repeating checkout/setup work.
 
-The emulator job now runs automatically after the Android compile/package job succeeds. A pull request therefore cannot obtain a complete Android qualification result unless an online self-hosted runner matches `self-hosted`, `linux`, `x64`, `ostudy`, `android`, and `kvm`. See [Android self-hosted runner setup](android-self-hosted-runner.md).
+Automatic gates are intentionally conservative:
 
-## Important test layers
+- draft pull request: `fast`;
+- ready-for-review pull request: `all-full`;
+- non-draft reopened/synchronized pull request: `all-full`;
+- push to `main`: `all-full`.
 
-### Repository contracts
+`all-full` runs, in order:
 
-Static scripts protect stable boundaries such as exact versions, immutable migrations, IPC parity, self-hosted workflow policy, dependency isolation, documentation organization, Android permissions/package identity, FileProvider scope, and absence of skipped/focused/ignored tests. They should verify behaviorally meaningful ownership rules rather than brittle private helper names.
+```text
+unified runner preflight
+→ check.sh
+→ android-test.sh
+→ android-emulator-smoke.sh
+```
 
-### Frontend and controller tests
+The same workflow supports manual dispatch with explicit `preflight`, `static`, `fast`, `linux-full`, `android-full`, and `all-full` gates.
 
-Vitest and Testing Library cover user interaction, accessible relationships, error/empty/loading states, responsive primitives, editor behavior, controller request ordering, mobile Back integration, checkpoints, and process-restoration state machines. Independent request lanes are resolved in deliberately surprising orders to prove that stale reads cannot update current state.
+Concurrency cancellation replaces obsolete runs for the same pull request/ref. A green result qualifies only the exact head SHA it executed.
 
-### Pure Rust tests
+The former automatic `android-check.yml` split workflow is retired. On a single runner, separate automatic Linux/Android jobs only create additional queueing and repeated setup. Android qualification is now part of the authoritative serialized `Check` job.
 
-Pure tests cover rich-content validation, cloze parsing and presentation, template substitution, duplicate normalization, scheduling adapters, local-calendar semantics, provider schema conversion, endpoint policy, semantic partitioning, resource planning, safe error normalization, and practice-session restoration.
+## Shadow and runner-health qualification
 
-### SQLite integration and migration tests
+`.github/workflows/unified-runner-qualification.yml` remains an opt-in runner-health/shadow workflow. It targets only `ostudy-unified` and can execute:
 
-Integration tests cover transactions, CRUD, FTS triggers, card identity, scheduling/history preservation, move/copy, archive/delete semantics, analytics attribution, import/export, backups, managed assets, startup repair, and idempotent retry behavior.
+```text
+preflight
+linux-fast
+linux-full
+android-full
+all-full
+```
 
-Released schema fixtures load representative historical data, apply current migrations and repairs, verify preserved behavior, and run SQLite integrity checks. Released migration files and fixtures are never edited to make a new test pass.
+During infrastructure work, one explicit PR-body marker may activate a lane. Normal product pull requests do not need a marker and the shadow job does not replace the authoritative `Check` result.
 
-### Generated-import conformance
+## Packaging and releases
 
-The `.ostudy.json` harness materializes real files under unique temporary roots and exercises valid Markdown, Basic/Reverse/Cloze behavior, Unicode, limits, unknown fields, unsafe syntax, duplicates, exact-name create/append behavior, fresh schedules, transaction atomicity, and cleanup. It never opens the user's live library.
+`.github/workflows/android-package.yml` is manual-only and builds unsigned QA APK/AAB artifacts on `ostudy-unified`.
 
-### Provider and document contracts
+`.github/workflows/release.yml` builds tagged Linux artifacts on the same isolated runner. It does not contain Android signing material or release secrets. Public Android distribution still requires a separately reviewed signing/Play App Signing design.
 
-Provider fixtures use deterministic local servers rather than paid internet credentials. Document tests cover extraction quality, malformed text, semantic windows, outline assembly, rendering, OCR selection, cancellation, checkpoints, source locators, provider budgets, structured output, generated-card validation, backup, and deletion lifecycle. Android A1–A3 must preserve these records while showing an explicit unsupported document-processing capability.
+## Failure evidence
 
-### Native smoke tests
+Qualification failures preserve bounded diagnostics rather than user study data.
 
-The Linux native smoke launches the built Tauri binary through WebDriver, performs a real create and review workflow, restarts the application, and confirms persistence. The Android native smoke performs the corresponding workflow through the official emulator and additionally tests Back, process restoration, and Android system file UI. Mocked frontend tests cannot replace either native shell boundary.
+Linux/shared failures may upload the standard diagnostic archive. Android failures may also retain Gradle reports plus emulator Logcat, screenshot, and UI hierarchy artifacts generated by the existing Android smoke tooling.
+
+Diagnostics must not contain the SQLite learner library, cards, tags, templates, managed images, source PDFs, OCR/source text, provider prompts/responses, credentials, Keystore plaintext, or Authorization headers.
+
+## Self-hosted runner security
+
+Pull-request jobs use minimum GitHub token permissions and execute untrusted repository code inside the isolated VM rather than on `ML-tower`.
+
+Do not install Codex or another autonomous code-writing process on the runner. Do not give the runner host filesystem mounts, the host SSH private key, forwarded agent access, Docker/libvirt host-control sockets, release signing keys, or personal data.
+
+The VM keeps a powered-off `pre-github-runner` snapshot from before runner registration. Restoring that snapshot removes the runner registration state; register it again with a new one-time GitHub token after a restore.
 
 ## Manual acceptance
 
-Automation protects known contracts. A human still evaluates the changed workflow in the built application. Test what actually changed rather than copying an unrelated historical checklist.
-
-For user-visible work, consider:
-
-- normal, empty, loading, validation, provider, cancellation, and recovery states;
-- persistence after restart and process death;
-- Light, Dark, Console, and Synthwave themes;
-- compact phone, tablet, landscape, split-window, and wide layouts;
-- keyboard-only and coarse-pointer/touch interaction;
-- reduced motion and high interface/font scale;
-- import/export, backup, sharing, migration, and deletion effects;
-- Android document providers, Sharesheet, incoming intents, Keystore, Back, and IME behavior;
-- close/exit behavior during active practice or document work;
-- privacy of diagnostics and errors.
-
-Record the exact paths exercised and any unavailable platform test.
-
-## CI workflows
-
-- `check.yml` selects static, fast, or full shared/Linux qualification.
-- `android-check.yml` automatically performs Android compile/package checks and then official-emulator smoke qualification on matching Android/KVM self-hosted runners.
-- `android-package.yml` creates unsigned QA APK/AAB artifacts through explicit dispatch on an Android-capable self-hosted runner.
-- `release.yml` currently creates tagged Linux artifacts.
-
-Concurrency cancellation stops obsolete runs for the same pull request or ref. Successful runs must belong to the current head SHA. CI uses persistent build caches outside the checkout, while Git and toolchain fingerprints continue to control correctness.
-
-## Failure artifacts and diagnostics
-
-On failure, workflows write bounded summaries and upload relevant logs. Android failures may additionally include Gradle reports, APKs, Logcat, screenshots, and UI hierarchy dumps.
-
-Diagnostic export excludes the SQLite library, cards, tags, templates, managed images, source PDFs, OCR/source text, provider prompts or responses, credentials, Keystore plaintext, and Authorization headers.
+Automation protects known contracts, not visual or experiential quality. For user-visible work, manually exercise the affected workflow on the relevant platform after automated qualification, including error/cancellation/restart behavior when applicable.
 
 ## Release qualification
+
+For a release candidate, also run:
 
 ```bash
 ./scripts/release-check.sh
 ```
 
-The release check repeats the complete shared gate from a clean source copy and verifies version agreement and artifact assumptions. The current tagged release workflow builds Linux artifacts. Android can produce unsigned QA APK/AAB packages; public distribution still requires the permanent signing key and Play App Signing configuration. Windows, macOS, and iOS require their own qualified runners and packaging before release documentation can present them as supported artifacts.
+The release check repeats the complete shared qualification from a clean source copy and verifies version/artifact assumptions.

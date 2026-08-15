@@ -234,14 +234,14 @@ requireText("check-fast.sh", checkFast, ["check-static.sh", "install-native-deps
 requireText("check.sh", checkFull, ["install-native-deps.sh", "pnpm run build", "cargo clippy", "cargo test", "smoke-native.sh"]);
 requireText("check-changed.sh", checkChanged, ["vitest run --changed", "cargo test", "check-fast.sh", "iteration aid"]);
 requireText("check workflow", checkWorkflow, [
-  "runs-on: [self-hosted, linux, x64, ostudy]",
+  "runs-on: [self-hosted, linux, x64, ostudy-unified]",
   "OSTUDY_CARGO_TARGET_DIR",
   "cargo metadata",
   "git add src-tauri/Cargo.lock",
   "check-fast.sh",
   "check.sh",
 ]);
-requireText("release workflow", releaseWorkflow, ["runs-on: [self-hosted, linux, x64, ostudy]", "./scripts/release.sh"]);
+requireText("release workflow", releaseWorkflow, ["runs-on: [self-hosted, linux, x64, ostudy-unified]", "./scripts/release.sh"]);
 if (!pullRequestTemplate.includes("Acceptance criteria") || !pullRequestTemplate.includes("./scripts/check.sh")) {
   failures.push("pull request template is missing acceptance criteria or full validation");
 }
