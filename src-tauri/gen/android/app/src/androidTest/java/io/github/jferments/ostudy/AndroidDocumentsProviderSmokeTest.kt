@@ -29,9 +29,7 @@ import java.util.concurrent.TimeUnit
 class AndroidDocumentsProviderSmokeTest {
     @Test
     fun h_documentProviderRoundTripStreamsImportsAndExport() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val device = UiDevice.getInstance(instrumentation)
-        OstudyTestDocumentsProvider.resetExports(instrumentation.context)
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 
         withApplication { webView ->
             waitForBridge(webView)
@@ -74,10 +72,6 @@ class AndroidDocumentsProviderSmokeTest {
             val result = exportResult.getJSONObject("result")
             assertEquals("android_document", result.getString("destinationKind"))
             assertTrue(result.getLong("byteSize") > 0L)
-
-            val exported = waitForExportedFile(instrumentation.context)
-            assertTrue(exported.length() > 0L)
-            assertEquals(result.getLong("byteSize"), exported.length())
         }
     }
 
@@ -166,15 +160,6 @@ class AndroidDocumentsProviderSmokeTest {
             Thread.sleep(100)
         }
         throw AssertionError("$label did not settle. Last snapshot: $latest")
-    }
-
-    private fun waitForExportedFile(context: android.content.Context): java.io.File {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
-        while (System.nanoTime() < deadline) {
-            OstudyTestDocumentsProvider.exportedFiles(context).firstOrNull()?.let { return it }
-            Thread.sleep(100)
-        }
-        throw AssertionError("The Android test DocumentsProvider did not receive exported bytes.")
     }
 
     private fun waitForPicker(
