@@ -29,6 +29,11 @@ if [[ "$(uname -s):$(uname -m)" != Linux:x86_64 ]]; then
   printf 'Unified runner guest must be Linux x86_64.\n' >&2
   exit 1
 fi
+if [[ ! -d "$ROOT_DIR/.git" ]]; then
+  printf 'Bootstrap source must be a real Git checkout with .git metadata.\n' >&2
+  printf 'Transfer the infrastructure branch with the documented Git bundle procedure.\n' >&2
+  exit 1
+fi
 
 printf 'Bootstrapping ostudy unified Linux/Android runner guest...\n'
 printf '  admin user:  %s\n' "$ADMIN_USER"
@@ -187,10 +192,17 @@ fi
 EOF
 sudo chmod 0644 /etc/profile.d/ostudy-runner.sh
 
-printf 'Copying the current infrastructure branch into a disposable bootstrap source tree...\n'
+printf 'Copying the current Git checkout into a disposable qualification tree...\n'
 sudo rm -rf -- "$BOOTSTRAP_SOURCE"
 sudo install -d -o "$RUNNER_USER" -g "$RUNNER_USER" -m 0750 "$BOOTSTRAP_SOURCE"
-sudo rsync -a --delete --exclude .git --chown="$RUNNER_USER:$RUNNER_USER" "$ROOT_DIR/" "$BOOTSTRAP_SOURCE/"
+sudo rsync -a --delete \
+  --exclude node_modules \
+  --exclude dist \
+  --exclude src-tauri/target \
+  --exclude src-tauri/gen/android/.gradle \
+  --exclude src-tauri/gen/android/app/build \
+  --chown="$RUNNER_USER:$RUNNER_USER" \
+  "$ROOT_DIR/" "$BOOTSTRAP_SOURCE/"
 
 runner_env=(
   HOME="$RUNNER_HOME"
@@ -206,6 +218,9 @@ runner_env=(
   OSTUDY_CARGO_TARGET_DIR="$RUNNER_HOME/.cache/ostudy/cargo-target"
   PATH="$JAVA_HOME_VALUE/bin:$ANDROID_HOME_VALUE/platform-tools:$ANDROID_HOME_VALUE/emulator:$ANDROID_HOME_VALUE/cmdline-tools/latest/bin:$RUNNER_HOME/.cargo/bin:$RUNNER_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 )
+
+sudo -u "$RUNNER_USER" -H env "${runner_env[@]}" \
+  pnpm config set store-dir "$RUNNER_HOME/.cache/pnpm/store" --global
 
 printf 'Installing frozen JavaScript dependencies for bootstrap verification...\n'
 sudo -u "$RUNNER_USER" -H env "${runner_env[@]}" \
@@ -223,9 +238,6 @@ printf 'Provisioning the pinned Linux PDFium runtime for initial qualification..
 sudo -u "$RUNNER_USER" -H env "${runner_env[@]}" \
   bash -Eeuo pipefail -c 'cd "$1" && bash ./scripts/install-native-deps.sh --pdfium-only' _ "$BOOTSTRAP_SOURCE"
 
-sudo -u "$RUNNER_USER" -H env "${runner_env[@]}" \
-  pnpm config set store-dir "$RUNNER_HOME/.cache/pnpm/store" --global
-
 printf 'Verifying guest and nested KVM after toolchain installation...\n'
 sudo -u "$RUNNER_USER" -H env "${runner_env[@]}" \
   bash -Eeuo pipefail -c 'cd "$1" && bash ./scripts/runner/guest-preflight.sh' _ "$BOOTSTRAP_SOURCE"
@@ -233,4 +245,4 @@ sudo -u "$RUNNER_USER" -H env "${runner_env[@]}" \
 printf '\nOK   Unified runner guest bootstrap completed.\n'
 printf 'The GitHub runner has not been downloaded or registered.\n'
 printf 'Next: run the known-green Linux and Android qualification commands locally as %s.\n' "$RUNNER_USER"
-printf 'After they pass, take a powered-off pre-registration snapshot and register the repository runner.\n'
+printf 'After they pass, harden the administration account, take a powered-off pre-registration snapshot, and register the repository runner.\n'
