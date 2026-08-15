@@ -144,7 +144,7 @@ if [[ -z "$SERIAL" ]]; then
   start_args=(start --headless --name "$AVD_NAME" --system-image "$SYSTEM_IMAGE")
   ((WIPE_DATA == 1)) && start_args+=(--wipe-data)
   bash ./scripts/android-avd.sh "${start_args[@]}"
-  if [[ -z "$preexisting_serial" ]]; then
+  if [[ -z "$preexisting_serial" ]] || ((WIPE_DATA == 1)); then
     started_emulator=1
   fi
   SERIAL="$(serial_for_avd || true)"
