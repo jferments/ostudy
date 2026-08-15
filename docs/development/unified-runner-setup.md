@@ -2,7 +2,7 @@
 
 This guide provisions `ostudy-ci-unified`, one Ubuntu 24.04 LTS VM that runs both Linux/Tauri and Android/KVM qualification. It does not replace or delete existing runners during setup.
 
-Do not paste GitHub runner registration tokens into documentation, chat, shell history shared with others, or committed files. Use the current one-time token shown by GitHub only inside the guest.
+Do not paste GitHub runner registration tokens into documentation, chat, shared logs, or committed files. Use the current one-time token shown by GitHub only inside the guest.
 
 ## Checkpoint 0: update the infrastructure branch
 
@@ -177,7 +177,7 @@ Expected:
 - `network='default'`;
 - no `<filesystem>` or `<hostdev>` entries.
 
-## Checkpoint 7: copy the branch into the isolated guest
+## Checkpoint 7: transfer a Git bundle into the isolated guest
 
 Set the guest IP reported by the creation script:
 
@@ -185,18 +185,31 @@ Set the guest IP reported by the creation script:
 GUEST_IP=<guest-ip>
 ```
 
-Create a temporary destination and copy the branch over SSH. This is a file transfer, not a persistent host mount.
+Create a Git bundle containing the published infrastructure branch. A bundle preserves the real Git history needed by repository policy and diff-aware scripts without copying GitHub credentials or mounting the host checkout.
 
 ```bash
+cd ~/code/ostudy
+
+git fetch origin --prune
+git switch agent/unified-linux-android-runner
+git pull --ff-only
+
+git bundle create /tmp/ostudy-unified-runner.bundle \
+  agent/unified-linux-android-runner
+
+scp -i ~/.ssh/ostudy-ci-unified \
+  /tmp/ostudy-unified-runner.bundle \
+  ostudy-admin@"$GUEST_IP":/tmp/
+
 ssh -i ~/.ssh/ostudy-ci-unified \
   ostudy-admin@"$GUEST_IP" \
-  'mkdir -p /tmp/ostudy-runner-infra'
-
-rsync -a --delete --exclude .git \
-  -e 'ssh -i ~/.ssh/ostudy-ci-unified' \
-  ~/code/ostudy/ \
-  ostudy-admin@"$GUEST_IP":/tmp/ostudy-runner-infra/
+  'rm -rf /tmp/ostudy-runner-infra && \
+   git clone /tmp/ostudy-unified-runner.bundle /tmp/ostudy-runner-infra && \
+   git -C /tmp/ostudy-runner-infra switch agent/unified-linux-android-runner && \
+   git -C /tmp/ostudy-runner-infra rev-parse HEAD'
 ```
+
+The reported guest commit must match the host branch head. This is a one-time SSH transfer, not a persistent host mount.
 
 ## Checkpoint 8: bootstrap Linux, Rust, and Android tooling
 
@@ -206,7 +219,7 @@ ssh -t -i ~/.ssh/ostudy-ci-unified \
   'cd /tmp/ostudy-runner-infra && ./scripts/runner/bootstrap-unified-guest.sh'
 ```
 
-This installs the repository-pinned toolchains and creates the pinned Android AVD under the unprivileged runner account. It does **not** download or register the GitHub Actions runner.
+This installs the repository-pinned toolchains, creates the pinned Android AVD under the unprivileged runner account, and preserves Git metadata in `/opt/ostudy-runner-bootstrap` for local qualification. It does **not** download or register the GitHub Actions runner.
 
 ## Checkpoint 9: verify resources and nested Android acceleration inside the VM
 
@@ -259,11 +272,44 @@ These are the existing authoritative scripts from the known-green baseline. The 
 
 Exit the runner shell after all commands pass.
 
-## Checkpoint 11: create the pre-registration snapshot
+## Checkpoint 11: remove bootstrap passwordless administration
 
-The Android emulator must be stopped before snapshotting.
+Cloud-init temporarily gives `ostudy-admin` passwordless sudo so the bootstrap can run unattended. Before creating the clean snapshot or registering GitHub, assign a strong local administrator password and remove the temporary `NOPASSWD` rule.
 
-On the host:
+Connect as `ostudy-admin`:
+
+```bash
+ssh -t -i ~/.ssh/ostudy-ci-unified \
+  ostudy-admin@"$GUEST_IP"
+```
+
+Inside the VM:
+
+```bash
+sudo passwd ostudy-admin
+
+mapfile -t sudoer_files < <(
+  sudo grep -RIl \
+    '^ostudy-admin[[:space:]].*NOPASSWD:ALL' \
+    /etc/sudoers.d 2>/dev/null
+)
+
+for sudoer_file in "${sudoer_files[@]}"; do
+  sudo sed -i \
+    '/^ostudy-admin[[:space:]].*NOPASSWD:ALL/d' \
+    "$sudoer_file"
+done
+
+sudo visudo -cf /etc/sudoers
+sudo -k
+sudo true
+```
+
+The final `sudo true` must prompt for the password you just assigned. The `ostudy-runner` account remains locked for direct login and has no sudo permission.
+
+## Checkpoint 12: create the pre-registration snapshot
+
+The Android emulator must be stopped before snapshotting. Exit the guest, then on `ML-tower`:
 
 ```bash
 virsh --connect qemu:///system shutdown ostudy-ci-unified
@@ -284,7 +330,13 @@ virsh --connect qemu:///system start ostudy-ci-unified
 
 If snapshot creation fails, do not ignore it. Record the error and use a powered-off qcow2 backup before proceeding.
 
-## Checkpoint 12: register the repository runner
+After restart, refresh the guest IP:
+
+```bash
+virsh --connect qemu:///system domifaddr ostudy-ci-unified
+```
+
+## Checkpoint 13: register the repository runner
 
 In GitHub, open **Settings → Actions → Runners → New self-hosted runner → Linux → x64**. Use the current download and extraction commands shown by GitHub.
 
@@ -293,6 +345,8 @@ Do not reuse a token from an old runner. Do not paste the token into chat.
 Connect to the guest and become the runner user:
 
 ```bash
+GUEST_IP=<current-guest-ip>
+
 ssh -t -i ~/.ssh/ostudy-ci-unified \
   ostudy-admin@"$GUEST_IP" \
   'sudo -u ostudy-runner -H bash -l'
@@ -304,7 +358,15 @@ Inside the VM:
 cd ~/actions-runner
 ```
 
-Run GitHub's current download/extract commands, then register:
+Run GitHub's current download/extract commands. Before configuration, explicitly load the pinned non-interactive service environment:
+
+```bash
+set -a
+source /etc/ostudy-runner.env
+set +a
+```
+
+Then register:
 
 ```bash
 ./config.sh \
@@ -316,7 +378,16 @@ Run GitHub's current download/extract commands, then register:
   --unattended
 ```
 
-Exit back to `ostudy-admin`, then install the service under the runner account:
+Verify that configuration captured the toolchain environment before installing the service:
+
+```bash
+grep -E '^(JAVA_HOME|ANDROID_HOME|ANDROID_SDK_ROOT)=' .env
+cat .path
+```
+
+`.path` must include the JDK, Android SDK tools, Cargo, and `/usr/local/bin` paths from `/etc/ostudy-runner.env`.
+
+Exit back to `ostudy-admin`, then install the service under the runner account. Sudo now requires the administrator password configured at Checkpoint 11.
 
 ```bash
 cd /home/ostudy-runner/actions-runner
@@ -345,7 +416,7 @@ ostudy-unified
 
 Do not add `ostudy`, `android`, or `kvm` yet. The unique label prevents ordinary workflows from moving to this VM before shadow qualification.
 
-## Checkpoint 13: hand control back for shadow qualification
+## Checkpoint 14: hand control back for shadow qualification
 
 Report that the runner is online. The PR body will then receive exactly one marker:
 
@@ -353,7 +424,7 @@ Report that the runner is online. The PR body will then receive exactly one mark
 <!-- unified-runner:preflight -->
 ```
 
-That marker activates the PR's manual shadow workflow on the new runner without changing existing production workflow routing. The stages will progress deliberately:
+That marker activates the PR's shadow workflow on the new runner without changing existing production workflow routing. The stages will progress deliberately:
 
 ```text
 preflight → linux-fast → linux-full → android-full → all-full
