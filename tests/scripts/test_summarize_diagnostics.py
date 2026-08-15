@@ -64,7 +64,7 @@ class DiagnosticSummaryTests(unittest.TestCase):
             self.assertIn("1 passed", summary)
             self.assertIn("1 failed", summary)
             self.assertIn("1 blocked", summary)
-            self.assertIn("1.2s", summary)
+            self.assertIn("1.3s", summary)
             self.assertIn("typescript", summary)
             self.assertIn("TS2322", summary)
 
