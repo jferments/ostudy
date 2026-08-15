@@ -134,7 +134,7 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
         )
         self.assertIn(".android-emulator-*.pid", ignore)
 
-    def test_system_picker_success_contract_is_java_runtime_independent(self) -> None:
+    def test_system_picker_success_contract_is_java_runtime_independent_and_opt_in(self) -> None:
         test_manifest = (
             ROOT / "src-tauri" / "gen" / "android" / "app" / "src" / "androidTest" / "AndroidManifest.xml"
         ).read_text(encoding="utf-8")
@@ -170,21 +170,9 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
             / "ostudy"
             / "AndroidDocumentsProviderSmokeTest.kt"
         ).read_text(encoding="utf-8")
-        cancellation_smoke = (
-            ROOT
-            / "src-tauri"
-            / "gen"
-            / "android"
-            / "app"
-            / "src"
-            / "androidTest"
-            / "java"
-            / "io"
-            / "github"
-            / "jferments"
-            / "ostudy"
-            / "AndroidSmokeTest.kt"
-        ).read_text(encoding="utf-8")
+        smoke_runner = (ROOT / "scripts" / "android-emulator-smoke.sh").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("android.content.action.DOCUMENTS_PROVIDER", test_manifest)
         self.assertIn("public final class OstudyTestDocumentsProvider extends DocumentsProvider", provider)
         self.assertNotIn("kotlin.", provider)
@@ -199,10 +187,11 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
         self.assertIn('purpose = "pdf_document"', smoke)
         self.assertIn('By.res(packageName, "icon")', smoke)
         self.assertIn('By.text("1 selected")', smoke)
-        self.assertIn('"action_menu_open"', smoke)
+        self.assertIn('"action_menu_select"', smoke)
         self.assertIn("waitForPickerCallbackIdle", smoke)
         self.assertIn("waitForIdleSync()", smoke)
-        self.assertIn("waitForIdleSync()", cancellation_smoke)
+        self.assertIn("--extended-system-picker", smoke_runner)
+        self.assertIn("extended system-picker roundtrip is opt-in", smoke_runner)
 
 
 if __name__ == "__main__":
