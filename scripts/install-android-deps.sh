@@ -9,14 +9,22 @@ source "$ROOT_DIR/versions.env"
 source "$SCRIPT_DIR/android-env.sh"
 
 WITH_EMULATOR=0
-case "${1:-}" in
-  "") ;;
-  --with-emulator) WITH_EMULATOR=1 ;;
-  *)
-    printf 'Usage: ./scripts/install-android-deps.sh [--with-emulator]\n' >&2
-    exit 2
-    ;;
-esac
+WITH_MIN_EMULATOR=0
+while (($#)); do
+  case "$1" in
+    --with-emulator) WITH_EMULATOR=1 ;;
+    --with-min-emulator) WITH_MIN_EMULATOR=1 ;;
+    -h|--help)
+      printf 'Usage: ./scripts/install-android-deps.sh [--with-emulator] [--with-min-emulator]\n'
+      exit 0
+      ;;
+    *)
+      printf 'Usage: ./scripts/install-android-deps.sh [--with-emulator] [--with-min-emulator]\n' >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -71,8 +79,6 @@ if [[ ! -x "$command_tools" ]]; then
   rmdir "$extraction_dir"
 fi
 
-# Python's standard zip extractor intentionally does not restore Unix mode bits.
-# Android's command-line archive contains shell launchers that must be executable.
 chmod -R u+rwX "$ANDROID_HOME/cmdline-tools/latest"
 find "$ANDROID_HOME/cmdline-tools/latest/bin" -maxdepth 1 -type f -exec chmod u+x {} +
 
@@ -83,16 +89,20 @@ packages=(
   "build-tools;$ANDROID_BUILD_TOOLS_VERSION"
   "ndk;$ANDROID_NDK_VERSION"
 )
+if (( WITH_EMULATOR == 1 || WITH_MIN_EMULATOR == 1 )); then
+  packages+=("emulator")
+fi
 if (( WITH_EMULATOR == 1 )); then
-  packages+=("emulator" "$ANDROID_PHONE_SYSTEM_IMAGE")
+  packages+=("$ANDROID_PHONE_SYSTEM_IMAGE")
+fi
+if (( WITH_MIN_EMULATOR == 1 )); then
+  packages+=("$ANDROID_MIN_SYSTEM_IMAGE")
 fi
 
 printf 'Accepting Android SDK licenses for the pinned packages...\n'
 yes | "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
 printf 'Installing Android SDK packages into %s...\n' "$ANDROID_HOME"
 "$sdkmanager" --sdk_root="$ANDROID_HOME" --install "${packages[@]}"
-# sdkmanager closes stdin after the final prompt, which gives `yes` SIGPIPE
-# under pipefail even though every license was accepted.
 yes | "$sdkmanager" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
 
 if [[ ! -d "$NDK_HOME" ]]; then
