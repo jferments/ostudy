@@ -73,6 +73,7 @@ class AndroidDocumentsProviderSmokeTest {
             val result = exportResult.getJSONObject("result")
             assertEquals("android_document", result.getString("destinationKind"))
             assertTrue(result.getLong("byteSize") > 0L)
+            waitForPickerCallbackIdle(device)
         }
     }
 
@@ -92,10 +93,7 @@ class AndroidDocumentsProviderSmokeTest {
         val pickerPackages = documentPickerPackages(Intent.ACTION_OPEN_DOCUMENT)
         waitForPicker(device, pickerPackages, "Android $purpose import picker")
         openFixtureRoot(device)
-        val fixtureObject = requireNotNull(waitForDocumentFixture(device, fixture, 10_000)) {
-            "System picker did not display $fixture"
-        }
-        fixtureObject.click()
+        selectFixtureAndOpen(device, pickerPackages, fixture)
         waitForPickerClosed(device, pickerPackages, "Android $purpose import picker")
         waitForBridge(webView)
 
@@ -105,6 +103,41 @@ class AndroidDocumentsProviderSmokeTest {
         assertEquals(fixture, result.getString("displayName"))
         assertEquals(expectedKind, result.getString("detectedKind"))
         assertTrue(result.getLong("byteSize") > 0L)
+        waitForPickerCallbackIdle(device)
+    }
+
+    private fun selectFixtureAndOpen(
+        device: UiDevice,
+        pickerPackages: Set<String>,
+        fixture: String
+    ) {
+        val fixtureObject = requireNotNull(waitForDocumentFixture(device, fixture, 10_000)) {
+            "System picker did not display $fixture"
+        }
+
+        // A direct accessibility click on an image tile is DocumentsUI's preview
+        // action and can launch an external viewer. Select through the file row's
+        // dedicated `icon` hotspot instead, matching DocumentsUI's own test bot,
+        // then explicitly invoke the Open action so every MIME type follows the
+        // same ACTION_OPEN_DOCUMENT result path.
+        var container: UiObject2? = fixtureObject
+        var selectionHotspot: UiObject2? = null
+        for (depth in 0 until 10) {
+            val candidate = container ?: break
+            selectionHotspot = pickerPackages.asSequence()
+                .mapNotNull { packageName -> candidate.findObject(By.res(packageName, "icon")) }
+                .firstOrNull()
+            if (selectionHotspot != null) break
+            container = candidate.parent
+        }
+        requireNotNull(selectionHotspot) {
+            "Android DocumentsUI did not expose the selection hotspot for $fixture"
+        }.click()
+
+        requireNotNull(device.wait(Until.findObject(By.text("1 selected")), 10_000)) {
+            "Android DocumentsUI did not enter single-selection mode for $fixture"
+        }
+        pressOpen(device, pickerPackages)
     }
 
     private fun waitForDocumentFixture(device: UiDevice, fixture: String, timeoutMs: Long): UiObject2? {
@@ -137,6 +170,21 @@ class AndroidDocumentsProviderSmokeTest {
         root.click()
     }
 
+    private fun pressOpen(device: UiDevice, pickerPackages: Set<String>) {
+        for (packageName in pickerPackages) {
+            for (resource in listOf("action_menu_open", "menu_open")) {
+                device.findObject(By.res(packageName, resource))?.let {
+                    it.click()
+                    return
+                }
+            }
+        }
+        val byText = requireNotNull(device.findObject(By.text("Open"))) {
+            "Android DocumentsUI did not expose its Open action after selecting a fixture"
+        }
+        byText.click()
+    }
+
     private fun pressSave(device: UiDevice, pickerPackages: Set<String>) {
         for (packageName in pickerPackages) {
             device.findObject(By.res(packageName, "save"))?.let {
@@ -148,6 +196,11 @@ class AndroidDocumentsProviderSmokeTest {
             device.findObject(By.text("Save")) ?: device.findObject(By.text("Create"))
         ) { "Android DocumentsUI did not expose its save action" }
         byText.click()
+    }
+
+    private fun waitForPickerCallbackIdle(device: UiDevice) {
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        device.waitForIdle(5_000)
     }
 
     private fun waitForSettledOperation(
