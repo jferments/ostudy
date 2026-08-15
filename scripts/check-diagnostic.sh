@@ -149,24 +149,22 @@ run_android() {
   android_gate android-gradle-lint-tests "android-x86-smoke-build" 60m ostudy_android_gate_test_packages
   android_gate android-test-packages "android-gradle-lint-tests" 10m ostudy_android_gate_verify_test_packages
   android_gate android-build-cleanliness "" 5m ostudy_android_gate_build_cleanliness
+  run_gate android-smoke-artifacts android "android-test-packages" 2m bash -c '
+    source ./scripts/android-qualification-gates.sh
+    app_apk="$(ostudy_android_find_app_apk)"
+    test_apk="$(ostudy_android_find_test_apk)"
+    [[ -f "$app_apk" && -f "$test_apk" ]]
+  '
 
   local app_apk test_apk
   app_apk="$(bash -c 'source ./scripts/android-qualification-gates.sh; ostudy_android_find_app_apk' 2>/dev/null || true)"
   test_apk="$(bash -c 'source ./scripts/android-qualification-gates.sh; ostudy_android_find_test_apk' 2>/dev/null || true)"
-  if [[ "${GATE_STATUS[android-x86-smoke-build]:-}" == PASS \
-    && "${GATE_STATUS[android-test-packages]:-}" == PASS \
-    && "${GATE_STATUS[android-runner-doctor]:-}" == PASS \
-    && -f "$app_apk" && -f "$test_apk" ]]; then
-    run_gate android-emulator-smoke android \
-      "android-x86-smoke-build android-test-packages android-runner-doctor" 110m \
-      bash ./scripts/android-emulator-smoke.sh \
-        --app-apk "$app_apk" \
-        --test-apk "$test_apk" \
-        --artifacts "$OUTPUT_DIR/android-smoke"
-  else
-    run_gate android-emulator-smoke android \
-      "android-x86-smoke-build android-test-packages android-runner-doctor" 110m true
-  fi
+  run_gate android-emulator-smoke android \
+    "android-smoke-artifacts android-runner-doctor" 110m \
+    bash ./scripts/android-emulator-smoke.sh \
+      --app-apk "$app_apk" \
+      --test-apk "$test_apk" \
+      --artifacts "$OUTPUT_DIR/android-smoke"
 }
 
 case "$PROFILE" in
