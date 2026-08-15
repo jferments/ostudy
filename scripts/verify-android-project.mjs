@@ -8,6 +8,11 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const failures = [];
+const providerPath =
+  "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/OstudyTestDocumentsProvider.java";
+const retiredKotlinProviderPath =
+  "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/OstudyTestDocumentsProvider.kt";
+
 const required = [
   "src-tauri/tauri.android.conf.json",
   "src-tauri/gen/android/gradlew",
@@ -23,7 +28,7 @@ const required = [
   "src-tauri/gen/android/app/src/androidTest/AndroidManifest.xml",
   "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
   "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidDocumentsProviderSmokeTest.kt",
-  "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/OstudyTestDocumentsProvider.kt",
+  providerPath,
   "plugins/ostudy-platform/Cargo.toml",
   "plugins/ostudy-platform/build.rs",
   "plugins/ostudy-platform/permissions/default.toml",
@@ -55,9 +60,14 @@ const required = [
   "scripts/android-avd.sh",
   "scripts/android-emulator-smoke.sh",
   "scripts/verify-android-package.sh",
+  ".github/workflows/android-check.yml",
+  ".github/workflows/android-package.yml",
 ];
 for (const path of required) {
   if (!existsSync(resolve(root, path))) failures.push(`Missing Android project file: ${path}`);
+}
+if (existsSync(resolve(root, retiredKotlinProviderPath))) {
+  failures.push("Retired Kotlin test DocumentsProvider must not coexist with the Java runtime-independent provider");
 }
 
 const env = parseEnv(await read("versions.env"));
@@ -108,20 +118,6 @@ expectContains(
   gradle,
   'testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"',
   "instrumentation runner",
-);
-expectContains(
-  gradle,
-  `androidTestImplementation("org.jetbrains.kotlin:kotlin-stdlib:${env.get("ANDROID_KOTLIN_VERSION")}")`,
-  "instrumentation APK Kotlin runtime pin",
-);
-
-const mainActivity = await read(
-  "src-tauri/gen/android/app/src/main/java/io/github/jferments/ostudy/MainActivity.kt",
-);
-expectContains(
-  mainActivity,
-  "override val handleBackNavigation: Boolean = false",
-  "exclusive ostudy Android Back ownership over Wry browser-history Back",
 );
 
 const rootGradle = await read("src-tauri/gen/android/build.gradle.kts");
@@ -180,34 +176,28 @@ if (/^set\s+-[^\n]*e/mu.test(androidEnv)) {
 }
 
 const androidBuild = await read("scripts/android-build.sh");
-expectContains(
-  androidBuild,
-  'verify-android-smoke-frontend.mjs" present',
-  "smoke build frontend bridge verifier",
-);
-expectContains(
-  androidBuild,
-  'verify-android-smoke-frontend.mjs" absent',
-  "normal build frontend bridge exclusion verifier",
-);
+expectContains(androidBuild, 'verify-android-smoke-frontend.mjs" present', "smoke frontend bridge verification");
+expectContains(androidBuild, 'verify-android-smoke-frontend.mjs" absent', "normal frontend bridge exclusion");
 expectContains(androidBuild, "manifest_backup", "tracked Android manifest restoration");
 
 const packageVerifier = await read("scripts/verify-android-package.sh");
 if (packageVerifier.includes("bridge_required") || packageVerifier.includes("VITE_OSTUDY_ANDROID_TEST_BRIDGE")) {
-  failures.push(
-    "verify-android-package.sh must verify observable package properties rather than infer smoke bridge presence",
-  );
+  failures.push("APK verification must inspect observable package properties rather than infer smoke bridge presence");
 }
 expectContains(packageVerifier, '[[ "$MODE" == release ]]', "release-only smoke marker defense");
 
-const backInterception = await read("src/platform/backInterception.ts");
-expectContains(
-  backInterception,
-  "while (this.applied !== this.desired)",
-  "serialized Android Back interception convergence loop",
+const mainActivity = await read(
+  "src-tauri/gen/android/app/src/main/java/io/github/jferments/ostudy/MainActivity.kt",
 );
+expectContains(
+  mainActivity,
+  "override val handleBackNavigation: Boolean = false",
+  "exclusive ostudy Android Back ownership",
+);
+const backInterception = await read("src/platform/backInterception.ts");
+expectContains(backInterception, "while (this.applied !== this.desired)", "serialized Android Back convergence");
 const platformProvider = await read("src/platform/PlatformProvider.tsx");
-expectContains(platformProvider, "new BackInterceptionSynchronizer()", "Android Back interception synchronizer");
+expectContains(platformProvider, "new BackInterceptionSynchronizer()", "Android Back synchronizer");
 expectContains(platformProvider, "dataset.androidBackInterception", "acknowledged Android Back state");
 expectContains(platformProvider, 'root.dataset.androidBackListener = "ready";', "Android Back listener readiness");
 expectContains(
@@ -220,13 +210,13 @@ for (const diagnostic of [
   "Unable to register the Android insets listener:",
   "Unable to register the Android network listener:",
 ]) {
-  expectContains(platformProvider, diagnostic, `Android plugin listener diagnostic ${diagnostic}`);
+  expectContains(platformProvider, diagnostic, `Android listener failure visibility ${diagnostic}`);
 }
 const incomingShareCoordinator = await read("src/components/IncomingShareCoordinator.tsx");
 expectContains(
   incomingShareCoordinator,
   "Unable to register the Android incoming-share listener:",
-  "incoming-share plugin listener diagnostic",
+  "incoming-share listener failure visibility",
 );
 
 const gradleContracts = await read("scripts/android-gradle-contracts.sh");
@@ -243,6 +233,10 @@ for (const token of [
 
 const postbuild = await read("scripts/android-gradle-postbuild.sh");
 for (const token of [
+  "jvm-tests",
+  "lint",
+  "instrumentation-package",
+  "test-packages",
   "tauri.settings.gradle",
   "-PabiList=x86_64",
   "-ParchList=x86_64",
@@ -274,16 +268,38 @@ for (const token of [
 const x86BuildIndex = androidTest.indexOf("ostudy_android_gate_build_x86_smoke");
 const gradleIndex = androidTest.indexOf("ostudy_android_gate_gradle_contracts");
 if (x86BuildIndex < 0 || gradleIndex <= x86BuildIndex) {
-  failures.push("android-test.sh must initialize Tauri Android state before direct Gradle qualification");
+  failures.push("android-test.sh must initialize Tauri state before direct Gradle qualification");
 }
 if (androidTest.includes(":app:rustBuild")) {
   failures.push("android-test.sh must not invoke generated Tauri rustBuild tasks directly");
+}
+
+const diagnostic = await read("scripts/check-diagnostic.sh");
+for (const token of [
+  "android-jvm-tests",
+  "android-lint",
+  "android-instrumentation-package",
+  "android-emulator-smoke",
+]) {
+  expectContains(diagnostic, token, `independent Android diagnostic gate ${token}`);
+}
+
+const avd = await read("scripts/android-avd.sh");
+for (const token of [
+  "connected_emulator_serial_for_avd",
+  'PID_FILE="$ROOT_DIR/.android-emulator-${safe_avd_name}.pid"',
+  "wait_for_avd_disconnect",
+  "--wipe-data",
+]) {
+  expectContains(avd, token, `isolated CI AVD lifecycle ${token}`);
 }
 
 const emulatorSmoke = await read("scripts/android-emulator-smoke.sh");
 for (const token of [
   "--app-apk",
   "--test-apk",
+  "serial_for_avd",
+  'android-avd.sh stop --name "$AVD_NAME"',
   "summarize-android-smoke.mjs",
   "android-smoke-results.tsv",
   "dump_case_logcat",
@@ -310,22 +326,24 @@ for (const token of [
   expectContains(androidSmokeTest, token, `Android primary smoke contract ${token}`);
 }
 if (androidSmokeTest.includes("ActivityScenario.launch(MainActivity::class.java).use")) {
-  failures.push(
-    "AndroidSmokeTest must not close the Tauri Activity from inside instrumentation; shell process cleanup owns Activity destruction",
-  );
+  failures.push("Android instrumentation must not close the Tauri Activity from inside ActivityScenario");
 }
 
 const providerManifest = await read("src-tauri/gen/android/app/src/androidTest/AndroidManifest.xml");
 expectContains(providerManifest, "android.content.action.DOCUMENTS_PROVIDER", "test DocumentsProvider intent");
 expectContains(providerManifest, "io.github.jferments.ostudy.dev.test.documents", "test DocumentsProvider authority");
-const provider = await read(
-  "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/OstudyTestDocumentsProvider.kt",
+const provider = await read(providerPath);
+expectContains(
+  provider,
+  "public final class OstudyTestDocumentsProvider extends DocumentsProvider",
+  "runtime-independent instrumentation DocumentsProvider class",
 );
-for (const token of ["extends", "ostudy test fixtures", "android-fixture.ostudy.json", "android-fixture.png", "android-fixture.pdf"]) {
-  if (token === "extends") continue;
+for (const token of ["ostudy test fixtures", "android-fixture.ostudy.json", "android-fixture.png", "android-fixture.pdf"]) {
   expectContains(provider, token, `DocumentsProvider fixture ${token}`);
 }
-expectContains(provider, "class OstudyTestDocumentsProvider : DocumentsProvider()", "instrumentation DocumentsProvider class");
+if (/\b(?:kotlin|androidx)\./u.test(provider)) {
+  failures.push("Standalone DocumentsProvider must not require Kotlin or AndroidX runtime classes");
+}
 const providerSmoke = await read(
   "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidDocumentsProviderSmokeTest.kt",
 );
@@ -345,17 +363,36 @@ expectContains(bridge, "interface AndroidFileOperationResult", "structured Andro
 expectContains(bridge, "detectedKind", "successful import detection result");
 expectContains(bridge, "destinationKind", "successful export destination result");
 
-const avd = await read("scripts/android-avd.sh");
-expectContains(avd, "--system-image", "selectable emulator system image");
-expectContains(avd, "connected_emulator_name", "requested AVD identity check");
 const installDeps = await read("scripts/install-android-deps.sh");
 expectContains(installDeps, "--with-min-emulator", "minimum-SDK emulator dependency mode");
 const runnerDoctor = await read("scripts/android-runner-doctor.sh");
 expectContains(runnerDoctor, "--system-image", "runner doctor image selection");
+expectContains(runnerDoctor, "/dev/kvm", "direct KVM capability check");
+
+const androidWorkflow = await read(".github/workflows/android-check.yml");
+const packageWorkflow = await read(".github/workflows/android-package.yml");
+expectContains(
+  androidWorkflow,
+  "runs-on: [self-hosted, linux, x64, ostudy-android]",
+  "dedicated Android compile runner",
+);
+if ((androidWorkflow.match(/runs-on: \[self-hosted, linux, x64, ostudy-android, kvm\]/gu) ?? []).length < 3) {
+  failures.push("Android diagnostic/emulator/minimum-SDK jobs must use the dedicated KVM runner class");
+}
+expectContains(
+  packageWorkflow,
+  "runs-on: [self-hosted, linux, x64, ostudy-android]",
+  "dedicated Android package runner",
+);
+if (androidWorkflow.includes("runs-on: [self-hosted, linux, x64, ostudy, android")) {
+  failures.push("Android workflow must not route to the ordinary ostudy VM runner");
+}
+if (androidWorkflow.includes("OSTUDY_CARGO_TARGET_DIR: $HOME/")) {
+  failures.push("GitHub workflow env must not contain an unexpanded literal $HOME Cargo target path");
+}
 
 const arrayAdapter = await read("plugins/ostudy-platform/android/src/main/java/InvokeArrayResult.kt");
 expectContains(arrayAdapter, 'envelope.put("items", result)', "Android array result envelope");
-
 const wrapper = await read("src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties");
 expectContains(wrapper, `gradle-${env.get("ANDROID_GRADLE_VERSION")}-bin.zip`, "Gradle wrapper pin");
 
@@ -402,7 +439,7 @@ if (androidConfig.bundle?.android?.debugApplicationIdSuffix !== ".dev") {
   failures.push("Tauri Android debugApplicationIdSuffix must be .dev");
 }
 if (androidConfig.bundle?.resources != null) {
-  failures.push("Android Tauri configuration must not bundle PDFium resources during the current mobile boundary");
+  failures.push("Android Tauri configuration must not bundle desktop PDFium resources");
 }
 
 const packageJson = JSON.parse(await read("package.json"));
@@ -414,10 +451,11 @@ for (const command of [
   "android:build:aab",
   "android:avd",
   "android:smoke",
+  "android:diagnostic",
+  "android:smoke:min",
 ]) {
   if (!packageJson.scripts?.[command]) failures.push(`package.json is missing ${command}`);
 }
-
 const cargo = await read("src-tauri/Cargo.toml");
 expectContains(cargo, "tauri-plugin-ostudy-platform", "private platform plugin dependency");
 
@@ -427,7 +465,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Android project: Tauri-first build ownership, bridge observability, Back synchronization, system-picker streaming, arm64/x86 qualification, Gradle Lint, minimum-SDK image, structured smoke evidence, package policy, and toolchain pins are canonical.",
+  "OK   Android project: dedicated runner routing, Tauri-first builds, independent Gradle diagnostics, bridge and Back observability, isolated AVD lifecycle, system-picker streaming, arm64/x86 qualification, Lint, minimum-SDK coverage, package policy, and toolchain pins are canonical.",
 );
 
 function expectContains(text, value, label) {
