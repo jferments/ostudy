@@ -12,6 +12,8 @@ RUNNER_HOME="/home/$RUNNER_USER"
 BOOTSTRAP_SOURCE="/opt/ostudy-runner-bootstrap"
 JAVA_HOME_VALUE="/usr/lib/jvm/java-${ANDROID_JDK_MAJOR}-openjdk-amd64"
 ANDROID_HOME_VALUE="$RUNNER_HOME/Android/Sdk"
+PNPM_HOME_VALUE="$RUNNER_HOME/.local/share/pnpm"
+PNPM_GLOBAL_BIN_DIR="$PNPM_HOME_VALUE/bin"
 NODE_PREFIX="/opt/ostudy-toolchains/node-v$NODE_VERSION"
 NODE_ARCHIVE="node-v$NODE_VERSION-linux-x64.tar.xz"
 NODE_BASE_URL="https://nodejs.org/dist/v$NODE_VERSION"
@@ -110,8 +112,8 @@ sudo install -d -o "$RUNNER_USER" -g "$RUNNER_USER" -m 0750 \
   "$RUNNER_HOME/.local" \
   "$RUNNER_HOME/.local/bin" \
   "$RUNNER_HOME/.local/share" \
-  "$RUNNER_HOME/.local/share/pnpm" \
-  "$RUNNER_HOME/.local/share/pnpm/bin" \
+  "$PNPM_HOME_VALUE" \
+  "$PNPM_GLOBAL_BIN_DIR" \
   "$RUNNER_HOME/.config" \
   "$RUNNER_HOME/.config/pnpm" \
   "$RUNNER_HOME/actions-runner" \
@@ -193,6 +195,11 @@ sudo -u "$RUNNER_USER" -H env \
     i686-linux-android \
     x86_64-linux-android
 
+# pnpm v11 stores global executables below PNPM_HOME/bin. Keep both the pnpm
+# home and its global-bin directory on PATH for bootstrap commands and for the
+# eventual runner service environment.
+RUNNER_PATH="$JAVA_HOME_VALUE/bin:$ANDROID_HOME_VALUE/platform-tools:$ANDROID_HOME_VALUE/emulator:$ANDROID_HOME_VALUE/cmdline-tools/latest/bin:$RUNNER_HOME/.cargo/bin:$PNPM_GLOBAL_BIN_DIR:$PNPM_HOME_VALUE:$RUNNER_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
 sudo tee /etc/ostudy-runner.env >/dev/null <<EOF
 CI=true
 HOME=$RUNNER_HOME
@@ -204,9 +211,9 @@ ANDROID_SDK_ROOT=$ANDROID_HOME_VALUE
 RUSTUP_HOME=$RUNNER_HOME/.rustup
 CARGO_HOME=$RUNNER_HOME/.cargo
 GRADLE_USER_HOME=$RUNNER_HOME/.cache/gradle
-PNPM_HOME=$RUNNER_HOME/.local/share/pnpm
+PNPM_HOME=$PNPM_HOME_VALUE
 OSTUDY_CARGO_TARGET_DIR=$RUNNER_HOME/.cache/ostudy/cargo-target
-PATH=$JAVA_HOME_VALUE/bin:$ANDROID_HOME_VALUE/platform-tools:$ANDROID_HOME_VALUE/emulator:$ANDROID_HOME_VALUE/cmdline-tools/latest/bin:$RUNNER_HOME/.cargo/bin:$RUNNER_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
+PATH=$RUNNER_PATH
 EOF
 sudo chmod 0644 /etc/ostudy-runner.env
 
@@ -242,9 +249,9 @@ runner_env=(
   RUSTUP_HOME="$RUNNER_HOME/.rustup"
   CARGO_HOME="$RUNNER_HOME/.cargo"
   GRADLE_USER_HOME="$RUNNER_HOME/.cache/gradle"
-  PNPM_HOME="$RUNNER_HOME/.local/share/pnpm"
+  PNPM_HOME="$PNPM_HOME_VALUE"
   OSTUDY_CARGO_TARGET_DIR="$RUNNER_HOME/.cache/ostudy/cargo-target"
-  PATH="$JAVA_HOME_VALUE/bin:$ANDROID_HOME_VALUE/platform-tools:$ANDROID_HOME_VALUE/emulator:$ANDROID_HOME_VALUE/cmdline-tools/latest/bin:$RUNNER_HOME/.cargo/bin:$RUNNER_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  PATH="$RUNNER_PATH"
 )
 
 sudo -u "$RUNNER_USER" -H env "${runner_env[@]}" \
