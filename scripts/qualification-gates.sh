@@ -163,8 +163,18 @@ ostudy_gate_frontend_build() {
 }
 
 ostudy_gate_rust_tests() {
-  cargo test \
-    --manifest-path "$OSTUDY_QUALIFICATION_ROOT/src-tauri/Cargo.toml" \
-    --locked \
-    --all-features
+  local test_threads="${1:-}"
+  if [[ -n "$test_threads" ]]; then
+    cargo test \
+      --manifest-path "$OSTUDY_QUALIFICATION_ROOT/src-tauri/Cargo.toml" \
+      --locked \
+      --all-features \
+      -- \
+      --test-threads "$test_threads"
+  else
+    cargo test \
+      --manifest-path "$OSTUDY_QUALIFICATION_ROOT/src-tauri/Cargo.toml" \
+      --locked \
+      --all-features
+  fi
 }
