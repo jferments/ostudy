@@ -17,8 +17,8 @@ permissions:
 
 jobs:
   package:
-    runs-on: [self-hosted, linux, x64, ostudy, android]
-    timeout-minutes: 120
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 180
     env:
       CI: "true"
       CARGO_TERM_COLOR: always
@@ -26,11 +26,22 @@ jobs:
     steps:
       - name: Check out selected source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          clean: true
+          fetch-depth: 0
 
-      - name: Expose user-local tools
+      - name: Expose pinned user toolchains and persistent caches
         run: |
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          mkdir -p \
+            "$HOME/.cache/ostudy/gradle" \
+            "$HOME/.cache/ostudy/cargo-target"
+
+      - name: Verify unified Android runner
+        run: bash ./scripts/runner/guest-preflight.sh
 
       - name: Install Android build prerequisites
         run: |
