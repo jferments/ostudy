@@ -47,12 +47,20 @@ type AndroidFileOperationKind =
   | "deck_export";
 type AndroidFileOperationPhase = "idle" | "pending" | "settled" | "error";
 
+interface AndroidFileOperationResult {
+  displayName: string;
+  detectedKind: string | null;
+  byteSize: number | null;
+  destinationKind: string | null;
+}
+
 interface AndroidFileOperationSnapshot {
   sequence: number;
   kind: AndroidFileOperationKind | null;
   phase: AndroidFileOperationPhase;
   cancelled: boolean | null;
   error: string | null;
+  result: AndroidFileOperationResult | null;
 }
 
 interface AndroidTestBridge {
@@ -77,6 +85,7 @@ let fileOperation: AndroidFileOperationSnapshot = {
   phase: "idle",
   cancelled: null,
   error: null,
+  result: null,
 };
 
 /**
@@ -170,23 +179,36 @@ async function restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot> {
 
 function startImportPicker(purpose: ExternalImportPurpose): AndroidFileOperationSnapshot {
   const kind = `${purpose}_import` as AndroidFileOperationKind;
-  return startTrackedFileOperation(
-    kind,
-    async () => (await selectExternalImport(purpose)) === null,
-  );
+  return startTrackedFileOperation(kind, async () => {
+    const selected = await selectExternalImport(purpose);
+    if (!selected) return null;
+    return {
+      displayName: selected.displayName,
+      detectedKind: selected.detectedKind,
+      byteSize: selected.byteSize,
+      destinationKind: null,
+    };
+  });
 }
 
 function startDeckExportPicker(): AndroidFileOperationSnapshot {
   return startTrackedFileOperation("deck_export", async () => {
     const deck = await ensureSmokeDeck();
     const prepared = await prepareDeckExport(deck.id, createOperationId());
-    return (await publishExport(prepared.preparedExport.id)) === null;
+    const published = await publishExport(prepared.preparedExport.id);
+    if (!published) return null;
+    return {
+      displayName: published.displayName,
+      detectedKind: null,
+      byteSize: prepared.preparedExport.byteSize,
+      destinationKind: published.destinationKind,
+    };
   });
 }
 
 function startTrackedFileOperation(
   kind: AndroidFileOperationKind,
-  operation: () => Promise<boolean>,
+  operation: () => Promise<AndroidFileOperationResult | null>,
 ): AndroidFileOperationSnapshot {
   const sequence = fileOperation.sequence + 1;
   fileOperation = {
@@ -195,17 +217,19 @@ function startTrackedFileOperation(
     phase: "pending",
     cancelled: null,
     error: null,
+    result: null,
   };
   void Promise.resolve()
     .then(operation)
-    .then((cancelled) => {
+    .then((result) => {
       if (fileOperation.sequence !== sequence) return;
       fileOperation = {
         sequence,
         kind,
         phase: "settled",
-        cancelled,
+        cancelled: result === null,
         error: null,
+        result,
       };
     })
     .catch((error: unknown) => {
@@ -216,13 +240,17 @@ function startTrackedFileOperation(
         phase: "error",
         cancelled: null,
         error: getErrorMessage(error),
+        result: null,
       };
     });
   return fileOperationSnapshot();
 }
 
 function fileOperationSnapshot(): AndroidFileOperationSnapshot {
-  return { ...fileOperation };
+  return {
+    ...fileOperation,
+    result: fileOperation.result ? { ...fileOperation.result } : null,
+  };
 }
 
 async function snapshot(): Promise<AndroidSmokeSnapshot> {
