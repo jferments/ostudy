@@ -78,6 +78,23 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
         self.assertIn("--test-apk", workflow)
         self.assertIn("android-min-sdk-smoke", workflow)
 
+    def test_android_workflows_route_only_to_the_dedicated_host_runner(self) -> None:
+        check_workflow = (ROOT / ".github" / "workflows" / "android-check.yml").read_text(
+            encoding="utf-8"
+        )
+        package_workflow = (ROOT / ".github" / "workflows" / "android-package.yml").read_text(
+            encoding="utf-8"
+        )
+        compile_selector = "runs-on: [self-hosted, linux, x64, ostudy-android]"
+        emulator_selector = "runs-on: [self-hosted, linux, x64, ostudy-android, kvm]"
+        old_selector_fragment = "runs-on: [self-hosted, linux, x64, ostudy, android"
+
+        self.assertIn(compile_selector, check_workflow)
+        self.assertGreaterEqual(check_workflow.count(emulator_selector), 3)
+        self.assertIn(compile_selector, package_workflow)
+        self.assertNotIn(old_selector_fragment, check_workflow)
+        self.assertNotIn(old_selector_fragment, package_workflow)
+
     def test_diagnostic_android_dag_never_runs_direct_gradle_before_tauri(self) -> None:
         source = (ROOT / "scripts" / "check-diagnostic.sh").read_text(encoding="utf-8")
         self.assertIn("android-x86-smoke-build", source)
