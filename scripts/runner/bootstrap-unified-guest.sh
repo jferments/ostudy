@@ -46,6 +46,9 @@ printf '  rust:        %s\n' "$RUST_VERSION"
 printf '  JDK:         %s\n' "$ANDROID_JDK_MAJOR"
 printf '  Android SDK: %s\n\n' "$ANDROID_HOME_VALUE"
 
+# Match the repository's known-good Ubuntu native qualification requirements,
+# then add the packages needed by the isolated Android/KVM guest. Keeping xauth
+# explicit matters because xvfb-run delegates Xauthority setup to it.
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   build-essential \
@@ -77,6 +80,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   libxcomposite1 \
   libxcursor1 \
   libxdamage1 \
+  libxdo-dev \
   libxi6 \
   libxkbcommon0 \
   libxrandr2 \
@@ -96,6 +100,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   unzip \
   webkit2gtk-driver \
   wget \
+  xauth \
   xdg-utils \
   xvfb \
   xz-utils \
@@ -197,8 +202,8 @@ sudo -u "$RUNNER_USER" -H env \
 
 # Reuse the repository's existing audited Linux setup contract: WebDriver
 # qualification requires the exact tauri-driver version pinned in versions.env.
-# Only compile it when the installed version differs so resumed bootstraps stay
-# cheap after the first successful installation.
+# tauri-driver 2.0.6 does not implement a --version flag, so package identity is
+# read from Cargo's installed-package metadata, exactly as scripts/doctor.sh does.
 installed_driver="$(
   sudo -u "$RUNNER_USER" -H env \
     HOME="$RUNNER_HOME" \
