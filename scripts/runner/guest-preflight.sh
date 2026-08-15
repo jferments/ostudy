@@ -134,7 +134,7 @@ check_exact_version() {
   fi
 }
 
-for command_name in node npm pnpm rustup rustc cargo java javac git curl python3; do
+for command_name in node npm pnpm rustup rustc cargo tauri-driver java javac git curl python3; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command is missing: $command_name"
 done
 
@@ -143,6 +143,7 @@ command -v npm >/dev/null 2>&1 && check_exact_version npm "$(npm --version)" "$N
 command -v pnpm >/dev/null 2>&1 && check_exact_version pnpm "$(pnpm --version)" "$PNPM_VERSION"
 command -v rustc >/dev/null 2>&1 && check_exact_version rustc "$(rustc --version | awk '{print $2}')" "$RUST_VERSION"
 command -v cargo >/dev/null 2>&1 && check_exact_version cargo "$(cargo --version | awk '{print $2}')" "$CARGO_VERSION"
+command -v tauri-driver >/dev/null 2>&1 && check_exact_version tauri-driver "$(tauri-driver --version | awk '{print $2}')" "$TAURI_DRIVER_VERSION"
 
 if command -v javac >/dev/null 2>&1; then
   java_major="$(javac -version 2>&1 | sed -E 's/^javac ([0-9]+).*/\1/')"
