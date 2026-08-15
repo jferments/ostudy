@@ -182,7 +182,11 @@ dump_case_logcat() {
 run_case() {
   local method="$1"
   local log="$ARTIFACT_DIR/${method}.txt"
-  local started finished duration instrument_status
+  local started finished duration instrument_status test_class
+  test_class="io.github.jferments.ostudy.AndroidSmokeTest"
+  if [[ "$method" == "h_documentProviderRoundTripStreamsImportsAndExport" ]]; then
+    test_class="io.github.jferments.ostudy.AndroidDocumentsProviderSmokeTest"
+  fi
 
   "$adb" -s "$SERIAL" shell am force-stop "$APP_ID" >/dev/null 2>&1 || true
   "$adb" -s "$SERIAL" logcat -c
@@ -192,7 +196,7 @@ run_case() {
   set +e
   "$adb" -s "$SERIAL" shell am instrument -w -r \
     -e waitForActivitiesToComplete false \
-    -e class "io.github.jferments.ostudy.AndroidSmokeTest#$method" \
+    -e class "$test_class#$method" \
     "$runner" | tee "$log"
   instrument_status="${PIPESTATUS[0]}"
   set -e
