@@ -129,7 +129,7 @@ qemu-img resize "$vm_disk" "${DISK_GIB}G"
 qemu-img info "$vm_disk"
 
 ssh_key="$(tr -d '\r\n' < "$SSH_PUBLIC_KEY_PATH")"
-ssh_key_yaml="$(python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' <<< "$ssh_key")"
+ssh_key_yaml="$(printf '%s' "$ssh_key" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
 
 cat > "$user_data" <<EOF
 #cloud-config
@@ -149,7 +149,6 @@ users:
       - $ssh_key_yaml
   - name: $RUNNER_USER
     gecos: ostudy GitHub Actions runner
-    groups: [kvm]
     shell: /bin/bash
     lock_passwd: true
 packages:
@@ -295,5 +294,5 @@ fi
 
 printf '\nOK   Created isolated unified runner VM.\n'
 printf 'Connect with:\n  ssh -i %q %q\n' "$SSH_PRIVATE_KEY_PATH" "$ADMIN_USER@$guest_ip"
-printf 'Next: copy this branch into the guest and run scripts/runner/bootstrap-unified-guest.sh.\n'
+printf 'Next: transfer a Git bundle of this branch into the guest and run scripts/runner/bootstrap-unified-guest.sh.\n'
 printf 'Do not register the GitHub runner until guest-preflight.sh and local Linux/Android qualification pass.\n'
