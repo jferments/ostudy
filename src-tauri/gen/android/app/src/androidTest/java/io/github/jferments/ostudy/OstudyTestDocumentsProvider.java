@@ -12,9 +12,9 @@ import android.util.Base64;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -247,7 +247,7 @@ public final class OstudyTestDocumentsProvider extends DocumentsProvider {
             throw new FileNotFoundException("Unknown test document: " + documentId);
         }
         String name = documentId.substring(FILE_PREFIX.length());
-        if (name.isBlank() || !name.equals(new File(name).getName())) {
+        if (name.trim().isEmpty() || !name.equals(new File(name).getName())) {
             throw new FileNotFoundException("Unsafe test document ID.");
         }
         return new File(fixtureDirectory(requireProviderContext()), name);
@@ -282,19 +282,28 @@ public final class OstudyTestDocumentsProvider extends DocumentsProvider {
             + "    }\n"
             + "  ]\n"
             + "}\n";
-        Files.writeString(new File(directory, JSON_FIXTURE).toPath(), json, StandardCharsets.UTF_8);
-        Files.write(
-            new File(directory, IMAGE_FIXTURE).toPath(),
+        writeBytes(
+            new File(directory, JSON_FIXTURE),
+            json.getBytes(StandardCharsets.UTF_8)
+        );
+        writeBytes(
+            new File(directory, IMAGE_FIXTURE),
             Base64.decode(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlSmOAAAAAASUVORK5CYII=",
                 Base64.DEFAULT
             )
         );
-        Files.writeString(
-            new File(directory, PDF_FIXTURE).toPath(),
-            "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n",
-            StandardCharsets.UTF_8
+        writeBytes(
+            new File(directory, PDF_FIXTURE),
+            ("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+                + "trailer\n<< /Root 1 0 R >>\n%%EOF\n").getBytes(StandardCharsets.UTF_8)
         );
+    }
+
+    private static void writeBytes(File file, byte[] bytes) throws IOException {
+        try (FileOutputStream output = new FileOutputStream(file, false)) {
+            output.write(bytes);
+        }
     }
 
     private static String fileDocumentId(String name) {
