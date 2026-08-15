@@ -1,51 +1,30 @@
 # Agent-driven diagnostics
 
-ostudy provides an opt-in diagnostic workflow for development branches where a Connector-backed coding agent needs broad failure information from the self-hosted runners without asking a human to copy command output between GitHub and the agent.
+ostudy has an opt-in multi-failure development mode for Connector-backed agents. It is integrated into the normal `Check` and `Android check` workflows so a diagnostic pass replaces the corresponding draft-PR development gate instead of launching a duplicate third workflow on the same self-hosted runner.
 
-The diagnostic sweep is a **development aid**, not a merge gate. The existing `check-static.sh`, `check-fast.sh`, `check.sh`, `android-check.yml`, and official Android Emulator smoke remain authoritative because they preserve the repository's normal fail-fast qualification semantics.
+Diagnostics are a **development aid**, not merge qualification. Ready-for-review pull requests ignore diagnostic markers and run the ordinary authoritative fail-fast qualification.
 
 ## Why this exists
 
-The authoritative gates intentionally stop when a prerequisite fails. That is correct for merge qualification, but it can create a slow repair loop during development: fix the first TypeScript error, rerun, discover a Vitest error, rerun, discover Clippy errors, and so on.
+The authoritative gates stop when a prerequisite fails. That is correct for merge qualification, but inefficient during repair: a TypeScript failure can hide an unrelated Rustfmt error, then a later Vitest failure, then Clippy. `scripts/check-diagnostic.sh` records independent gates as `PASS`, `FAIL`, or `BLOCKED` and continues wherever execution is meaningful.
 
-`./scripts/check-diagnostic.sh` instead treats independent checks as diagnostic gates. It continues after failures, records each gate as `PASS`, `FAIL`, or `BLOCKED`, and only blocks work that genuinely depends on a failed prerequisite. A single runner pass can therefore expose several unrelated defects at once while still avoiding misleading cascades from prerequisites that never succeeded.
+The diagnostic runner does not maintain a second copy of the commands it is testing. Shared checks live in `scripts/qualification-gates.sh`; Android-specific stages live in `scripts/android-qualification-gates.sh`. Fail-fast and collect-all orchestration call those same gate implementations so the two modes cannot silently drift apart.
 
-## Local diagnostic command
+## Local commands and evidence
 
 ```bash
-./scripts/check-diagnostic.sh --profile core --output-dir .diagnostics/core
-./scripts/check-diagnostic.sh --profile android --output-dir .diagnostics/android
+pnpm check:diagnostic
+pnpm android:diagnostic
+./scripts/check-diagnostic.sh --profile all --output-dir .diagnostics/all
 ```
 
-`--profile all` is available when one machine satisfies both the shared and Android/KVM prerequisites.
+Each sweep writes `results.tsv`, `diagnostics.json`, `summary.md`, and one complete log per gate. Machine-readable results include dependencies, exit codes, elapsed time, and bounded failure highlights. Android diagnostics also preserve emulator evidence and the structured Android smoke result file when the emulator stage runs.
 
-The command writes:
+A failing prerequisite causes only genuinely dependent work to become `BLOCKED`. For example, a failed x86_64 Tauri Android build blocks Gradle postbuild and emulator stages, but it does not prevent an independent arm64 build or repository-policy check from reporting its own result.
 
-- `results.tsv`: append-friendly gate status records used by the summarizer;
-- `diagnostics.json`: schema-versioned machine-readable results, dependencies, exit codes, and bounded highlights;
-- `summary.md`: a concise human/agent-oriented status table and failure excerpts;
-- `logs/*.log`: complete output for each diagnostic gate;
-- Android emulator artifacts under the selected output directory when the Android smoke gate runs.
+## Pull-request opt in
 
-The process exits non-zero when any diagnostic gate fails. `BLOCKED` gates do not independently make the process fail because their prerequisite failure is already represented.
-
-## Core profile
-
-The core sweep independently checks repository and documentation contracts, test policy, shell/script tests, frozen JavaScript installation, dependency versions, TypeScript, Rust formatting, PDFium provisioning, Cargo metadata, Vitest, Cargo compile, Clippy, Rust tests, and the production frontend build.
-
-JavaScript checks that require installed dependencies are blocked only when `pnpm install --frozen-lockfile` fails. Rust compile/test gates are blocked when the locked Cargo graph or audited PDFium runtime cannot be prepared. Other repository-policy checks continue so one infrastructure failure does not hide unrelated structural errors.
-
-## Android profile
-
-The Android sweep uses the Android/KVM self-hosted runner and separates environment/project checks from Kotlin compilation, Gradle dependency resolution, the x86_64 debug build, instrumentation-package generation, and official-emulator smoke.
-
-The emulator gate is intentionally blocked when a debuggable APK cannot be built or the runner doctor fails. That dependency is real: an emulator cannot reveal application-runtime defects until a valid test artifact exists. The diagnostic workflow removes avoidable serial discovery, but it does not pretend genuinely dependent failures can be known in advance.
-
-## Opting a pull request into diagnostics
-
-`Agent diagnostics` is intentionally inactive for ordinary pull requests. This prevents a development helper from consuming runner capacity or changing the behavior of unrelated work.
-
-A pull-request body may contain one of these markers:
+A draft pull request may include one marker:
 
 ```text
 <!-- agent-diagnostics:core -->
@@ -53,44 +32,83 @@ A pull-request body may contain one of these markers:
 <!-- agent-diagnostics:all -->
 ```
 
-- `core` runs only the shared diagnostic sweep on the ordinary ostudy self-hosted runner.
-- `android` runs only the Android diagnostic sweep on the Android/KVM runner.
-- `all` enables both independent jobs.
+`core` makes the standard `Check` workflow run the core diagnostic sweep instead of the normal draft fast tier. `android` makes the standard `Android check` workflow run the Android diagnostic job instead of the ordinary compile → emulator chain. `all` enables both substitutions.
 
-Editing the PR body to add a marker triggers the workflow. Subsequent pushes to that PR automatically rerun the selected diagnostic jobs. Concurrency cancellation stops obsolete diagnostic runs for the same PR; it does not cancel the repository's authoritative workflows.
+Editing a draft PR to add or change a marker triggers the relevant workflow. Subsequent pushes rerun the selected diagnostic mode. Marking the PR ready for review disables the substitution automatically: `Check` returns to full shared qualification and `Android check` returns to its authoritative build/package and emulator jobs even if the marker remains in the body.
 
-Removing the marker disables future diagnostic jobs. The workflow has read-only repository permission and never commits, pushes, edits source, or writes to `main`.
+The workflows keep `contents: read`; diagnostics never edit source, commit, push, or write to `main`.
 
-## Connector-backed agent repair loop
+## Core diagnostic profile
 
-For substantial Connector-backed work, the agent should own the CI feedback loop when the self-hosted runner can execute the relevant test:
+The core profile collects the post-UI-overhaul contract set, including deterministic UI token generation and token-usage policy, manifests, IPC, repository and platform boundaries, documentation, test policy, script tests, frozen JavaScript dependencies, TypeScript, Rustfmt, PDFium provisioning, locked Cargo metadata, Vitest, Cargo compile, Clippy, Rust tests, and the frontend production build.
 
-1. publish a coherent branch head and verify the remote SHA;
-2. opt the PR into the smallest useful diagnostic profile;
-3. inspect workflow state for that exact head through the GitHub Connector;
-4. retrieve failed job steps, decoded logs, and uploaded diagnostic artifacts directly;
-5. identify all actionable independent failures from the same sweep before editing;
-6. repair the failures in a coherent batch on the same PR branch;
-7. publish and verify the new remote head;
-8. inspect the new exact-head diagnostic and authoritative workflow results;
-9. repeat until the relevant diagnostic sweep and authoritative qualification are green, or report a concrete blocker that cannot be resolved from repository/CI access.
+This profile is intentionally broader than a single fail-fast pass. Its purpose is to expose a useful repair batch, not to provide an alternate definition of correctness.
 
-Do not ask the human to run `pnpm check:static`, `pnpm check`, `pnpm android:smoke`, or another repository test merely to relay output when an available self-hosted workflow can execute it and the Connector can read the resulting logs. Human intervention remains appropriate for manual UI judgment, physical-device behavior, credentials that must not enter CI, host administration, or a runner failure that requires access outside GitHub.
+## Android diagnostic profile
 
-GitHub Actions is asynchronous. A queued or running diagnostic is not a passing result. If the runner is busy, report the exact queued/running state separately from publication rather than polling aggressively or asking the human to duplicate the job locally.
+Android diagnostics follow the same ownership rules as authoritative Android qualification:
 
-## Interpreting results
+1. qualify/install the pinned SDK, NDK, JDK, Rust targets, and JavaScript dependencies;
+2. verify Android project and streaming contracts;
+3. preflight the smoke-only frontend bridge before native compilation;
+4. compile and package arm64 so the physical-device architecture is exercised;
+5. build the x86_64 smoke application **through Tauri** so transient `tauri.settings.gradle`, the private plugin graph, and JNI output exist;
+6. run Gradle dependency/Kotlin contracts only after that Tauri build;
+7. run platform/app JVM tests, Android Lint, and instrumentation-package assembly while excluding generated Tauri `rustBuild` tasks;
+8. verify APK policy and tracked-source cleanliness;
+9. run the official emulator against the already-built application and instrumentation APKs.
 
-Use the statuses literally:
+Direct Gradle qualification before Tauri initialization is forbidden. The diagnostic runner calls the maintained gate wrappers instead of hand-writing Gradle commands.
 
-- **PASS:** the gate completed successfully for the recorded head.
-- **FAIL:** the gate executed and returned a non-zero exit code or timed out.
-- **BLOCKED:** the gate was not executed because a declared prerequisite did not pass.
+## Android errors caught earlier
 
-Fix `FAIL` results before reasoning about their `BLOCKED` dependents. After a prerequisite is repaired, the next sweep may legitimately expose a previously blocked defect. That is a real dependency boundary, not the avoidable one-error-at-a-time loop this workflow is designed to remove.
+Several checks exist specifically because earlier Android work revealed bad assumptions that should never require a human to rediscover them:
 
-## Relationship to merge qualification
+- the smoke bridge is verified in Vite output both when it must exist and when it must not exist; APK byte-grepping is not used as a JavaScript observability boundary;
+- the build wrapper restores tracked generated sources, and a post-build cleanliness check fails if any tracked file remains modified;
+- Kotlin/coroutines compatibility is checked from the resolved Gradle graph after Tauri initialization;
+- Android Lint runs before emulator qualification;
+- arm64 compile/package is checked in addition to the x86_64 emulator architecture;
+- WebView attachment, bridge initialization, Android Back interception, and overlay teardown are represented by observable readiness conditions rather than fixed sleeps;
+- the emulator shell reuses compile-job APK artifacts instead of rebuilding them;
+- instrumentation continues independent smoke cases after one case fails and writes `android-smoke-results.json` with case status, duration, prerequisite, device API/page size, and artifact names;
+- an instrumentation-only `DocumentsProvider` lets the real Android system picker successfully stream generated JSON, PNG, and PDF fixtures into ostudy and receive a real deck export; cancellation paths remain covered separately;
+- stable Flashcards route test IDs are maintained for native automation instead of making future smoke coverage depend on display copy.
 
-A green diagnostic sweep does not qualify a pull request for merge. Before handoff, the exact published head must still satisfy the normal repository requirements in `testing-and-ci.md`, including the full shared gate and Android qualification when applicable.
+## Minimum-SDK compatibility
 
-The diagnostic workflow never modifies the application, never suppresses failures, and never grants an agent permission to waive an authoritative gate. Its purpose is to make the development feedback cycle broader and to move routine log collection from the human to the agent.
+The normal functional emulator remains the pinned API 36 Google APIs x86_64 image. `versions.env` also pins an API 28 Google APIs image matching the declared minimum SDK. `android-check.yml` runs a scheduled minimum-SDK compatibility smoke once per week and exposes the same run through `workflow_dispatch` mode `min-sdk-smoke`.
+
+Locally, the maintained wrapper is:
+
+```bash
+pnpm android:smoke:min
+```
+
+This is deliberately periodic rather than part of every PR because booting another emulator for every edit would add substantial runner time. Android Lint carries the cheap minimum-API checks on ordinary Android qualification.
+
+## Connector-owned repair loop
+
+When the self-hosted runner can execute the check, a Connector-backed agent owns the routine feedback loop:
+
+1. publish and remotely verify a coherent branch head;
+2. opt the draft PR into the smallest useful diagnostic profile;
+3. inspect exact-head workflow jobs through the GitHub Connector;
+4. retrieve decoded logs and uploaded artifacts directly;
+5. collect the complete actionable independent failure set before editing;
+6. repair those failures as one coherent batch on the same PR branch;
+7. publish and verify the new head;
+8. inspect the new exact-head results and repeat;
+9. remove/ignore diagnostic mode by making the PR ready only after development convergence, then require the authoritative merge gates.
+
+Do not ask the human to run `pnpm check:static`, `pnpm check`, `pnpm android:smoke`, or another CI-capable repository command merely to relay output. Human work remains appropriate for visual judgment, physical-device/OEM behavior, protected credentials, host administration, or another boundary GitHub cannot observe.
+
+GitHub Actions is asynchronous. `queued` and `running` are states, not successes; report them accurately rather than inventing completion or using aggressive polling.
+
+## Result semantics
+
+- **PASS** — the gate executed successfully for the recorded head.
+- **FAIL** — the gate executed and returned non-zero or timed out.
+- **BLOCKED** — the gate did not execute because a declared prerequisite was not `PASS`.
+
+A green diagnostic sweep still does not qualify a PR for merge. The exact published head must pass the ordinary full shared gate and the authoritative Android build/emulator chain when applicable.
