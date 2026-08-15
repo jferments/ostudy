@@ -35,21 +35,32 @@ jobs:
     env:
       CI: "true"
       CARGO_TERM_COLOR: always
-      GRADLE_USER_HOME: ${{ github.workspace }}/../_unified-cache/gradle
-      OSTUDY_CARGO_TARGET_DIR: ${{ github.workspace }}/../_unified-cache/cargo-target
 
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           clean: true
-          fetch-depth: 2
+          fetch-depth: 0
 
-      - name: Expose pinned user toolchains
+      - name: Expose pinned user toolchains and persistent caches
         run: |
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          mkdir -p "$GRADLE_USER_HOME" "$OSTUDY_CARGO_TARGET_DIR"
+          echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          mkdir -p \
+            "$HOME/.cache/ostudy/gradle" \
+            "$HOME/.cache/ostudy/cargo-target"
+
+      - name: Enforce runner-infrastructure-only pull-request scope
+        env:
+          INFRA_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          INFRA_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          bash ./scripts/runner/verify-infrastructure-scope.sh \
+            "$INFRA_BASE_SHA" \
+            "$INFRA_HEAD_SHA"
 
       - name: Select shadow qualification lane
         id: lane
