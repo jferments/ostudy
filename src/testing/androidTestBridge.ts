@@ -179,36 +179,23 @@ async function restorationSnapshot(): Promise<AndroidPracticeRestoreSnapshot> {
 
 function startImportPicker(purpose: ExternalImportPurpose): AndroidFileOperationSnapshot {
   const kind = `${purpose}_import` as AndroidFileOperationKind;
-  return startTrackedFileOperation(kind, async () => {
-    const selected = await selectExternalImport(purpose);
-    if (!selected) return null;
-    return {
-      displayName: selected.displayName,
-      detectedKind: selected.detectedKind,
-      byteSize: selected.byteSize,
-      destinationKind: null,
-    };
-  });
+  return startTrackedFileOperation(
+    kind,
+    async () => (await selectExternalImport(purpose)) === null,
+  );
 }
 
 function startDeckExportPicker(): AndroidFileOperationSnapshot {
   return startTrackedFileOperation("deck_export", async () => {
     const deck = await ensureSmokeDeck();
     const prepared = await prepareDeckExport(deck.id, createOperationId());
-    const published = await publishExport(prepared.preparedExport.id);
-    if (!published) return null;
-    return {
-      displayName: published.displayName,
-      detectedKind: null,
-      byteSize: prepared.preparedExport.byteSize,
-      destinationKind: published.destinationKind,
-    };
+    return (await publishExport(prepared.preparedExport.id)) === null;
   });
 }
 
 function startTrackedFileOperation(
   kind: AndroidFileOperationKind,
-  operation: () => Promise<AndroidFileOperationResult | null>,
+  operation: () => Promise<boolean>,
 ): AndroidFileOperationSnapshot {
   const sequence = fileOperation.sequence + 1;
   fileOperation = {
@@ -221,15 +208,15 @@ function startTrackedFileOperation(
   };
   void Promise.resolve()
     .then(operation)
-    .then((result) => {
+    .then((cancelled) => {
       if (fileOperation.sequence !== sequence) return;
       fileOperation = {
         sequence,
         kind,
         phase: "settled",
-        cancelled: result === null,
+        cancelled,
         error: null,
-        result,
+        result: null,
       };
     })
     .catch((error: unknown) => {
@@ -247,10 +234,7 @@ function startTrackedFileOperation(
 }
 
 function fileOperationSnapshot(): AndroidFileOperationSnapshot {
-  return {
-    ...fileOperation,
-    result: fileOperation.result ? { ...fileOperation.result } : null,
-  };
+  return { ...fileOperation };
 }
 
 async function snapshot(): Promise<AndroidSmokeSnapshot> {
