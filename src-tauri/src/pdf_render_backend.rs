@@ -28,9 +28,7 @@ use pdfium_render::prelude::{PdfPageIndex, PdfRenderConfig, Pdfium};
 #[cfg(target_os = "android")]
 use tauri::{AppHandle, Manager};
 #[cfg(target_os = "android")]
-use tauri_plugin_ostudy_platform::{
-    OpenPdfRequest, OstudyPlatformExt, RenderPdfPageRequest,
-};
+use tauri_plugin_ostudy_platform::{OpenPdfRequest, OstudyPlatformExt, RenderPdfPageRequest};
 
 const PAGE_RENDER_DPI: f64 = 120.0;
 pub(crate) const OCR_RENDER_DPI: f64 = 300.0;
@@ -401,7 +399,8 @@ where
 
     #[cfg(target_os = "android")]
     {
-        let session = open_android_pdf(runtime, source_path).map_err(RenderProcessError::Backend)?;
+        let session =
+            open_android_pdf(runtime, source_path).map_err(RenderProcessError::Backend)?;
         for page_number in 1..=session.page_count {
             let png = render_android_page(
                 runtime,
@@ -462,7 +461,8 @@ where
 
     #[cfg(target_os = "android")]
     {
-        let session = open_android_pdf(runtime, source_path).map_err(RenderProcessError::Backend)?;
+        let session =
+            open_android_pdf(runtime, source_path).map_err(RenderProcessError::Backend)?;
         let requested = validated_page_numbers(page_numbers, session.page_count)
             .map_err(RenderProcessError::Backend)?;
         for page_number in &requested {
@@ -741,10 +741,7 @@ mod tests {
             "pdfium-render-0.9.3/pdfium-api-7881-external-v2-120dpi"
         );
         #[cfg(target_os = "android")]
-        assert_eq!(
-            active_backend_id(),
-            "android-pdf-renderer-api21-v1-120dpi"
-        );
+        assert_eq!(active_backend_id(), "android-pdf-renderer-api21-v1-120dpi");
     }
 
     #[test]

@@ -121,8 +121,7 @@ impl PlatformOcrProvider {
         {
             let app = self.app.as_ref().ok_or_else(|| {
                 OcrError::Configuration(
-                    "Android OCR was initialized before the native platform runtime."
-                        .to_string(),
+                    "Android OCR was initialized before the native platform runtime.".to_string(),
                 )
             })?;
             let capabilities = app
@@ -207,11 +206,13 @@ impl PlatformOcrProvider {
         let source_path = input.to_str().ok_or_else(|| {
             OcrError::Configuration("Android's OCR cache path is not valid UTF-8.".to_string())
         })?;
-        let result = app.ostudy_platform().recognize_image(RecognizeImageRequest {
-            source_path: source_path.to_string(),
-            language: options.language.clone(),
-            timeout_seconds: options.timeout_seconds.max(1),
-        });
+        let result = app
+            .ostudy_platform()
+            .recognize_image(RecognizeImageRequest {
+                source_path: source_path.to_string(),
+                language: options.language.clone(),
+                timeout_seconds: options.timeout_seconds.max(1),
+            });
         let _ = fs::remove_file(&input);
         let result = result.map_err(|error| {
             OcrError::ProcessingFailed(format!("Android on-device OCR failed: {error}"))
