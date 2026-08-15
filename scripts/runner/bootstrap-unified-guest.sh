@@ -229,8 +229,9 @@ fi
 
 # pnpm v11 stores global executables below PNPM_HOME/bin. Keep both the pnpm
 # home and its global-bin directory on PATH for bootstrap commands and for the
-# eventual runner service environment.
-RUNNER_PATH="$JAVA_HOME_VALUE/bin:$ANDROID_HOME_VALUE/platform-tools:$ANDROID_HOME_VALUE/emulator:$ANDROID_HOME_VALUE/cmdline-tools/latest/bin:$RUNNER_HOME/.cargo/bin:$PNPM_GLOBAL_BIN_DIR:$PNPM_HOME_VALUE:$RUNNER_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# eventual runner service environment. Preserve the standard sbin paths too;
+# cpu-checker's kvm-ok and other system utilities live there on Ubuntu.
+RUNNER_PATH="$JAVA_HOME_VALUE/bin:$ANDROID_HOME_VALUE/platform-tools:$ANDROID_HOME_VALUE/emulator:$ANDROID_HOME_VALUE/cmdline-tools/latest/bin:$RUNNER_HOME/.cargo/bin:$PNPM_GLOBAL_BIN_DIR:$PNPM_HOME_VALUE:$RUNNER_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 sudo tee /etc/ostudy-runner.env >/dev/null <<EOF
 CI=true
