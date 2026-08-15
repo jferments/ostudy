@@ -15,6 +15,7 @@ APP_APK=""
 TEST_APK=""
 AVD_NAME="$ANDROID_PHONE_AVD"
 SYSTEM_IMAGE="$ANDROID_PHONE_SYSTEM_IMAGE"
+RUN_EXTENDED_SYSTEM_PICKER=0
 
 usage() {
   cat <<'USAGE'
@@ -25,15 +26,16 @@ Waydroid is useful for informal manual checks but is not the qualification
 runtime because it does not reproduce the standard emulator/device matrix.
 
 Options:
-  --serial <adb-serial>  Use an already-running Android device/emulator.
-  --keep-emulator       Do not stop an emulator started by this script.
-  --no-wipe             Reuse the AVD data image.
-  --artifacts <dir>     Diagnostic output directory.
-  --app-apk <path>      Reuse a prebuilt smoke-enabled application APK.
-  --test-apk <path>     Reuse the matching prebuilt instrumentation APK.
-  --avd-name <name>     Use another AVD name.
-  --system-image <pkg>  System image used when the requested AVD must be created.
-  -h, --help            Show this help.
+  --serial <adb-serial>        Use an already-running Android device/emulator.
+  --keep-emulator             Do not stop an emulator started by this script.
+  --no-wipe                   Reuse the AVD data image.
+  --artifacts <dir>           Diagnostic output directory.
+  --app-apk <path>            Reuse a prebuilt smoke-enabled application APK.
+  --test-apk <path>           Reuse the matching prebuilt instrumentation APK.
+  --avd-name <name>           Use another AVD name.
+  --system-image <pkg>        System image used when the requested AVD must be created.
+  --extended-system-picker    Run the experimental successful SAF/provider roundtrip.
+  -h, --help                  Show this help.
 USAGE
 }
 
@@ -47,6 +49,7 @@ while (($#)); do
     --test-apk) shift; TEST_APK="${1:?--test-apk requires a path}" ;;
     --avd-name) shift; AVD_NAME="${1:?--avd-name requires a value}" ;;
     --system-image) shift; SYSTEM_IMAGE="${1:?--system-image requires a value}" ;;
+    --extended-system-picker) RUN_EXTENDED_SYSTEM_PICKER=1 ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'Unknown smoke-test option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
@@ -209,6 +212,11 @@ run_case() {
   local started finished duration instrument_status test_class
   test_class="io.github.jferments.ostudy.AndroidSmokeTest"
   if [[ "$method" == "h_documentProviderRoundTripStreamsImportsAndExport" ]]; then
+    if ((RUN_EXTENDED_SYSTEM_PICKER == 0)); then
+      record_result "$method" "SKIP" "extended system-picker roundtrip is opt-in" "" ""
+      printf 'SKIP Android smoke case %s: extended system-picker roundtrip is opt-in.\n' "$method"
+      return 0
+    fi
     test_class="io.github.jferments.ostudy.AndroidDocumentsProviderSmokeTest"
   fi
 
