@@ -11,97 +11,56 @@ usage() {
 Usage: ./scripts/check-diagnostic.sh [--profile core|android|all] [--output-dir PATH]
 
 Runs independent ostudy diagnostic gates without stopping after the first failure.
-This is a development diagnostic sweep, not a replacement for the authoritative
-check-static.sh, check-fast.sh, check.sh, or Android qualification workflows.
+The same reusable gate implementations back authoritative fail-fast validation;
+this runner only changes orchestration and failure collection.
 EOF
 }
 
 while (($# > 0)); do
   case "$1" in
-    --profile)
-      PROFILE="${2:-}"
-      shift 2
-      ;;
-    --output-dir)
-      OUTPUT_DIR="${2:-}"
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      printf 'Unknown option: %s\n' "$1" >&2
-      usage >&2
-      exit 2
-      ;;
+    --profile) PROFILE="${2:-}"; shift 2 ;;
+    --output-dir) OUTPUT_DIR="${2:-}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
 done
-
-case "$PROFILE" in
-  core|android|all) ;;
-  *)
-    printf 'Unsupported diagnostic profile: %s\n' "$PROFILE" >&2
-    exit 2
-    ;;
-esac
+case "$PROFILE" in core|android|all) ;; *) printf 'Unsupported diagnostic profile: %s\n' "$PROFILE" >&2; exit 2 ;; esac
 
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 mkdir -p "$OUTPUT_DIR/logs"
 RESULTS_FILE="$OUTPUT_DIR/results.tsv"
-: > "$RESULTS_FILE"
-
-# name | profile | status | exit_code | dependencies | log
-printf 'name\tprofile\tstatus\texit_code\tdependencies\tlog\n' >> "$RESULTS_FILE"
+printf 'name\tprofile\tstatus\texit_code\tduration_ms\tdependencies\tlog\n' > "$RESULTS_FILE"
 
 declare -A GATE_STATUS=()
 FAILED=0
 BLOCKED=0
 
-sanitize_name() {
-  printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'
-}
-
+sanitize_name() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'; }
 record_gate() {
-  local name="$1"
-  local gate_profile="$2"
-  local status="$3"
-  local exit_code="$4"
-  local dependencies="$5"
-  local log="$6"
+  local name="$1" gate_profile="$2" status="$3" exit_code="$4" duration_ms="$5" dependencies="$6" log="$7"
   GATE_STATUS["$name"]="$status"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$name" "$gate_profile" "$status" "$exit_code" "$dependencies" "$log" \
-    >> "$RESULTS_FILE"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$name" "$gate_profile" "$status" "$exit_code" "$duration_ms" "$dependencies" "$log" >> "$RESULTS_FILE"
 }
-
 should_block() {
-  local dependencies="$1"
-  local dependency
+  local dependencies="$1" dependency
   [[ -z "$dependencies" ]] && return 1
   for dependency in $dependencies; do
-    if [[ "${GATE_STATUS[$dependency]:-MISSING}" != "PASS" ]]; then
-      return 0
-    fi
+    [[ "${GATE_STATUS[$dependency]:-MISSING}" == "PASS" ]] || return 0
   done
   return 1
 }
-
 run_gate() {
-  local name="$1"
-  local gate_profile="$2"
-  local dependencies="$3"
-  local timeout_value="$4"
+  local name="$1" gate_profile="$2" dependencies="$3" timeout_value="$4"
   shift 4
-
-  local safe_name log exit_code
+  local safe_name log exit_code started finished duration_ms
   safe_name="$(sanitize_name "$name")"
   log="$OUTPUT_DIR/logs/${safe_name}.log"
 
   if should_block "$dependencies"; then
     printf 'BLOCKED %s (dependencies: %s)\n' "$name" "$dependencies" | tee "$log"
-    record_gate "$name" "$gate_profile" "BLOCKED" "" "$dependencies" "logs/${safe_name}.log"
+    record_gate "$name" "$gate_profile" "BLOCKED" "" "" "$dependencies" "logs/${safe_name}.log"
     BLOCKED=$((BLOCKED + 1))
     return 0
   fi
@@ -110,103 +69,110 @@ run_gate() {
   printf 'Command:' > "$log"
   printf ' %q' "$@" >> "$log"
   printf '\n\n' >> "$log"
-
+  started="$(date +%s%3N)"
   (
     cd "$ROOT_DIR"
     timeout --signal=TERM --kill-after=30s "$timeout_value" "$@"
   ) >> "$log" 2>&1
   exit_code=$?
+  finished="$(date +%s%3N)"
+  duration_ms=$((finished - started))
 
   if [[ "$exit_code" -eq 0 ]]; then
-    printf 'PASS    %s\n' "$name"
-    record_gate "$name" "$gate_profile" "PASS" "0" "$dependencies" "logs/${safe_name}.log"
+    printf 'PASS    %s (%sms)\n' "$name" "$duration_ms"
+    record_gate "$name" "$gate_profile" "PASS" "0" "$duration_ms" "$dependencies" "logs/${safe_name}.log"
   else
-    printf 'FAIL    %s (exit %s)\n' "$name" "$exit_code"
-    record_gate "$name" "$gate_profile" "FAIL" "$exit_code" "$dependencies" "logs/${safe_name}.log"
+    printf 'FAIL    %s (exit %s, %sms)\n' "$name" "$exit_code" "$duration_ms"
+    record_gate "$name" "$gate_profile" "FAIL" "$exit_code" "$duration_ms" "$dependencies" "logs/${safe_name}.log"
     FAILED=$((FAILED + 1))
   fi
 }
 
+shared_gate() {
+  local name="$1" dependencies="$2" timeout_value="$3" function_name="$4"
+  run_gate "$name" "core" "$dependencies" "$timeout_value" \
+    bash -c "source ./scripts/qualification-gates.sh; $function_name"
+}
+android_gate() {
+  local name="$1" dependencies="$2" timeout_value="$3" function_name="$4"
+  run_gate "$name" "android" "$dependencies" "$timeout_value" \
+    bash -c "source ./scripts/android-qualification-gates.sh; $function_name"
+}
+
 run_core() {
-  run_gate "doctor" "core" "" "10m" bash ./scripts/doctor.sh
-  run_gate "project-manifests" "core" "" "5m" node ./scripts/verify-project-manifests.mjs
-  run_gate "ipc-contract" "core" "" "5m" node ./scripts/verify-ipc-contract.mjs
-  run_gate "repository-policy" "core" "" "5m" node ./scripts/verify-repository-policy.mjs
-  run_gate "platform-boundaries" "core" "" "5m" node ./scripts/verify-platform-boundaries.mjs
-  run_gate "external-file-streaming" "core" "" "5m" node ./scripts/verify-external-file-streaming.mjs
-  run_gate "documentation" "core" "" "5m" node ./scripts/verify-documentation.mjs
-  run_gate "test-policy" "core" "" "5m" node ./scripts/verify-test-policy.mjs
-  run_gate "script-syntax" "core" "" "5m" bash ./scripts/verify-script-syntax.sh
-  run_gate "script-tests" "core" "" "10m" python3 -m unittest discover -s tests/scripts -p 'test_*.py'
-  run_gate "pnpm-install" "core" "" "20m" pnpm install --frozen-lockfile
-  run_gate "js-versions" "core" "pnpm-install" "5m" pnpm run verify:versions
-  run_gate "typescript" "core" "pnpm-install" "15m" pnpm exec tsc -b --pretty false
-  run_gate "rustfmt" "core" "" "10m" cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-  run_gate "pdfium-runtime" "core" "" "20m" bash ./scripts/install-native-deps.sh --pdfium-only
-  run_gate "cargo-metadata" "core" "" "10m" cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 --locked
-  run_gate "vitest" "core" "pnpm-install" "30m" pnpm test
-  run_gate "cargo-check" "core" "cargo-metadata pdfium-runtime" "30m" cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
-  run_gate "clippy" "core" "cargo-check" "45m" cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
-  run_gate "rust-tests" "core" "cargo-check" "60m" cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
-  run_gate "frontend-build" "core" "pnpm-install typescript" "20m" pnpm run build
+  shared_gate doctor "" 10m ostudy_gate_doctor
+  shared_gate project-manifests "" 5m ostudy_gate_project_manifests
+  shared_gate ui-token-generation "" 5m ostudy_gate_ui_token_generation
+  shared_gate ui-token-usage "" 5m ostudy_gate_ui_token_usage
+  shared_gate ipc-contract "" 5m ostudy_gate_ipc_contract
+  shared_gate repository-policy "" 5m ostudy_gate_repository_policy
+  shared_gate platform-boundaries "" 5m ostudy_gate_platform_boundaries
+  shared_gate external-file-streaming "" 5m ostudy_gate_external_file_streaming
+  shared_gate documentation "" 5m ostudy_gate_documentation
+  shared_gate lockfiles "" 2m ostudy_gate_lockfiles
+  shared_gate test-policy "" 5m ostudy_gate_test_policy
+  shared_gate script-syntax "" 5m ostudy_gate_script_syntax
+  shared_gate script-tests "script-syntax" 15m ostudy_gate_script_tests
+  shared_gate pnpm-install "lockfiles" 20m ostudy_gate_pnpm_install
+  shared_gate js-versions "pnpm-install" 5m ostudy_gate_js_versions
+  shared_gate typescript "pnpm-install" 15m ostudy_gate_typescript
+  shared_gate rustfmt "" 10m ostudy_gate_rustfmt
+  shared_gate pdfium-runtime "" 20m ostudy_gate_pdfium_runtime
+  shared_gate cargo-metadata "lockfiles" 10m ostudy_gate_cargo_metadata_locked
+  shared_gate vitest "pnpm-install" 35m ostudy_gate_vitest
+  shared_gate cargo-check "cargo-metadata pdfium-runtime" 35m ostudy_gate_cargo_check
+  shared_gate clippy "cargo-check" 45m ostudy_gate_clippy
+  shared_gate rust-tests "cargo-check" 75m ostudy_gate_rust_tests
+  shared_gate frontend-build "pnpm-install typescript" 25m ostudy_gate_frontend_build
 }
 
 run_android() {
-  run_gate "android-install-deps" "android" "" "30m" bash ./scripts/install-android-deps.sh --with-emulator
-  run_gate "android-rust-targets" "android" "" "15m" rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-  run_gate "android-pnpm-install" "android" "" "20m" pnpm install --frozen-lockfile
-  run_gate "android-runner-doctor" "android" "android-install-deps android-rust-targets" "15m" bash ./scripts/android-runner-doctor.sh
-  run_gate "android-project" "android" "android-install-deps" "10m" node ./scripts/verify-android-project.mjs
-  run_gate "android-streaming-contract" "android" "" "5m" node ./scripts/verify-external-file-streaming.mjs
-  run_gate "android-gradle-dependencies" "android" "android-install-deps" "20m" bash -c '
-    set -euo pipefail
-    source ./scripts/android-env.sh
-    android_write_local_properties
-    report="$(mktemp -t ostudy-android-diagnostic-deps.XXXXXXXX)"
-    trap '\''rm -f -- "$report"'\'' EXIT
-    (
-      cd src-tauri/gen/android
-      ./gradlew --no-daemon --parallel --max-workers "$OSTUDY_GRADLE_WORKERS" \
-        :tauri-plugin-ostudy-platform:dependencies --configuration debugCompileClasspath
-    ) | tee "$report"
-    grep -Eq '\''kotlinx-coroutines-core-jvm:1\.8\.1'\'' "$report"
-    grep -Eq '\''kotlin-stdlib:1\.9\.25'\'' "$report"
-  '
-  run_gate "android-kotlin-compile" "android" "android-install-deps" "30m" bash -c '
-    set -euo pipefail
-    source ./scripts/android-env.sh
-    android_write_local_properties
-    cd src-tauri/gen/android
-    ./gradlew --no-daemon --parallel --max-workers "$OSTUDY_GRADLE_WORKERS" \
-      :tauri-plugin-ostudy-platform:compileDebugKotlin
-  '
-  run_gate "android-debug-build" "android" "android-install-deps android-rust-targets android-pnpm-install android-kotlin-compile" "75m" bash -c '
-    set -euo pipefail
-    source ./scripts/android-env.sh
-    android_write_local_properties
-    export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
-    bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
-  '
-  run_gate "android-test-packages" "android" "android-debug-build" "30m" bash -c '
-    set -euo pipefail
-    source ./scripts/android-env.sh
-    android_write_local_properties
-    bash ./scripts/android-gradle-postbuild.sh test-packages
-  '
-  run_gate "android-emulator-smoke" "android" "android-debug-build android-test-packages android-runner-doctor" "90m" bash ./scripts/android-emulator-smoke.sh --artifacts "$OUTPUT_DIR/android-smoke"
+  run_gate android-install-deps android "" 35m bash ./scripts/install-android-deps.sh --with-emulator
+  run_gate android-rust-targets android "" 15m rustup target add \
+    aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+  run_gate android-pnpm-install android "" 20m pnpm install --frozen-lockfile
+  run_gate android-runner-doctor android "android-install-deps android-rust-targets" 15m \
+    bash ./scripts/android-runner-doctor.sh
+  android_gate android-project "android-install-deps" 10m ostudy_android_gate_project_contracts
+  android_gate android-smoke-frontend "android-pnpm-install" 15m ostudy_android_gate_smoke_frontend
+
+  # arm64 and x86_64 are independent once common prerequisites are ready; a
+  # physical-device compile failure must not hide emulator-architecture defects.
+  android_gate android-arm64-build \
+    "android-install-deps android-rust-targets android-pnpm-install android-project" 90m \
+    ostudy_android_gate_build_arm64_debug
+  android_gate android-arm64-package "android-arm64-build" 10m ostudy_android_gate_verify_latest_app
+  android_gate android-x86-smoke-build \
+    "android-install-deps android-rust-targets android-pnpm-install android-project android-smoke-frontend" 90m \
+    ostudy_android_gate_build_x86_smoke
+  android_gate android-gradle-contracts "android-x86-smoke-build" 35m ostudy_android_gate_gradle_contracts
+  android_gate android-gradle-lint-tests "android-x86-smoke-build" 60m ostudy_android_gate_test_packages
+  android_gate android-test-packages "android-gradle-lint-tests" 10m ostudy_android_gate_verify_test_packages
+  android_gate android-build-cleanliness "" 5m ostudy_android_gate_build_cleanliness
+
+  local app_apk test_apk
+  app_apk="$(bash -c 'source ./scripts/android-qualification-gates.sh; ostudy_android_find_app_apk' 2>/dev/null || true)"
+  test_apk="$(bash -c 'source ./scripts/android-qualification-gates.sh; ostudy_android_find_test_apk' 2>/dev/null || true)"
+  if [[ "${GATE_STATUS[android-x86-smoke-build]:-}" == PASS \
+    && "${GATE_STATUS[android-test-packages]:-}" == PASS \
+    && "${GATE_STATUS[android-runner-doctor]:-}" == PASS \
+    && -f "$app_apk" && -f "$test_apk" ]]; then
+    run_gate android-emulator-smoke android \
+      "android-x86-smoke-build android-test-packages android-runner-doctor" 110m \
+      bash ./scripts/android-emulator-smoke.sh \
+        --app-apk "$app_apk" \
+        --test-apk "$test_apk" \
+        --artifacts "$OUTPUT_DIR/android-smoke"
+  else
+    run_gate android-emulator-smoke android \
+      "android-x86-smoke-build android-test-packages android-runner-doctor" 110m true
+  fi
 }
 
 case "$PROFILE" in
-  core)
-    run_core
-    ;;
-  android)
-    run_android
-    ;;
-  all)
-    run_core
-    run_android
-    ;;
+  core) run_core ;;
+  android) run_android ;;
+  all) run_core; run_android ;;
 esac
 
 if ! node "$SCRIPT_DIR/summarize-diagnostics.mjs" \
@@ -220,8 +186,4 @@ fi
 printf '\nDiagnostic sweep complete: %s failed, %s blocked.\n' "$FAILED" "$BLOCKED"
 printf 'Summary: %s\n' "$OUTPUT_DIR/summary.md"
 printf 'Machine-readable results: %s\n' "$OUTPUT_DIR/diagnostics.json"
-
-if ((FAILED > 0)); then
-  exit 1
-fi
-exit 0
+((FAILED == 0))
