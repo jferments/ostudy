@@ -95,12 +95,26 @@ class AndroidDiagnosticContractsTests(unittest.TestCase):
         self.assertNotIn(old_selector_fragment, check_workflow)
         self.assertNotIn(old_selector_fragment, package_workflow)
 
-    def test_diagnostic_android_dag_never_runs_direct_gradle_before_tauri(self) -> None:
-        source = (ROOT / "scripts" / "check-diagnostic.sh").read_text(encoding="utf-8")
-        self.assertIn("android-x86-smoke-build", source)
-        self.assertIn("android-gradle-contracts", source)
-        self.assertNotIn(":tauri-plugin-ostudy-platform:compileDebugKotlin", source)
-        self.assertNotIn("./gradlew", source)
+    def test_diagnostic_android_dag_is_tauri_first_and_collects_postbuild_failures_independently(self) -> None:
+        diagnostic = (ROOT / "scripts" / "check-diagnostic.sh").read_text(encoding="utf-8")
+        postbuild = (ROOT / "scripts" / "android-gradle-postbuild.sh").read_text(encoding="utf-8")
+
+        self.assertIn("android-x86-smoke-build", diagnostic)
+        self.assertIn("android-gradle-contracts", diagnostic)
+        self.assertIn("android-jvm-tests", diagnostic)
+        self.assertIn("android-lint", diagnostic)
+        self.assertIn("android-instrumentation-package", diagnostic)
+        self.assertNotIn("android-gradle-lint-tests", diagnostic)
+        self.assertNotIn(":tauri-plugin-ostudy-platform:compileDebugKotlin", diagnostic)
+        self.assertNotIn("./gradlew", diagnostic)
+
+        for mode in ("jvm-tests", "lint", "instrumentation-package", "test-packages"):
+            self.assertIn(mode, postbuild)
+        self.assertIn(":tauri-plugin-ostudy-platform:testDebugUnitTest", postbuild)
+        self.assertIn(":tauri-plugin-ostudy-platform:lintDebug", postbuild)
+        self.assertIn(":app:testUniversalDebugUnitTest", postbuild)
+        self.assertIn(":app:lintUniversalDebug", postbuild)
+        self.assertIn(":app:assembleUniversalDebugAndroidTest", postbuild)
 
     def test_system_picker_success_contract_is_instrumentation_only(self) -> None:
         test_manifest = (
