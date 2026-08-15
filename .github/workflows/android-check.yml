@@ -34,7 +34,7 @@ jobs:
       (github.event_name == 'pull_request' && github.event.pull_request.draft == true &&
         (contains(github.event.pull_request.body || '', '<!-- agent-diagnostics:android -->') ||
          contains(github.event.pull_request.body || '', '<!-- agent-diagnostics:all -->')))
-    runs-on: [self-hosted, linux, x64, ostudy, android, kvm]
+    runs-on: [self-hosted, linux, x64, ostudy-android, kvm]
     timeout-minutes: 210
     env:
       CI: "true"
@@ -85,7 +85,7 @@ jobs:
         !(github.event.pull_request.draft == true &&
           (contains(github.event.pull_request.body || '', '<!-- agent-diagnostics:android -->') ||
            contains(github.event.pull_request.body || '', '<!-- agent-diagnostics:all -->'))))
-    runs-on: [self-hosted, linux, x64, ostudy, android]
+    runs-on: [self-hosted, linux, x64, ostudy-android]
     timeout-minutes: 150
     env:
       CI: "true"
@@ -141,7 +141,7 @@ jobs:
 
   android-emulator-smoke:
     needs: android-compile
-    runs-on: [self-hosted, linux, x64, ostudy, android, kvm]
+    runs-on: [self-hosted, linux, x64, ostudy-android, kvm]
     timeout-minutes: 120
     env:
       CI: "true"
@@ -202,7 +202,7 @@ jobs:
     if: >-
       github.event_name == 'schedule' ||
       (github.event_name == 'workflow_dispatch' && inputs.mode == 'min-sdk-smoke')
-    runs-on: [self-hosted, linux, x64, ostudy, android, kvm]
+    runs-on: [self-hosted, linux, x64, ostudy-android, kvm]
     timeout-minutes: 150
     env:
       CI: "true"
