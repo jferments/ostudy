@@ -131,12 +131,31 @@ curl --fail --location --proto '=https' --tlsv1.2 \
 sudo rm -rf -- "$NODE_PREFIX"
 sudo install -d -o root -g root -m 0755 "$NODE_PREFIX"
 sudo tar -xJf "$work_dir/$NODE_ARCHIVE" -C "$NODE_PREFIX" --strip-components=1
-sudo "$NODE_PREFIX/bin/npm" install --global "npm@$NPM_VERSION" "pnpm@$PNPM_VERSION"
+
+# The npm launcher in the official Node archive uses `#!/usr/bin/env node`.
+# Make the verified Node binary discoverable before invoking npm so a fresh or
+# resumed bootstrap does not depend on a pre-existing system Node installation.
+sudo ln -sfn "$NODE_PREFIX/bin/node" /usr/local/bin/node
+sudo env PATH="$NODE_PREFIX/bin:/usr/local/bin:/usr/bin:/bin" \
+  "$NODE_PREFIX/bin/npm" install --global "npm@$NPM_VERSION" "pnpm@$PNPM_VERSION"
 for command_name in node npm npx corepack pnpm pnpx; do
   if [[ -e "$NODE_PREFIX/bin/$command_name" ]]; then
     sudo ln -sfn "$NODE_PREFIX/bin/$command_name" "/usr/local/bin/$command_name"
   fi
 done
+
+[[ "$(/usr/local/bin/node --version)" == "v$NODE_VERSION" ]] || {
+  printf 'Installed Node version does not match versions.env.\n' >&2
+  exit 1
+}
+[[ "$(/usr/local/bin/npm --version)" == "$NPM_VERSION" ]] || {
+  printf 'Installed npm version does not match versions.env.\n' >&2
+  exit 1
+}
+[[ "$(/usr/local/bin/pnpm --version)" == "$PNPM_VERSION" ]] || {
+  printf 'Installed pnpm version does not match versions.env.\n' >&2
+  exit 1
+}
 
 printf 'Installing Rust %s for %s...\n' "$RUST_VERSION" "$RUNNER_USER"
 sudo -u "$RUNNER_USER" -H env \
