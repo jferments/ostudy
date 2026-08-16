@@ -4,7 +4,7 @@ use tauri::{
     AppHandle, Runtime,
 };
 
-use crate::{models::*, Result};
+use crate::{models::*, qr_models::*, Result};
 
 #[cfg(target_os = "android")]
 const PLUGIN_IDENTIFIER: &str = "io.github.jferments.ostudy.platform";
@@ -17,17 +17,21 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
     let platform = api.register_android_plugin(PLUGIN_IDENTIFIER, "OstudyPlatformPlugin")?;
     #[cfg(target_os = "android")]
     let documents = api.register_android_plugin(PLUGIN_IDENTIFIER, "OstudyDocumentPlugin")?;
+    #[cfg(target_os = "android")]
+    let qr = api.register_android_plugin(PLUGIN_IDENTIFIER, "OstudyQrPlugin")?;
     #[cfg(target_os = "ios")]
     compile_error!("The ostudy platform plugin does not yet provide an iOS implementation.");
     Ok(OstudyPlatform {
         platform,
         documents,
+        qr,
     })
 }
 
 pub struct OstudyPlatform<R: Runtime> {
     platform: PluginHandle<R>,
     documents: PluginHandle<R>,
+    qr: PluginHandle<R>,
 }
 
 impl<R: Runtime> OstudyPlatform<R> {
@@ -126,6 +130,12 @@ impl<R: Runtime> OstudyPlatform<R> {
     pub fn dismiss_incoming_share(&self, token: String) -> Result<()> {
         self.platform
             .run_mobile_plugin("dismissIncomingShare", IncomingShareRequest { token })
+            .map_err(Into::into)
+    }
+
+    pub fn scan_qr_code(&self, request: ScanQrCodeRequest) -> Result<ScanQrCodeResult> {
+        self.qr
+            .run_mobile_plugin("scanQrCode", request)
             .map_err(Into::into)
     }
 
