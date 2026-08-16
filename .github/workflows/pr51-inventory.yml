@@ -1,0 +1,64 @@
+name: PR 51 integration inventory
+
+on:
+  push:
+    branches:
+      - agent/android-completion-a4-a7
+
+permissions:
+  contents: write
+
+jobs:
+  inventory:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(pr51): record integration inventory') }}
+    runs-on: [self-hosted, ostudy-unified]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/android-completion-a4-a7
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Record boolean integration state
+        run: |
+          rm -f .github/pr51-state-*
+          check() {
+            local name="$1"
+            local pattern="$2"
+            local file="$3"
+            if grep -Fq "$pattern" "$file"; then
+              touch ".github/pr51-state-${name}-yes"
+            else
+              touch ".github/pr51-state-${name}-no"
+            fi
+          }
+          check module-sync 'mod device_sync;' src-tauri/src/lib.rs
+          check module-transport 'mod device_sync_transport;' src-tauri/src/lib.rs
+          check module-qr 'mod device_sync_qr;' src-tauri/src/lib.rs
+          check module-background 'mod document_background;' src-tauri/src/lib.rs
+          check command-sync 'device_sync::get_device_sync_identity,' src-tauri/src/lib.rs
+          check command-transport 'device_sync_transport::start_device_sync_session,' src-tauri/src/lib.rs
+          check command-qr 'device_sync_qr::scan_device_sync_qr,' src-tauri/src/lib.rs
+          check file-acquire 'pub async fn acquire_device_sync_file' src-tauri/src/device_sync.rs
+          check helper-preview 'pub(crate) fn preview_remote_snapshot' src-tauri/src/device_sync.rs
+          check helper-identity 'pub(crate) fn sync_identity' src-tauri/src/device_sync.rs
+          check helper-ack 'pub(crate) fn acknowledge_transport_base' src-tauri/src/device_sync.rs
+          check cargo-ring 'ring = ' src-tauri/Cargo.toml
+          check cargo-qrcode 'qrcode = ' src-tauri/Cargo.toml
+          check qr-result 'pub struct ScanQrCodeResult' plugins/ostudy-platform/src/models.rs
+          check qr-register 'OstudyQrPlugin' plugins/ostudy-platform/src/mobile.rs
+          check qr-method 'pub fn scan_qr_code' plugins/ostudy-platform/src/mobile.rs
+          check document-lease 'DocumentExecutionLease::begin' src-tauri/src/document_operations.rs
+          check android-background 'background_execution: ServiceCapability::available()' src-tauri/src/platform/android.rs
+          check package-script 'android:build:debug' package.json
+          check tesseract-class 'com.googlecode.tesseract.android.TessBaseAPI' plugins/ostudy-platform/android/src/main/java/OstudyDocumentPlugin.kt
+
+      - name: Commit inventory and remove workflow
+        run: |
+          rm -f .github/workflows/pr51-inventory.yml
+          git config user.name "ostudy-ci"
+          git config user.email "158022198+jferments@users.noreply.github.com"
+          git add .github/pr51-state-* .github/workflows/pr51-inventory.yml
+          git commit -m "chore(pr51): record integration inventory"
+          git push origin HEAD:agent/android-completion-a4-a7
