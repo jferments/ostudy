@@ -37,14 +37,15 @@ pub(crate) fn collect_credentials(
                  LIMIT ?1",
             )
             .map_err(CommandError::database)?;
-        statement
+        let profile_ids = statement
             .query_map(
                 [i64::try_from(MAX_CREDENTIAL_RECORDS).unwrap_or(i64::MAX)],
                 |row| row.get::<_, String>(0),
             )
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)
+            .map_err(CommandError::database)?;
+        Ok(profile_ids)
     })?;
     let mut output = Vec::new();
     for profile_id in profile_ids {
