@@ -80,6 +80,7 @@ describe("DeviceSyncSettings", () => {
       endpoint: "192.168.1.10:44000",
       fingerprint: "a".repeat(64),
       expiresAt: Date.now() + 300_000,
+      includeApiSettings: false,
       credentialsAvailable: false,
     });
     vi.mocked(syncIpc.scanDevicePairingQr).mockResolvedValue("ostudy-sync://pair/scanned");
@@ -89,61 +90,92 @@ describe("DeviceSyncSettings", () => {
       changedRowCount: 12,
       conflictCount: 1,
       transferredCredentialCount: 0,
-      sentPackageBytes: 10,
+      sentPackageBytes: 0,
       receivedPackageBytes: 20,
     });
     vi.mocked(syncIpc.resolveDeviceSyncConflict).mockResolvedValue(undefined);
   });
 
-  it("creates a large pairing-code presentation with scanning guidance", async () => {
+  it("creates a one-way sender offer with API sharing off by default", async () => {
     renderSync();
     expect(await screen.findByText("Android phone")).toBeTruthy();
+    expect(screen.getByText(/Appearance and other app settings always stay local/iu)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Create pairing code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create sync offer" }));
 
     await waitFor(() => {
       expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
         hostOverride: null,
-        includeCredentials: false,
+        includeApiSettings: false,
       });
     });
-    expect(await screen.findByAltText(/QR code containing/u)).toBeTruthy();
+    expect(await screen.findByAltText(/QR code containing the short-lived ostudy synchronization offer/u)).toBeTruthy();
     expect(screen.getByText("192.168.1.10:44000")).toBeTruthy();
-    expect(screen.getByText(/entire white border visible/u)).toBeTruthy();
-    expect(screen.getByText(/center the complete QR code inside the camera frame/iu)).toBeTruthy();
+    expect(screen.getByText(/API provider settings and credentials are not included/iu)).toBeTruthy();
+    expect(screen.getByText(/scanning this code accepts the offer/iu)).toBeTruthy();
   });
 
-  it("shows visual detection feedback after the Android scanner returns a pairing code", async () => {
+  it("lets the sender explicitly add API settings to the offer", async () => {
+    renderSync();
+    await screen.findByText("Android phone");
+    const apiToggle = screen.getByRole("checkbox", {
+      name: /Include API provider settings and saved credentials/iu,
+    });
+    fireEvent.click(apiToggle);
+    fireEvent.click(screen.getByRole("button", { name: "Create sync offer" }));
+
+    await waitFor(() => {
+      expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
+        hostOverride: null,
+        includeApiSettings: true,
+      });
+    });
+  });
+
+  it("accepts a scanned offer immediately without a second pairing action", async () => {
     const showToast = renderSync();
     await screen.findByText("Android phone");
-    fireEvent.click(screen.getByRole("button", { name: "Scan pairing QR code" }));
-    expect(await screen.findByDisplayValue("ostudy-sync://pair/scanned")).toBeTruthy();
-    expect(screen.getByRole("status").textContent).toContain("Pairing code detected");
-    expect(showToast).toHaveBeenCalledWith(
-      "success",
-      "Pairing code detected. Review the credential option, then connect.",
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Scan and receive" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Pair and synchronize" }));
     await waitFor(() => {
-      expect(syncIpc.joinDevicePairing).toHaveBeenCalledWith({
-        invitation: "ostudy-sync://pair/scanned",
-        includeCredentials: false,
-      });
-      expect(showToast).toHaveBeenCalledWith(
-        "info",
-        "Synchronized with Android phone: 12 rows changed and 1 conflicts need review.",
-      );
+      expect(syncIpc.joinDevicePairing).toHaveBeenCalledTimes(1);
+      expect(syncIpc.joinDevicePairing).toHaveBeenCalledWith("ostudy-sync://pair/scanned");
+    });
+    expect(screen.getByRole("status").textContent).toContain("synchronization complete");
+    expect(showToast).toHaveBeenCalledWith(
+      "info",
+      "Received from Android phone: 12 rows changed and 1 conflicts need review.",
+    );
+    expect(screen.queryByDisplayValue("ostudy-sync://pair/scanned")).toBeNull();
+  });
+
+  it("accepts pasted invitation text without a receiver-side API toggle", async () => {
+    renderSync();
+    await screen.findByText("Android phone");
+    expect(
+      screen.getAllByRole("checkbox", {
+        name: /Include API provider settings and saved credentials/iu,
+      }),
+    ).toHaveLength(1);
+
+    fireEvent.change(screen.getByLabelText("Synchronization invitation"), {
+      target: { value: "ostudy-sync://pair/pasted" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Accept sync offer" }));
+
+    await waitFor(() => {
+      expect(syncIpc.joinDevicePairing).toHaveBeenCalledWith("ostudy-sync://pair/pasted");
     });
   });
 
-  it("reports a cancelled scanner without replacing the invitation", async () => {
+  it("reports a cancelled scanner without starting synchronization", async () => {
     vi.mocked(syncIpc.scanDevicePairingQr).mockResolvedValueOnce(null);
     renderSync();
     await screen.findByText("Android phone");
-    fireEvent.click(screen.getByRole("button", { name: "Scan pairing QR code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Scan and receive" }));
     expect(await screen.findByText(/Scan cancelled/u)).toBeTruthy();
-    const invitation = screen.getByLabelText("Pairing invitation") as HTMLTextAreaElement;
+    expect(syncIpc.joinDevicePairing).not.toHaveBeenCalled();
+    const invitation = screen.getByLabelText("Synchronization invitation") as HTMLTextAreaElement;
     expect(invitation.value).toBe("");
   });
 
