@@ -32,7 +32,7 @@ export interface AppInfo {
   dataDirectory: string;
   databasePath: string;
   imageDirectory: string;
-  diagnosticLogPath: string;
+  diagnosticLogPath?: string;
   databaseSchemaVersion: number;
 }
 
