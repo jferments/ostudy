@@ -41,7 +41,7 @@ Supported Android capabilities include:
 - foreground document processing with notification/wake-lock ownership while a user-started job is active;
 - encrypted same-LAN trusted-device synchronization with explicit conflict handling;
 - Android QR pairing through the embedded ZXing scanner;
-- optional encrypted AI-credential transfer into the destination secure store.
+- optional encrypted AI-provider/credential transfer into the destination secure store when the sender opts in.
 
 Android `PdfRenderer` has no independent second text-extraction API, so the `native_pdf_text_rescue` capability remains unavailable. Shared Rust first keeps usable PDF text extracted by the document pipeline and invokes Android OCR only for pages that require visual recovery.
 
@@ -63,7 +63,7 @@ Kotlin copies temporary `ACTION_SEND` URI grants into private cache and exposes 
 
 Kotlin stores AI credentials behind a non-exportable Android Keystore AES-GCM key. Rust retains shared secure-store policy and write-only UI behavior. Android Auto Backup remains disabled for those records.
 
-Device-sync identity keys and paired-device transport secrets use the same secure-store boundary. Synchronization files never contain API credentials. Credential transfer is available only when explicitly selected for an encrypted pairing/LAN session, and received credentials are committed to the secure store only as part of the approved sync operation.
+The stable device-sync identity key uses the same secure-store boundary. Each synchronization offer uses fresh pairing-secret and ephemeral key-agreement material; there is no long-lived paired-device transport secret that gets reused across QR sessions. Synchronization packages never contain API credential bytes. Saved credentials can travel only when the **sending device** explicitly opts in for that encrypted LAN offer, and received credentials are committed to the destination secure store rather than ordinary SQLite settings.
 
 ### PDF rendering and OCR
 
@@ -82,6 +82,10 @@ Backgrounding the Activity does not make the WebView the lifetime owner of the j
 ### Device synchronization
 
 Shared Rust owns snapshot construction, authenticated encryption, common-base merge planning, conflict persistence, asset validation, and secure credential policy. Android contributes the QR scanner and Keystore implementation. The sync protocol never copies a live SQLite database over another installation.
+
+Protocol v2 uses explicit **one-way offers**. The device that creates an invitation is the sender. Scanning that invitation on Android is the acceptance gesture and immediately starts receiving the sender-selected study-library snapshot; the receiver does not upload its library or create a second invitation. A future reverse transfer is a separate offer initiated by the other device.
+
+`app_settings` is excluded from both the outgoing package and the synchronization merge allowlist, so theme, fonts, UI scale, motion/layout preferences, and other device-specific settings remain local. AI provider configuration and saved credentials are the only settings-related synchronization scope currently supported, and that scope is off by default and controlled by the sender per offer.
 
 See [Device synchronization architecture](../architecture/device-sync.md) for the merge and transport contract.
 
@@ -106,6 +110,8 @@ The UI checkpoint is a bounded, versioned, atomically replaced app-private JSON 
 `node scripts/verify-android-project.mjs` verifies generated/native files, SDK/NDK/API pins, package identity, Kotlin compatibility, parallelism controls, permissions, backup exclusions, FileProvider scope, Tauri overlays, and package scripts.
 
 `node scripts/verify-external-file-streaming.mjs` protects the streaming import/export boundary and the required Android smoke coverage.
+
+The device-sync contract verifier additionally checks QR routing, automatic receive after scanning, sender-owned API scope, absence of `app_settings` from the merge allowlist/outgoing package, and first-contact merge behavior.
 
 ### Compile and package
 
@@ -134,9 +140,10 @@ The authoritative mobile smoke uses the pinned API 36 Google APIs x86_64 AVD and
 - Storage Access Framework launch/cancellation for supported import purposes;
 - prepared export through `ACTION_CREATE_DOCUMENT`;
 - release of native picker-operation ownership across sequential cancellations;
-- bundled ML Kit OCR through a real synthetic-text recognition case.
+- bundled ML Kit OCR through a real synthetic-text recognition case;
+- production native-plugin routing for document and QR capabilities.
 
-The smoke-only JavaScript bridge is opt-in at build time and forbidden in release packages.
+The smoke-only JavaScript bridge is opt-in at build time and forbidden in release packages. A headless emulator cannot reproduce a physical phone camera aimed at a desktop QR code, so the final camera-decode plus desktop-to-phone LAN transfer remains part of the physical-device acceptance pass.
 
 Waydroid may be useful for informal checks but does not replace the official emulator gate.
 
