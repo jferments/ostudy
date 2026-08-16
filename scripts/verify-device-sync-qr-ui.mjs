@@ -59,7 +59,7 @@ expectContains(settingsUi, "Sync offer detected", "visual offer detection result
 expectContains(settingsUi, "await receiveOffer(scanned, true)", "automatic receive after QR detection");
 expectContains(settingsUi, "Accept sync offer", "text-invitation acceptance action");
 expectContains(settingsUi, "Replace waiting offer", "single unclaimed outgoing offer behavior");
-expectContains(settingsUi, "Cancel sending", "active-session cancellation affordance");
+expectContains(settingsUi, 'aria-label={`Cancel ${session.direction', "active-session cancellation affordance");
 expectContains(settingsUi, "Include API provider settings and saved credentials", "sender API scope control");
 expectContains(settingsUi, "app settings always stay local", "device-local app-settings explanation");
 expectContains(settingsUi, "entire white border visible", "host-side QR framing guidance");
@@ -75,6 +75,7 @@ expectContains(syncCore, "sent_package_bytes: 0", "receiver does not upload a pa
 expectContains(syncCancellation, "device_sync_peer_busy", "same-peer overlap rejection");
 expectContains(syncCancellation, "Shutdown::Both", "active transport interruption on cancellation");
 expectContains(syncCancellation, "device_sync_process_interrupted", "restart reconciliation for stale sessions");
+expectContains(syncCancellation, "CANCELLABLE_STATES_SQL", "non-cancelable atomic merge boundary");
 expectContains(syncPackage, "DELETE FROM app_settings;", "app settings removed before package transmission");
 expectContains(syncPackage, "DELETE FROM ai_task_defaults;", "API settings excluded when sender leaves scope off");
 expectContains(syncPackage, "DELETE FROM ai_provider_profiles;", "API profiles excluded when sender leaves scope off");
