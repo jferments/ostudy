@@ -20,6 +20,13 @@ use tokio::sync::Notify;
 
 use crate::error::CommandError;
 
+#[cfg(target_os = "android")]
+use tauri::AppHandle;
+#[cfg(target_os = "android")]
+use tauri_plugin_ostudy_platform::{
+    BeginBackgroundExecutionRequest, OstudyPlatformExt,
+};
+
 #[derive(Clone, Debug)]
 pub(crate) struct CancellationSignal {
     canceled: Arc<AtomicBool>,
@@ -133,7 +140,9 @@ where
     F: Future<Output = Result<T, CommandError>>,
 {
     let signal = ACTIVE_DOCUMENT_TASKS.begin(document_id)?;
+    let foreground_execution = AndroidForegroundExecution::begin(document_id)?;
     let result = CURRENT_DOCUMENT_SIGNAL.scope(signal, future).await;
+    drop(foreground_execution);
     ACTIVE_DOCUMENT_TASKS.finish(document_id);
     result
 }
@@ -163,6 +172,61 @@ fn registry_error() -> CommandError {
         "document_task_registry_unavailable",
         "The document task registry is unavailable. Restart ostudy and try again.",
     )
+}
+
+#[cfg(target_os = "android")]
+struct AndroidForegroundExecution {
+    app: AppHandle,
+    document_id: String,
+}
+
+#[cfg(target_os = "android")]
+impl AndroidForegroundExecution {
+    fn begin(document_id: &str) -> Result<Self, CommandError> {
+        let app = crate::pdf_render_backend::android_app_handle().map_err(|error| {
+            CommandError::new(
+                "android_background_execution_unavailable",
+                format!("Android document execution is not initialized: {error}"),
+            )
+        })?;
+        app.ostudy_platform()
+            .begin_background_execution(BeginBackgroundExecutionRequest {
+                job_id: document_id.to_string(),
+                title: "Processing study document".to_string(),
+                detail: "Extracting text, rendering pages, and generating study material."
+                    .to_string(),
+            })
+            .map_err(|error| {
+                CommandError::new(
+                    "android_background_execution_failed",
+                    format!("Android could not start document foreground execution: {error}"),
+                )
+            })?;
+        Ok(Self {
+            app,
+            document_id: document_id.to_string(),
+        })
+    }
+}
+
+#[cfg(target_os = "android")]
+impl Drop for AndroidForegroundExecution {
+    fn drop(&mut self) {
+        let _ = self
+            .app
+            .ostudy_platform()
+            .end_background_execution(self.document_id.clone());
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+struct AndroidForegroundExecution;
+
+#[cfg(not(target_os = "android"))]
+impl AndroidForegroundExecution {
+    fn begin(_document_id: &str) -> Result<Self, CommandError> {
+        Ok(Self)
+    }
 }
 
 #[cfg(test)]
