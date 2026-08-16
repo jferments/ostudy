@@ -18,6 +18,7 @@ const FONT_PRESETS: &[&str] = &[
     "sora",
     "roboto-slab",
     "sofia-sans",
+    "lato",
     "humanist",
     "serif",
     "mono",
@@ -404,6 +405,7 @@ mod tests {
             "sora",
             "roboto-slab",
             "sofia-sans",
+            "lato",
         ] {
             assert!(
                 validate_font(preset).is_ok(),
