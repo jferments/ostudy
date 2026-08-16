@@ -688,6 +688,7 @@ fn run_join_session(
     let include_credentials = include_credentials && invitation.credentials_available;
     let ephemeral_public_key = BASE64_STANDARD.encode(&ephemeral.public_key);
     let ephemeral_public_key = BASE64_STANDARD.encode(&ephemeral.public_key);
+    let ephemeral_public_key = BASE64_STANDARD.encode(&ephemeral.public_key);
     let unsigned = UnsignedClientHello {
         protocol_version: PROTOCOL_VERSION,
         session_id: &invitation.session_id,
