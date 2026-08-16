@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use base64::{
     engine::general_purpose::{STANDARD as BASE64_STANDARD, URL_SAFE_NO_PAD},
     Engine as _,
@@ -205,7 +207,12 @@ pub(crate) fn verify_signature(
 }
 
 pub(crate) fn fingerprint(public_key: &[u8]) -> String {
-    format!("{:x}", digest::digest(&digest::SHA256, public_key))
+    let digest = digest::digest(&digest::SHA256, public_key);
+    let mut output = String::with_capacity(digest.as_ref().len() * 2);
+    for byte in digest.as_ref() {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
 }
 
 pub(crate) fn decode_standard(value: &str, label: &str) -> Result<Vec<u8>, CommandError> {
