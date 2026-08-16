@@ -105,20 +105,6 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
       {errorMessage ? (
         <div className={`${styles.fullWidth} inline-alert error-alert`}>{errorMessage}</div>
       ) : null}
-      <section className={styles.settingsCard}>
-        <h2>Storage</h2>
-        {appInfo ? (
-          <dl className={styles.pathList}>
-            <PathRow label="Application data" value={appInfo.dataDirectory} />
-            <PathRow label="Database" value={appInfo.databasePath} />
-            <PathRow label="Images" value={appInfo.imageDirectory} />
-            <PathRow label="Version" value={appInfo.appVersion} />
-            <PathRow label="Schema" value={String(appInfo.databaseSchemaVersion)} />
-          </dl>
-        ) : errorMessage ? null : (
-          <div className="inline-progress">Reading storage paths…</div>
-        )}
-      </section>
 
       <section className={styles.settingsCard}>
         <h2>Data safety</h2>
@@ -177,6 +163,21 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
       </section>
 
       <DeviceSyncSettings showToast={showToast} />
+
+      <section className={styles.fullWidthCard}>
+        <h2>Storage</h2>
+        {appInfo ? (
+          <dl className={styles.pathList}>
+            <PathRow label="Application data" value={appInfo.dataDirectory} />
+            <PathRow label="Database" value={appInfo.databasePath} />
+            <PathRow label="Images" value={appInfo.imageDirectory} />
+            <PathRow label="Version" value={appInfo.appVersion} />
+            <PathRow label="Schema" value={String(appInfo.databaseSchemaVersion)} />
+          </dl>
+        ) : errorMessage ? null : (
+          <div className="inline-progress">Reading storage paths…</div>
+        )}
+      </section>
     </div>
   );
 }
