@@ -21,6 +21,7 @@ mod decks;
 mod deletion;
 mod deletion_commands;
 mod deletion_purge;
+mod device_sync;
 mod diagnostics;
 mod document_backup;
 mod document_checkpoints;
@@ -261,6 +262,12 @@ pub fn run() {
             settings::get_app_info,
             platform::get_platform_capabilities,
             platform::set_platform_back_interception,
+            device_sync::get_device_sync_state,
+            device_sync::update_device_sync_name,
+            device_sync::start_device_pairing,
+            device_sync::join_device_pairing,
+            device_sync::remove_device_sync_peer,
+            device_sync::resolve_device_sync_conflict,
             ui_checkpoint::get_ui_checkpoint,
             ui_checkpoint::save_ui_checkpoint,
             ui_checkpoint::clear_ui_checkpoint,
