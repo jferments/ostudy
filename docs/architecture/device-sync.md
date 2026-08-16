@@ -51,11 +51,13 @@ The acknowledged base is bookkeeping rather than user data. If writing that base
 
 ## QR pairing and LAN transport
 
-A QR invitation identifies a short-lived one-shot private-LAN endpoint. The first pairing invitation also carries a random 256-bit pairing key. The snapshot is encrypted before it reaches the socket with ChaCha20-Poly1305 authenticated encryption. The HTTP endpoint therefore carries only ciphertext and accepts only the exact session path.
+A QR invitation identifies a short-lived one-shot private-LAN TCP endpoint. The first pairing invitation also carries a random 256-bit pairing secret plus the host's public identity and ephemeral key material. After the authenticated key agreement, synchronization metadata, package frames, and acknowledgements are protected with ChaCha20-Poly1305 authenticated encryption before they enter the socket.
 
-After the receiver authenticates and decrypts the snapshot, it returns an encrypted acknowledgement containing its device identity and the received snapshot identity. Both installations save the peer key in their platform secure store. Later QR sessions omit the key and require the existing trust record.
+The session identity, endpoint, expiry, device identities, and ephemeral keys are bound into the signed/proven pairing transcript. The receiver therefore cannot silently redirect an invitation to a different peer or session without failing authentication.
 
-Endpoint validation permits only numeric private, link-local, or loopback addresses, requires an explicit port and exact session path, rejects URL credentials, query strings, fragments, and redirects, and expires sessions after a short interval.
+Endpoint validation accepts only numeric private, link-local, or loopback IP addresses with an explicit port. Public addresses are rejected and invitations expire after a short interval.
+
+After the receiver authenticates and decrypts the snapshot, it returns an encrypted acknowledgement containing its device identity and the received snapshot identity. Both installations retain the trusted peer identity and synchronization baseline; secret key material remains in the platform secure store.
 
 The source device sends one snapshot per QR session. To exchange changes in both directions, either device can start the next session for the already trusted peer. A later protocol version can add simultaneous bidirectional exchange without changing the merge format.
 
