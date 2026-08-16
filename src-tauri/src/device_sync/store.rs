@@ -206,7 +206,8 @@ impl SyncStore {
                     params![device_id, name, now],
                 )
                 .map_err(CommandError::database)?;
-            load_identity(connection)?.ok_or_else(|| store_error("The device identity was not saved."))
+            load_identity(connection)?
+                .ok_or_else(|| store_error("The device identity was not saved."))
         })
     }
 
@@ -311,7 +312,8 @@ impl SyncStore {
     ) -> Result<PeerRecord, CommandError> {
         crate::util::validate_entity_id(peer_id, "paired device")?;
         let name = validate_display_name(display_name)?;
-        if public_key_base64.is_empty() || public_key_base64.len() > 512 || fingerprint.len() != 64 {
+        if public_key_base64.is_empty() || public_key_base64.len() > 512 || fingerprint.len() != 64
+        {
             return Err(store_error("The paired device identity is invalid."));
         }
         if endpoint_hint.len() > 512 {
@@ -326,7 +328,10 @@ impl SyncStore {
                 )
                 .optional()
                 .map_err(CommandError::database)?;
-            if existing.as_deref().is_some_and(|value| value != public_key_base64) {
+            if existing
+                .as_deref()
+                .is_some_and(|value| value != public_key_base64)
+            {
                 return Err(CommandError::new(
                     "device_sync_peer_key_changed",
                     "The paired device presented a different identity key.",
@@ -344,7 +349,14 @@ impl SyncStore {
                          fingerprint = excluded.fingerprint,
                          endpoint_hint = excluded.endpoint_hint,
                          revision = peers.revision + 1",
-                    params![peer_id, name, public_key_base64, fingerprint, endpoint_hint, now],
+                    params![
+                        peer_id,
+                        name,
+                        public_key_base64,
+                        fingerprint,
+                        endpoint_hint,
+                        now
+                    ],
                 )
                 .map_err(CommandError::database)?;
             connection
@@ -449,7 +461,14 @@ impl SyncStore {
                              peer_id, table_name, row_key,
                              payload_json, payload_hash, updated_at
                          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                        params![peer_id, table_name, row_key, payload_json, payload_hash, now],
+                        params![
+                            peer_id,
+                            table_name,
+                            row_key,
+                            payload_json,
+                            payload_hash,
+                            now
+                        ],
                     )
                     .map_err(CommandError::database)?;
             }
@@ -602,10 +621,12 @@ impl SyncStore {
                 )
                 .optional()
                 .map_err(CommandError::database)?
-                .ok_or_else(|| CommandError::new(
-                    "device_sync_conflict_not_found",
-                    "That synchronization conflict no longer exists.",
-                ))
+                .ok_or_else(|| {
+                    CommandError::new(
+                        "device_sync_conflict_not_found",
+                        "That synchronization conflict no longer exists.",
+                    )
+                })
         })
     }
 
@@ -833,11 +854,17 @@ mod tests {
                 conflicting_fields: &["name".to_string()],
             })
             .expect("conflict should save");
-        assert_eq!(store.list_conflicts().expect("conflicts should load").len(), 1);
+        assert_eq!(
+            store.list_conflicts().expect("conflicts should load").len(),
+            1
+        );
         store
             .resolve_conflict(&conflict_id, "keep_left")
             .expect("conflict should resolve");
-        assert!(store.list_conflicts().expect("conflicts should load").is_empty());
+        assert!(store
+            .list_conflicts()
+            .expect("conflicts should load")
+            .is_empty());
         let _ = std::fs::remove_dir_all(root);
     }
 }

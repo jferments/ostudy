@@ -376,7 +376,11 @@ fn merge_present_rows(
             left_value.or(right_value)
         } else if key_columns.contains(&column.as_str()) {
             conflicts.push(column.clone());
-            if prefer_left { left_value } else { right_value }
+            if prefer_left {
+                left_value
+            } else {
+                right_value
+            }
         } else {
             let left_changed = left_value != base_value;
             let right_changed = right_value != base_value;
@@ -386,7 +390,11 @@ fn merge_present_rows(
                 (false, false) => left_value.or(right_value),
                 (true, true) => {
                     conflicts.push(column.clone());
-                    if prefer_left { left_value } else { right_value }
+                    if prefer_left {
+                        left_value
+                    } else {
+                        right_value
+                    }
                 }
             }
         };
@@ -470,7 +478,10 @@ fn load_table(connection: &Connection, spec: &TableSpec) -> Result<TableRows, Co
         if !columns.iter().any(|column| column == key) {
             return Err(CommandError::new(
                 "device_sync_schema_mismatch",
-                format!("Table '{}' is missing synchronization key '{key}'.", spec.name),
+                format!(
+                    "Table '{}' is missing synchronization key '{key}'.",
+                    spec.name
+                ),
             ));
         }
     }
@@ -482,13 +493,19 @@ fn load_table(connection: &Connection, spec: &TableSpec) -> Result<TableRows, Co
             if spec.excluded_columns.contains(&column.as_str()) {
                 continue;
             }
-            payload.insert(column.clone(), cell_from_ref(row.get_ref(index).map_err(CommandError::database)?)?);
+            payload.insert(
+                column.clone(),
+                cell_from_ref(row.get_ref(index).map_err(CommandError::database)?)?,
+            );
         }
         let key = row_key(spec, &payload)?;
         if output.insert(key, payload).is_some() {
             return Err(CommandError::new(
                 "device_sync_schema_mismatch",
-                format!("Table '{}' contains duplicate synchronization keys.", spec.name),
+                format!(
+                    "Table '{}' contains duplicate synchronization keys.",
+                    spec.name
+                ),
             ));
         }
     }
@@ -600,7 +617,10 @@ fn row_key(spec: &TableSpec, payload: &RowPayload) -> Result<String, CommandErro
             payload.get(*column).cloned().ok_or_else(|| {
                 CommandError::new(
                     "device_sync_row_invalid",
-                    format!("A synchronized '{}' row is missing key '{column}'.", spec.name),
+                    format!(
+                        "A synchronized '{}' row is missing key '{column}'.",
+                        spec.name
+                    ),
                 )
             })
         })
@@ -639,15 +659,12 @@ fn cell_to_sql(value: &CellValue) -> Result<Value, CommandError> {
             "A synchronized numeric field is not finite.",
         )),
         CellValue::Text(value) => Ok(Value::Text(value.clone())),
-        CellValue::Blob(value) => BASE64_STANDARD
-            .decode(value)
-            .map(Value::Blob)
-            .map_err(|_| {
-                CommandError::new(
-                    "device_sync_row_invalid",
-                    "A synchronized binary field is not valid base64.",
-                )
-            }),
+        CellValue::Blob(value) => BASE64_STANDARD.decode(value).map(Value::Blob).map_err(|_| {
+            CommandError::new(
+                "device_sync_row_invalid",
+                "A synchronized binary field is not valid base64.",
+            )
+        }),
     }
 }
 
@@ -673,11 +690,9 @@ fn table_exists(connection: &Connection, table_name: &str) -> Result<bool, Comma
 
 fn verify_foreign_keys(connection: &Connection) -> Result<(), CommandError> {
     let count: i64 = connection
-        .query_row(
-            "SELECT COUNT(*) FROM pragma_foreign_key_check",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+            row.get(0)
+        })
         .map_err(CommandError::database)?;
     if count == 0 {
         Ok(())
@@ -761,7 +776,10 @@ mod tests {
             &"2".repeat(32),
         );
         assert_eq!(conflicts, vec!["name"]);
-        assert_eq!(merged.expect("row should survive").get("name"), left.get("name"));
+        assert_eq!(
+            merged.expect("row should survive").get("name"),
+            left.get("name")
+        );
     }
 
     #[test]

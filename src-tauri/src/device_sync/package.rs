@@ -140,8 +140,9 @@ pub(crate) fn create_package(
             )
             .map_err(CommandError::database)?;
 
-        let snapshot = Connection::open_with_flags(&snapshot_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(CommandError::database)?;
+        let snapshot =
+            Connection::open_with_flags(&snapshot_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .map_err(CommandError::database)?;
         let (asset_count, asset_bytes) = export_assets(&snapshot, paths, &transaction)?;
         transaction.commit().map_err(CommandError::database)?;
         let integrity: String = package
@@ -186,8 +187,12 @@ pub(crate) fn extract_package(
     }
     remove_dir_if_exists(staging_root)?;
     fs::create_dir_all(staging_root).map_err(CommandError::io)?;
-    let package = Connection::open_with_flags(source, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|error| invalid_package(format!("The synchronization package could not open: {error}")))?;
+    let package =
+        Connection::open_with_flags(source, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|error| {
+            invalid_package(format!(
+                "The synchronization package could not open: {error}"
+            ))
+        })?;
     package
         .execute_batch("PRAGMA trusted_schema = OFF; PRAGMA query_only = ON;")
         .map_err(CommandError::database)?;
@@ -228,7 +233,9 @@ pub(crate) fn extract_package(
     // Opening through the application database boundary applies any supported
     // forward migrations before the merge engine inspects rows.
     let migrated = Database::open(&database_path).map_err(|message| {
-        invalid_package(format!("The synchronized SQLite snapshot is invalid: {message}"))
+        invalid_package(format!(
+            "The synchronized SQLite snapshot is invalid: {message}"
+        ))
     })?;
     drop(migrated);
 
@@ -274,7 +281,8 @@ pub(crate) fn extract_package(
                 "A synchronized managed image has an invalid file type.",
             ));
         }
-        aggregate_bytes = aggregate_bytes.saturating_add(u64::try_from(data.len()).unwrap_or(u64::MAX));
+        aggregate_bytes =
+            aggregate_bytes.saturating_add(u64::try_from(data.len()).unwrap_or(u64::MAX));
         if aggregate_bytes > MAX_PACKAGE_BYTES {
             return Err(invalid_package(
                 "The synchronized image payload exceeds the supported size limit.",
@@ -286,7 +294,8 @@ pub(crate) fn extract_package(
             asset_id,
             relative_path,
             mime_type,
-            byte_size: u64::try_from(byte_size).map_err(|_| invalid_package("An asset size is invalid."))?,
+            byte_size: u64::try_from(byte_size)
+                .map_err(|_| invalid_package("An asset size is invalid."))?,
             sha256: actual_sha,
             staged_path,
         });
@@ -303,7 +312,9 @@ pub(crate) fn install_assets(
 ) -> Result<(), CommandError> {
     for asset in assets {
         let target = paths.resolve_relative(&asset.relative_path);
-        let parent = target.parent().ok_or_else(|| invalid_package("An asset path is invalid."))?;
+        let parent = target
+            .parent()
+            .ok_or_else(|| invalid_package("An asset path is invalid."))?;
         fs::create_dir_all(parent).map_err(CommandError::io)?;
         if target.is_file() {
             let existing = fs::read(&target).map_err(CommandError::io)?;
@@ -397,7 +408,14 @@ fn export_assets(
                 "INSERT INTO asset_files (
                      asset_id, relative_path, mime_type, byte_size, sha256, data
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![asset_id, relative_path, mime_type, expected_size, sha256, data],
+                params![
+                    asset_id,
+                    relative_path,
+                    mime_type,
+                    expected_size,
+                    sha256,
+                    data
+                ],
             )
             .map_err(CommandError::database)?;
         count = count.saturating_add(1);
@@ -425,7 +443,9 @@ fn metadata_value(connection: &Connection, key: &str) -> Result<String, CommandE
 fn validate_asset_path(relative: &str, asset_id: &str) -> Result<(), CommandError> {
     let path = Path::new(relative);
     if path.is_absolute()
-        || path.components().any(|component| !matches!(component, Component::Normal(_)))
+        || path
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
         || path.components().count() != 3
         || !relative.starts_with("assets/images/")
         || !path
@@ -441,7 +461,9 @@ fn validate_asset_path(relative: &str, asset_id: &str) -> Result<(), CommandErro
 }
 
 fn write_new_file(path: &Path, data: &[u8]) -> Result<(), CommandError> {
-    let parent = path.parent().ok_or_else(|| invalid_package("A package path is invalid."))?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| invalid_package("A package path is invalid."))?;
     fs::create_dir_all(parent).map_err(CommandError::io)?;
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);

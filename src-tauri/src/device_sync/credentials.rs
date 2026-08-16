@@ -36,9 +36,10 @@ pub(crate) fn collect_credentials(
             )
             .map_err(CommandError::database)?;
         statement
-            .query_map([i64::try_from(MAX_CREDENTIAL_RECORDS).unwrap_or(i64::MAX)], |row| {
-                row.get::<_, String>(0)
-            })
+            .query_map(
+                [i64::try_from(MAX_CREDENTIAL_RECORDS).unwrap_or(i64::MAX)],
+                |row| row.get::<_, String>(0),
+            )
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(CommandError::database)

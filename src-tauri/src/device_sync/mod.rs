@@ -39,10 +39,10 @@ use self::{
     crypto::{EphemeralKey, IdentityKey, SessionRole},
     merge::MergeSummary,
     package::PackageSummary,
-    store::{ConflictRecord, DeviceIdentityRecord, NewConflict, PeerRecord, SessionRecord, SyncStore},
-    transport::{
-        read_plain_json, write_plain_json, SecureChannel, FRAME_COMPLETE, FRAME_METADATA,
+    store::{
+        ConflictRecord, DeviceIdentityRecord, NewConflict, PeerRecord, SessionRecord, SyncStore,
     },
+    transport::{read_plain_json, write_plain_json, SecureChannel, FRAME_COMPLETE, FRAME_METADATA},
 };
 
 const PROTOCOL_VERSION: u32 = 1;
@@ -302,8 +302,12 @@ pub fn start_device_pairing(
         expires_at,
         credentials_available: input.include_credentials,
     };
-    let invitation_json = serde_json::to_vec(&invitation_payload).map_err(CommandError::serialization)?;
-    let invitation = format!("{INVITATION_PREFIX}{}", crypto::encode_url(&invitation_json));
+    let invitation_json =
+        serde_json::to_vec(&invitation_payload).map_err(CommandError::serialization)?;
+    let invitation = format!(
+        "{INVITATION_PREFIX}{}",
+        crypto::encode_url(&invitation_json)
+    );
     if invitation.len() > MAX_INVITATION_CHARS {
         return Err(CommandError::new(
             "device_sync_invitation_too_large",
@@ -328,7 +332,8 @@ pub fn start_device_pairing(
             if let Ok(store) = SyncStore::open(paths.inner()) {
                 match result {
                     Ok(peer_id) => {
-                        let _ = store.update_session(&host_session, Some(&peer_id), "completed", None);
+                        let _ =
+                            store.update_session(&host_session, Some(&peer_id), "completed", None);
                     }
                     Err(error) if error.code == "device_sync_invitation_expired" => {
                         let _ = store.update_session(
@@ -446,12 +451,7 @@ pub fn resolve_device_sync_conflict(
         }
     };
     database.with_connection(|connection| {
-        merge::apply_conflict_payload(
-            connection,
-            &conflict.table_name,
-            &conflict.row_key,
-            payload,
-        )
+        merge::apply_conflict_payload(connection, &conflict.table_name, &conflict.row_key, payload)
     })?;
     store.resolve_conflict(&input.conflict_id, &input.resolution)
 }
@@ -526,10 +526,8 @@ fn handle_host_connection(
     let hello: ClientHello = read_plain_json(&mut stream)?;
     validate_client_hello(&invitation, &hello, &pairing_secret)?;
     let transcript = client_transcript(&invitation, &hello)?;
-    let client_ephemeral = crypto::decode_standard(
-        &hello.ephemeral_public_key,
-        "client ephemeral public key",
-    )?;
+    let client_ephemeral =
+        crypto::decode_standard(&hello.ephemeral_public_key, "client ephemeral public key")?;
     let keys = ephemeral.derive(
         &client_ephemeral,
         &pairing_secret,
@@ -570,31 +568,24 @@ fn handle_host_connection(
         &peer_fingerprint,
         &remote_address.to_string(),
     )?;
-    store.update_session(
-        &invitation.session_id,
-        Some(&peer.id),
-        "transferring",
-        None,
-    )?;
+    store.update_session(&invitation.session_id, Some(&peer.id), "transferring", None)?;
     let metadata: TransferMetadata = channel.receive_json(FRAME_METADATA)?;
-    validate_transfer_metadata(&invitation.session_id, &hello, &metadata, credentials_accepted)?;
+    validate_transfer_metadata(
+        &invitation.session_id,
+        &hello,
+        &metadata,
+        credentials_accepted,
+    )?;
     let workspace = SyncWorkspace::new(paths.inner(), &invitation.session_id, "host")?;
     let incoming_package = workspace.path.join("incoming.syncpkg");
     channel.receive_file(&incoming_package)?;
-    store.update_session(
-        &invitation.session_id,
-        Some(&peer.id),
-        "merging",
-        None,
-    )?;
+    store.update_session(&invitation.session_id, Some(&peer.id), "merging", None)?;
 
     let extracted = package::extract_package(&incoming_package, &workspace.path.join("incoming"))?;
     package::install_assets(paths.inner(), &extracted.assets)?;
-    let remote_database = Connection::open_with_flags(
-        &extracted.database_path,
-        OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(CommandError::database)?;
+    let remote_database =
+        Connection::open_with_flags(&extracted.database_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(CommandError::database)?;
     let merge = database.with_connection(|local| {
         merge::merge_remote_database(
             local,
@@ -614,7 +605,8 @@ fn handle_host_connection(
         0
     };
     let response_package = workspace.path.join("merged.syncpkg");
-    let response_summary = package::create_package(database.inner(), paths.inner(), &response_package)?;
+    let response_summary =
+        package::create_package(database.inner(), paths.inner(), &response_package)?;
     let response_credentials = if credentials_accepted {
         credentials::collect_credentials(database.inner(), runtime.secure_secret_store())?
     } else {
@@ -680,7 +672,10 @@ fn run_join_session(
     let mut stream = TcpStream::connect_timeout(&address, CONNECT_TIMEOUT).map_err(|error| {
         CommandError::new(
             "device_sync_connection_failed",
-            format!("The paired device could not be reached at {}: {error}", invitation.endpoint),
+            format!(
+                "The paired device could not be reached at {}: {error}",
+                invitation.endpoint
+            ),
         )
     })?;
     let pairing_secret = crypto::decode_standard(&invitation.pairing_secret, "pairing secret")?;
@@ -739,7 +734,8 @@ fn run_join_session(
 
     let workspace = SyncWorkspace::new(paths.inner(), &invitation.session_id, "join")?;
     let outgoing_package = workspace.path.join("outgoing.syncpkg");
-    let outgoing_summary = package::create_package(database.inner(), paths.inner(), &outgoing_package)?;
+    let outgoing_summary =
+        package::create_package(database.inner(), paths.inner(), &outgoing_package)?;
     let outgoing_credentials = if server.credentials_accepted {
         credentials::collect_credentials(database.inner(), runtime.secure_secret_store())?
     } else {
@@ -761,7 +757,8 @@ fn run_join_session(
     channel.send_file(&outgoing_package)?;
 
     let response: HostResponseMetadata = channel.receive_json(FRAME_METADATA)?;
-    if response.protocol_version != PROTOCOL_VERSION || response.session_id != invitation.session_id {
+    if response.protocol_version != PROTOCOL_VERSION || response.session_id != invitation.session_id
+    {
         return Err(CommandError::new(
             "device_sync_protocol_error",
             "The paired device returned a response for another synchronization session.",
@@ -771,11 +768,9 @@ fn run_join_session(
     channel.receive_file(&incoming_package)?;
     let extracted = package::extract_package(&incoming_package, &workspace.path.join("merged"))?;
     package::install_assets(paths.inner(), &extracted.assets)?;
-    let authoritative = Connection::open_with_flags(
-        &extracted.database_path,
-        OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(CommandError::database)?;
+    let authoritative =
+        Connection::open_with_flags(&extracted.database_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(CommandError::database)?;
     let applied = database.with_connection(|local| {
         merge::apply_authoritative_database(local, &authoritative, &store, &host.id)
     })?;
@@ -1011,14 +1006,15 @@ fn server_transcript(
     server: &UnsignedServerHello<'_>,
 ) -> Result<Vec<u8>, CommandError> {
     let mut output = client_transcript.to_vec();
-    output.extend_from_slice(
-        &serde_json::to_vec(server).map_err(CommandError::serialization)?,
-    );
+    output.extend_from_slice(&serde_json::to_vec(server).map_err(CommandError::serialization)?);
     Ok(output)
 }
 
 fn resolve_host_ip(override_value: Option<&str>) -> Result<IpAddr, CommandError> {
-    if let Some(value) = override_value.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(value) = override_value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         let address: IpAddr = value.parse().map_err(|_| {
             CommandError::new(
                 "device_sync_host_invalid",
@@ -1050,7 +1046,9 @@ fn resolve_host_ip(override_value: Option<&str>) -> Result<IpAddr, CommandError>
 
 fn is_private_address(address: IpAddr) -> bool {
     match address {
-        IpAddr::V4(address) => address.is_private() || address.is_loopback() || address.is_link_local(),
+        IpAddr::V4(address) => {
+            address.is_private() || address.is_loopback() || address.is_link_local()
+        }
         IpAddr::V6(address) => {
             address.is_loopback()
                 || address.is_unicast_link_local()
@@ -1138,9 +1136,8 @@ mod tests {
             expires_at: crate::platform::now_utc_millis().unwrap_or_default() + 60_000,
             credentials_available: false,
         };
-        let encoded = crypto::encode_url(
-            &serde_json::to_vec(&payload).expect("invitation should serialize"),
-        );
+        let encoded =
+            crypto::encode_url(&serde_json::to_vec(&payload).expect("invitation should serialize"));
         assert!(parse_invitation(&format!("{INVITATION_PREFIX}{encoded}")).is_err());
     }
 

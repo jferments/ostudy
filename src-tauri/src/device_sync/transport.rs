@@ -95,7 +95,9 @@ impl SecureChannel {
             ));
         }
         if frame_type != expected_type || bytes.len() > MAX_JSON_FRAME_BYTES {
-            return Err(protocol_error("The paired device sent an unexpected control message."));
+            return Err(protocol_error(
+                "The paired device sent an unexpected control message.",
+            ));
         }
         serde_json::from_slice(&bytes).map_err(|error| {
             protocol_error(format!("The paired device sent invalid JSON: {error}"))
@@ -171,9 +173,8 @@ impl SecureChannel {
             let (frame_type, bytes) = self.receive_frame()?;
             match frame_type {
                 FRAME_FILE_CHUNK => {
-                    received = received.saturating_add(
-                        u64::try_from(bytes.len()).unwrap_or(u64::MAX),
-                    );
+                    received =
+                        received.saturating_add(u64::try_from(bytes.len()).unwrap_or(u64::MAX));
                     if received > header.byte_size || received > MAX_TRANSFER_BYTES {
                         let _ = fs::remove_file(destination);
                         return Err(protocol_error(
@@ -256,9 +257,9 @@ impl SecureChannel {
             ));
         }
         let mut sealed = vec![0_u8; length];
-        self.stream
-            .read_exact(&mut sealed)
-            .map_err(|error| transport_io_error("read an encrypted synchronization frame", error))?;
+        self.stream.read_exact(&mut sealed).map_err(|error| {
+            transport_io_error("read an encrypted synchronization frame", error)
+        })?;
         let sequence = self.receive_sequence;
         self.receive_sequence = self
             .receive_sequence
@@ -277,9 +278,9 @@ impl SecureChannel {
                     "The encrypted synchronization frame could not be authenticated.",
                 )
             })?;
-        let (&frame_type, payload) = opened.split_first().ok_or_else(|| {
-            protocol_error("The paired device sent an empty encrypted frame.")
-        })?;
+        let (&frame_type, payload) = opened
+            .split_first()
+            .ok_or_else(|| protocol_error("The paired device sent an empty encrypted frame."))?;
         Ok((frame_type, payload.to_vec()))
     }
 }
@@ -395,10 +396,8 @@ mod tests {
             send_key: keys.receive_key,
             receive_key: keys.send_key,
         };
-        let root = std::env::temp_dir().join(format!(
-            "ostudy-sync-transport-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("ostudy-sync-transport-{}", std::process::id()));
         let source = root.with_extension("source");
         let destination = root.with_extension("destination");
         fs::write(&source, b"encrypted sync payload").expect("source should write");

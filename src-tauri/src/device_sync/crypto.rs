@@ -92,14 +92,13 @@ impl IdentityKey {
 impl EphemeralKey {
     pub(crate) fn generate() -> Result<Self, CommandError> {
         let rng = rand::SystemRandom::new();
-        let private = agreement::EphemeralPrivateKey::generate(&agreement::X25519, &rng).map_err(
-            |_| {
+        let private =
+            agreement::EphemeralPrivateKey::generate(&agreement::X25519, &rng).map_err(|_| {
                 CommandError::new(
                     "device_sync_crypto_unavailable",
                     "An encrypted pairing key could not be generated.",
                 )
-            },
-        )?;
+            })?;
         let public_key = private
             .compute_public_key()
             .map_err(|_| {
