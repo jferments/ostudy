@@ -357,7 +357,10 @@ pub fn start_device_pairing(
     let cancel_signal = cancellation::begin(&session_id)?;
     crate::logging::info(
         "device_sync_offer_created",
-        format!("session={session_id} endpoint={endpoint} api_scope={}", input.include_api_settings),
+        format!(
+            "session={session_id} endpoint={endpoint} api_scope={}",
+            input.include_api_settings
+        ),
     );
     let host_app = app.clone();
     let host_session = session_id.clone();
@@ -785,10 +788,6 @@ fn handle_host_connection(
         ));
     }
 
-    // Remember the exact snapshot the receiver accepted as this pair's common
-    // base. This requires no receiver-to-sender library upload, but it prevents
-    // an ordinary later reverse offer from treating every receiver-side edit as
-    // a first-contact conflict.
     let baseline_result = (|| -> Result<(), CommandError> {
         let extracted = package::extract_package(
             &outgoing_package,
@@ -858,7 +857,10 @@ fn run_join_session(
     cancel_signal.check()?;
     crate::logging::info(
         "device_sync_receive_connected",
-        format!("session={} endpoint={}", invitation.session_id, invitation.endpoint),
+        format!(
+            "session={} endpoint={}",
+            invitation.session_id, invitation.endpoint
+        ),
     );
     let pairing_secret = crypto::decode_standard(&invitation.pairing_secret, "pairing secret")?;
     let host_ephemeral = crypto::decode_standard(
@@ -969,9 +971,6 @@ fn run_join_session(
     package::install_assets(paths.inner(), &extracted.assets)?;
     cancel_signal.check()?;
 
-    // The package sanitizer removes the bytes, and this temporary-schema guard
-    // makes the merge engine skip these tables entirely. Empty remote tables
-    // must not be interpreted as a request to delete local device settings.
     let remote_database =
         Connection::open(&extracted.database_path).map_err(CommandError::database)?;
     remote_database
