@@ -1,0 +1,70 @@
+name: PR 51 fresh Android qualification
+
+on:
+  push:
+    branches:
+      - agent/android-completion-a4-a7
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(pr51): fresh Android check') }}
+    runs-on: [self-hosted, ostudy-unified]
+    timeout-minutes: 90
+    env:
+      CI: true
+      CARGO_TERM_COLOR: never
+      GRADLE_USER_HOME: ${{ github.workspace }}/.runner-cache/gradle
+      OSTUDY_CARGO_TARGET_DIR: ${{ github.workspace }}/.runner-cache/cargo-target
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/android-completion-a4-a7
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Run Android compile and test-package qualification
+        id: android
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          bash ./scripts/android-test.sh 2>&1 | tee "$RUNNER_TEMP/pr51-fresh-android.log"
+
+      - name: Record exact result
+        env:
+          OUTCOME: ${{ steps.android.outcome }}
+        run: |
+          rm -f .github/pr51-fresh-android-*
+          if [[ "$OUTCOME" == "success" ]]; then
+            touch .github/pr51-fresh-android-pass
+          else
+            touch .github/pr51-fresh-android-fail
+            cp "$RUNNER_TEMP/pr51-fresh-android.log" .github/pr51-fresh-android.log
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path('.github/pr51-fresh-android.log').read_text(errors='replace')
+          patterns = {
+              'gradle-resolution': r'Could not resolve|Could not find|Could not GET',
+              'kotlin': r'^e: |Kotlin compilation|Unresolved reference|Compilation error',
+              'manifest': r'Manifest merger failed|foregroundServiceType|uses-sdk',
+              'rust-target': r'aarch64-linux-android|armv7-linux-androideabi|i686-linux-android|x86_64-linux-android',
+              'tesseract': r'Tesseract|tesseract4android|traineddata',
+              'mlkit': r'mlkit|barcode-scanning|text-recognition',
+              'instrumentation-package': r'androidTest|connected.*AndroidTest|test APK',
+              'oom': r'OutOfMemory|Java heap space|Killed',
+          }
+          for name, pattern in patterns.items():
+              if re.search(pattern, text, re.I | re.M):
+                  Path(f'.github/pr51-fresh-android-{name}').touch()
+          PY
+          fi
+          rm -f .github/workflows/pr51-fresh-android.yml
+          git config user.name "ostudy-ci"
+          git config user.email "158022198+jferments@users.noreply.github.com"
+          git add .github/pr51-fresh-android-* .github/workflows/pr51-fresh-android.yml
+          git commit -m "chore(pr51): fresh Android check ${OUTCOME}"
+          git push origin HEAD:agent/android-completion-a4-a7
+          [[ "$OUTCOME" == "success" ]]
