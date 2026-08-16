@@ -26,17 +26,19 @@ for (const font of localFontSources) {
   expectContains(appearance, `'${font.family}'`, `appearance family ${font.family}`);
   expectContains(rustSettings, `"${font.id}"`, `Rust font preset ${font.id}`);
   expectContains(localCss, `font-family: "${font.family}";`, `@font-face ${font.family}`);
-  expectContains(localCss, font.filename, `local font asset ${font.filename}`);
 
-  if (requireInstalled) {
-    const path = join(root, "src", "assets", "fonts", font.filename);
-    try {
-      const bytes = await readFile(path);
-      if (bytes.length < 4 || bytes.subarray(0, 4).toString("ascii") !== "wOF2") {
-        failures.push(`Installed font is not a valid WOFF2 file: ${font.filename}`);
+  for (const face of font.faces) {
+    expectContains(localCss, face.filename, `local font asset ${face.filename}`);
+    if (requireInstalled) {
+      const path = join(root, "src", "assets", "fonts", face.filename);
+      try {
+        const bytes = await readFile(path);
+        if (bytes.length < 4 || bytes.subarray(0, 4).toString("ascii") !== "wOF2") {
+          failures.push(`Installed font is not a valid WOFF2 file: ${face.filename}`);
+        }
+      } catch {
+        failures.push(`Installed local font is missing: ${face.filename}`);
       }
-    } catch {
-      failures.push(`Installed local font is missing: ${font.filename}`);
     }
   }
 }
