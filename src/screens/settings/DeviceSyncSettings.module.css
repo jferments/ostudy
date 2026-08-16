@@ -1,0 +1,320 @@
+.syncCard {
+  display: grid;
+  gap: 22px;
+}
+
+.identityGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+}
+
+.identityMeta {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.identityMeta > span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 720;
+}
+
+.identityMeta code {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pairingGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pairingPanel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 16px;
+  background: var(--surface-strong);
+}
+
+.pairingPanel h3,
+.listHeading h3 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.pairingPanel > p,
+.emptyCopy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.pairingPanel textarea {
+  width: 100%;
+  min-height: 116px;
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+
+.invitationPanel {
+  display: grid;
+  grid-template-columns: minmax(130px, 180px) minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 12px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--accent-soft) 48%, var(--surface));
+}
+
+.invitationPanel img {
+  grid-row: 1 / span 2;
+  width: 100%;
+  max-width: 180px;
+  border: 8px solid white;
+  border-radius: 8px;
+  background: white;
+  aspect-ratio: 1;
+}
+
+.invitationPanel > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.invitationPanel span,
+.invitationPanel code {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invitationPanel button {
+  justify-self: start;
+}
+
+.credentialToggle {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface-strong);
+}
+
+.sessionStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.sessionStrip span {
+  display: inline-flex;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: var(--accent-soft);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.sessionStrip strong {
+  color: var(--text);
+}
+
+.listSection {
+  display: grid;
+  gap: 12px;
+}
+
+.listHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.listHeading > span {
+  display: inline-grid;
+  min-width: 28px;
+  min-height: 28px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 780;
+}
+
+.peerList,
+.conflictList {
+  display: grid;
+  gap: 10px;
+}
+
+.peerList > article,
+.conflictList > article {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface-strong);
+}
+
+.peerList > article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.peerList article > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.peerList span,
+.peerList small,
+.conflictHeading span,
+.conflictHeading small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conflictList > article {
+  display: grid;
+  gap: 12px;
+}
+
+.conflictHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.conflictHeading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.conflictVersions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.conflictVersions > div {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--surface);
+}
+
+.conflictVersions pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.42;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.conflictVersions p {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 920px) {
+  .identityGrid {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .identityMeta {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .pairingGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .identityGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .identityGrid > button,
+  .identityMeta {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .identityGrid > button,
+  .pairingPanel > button {
+    width: 100%;
+  }
+
+  .invitationPanel {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .invitationPanel img {
+    grid-row: auto;
+    max-width: 220px;
+  }
+
+  .invitationPanel > div {
+    width: 100%;
+  }
+
+  .invitationPanel button {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .peerList > article,
+  .conflictHeading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .peerList > article > button {
+    align-self: flex-start;
+  }
+
+  .conflictVersions {
+    grid-template-columns: 1fr;
+  }
+}
