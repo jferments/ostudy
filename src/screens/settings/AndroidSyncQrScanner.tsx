@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { getErrorMessage } from "../../ipc/common";
 import { scanDeviceSyncQr } from "../../ipc/deviceSyncQr";
+import { usePlatformCapabilities } from "../../platform/PlatformProvider";
 
 interface AndroidSyncQrScannerProps {
   disabled: boolean;
@@ -15,7 +16,8 @@ export function AndroidSyncQrScanner({
   onError,
 }: AndroidSyncQrScannerProps) {
   const [scanning, setScanning] = useState(false);
-  const isAndroid = /Android/i.test(navigator.userAgent);
+  const platform = usePlatformCapabilities();
+  const isAndroid = platform.native?.operatingSystem === "android";
   if (!isAndroid) return null;
 
   async function scan(): Promise<void> {
