@@ -1,0 +1,46 @@
+name: PR 51 cleanup temporary qualification artifacts
+
+on:
+  push:
+    branches:
+      - agent/android-completion-a4-a7
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(pr51): remove temporary qualification artifacts') }}
+    runs-on: [self-hosted, ostudy-unified]
+    timeout-minutes: 90
+    env:
+      CI: true
+      CARGO_TERM_COLOR: never
+      GRADLE_USER_HOME: ${{ github.workspace }}/.runner-cache/gradle
+      OSTUDY_CARGO_TARGET_DIR: ${{ github.workspace }}/.runner-cache/cargo-target
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/android-completion-a4-a7
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Remove temporary PR-specific machinery and diagnostics
+        run: |
+          rm -f .github/pr51-* scripts/pr51-*
+          find .github/workflows -maxdepth 1 -type f -name 'pr51-*' -delete
+
+      - name: Verify clean-tree repository contracts
+        run: bash ./scripts/check-fast.sh
+
+      - name: Verify clean-tree Android compilation
+        run: bash ./scripts/android-test.sh
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "ostudy-ci"
+          git config user.email "158022198+jferments@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "chore(pr51): remove temporary qualification artifacts"
+          git push origin HEAD:agent/android-completion-a4-a7
