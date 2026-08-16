@@ -121,6 +121,46 @@ pub fn scan_device_pairing_qr(app: AppHandle) -> Result<Option<String>, CommandE
           marker = '#[tauri::command]\npub fn remove_device_sync_peer('
           if 'pub fn scan_device_pairing_qr(' not in text:
               text = text.replace(marker, scan_command + marker)
+
+          text = text.replace(
+              '    pub invitation: String,\n    pub endpoint: String,\n',
+              '    pub invitation: String,\n    pub qr_svg: String,\n    pub endpoint: String,\n',
+          )
+          text = text.replace(
+              '    if invitation.len() > MAX_INVITATION_CHARS {\n',
+              '    if invitation.len() > MAX_INVITATION_CHARS {\n',
+          )
+          if 'let qr_svg = render_pairing_qr(&invitation)?;' not in text:
+              text = text.replace(
+                  '    store.create_session(&session_id, "host", &endpoint, expires_at)?;\n',
+                  '    let qr_svg = render_pairing_qr(&invitation)?;\n'
+                  '    store.create_session(&session_id, "host", &endpoint, expires_at)?;\n',
+              )
+          text = text.replace(
+              '        invitation,\n        endpoint,\n',
+              '        invitation,\n        qr_svg,\n        endpoint,\n',
+          )
+          qr_helper = '''
+fn render_pairing_qr(invitation: &str) -> Result<String, CommandError> {
+    use qrcode::{render::svg, QrCode};
+
+    let code = QrCode::new(invitation.as_bytes()).map_err(|_| {
+        CommandError::new(
+            "device_sync_invitation_too_large",
+            "The pairing invitation is too large to render as a QR code.",
+        )
+    })?;
+    Ok(code
+        .render::<svg::Color>()
+        .min_dimensions(320, 320)
+        .max_dimensions(640, 640)
+        .build())
+}
+
+'''
+          parse_marker = 'fn parse_invitation(value: &str) -> Result<PairingInvitation, CommandError> {'
+          if 'fn render_pairing_qr(' not in text:
+              text = text.replace(parse_marker, qr_helper + parse_marker)
           sync.write_text(text, encoding="utf-8")
 
           merge = Path("src-tauri/src/device_sync/merge.rs")
