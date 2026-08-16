@@ -9,6 +9,7 @@ mod error;
 #[cfg(mobile)]
 mod mobile;
 mod models;
+mod qr_models;
 
 #[cfg(desktop)]
 pub use desktop::OstudyPlatform;
@@ -16,6 +17,7 @@ pub use error::{Error, Result};
 #[cfg(mobile)]
 pub use mobile::OstudyPlatform;
 pub use models::*;
+pub use qr_models::*;
 
 pub trait OstudyPlatformExt<R: Runtime> {
     fn ostudy_platform(&self) -> &OstudyPlatform<R>;
