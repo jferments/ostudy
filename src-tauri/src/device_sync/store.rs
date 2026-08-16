@@ -279,11 +279,12 @@ impl SyncStore {
                               display_name COLLATE NOCASE",
                 )
                 .map_err(CommandError::database)?;
-            statement
+            let peers = statement
                 .query_map([], peer_from_row)
                 .map_err(CommandError::database)?
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(CommandError::database)
+                .map_err(CommandError::database)?;
+            Ok(peers)
         })
     }
 
@@ -723,7 +724,7 @@ impl SyncStore {
                      LIMIT 20",
                 )
                 .map_err(CommandError::database)?;
-            statement
+            let sessions = statement
                 .query_map([], |row| {
                     Ok(SessionRecord {
                         id: row.get(0)?,
@@ -740,7 +741,8 @@ impl SyncStore {
                 })
                 .map_err(CommandError::database)?
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(CommandError::database)
+                .map_err(CommandError::database)?;
+            Ok(sessions)
         })
     }
 }
