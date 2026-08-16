@@ -171,6 +171,7 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
             <PathRow label="Application data" value={appInfo.dataDirectory} />
             <PathRow label="Database" value={appInfo.databasePath} />
             <PathRow label="Images" value={appInfo.imageDirectory} />
+            <PathRow label="Diagnostics" value={appInfo.diagnosticLogPath} />
             <PathRow label="Version" value={appInfo.appVersion} />
             <PathRow label="Schema" value={String(appInfo.databaseSchemaVersion)} />
           </dl>
