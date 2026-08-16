@@ -11,9 +11,7 @@ use tauri::AppHandle;
 use crate::error::CommandError;
 
 #[tauri::command]
-pub async fn scan_device_pairing_qr_async(
-    app: AppHandle,
-) -> Result<Option<String>, CommandError> {
+pub async fn scan_device_pairing_qr_async(app: AppHandle) -> Result<Option<String>, CommandError> {
     #[cfg(mobile)]
     {
         tauri::async_runtime::spawn_blocking(move || {
