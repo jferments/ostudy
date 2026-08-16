@@ -16,7 +16,7 @@ mod transport;
 use std::{
     fs,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, TcpStream, UdpSocket},
-    path::{Path, PathBuf},
+    path::PathBuf,
     thread,
     time::{Duration, Instant},
 };
@@ -437,12 +437,12 @@ pub fn resolve_device_sync_conflict(
         "keep_left" => conflict.left_payload_json.as_deref(),
         "keep_right" => conflict.right_payload_json.as_deref(),
         "delete" => None,
-        "merged" => input.merged_payload_json.as_deref().ok_or_else(|| {
+        "merged" => Some(input.merged_payload_json.as_deref().ok_or_else(|| {
             CommandError::new(
                 "device_sync_resolution_invalid",
                 "A merged conflict resolution must include the merged row payload.",
             )
-        })?,
+        })?),
         _ => {
             return Err(CommandError::new(
                 "device_sync_resolution_invalid",
@@ -536,13 +536,14 @@ fn handle_host_connection(
     )?;
     let mut channel = SecureChannel::new(stream, keys)?;
     let credentials_accepted = invitation.credentials_available && hello.include_credentials;
+    let identity_fingerprint = identity_key.fingerprint();
     let unsigned_server = UnsignedServerHello {
         protocol_version: PROTOCOL_VERSION,
         session_id: &invitation.session_id,
         device_id: &identity.device_id,
         display_name: &identity.display_name,
         identity_public_key: &identity.public_key_base64,
-        identity_fingerprint: &identity_key.fingerprint(),
+        identity_fingerprint: &identity_fingerprint,
         credentials_accepted,
     };
     let server_transcript = server_transcript(&transcript, &unsigned_server)?;
@@ -554,7 +555,7 @@ fn handle_host_connection(
             device_id: identity.device_id.clone(),
             display_name: identity.display_name.clone(),
             identity_public_key: identity.public_key_base64.clone(),
-            identity_fingerprint: identity_key.fingerprint(),
+            identity_fingerprint: identity_fingerprint.clone(),
             credentials_accepted,
             identity_signature: identity_key.sign(&server_transcript),
         },
@@ -685,6 +686,7 @@ fn run_join_session(
     )?;
     let ephemeral = EphemeralKey::generate()?;
     let include_credentials = include_credentials && invitation.credentials_available;
+    let ephemeral_public_key = BASE64_STANDARD.encode(&ephemeral.public_key);
     let unsigned = UnsignedClientHello {
         protocol_version: PROTOCOL_VERSION,
         session_id: &invitation.session_id,
@@ -696,11 +698,10 @@ fn run_join_session(
         device_id: &identity.device_id,
         display_name: &identity.display_name,
         identity_public_key: &identity.public_key_base64,
-        ephemeral_public_key: &BASE64_STANDARD.encode(&ephemeral.public_key),
+        ephemeral_public_key: &ephemeral_public_key,
         include_credentials,
     };
     let transcript = serde_json::to_vec(&unsigned).map_err(CommandError::serialization)?;
-    let ephemeral_public_key = unsigned.ephemeral_public_key.to_string();
     write_plain_json(
         &mut stream,
         &ClientHello {

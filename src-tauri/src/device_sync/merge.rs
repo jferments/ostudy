@@ -784,11 +784,16 @@ mod tests {
 
     #[test]
     fn delete_versus_edit_preserves_the_row_for_resolution() {
-        let row = row(&[("id", CellValue::Text("a".repeat(32)))]);
+        let base = row(&[
+            ("id", CellValue::Text("a".repeat(32))),
+            ("name", CellValue::Text("Base".to_string())),
+        ]);
+        let mut edited = base.clone();
+        edited.insert("name".to_string(), CellValue::Text("Edited".to_string()));
         let (merged, conflicts) = merge_rows(
-            Some(&row),
+            Some(&base),
             None,
-            Some(&row),
+            Some(&edited),
             &["id"],
             &"1".repeat(32),
             &"2".repeat(32),
