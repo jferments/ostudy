@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use rusqlite::params;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
     database::Database,
@@ -11,8 +11,10 @@ use crate::{
     util::{unix_time_millis, validate_entity_id},
 };
 
-const MAX_CREDENTIAL_BYTES: usize = 64 * 1024;
-const MAX_CREDENTIAL_RECORDS: usize = 64;
+use super::{merge::MergeSummary, package::PackageSummary, store::ConflictRecord};
+
+const MAX_CREDENTIAL_BYTES: usize = 8 * 1024;
+const MAX_CREDENTIAL_RECORDS: usize = 32;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -177,4 +179,88 @@ fn secret_error(error: SecretStoreError) -> CommandError {
         SecretStoreError::Failed => "The synchronized credential could not be stored securely.",
     };
     CommandError::new("device_sync_secure_store_failed", message)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MergeSummaryWire {
+    changed_row_count: usize,
+    conflict_count: usize,
+    conflict_ids: Vec<String>,
+}
+
+impl<'de> Deserialize<'de> for MergeSummary {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = MergeSummaryWire::deserialize(deserializer)?;
+        Ok(Self {
+            changed_row_count: value.changed_row_count,
+            conflict_count: value.conflict_count,
+            conflict_ids: value.conflict_ids,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PackageSummaryWire {
+    database_bytes: u64,
+    asset_count: usize,
+    asset_bytes: u64,
+    package_bytes: u64,
+}
+
+impl<'de> Deserialize<'de> for PackageSummary {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = PackageSummaryWire::deserialize(deserializer)?;
+        Ok(Self {
+            database_bytes: value.database_bytes,
+            asset_count: value.asset_count,
+            asset_bytes: value.asset_bytes,
+            package_bytes: value.package_bytes,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ConflictRecordWire {
+    id: String,
+    peer_id: String,
+    table_name: String,
+    row_key: String,
+    left_device_id: String,
+    left_payload_json: Option<String>,
+    right_device_id: String,
+    right_payload_json: Option<String>,
+    selected_payload_json: Option<String>,
+    conflicting_fields: Vec<String>,
+    created_at: i64,
+}
+
+impl<'de> Deserialize<'de> for ConflictRecord {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = ConflictRecordWire::deserialize(deserializer)?;
+        Ok(Self {
+            id: value.id,
+            peer_id: value.peer_id,
+            table_name: value.table_name,
+            row_key: value.row_key,
+            left_device_id: value.left_device_id,
+            left_payload_json: value.left_payload_json,
+            right_device_id: value.right_device_id,
+            right_payload_json: value.right_payload_json,
+            selected_payload_json: value.selected_payload_json,
+            conflicting_fields: value.conflicting_fields,
+            created_at: value.created_at,
+        })
+    }
 }
