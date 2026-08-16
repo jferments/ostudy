@@ -8,6 +8,7 @@ import { ExperienceProvider } from "./ui/feedback/ExperienceProvider";
 import "./ui/foundations/index.css";
 import { HelpProvider } from "./ui/help/HelpProvider";
 import { OverlayProvider } from "./ui/overlays/OverlayProvider";
+import "./styles/features/page-density.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("The ostudy root element is missing.");
@@ -41,10 +42,14 @@ function setAndroidTestBridgeDiagnostic(
 
   if (apply() || androidTestBridgeDiagnosticScheduled) return;
   androidTestBridgeDiagnosticScheduled = true;
-  document.addEventListener("DOMContentLoaded", () => {
-    androidTestBridgeDiagnosticScheduled = false;
-    apply();
-  }, { once: true });
+  document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+      androidTestBridgeDiagnosticScheduled = false;
+      apply();
+    },
+    { once: true },
+  );
 }
 
 if (import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE === "1") {

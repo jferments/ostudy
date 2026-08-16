@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { ShowToast } from "../components/Toast";
 import { getErrorCode, getErrorMessage } from "../ipc/common";
@@ -15,14 +15,20 @@ import {
 } from "../ipc/documents";
 import { selectExternalImport } from "../platform/files";
 import { useConfirm } from "../ui/overlays/overlayContext";
+import { PageHeader } from "../ui/patterns/WorkspacePatterns";
 import styles from "./DocumentsScreen.module.css";
 
 interface DocumentsScreenProps {
   refreshDecks: () => Promise<unknown>;
   showToast: ShowToast;
+  headerSupplement?: ReactNode;
 }
 
-export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProps) {
+export function DocumentsScreen({
+  refreshDecks,
+  showToast,
+  headerSupplement,
+}: DocumentsScreenProps) {
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -238,25 +244,24 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
   }
 
   return (
-    <section className={styles.screen} aria-labelledby="documents-title">
-      <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>Study sources</p>
-          <h1 id="documents-title">Documents</h1>
-          <p className={styles.intro}>
-            Upload a PDF. ostudy stores it locally, extracts and renders every page, then uses your
-            configured Flashcard generation profile to create a normal deck automatically.
-          </p>
-        </div>
-        <button
-          type="button"
-          className="primary-button"
-          disabled={isUploading || busyDocumentId !== null || deletingDocumentId !== null}
-          onClick={() => void uploadPdf()}
-        >
-          {isUploading ? "Processing PDF…" : "Upload PDF"}
-        </button>
-      </header>
+    <section className={styles.screen} aria-label="Documents">
+      <PageHeader
+        title="Documents"
+        icon="document"
+        compact
+        actions={
+          <button
+            type="button"
+            className="primary-button"
+            disabled={isUploading || busyDocumentId !== null || deletingDocumentId !== null}
+            onClick={() => void uploadPdf()}
+          >
+            {isUploading ? "Processing PDF…" : "Upload PDF"}
+          </button>
+        }
+      />
+
+      {headerSupplement}
 
       <div className={styles.toolbar}>
         <label className={styles.archiveToggle}>
@@ -285,9 +290,7 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
       ) : documents.length === 0 ? (
         <div className={styles.empty}>
           <h2>No PDFs yet</h2>
-          <p>
-            Upload a course handout, chapter, or study packet to create a deck from its contents.
-          </p>
+          <p>Upload a course handout, chapter, or study packet to create a deck from its contents.</p>
         </div>
       ) : (
         <div className={styles.list}>
@@ -324,9 +327,7 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                     </div>
                     <div>
                       <dt>Pages</dt>
-                      <dd>
-                        {document.renderedPageCount}/{document.pageCount || "—"} rendered
-                      </dd>
+                      <dd>{document.renderedPageCount}/{document.pageCount || "—"} rendered</dd>
                     </div>
                     <div>
                       <dt>Cards</dt>
@@ -356,8 +357,8 @@ export function DocumentsScreen({ refreshDecks, showToast }: DocumentsScreenProp
                   document.generatedCardCount > 0 &&
                   document.lifecycleState === "ready" ? (
                     <p className={styles.deckNote}>
-                      The previous generated deck was deleted. Retry generation to create a new
-                      deck from the retained PDF.
+                      The previous generated deck was deleted. Retry generation to create a new deck
+                      from the retained PDF.
                     </p>
                   ) : null}
                 </div>

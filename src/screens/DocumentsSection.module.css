@@ -1,18 +1,16 @@
 @layer components {
   .section {
-    display: grid;
     min-width: 0;
-    gap: var(--ostudy-space-3);
   }
 
   .providerPanel {
     display: grid;
-    width: min(calc(100% - 2rem), var(--ostudy-layout-workspace-width));
+    width: 100%;
     min-width: 0;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--ostudy-space-3);
-    margin: var(--ostudy-space-4) auto 0;
+    margin: 0 0 var(--ostudy-space-4);
     padding: var(--ostudy-space-4);
   }
 
@@ -56,8 +54,6 @@
 
   @media (max-width: 760px) {
     .providerPanel {
-      width: calc(100% - 1.7rem);
-      margin-top: var(--ostudy-space-3);
       padding: var(--ostudy-space-3);
     }
     .icon {
