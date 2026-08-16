@@ -21,6 +21,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.googlecode.tesseract.android.TessBaseAPI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,11 +32,16 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlin.math.ceil
 
 private const val PDF_RENDER_ENGINE = "android-pdf-renderer-v1"
-private const val OCR_ENGINE = "ml-kit-text-recognition-v2-bundled-latin-16.0.1"
+private const val TESSERACT_ENGINE = "tesseract4android-4.9.0/tesseract-5.5.1"
+private const val ML_KIT_ENGINE = "ml-kit-text-recognition-v2-bundled-latin-16.0.1"
+private const val OCR_ENGINE = "$TESSERACT_ENGINE-primary+$ML_KIT_ENGINE-fallback"
 private const val MAX_PDF_PAGES = 500
 private const val MIN_RENDER_DPI = 72
 private const val MAX_RENDER_DPI = 300
@@ -46,38 +52,62 @@ private const val MAX_OCR_SOURCE_BYTES = 64L * 1024L * 1024L
 private const val MIN_OCR_TIMEOUT_SECONDS = 1
 private const val MAX_OCR_TIMEOUT_SECONDS = 180
 private const val PDF_POINTS_PER_INCH = 72.0
+private const val TESSERACT_MIN_CONFIDENCE = 0.15
+private const val TESSERACT_MIN_NONSPACE = 8
+private const val TESSERACT_MIN_ALPHANUMERIC = 4
 private val JOB_ID_PATTERN = Regex("[A-Za-z0-9_-]{1,128}")
+private val OCR_LANGUAGE_PATTERN = Regex("[a-z]{3}(?:\+[a-z]{3}){0,3}")
 
-@InvokeArg class OpenPdfArgs { lateinit var sourcePath: String }
-@InvokeArg class RenderPdfPageArgs {
+@InvokeArg
+class OpenPdfArgs {
+    lateinit var sourcePath: String
+}
+
+@InvokeArg
+class RenderPdfPageArgs {
     lateinit var token: String
     var pageNumber: Int = 0
     var dpi: Int = 0
     lateinit var targetPath: String
     var maximumBytes: Long = 0
 }
-@InvokeArg class ClosePdfArgs { lateinit var token: String }
-@InvokeArg class RecognizeImageArgs {
+
+@InvokeArg
+class ClosePdfArgs {
+    lateinit var token: String
+}
+
+@InvokeArg
+class RecognizeImageArgs {
     lateinit var sourcePath: String
     var language: String = "en"
     var timeoutSeconds: Int = 0
 }
-@InvokeArg class BeginBackgroundExecutionArgs {
+
+@InvokeArg
+class BeginBackgroundExecutionArgs {
     lateinit var jobId: String
     lateinit var title: String
     lateinit var detail: String
 }
-@InvokeArg class UpdateBackgroundExecutionArgs {
+
+@InvokeArg
+class UpdateBackgroundExecutionArgs {
     lateinit var jobId: String
     lateinit var detail: String
     var progressPercent: Int? = null
 }
-@InvokeArg class EndBackgroundExecutionArgs { lateinit var jobId: String }
+
+@InvokeArg
+class EndBackgroundExecutionArgs {
+    lateinit var jobId: String
+}
 
 @TauriPlugin
 class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessions = ConcurrentHashMap<String, PdfSession>()
+    private val tessdataLock = Any()
 
     override fun load(webView: WebView) {
         val owner = activity as? LifecycleOwner ?: return
@@ -148,7 +178,9 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
             try {
                 val source = validatePrivateFile(args.sourcePath, "PDF source")
                 val descriptor = ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY)
-                val renderer = try { PdfRenderer(descriptor) } catch (error: Exception) {
+                val renderer = try {
+                    PdfRenderer(descriptor)
+                } catch (error: Exception) {
                     descriptor.close()
                     throw error
                 }
@@ -156,7 +188,9 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
                 if (pageCount !in 1..MAX_PDF_PAGES) {
                     renderer.close()
                     descriptor.close()
-                    throw IllegalArgumentException("The PDF must contain between 1 and $MAX_PDF_PAGES pages.")
+                    throw IllegalArgumentException(
+                        "The PDF must contain between 1 and $MAX_PDF_PAGES pages.",
+                    )
                 }
                 val token = UUID.randomUUID().toString().replace("-", "")
                 sessions[token] = PdfSession(descriptor, renderer)
@@ -203,14 +237,21 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
                         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                         try {
                             bitmap.eraseColor(Color.WHITE)
-                            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            page.render(
+                                bitmap,
+                                null,
+                                null,
+                                PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY,
+                            )
                             FileOutputStream(target, false).use { output ->
                                 require(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
                                     "Android could not encode the rendered PDF page."
                                 }
                                 output.fd.sync()
                             }
-                        } finally { bitmap.recycle() }
+                        } finally {
+                            bitmap.recycle()
+                        }
                         val byteSize = target.length()
                         require(byteSize in 1..args.maximumBytes) {
                             "The rendered PDF page exceeds ostudy's image safety limit."
@@ -227,7 +268,9 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
             } catch (error: Exception) {
                 target?.delete()
                 withContext(Dispatchers.Main) {
-                    invoke.reject("Android could not render PDF page ${args.pageNumber}: ${safeMessage(error)}")
+                    invoke.reject(
+                        "Android could not render PDF page ${args.pageNumber}: ${safeMessage(error)}",
+                    )
                 }
             }
         }
@@ -265,25 +308,53 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
                 require(
                     dimensions.first in 1..MAX_RENDER_DIMENSION &&
                         dimensions.second in 1..MAX_RENDER_DIMENSION &&
-                        dimensions.first.toLong() * dimensions.second.toLong() in 1..MAX_RENDER_PIXELS
-                ) { "The OCR image dimensions exceed Android's bounded image budget." }
+                        dimensions.first.toLong() * dimensions.second.toLong() in
+                            1..MAX_RENDER_PIXELS
+                ) {
+                    "The OCR image dimensions exceed Android's bounded image budget."
+                }
+
                 val started = System.nanoTime()
-                val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-                val recognized = try {
-                    Tasks.await(
-                        recognizer.process(InputImage.fromFilePath(activity, Uri.fromFile(source))),
-                        args.timeoutSeconds.toLong(),
-                        TimeUnit.SECONDS,
+                var tesseractFailure: Throwable? = null
+                var weakTesseract: NativeOcrResult? = null
+                val selected = try {
+                    recognizeWithTesseract(source, args.language, args.timeoutSeconds).also {
+                        if (!isUsableTesseractResult(it)) weakTesseract = it
+                    }.takeIf(::isUsableTesseractResult)
+                } catch (error: Exception) {
+                    tesseractFailure = error
+                    null
+                } catch (error: LinkageError) {
+                    tesseractFailure = error
+                    null
+                } ?: try {
+                    recognizeWithMlKit(source, args.language, args.timeoutSeconds).copy(
+                        engine = buildString {
+                            append(ML_KIT_ENGINE)
+                            append("-fallback")
+                            if (tesseractFailure is TimeoutException) append("-after-tesseract-timeout")
+                            else if (tesseractFailure != null) append("-after-tesseract-error")
+                            else append("-after-tesseract-weak-result")
+                        },
                     )
-                } finally { recognizer.close() }
+                } catch (fallbackError: Exception) {
+                    weakTesseract ?: throw IllegalStateException(
+                        "Tesseract failed (${safeMessage(tesseractFailure)}) and the ML Kit " +
+                            "fallback failed (${safeMessage(fallbackError)}).",
+                    )
+                }
+
                 val response = JSObject().apply {
-                    put("text", recognized.text)
-                    put("confidence", meanConfidence(recognized))
-                    put("engine", OCR_ENGINE)
-                    put("language", dominantLanguage(recognized, args.language))
+                    put("text", selected.text)
+                    put("confidence", selected.confidence)
+                    put("engine", selected.engine)
+                    put("language", selected.language)
                     put("width", dimensions.first)
                     put("height", dimensions.second)
-                    put("durationMillis", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started))
+                    put(
+                        "durationMillis",
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started),
+                    )
                 }
                 withContext(Dispatchers.Main) { invoke.resolve(response) }
             } catch (error: Exception) {
@@ -292,6 +363,129 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
                 }
             }
         }
+    }
+
+    private fun recognizeWithTesseract(
+        source: File,
+        requestedLanguage: String,
+        timeoutSeconds: Int,
+    ): NativeOcrResult {
+        val language = tesseractLanguage(requestedLanguage)
+        val dataRoot = ensureTesseractData(language)
+        val api = TessBaseAPI()
+        val executor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "ostudy-tesseract").apply { isDaemon = true }
+        }
+        var future: Future<NativeOcrResult>? = null
+        try {
+            require(api.init(dataRoot.absolutePath, language, TessBaseAPI.OEM_LSTM_ONLY)) {
+                "Tesseract could not initialize its '$language' model."
+            }
+            api.setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO)
+            api.setVariable("preserve_interword_spaces", "1")
+            future = executor.submit<NativeOcrResult> {
+                api.setImage(source)
+                // getHOCRText performs the recognition through Tesseract's
+                // stoppable path; getUTF8Text then reads the same result.
+                api.getHOCRText(0)
+                NativeOcrResult(
+                    text = api.getUTF8Text().orEmpty(),
+                    confidence = (api.meanConfidence().toDouble() / 100.0).coerceIn(0.0, 1.0),
+                    engine = TESSERACT_ENGINE,
+                    language = language,
+                )
+            }
+            return future.get(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+        } catch (error: TimeoutException) {
+            runCatching { api.stop() }
+            future?.cancel(true)
+            throw TimeoutException(
+                "Tesseract exceeded the bounded $timeoutSeconds second OCR timeout.",
+            )
+        } finally {
+            executor.shutdownNow()
+            executor.awaitTermination(5, TimeUnit.SECONDS)
+            runCatching { api.clear() }
+            runCatching { api.recycle() }
+        }
+    }
+
+    private fun recognizeWithMlKit(
+        source: File,
+        requestedLanguage: String,
+        timeoutSeconds: Int,
+    ): NativeOcrResult {
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val recognized = try {
+            Tasks.await(
+                recognizer.process(InputImage.fromFilePath(activity, Uri.fromFile(source))),
+                timeoutSeconds.toLong(),
+                TimeUnit.SECONDS,
+            )
+        } finally {
+            recognizer.close()
+        }
+        return NativeOcrResult(
+            text = recognized.text,
+            confidence = meanConfidence(recognized),
+            engine = ML_KIT_ENGINE,
+            language = dominantLanguage(recognized, requestedLanguage),
+        )
+    }
+
+    private fun ensureTesseractData(language: String): File {
+        val root = File(activity.filesDir, "tesseract")
+        val tessdata = File(root, "tessdata")
+        val model = File(tessdata, "$language.traineddata")
+        if (model.isFile && model.length() > 0) return root
+        require(language == "eng") {
+            "The Tesseract '$language' model is not installed on this device."
+        }
+
+        synchronized(tessdataLock) {
+            if (model.isFile && model.length() > 0) return root
+            tessdata.mkdirs()
+            val partial = File(tessdata, "${model.name}.partial")
+            partial.delete()
+            activity.assets.open("tessdata/eng.traineddata").buffered().use { input ->
+                FileOutputStream(partial, false).buffered().use(input::copyTo)
+            }
+            require(partial.length() > 0) { "The bundled English Tesseract model is empty." }
+            if (model.exists()) model.delete()
+            if (!partial.renameTo(model)) {
+                partial.copyTo(model, overwrite = true)
+                partial.delete()
+            }
+        }
+        return root
+    }
+
+    private fun tesseractLanguage(requested: String): String {
+        val normalized = requested.trim().lowercase()
+        val mapped = normalized.split('+').joinToString("+") { language ->
+            when (language) {
+                "", "en", "eng", "en-us", "en-gb" -> "eng"
+                "es" -> "spa"
+                "fr" -> "fra"
+                "de" -> "deu"
+                "it" -> "ita"
+                "pt" -> "por"
+                "nl" -> "nld"
+                else -> language.take(3)
+            }
+        }
+        require(OCR_LANGUAGE_PATTERN.matches(mapped)) {
+            "The requested Tesseract language identifier is invalid."
+        }
+        return mapped
+    }
+
+    private fun isUsableTesseractResult(result: NativeOcrResult): Boolean {
+        val nonspace = result.text.count { !it.isWhitespace() }
+        val alphanumeric = result.text.count(Char::isLetterOrDigit)
+        return nonspace >= TESSERACT_MIN_NONSPACE &&
+            alphanumeric >= TESSERACT_MIN_ALPHANUMERIC &&
+            result.confidence >= TESSERACT_MIN_CONFIDENCE
     }
 
     private fun scaledDimension(points: Int, dpi: Int): Int {
@@ -312,7 +506,9 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     private fun meanConfidence(text: Text): Double {
-        val values = text.textBlocks.flatMap { it.lines }.flatMap { it.elements }
+        val values = text.textBlocks
+            .flatMap { it.lines }
+            .flatMap { it.elements }
             .map { it.confidence.toDouble() }
             .filter { it.isFinite() && it > 0.0 }
         if (values.isNotEmpty()) return values.average().coerceIn(0.0, 1.0)
@@ -357,12 +553,25 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
         require(JOB_ID_PATTERN.matches(jobId)) { "The document job identity is invalid." }
     }
 
-    private fun closeSession(token: String) { sessions.remove(token)?.close() }
-    private fun closeAllSessions() { sessions.keys.toList().forEach(::closeSession) }
-    private fun safeMessage(error: Throwable): String =
-        (error.message ?: error::class.java.simpleName)
+    private fun closeSession(token: String) {
+        sessions.remove(token)?.close()
+    }
+
+    private fun closeAllSessions() {
+        sessions.keys.toList().forEach(::closeSession)
+    }
+
+    private fun safeMessage(error: Throwable?): String =
+        (error?.message ?: error?.javaClass?.simpleName ?: "unknown failure")
             .filter { !it.isISOControl() || it == ' ' }
             .take(240)
+
+    private data class NativeOcrResult(
+        val text: String,
+        val confidence: Double,
+        val engine: String,
+        val language: String,
+    )
 
     private data class PdfSession(
         val descriptor: ParcelFileDescriptor,
