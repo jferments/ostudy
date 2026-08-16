@@ -149,20 +149,34 @@ describe("SettingsScreen", () => {
     vi.mocked(aiIpc.getAiProviderProbeResult).mockResolvedValue(null);
   });
 
-  it("renders the four requested accessible settings tabs", async () => {
+  it("puts Appearance first and exposes the renamed Backup/Sync tab", () => {
     renderSettings();
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      "Appearance",
+      "Backup/Sync",
+      "AI/LLM",
+      "Review/Scheduling",
+    ]);
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tabpanel").textContent).toContain("Interface appearance");
+  });
+
+  it("keeps storage information at the bottom of Backup/Sync", async () => {
+    renderSettings();
+    fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
     expect(await screen.findByText("/tmp/ostudy/data")).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Storage/Backup" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Appearance" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "AI/LLM" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Review/Scheduling" })).toBeTruthy();
-    expect(screen.getByRole("tabpanel").textContent).toContain("API keys and session-only credentials");
+    const panel = screen.getByRole("tabpanel");
+    const dataSafety = screen.getByRole("heading", { name: "Data safety" });
+    const deviceSync = screen.getByRole("heading", { name: "Device synchronization" });
+    const storage = screen.getByRole("heading", { name: "Storage" });
+    expect(panel.contains(storage)).toBe(true);
+    expect(dataSafety.compareDocumentPosition(deviceSync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(deviceSync.compareDocumentPosition(storage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("previews and saves appearance preferences without touching AI profile state", async () => {
     const { onPreviewSettings, onSavedSettings, onDirtyChange, showToast } = renderSettings();
-    await screen.findByText("/tmp/ostudy/data");
-    fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
     fireEvent.click(screen.getByRole("radio", { name: /Light/u }));
 
     await waitFor(() => {
@@ -179,7 +193,6 @@ describe("SettingsScreen", () => {
 
   it("keeps review limits in the dedicated scheduling tab and leaves shuffle on Practice", async () => {
     const { onPreviewSettings } = renderSettings();
-    await screen.findByText("/tmp/ostudy/data");
     fireEvent.click(screen.getByRole("tab", { name: "Review/Scheduling" }));
     fireEvent.change(screen.getByRole("spinbutton", { name: "New cards per day" }), {
       target: { value: "12" },
@@ -198,7 +211,6 @@ describe("SettingsScreen", () => {
 
   it("uses one New profile action and selects provider type inside the connection form", async () => {
     renderSettings();
-    await screen.findByText("/tmp/ostudy/data");
     fireEvent.click(screen.getByRole("tab", { name: "AI/LLM" }));
     expect(await screen.findByRole("heading", { name: "AI provider profiles" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "New profile" })).toBeTruthy();
@@ -220,13 +232,14 @@ describe("SettingsScreen", () => {
   });
 
   it("backs up provider metadata while explicitly excluding credentials", async () => {
-    vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "export", destinationKind: "desktop_file", completedAt: Date.now() });
     const { showToast } = renderSettings();
+    fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
     await screen.findByText("/tmp/ostudy/data");
     fireEvent.click(screen.getByRole("button", { name: "Back up library" }));
 
     await waitFor(() => {
       expect(backupIpc.prepareLibraryBackup).toHaveBeenCalled();
+      expect(platformFiles.publishExport).toHaveBeenCalledWith("2".repeat(32));
       expect(showToast).toHaveBeenCalledWith(
         "success",
         "Backed up 3 decks, 2 templates, and 41 review events.",
@@ -238,6 +251,7 @@ describe("SettingsScreen", () => {
   it("prepares restore only after shared destructive confirmation", async () => {
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "library_backup", detectedKind: "ostudybackup", displayName: "library.ostudybackup", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
     const { showToast } = renderSettings();
+    fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
     await screen.findByText("/tmp/ostudy/data");
     fireEvent.click(screen.getByRole("button", { name: "Restore backup" }));
     expect(await screen.findByRole("alertdialog", { name: "Restore this complete library?" })).toBeTruthy();
