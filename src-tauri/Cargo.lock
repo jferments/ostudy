@@ -2748,6 +2748,7 @@ dependencies = [
  "oxidize-pdf",
  "pdfium-render",
  "reqwest",
+ "ring",
  "rs-fsrs",
  "rusqlite",
  "serde",
