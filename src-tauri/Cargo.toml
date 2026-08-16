@@ -20,6 +20,7 @@ base64 = "=0.22.1"
 chrono = "=0.4.45"
 oxidize-pdf = { version = "=4.2.2", default-features = false, features = ["compression", "semantic"] }
 reqwest = { version = "=0.13.4", default-features = false, features = ["json", "rustls"] }
+ring = "=0.17.14"
 rs-fsrs = "=1.2.1"
 rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled", "backup", "trace"] }
 serde = { version = "=1.0.229", features = ["derive"] }
