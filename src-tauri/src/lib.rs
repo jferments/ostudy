@@ -116,6 +116,7 @@ pub fn run() {
             })?;
             let resource_directory = app.path().resource_dir().ok();
             let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
+            logging::initialize(paths.app_data_dir());
             let pending_restore =
                 library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
@@ -126,6 +127,8 @@ pub fn run() {
             let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
                 .map_err(|error| io::Error::other(error.to_string()))?;
 
+            device_sync::reconcile_startup(&paths)
+                .map_err(|error| io::Error::other(error.message))?;
             external_file_recovery::reconcile_interrupted_staging(&database, &paths)
                 .map_err(|error| io::Error::other(error.message))?;
             external_files::reconcile_startup(&database, &paths)
@@ -172,9 +175,10 @@ pub fn run() {
             logging::info(
                 "application_started",
                 format!(
-                    "data_directory={} database={} asset_reconciliation=complete document_reconciliation=complete ai_gateway=ready pdf_extraction={} pdf_renderer={}",
+                    "data_directory={} database={} diagnostic_log={} asset_reconciliation=complete document_reconciliation=complete ai_gateway=ready pdf_extraction={} pdf_renderer={}",
                     paths.app_data_dir().display(),
                     paths.database_path().display(),
+                    logging::diagnostic_log_path(paths.app_data_dir()).display(),
                     pdf_backend::active_backend_id(),
                     pdf_render_backend::active_backend_id()
                 ),
@@ -274,6 +278,7 @@ pub fn run() {
             device_sync::update_device_sync_name,
             device_sync::start_device_pairing,
             device_sync::join_device_pairing,
+            device_sync::cancel_device_sync_session,
             device_sync_qr_commands::scan_device_pairing_qr_async,
             device_sync::remove_device_sync_peer,
             device_sync::resolve_device_sync_conflict,
