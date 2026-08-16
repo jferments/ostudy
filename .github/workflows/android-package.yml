@@ -69,12 +69,18 @@ jobs:
           case "$ARTIFACT" in
             debug-apk)
               bash ./scripts/android-build.sh --debug --apk --target aarch64
-              apk="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*debug*.apk' -printf '%T@ %p\n' | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
+              apk="$(find src-tauri/gen/android/app/build/outputs/apk \
+                -type f -name '*debug*.apk' \
+                ! -path '*/androidTest/*' ! -name '*androidTest*.apk' \
+                -printf '%T@ %p\n' | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
               bash ./scripts/verify-android-package.sh "$apk" debug
               ;;
             release-apk)
               bash ./scripts/android-build.sh --release --apk --target all
-              apk="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*release*.apk' -printf '%T@ %p\n' | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
+              apk="$(find src-tauri/gen/android/app/build/outputs/apk \
+                -type f -name '*release*.apk' \
+                ! -path '*/androidTest/*' ! -name '*androidTest*.apk' \
+                -printf '%T@ %p\n' | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
               bash ./scripts/verify-android-package.sh "$apk" release
               ;;
             release-aab)
