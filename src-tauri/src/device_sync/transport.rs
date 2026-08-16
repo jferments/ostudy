@@ -104,15 +104,6 @@ impl SecureChannel {
         })
     }
 
-    pub(crate) fn send_error(&mut self, message: &str) {
-        let safe = message
-            .chars()
-            .filter(|character| !character.is_control() || *character == ' ')
-            .take(500)
-            .collect::<String>();
-        let _ = self.send_frame(FRAME_ERROR, safe.as_bytes());
-    }
-
     pub(crate) fn send_file(&mut self, source: &Path) -> Result<(), CommandError> {
         let metadata = fs::metadata(source).map_err(CommandError::io)?;
         if metadata.len() == 0 || metadata.len() > MAX_TRANSFER_BYTES {
