@@ -5,17 +5,27 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const [nativeScanner, qrCommand, frontendIpc, compositionRoot, settingsUi, settingsCss, syncCore, syncPackage] =
-  await Promise.all([
-    read("plugins/ostudy-platform/android/src/main/java/OstudyQrPlugin.kt"),
-    read("src-tauri/src/device_sync_qr_commands.rs"),
-    read("src/ipc/deviceSync.ts"),
-    read("src-tauri/src/lib.rs"),
-    read("src/screens/settings/DeviceSyncSettings.tsx"),
-    read("src/screens/settings/DeviceSyncSettings.module.css"),
-    read("src-tauri/src/device_sync/mod.rs"),
-    read("src-tauri/src/device_sync/package.rs"),
-  ]);
+const [
+  nativeScanner,
+  qrCommand,
+  frontendIpc,
+  compositionRoot,
+  settingsUi,
+  settingsCss,
+  syncCore,
+  syncPackage,
+  syncMerge,
+] = await Promise.all([
+  read("plugins/ostudy-platform/android/src/main/java/OstudyQrPlugin.kt"),
+  read("src-tauri/src/device_sync_qr_commands.rs"),
+  read("src/ipc/deviceSync.ts"),
+  read("src-tauri/src/lib.rs"),
+  read("src/screens/settings/DeviceSyncSettings.tsx"),
+  read("src/screens/settings/DeviceSyncSettings.module.css"),
+  read("src-tauri/src/device_sync/mod.rs"),
+  read("src-tauri/src/device_sync/package.rs"),
+  read("src-tauri/src/device_sync/merge.rs"),
+]);
 const failures = [];
 
 expectContains(nativeScanner, "BarcodeFormat.QR_CODE.name", "QR-only native scan format");
@@ -47,6 +57,12 @@ expectContains(syncCore, "sent_package_bytes: 0", "receiver does not upload a pa
 expectContains(syncPackage, "DELETE FROM app_settings;", "app settings removed before package transmission");
 expectContains(syncPackage, "DELETE FROM ai_task_defaults;", "API settings excluded when sender leaves scope off");
 expectContains(syncPackage, "DELETE FROM ai_provider_profiles;", "API profiles excluded when sender leaves scope off");
+expectNotContains(syncMerge, 'TableSpec::new("app_settings"', "app settings in merge allowlist");
+expectContains(
+  syncMerge,
+  "first_contact_remote_creation_is_not_a_delete_conflict",
+  "first-contact sender rows merge without synthetic delete conflicts",
+);
 
 if (failures.length > 0) {
   console.error("Device-sync QR/offer contract failed:");
@@ -54,7 +70,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Device-sync QR uses nonblocking native delivery; one scan accepts a sender-scoped offer, local app settings stay off the wire, and API settings are sender opt-in.",
+  "OK   Device-sync QR uses nonblocking native delivery; one scan accepts a sender-scoped offer, local app settings stay off the wire/merge allowlist, first-contact rows merge cleanly, and API settings are sender opt-in.",
 );
 
 async function read(relativePath) {
