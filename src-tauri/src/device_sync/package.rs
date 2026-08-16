@@ -18,7 +18,7 @@ use crate::{
 };
 
 const PACKAGE_FORMAT: &str = "ostudy-device-sync";
-const PACKAGE_VERSION: i64 = 1;
+const PACKAGE_VERSION: i64 = 2;
 const MAX_PACKAGE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_DATABASE_BYTES: usize = 1_500 * 1024 * 1024;
 const MAX_SINGLE_ASSET_BYTES: usize = 25 * 1024 * 1024;
@@ -65,12 +65,14 @@ pub(crate) struct ExtractedAsset {
 pub(crate) struct ExtractedPackage {
     pub database_path: PathBuf,
     pub assets: Vec<ExtractedAsset>,
+    pub include_api_settings: bool,
 }
 
 pub(crate) fn create_package(
     database: &Database,
     paths: &AppPaths,
     destination: &Path,
+    include_api_settings: bool,
 ) -> Result<PackageSummary, CommandError> {
     let parent = destination.parent().ok_or_else(|| {
         CommandError::new(
@@ -95,7 +97,7 @@ pub(crate) fn create_package(
                 .run_to_completion(128, Duration::from_millis(10), None)
                 .map_err(CommandError::database)
         })?;
-        sanitize_snapshot(&snapshot_path)?;
+        sanitize_snapshot(&snapshot_path, include_api_settings)?;
         let database_bytes = fs::read(&snapshot_path).map_err(CommandError::io)?;
         if database_bytes.is_empty() || database_bytes.len() > MAX_DATABASE_BYTES {
             return Err(CommandError::new(
@@ -125,6 +127,10 @@ pub(crate) fn create_package(
             ("schemaVersion", LATEST_SCHEMA_VERSION.to_string()),
             ("createdAt", created_at.to_string()),
             ("applicationVersion", env!("CARGO_PKG_VERSION").to_string()),
+            (
+                "includeApiSettings",
+                if include_api_settings { "true" } else { "false" }.to_string(),
+            ),
         ] {
             transaction
                 .execute(
@@ -215,6 +221,15 @@ pub(crate) fn extract_package(
             "The sending device uses a newer ostudy database schema. Update this device first.",
         ));
     }
+    let include_api_settings = match metadata_value(&package, "includeApiSettings")?.as_str() {
+        "true" => true,
+        "false" => false,
+        _ => {
+            return Err(invalid_package(
+                "The synchronization package contains an invalid API-settings scope.",
+            ))
+        }
+    };
 
     let database_bytes: Vec<u8> = package
         .query_row(
@@ -303,6 +318,7 @@ pub(crate) fn extract_package(
     Ok(ExtractedPackage {
         database_path,
         assets,
+        include_api_settings,
     })
 }
 
@@ -336,15 +352,38 @@ pub(crate) fn install_assets(
     Ok(())
 }
 
-fn sanitize_snapshot(path: &Path) -> Result<(), CommandError> {
+fn sanitize_snapshot(path: &Path, include_api_settings: bool) -> Result<(), CommandError> {
     let connection = Connection::open(path).map_err(CommandError::database)?;
+    // Device-local application settings (theme, typography, UI scale, motion,
+    // layout, and other platform preferences) must never be part of a sync
+    // payload. AI provider configuration is a separate opt-in scope and secret
+    // bytes remain outside SQLite even when that scope is enabled.
     connection
         .execute_batch(
-            "UPDATE ai_provider_profiles
-             SET credential_storage = 'none', credential_epoch = 0;
+            "PRAGMA foreign_keys = OFF;
+             DELETE FROM app_settings;
              DELETE FROM ai_provider_probe_results;
-             DELETE FROM ai_provider_capabilities;",
+             DELETE FROM ai_provider_capabilities;
+             DELETE FROM ai_profile_operations;",
         )
+        .map_err(CommandError::database)?;
+    if include_api_settings {
+        connection
+            .execute_batch(
+                "UPDATE ai_provider_profiles
+                 SET credential_storage = 'none', credential_epoch = 0;",
+            )
+            .map_err(CommandError::database)?;
+    } else {
+        connection
+            .execute_batch(
+                "DELETE FROM ai_task_defaults;
+                 DELETE FROM ai_provider_profiles;",
+            )
+            .map_err(CommandError::database)?;
+    }
+    connection
+        .execute_batch("PRAGMA foreign_keys = ON;")
         .map_err(CommandError::database)?;
     let integrity: String = connection
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
@@ -511,4 +550,75 @@ fn remove_dir_if_exists(path: &Path) -> Result<(), CommandError> {
 
 fn invalid_package(message: impl Into<String>) -> CommandError {
     CommandError::new("device_sync_package_invalid", message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn package_scope_never_transmits_app_settings_and_api_settings_are_opt_in() {
+        let root = std::env::temp_dir().join(format!(
+            "ostudy-device-sync-package-scope-{}-{}",
+            std::process::id(),
+            crate::platform::now_utc_millis().unwrap_or_default()
+        ));
+        let paths = AppPaths::new(root.clone()).expect("paths should initialize");
+        let database = Database::open_in_memory().expect("database should initialize");
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "UPDATE app_settings SET value_json = '125', updated_at = 42 WHERE key = 'uiScale'",
+                        [],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO ai_task_defaults (task_kind, profile_id, updated_at)
+                         VALUES ('flashcard_generation', NULL, 42)",
+                        [],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .expect("fixture rows should save");
+
+        let without_api = root.join("without-api.syncpkg");
+        create_package(&database, &paths, &without_api, false)
+            .expect("package without API settings should build");
+        let extracted_without = extract_package(&without_api, &root.join("without-api"))
+            .expect("package without API settings should extract");
+        assert!(!extracted_without.include_api_settings);
+        let connection = Connection::open(&extracted_without.database_path)
+            .expect("extracted database should open");
+        let app_setting_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM app_settings", [], |row| row.get(0))
+            .unwrap();
+        let ai_default_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(app_setting_count, 0);
+        assert_eq!(ai_default_count, 0);
+        drop(connection);
+
+        let with_api = root.join("with-api.syncpkg");
+        create_package(&database, &paths, &with_api, true)
+            .expect("package with API settings should build");
+        let extracted_with = extract_package(&with_api, &root.join("with-api"))
+            .expect("package with API settings should extract");
+        assert!(extracted_with.include_api_settings);
+        let connection = Connection::open(&extracted_with.database_path)
+            .expect("extracted database should open");
+        let app_setting_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM app_settings", [], |row| row.get(0))
+            .unwrap();
+        let ai_default_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(app_setting_count, 0);
+        assert_eq!(ai_default_count, 1);
+
+        let _ = fs::remove_dir_all(root);
+    }
 }
