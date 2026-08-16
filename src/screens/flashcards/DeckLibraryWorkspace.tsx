@@ -684,7 +684,6 @@ export function DeckLibraryWorkspace({
                       onPracticeDeck={onPracticeDeck}
                       onRename={() => setFolderDraft({ mode: "rename", folder, name: folder.name })}
                       onDelete={() => void removeFolder(folder)}
-                      onMoveFolder={(target) => void reorderFolder(folder, target)}
                       onMoveDeckPosition={(deck, target) => void moveDeck(deck, folder.id, target)}
                       onFolderKeyboardMove={(event) =>
                         handleFolderKeyboardMove(event, folder, folderIndex)
@@ -855,7 +854,6 @@ function FolderSection({
   onPracticeDeck,
   onRename,
   onDelete,
-  onMoveFolder,
   onMoveDeckPosition,
   onFolderKeyboardMove,
   onDeckKeyboardMove,
@@ -880,7 +878,6 @@ function FolderSection({
   onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
   onRename: () => void;
   onDelete: () => void;
-  onMoveFolder: (target: number) => void;
   onMoveDeckPosition: (deck: DeckSummary, target: number) => void;
   onFolderKeyboardMove: (event: KeyboardEvent<HTMLElement>) => void;
   onDeckKeyboardMove: (
