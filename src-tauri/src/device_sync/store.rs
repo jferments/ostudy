@@ -666,15 +666,63 @@ impl SyncStore {
         crate::util::validate_entity_id(id, "sync session")?;
         self.with_connection(|connection| {
             let now = unix_time_millis()?;
-            connection
+            let changed = connection
                 .execute(
                     "INSERT INTO sessions (
                          id, direction, state, endpoint_hint, created_at, expires_at
-                     ) VALUES (?1, ?2, 'waiting', ?3, ?4, ?5)",
+                     ) VALUES (?1, ?2, 'waiting', ?3, ?4, ?5)
+                     ON CONFLICT(id) DO UPDATE SET
+                         peer_id = NULL,
+                         direction = excluded.direction,
+                         state = 'waiting',
+                         endpoint_hint = excluded.endpoint_hint,
+                         created_at = excluded.created_at,
+                         expires_at = excluded.expires_at,
+                         completed_at = NULL,
+                         error_code = NULL,
+                         error_message = NULL
+                     WHERE excluded.direction = 'join'
+                       AND sessions.direction = 'join'
+                       AND sessions.state IN ('failed', 'canceled')",
                     params![id, direction, endpoint_hint, now, expires_at],
                 )
                 .map_err(CommandError::database)?;
-            Ok(())
+            if changed == 1 {
+                return Ok(());
+            }
+
+            let existing: Option<(String, String)> = connection
+                .query_row(
+                    "SELECT direction, state FROM sessions WHERE id = ?1",
+                    [id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(CommandError::database)?;
+            match existing {
+                Some((existing_direction, existing_state))
+                    if direction == "join"
+                        && existing_direction == "join"
+                        && matches!(
+                            existing_state.as_str(),
+                            "waiting" | "connecting" | "transferring" | "merging"
+                        ) => Err(CommandError::new(
+                    "device_sync_session_already_active",
+                    "This synchronization offer is already being accepted. Wait for it to finish or cancel the active request before retrying.",
+                )),
+                Some((existing_direction, existing_state))
+                    if direction == "join"
+                        && existing_direction == "join"
+                        && existing_state == "completed" => Err(CommandError::new(
+                    "device_sync_session_already_completed",
+                    "This synchronization offer already completed on this device. Create a fresh offer before synchronizing again.",
+                )),
+                Some(_) => Err(CommandError::new(
+                    "device_sync_session_id_collision",
+                    "The synchronization offer conflicts with an existing local session. Create a fresh offer on the sending device.",
+                )),
+                None => Err(store_error("The synchronization session could not be saved.")),
+            }
         })
     }
 
@@ -803,15 +851,20 @@ fn store_error(message: &str) -> CommandError {
 mod tests {
     use super::*;
 
-    #[test]
-    fn peer_store_round_trips_identity_peer_baseline_and_conflict() {
+    fn test_store(name: &str) -> (PathBuf, SyncStore) {
         let root = std::env::temp_dir().join(format!(
-            "ostudy-sync-store-test-{}-{}",
+            "ostudy-sync-store-{name}-{}-{}",
             std::process::id(),
             crate::platform::now_utc_millis().unwrap_or_default()
         ));
         let paths = AppPaths::new(root.clone()).expect("paths should initialize");
         let store = SyncStore::open(&paths).expect("store should open");
+        (root, store)
+    }
+
+    #[test]
+    fn peer_store_round_trips_identity_peer_baseline_and_conflict() {
+        let (root, store) = test_store("peer-round-trip");
         let identity = store
             .ensure_identity("Test device")
             .expect("identity should be created");
@@ -867,6 +920,58 @@ mod tests {
             .list_conflicts()
             .expect("conflicts should load")
             .is_empty());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn failed_join_offer_can_retry_without_duplicate_session_rows() {
+        let (root, store) = test_store("join-retry");
+        let session_id = "f".repeat(32);
+        let first_endpoint = "192.168.1.10:44000";
+        let retry_endpoint = "192.168.1.10:44001";
+        let expires_at = unix_time_millis().expect("clock should work") + 60_000;
+
+        store
+            .create_session(&session_id, "join", first_endpoint, expires_at)
+            .expect("first join session should be created");
+        store
+            .update_session(&session_id, None, "connecting", None)
+            .expect("join session should start connecting");
+        store
+            .update_session(
+                &session_id,
+                None,
+                "failed",
+                Some((
+                    "device_sync_connection_failed",
+                    "The sender could not be reached.",
+                )),
+            )
+            .expect("join session should record its failure");
+
+        store
+            .create_session(&session_id, "join", retry_endpoint, expires_at)
+            .expect("the same invitation should be retryable after a terminal failure");
+        let sessions = store.list_sessions().expect("sessions should load");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, session_id);
+        assert_eq!(sessions[0].direction, "join");
+        assert_eq!(sessions[0].state, "waiting");
+        assert_eq!(sessions[0].endpoint_hint, retry_endpoint);
+        assert!(sessions[0].peer_id.is_none());
+        assert!(sessions[0].completed_at.is_none());
+        assert!(sessions[0].error_code.is_none());
+        assert!(sessions[0].error_message.is_none());
+
+        store
+            .update_session(&session_id, None, "connecting", None)
+            .expect("retry should enter connecting");
+        let duplicate = store
+            .create_session(&session_id, "join", retry_endpoint, expires_at)
+            .expect_err("an active retry must not be started twice");
+        assert_eq!(duplicate.code, "device_sync_session_already_active");
+        assert_eq!(store.list_sessions().expect("sessions should load").len(), 1);
+
         let _ = std::fs::remove_dir_all(root);
     }
 }
