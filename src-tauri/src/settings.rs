@@ -56,6 +56,7 @@ pub struct AppInfoDto {
     pub data_directory: String,
     pub database_path: String,
     pub image_directory: String,
+    pub diagnostic_log_path: String,
     pub database_schema_version: i64,
 }
 
@@ -90,6 +91,9 @@ pub fn get_app_info(
         data_directory: paths.app_data_dir().to_string_lossy().into_owned(),
         database_path: paths.database_path().to_string_lossy().into_owned(),
         image_directory: paths.images_dir().to_string_lossy().into_owned(),
+        diagnostic_log_path: crate::logging::diagnostic_log_path(paths.app_data_dir())
+            .to_string_lossy()
+            .into_owned(),
         database_schema_version: schema_version,
     })
 }
