@@ -129,7 +129,12 @@ pub(crate) fn create_package(
             ("applicationVersion", env!("CARGO_PKG_VERSION").to_string()),
             (
                 "includeApiSettings",
-                if include_api_settings { "true" } else { "false" }.to_string(),
+                if include_api_settings {
+                    "true"
+                } else {
+                    "false"
+                }
+                .to_string(),
             ),
         ] {
             transaction
@@ -596,7 +601,9 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM app_settings", [], |row| row.get(0))
             .unwrap();
         let ai_default_count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(app_setting_count, 0);
         assert_eq!(ai_default_count, 0);
@@ -614,7 +621,9 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM app_settings", [], |row| row.get(0))
             .unwrap();
         let ai_default_count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(app_setting_count, 0);
         assert_eq!(ai_default_count, 1);
