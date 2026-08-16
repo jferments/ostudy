@@ -19,6 +19,16 @@ The receiving device does **not** upload its library as part of accepting the of
 
 On Android, scanning a valid QR code accepts the offer and begins receiving immediately. Pasted invitation text uses an explicit **Accept sync offer** action because paste is not itself an intentional camera acceptance gesture.
 
+## Active-session ownership and cancellation
+
+A generic QR offer has no target peer until another installation authenticates. Therefore ostudy permits only one **unclaimed outgoing offer** per process at a time: creating a new waiting offer cancels and replaces the previous unclaimed listener. Once a connection authenticates a stable peer identity, the session is claimed by that peer.
+
+The sync-session coordinator rejects a second active session that resolves to the same stable peer ID, while still permitting different peers to have separate active sessions. This check exists on both receive startup, where the invitation already identifies the sender, and on the sending side immediately after the joining device authenticates.
+
+Waiting, connecting, and transferring sessions are cancellable. Each running session owns a process-local cancellation signal plus a cloned TCP handle; cancellation marks the durable session canceled and shuts down the socket so blocked transport reads/writes unwind. The final SQLite merge is intentionally a short non-cancellable atomic boundary. Once a receiver enters `merging`, the UI asks the user to let the commit finish rather than exposing a half-applied library.
+
+Persisted nonterminal session rows cannot represent live work after a process restart because the corresponding sockets and cancellation handles are gone. Startup reconciliation marks those old rows canceled/interrupted so stale `waiting` or `transferring` pills never masquerade as current work.
+
 ## What synchronizes
 
 The ordinary study-library scope includes the durable entities required for the same study content and learning history to exist on another installation, including:
@@ -103,26 +113,30 @@ The callback-based Android Activity result is awaited from a Tauri blocking work
 
 The receiver uses deterministic three-way row merging when it has a saved common baseline for the peer:
 
+- first-contact rows that exist only on one installation are treated as independent creations rather than synthetic delete conflicts;
 - unchanged-on-one-side / changed-on-the-other takes the changed value;
 - independent field edits can merge automatically;
 - same-field concurrent edits create an explicit conflict;
-- delete-versus-edit preserves the surviving row and records a conflict rather than silently discarding content;
+- delete-versus-edit after a common baseline exists preserves the surviving row and records a conflict rather than silently discarding content;
 - managed-asset identity/content mismatches fail rather than selecting arbitrary image bytes.
 
 Conflict records store both candidate payloads and the deterministically selected working value. The user can later choose the appropriate side or delete the record. Resolved decisions become ordinary local data and can be sent in a future offer.
 
 After the receiver merges an offer, it records the resulting peer baseline. After the sender receives the receiver's completion acknowledgement, it records the exact snapshot it sent as its baseline for that peer. This preserves useful three-way context for a later reverse offer **without uploading the receiver's library during acceptance**.
 
-## Failure and lifecycle boundaries
+## Failure, diagnostics, and lifecycle boundaries
 
 A synchronization session has explicit waiting, connecting, transferring, merging, completed, failed, expired, or canceled state. Temporary transfer workspaces live under app-private storage and are removed when the operation completes or unwinds.
+
+Native diagnostics are written as structured JSON Lines to `<app-data>/diagnostics/ostudy.jsonl`, with bounded rotation to `ostudy.previous.jsonl`. The application exposes the exact current path in **Settings → Backup/Sync → Storage → Diagnostics**. Generic database errors retain a safe UI message while recording the raw SQLite error and native source call site in this log. Synchronization records phase markers around offer creation, connection, authentication, package receipt, merge start, and merge completion so physical-device failures can be localized even when the UI error itself is intentionally terse.
 
 Important boundaries:
 
 - accepting an invitation is not a background subscription;
-- a process kill ends the active network session;
+- a process kill ends the active network session and startup reconciles its stale durable row;
 - the invitation expires rather than becoming a permanent listener;
 - database/package validation failures do not silently downgrade into partial success;
+- cancellation can interrupt waiting/connect/transfer network work but never splits the atomic database merge;
 - credential transfer is never inferred from a previously paired device—it must be selected again by the sender for the new offer.
 
 ## Trust removal
