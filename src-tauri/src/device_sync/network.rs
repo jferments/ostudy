@@ -1,6 +1,7 @@
 use std::{
     io,
     net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream},
+    ops::RangeInclusive,
     time::Duration,
 };
 
@@ -10,9 +11,13 @@ pub(crate) const LISTENER_PORT_START: u16 = 49_251;
 pub(crate) const LISTENER_PORT_END: u16 = 49_258;
 pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
+fn listener_ports() -> RangeInclusive<u16> {
+    LISTENER_PORT_START..=LISTENER_PORT_END
+}
+
 pub(crate) fn bind_listener() -> Result<TcpListener, CommandError> {
     let mut last_in_use = None;
-    for port in LISTENER_PORT_START..=LISTENER_PORT_END {
+    for port in listener_ports() {
         match TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)) {
             Ok(listener) => {
                 listener.set_nonblocking(true).map_err(CommandError::io)?;
@@ -64,8 +69,8 @@ mod tests {
 
     #[test]
     fn listener_range_is_small_stable_and_in_the_private_dynamic_port_space() {
-        assert!(LISTENER_PORT_START >= 49_152);
-        assert!(LISTENER_PORT_END >= LISTENER_PORT_START);
-        assert_eq!(LISTENER_PORT_END - LISTENER_PORT_START + 1, 8);
+        let ports = listener_ports().collect::<Vec<_>>();
+        assert_eq!(ports, (49_251..=49_258).collect::<Vec<_>>());
+        assert_eq!(ports.len(), 8);
     }
 }
