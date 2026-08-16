@@ -362,7 +362,10 @@ mod tests {
             "roboto-slab",
             "sofia-sans",
         ] {
-            assert!(validate_font(preset).is_ok(), "preset {preset} should be valid");
+            assert!(
+                validate_font(preset).is_ok(),
+                "preset {preset} should be valid"
+            );
         }
     }
 

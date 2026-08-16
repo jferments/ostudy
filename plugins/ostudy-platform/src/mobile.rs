@@ -154,7 +154,8 @@ impl<R: Runtime> OstudyPlatform<R> {
 
     pub fn scan_qr_code(&self, request: ScanQrCodeRequest) -> Result<ScanQrCodeResult> {
         let qr = self.app.state::<OstudyQr<R>>();
-        qr.0.run_mobile_plugin("scanQrCode", request).map_err(Into::into)
+        qr.0.run_mobile_plugin("scanQrCode", request)
+            .map_err(Into::into)
     }
 
     pub fn document_capabilities(&self) -> Result<DocumentCapabilitiesResult> {
