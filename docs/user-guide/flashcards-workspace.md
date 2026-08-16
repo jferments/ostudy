@@ -1,49 +1,96 @@
 # Flashcards workspace
 
-The **Flashcards** area keeps the main authoring and library tools together without placing every tool on the screen at once.
+The **Flashcards** area is the main place to organize study material, create cards, find existing cards, and transfer study content.
 
-## Workspaces
+Its compact heading is followed immediately by five workspace tabs:
 
-- **Decks** organizes the study library and opens individual deck details.
-- **Templates** creates and edits reusable card structures.
-- **Search** finds cards across decks and supports selection and bulk actions.
-- **Import/Export** transfers decks, generated-card JSON, and complete-library backups through the system file picker or share sheet.
-- **Create Cards** supports both focused single-card authoring and bulk entry.
+- **Decks**
+- **Templates**
+- **Search**
+- **Import/Export**
+- **Create Cards**
 
-Each workspace is a real navigation destination. Returning from practice, restoring the application after suspension, and using Android Back preserve the relevant Flashcards destination rather than treating the workspaces as permanently mounted tabs.
+On compact mobile layouts the tabs form a centered two-row arrangement: three tabs on the first row and two tabs on the second. They do not require horizontal scrolling.
 
-## Deck folders
+Switching tabs changes presentation state only. The active tab is stored in the local presentation checkpoint so ostudy can restore the previous workspace after restart. Card content, review history, and credentials are not stored in that checkpoint.
 
-Folders provide one optional organizational level above decks.
+## Decks
 
-- A deck can belong to one folder or remain under **Unfiled decks**.
-- Folders appear before unfiled decks.
-- Deleting a folder moves its decks to Unfiled. It does not delete cards, schedules, review history, or analytics.
-- Archived decks remain separate from the active folder view and keep their existing historical behavior.
+Use **Decks** to create decks, open them, start practice, organize them into folders, archive them, and remove them.
 
-Folder names, membership, folder order, and deck order are durable SQLite data. They are included in complete-library database snapshots together with the rest of the study library.
+### Folders and Unsorted decks
 
-## Moving and ordering
+Folders are optional. A deck belongs to at most one folder. A deck without a folder appears under **Unsorted decks**.
 
-Pointer and touch users can drag a deck by its handle. Dragging is only a convenience: every deck also has a **Move** action and explicit up/down controls, and folders have up/down controls of their own.
+Folders do not own cards and do not change scheduling or analytics. Deleting a folder returns its decks to Unsorted decks while preserving every card, schedule, review event, tag, and managed asset.
 
-Movement is committed as one transaction. The application uses an organization revision to reject stale changes made against an older library view. When a commit fails, the optimistic presentation rolls back and the previous order remains intact.
+### Dragging and keyboard organization
 
-## Comfortable and compact views
+Use the dedicated drag handle to:
 
-**Comfortable** view shows descriptions and progress more prominently. **Compact** view reduces vertical space so larger libraries are easier to scan. Density changes presentation only; they do not alter folders, order, schedules, or content.
+- reorder a folder;
+- reorder a deck within its current group;
+- move a deck into another folder;
+- move a deck into **Unsorted decks**.
 
-## Search and filters
+Touch dragging uses the same durable organization command as mouse dragging. A highlighted drop target shows where the folder or deck will be placed.
 
-The ordinary Search view keeps four things visible:
+Dragging is not required. Focus a folder handle and use:
 
-1. the text query;
-2. the current deck scope;
-3. sorting;
-4. an **All filters** action.
+- **Up** or **Down** to move one position;
+- **Home** or **End** to move to the beginning or end.
 
-Additional filters open in an adaptive sheet. Scope can be chosen by folder or by individual deck. Study-state and tag filters update the results immediately, and active filters reappear above the results as removable chips.
+Focus a deck handle and use:
 
-## Contextual help
+- **Up**, **Down**, **Home**, or **End** within the current group;
+- **Left** or **Right** to move between folder groups and Unsorted decks.
 
-Question-mark controls open concise help for folders, density, study-state filters, and other unfamiliar concepts. Desktop pointer users also receive a short tooltip. Touch devices use the full help sheet instead of depending on hover.
+The interface announces the completed move. Every operation includes the organization revision that was current when the action started. If another window changed the organization first, ostudy reloads the authoritative state rather than overwriting the newer change.
+
+### Collapsing folders
+
+Select a folder heading to collapse or expand it. Hovering the open-folder control displays **Collapse folder**; a collapsed folder displays **Expand folder**. **Collapse all** closes every open folder at once.
+
+Collapse state is presentational only. It does not alter folder membership, deck order, practice availability, or backup contents.
+
+### Practice buttons
+
+Every active deck with generated cards has a **Practice** button. Starting from a deck is an explicit request to study that deck, so the session follows the deck-practice workload rules rather than merely opening its editor.
+
+### Comfortable and Compact density
+
+**Comfortable** density shows more description and progress detail. **Compact** density fits more deck rows on screen. Density is presentation state only and never changes card content or durable ordering.
+
+## Templates
+
+Use **Templates** to define reusable card structures. A template contains named fields and safe placement rules for the question and answer sides. Templates are data-only; they do not execute scripts or arbitrary HTML.
+
+A custom template is useful when many cards share the same shape, such as medication name, mechanism, adverse effects, and nursing considerations.
+
+## Search
+
+Use **Search** to find cards across decks and perform bulk actions.
+
+The common controls stay visible:
+
+- text query;
+- deck or folder scope;
+- sort order;
+- **All filters**.
+
+Open **All filters** for availability, scheduling status, last-studied date, individual decks, folders, and tags. Applied criteria appear as removable chips above the results.
+
+**Select visible** selects only the loaded rows. **Select all matching** resolves the complete filtered result set before a bulk action.
+
+## Import/Export
+
+Use **Import/Export** for deck-scoped content transfers and complete-library protection.
+
+- `.studydeck` transfers one deck and its managed study assets without carrying the original learner's review history.
+- `.ostudybackup` protects the complete local library, including folders, deck placement, templates, schedules, review events, analytics sources, settings, managed images, and retained documents. Provider credentials are excluded.
+
+A newly imported deck begins in **Unsorted decks** because folder membership is organization state belonging to the receiving library.
+
+## Create Cards
+
+Use **Create Cards** for focused single-card authoring or bulk entry. Both routes use the same validation, duplicate analysis, durable draft, template, and managed-asset boundaries as card creation from inside a deck.
