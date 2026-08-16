@@ -5,25 +5,28 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const [commands, compositionRoot] = await Promise.all([
+const [commands, compositionRoot, frontend] = await Promise.all([
   read("src-tauri/src/library_backup_commands.rs"),
   read("src-tauri/src/lib.rs"),
+  read("src/ipc/backup.ts"),
 ]);
 const failures = [];
 
-expectContains(commands, "pub async fn prepare_library_backup", "async backup adapter");
-expectContains(commands, "pub async fn prepare_library_restore", "async restore adapter");
+expectContains(commands, "pub async fn prepare_library_backup_async", "async backup adapter");
+expectContains(commands, "pub async fn prepare_library_restore_async", "async restore adapter");
 expectContains(commands, "tauri::async_runtime::spawn_blocking", "blocking worker pool handoff");
 expectContains(
   compositionRoot,
-  "library_backup_commands::prepare_library_backup",
+  "library_backup_commands::prepare_library_backup_async",
   "nonblocking backup command registration",
 );
 expectContains(
   compositionRoot,
-  "library_backup_commands::prepare_library_restore",
+  "library_backup_commands::prepare_library_restore_async",
   "nonblocking restore command registration",
 );
+expectContains(frontend, 'invoke<PreparedLibraryBackup>("prepare_library_backup_async"', "frontend async backup invocation");
+expectContains(frontend, 'invoke<LibraryRestoreResult>("prepare_library_restore_async"', "frontend async restore invocation");
 if (compositionRoot.includes("library_backup::prepare_library_backup,")) {
   failures.push("The blocking library backup implementation is registered directly as a Tauri command.");
 }
