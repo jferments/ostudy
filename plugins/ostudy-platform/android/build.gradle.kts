@@ -121,4 +121,8 @@ dependencies {
     // ML Kit remains an offline fallback for pages on which Tesseract fails to
     // initialize, times out, throws, or returns unusably weak text.
     implementation("com.google.mlkit:text-recognition:16.0.1")
+
+    // QR scanning is bundled in-app so pairing never depends on an external
+    // barcode application or a network-delivered model.
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 }
