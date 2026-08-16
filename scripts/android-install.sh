@@ -95,5 +95,8 @@ printf 'Installing %s...\n' "$apk"
 adb "${adb_args[@]}" install -r "$apk"
 
 package_name="io.github.jferments.ostudy"
+if [[ "$MODE" == debug ]]; then
+  package_name+=".dev"
+fi
 adb "${adb_args[@]}" shell monkey -p "$package_name" -c android.intent.category.LAUNCHER 1 >/dev/null
-printf 'OK   Installed and launched ostudy on %s.\n' "${SERIAL:-${devices[0]}}"
+printf 'OK   Installed and launched %s on %s.\n' "$package_name" "${SERIAL:-${devices[0]}}"
