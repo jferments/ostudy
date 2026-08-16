@@ -110,7 +110,7 @@ describe("DeviceSyncSettings", () => {
     expect(await screen.findByAltText(/QR code containing/u)).toBeTruthy();
     expect(screen.getByText("192.168.1.10:44000")).toBeTruthy();
     expect(screen.getByText(/entire white border visible/u)).toBeTruthy();
-    expect(screen.getByText(/center the complete QR code inside the camera frame/u)).toBeTruthy();
+    expect(screen.getByText(/center the complete QR code inside the camera frame/iu)).toBeTruthy();
   });
 
   it("shows visual detection feedback after the Android scanner returns a pairing code", async () => {
