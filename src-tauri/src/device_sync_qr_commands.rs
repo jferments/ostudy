@@ -3,8 +3,8 @@
 //! Android's scan Activity completes through an ActivityResult callback. As with
 //! the document picker, waiting synchronously for that callback from a Tauri
 //! command can monopolize the command/event-loop thread needed to process native
-//! lifecycle work. Keep the existing platform abstraction, but run the blocking
-//! mobile-plugin bridge on Tauri's blocking pool.
+//! lifecycle work. Keep the existing pairing validation in `device_sync`, but
+//! run its blocking mobile-plugin bridge on Tauri's blocking pool.
 
 use tauri::AppHandle;
 
@@ -16,26 +16,8 @@ pub async fn scan_device_pairing_qr_async(
 ) -> Result<Option<String>, CommandError> {
     #[cfg(mobile)]
     {
-        use tauri_plugin_ostudy_platform::{OstudyPlatformExt, ScanQrCodeRequest};
-
         tauri::async_runtime::spawn_blocking(move || {
-            let result = app
-                .ostudy_platform()
-                .scan_qr_code(ScanQrCodeRequest {
-                    prompt: "Center the entire ostudy pairing code inside the frame and hold steady"
-                        .to_string(),
-                })
-                .map_err(|error| {
-                    CommandError::new(
-                        "device_sync_qr_scan_failed",
-                        format!("The native QR scanner failed: {error}"),
-                    )
-                })?;
-            Ok(if result.cancelled {
-                None
-            } else {
-                result.contents
-            })
+            crate::device_sync::scan_device_pairing_qr(app)
         })
         .await
         .map_err(|error| {
