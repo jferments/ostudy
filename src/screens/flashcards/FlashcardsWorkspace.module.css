@@ -8,7 +8,8 @@
   .tab[data-selected="true"] { border-color: var(--ostudy-color-border-accent); border-bottom-color: var(--ostudy-color-surface-selected); background: var(--ostudy-color-surface-selected); color: var(--ostudy-color-text-accent); font-weight: 860; box-shadow: var(--ostudy-glow-subtle); }
   .tab[data-selected="true"]::after { opacity: 1; transform: scaleX(1); box-shadow: var(--ostudy-glow-accent); }
   .tab:focus-visible { outline: none; box-shadow: var(--ostudy-shadow-focus); }
-  .compactLabel { display: none; }
+  .tabLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .tabLabel::after { display: none; content: attr(data-compact-label); }
   .panel { min-width: 0; }
   .panel > .screen,
   .panel > .card-editor-screen { min-height: auto; padding: 0; }
@@ -66,8 +67,8 @@
     .tab:hover { border-bottom-color: var(--ostudy-color-border-accent); }
     .tab[data-selected="true"] { border-bottom-color: var(--ostudy-color-border-accent); }
     .tab::after { inset-inline: var(--ostudy-space-3); inset-block-end: 3px; }
-    .wideLabel { display: none; }
-    .compactLabel { display: inline; overflow: hidden; text-overflow: ellipsis; }
+    .tabLabel { font-size: 0; }
+    .tabLabel::after { display: inline; font-size: .9rem; }
     .transferHelp,
     .createHero { grid-template-columns: 1fr; text-align: center; }
     .transferHelp > :first-child,
