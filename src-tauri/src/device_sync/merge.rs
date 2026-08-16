@@ -329,9 +329,17 @@ fn merge_rows(
     }
     match (left, right) {
         (None, None) => (None, Vec::new()),
+        (Some(payload), None) | (None, Some(payload)) if base.is_none() => {
+            // With no saved baseline, a row that exists on only one device is
+            // an independent creation, not a delete-vs-edit race. First-contact
+            // offers must be able to add sender rows to a new receiver without
+            // manufacturing a conflict for every deck/card/template.
+            (Some(payload.clone()), Vec::new())
+        }
         (Some(payload), None) | (None, Some(payload)) => {
-            // Preserve the edited/remaining row and require an explicit delete
-            // decision. This prevents delete-vs-edit races from losing content.
+            // Once a common baseline exists, preserving the edited/remaining
+            // row while recording a conflict prevents delete-vs-edit races from
+            // silently losing content.
             (Some(payload.clone()), vec!["$row".to_string()])
         }
         (Some(left), Some(right)) => merge_present_rows(
@@ -749,6 +757,42 @@ mod tests {
         assert!(conflicts.is_empty());
         assert_eq!(merged.get("name"), left.get("name"));
         assert_eq!(merged.get("description"), right.get("description"));
+    }
+
+    #[test]
+    fn first_contact_remote_creation_is_not_a_delete_conflict() {
+        let remote = row(&[
+            ("id", CellValue::Text("a".repeat(32))),
+            ("name", CellValue::Text("From sender".to_string())),
+        ]);
+        let (merged, conflicts) = merge_rows(
+            None,
+            None,
+            Some(&remote),
+            &["id"],
+            &"1".repeat(32),
+            &"2".repeat(32),
+        );
+        assert!(conflicts.is_empty());
+        assert_eq!(merged.as_ref(), Some(&remote));
+    }
+
+    #[test]
+    fn first_contact_local_creation_is_preserved_without_conflict() {
+        let local = row(&[
+            ("id", CellValue::Text("a".repeat(32))),
+            ("name", CellValue::Text("Already on receiver".to_string())),
+        ]);
+        let (merged, conflicts) = merge_rows(
+            None,
+            Some(&local),
+            None,
+            &["id"],
+            &"1".repeat(32),
+            &"2".repeat(32),
+        );
+        assert!(conflicts.is_empty());
+        assert_eq!(merged.as_ref(), Some(&local));
     }
 
     #[test]
