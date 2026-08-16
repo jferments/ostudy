@@ -583,7 +583,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   </article>
                 ))}
               </div>
-            ) : null}
+            )}
           </div>
         </>
       ) : null}
