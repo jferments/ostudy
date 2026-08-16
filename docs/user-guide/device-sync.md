@@ -39,6 +39,8 @@ On the receiving Android device:
 
 A successful QR scan is the acceptance gesture. ostudy closes the scanner and immediately connects to the sending device, authenticates the offer, receives the selected data, and merges it locally. There is no second **Pair and synchronize** confirmation and no reverse invitation to create.
 
+If the initial network connection cannot be completed, the scanned invitation remains loaded and the action changes to **Retry connection**. You do not need to rescan while that offer remains valid.
+
 If the scan is canceled, no synchronization starts.
 
 ## Receive from pasted invitation text
@@ -89,6 +91,12 @@ Appearance/theme settings never appear here in protocol v2 because they are excl
 Both devices must be able to reach each other on the same private network. Guest Wi-Fi/client isolation can prevent peer-to-peer connections even when both devices have internet access.
 
 The sender normally detects its LAN address automatically. Use **Advanced LAN address override** only if needed, and enter the sender's private LAN IP rather than `127.0.0.1`.
+
+Outgoing offers listen on the small, stable TCP range **49251–49258** instead of a new random port every time. This allows a desktop firewall rule to be configured once while still leaving enough listener slots for separate peers to synchronize concurrently. If a receiver reports that the QR was read but the sender could not be reached, verify that the sender is actually listening on the displayed endpoint and permit inbound TCP 49251–49258 from the local LAN (or, preferably, from the receiving device/subnet only).
+
+On Linux with UFW, for example, inspect the firewall with `sudo ufw status verbose`. If it is active, an appropriately scoped rule can permit the ostudy range, such as `sudo ufw allow from <phone-or-LAN-subnet> to any port 49251:49258 proto tcp`. Adapt the source scope to your network rather than opening the range to the public internet.
+
+A successful transfer in the opposite direction does not by itself prove this direction is open: the host/listener is the device that created the current offer, so reversing which device creates the offer reverses which device must accept an inbound LAN TCP connection.
 
 For a local desktop AI service used from Android, remember that `127.0.0.1` on the phone means the phone itself; configure the provider with the desktop's reachable LAN address where appropriate.
 
