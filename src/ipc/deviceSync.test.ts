@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  cancelDeviceSyncSession,
   joinDevicePairing,
   resolveDeviceSyncConflict,
   scanDevicePairingQr,
@@ -39,6 +40,14 @@ describe("device synchronization IPC", () => {
       input: {
         invitation: "ostudy-sync://pair/example",
       },
+    });
+  });
+
+  it("cancels one active synchronization session by id", async () => {
+    const sessionId = "b".repeat(32);
+    await cancelDeviceSyncSession(sessionId);
+    expect(invoke).toHaveBeenCalledWith("cancel_device_sync_session", {
+      input: { sessionId },
     });
   });
 
