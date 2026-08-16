@@ -270,17 +270,28 @@ fn plan_three_way_table(
     for key in keys {
         let left = local.get(&key);
         let right = remote.get(&key);
-        let base = baselines
-            .get(&key)
-            .and_then(|record| record.payload_json.as_deref())
-            .map(|json| serde_json::from_str::<RowPayload>(json))
-            .transpose()
-            .map_err(|error| {
-                CommandError::new(
+        let base = if let Some(record) = baselines.get(&key) {
+            let parsed = record
+                .payload_json
+                .as_deref()
+                .map(serde_json::from_str::<RowPayload>)
+                .transpose()
+                .map_err(|error| {
+                    CommandError::new(
+                        "device_sync_baseline_invalid",
+                        format!("A saved synchronization baseline is invalid: {error}"),
+                    )
+                })?;
+            if payload_hash(parsed.as_ref())? != record.payload_hash {
+                return Err(CommandError::new(
                     "device_sync_baseline_invalid",
-                    format!("A saved synchronization baseline is invalid: {error}"),
-                )
-            })?;
+                    "A saved synchronization baseline failed its content hash check.",
+                ));
+            }
+            parsed
+        } else {
+            None
+        };
         let (selected, conflicting_fields) = merge_rows(
             base.as_ref(),
             left,
