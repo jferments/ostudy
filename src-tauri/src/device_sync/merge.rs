@@ -63,7 +63,6 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
         "review_event_tag_attributions",
         &["review_event_id", "tag_id"],
     ),
-    TableSpec::new("app_settings", &["key"]),
     TableSpec {
         name: "ai_provider_profiles",
         key_columns: &["id"],
@@ -168,45 +167,6 @@ pub(crate) fn merge_remote_database(
         changed_row_count,
         conflict_count: conflict_ids.len(),
         conflict_ids,
-    })
-}
-
-pub(crate) fn apply_authoritative_database(
-    local: &mut Connection,
-    authoritative: &Connection,
-    store: &SyncStore,
-    peer_id: &str,
-) -> Result<MergeSummary, CommandError> {
-    let mut plans = Vec::with_capacity(SYNC_TABLES.len());
-    for spec in SYNC_TABLES {
-        if !table_exists(local, spec.name)? || !table_exists(authoritative, spec.name)? {
-            continue;
-        }
-        let local_rows = load_table(local, spec)?;
-        let remote_rows = load_table(authoritative, spec)?;
-        let mut keys = BTreeSet::new();
-        keys.extend(local_rows.keys().cloned());
-        keys.extend(remote_rows.keys().cloned());
-        let merged = keys
-            .into_iter()
-            .map(|key| {
-                let payload = remote_rows.get(&key).cloned();
-                (key, payload)
-            })
-            .collect();
-        plans.push(TablePlan {
-            spec,
-            local: local_rows,
-            merged,
-            conflicts: Vec::new(),
-        });
-    }
-    let changed_row_count = apply_plans(local, &plans)?;
-    replace_baselines(store, peer_id, &plans)?;
-    Ok(MergeSummary {
-        changed_row_count,
-        conflict_count: 0,
-        conflict_ids: Vec::new(),
     })
 }
 
