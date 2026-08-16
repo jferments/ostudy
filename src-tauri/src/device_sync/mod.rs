@@ -39,9 +39,7 @@ use self::{
     crypto::{EphemeralKey, IdentityKey, SessionRole},
     merge::MergeSummary,
     package::PackageSummary,
-    store::{
-        ConflictRecord, DeviceIdentityRecord, NewConflict, PeerRecord, SessionRecord, SyncStore,
-    },
+    store::{ConflictRecord, DeviceIdentityRecord, NewConflict, PeerRecord, SessionRecord, SyncStore},
     transport::{read_plain_json, write_plain_json, SecureChannel, FRAME_COMPLETE, FRAME_METADATA},
 };
 
@@ -334,8 +332,12 @@ pub fn start_device_pairing(
             if let Ok(store) = SyncStore::open(paths.inner()) {
                 match result {
                     Ok(peer_id) => {
-                        let _ =
-                            store.update_session(&host_session, Some(&peer_id), "completed", None);
+                        let _ = store.update_session(
+                            &host_session,
+                            Some(&peer_id),
+                            "completed",
+                            None,
+                        );
                     }
                     Err(error) if error.code == "device_sync_invitation_expired" => {
                         let _ = store.update_session(
@@ -487,7 +489,12 @@ pub fn resolve_device_sync_conflict(
         }
     };
     database.with_connection(|connection| {
-        merge::apply_conflict_payload(connection, &conflict.table_name, &conflict.row_key, payload)
+        merge::apply_conflict_payload(
+            connection,
+            &conflict.table_name,
+            &conflict.row_key,
+            payload,
+        )
     })?;
     store.resolve_conflict(&input.conflict_id, &input.resolution)
 }
@@ -605,7 +612,12 @@ fn handle_host_connection(
         &peer_fingerprint,
         &remote_address.to_string(),
     )?;
-    store.update_session(&invitation.session_id, Some(&peer.id), "transferring", None)?;
+    store.update_session(
+        &invitation.session_id,
+        Some(&peer.id),
+        "transferring",
+        None,
+    )?;
     let metadata: TransferMetadata = channel.receive_json(FRAME_METADATA)?;
     validate_transfer_metadata(
         &invitation.session_id,
@@ -616,13 +628,20 @@ fn handle_host_connection(
     let workspace = SyncWorkspace::new(paths.inner(), &invitation.session_id, "host")?;
     let incoming_package = workspace.path.join("incoming.syncpkg");
     channel.receive_file(&incoming_package)?;
-    store.update_session(&invitation.session_id, Some(&peer.id), "merging", None)?;
+    store.update_session(
+        &invitation.session_id,
+        Some(&peer.id),
+        "merging",
+        None,
+    )?;
 
     let extracted = package::extract_package(&incoming_package, &workspace.path.join("incoming"))?;
     package::install_assets(paths.inner(), &extracted.assets)?;
-    let remote_database =
-        Connection::open_with_flags(&extracted.database_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(CommandError::database)?;
+    let remote_database = Connection::open_with_flags(
+        &extracted.database_path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .map_err(CommandError::database)?;
     let merge = database.with_connection(|local| {
         merge::merge_remote_database(
             local,
@@ -723,8 +742,6 @@ fn run_join_session(
     let ephemeral = EphemeralKey::generate()?;
     let include_credentials = include_credentials && invitation.credentials_available;
     let ephemeral_public_key = BASE64_STANDARD.encode(&ephemeral.public_key);
-    let ephemeral_public_key = BASE64_STANDARD.encode(&ephemeral.public_key);
-    let ephemeral_public_key = BASE64_STANDARD.encode(&ephemeral.public_key);
     let unsigned = UnsignedClientHello {
         protocol_version: PROTOCOL_VERSION,
         session_id: &invitation.session_id,
@@ -796,7 +813,8 @@ fn run_join_session(
     channel.send_file(&outgoing_package)?;
 
     let response: HostResponseMetadata = channel.receive_json(FRAME_METADATA)?;
-    if response.protocol_version != PROTOCOL_VERSION || response.session_id != invitation.session_id
+    if response.protocol_version != PROTOCOL_VERSION
+        || response.session_id != invitation.session_id
     {
         return Err(CommandError::new(
             "device_sync_protocol_error",
@@ -807,9 +825,11 @@ fn run_join_session(
     channel.receive_file(&incoming_package)?;
     let extracted = package::extract_package(&incoming_package, &workspace.path.join("merged"))?;
     package::install_assets(paths.inner(), &extracted.assets)?;
-    let authoritative =
-        Connection::open_with_flags(&extracted.database_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(CommandError::database)?;
+    let authoritative = Connection::open_with_flags(
+        &extracted.database_path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .map_err(CommandError::database)?;
     let applied = database.with_connection(|local| {
         merge::apply_authoritative_database(local, &authoritative, &store, &host.id)
     })?;
@@ -1136,13 +1156,17 @@ fn default_device_name() -> String {
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty() && value.chars().count() <= 120)
-        .unwrap_or_else(|| {
-            if cfg!(target_os = "android") {
-                "Android device".to_string()
-            } else {
-                "ostudy device".to_string()
-            }
-        })
+        .unwrap_or_else(platform_default_device_name)
+}
+
+#[cfg(mobile)]
+fn platform_default_device_name() -> String {
+    "Mobile device".to_string()
+}
+
+#[cfg(not(mobile))]
+fn platform_default_device_name() -> String {
+    "ostudy device".to_string()
 }
 
 struct SyncWorkspace {
