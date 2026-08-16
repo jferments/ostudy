@@ -970,7 +970,10 @@ mod tests {
             .create_session(&session_id, "join", retry_endpoint, expires_at)
             .expect_err("an active retry must not be started twice");
         assert_eq!(duplicate.code, "device_sync_session_already_active");
-        assert_eq!(store.list_sessions().expect("sessions should load").len(), 1);
+        assert_eq!(
+            store.list_sessions().expect("sessions should load").len(),
+            1
+        );
 
         let _ = std::fs::remove_dir_all(root);
     }
