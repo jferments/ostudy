@@ -45,7 +45,8 @@
     .headerActions { width: 100%; justify-content: stretch; }
     .headerActions > * { flex: 1 1 auto; }
     .pageIcon { width: 42px; height: 42px; }
-    .compact { flex-direction: row; align-items: center; margin-bottom: var(--ostudy-space-3); }
+    .compact { align-items: stretch; gap: var(--ostudy-space-3); margin-bottom: var(--ostudy-space-3); }
+    .compact .pageTitle { align-items: center; }
     .compact .pageIcon { width: 34px; height: 34px; }
     .compact h1 { font-size: 1.75rem; }
     .responsiveActions { position: sticky; z-index: var(--ostudy-layer-sticky); inset-block-end: calc(var(--safe-bottom) + var(--android-ime-bottom)); width: 100%; flex-direction: column-reverse; align-items: stretch; border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-large); padding: var(--ostudy-space-3); background: var(--ostudy-color-surface-chrome); box-shadow: var(--ostudy-shadow-level-3); backdrop-filter: blur(var(--ostudy-material-blur-medium)); }
