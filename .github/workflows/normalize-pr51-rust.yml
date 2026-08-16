@@ -1,0 +1,65 @@
+name: Normalize PR 51 Rust candidates
+
+on:
+  push:
+    branches:
+      - agent/android-completion-a4-a7
+
+permissions:
+  contents: write
+
+concurrency:
+  group: normalize-pr51-rust
+  cancel-in-progress: true
+
+jobs:
+  normalize:
+    if: ${{ !contains(github.event.head_commit.message, '[normalized-rust]') }}
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the Android completion branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/android-completion-a4-a7
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Expose pinned user toolchains
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve the lockfile and format Rust
+        run: |
+          cargo metadata \
+            --manifest-path src-tauri/Cargo.toml \
+            --format-version 1 \
+            > /dev/null
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          git diff --check
+
+      - name: Validate generated scope
+        run: |
+          changed="$(git status --porcelain | sed -E 's/^.. //')"
+          if [[ -z "$changed" ]]; then
+            exit 0
+          fi
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^src-tauri/(Cargo\.lock|.*\.rs)$' || true)"
+          if [[ -n "$unexpected" ]]; then
+            echo "Normalization changed unexpected files:" >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+
+      - name: Commit canonical Rust candidates
+        run: |
+          if git diff --quiet -- src-tauri; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/Cargo.lock src-tauri/src
+          git commit -m "chore: normalize PR 51 Rust candidates [normalized-rust]"
+          git push origin HEAD:agent/android-completion-a4-a7
