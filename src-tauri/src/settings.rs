@@ -16,9 +16,11 @@ const FONT_PRESETS: &[&str] = &[
     "space-grotesk",
     "spline-sans",
     "sora",
+    "roboto",
     "roboto-slab",
     "sofia-sans",
     "lato",
+    "ubuntu",
     "humanist",
     "serif",
     "mono",
@@ -407,9 +409,11 @@ mod tests {
             "space-grotesk",
             "spline-sans",
             "sora",
+            "roboto",
             "roboto-slab",
             "sofia-sans",
             "lato",
+            "ubuntu",
         ] {
             assert!(
                 validate_font(preset).is_ok(),

@@ -60,6 +60,18 @@ export const localFontSources = Object.freeze([
     ],
   },
   {
+    id: "roboto",
+    family: "Roboto",
+    googleWeights: "300..700",
+    faces: [
+      {
+        googleWeight: "300 700",
+        cssWeight: "300 700",
+        filename: "roboto-latin-variable.woff2",
+      },
+    ],
+  },
+  {
     id: "roboto-slab",
     family: "Roboto Slab",
     googleWeights: "300..700",
@@ -93,6 +105,19 @@ export const localFontSources = Object.freeze([
       { googleWeight: "300", cssWeight: "300", filename: "lato-latin-300.woff2" },
       { googleWeight: "400", cssWeight: "400", filename: "lato-latin-400.woff2" },
       { googleWeight: "700", cssWeight: "700", filename: "lato-latin-700.woff2" },
+    ],
+  },
+  {
+    id: "ubuntu",
+    family: "Ubuntu",
+    // The Google Fonts web build exposes Ubuntu as static faces. Include the
+    // medium face because many controls use a 500-weight emphasis.
+    googleWeights: "300;400;500;700",
+    faces: [
+      { googleWeight: "300", cssWeight: "300", filename: "ubuntu-latin-300.woff2" },
+      { googleWeight: "400", cssWeight: "400", filename: "ubuntu-latin-400.woff2" },
+      { googleWeight: "500", cssWeight: "500", filename: "ubuntu-latin-500.woff2" },
+      { googleWeight: "700", cssWeight: "700", filename: "ubuntu-latin-700.woff2" },
     ],
   },
 ]);

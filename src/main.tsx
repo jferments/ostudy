@@ -8,7 +8,6 @@ import { ExperienceProvider } from "./ui/feedback/ExperienceProvider";
 import "./ui/foundations/index.css";
 import { HelpProvider } from "./ui/help/HelpProvider";
 import { OverlayProvider } from "./ui/overlays/OverlayProvider";
-import "./styles/features/page-density.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("The ostudy root element is missing.");
