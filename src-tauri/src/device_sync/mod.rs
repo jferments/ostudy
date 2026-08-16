@@ -694,7 +694,10 @@ fn handle_host_connection(
     if let Err(error) = baseline_result {
         crate::logging::error(
             "device_sync_sender_baseline_failed",
-            format!("peer={} code={} message={}", peer.id, error.code, error.message),
+            format!(
+                "peer={} code={} message={}",
+                peer.id, error.code, error.message
+            ),
         );
     }
 
