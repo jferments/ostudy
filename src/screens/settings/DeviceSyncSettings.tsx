@@ -11,6 +11,7 @@ import {
   startDevicePairing,
   updateDeviceSyncName,
   type DeviceSyncConflict,
+  type DeviceSyncResult,
   type DeviceSyncState,
   type PairingInvitation,
 } from "../../ipc/deviceSync";
@@ -22,14 +23,14 @@ interface DeviceSyncSettingsProps {
   showToast: ShowToast;
 }
 
-type ScanFeedback = "idle" | "scanning" | "detected" | "cancelled";
+type ScanFeedback = "idle" | "scanning" | "detected" | "receiving" | "received" | "cancelled";
 
 export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const [state, setState] = useState<DeviceSyncState | null>(null);
   const [deviceName, setDeviceName] = useState("");
   const [hostOverride, setHostOverride] = useState("");
   const [joinInvitation, setJoinInvitation] = useState("");
-  const [includeCredentials, setIncludeCredentials] = useState(false);
+  const [includeApiSettings, setIncludeApiSettings] = useState(false);
   const [invitation, setInvitation] = useState<PairingInvitation | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [scanFeedback, setScanFeedback] = useState<ScanFeedback>("idle");
@@ -60,7 +61,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     return () => window.clearInterval(interval);
   }, [invitation]);
 
-  const credentialsAllowed = state?.secureCredentialsAvailable === true;
+  const credentialsAvailable = state?.secureCredentialsAvailable === true;
   const activeSessions = useMemo(
     () =>
       state?.sessions.filter((session) =>
@@ -91,12 +92,48 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     try {
       const created = await startDevicePairing({
         hostOverride: hostOverride.trim() || null,
-        includeCredentials: includeCredentials && credentialsAllowed,
+        includeApiSettings,
       });
       setInvitation(created);
       await refresh(true);
-      showToast("info", "Pairing code is ready on this device for five minutes.");
+      showToast("info", "Sync offer is ready on this device for five minutes.");
     } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function showReceiveResult(result: DeviceSyncResult): void {
+    const credentialCopy =
+      result.transferredCredentialCount > 0
+        ? ` ${result.transferredCredentialCount} saved API credential${
+            result.transferredCredentialCount === 1 ? " was" : "s were"
+          } transferred.`
+        : "";
+    showToast(
+      result.conflictCount > 0 ? "info" : "success",
+      `Received from ${result.peer.displayName}: ${result.changedRowCount} rows changed${
+        result.conflictCount > 0 ? ` and ${result.conflictCount} conflicts need review` : ""
+      }.${credentialCopy}`,
+    );
+  }
+
+  async function receiveOffer(invitationText: string, fromScanner: boolean): Promise<void> {
+    const trimmed = invitationText.trim();
+    if (!trimmed) return;
+    setBusyAction("receive");
+    setErrorMessage(null);
+    if (fromScanner) setScanFeedback("receiving");
+    try {
+      const result = await joinDevicePairing(trimmed);
+      setJoinInvitation("");
+      setInvitation(null);
+      if (fromScanner) setScanFeedback("received");
+      await refresh(true);
+      showReceiveResult(result);
+    } catch (error: unknown) {
+      if (fromScanner) setScanFeedback("detected");
       setErrorMessage(getErrorMessage(error));
     } finally {
       setBusyAction(null);
@@ -110,52 +147,32 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     setErrorMessage(null);
     try {
       const scanned = await scanDevicePairingQr();
-      if (scanned) {
-        setJoinInvitation(scanned);
-        setScanFeedback("detected");
-        showToast("success", "Pairing code detected. Review the credential option, then connect.");
-      } else {
+      if (!scanned) {
         setScanFeedback("cancelled");
+        setBusyAction(null);
+        return;
       }
+      setJoinInvitation(scanned);
+      setScanFeedback("detected");
+      showToast("success", "Sync offer detected. Accepting it now…");
+      await receiveOffer(scanned, true);
     } catch (error: unknown) {
       setScanFeedback("idle");
       setErrorMessage(getErrorMessage(error));
-    } finally {
       setBusyAction(null);
     }
   }
 
   async function joinPairing(): Promise<void> {
     if (busyAction || !joinInvitation.trim()) return;
-    setBusyAction("join");
-    setErrorMessage(null);
-    try {
-      const result = await joinDevicePairing({
-        invitation: joinInvitation.trim(),
-        includeCredentials: includeCredentials && credentialsAllowed,
-      });
-      setJoinInvitation("");
-      setInvitation(null);
-      setScanFeedback("idle");
-      await refresh(true);
-      showToast(
-        result.conflictCount > 0 ? "info" : "success",
-        `Synchronized with ${result.peer.displayName}: ${result.changedRowCount} rows changed${
-          result.conflictCount > 0 ? ` and ${result.conflictCount} conflicts need review` : ""
-        }.`,
-      );
-    } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
-    } finally {
-      setBusyAction(null);
-    }
+    await receiveOffer(joinInvitation, false);
   }
 
   async function copyInvitation(): Promise<void> {
     if (!invitation) return;
     try {
       await navigator.clipboard.writeText(invitation.invitation);
-      showToast("success", "Pairing invitation copied.");
+      showToast("success", "Synchronization invitation copied.");
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     }
@@ -165,7 +182,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     const accepted = await confirm({
       title: `Remove ${name}?`,
       description:
-        "This device will no longer be trusted. Pair it again before transferring library changes or credentials.",
+        "This device will no longer be trusted. Create or accept a new synchronization offer before transferring data again.",
       confirmLabel: "Remove device",
       destructive: true,
     });
@@ -190,7 +207,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
       const accepted = await confirm({
         title: "Delete this synchronized record?",
         description:
-          "The record will be removed from this library. The next synchronization will carry that decision to the paired device.",
+          "The record will be removed from this library. A future offer from this device can carry that decision to another device.",
         confirmLabel: "Delete record",
         destructive: true,
       });
@@ -219,8 +236,9 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
         <div>
           <h2>Device synchronization</h2>
           <p>
-            Pair trusted devices over your private local network, then merge decks, cards,
-            templates, settings, review history, schedules, and managed images.
+            Send or receive decks, cards, templates, schedules, review history, and managed images
+            over your private local network. Appearance and other app settings always stay local to
+            each device.
           </p>
         </div>
         <button
@@ -266,11 +284,33 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
 
           <div className={styles.pairingGrid}>
             <article className={styles.pairingPanel}>
-              <h3>Show a pairing code</h3>
+              <h3>Send to another device</h3>
               <p>
-                Keep ostudy open on this device, then scan the code from the other device.
-                Invitations expire and can be used only for their active listener session.
+                Create a short-lived synchronization offer containing this device's study library.
+                The receiving device only needs to scan or accept this one invitation.
               </p>
+              <label className={`${settingsStyles.switchRow} ${styles.credentialToggle}`}>
+                <span>
+                  <strong>Include API provider settings and saved credentials</strong>
+                  <small>
+                    Off by default. This is the only settings category that can be included in a
+                    sync offer. Theme, fonts, UI scale, motion, layout, and other app preferences
+                    always remain device-local.
+                  </small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={includeApiSettings}
+                  disabled={busyAction !== null}
+                  onChange={(event) => setIncludeApiSettings(event.currentTarget.checked)}
+                />
+              </label>
+              {includeApiSettings && !credentialsAvailable ? (
+                <p className={settingsStyles.securityNote}>
+                  API provider configuration will be included, but this device's secure secret
+                  store is unavailable, so saved credential bytes cannot be added to this offer.
+                </p>
+              ) : null}
               <label className={settingsStyles.stackedField}>
                 Advanced LAN address override
                 <input
@@ -290,21 +330,28 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                 disabled={busyAction !== null || !state.localNetworkAvailable}
                 onClick={() => void hostPairing()}
               >
-                {busyAction === "host" ? "Opening listener…" : "Create pairing code"}
+                {busyAction === "host" ? "Opening listener…" : "Create sync offer"}
               </button>
 
               {invitation && qrSource ? (
                 <div className={styles.invitationPanel}>
                   <div className={styles.qrFrame}>
-                    <img src={qrSource} alt="QR code containing the short-lived ostudy pairing invitation" />
+                    <img src={qrSource} alt="QR code containing the short-lived ostudy synchronization offer" />
                   </div>
                   <div className={styles.invitationDetails}>
                     <strong>Expires {formatDateTime(invitation.expiresAt)}</strong>
                     <span>{invitation.endpoint}</span>
                     <code>{formatFingerprint(invitation.fingerprint)}</code>
                     <p className={styles.scanHint}>
-                      Keep the entire white border visible. A larger on-screen code is easier for
-                      a phone camera to resolve than the previous compact preview.
+                      Sends study-library data from this device. {invitation.includeApiSettings
+                        ? invitation.credentialsAvailable
+                          ? "API provider settings and saved credentials are also offered."
+                          : "API provider settings are also offered; no saved credential bytes are available."
+                        : "API provider settings and credentials are not included."}
+                    </p>
+                    <p className={styles.scanHint}>
+                      Keep the entire white border visible. Scanning this code accepts the offer and
+                      starts receiving immediately.
                     </p>
                   </div>
                   <button type="button" className="secondary-button" onClick={() => void copyInvitation()}>
@@ -315,16 +362,16 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             </article>
 
             <article className={styles.pairingPanel}>
-              <h3>Connect to another device</h3>
+              <h3>Receive from another device</h3>
               <p>
-                Scan the displayed code on Android or paste the invitation text. Both devices
-                authenticate the scanned identity before any library bytes are transferred.
+                Scan a synchronization offer on Android or paste invitation text. The sending device
+                controls the offered data; accepting an offer never uploads this device's library back.
               </p>
               {state.qrScanAvailable ? (
                 <>
                   <p className={styles.scanHint}>
                     Center the complete QR code inside the camera frame and hold the phone steady.
-                    The scanner beeps and closes automatically after a valid pairing code is detected.
+                    After detection, ostudy accepts the offer and begins receiving automatically.
                   </p>
                   <button
                     type="button"
@@ -332,7 +379,11 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                     disabled={busyAction !== null}
                     onClick={() => void scanPairingCode()}
                   >
-                    {busyAction === "scan" ? "Scanning…" : "Scan pairing QR code"}
+                    {busyAction === "scan"
+                      ? "Scanning…"
+                      : busyAction === "receive"
+                        ? "Receiving…"
+                        : "Scan and receive"}
                   </button>
                   {scanFeedback !== "idle" ? (
                     <div
@@ -343,16 +394,20 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                     >
                       <span className={styles.scanStatusDot} aria-hidden="true" />
                       {scanFeedback === "scanning"
-                        ? "Camera open — looking for an ostudy pairing code…"
+                        ? "Camera open — looking for an ostudy sync offer…"
                         : scanFeedback === "detected"
-                          ? "Pairing code detected — invitation loaded below."
-                          : "Scan cancelled. No invitation was changed."}
+                          ? "Sync offer detected — ready to retry acceptance."
+                          : scanFeedback === "receiving"
+                            ? "Sync offer detected — receiving from the sending device…"
+                            : scanFeedback === "received"
+                              ? "Sync offer accepted — synchronization complete."
+                              : "Scan cancelled. No synchronization was started."}
                     </div>
                   ) : null}
                 </>
               ) : null}
               <label className={settingsStyles.stackedField}>
-                Pairing invitation
+                Synchronization invitation
                 <textarea
                   rows={5}
                   maxLength={8_192}
@@ -360,7 +415,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   value={joinInvitation}
                   onChange={(event) => {
                     setJoinInvitation(event.currentTarget.value);
-                    if (scanFeedback === "detected") setScanFeedback("idle");
+                    if (["detected", "received"].includes(scanFeedback)) setScanFeedback("idle");
                   }}
                 />
               </label>
@@ -370,38 +425,16 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                 disabled={busyAction !== null || !joinInvitation.trim() || !state.localNetworkAvailable}
                 onClick={() => void joinPairing()}
               >
-                {busyAction === "join" ? "Synchronizing…" : "Pair and synchronize"}
+                {busyAction === "receive" ? "Receiving…" : "Accept sync offer"}
               </button>
             </article>
           </div>
-
-          <label className={`${settingsStyles.switchRow} ${styles.credentialToggle}`}>
-            <span>
-              <strong>Transfer saved API credentials during this pairing</strong>
-              <small>
-                Off by default. When enabled on both devices, credentials travel only through the
-                authenticated encrypted channel and are re-encrypted into the receiving secure store.
-              </small>
-            </span>
-            <input
-              type="checkbox"
-              checked={includeCredentials}
-              disabled={!credentialsAllowed || busyAction !== null}
-              onChange={(event) => setIncludeCredentials(event.currentTarget.checked)}
-            />
-          </label>
-          {!credentialsAllowed ? (
-            <p className={settingsStyles.securityNote}>
-              This platform's secure secret store is unavailable, so API credentials cannot be
-              transferred. Provider metadata and ordinary settings can still synchronize.
-            </p>
-          ) : null}
 
           {activeSessions.length > 0 ? (
             <div className={styles.sessionStrip} aria-label="Active synchronization sessions">
               {activeSessions.map((session) => (
                 <span key={session.id}>
-                  <strong>{session.direction === "host" ? "Hosting" : "Connecting"}</strong>
+                  <strong>{session.direction === "host" ? "Sending" : "Receiving"}</strong>
                   {humanizeState(session.state)} · {session.endpointHint}
                 </span>
               ))}
