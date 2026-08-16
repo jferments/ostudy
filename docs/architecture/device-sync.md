@@ -61,7 +61,7 @@ The source device sends one snapshot per QR session. To exchange changes in both
 
 ## Android QR acquisition
 
-Android can launch an installed camera application to capture the displayed QR code. The app-private image is decoded by ML Kit's QR barcode decoder and deleted immediately afterward. Barcode decoding and document OCR use separate ML Kit APIs: PDF pages that require visual text recovery are handled by bundled ML Kit Text Recognition v2.
+Android uses the embedded ZXing scanner for QR-code acquisition and restricts it to the QR barcode format. The scanner returns only the bounded invitation text to the shared Rust pairing command. This is intentionally independent of document OCR: rendered PDF pages that require visual text recovery use bundled ML Kit Text Recognition v2.
 
 Desktop users can paste the invitation text when no camera adapter is available.
 
