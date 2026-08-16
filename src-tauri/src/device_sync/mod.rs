@@ -677,6 +677,27 @@ fn handle_host_connection(
             "The receiving device returned an acknowledgement for another synchronization session.",
         ));
     }
+
+    // Remember the exact snapshot the receiver accepted as this pair's common
+    // base. This requires no receiver-to-sender library upload, but it prevents
+    // an ordinary later reverse offer from treating every receiver-side edit as
+    // a first-contact conflict.
+    let baseline_result = (|| -> Result<(), CommandError> {
+        let extracted = package::extract_package(
+            &outgoing_package,
+            &workspace.path.join("accepted-sender-baseline"),
+        )?;
+        let snapshot =
+            Connection::open(&extracted.database_path).map_err(CommandError::database)?;
+        merge::remember_sent_database(&snapshot, &store, &peer.id)
+    })();
+    if let Err(error) = baseline_result {
+        crate::logging::error(
+            "device_sync_sender_baseline_failed",
+            format!("peer={} code={} message={}", peer.id, error.code, error.message),
+        );
+    }
+
     store.mark_peer_synced(&peer.id, &remote_address.to_string())?;
     crate::logging::info(
         "device_sync_sender_completed",
