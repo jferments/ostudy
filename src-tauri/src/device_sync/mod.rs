@@ -317,7 +317,6 @@ pub fn start_device_pairing(
     }
     let qr_svg = render_pairing_qr(&invitation)?;
     store.create_session(&session_id, "host", &endpoint, expires_at)?;
-
     let host_app = app.clone();
     let host_session = session_id.clone();
     thread::Builder::new()
@@ -598,13 +597,19 @@ fn handle_host_connection(
     )?;
 
     let peer_fingerprint = fingerprint_from_base64(&hello.identity_public_key)?;
-    let peer = store.upsert_peer(
+    store.upsert_peer(
         &hello.device_id,
         &hello.display_name,
         &hello.identity_public_key,
         &peer_fingerprint,
         &remote_address.to_string(),
     )?;
+    let peer = store.peer(&hello.device_id)?.ok_or_else(|| {
+        CommandError::new(
+            "device_sync_store_error",
+            "The paired device was not persisted after authentication.",
+        )
+    })?;
     store.update_session(&invitation.session_id, Some(&peer.id), "transferring", None)?;
     let metadata: TransferMetadata = channel.receive_json(FRAME_METADATA)?;
     validate_transfer_metadata(
@@ -619,6 +624,7 @@ fn handle_host_connection(
     store.update_session(&invitation.session_id, Some(&peer.id), "merging", None)?;
 
     let extracted = package::extract_package(&incoming_package, &workspace.path.join("incoming"))?;
+    log_staged_assets("host", &extracted.assets);
     package::install_assets(paths.inner(), &extracted.assets)?;
     let remote_database =
         Connection::open_with_flags(&extracted.database_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
@@ -761,13 +767,19 @@ fn run_join_session(
     let mut channel = SecureChannel::new(stream, keys)?;
     let server: ServerHello = channel.receive_json(FRAME_METADATA)?;
     validate_server_hello(&invitation, &server, &transcript)?;
-    let host = store.upsert_peer(
+    store.upsert_peer(
         &server.device_id,
         &server.display_name,
         &server.identity_public_key,
         &server.identity_fingerprint,
         &invitation.endpoint,
     )?;
+    let host = store.peer(&server.device_id)?.ok_or_else(|| {
+        CommandError::new(
+            "device_sync_store_error",
+            "The host device was not persisted after authentication.",
+        )
+    })?;
 
     let workspace = SyncWorkspace::new(paths.inner(), &invitation.session_id, "join")?;
     let outgoing_package = workspace.path.join("outgoing.syncpkg");
@@ -804,6 +816,7 @@ fn run_join_session(
     let incoming_package = workspace.path.join("merged.syncpkg");
     channel.receive_file(&incoming_package)?;
     let extracted = package::extract_package(&incoming_package, &workspace.path.join("merged"))?;
+    log_staged_assets("join", &extracted.assets);
     package::install_assets(paths.inner(), &extracted.assets)?;
     let authoritative =
         Connection::open_with_flags(&extracted.database_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
@@ -858,10 +871,36 @@ fn ensure_identity(
     store: &SyncStore,
     runtime: &PlatformRuntime,
 ) -> Result<(DeviceIdentityRecord, IdentityKey), CommandError> {
-    let identity = store.ensure_identity(&default_device_name())?;
+    store.ensure_identity(&default_device_name())?;
+    let identity = store.identity()?.ok_or_else(|| {
+        CommandError::new(
+            "device_sync_store_error",
+            "The local device identity was not persisted.",
+        )
+    })?;
     let identity_key = IdentityKey::load_or_create(runtime.secure_secret_store().as_ref())?;
+    if identity.public_key_base64 == identity_key.public_key_base64() {
+        return Ok((identity, identity_key));
+    }
     let identity = store.set_identity_public_key(&identity_key.public_key_base64())?;
     Ok((identity, identity_key))
+}
+
+fn log_staged_assets(direction: &str, assets: &[package::ExtractedAsset]) {
+    let asset_bytes = assets
+        .iter()
+        .fold(0_u64, |total, asset| total.saturating_add(asset.byte_size));
+    let (first_asset, first_mime) = assets
+        .first()
+        .map(|asset| (asset.asset_id.as_str(), asset.mime_type.as_str()))
+        .unwrap_or(("none", "none"));
+    crate::logging::info(
+        "device_sync_assets_staged",
+        format!(
+            "direction={direction} count={} bytes={asset_bytes} first_asset={first_asset} first_mime={first_mime}",
+            assets.len()
+        ),
+    );
 }
 
 fn render_pairing_qr(invitation: &str) -> Result<String, CommandError> {
