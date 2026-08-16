@@ -71,6 +71,6 @@ Do not forget a device merely because it is temporarily offline. Deletion histor
 
 ## Android PDF jobs while the app is backgrounded
 
-A user-started PDF generation job enters an Android foreground service with a visible progress notification and a partial wake lock. Rendering, Tesseract OCR, text normalization, AI generation, and durable database commits can continue while the activity is not visible.
+A user-started PDF generation job enters an Android foreground service with a visible progress notification and a partial wake lock. Native PDF rendering, selective ML Kit OCR, text normalization, AI generation, and durable database commits can continue while the activity is not visible.
 
 Android may still terminate the process under exceptional resource pressure or after a system restart. ostudy checkpoints document work durably; reopening the app resumes or retries from saved state instead of treating the WebView component as the owner of the job. Extremely large documents can still be more practical on a paired desktop, but ordinary PDF processing is not desktop-only.
