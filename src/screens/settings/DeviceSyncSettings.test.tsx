@@ -10,6 +10,7 @@ vi.mock("../../ipc/deviceSync", () => ({
   updateDeviceSyncName: vi.fn(),
   startDevicePairing: vi.fn(),
   joinDevicePairing: vi.fn(),
+  cancelDeviceSyncSession: vi.fn(),
   scanDevicePairingQr: vi.fn(),
   removeDeviceSyncPeer: vi.fn(),
   resolveDeviceSyncConflict: vi.fn(),
@@ -60,6 +61,21 @@ function state(): syncIpc.DeviceSyncState {
   };
 }
 
+function activeHostSession(): syncIpc.DeviceSyncSession {
+  return {
+    id: "6".repeat(32),
+    peerId: null,
+    direction: "host",
+    state: "waiting",
+    endpointHint: "192.168.1.10:44123",
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 300_000,
+    completedAt: null,
+    errorCode: null,
+    errorMessage: null,
+  };
+}
+
 function renderSync(showToast = vi.fn()) {
   render(
     <OverlayProvider>
@@ -93,6 +109,7 @@ describe("DeviceSyncSettings", () => {
       sentPackageBytes: 0,
       receivedPackageBytes: 20,
     });
+    vi.mocked(syncIpc.cancelDeviceSyncSession).mockResolvedValue(undefined);
     vi.mocked(syncIpc.resolveDeviceSyncConflict).mockResolvedValue(undefined);
   });
 
@@ -130,6 +147,23 @@ describe("DeviceSyncSettings", () => {
         includeApiSettings: true,
       });
     });
+  });
+
+  it("shows one active waiting offer as replaceable and lets the user cancel it", async () => {
+    const waiting = activeHostSession();
+    vi.mocked(syncIpc.getDeviceSyncState)
+      .mockResolvedValueOnce({ ...state(), sessions: [waiting] })
+      .mockResolvedValue(state());
+    const showToast = renderSync();
+
+    expect(await screen.findByRole("button", { name: "Replace waiting offer" })).toBeTruthy();
+    expect(screen.getByText(/Waiting/u)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sending request" }));
+
+    await waitFor(() => {
+      expect(syncIpc.cancelDeviceSyncSession).toHaveBeenCalledWith(waiting.id);
+    });
+    expect(showToast).toHaveBeenCalledWith("info", "Sending request canceled.");
   });
 
   it("accepts a scanned offer immediately without a second pairing action", async () => {
