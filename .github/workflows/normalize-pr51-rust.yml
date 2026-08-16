@@ -31,6 +31,86 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Apply deterministic source repairs
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          sync = Path("src-tauri/src/device_sync/mod.rs")
+          text = sync.read_text(encoding="utf-8")
+          text = text.replace("    path::{Path, PathBuf},\n", "    path::PathBuf,\n")
+          text = text.replace(
+              '        "merged" => input.merged_payload_json.as_deref().ok_or_else(|| {\n'
+              '            CommandError::new(\n'
+              '                "device_sync_resolution_invalid",\n'
+              '                "A merged conflict resolution must include the merged row payload.",\n'
+              '            )\n'
+              '        })?,\n',
+              '        "merged" => Some(input.merged_payload_json.as_deref().ok_or_else(|| {\n'
+              '            CommandError::new(\n'
+              '                "device_sync_resolution_invalid",\n'
+              '                "A merged conflict resolution must include the merged row payload.",\n'
+              '            )\n'
+              '        })?),\n',
+          )
+          text = text.replace(
+              '    let unsigned_server = UnsignedServerHello {\n'
+              '        protocol_version: PROTOCOL_VERSION,\n'
+              '        session_id: &invitation.session_id,\n'
+              '        device_id: &identity.device_id,\n'
+              '        display_name: &identity.display_name,\n'
+              '        identity_public_key: &identity.public_key_base64,\n'
+              '        identity_fingerprint: &identity_key.fingerprint(),\n',
+              '    let identity_fingerprint = identity_key.fingerprint();\n'
+              '    let unsigned_server = UnsignedServerHello {\n'
+              '        protocol_version: PROTOCOL_VERSION,\n'
+              '        session_id: &invitation.session_id,\n'
+              '        device_id: &identity.device_id,\n'
+              '        display_name: &identity.display_name,\n'
+              '        identity_public_key: &identity.public_key_base64,\n'
+              '        identity_fingerprint: &identity_fingerprint,\n',
+          )
+          text = text.replace(
+              '            identity_fingerprint: identity_key.fingerprint(),\n',
+              '            identity_fingerprint: identity_fingerprint.clone(),\n',
+          )
+          text = text.replace(
+              '    let unsigned = UnsignedClientHello {\n',
+              '    let ephemeral_public_key = BASE64_STANDARD.encode(&ephemeral.public_key);\n'
+              '    let unsigned = UnsignedClientHello {\n',
+          )
+          text = text.replace(
+              '        ephemeral_public_key: &BASE64_STANDARD.encode(&ephemeral.public_key),\n',
+              '        ephemeral_public_key: &ephemeral_public_key,\n',
+          )
+          text = text.replace(
+              '    let ephemeral_public_key = unsigned.ephemeral_public_key.to_string();\n',
+              '',
+          )
+          sync.write_text(text, encoding="utf-8")
+
+          merge = Path("src-tauri/src/device_sync/merge.rs")
+          text = merge.read_text(encoding="utf-8")
+          text = text.replace(
+              '        let row = row(&[("id", CellValue::Text("a".repeat(32)))]);\n'
+              '        let (merged, conflicts) = merge_rows(\n'
+              '            Some(&row),\n'
+              '            None,\n'
+              '            Some(&row),\n',
+              '        let base = row(&[\n'
+              '            ("id", CellValue::Text("a".repeat(32))),\n'
+              '            ("name", CellValue::Text("Base".to_string())),\n'
+              '        ]);\n'
+              '        let mut edited = base.clone();\n'
+              '        edited.insert("name".to_string(), CellValue::Text("Edited".to_string()));\n'
+              '        let (merged, conflicts) = merge_rows(\n'
+              '            Some(&base),\n'
+              '            None,\n'
+              '            Some(&edited),\n',
+          )
+          merge.write_text(text, encoding="utf-8")
+          PY
+
       - name: Resolve the lockfile and format Rust
         run: |
           cargo metadata \
