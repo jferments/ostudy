@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native regression for the deck-library action row reported in manual testing."""
+"""Native regression for the deck-library action placement and containment contract."""
 
 from __future__ import annotations
 
@@ -27,6 +27,12 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
     webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
     decks = ui.find_workspace_tab(session_id, "Decks", deadline)
     webdriver.click(session_id, decks)
+    folders_heading = webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//h2[normalize-space(.)='Folders']",
+        deadline,
+    )
     new_folder = webdriver.find_element(
         session_id,
         "xpath",
@@ -42,44 +48,73 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
     measurements = ui.execute(
         session_id,
         """
-        const folder = arguments[0];
-        const deck = arguments[1];
-        const actions = folder.parentElement;
-        if (!(folder instanceof HTMLElement) || !(deck instanceof HTMLElement) || !(actions instanceof HTMLElement)) {
+        const heading = arguments[0];
+        const folder = arguments[1];
+        const deck = arguments[2];
+        const folderSection = heading.closest('section');
+        const folderActions = folder.parentElement;
+        const deckActions = deck.parentElement;
+        if (
+          !(heading instanceof HTMLElement) ||
+          !(folder instanceof HTMLElement) ||
+          !(deck instanceof HTMLElement) ||
+          !(folderSection instanceof HTMLElement) ||
+          !(folderActions instanceof HTMLElement) ||
+          !(deckActions instanceof HTMLElement)
+        ) {
           return null;
         }
         const f = folder.getBoundingClientRect();
         const d = deck.getBoundingClientRect();
-        const a = actions.getBoundingClientRect();
-        const style = getComputedStyle(actions);
+        const viewport = document.documentElement.clientWidth;
         return {
-          folderTop: f.top,
-          folderBottom: f.bottom,
-          deckTop: d.top,
-          deckBottom: d.bottom,
-          actionsLeft: a.left,
-          actionsRight: a.right,
-          actionsClient: actions.clientWidth,
-          actionsScroll: actions.scrollWidth,
-          flexWrap: style.flexWrap,
+          folderInFoldersSection: folderSection.contains(folder),
+          deckInFoldersSection: folderSection.contains(deck),
+          folderLeft: f.left,
+          folderRight: f.right,
+          deckLeft: d.left,
+          deckRight: d.right,
+          viewport,
+          folderActionsClient: folderActions.clientWidth,
+          folderActionsScroll: folderActions.scrollWidth,
+          deckActionsClient: deckActions.clientWidth,
+          deckActionsScroll: deckActions.scrollWidth,
         };
         """,
         [
+            {webdriver.ELEMENT_KEY: folders_heading},
             {webdriver.ELEMENT_KEY: new_folder},
             {webdriver.ELEMENT_KEY: new_deck},
         ],
     )
     if not isinstance(measurements, dict):
-        raise AssertionError(f"Could not measure deck toolbar at {width}px: {measurements!r}")
-    if abs(float(measurements["folderTop"]) - float(measurements["deckTop"])) > 2:
+        raise AssertionError(f"Could not measure deck-library controls at {width}px: {measurements!r}")
+    if measurements["folderInFoldersSection"] is not True:
         raise AssertionError(
-            f"New deck wrapped away from New folder at {width}px: {measurements!r}"
+            f"New folder was not placed inside the Folders section at {width}px: {measurements!r}"
         )
-    if int(measurements["actionsScroll"]) > int(measurements["actionsClient"]) + 1:
+    if measurements["deckInFoldersSection"] is True:
         raise AssertionError(
-            f"Deck toolbar action row overflowed at {width}px: {measurements!r}"
+            f"New deck was incorrectly moved into the Folders section at {width}px: {measurements!r}"
         )
-    ui.assert_no_horizontal_overflow(session_id, f"deck toolbar at {width}px")
+    if (
+        float(measurements["folderLeft"]) < -1
+        or float(measurements["folderRight"]) > float(measurements["viewport"]) + 1
+        or float(measurements["deckLeft"]) < -1
+        or float(measurements["deckRight"]) > float(measurements["viewport"]) + 1
+    ):
+        raise AssertionError(
+            f"Deck-library controls escaped the viewport at {width}px: {measurements!r}"
+        )
+    if int(measurements["folderActionsScroll"]) > int(measurements["folderActionsClient"]) + 1:
+        raise AssertionError(
+            f"Folders action group overflowed at {width}px: {measurements!r}"
+        )
+    if int(measurements["deckActionsScroll"]) > int(measurements["deckActionsClient"]) + 1:
+        raise AssertionError(
+            f"Deck toolbar action group overflowed at {width}px: {measurements!r}"
+        )
+    ui.assert_no_horizontal_overflow(session_id, f"deck-library controls at {width}px")
 
 
 def main() -> int:
@@ -105,17 +140,19 @@ def main() -> int:
         webdriver.wait_for_driver(time.monotonic() + 20)
         session_id = webdriver.create_session(application)
         webdriver.verify_shell(session_id, webdriver.deadline_after())
+        verify_toolbar(session_id, 390, 760, webdriver.deadline_after(45))
         # 1174px reproduces the manually reported screenshot dimensions closely;
-        # 1280px covers the new default window width.
+        # 1280px covers the default desktop window width.
         verify_toolbar(session_id, 1174, 760, webdriver.deadline_after(45))
         verify_toolbar(session_id, 1280, 760, webdriver.deadline_after(45))
         print(
-            "Native deck-toolbar smoke passed: New folder and New deck stay on one action row "
-            "at the reported medium width and at the default desktop width."
+            "Native deck-library control smoke passed: New folder stays inside the Folders "
+            "section, New deck remains in the top toolbar, and both action groups stay "
+            "contained at compact, medium, and default desktop widths."
         )
         return 0
     except Exception:
-        print("\n--- tauri-driver deck-toolbar log ---")
+        print("\n--- tauri-driver deck-library control log ---")
         try:
             print(log_path.read_text(encoding="utf-8"))
         except OSError:
