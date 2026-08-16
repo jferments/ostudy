@@ -56,8 +56,6 @@ fn emit(level: &str, event: &str, message: &str, is_error: bool) {
     } else {
         println!("{line}");
     }
-    #[cfg(target_os = "android")]
-    android_log(if is_error { 6 } else { 4 }, &line);
     append_persistent(&line);
 }
 
@@ -80,30 +78,6 @@ fn append_persistent(line: &str) {
     }
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(file, "{line}");
-    }
-}
-
-#[cfg(target_os = "android")]
-fn android_log(priority: i32, line: &str) {
-    use std::ffi::{c_char, CString};
-
-    #[link(name = "log")]
-    extern "C" {
-        fn __android_log_write(priority: i32, tag: *const c_char, text: *const c_char) -> i32;
-    }
-
-    let Ok(tag) = CString::new("ostudy") else {
-        return;
-    };
-    let sanitized = line.replace('\0', "�");
-    let Ok(text) = CString::new(sanitized) else {
-        return;
-    };
-    // SAFETY: Android's liblog copies both NUL-terminated strings during this
-    // call. `tag` and `text` remain alive until the call returns, and priority
-    // is one of Android's documented log priorities.
-    unsafe {
-        __android_log_write(priority, tag.as_ptr(), text.as_ptr());
     }
 }
 
