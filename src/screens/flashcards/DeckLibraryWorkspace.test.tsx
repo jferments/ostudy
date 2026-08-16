@@ -133,6 +133,26 @@ describe("DeckLibraryWorkspace", () => {
     expect(screen.getAllByRole("button", { name: "Practice" })).toHaveLength(2);
   });
 
+  it("collapses and expands a folder without changing its organization", async () => {
+    renderLibrary();
+
+    const collapse = await screen.findByRole("button", { name: "Collapse Nursing folder" });
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Pharmacology")).toBeTruthy();
+
+    fireEvent.click(collapse);
+
+    const expand = screen.getByRole("button", { name: "Expand Nursing folder" });
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Pharmacology")).toBeNull();
+    expect(folderIpc.moveDeckInLibrary).not.toHaveBeenCalled();
+    expect(folderIpc.updateDeckFolder).not.toHaveBeenCalled();
+
+    fireEvent.click(expand);
+    expect(screen.getByRole("button", { name: "Collapse Nursing folder" }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Pharmacology")).toBeTruthy();
+  });
+
   it("moves a deck through the same revisioned command used by drag and keyboard actions", async () => {
     const moved = {
       revision: 5,
