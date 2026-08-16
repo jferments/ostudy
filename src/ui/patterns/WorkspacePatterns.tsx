@@ -11,8 +11,15 @@ export function PageScaffold({
   className = "",
   children,
   ...props
-}: HTMLAttributes<HTMLDivElement> & { width?: "reading" | "workspace" | "wide" | "full"; children: ReactNode }) {
-  return <div {...props} className={`${styles.page} ${styles[width]} ${className}`.trim()}>{children}</div>;
+}: HTMLAttributes<HTMLDivElement> & {
+  width?: "reading" | "workspace" | "wide" | "full";
+  children: ReactNode;
+}) {
+  return (
+    <div {...props} className={`${styles.page} ${styles[width]} ${className}`.trim()}>
+      {children}
+    </div>
+  );
 }
 
 export function PageHeader({
@@ -21,6 +28,7 @@ export function PageHeader({
   description,
   icon,
   actions,
+  compact = false,
   children,
 }: {
   eyebrow?: string;
@@ -28,12 +36,17 @@ export function PageHeader({
   description?: ReactNode;
   icon?: IconName;
   actions?: ReactNode;
+  compact?: boolean;
   children?: ReactNode;
 }) {
   return (
-    <header className={styles.pageHeader}>
+    <header className={`${styles.pageHeader} ${compact ? styles.compact : ""}`.trim()}>
       <div className={styles.pageTitle}>
-        {icon ? <span className={styles.pageIcon}><Icon name={icon} size={24} /></span> : null}
+        {icon ? (
+          <span className={styles.pageIcon}>
+            <Icon name={icon} size={compact ? 20 : 24} />
+          </span>
+        ) : null}
         <div>
           {eyebrow ? <span className={styles.eyebrow}>{eyebrow}</span> : null}
           <h1>{title}</h1>
@@ -97,16 +110,29 @@ export function FilterSummary({
   return (
     <div className={styles.filterSummary} aria-label="Active filters">
       {filters.map((filter) => (
-        <ChipButton key={filter.id} tone="accent" onClick={() => onRemove(filter.id)} aria-label={`Remove ${filter.label} filter`}>
+        <ChipButton
+          key={filter.id}
+          tone="accent"
+          onClick={() => onRemove(filter.id)}
+          aria-label={`Remove ${filter.label} filter`}
+        >
           {filter.label} <span aria-hidden="true">×</span>
         </ChipButton>
       ))}
-      <button type="button" className={styles.clearFilters} onClick={onClear}>Clear all</button>
+      <button type="button" className={styles.clearFilters} onClick={onClear}>
+        Clear all
+      </button>
     </div>
   );
 }
 
-export function ResponsiveActions({ primary, secondary }: { primary: ReactNode; secondary?: ReactNode }) {
+export function ResponsiveActions({
+  primary,
+  secondary,
+}: {
+  primary: ReactNode;
+  secondary?: ReactNode;
+}) {
   return (
     <div className={styles.responsiveActions}>
       {secondary ? <div className={styles.secondaryActions}>{secondary}</div> : null}
@@ -135,7 +161,15 @@ export function AdaptiveSheet({
   ) : null;
 }
 
-export function StatPill({ icon, label, value }: { icon?: IconName; label: string; value: ReactNode }) {
+export function StatPill({
+  icon,
+  label,
+  value,
+}: {
+  icon?: IconName;
+  label: string;
+  value: ReactNode;
+}) {
   return (
     <Chip className={styles.statPill}>
       {icon ? <Icon name={icon} size={16} /> : null}

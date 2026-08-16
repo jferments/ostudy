@@ -13,10 +13,11 @@ const TITLES: Record<AppSection, string> = {
 };
 
 export function MobileAppBar({ section }: { section: AppSection }) {
+  const title = section === "decks" ? null : TITLES[section];
   return (
     <header className={styles.bar} data-testid="mobile-app-bar">
       <BrandLockup compact />
-      <strong className={styles.title}>{TITLES[section]}</strong>
+      {title ? <strong className={styles.title}>{title}</strong> : <span aria-hidden="true" />}
       <span className={styles.spacer} aria-hidden="true" />
     </header>
   );
