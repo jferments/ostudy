@@ -22,6 +22,8 @@ interface DeviceSyncSettingsProps {
   showToast: ShowToast;
 }
 
+type ScanFeedback = "idle" | "scanning" | "detected" | "cancelled";
+
 export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const [state, setState] = useState<DeviceSyncState | null>(null);
   const [deviceName, setDeviceName] = useState("");
@@ -30,6 +32,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const [includeCredentials, setIncludeCredentials] = useState(false);
   const [invitation, setInvitation] = useState<PairingInvitation | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [scanFeedback, setScanFeedback] = useState<ScanFeedback>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const confirm = useConfirm();
 
@@ -103,14 +106,19 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   async function scanPairingCode(): Promise<void> {
     if (busyAction) return;
     setBusyAction("scan");
+    setScanFeedback("scanning");
     setErrorMessage(null);
     try {
       const scanned = await scanDevicePairingQr();
       if (scanned) {
         setJoinInvitation(scanned);
-        showToast("success", "Pairing code scanned. Review the credential option, then connect.");
+        setScanFeedback("detected");
+        showToast("success", "Pairing code detected. Review the credential option, then connect.");
+      } else {
+        setScanFeedback("cancelled");
       }
     } catch (error: unknown) {
+      setScanFeedback("idle");
       setErrorMessage(getErrorMessage(error));
     } finally {
       setBusyAction(null);
@@ -128,6 +136,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
       });
       setJoinInvitation("");
       setInvitation(null);
+      setScanFeedback("idle");
       await refresh(true);
       showToast(
         result.conflictCount > 0 ? "info" : "success",
@@ -286,11 +295,17 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
 
               {invitation && qrSource ? (
                 <div className={styles.invitationPanel}>
-                  <img src={qrSource} alt="QR code containing the short-lived ostudy pairing invitation" />
-                  <div>
+                  <div className={styles.qrFrame}>
+                    <img src={qrSource} alt="QR code containing the short-lived ostudy pairing invitation" />
+                  </div>
+                  <div className={styles.invitationDetails}>
                     <strong>Expires {formatDateTime(invitation.expiresAt)}</strong>
                     <span>{invitation.endpoint}</span>
                     <code>{formatFingerprint(invitation.fingerprint)}</code>
+                    <p className={styles.scanHint}>
+                      Keep the entire white border visible. A larger on-screen code is easier for
+                      a phone camera to resolve than the previous compact preview.
+                    </p>
                   </div>
                   <button type="button" className="secondary-button" onClick={() => void copyInvitation()}>
                     Copy invitation text
@@ -306,14 +321,35 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                 authenticate the scanned identity before any library bytes are transferred.
               </p>
               {state.qrScanAvailable ? (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={busyAction !== null}
-                  onClick={() => void scanPairingCode()}
-                >
-                  {busyAction === "scan" ? "Opening camera…" : "Scan pairing QR code"}
-                </button>
+                <>
+                  <p className={styles.scanHint}>
+                    Center the complete QR code inside the camera frame and hold the phone steady.
+                    The scanner beeps and closes automatically after a valid pairing code is detected.
+                  </p>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={busyAction !== null}
+                    onClick={() => void scanPairingCode()}
+                  >
+                    {busyAction === "scan" ? "Scanning…" : "Scan pairing QR code"}
+                  </button>
+                  {scanFeedback !== "idle" ? (
+                    <div
+                      className={styles.scanStatus}
+                      data-state={scanFeedback}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <span className={styles.scanStatusDot} aria-hidden="true" />
+                      {scanFeedback === "scanning"
+                        ? "Camera open — looking for an ostudy pairing code…"
+                        : scanFeedback === "detected"
+                          ? "Pairing code detected — invitation loaded below."
+                          : "Scan cancelled. No invitation was changed."}
+                    </div>
+                  ) : null}
+                </>
               ) : null}
               <label className={settingsStyles.stackedField}>
                 Pairing invitation
@@ -322,7 +358,10 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   maxLength={8_192}
                   placeholder="ostudy-sync://pair/…"
                   value={joinInvitation}
-                  onChange={(event) => setJoinInvitation(event.currentTarget.value)}
+                  onChange={(event) => {
+                    setJoinInvitation(event.currentTarget.value);
+                    if (scanFeedback === "detected") setScanFeedback("idle");
+                  }}
                 />
               </label>
               <button
