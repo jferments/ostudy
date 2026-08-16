@@ -70,6 +70,7 @@ export interface PairingInvitation {
   endpoint: string;
   fingerprint: string;
   expiresAt: number;
+  includeApiSettings: boolean;
   credentialsAvailable: boolean;
 }
 
@@ -95,23 +96,22 @@ export function updateDeviceSyncName(displayName: string): Promise<DeviceSyncIde
 
 export function startDevicePairing(input: {
   hostOverride?: string | null;
-  includeCredentials: boolean;
+  includeApiSettings: boolean;
   expiresInSeconds?: number | null;
 }): Promise<PairingInvitation> {
   return invoke<PairingInvitation>("start_device_pairing", {
     input: {
       hostOverride: input.hostOverride ?? null,
-      includeCredentials: input.includeCredentials,
+      includeApiSettings: input.includeApiSettings,
       expiresInSeconds: input.expiresInSeconds ?? null,
     },
   });
 }
 
-export function joinDevicePairing(input: {
-  invitation: string;
-  includeCredentials: boolean;
-}): Promise<DeviceSyncResult> {
-  return invoke<DeviceSyncResult>("join_device_pairing", { input });
+export function joinDevicePairing(invitation: string): Promise<DeviceSyncResult> {
+  return invoke<DeviceSyncResult>("join_device_pairing", {
+    input: { invitation },
+  });
 }
 
 export function scanDevicePairingQr(): Promise<string | null> {
