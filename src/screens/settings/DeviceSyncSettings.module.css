@@ -195,19 +195,33 @@
   gap: 9px;
 }
 
-.sessionStrip span {
+.sessionPill {
   display: inline-flex;
+  align-items: center;
   gap: 6px;
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
   border-radius: 999px;
-  padding: 7px 10px;
+  padding: 4px 6px 4px 10px;
   background: var(--accent-soft);
   color: var(--muted);
   font-size: 0.78rem;
 }
 
-.sessionStrip strong {
+.sessionPill > span {
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sessionPill strong {
   color: var(--text);
+}
+
+.sessionPill button {
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.74rem;
 }
 
 .listSection {
@@ -357,6 +371,16 @@
 
   .qrFrame {
     width: min(100%, 320px);
+  }
+
+  .sessionPill {
+    width: 100%;
+    justify-content: space-between;
+    border-radius: 12px;
+  }
+
+  .sessionPill > span {
+    flex-wrap: wrap;
   }
 
   .peerList > article,
