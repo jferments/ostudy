@@ -34,7 +34,7 @@ jobs:
       OSTUDY_CARGO_TARGET_DIR: ${{ github.workspace }}/.runner-cache/cargo-target
     steps:
       - name: Check out exact source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -80,7 +80,7 @@ jobs:
         run: node ./scripts/android-package.mjs "${{ steps.artifact.outputs.command }}"
 
       - name: Upload Android artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ostudy-${{ steps.artifact.outputs.kind }}-${{ github.sha }}
           path: src-tauri/gen/android/app/build/outputs/**/*.${{ steps.artifact.outputs.extension }}
