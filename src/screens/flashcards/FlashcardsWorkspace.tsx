@@ -148,6 +148,7 @@ export function FlashcardsWorkspace({
                 }}
                 type="button"
                 role="tab"
+                aria-label={item.label}
                 aria-selected={selected}
                 tabIndex={selected ? 0 : -1}
                 className={styles.tab}
@@ -156,8 +157,9 @@ export function FlashcardsWorkspace({
                 onKeyDown={(event) => handleTabKeyDown(event, index)}
               >
                 <Icon name={item.icon} size={18} />
-                <span className={styles.wideLabel}>{item.label}</span>
-                <span className={styles.compactLabel}>{item.compactLabel}</span>
+                <span className={styles.tabLabel} data-compact-label={item.compactLabel}>
+                  {item.label}
+                </span>
               </button>
             );
           })}
