@@ -7,6 +7,7 @@ import { getAppInfo, type AppInfo, type AppSettings } from "../../ipc/settings";
 import { publishExport, selectExternalImport, shareExport } from "../../platform/files";
 import { usePlatformCapabilities } from "../../platform/PlatformProvider";
 import { useConfirm } from "../../ui/overlays/overlayContext";
+import { DeviceSyncSettings } from "./DeviceSyncSettings";
 import { PathRow } from "./SettingsControls";
 import styles from "./Settings.module.css";
 
@@ -101,7 +102,9 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
 
   return (
     <div className={styles.panelGrid}>
-      {errorMessage ? <div className={`${styles.fullWidth} inline-alert error-alert`}>{errorMessage}</div> : null}
+      {errorMessage ? (
+        <div className={`${styles.fullWidth} inline-alert error-alert`}>{errorMessage}</div>
+      ) : null}
       <section className={styles.settingsCard}>
         <h2>Storage</h2>
         {appInfo ? (
@@ -120,7 +123,10 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
       <section className={styles.settingsCard}>
         <h2>Data safety</h2>
         <label className={styles.switchRow}>
-          <span><strong>Confirm deletions</strong><small>Ask before destructive content removal.</small></span>
+          <span>
+            <strong>Confirm deletions</strong>
+            <small>Ask before destructive content removal.</small>
+          </span>
           <input
             type="checkbox"
             checked={draft.confirmDeletions}
@@ -156,10 +162,12 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
           </button>
         </div>
         <p className={styles.note}>
-          Complete backups include decks, templates, managed images, schedules, review events, sessions, analytics sources, AI provider metadata, task defaults, and ordinary settings.
+          Complete backups include decks, templates, managed images, schedules, review events,
+          sessions, analytics sources, AI provider metadata, task defaults, and ordinary settings.
         </p>
         <p className={styles.securityNote}>
-          API keys and session-only credentials are never stored in SQLite and are never included in an ostudy backup.
+          API keys and session-only credentials are never stored in SQLite and are never included
+          in an ostudy backup.
         </p>
         {restorePrepared ? (
           <div className="inline-alert info-alert">
@@ -167,6 +175,8 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
           </div>
         ) : null}
       </section>
+
+      <DeviceSyncSettings showToast={showToast} />
     </div>
   );
 }
