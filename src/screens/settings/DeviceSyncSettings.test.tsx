@@ -95,7 +95,7 @@ describe("DeviceSyncSettings", () => {
     vi.mocked(syncIpc.resolveDeviceSyncConflict).mockResolvedValue(undefined);
   });
 
-  it("creates a QR invitation without enabling credential transfer by default", async () => {
+  it("creates a large pairing-code presentation with scanning guidance", async () => {
     renderSync();
     expect(await screen.findByText("Android phone")).toBeTruthy();
 
@@ -109,13 +109,20 @@ describe("DeviceSyncSettings", () => {
     });
     expect(await screen.findByAltText(/QR code containing/u)).toBeTruthy();
     expect(screen.getByText("192.168.1.10:44000")).toBeTruthy();
+    expect(screen.getByText(/entire white border visible/u)).toBeTruthy();
+    expect(screen.getByText(/center the complete QR code inside the camera frame/u)).toBeTruthy();
   });
 
-  it("scans on Android and joins through the typed encrypted-sync command", async () => {
+  it("shows visual detection feedback after the Android scanner returns a pairing code", async () => {
     const showToast = renderSync();
     await screen.findByText("Android phone");
     fireEvent.click(screen.getByRole("button", { name: "Scan pairing QR code" }));
     expect(await screen.findByDisplayValue("ostudy-sync://pair/scanned")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("Pairing code detected");
+    expect(showToast).toHaveBeenCalledWith(
+      "success",
+      "Pairing code detected. Review the credential option, then connect.",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Pair and synchronize" }));
     await waitFor(() => {
@@ -128,6 +135,15 @@ describe("DeviceSyncSettings", () => {
         "Synchronized with Android phone: 12 rows changed and 1 conflicts need review.",
       );
     });
+  });
+
+  it("reports a cancelled scanner without replacing the invitation", async () => {
+    vi.mocked(syncIpc.scanDevicePairingQr).mockResolvedValueOnce(null);
+    renderSync();
+    await screen.findByText("Android phone");
+    fireEvent.click(screen.getByRole("button", { name: "Scan pairing QR code" }));
+    expect(await screen.findByText(/Scan cancelled/u)).toBeTruthy();
+    expect(screen.getByLabelText("Pairing invitation")).toHaveValue("");
   });
 
   it("keeps concurrent card edits visible until an explicit side is selected", async () => {
