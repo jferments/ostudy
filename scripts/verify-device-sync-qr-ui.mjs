@@ -52,6 +52,8 @@ expectContains(settingsUi, "app settings always stay local", "device-local app-s
 expectContains(settingsUi, "entire white border visible", "host-side QR framing guidance");
 expectContains(settingsCss, "width: min(100%, 340px);", "large desktop pairing QR presentation");
 expectContains(settingsCss, "background: #ffffff;", "high-contrast QR quiet-zone background");
+expectContains(settingsCss, '.scanStatus[data-state="receiving"]', "visible receiving-state treatment");
+expectContains(settingsCss, '.scanStatus[data-state="received"]', "visible completed-state treatment");
 expectContains(syncCore, "const PROTOCOL_VERSION: u32 = 2;", "one-way offer protocol version");
 expectContains(syncCore, "sent_package_bytes: 0", "receiver does not upload a package during offer acceptance");
 expectContains(syncPackage, "DELETE FROM app_settings;", "app settings removed before package transmission");
@@ -70,7 +72,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Device-sync QR uses nonblocking native delivery; one scan accepts a sender-scoped offer, local app settings stay off the wire/merge allowlist, first-contact rows merge cleanly, and API settings are sender opt-in.",
+  "OK   Device-sync QR uses nonblocking native delivery; one scan accepts a sender-scoped offer with visible transfer states, local app settings stay off the wire/merge allowlist, first-contact rows merge cleanly, and API settings are sender opt-in.",
 );
 
 async function read(relativePath) {
