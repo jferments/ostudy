@@ -25,7 +25,15 @@ private const val EXTRA_JOB_ID = "job_id"
 private const val EXTRA_TITLE = "title"
 private const val EXTRA_DETAIL = "detail"
 private const val EXTRA_PROGRESS = "progress"
+private const val MAX_WAKE_LOCK_MILLIS = 6L * 60L * 60L * 1_000L
 
+/**
+ * Android process-lifetime envelope for user-initiated PDF work.
+ *
+ * Rust owns durable checkpoints, cancellation, retries, and recovery. This
+ * service only supplies Android's visible foreground-execution contract while
+ * rendering/OCR/generation is active; it is never the source of job truth.
+ */
 class OstudyDocumentExecutionService : Service() {
     private val jobs = LinkedHashMap<String, JobState>()
     private var wakeLock: PowerManager.WakeLock? = null
@@ -42,6 +50,7 @@ class OstudyDocumentExecutionService : Service() {
             ACTION_BEGIN -> begin(intent)
             ACTION_UPDATE -> update(intent)
             ACTION_END -> end(intent)
+            else -> stopSelf(startId)
         }
         return START_NOT_STICKY
     }
@@ -152,7 +161,7 @@ class OstudyDocumentExecutionService : Service() {
             "$packageName:document-processing",
         ).apply {
             setReferenceCounted(false)
-            acquire()
+            acquire(MAX_WAKE_LOCK_MILLIS)
         }
     }
 
