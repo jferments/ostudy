@@ -110,14 +110,14 @@ if [[ -z "$runner" ]]; then
 fi
 
 dump_case_logcat() {
-  local method="$1"
-  local crash_log="$ARTIFACT_DIR/${method}-logcat.txt"
+  local case_name="$1"
+  local crash_log="$ARTIFACT_DIR/${case_name}-logcat.txt"
   "$adb" -s "$SERIAL" logcat -d -v threadtime > "$crash_log" 2>&1 || true
-  printf '\n--- Android crash diagnostics for %s ---\n' "$method" >&2
+  printf '\n--- Android crash diagnostics for %s ---\n' "$case_name" >&2
   grep -E -i \
     'FATAL EXCEPTION|Fatal signal|Abort message|SIGABRT|SIGSEGV|AndroidRuntime|panicked at|Rust panic|Process: io\.github\.jferments\.ostudy|io\.github\.jferments\.ostudy|FORTIFY' \
     "$crash_log" | tail -n 220 >&2 || true
-  printf '%s\n' "--- Last 220 logcat lines for $method ---" >&2
+  printf '%s\n' "--- Last 220 logcat lines for $case_name ---" >&2
   tail -n 220 "$crash_log" >&2 || true
   printf '%s\n' "--- End Android crash diagnostics ---" >&2
   printf 'Full case logcat: %s\n' "$crash_log" >&2
@@ -125,7 +125,9 @@ dump_case_logcat() {
 
 run_case() {
   local method="$1"
-  local log="$ARTIFACT_DIR/${method}.txt"
+  local class_name="${2:-AndroidSmokeTest}"
+  local case_name="${class_name}-${method}"
+  local log="$ARTIFACT_DIR/${case_name}.txt"
 
   # The Tauri event loop owns Activity/native teardown. AndroidJUnitRunner's
   # default activity finisher races Wry teardown, so instrumentation opts out
@@ -133,19 +135,19 @@ run_case() {
   "$adb" -s "$SERIAL" shell am force-stop "$APP_ID" >/dev/null 2>&1 || true
   "$adb" -s "$SERIAL" logcat -c
 
-  printf 'Running Android smoke case %s...\n' "$method"
+  printf 'Running Android smoke case %s#%s...\n' "$class_name" "$method"
   set +e
   "$adb" -s "$SERIAL" shell am instrument -w -r \
     -e waitForActivitiesToComplete false \
-    -e class "io.github.jferments.ostudy.AndroidSmokeTest#$method" \
+    -e class "io.github.jferments.ostudy.${class_name}#${method}" \
     "$runner" | tee "$log"
   local instrument_status="${PIPESTATUS[0]}"
   set -e
 
   if ((instrument_status != 0)) || ! grep -q '^OK (' "$log"; then
-    printf 'Android smoke case failed: %s (instrumentation exit %s)\n' \
-      "$method" "$instrument_status" >&2
-    dump_case_logcat "$method"
+    printf 'Android smoke case failed: %s#%s (instrumentation exit %s)\n' \
+      "$class_name" "$method" "$instrument_status" >&2
+    dump_case_logcat "$case_name"
     return 1
   fi
 }
@@ -154,10 +156,11 @@ failed_cases=()
 skipped_cases=()
 record_case() {
   local method="$1"
-  if run_case "$method"; then
+  local class_name="${2:-AndroidSmokeTest}"
+  if run_case "$method" "$class_name"; then
     return 0
   fi
-  failed_cases+=("$method")
+  failed_cases+=("${class_name}#${method}")
   return 1
 }
 skip_case() {
@@ -173,9 +176,17 @@ skip_case() {
 # one expensive APK build without turning dependency failures into noise.
 "$adb" -s "$SERIAL" shell pm clear "$APP_ID" >/dev/null
 
+# Native regression cases are deliberately executed, not merely compiled into
+# the instrumentation APK. These cover the two Android boundaries most likely
+# to regress without a visible desktop failure: system/IME insets and bundled
+# ML Kit document OCR.
+record_case contentRootOwnsSystemBarAndDisplayCutoutInsets AndroidInsetsTest || true
+record_case activityRequestsResizeSemanticsForTheSoftwareKeyboard AndroidInsetsTest || true
+record_case bundledMlKitRecognizesHighContrastEnglishTextOffline AndroidOcrSmokeTest || true
+
 launch_ok=1
 if ! run_case a0_appLaunchesAndTestBridgeIsReady; then
-  failed_cases+=("a0_appLaunchesAndTestBridgeIsReady")
+  failed_cases+=("AndroidSmokeTest#a0_appLaunchesAndTestBridgeIsReady")
   launch_ok=0
 fi
 if ((launch_ok == 0)); then
