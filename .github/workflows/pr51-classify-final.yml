@@ -1,0 +1,62 @@
+name: PR 51 classify final clean failure
+
+on:
+  push:
+    branches:
+      - agent/android-completion-a4-a7
+
+permissions:
+  contents: write
+
+jobs:
+  classify:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(pr51): classify final clean failure') }}
+    runs-on: [self-hosted, ostudy-unified]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/android-completion-a4-a7
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Encode exact stage and family
+        run: |
+          test -f .github/pr51-final-clean.log
+          rm -f .github/pr51-final-stage-* .github/pr51-final-error-*
+          stage="unknown"
+          for candidate in fast android emulator; do
+            if grep -q "^${candidate}=failure$" .github/pr51-final-clean.log; then
+              stage="$candidate"
+              break
+            fi
+          done
+          touch ".github/pr51-final-stage-${stage}"
+          declare -A patterns=(
+            [typescript]='error TS[0-9]+'
+            [frontend-test]='Test Files.*failed|Tests.*failed|FAIL .*\.test'
+            [rust]='error\[E[0-9]+\]|could not compile'
+            [policy]='Repository policy|IPC contract|Platform boundaries|Documentation:'
+            [kotlin]='^e: |Kotlin compilation|Unresolved reference|Compilation error'
+            [gradle]='Could not resolve|Could not find|Could not GET|Gradle build daemon disappeared'
+            [manifest]='Manifest merger failed|foregroundServiceType|uses-permission'
+            [tesseract]='AndroidTesseractRecognitionTest|Tesseract|traineddata|OSTUDY FLASHCARDS'
+            [instrumentation]='INSTRUMENTATION_FAILED|FAILURES!!!|There were failing tests'
+            [emulator-boot]='boot.*timeout|device offline|emulator.*failed'
+            [sync]='DeviceSync|device_sync|credential'
+            [docs]='device-sync.md|Synchronize trusted devices'
+          )
+          for name in "${!patterns[@]}"; do
+            if grep -Eiq "${patterns[$name]}" .github/pr51-final-clean.log; then
+              touch ".github/pr51-final-error-${name}"
+            fi
+          done
+
+      - name: Commit markers and remove workflow
+        run: |
+          rm -f .github/workflows/pr51-classify-final.yml
+          git config user.name "ostudy-ci"
+          git config user.email "158022198+jferments@users.noreply.github.com"
+          git add .github/pr51-final-stage-* .github/pr51-final-error-* .github/workflows/pr51-classify-final.yml
+          git commit -m "chore(pr51): classify final clean failure"
+          git push origin HEAD:agent/android-completion-a4-a7
