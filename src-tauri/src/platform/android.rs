@@ -79,7 +79,7 @@ impl CapabilityProvider for AndroidCapabilityProvider {
         {
             ServiceCapability::available()
         } else {
-            ServiceCapability::unavailable("android_tesseract_and_ml_kit_ocr_unavailable")
+            ServiceCapability::unavailable("android_ml_kit_ocr_unavailable")
         };
         PlatformCapabilitySnapshot {
             schema_version: 1,
