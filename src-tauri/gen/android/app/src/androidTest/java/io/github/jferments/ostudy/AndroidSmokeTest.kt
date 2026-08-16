@@ -92,7 +92,8 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Boolean(document.querySelector('[data-testid=\"documents-development-stub\"]'))"
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Documents' && " +
+                        "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'Upload PDF')"
                 }
             )
             waitForAndroidBackReady(webView)
