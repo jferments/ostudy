@@ -20,12 +20,10 @@ use tokio::sync::Notify;
 
 use crate::error::CommandError;
 
-#[cfg(target_os = "android")]
+#[cfg(mobile)]
 use tauri::AppHandle;
-#[cfg(target_os = "android")]
-use tauri_plugin_ostudy_platform::{
-    BeginBackgroundExecutionRequest, OstudyPlatformExt,
-};
+#[cfg(mobile)]
+use tauri_plugin_ostudy_platform::{BeginBackgroundExecutionRequest, OstudyPlatformExt};
 
 #[derive(Clone, Debug)]
 pub(crate) struct CancellationSignal {
@@ -140,7 +138,7 @@ where
     F: Future<Output = Result<T, CommandError>>,
 {
     let signal = ACTIVE_DOCUMENT_TASKS.begin(document_id)?;
-    let foreground_execution = AndroidForegroundExecution::begin(document_id)?;
+    let foreground_execution = MobileForegroundExecution::begin(document_id)?;
     let result = CURRENT_DOCUMENT_SIGNAL.scope(signal, future).await;
     drop(foreground_execution);
     ACTIVE_DOCUMENT_TASKS.finish(document_id);
@@ -174,19 +172,19 @@ fn registry_error() -> CommandError {
     )
 }
 
-#[cfg(target_os = "android")]
-struct AndroidForegroundExecution {
+#[cfg(mobile)]
+struct MobileForegroundExecution {
     app: AppHandle,
     document_id: String,
 }
 
-#[cfg(target_os = "android")]
-impl AndroidForegroundExecution {
+#[cfg(mobile)]
+impl MobileForegroundExecution {
     fn begin(document_id: &str) -> Result<Self, CommandError> {
         let app = crate::pdf_render_backend::android_app_handle().map_err(|error| {
             CommandError::new(
-                "android_background_execution_unavailable",
-                format!("Android document execution is not initialized: {error}"),
+                "mobile_background_execution_unavailable",
+                format!("Mobile document execution is not initialized: {error}"),
             )
         })?;
         app.ostudy_platform()
@@ -198,8 +196,8 @@ impl AndroidForegroundExecution {
             })
             .map_err(|error| {
                 CommandError::new(
-                    "android_background_execution_failed",
-                    format!("Android could not start document foreground execution: {error}"),
+                    "mobile_background_execution_failed",
+                    format!("Mobile foreground document execution could not start: {error}"),
                 )
             })?;
         Ok(Self {
@@ -209,8 +207,8 @@ impl AndroidForegroundExecution {
     }
 }
 
-#[cfg(target_os = "android")]
-impl Drop for AndroidForegroundExecution {
+#[cfg(mobile)]
+impl Drop for MobileForegroundExecution {
     fn drop(&mut self) {
         let _ = self
             .app
@@ -219,11 +217,11 @@ impl Drop for AndroidForegroundExecution {
     }
 }
 
-#[cfg(not(target_os = "android"))]
-struct AndroidForegroundExecution;
+#[cfg(not(mobile))]
+struct MobileForegroundExecution;
 
-#[cfg(not(target_os = "android"))]
-impl AndroidForegroundExecution {
+#[cfg(not(mobile))]
+impl MobileForegroundExecution {
     fn begin(_document_id: &str) -> Result<Self, CommandError> {
         Ok(Self)
     }
