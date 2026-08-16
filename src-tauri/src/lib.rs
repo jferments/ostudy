@@ -274,7 +274,6 @@ pub fn run() {
             device_sync::update_device_sync_name,
             device_sync::start_device_pairing,
             device_sync::join_device_pairing,
-            device_sync::scan_device_pairing_qr,
             device_sync_qr_commands::scan_device_pairing_qr_async,
             device_sync::remove_device_sync_peer,
             device_sync::resolve_device_sync_conflict,
