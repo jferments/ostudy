@@ -1,3 +1,8 @@
+import java.io.File
+import java.net.URI
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
@@ -5,6 +10,70 @@ plugins {
 
 group = "io.github.jferments.ostudy"
 version = "0.1.0"
+
+val tesseract4AndroidVersion = "4.9.0"
+val tessdataCommit = "87416418657359cb625c412a48b6e1d6d41c29bd"
+val tessdataEnglishBlobSha1 = "bbef4675053b5b468cdb477053e28b1c698ba08e"
+val generatedTessdataAssets = layout.buildDirectory.dir("generated/tessdata/assets")
+val generatedEnglishData = generatedTessdataAssets.map {
+    it.file("tessdata/eng.traineddata").asFile
+}
+
+fun File.gitBlobSha1(): String {
+    val digest = MessageDigest.getInstance("SHA-1")
+    digest.update("blob ${length()}\u0000".toByteArray(StandardCharsets.UTF_8))
+    inputStream().buffered().use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            digest.update(buffer, 0, read)
+        }
+    }
+    return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+}
+
+val prepareBundledTessdata by tasks.registering {
+    description = "Downloads and verifies the pinned English Tesseract model."
+    group = "build setup"
+    outputs.file(generatedEnglishData)
+
+    doLast {
+        val target = generatedEnglishData.get()
+        if (target.isFile && target.gitBlobSha1() == tessdataEnglishBlobSha1) return@doLast
+
+        target.parentFile.mkdirs()
+        val temporary = File(target.parentFile, "${target.name}.partial")
+        temporary.delete()
+
+        val localOverride = System.getenv("OSTUDY_TESSDATA_ENG")
+            ?.takeIf(String::isNotBlank)
+            ?.let(::File)
+        if (localOverride != null) {
+            require(localOverride.isFile) {
+                "OSTUDY_TESSDATA_ENG does not point to a readable traineddata file."
+            }
+            localOverride.copyTo(temporary, overwrite = true)
+        } else {
+            val source = URI(
+                "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/" +
+                    "$tessdataCommit/eng.traineddata",
+            ).toURL()
+            source.openStream().buffered().use { input ->
+                temporary.outputStream().buffered().use(input::copyTo)
+            }
+        }
+
+        require(temporary.gitBlobSha1() == tessdataEnglishBlobSha1) {
+            "The downloaded English Tesseract model does not match the pinned Git blob."
+        }
+        if (target.exists()) target.delete()
+        if (!temporary.renameTo(target)) {
+            temporary.copyTo(target, overwrite = true)
+            temporary.delete()
+        }
+    }
+}
 
 android {
     namespace = "io.github.jferments.ostudy.platform"
@@ -15,6 +84,8 @@ android {
         consumerProguardFiles("consumer-rules.pro")
     }
 
+    sourceSets.getByName("main").assets.srcDir(generatedTessdataAssets)
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -23,6 +94,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(prepareBundledTessdata)
 }
 
 dependencies {
@@ -36,8 +111,14 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.19.2")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.19.2")
 
-    // Bundled Text Recognition v2 is immediately available and works offline.
-    // Latin-script OCR covers the current English-first document workflow;
-    // additional script artifacts can be added behind the same Rust boundary.
+    // Apache-2.0 Tesseract is the primary Android OCR engine. The standard
+    // single-threaded build is used because Rust already owns bounded page
+    // concurrency and separate native instances can run in parallel safely.
+    implementation(
+        "cz.adaptech.tesseract4android:tesseract4android:$tesseract4AndroidVersion",
+    )
+
+    // ML Kit remains an offline fallback for pages on which Tesseract fails to
+    // initialize, times out, throws, or returns unusably weak text.
     implementation("com.google.mlkit:text-recognition:16.0.1")
 }
