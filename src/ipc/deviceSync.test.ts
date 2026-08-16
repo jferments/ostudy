@@ -46,9 +46,9 @@ describe("device synchronization IPC", () => {
     });
   });
 
-  it("routes QR scanning through the native command boundary", async () => {
+  it("routes QR scanning through the nonblocking native command boundary", async () => {
     await scanDevicePairingQr();
-    expect(invoke).toHaveBeenCalledWith("scan_device_pairing_qr");
+    expect(invoke).toHaveBeenCalledWith("scan_device_pairing_qr_async");
   });
 
   it("sends an explicit conflict resolution without leaking arbitrary fields", async () => {
