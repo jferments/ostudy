@@ -66,6 +66,7 @@ export interface DeviceSyncState {
 export interface PairingInvitation {
   sessionId: string;
   invitation: string;
+  qrSvg: string;
   endpoint: string;
   fingerprint: string;
   expiresAt: number;
