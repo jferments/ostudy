@@ -177,15 +177,18 @@ skip_case() {
 "$adb" -s "$SERIAL" shell pm clear "$APP_ID" >/dev/null
 
 # Native regression cases are deliberately executed, not merely compiled into
-# the instrumentation APK. These cover the two Android boundaries most likely
-# to regress without a visible desktop failure: system/IME insets and bundled
-# ML Kit document OCR.
+# the instrumentation APK. These cover the Android boundaries most likely to
+# regress without a visible desktop failure: insets, bundled ML Kit OCR, and
+# the Rust-to-Kotlin native plugin routing used during application startup.
 record_case contentRootOwnsSystemBarAndDisplayCutoutInsets AndroidInsetsTest || true
 record_case activityRequestsResizeSemanticsForTheSoftwareKeyboard AndroidInsetsTest || true
 record_case bundledMlKitRecognizesHighContrastEnglishTextOffline AndroidOcrSmokeTest || true
 
 launch_ok=1
-if ! run_case a0_appLaunchesAndTestBridgeIsReady; then
+if ! run_case rustPlatformSnapshotReachesDocumentAndQrNativeRoutes AndroidPlatformRoutingTest; then
+  failed_cases+=("AndroidPlatformRoutingTest#rustPlatformSnapshotReachesDocumentAndQrNativeRoutes")
+  launch_ok=0
+elif ! run_case a0_appLaunchesAndTestBridgeIsReady; then
   failed_cases+=("AndroidSmokeTest#a0_appLaunchesAndTestBridgeIsReady")
   launch_ok=0
 fi
@@ -204,7 +207,7 @@ if ((launch_ok == 0)); then
     f_deckExportPickerCancelsCleanly \
     g_sequentialPickerCancellationReleasesNativeOperationSlot
   do
-    skip_case "$method" "the application/bridge launch prerequisite failed"
+    skip_case "$method" "the native platform/application launch prerequisite failed"
   done
 else
   seed_ok=1

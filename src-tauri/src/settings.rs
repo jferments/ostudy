@@ -8,7 +8,20 @@ use crate::{
 };
 
 const THEMES: &[&str] = &["light", "dark", "console", "synthwave"];
-const FONT_PRESETS: &[&str] = &["system", "atkinson", "plex", "humanist", "serif", "mono"];
+const FONT_PRESETS: &[&str] = &[
+    "system",
+    "atkinson",
+    "plex",
+    "albert",
+    "space-grotesk",
+    "spline-sans",
+    "sora",
+    "roboto-slab",
+    "sofia-sans",
+    "humanist",
+    "serif",
+    "mono",
+];
 const MOTION_PREFERENCES: &[&str] = &["system", "full", "reduced", "none"];
 const MATERIAL_PREFERENCES: &[&str] = &["automatic", "rich", "simple"];
 const DECK_VIEW_DENSITIES: &[&str] = &["comfortable", "compact"];
@@ -87,8 +100,8 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
     };
     Ok(AppSettingsDto {
         theme: get_setting(connection, "theme", "dark".to_string())?,
-        ui_font: get_setting(connection, "uiFont", "system".to_string())?,
-        card_font: get_setting(connection, "cardFont", "system".to_string())?,
+        ui_font: get_setting(connection, "uiFont", "plex".to_string())?,
+        card_font: get_setting(connection, "cardFont", "plex".to_string())?,
         ui_scale: get_setting(connection, "uiScale", 100_i64)?,
         card_base_size: get_setting(connection, "cardBaseSize", 18_i64)?,
         motion_preference,
@@ -322,6 +335,8 @@ mod tests {
         let mut settings = database
             .with_connection(load_settings)
             .expect("settings should load");
+        assert_eq!(settings.ui_font, "plex");
+        assert_eq!(settings.card_font, "plex");
         assert_eq!(settings.daily_new_limit, 20);
         assert_eq!(settings.daily_review_limit, 200);
         settings.daily_new_limit = 12;
@@ -334,6 +349,21 @@ mod tests {
             .expect("settings should reload");
         assert_eq!(loaded.daily_new_limit, 12);
         assert_eq!(loaded.daily_review_limit, 80);
+    }
+
+    #[test]
+    fn accepts_bundled_font_presets() {
+        for preset in [
+            "plex",
+            "albert",
+            "space-grotesk",
+            "spline-sans",
+            "sora",
+            "roboto-slab",
+            "sofia-sans",
+        ] {
+            assert!(validate_font(preset).is_ok(), "preset {preset} should be valid");
+        }
     }
 
     #[test]

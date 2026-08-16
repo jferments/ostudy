@@ -1,7 +1,7 @@
 use serde::de::DeserializeOwned;
 use tauri::{
     plugin::{PluginApi, PluginHandle},
-    AppHandle, Runtime,
+    AppHandle, Manager, Runtime,
 };
 
 use crate::{models::*, qr_models::*, Result};
@@ -10,28 +10,47 @@ use crate::{models::*, qr_models::*, Result};
 const PLUGIN_IDENTIFIER: &str = "io.github.jferments.ostudy.platform";
 
 pub fn init<R: Runtime, C: DeserializeOwned>(
-    _app: &AppHandle<R>,
+    app: &AppHandle<R>,
     api: PluginApi<R, C>,
 ) -> Result<OstudyPlatform<R>> {
     #[cfg(target_os = "android")]
     let platform = api.register_android_plugin(PLUGIN_IDENTIFIER, "OstudyPlatformPlugin")?;
-    #[cfg(target_os = "android")]
-    let documents = api.register_android_plugin(PLUGIN_IDENTIFIER, "OstudyDocumentPlugin")?;
-    #[cfg(target_os = "android")]
-    let qr = api.register_android_plugin(PLUGIN_IDENTIFIER, "OstudyQrPlugin")?;
     #[cfg(target_os = "ios")]
     compile_error!("The ostudy platform plugin does not yet provide an iOS implementation.");
     Ok(OstudyPlatform {
+        app: app.clone(),
         platform,
-        documents,
-        qr,
     })
 }
 
+pub(super) fn init_documents<R: Runtime, C: DeserializeOwned>(
+    _app: &AppHandle<R>,
+    api: PluginApi<R, C>,
+) -> Result<OstudyDocuments<R>> {
+    #[cfg(target_os = "android")]
+    let documents = api.register_android_plugin(PLUGIN_IDENTIFIER, "OstudyDocumentPlugin")?;
+    #[cfg(target_os = "ios")]
+    compile_error!("The ostudy document plugin does not yet provide an iOS implementation.");
+    Ok(OstudyDocuments(documents))
+}
+
+pub(super) fn init_qr<R: Runtime, C: DeserializeOwned>(
+    _app: &AppHandle<R>,
+    api: PluginApi<R, C>,
+) -> Result<OstudyQr<R>> {
+    #[cfg(target_os = "android")]
+    let qr = api.register_android_plugin(PLUGIN_IDENTIFIER, "OstudyQrPlugin")?;
+    #[cfg(target_os = "ios")]
+    compile_error!("The ostudy QR plugin does not yet provide an iOS implementation.");
+    Ok(OstudyQr(qr))
+}
+
+pub(super) struct OstudyDocuments<R: Runtime>(PluginHandle<R>);
+pub(super) struct OstudyQr<R: Runtime>(PluginHandle<R>);
+
 pub struct OstudyPlatform<R: Runtime> {
+    app: AppHandle<R>,
     platform: PluginHandle<R>,
-    documents: PluginHandle<R>,
-    qr: PluginHandle<R>,
 }
 
 impl<R: Runtime> OstudyPlatform<R> {
@@ -134,37 +153,46 @@ impl<R: Runtime> OstudyPlatform<R> {
     }
 
     pub fn scan_qr_code(&self, request: ScanQrCodeRequest) -> Result<ScanQrCodeResult> {
-        self.qr
-            .run_mobile_plugin("scanQrCode", request)
-            .map_err(Into::into)
+        let qr = self.app.state::<OstudyQr<R>>();
+        qr.0.run_mobile_plugin("scanQrCode", request).map_err(Into::into)
     }
 
     pub fn document_capabilities(&self) -> Result<DocumentCapabilitiesResult> {
-        self.documents
+        let documents = self.app.state::<OstudyDocuments<R>>();
+        documents
+            .0
             .run_mobile_plugin("documentCapabilities", ())
             .map_err(Into::into)
     }
 
     pub fn open_pdf(&self, request: OpenPdfRequest) -> Result<OpenPdfResult> {
-        self.documents
+        let documents = self.app.state::<OstudyDocuments<R>>();
+        documents
+            .0
             .run_mobile_plugin("openPdf", request)
             .map_err(Into::into)
     }
 
     pub fn render_pdf_page(&self, request: RenderPdfPageRequest) -> Result<RenderPdfPageResult> {
-        self.documents
+        let documents = self.app.state::<OstudyDocuments<R>>();
+        documents
+            .0
             .run_mobile_plugin("renderPdfPage", request)
             .map_err(Into::into)
     }
 
     pub fn close_pdf(&self, token: String) -> Result<()> {
-        self.documents
+        let documents = self.app.state::<OstudyDocuments<R>>();
+        documents
+            .0
             .run_mobile_plugin("closePdf", ClosePdfRequest { token })
             .map_err(Into::into)
     }
 
     pub fn recognize_image(&self, request: RecognizeImageRequest) -> Result<RecognizeImageResult> {
-        self.documents
+        let documents = self.app.state::<OstudyDocuments<R>>();
+        documents
+            .0
             .run_mobile_plugin("recognizeImage", request)
             .map_err(Into::into)
     }
@@ -173,7 +201,9 @@ impl<R: Runtime> OstudyPlatform<R> {
         &self,
         request: BeginBackgroundExecutionRequest,
     ) -> Result<()> {
-        self.documents
+        let documents = self.app.state::<OstudyDocuments<R>>();
+        documents
+            .0
             .run_mobile_plugin("beginBackgroundExecution", request)
             .map_err(Into::into)
     }
@@ -182,13 +212,17 @@ impl<R: Runtime> OstudyPlatform<R> {
         &self,
         request: UpdateBackgroundExecutionRequest,
     ) -> Result<()> {
-        self.documents
+        let documents = self.app.state::<OstudyDocuments<R>>();
+        documents
+            .0
             .run_mobile_plugin("updateBackgroundExecution", request)
             .map_err(Into::into)
     }
 
     pub fn end_background_execution(&self, job_id: String) -> Result<()> {
-        self.documents
+        let documents = self.app.state::<OstudyDocuments<R>>();
+        documents
+            .0
             .run_mobile_plugin(
                 "endBackgroundExecution",
                 EndBackgroundExecutionRequest { job_id },

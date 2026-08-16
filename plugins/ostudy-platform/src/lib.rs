@@ -41,3 +41,25 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         })
         .build()
 }
+
+#[cfg(mobile)]
+pub fn init_documents<R: Runtime>() -> TauriPlugin<R> {
+    Builder::new("ostudy-documents")
+        .setup(|app, api| {
+            let documents = mobile::init_documents(app, api)?;
+            app.manage(documents);
+            Ok(())
+        })
+        .build()
+}
+
+#[cfg(mobile)]
+pub fn init_qr<R: Runtime>() -> TauriPlugin<R> {
+    Builder::new("ostudy-qr")
+        .setup(|app, api| {
+            let qr = mobile::init_qr(app, api)?;
+            app.manage(qr);
+            Ok(())
+        })
+        .build()
+}

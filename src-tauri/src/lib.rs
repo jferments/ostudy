@@ -95,9 +95,15 @@ static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .register_uri_scheme_protocol("ostudy-asset", asset_protocol::respond)
-        .plugin(tauri_plugin_ostudy_platform::init())
+        .plugin(tauri_plugin_ostudy_platform::init());
+    #[cfg(mobile)]
+    let builder = builder
+        .plugin(tauri_plugin_ostudy_platform::init_documents())
+        .plugin(tauri_plugin_ostudy_platform::init_qr());
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {

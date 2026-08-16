@@ -27,8 +27,11 @@ else
   bash ./scripts/android-doctor.sh
 fi
 android_write_local_properties
-pnpm install --frozen-lockfile
 node ./scripts/verify-android-project.mjs
+node ./scripts/verify-android-plugin-routing.mjs
+node ./scripts/verify-local-fonts.mjs
+pnpm install --frozen-lockfile
+pnpm run verify:fonts
 node ./scripts/verify-external-file-streaming.mjs
 
 ./scripts/install-native-deps.sh --pdfium-only
