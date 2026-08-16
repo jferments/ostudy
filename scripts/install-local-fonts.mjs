@@ -19,52 +19,63 @@ await mkdir(outputDirectory, { recursive: true });
 let installed = 0;
 let reused = 0;
 for (const font of localFontSources) {
-  const destination = join(outputDirectory, font.filename);
-  if (await isValidWoff2(destination)) {
-    reused += 1;
-    continue;
+  const missingFaces = [];
+  for (const face of font.faces) {
+    const destination = join(outputDirectory, face.filename);
+    if (await isValidWoff2(destination)) {
+      reused += 1;
+    } else {
+      missingFaces.push(face);
+    }
   }
+  if (missingFaces.length === 0) continue;
 
   const family = font.family.replaceAll(" ", "+");
   const stylesheetUrl =
-    `https://fonts.googleapis.com/css2?family=${family}:wght@${font.weightRange}&display=swap`;
+    `https://fonts.googleapis.com/css2?family=${family}:wght@${font.googleWeights}&display=swap`;
   const stylesheet = await fetchText(stylesheetUrl, "Google Fonts stylesheet");
-  const assetUrl = extractLatinWoff2(stylesheet, font.family);
-  const parsed = new URL(assetUrl);
-  if (parsed.protocol !== "https:" || parsed.hostname !== "fonts.gstatic.com") {
-    throw new Error(
-      `Google Fonts returned an unexpected asset host for ${font.family}: ${parsed.hostname}`,
+
+  for (const face of missingFaces) {
+    const destination = join(outputDirectory, face.filename);
+    const assetUrl = extractLatinWoff2(stylesheet, font.family, face.googleWeight);
+    const parsed = new URL(assetUrl);
+    if (parsed.protocol !== "https:" || parsed.hostname !== "fonts.gstatic.com") {
+      throw new Error(
+        `Google Fonts returned an unexpected asset host for ${font.family}: ${parsed.hostname}`,
+      );
+    }
+
+    const response = await fetch(assetUrl, {
+      headers: { "User-Agent": browserUserAgent },
+      signal: AbortSignal.timeout(requestTimeoutMillis),
+    });
+    if (!response.ok) {
+      throw new Error(
+        `Google Fonts asset download failed for ${font.family}: HTTP ${response.status}.`,
+      );
+    }
+    const declaredLength = Number(response.headers.get("content-length") ?? 0);
+    if (declaredLength > maximumFontBytes) {
+      throw new Error(`${font.family} exceeds the ${maximumFontBytes}-byte font safety limit.`);
+    }
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length === 0 || bytes.length > maximumFontBytes || !hasWoff2Magic(bytes)) {
+      throw new Error(`Google Fonts returned an invalid WOFF2 payload for ${font.family}.`);
+    }
+
+    const temporary = `${destination}.tmp-${process.pid}`;
+    try {
+      await writeFile(temporary, bytes, { mode: 0o644 });
+      await rename(temporary, destination);
+    } finally {
+      await rm(temporary, { force: true });
+    }
+    installed += 1;
+    console.log(
+      `Installed ${font.family} weight ${face.cssWeight} from Google Fonts -> ${face.filename}`,
     );
   }
-
-  const response = await fetch(assetUrl, {
-    headers: { "User-Agent": browserUserAgent },
-    signal: AbortSignal.timeout(requestTimeoutMillis),
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Google Fonts asset download failed for ${font.family}: HTTP ${response.status}.`,
-    );
-  }
-  const declaredLength = Number(response.headers.get("content-length") ?? 0);
-  if (declaredLength > maximumFontBytes) {
-    throw new Error(`${font.family} exceeds the ${maximumFontBytes}-byte font safety limit.`);
-  }
-
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length === 0 || bytes.length > maximumFontBytes || !hasWoff2Magic(bytes)) {
-    throw new Error(`Google Fonts returned an invalid WOFF2 payload for ${font.family}.`);
-  }
-
-  const temporary = `${destination}.tmp-${process.pid}`;
-  try {
-    await writeFile(temporary, bytes, { mode: 0o644 });
-    await rename(temporary, destination);
-  } finally {
-    await rm(temporary, { force: true });
-  }
-  installed += 1;
-  console.log(`Installed ${font.family} from Google Fonts -> ${font.filename}`);
 }
 
 console.log(
@@ -83,22 +94,39 @@ async function fetchText(url, label) {
   return response.text();
 }
 
-function extractLatinWoff2(stylesheet, family) {
+function extractLatinWoff2(stylesheet, family, requestedWeight) {
   const blocks = [
     ...stylesheet.matchAll(/(?:\/\*\s*([^*]+?)\s*\*\/\s*)?@font-face\s*\{([^}]+)\}/gu),
   ];
   if (blocks.length === 0) {
     throw new Error(`Google Fonts returned no @font-face rules for ${family}.`);
   }
+  const latinBlocks = blocks.filter(
+    (match) =>
+      match[1]?.trim().toLowerCase() === "latin" ||
+      /unicode-range\s*:[^;]*(?:U\+0000-00FF|U\+0020-007E)/iu.test(match[2]),
+  );
+  const candidates = latinBlocks.length > 0 ? latinBlocks : blocks;
+  const normalizedRequested = normalizeWeight(requestedWeight);
   const block =
-    blocks.find((match) => match[1]?.trim().toLowerCase() === "latin") ??
-    blocks.find((match) => /unicode-range\s*:[^;]*(?:U\+0000-00FF|U\+0020-007E)/iu.test(match[2])) ??
-    blocks.at(-1);
-  const url = block?.[2].match(
+    candidates.find((match) => {
+      const declared = match[2].match(/font-weight\s*:\s*([^;]+);/iu)?.[1];
+      return declared && normalizeWeight(declared) === normalizedRequested;
+    }) ?? (candidates.length === 1 ? candidates[0] : undefined);
+  if (!block) {
+    throw new Error(
+      `Google Fonts returned no Latin WOFF2 face for ${family} weight ${requestedWeight}.`,
+    );
+  }
+  const url = block[2].match(
     /src\s*:\s*url\((?:["']?)(https:\/\/fonts\.gstatic\.com\/[^)'"\s]+)(?:["']?)\)\s*format\((?:["'])woff2(?:["'])\)/iu,
   )?.[1];
   if (!url) throw new Error(`Google Fonts returned no Latin WOFF2 asset for ${family}.`);
   return url;
+}
+
+function normalizeWeight(value) {
+  return value.trim().replaceAll(/\s+/gu, " ");
 }
 
 async function isValidWoff2(path) {
