@@ -206,13 +206,15 @@ A user-started long-running PDF generation task acquires an Android foreground s
 
 ## 8. Trusted-device synchronization
 
-Open **Settings → Device Sync** on both installations. Devices must be able to reach one another on the same private network.
+Open **Settings → Backup/Sync → Device synchronization** on both installations. Devices must be able to reach one another on the same private network.
 
-The host creates a short-lived QR invitation containing the session endpoint and authenticated key-agreement material. Android scans the invitation with the embedded QR-only scanner. Shared Rust authenticates the devices, encrypts synchronization frames, validates the versioned package, performs common-base merging, and records explicit conflicts rather than silently discarding overlapping edits.
+Protocol version 2 treats every invitation as a **one-way offer from the device that created it**. On the sending device, choose whether to include API provider settings/saved credentials, then select **Create sync offer**. Android can select **Scan and receive**; once the QR code is detected, the scan itself accepts the offer and receiving starts immediately. Pasted invitation text uses **Accept sync offer**.
 
-Protocol version 1 sends one snapshot per QR session. For two-way convergence, run a session in one direction, resolve conflicts, then create a fresh QR session in the reverse direction.
+The receiver never has to generate a reverse invitation to complete that transfer, and accepting an offer does not upload the receiver's library to the sender. To send Android-side changes back later, intentionally create a new offer on Android and accept that offer on the desktop.
 
-File fallback uses the same snapshot/merge rules but excludes API credentials. Optional credential transfer is disabled by default and is available only inside the authenticated encrypted LAN session; accepted keys are written through Android Keystore rather than SQLite.
+Shared Rust authenticates the devices, encrypts synchronization frames, validates the versioned package, performs common-base merging, and records explicit conflicts rather than silently discarding overlapping edits. General `app_settings` are excluded from both the outgoing package and the merge allowlist, so themes, fonts, UI scale, motion, and other device-specific preferences remain local.
+
+API provider profiles/task defaults are also excluded by default. They are included only when the **sender** enables the API-sharing option for that offer. Saved credential bytes use the authenticated encrypted channel and are written through Android Keystore rather than SQLite when the receiving secure store is available.
 
 See [Synchronize trusted devices](../user-guide/device-sync.md) for the user workflow and [Device synchronization architecture](../architecture/device-sync.md) for protocol details.
 
@@ -248,7 +250,7 @@ Android Auto Backup and device-transfer backup are disabled for the application 
 
 Secure AI-provider credentials use an AES-256-GCM key generated in Android Keystore. Encrypted records remain in app-private preferences excluded from backup. Session-only credentials still disappear when Android kills the process. Credentials are never included in SQLite learner data, authoring drafts, deck exports, complete backups, diagnostics, or ordinary incoming/outgoing shares.
 
-Device Sync can transfer selected secure credentials only when explicitly enabled for an authenticated encrypted LAN session. File-based synchronization never contains credential bytes.
+Device Sync can transfer selected secure credentials only when explicitly enabled **by the sender** for an authenticated encrypted LAN offer. File-based synchronization never contains credential bytes.
 
 ## Manual acceptance before merging an Android change
 
@@ -267,8 +269,9 @@ Device Sync can transfer selected secure credentials only when explicitly enable
 13. Import a scanned/image-only PDF and confirm ML Kit OCR recovers usable text and generation can complete.
 14. Start a longer PDF job, background the app, and verify the foreground processing notification remains visible.
 15. Cancel/retry a PDF job and verify cards are not duplicated or partially committed.
-16. Pair Android with a desktop over a private LAN; sync independent changes, then create an intentional same-field conflict and resolve it explicitly.
-17. Rotate, test landscape, test the software keyboard, and verify system Back closes overlays/nested screens correctly.
+16. Create one desktop sync offer and scan it on Android. Confirm the Android app receives the desktop library without creating a phone invitation or pressing a second confirmation button. Repeat with API sharing off/on and confirm Android appearance settings never change.
+17. Create an intentional reverse offer from Android only when testing Android→desktop changes; verify ordinary one-sided edits use the stored baseline and intentional same-field edits surface as explicit conflicts.
+18. Rotate, test landscape, test the software keyboard, and verify system Back closes overlays/nested screens correctly.
 
 ## Troubleshooting
 
