@@ -18,32 +18,27 @@ import java.util.concurrent.TimeUnit
 class AndroidInsetsTest {
   @Test
   fun contentRootOwnsSystemBarAndDisplayCutoutInsets() {
+    // The emulator harness force-stops the application after this isolated
+    // instrumentation case. Do not ActivityScenario.close() a live Tauri/Wry
+    // Activity from AndroidJUnitRunner; that races the native event-loop teardown.
     val scenario = ActivityScenario.launch(MainActivity::class.java)
-    try {
-      val snapshot = waitForInsets(scenario)
-      assertTrue("The API 36 emulator should expose a non-zero status-bar inset.", snapshot.expectedTop > 0)
-      assertEquals(snapshot.expectedLeft, snapshot.paddingLeft)
-      assertEquals(snapshot.expectedTop, snapshot.paddingTop)
-      assertEquals(snapshot.expectedRight, snapshot.paddingRight)
-      assertEquals(snapshot.expectedBottom, snapshot.paddingBottom)
-    } finally {
-      scenario.close()
-    }
+    val snapshot = waitForInsets(scenario)
+    assertTrue("The API 36 emulator should expose a non-zero status-bar inset.", snapshot.expectedTop > 0)
+    assertEquals(snapshot.expectedLeft, snapshot.paddingLeft)
+    assertEquals(snapshot.expectedTop, snapshot.paddingTop)
+    assertEquals(snapshot.expectedRight, snapshot.paddingRight)
+    assertEquals(snapshot.expectedBottom, snapshot.paddingBottom)
   }
 
   @Test
   fun activityRequestsResizeSemanticsForTheSoftwareKeyboard() {
     val scenario = ActivityScenario.launch(MainActivity::class.java)
-    try {
-      var softInputMode = 0
-      scenario.onActivity { activity -> softInputMode = activity.window.attributes.softInputMode }
-      assertEquals(
-        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
-        softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST,
-      )
-    } finally {
-      scenario.close()
-    }
+    var softInputMode = 0
+    scenario.onActivity { activity -> softInputMode = activity.window.attributes.softInputMode }
+    assertEquals(
+      WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+      softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST,
+    )
   }
 
   private fun waitForInsets(scenario: ActivityScenario<MainActivity>): InsetsSnapshot {
