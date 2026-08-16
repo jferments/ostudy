@@ -38,7 +38,9 @@ pub fn initialize(app_data_dir: &Path) {
 }
 
 pub fn diagnostic_log_path(app_data_dir: &Path) -> PathBuf {
-    app_data_dir.join(DIAGNOSTIC_DIRECTORY).join(DIAGNOSTIC_FILE)
+    app_data_dir
+        .join(DIAGNOSTIC_DIRECTORY)
+        .join(DIAGNOSTIC_FILE)
 }
 
 pub fn info(event: &str, message: impl AsRef<str>) {
