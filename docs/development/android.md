@@ -134,7 +134,7 @@ The authoritative mobile smoke uses the pinned API 36 Google APIs x86_64 AVD and
 - Storage Access Framework launch/cancellation for supported import purposes;
 - prepared export through `ACTION_CREATE_DOCUMENT`;
 - release of native picker-operation ownership across sequential cancellations;
-- Android OCR runtime behavior through the dedicated ML Kit instrumentation smoke where applicable.
+- bundled ML Kit OCR through a real synthetic-text recognition case.
 
 The smoke-only JavaScript bridge is opt-in at build time and forbidden in release packages.
 
@@ -155,7 +155,7 @@ See [Unified Linux and Android self-hosted runner](unified-linux-android-runner.
 
 ## GitHub Actions
 
-`.github/workflows/check.yml` is the automatic repository qualification workflow. Draft pull requests use the fast shared gate. Ready pull requests and pushes to `main` run the complete serialized sequence:
+`.github/workflows/check.yml` remains the **single automatic pull-request qualification workflow** introduced by the unified-runner refactor. Draft pull requests use the fast shared gate. Ready pull requests and pushes to `main` run the complete serialized sequence:
 
 ```text
 check.sh
@@ -163,9 +163,9 @@ check.sh
 → android-emulator-smoke.sh
 ```
 
-`.github/workflows/android-pr.yml` also provides Android-specific ready-for-review qualification. `.github/workflows/android-artifact.yml` builds explicit APK/AAB artifacts on the unified runner. The older `.github/workflows/android-package.yml` remains the repository's manual QA packaging workflow.
+`.github/workflows/android-package.yml` is the explicit manual packaging workflow on the same unified runner and can produce a debug APK, release APK, or release AAB. Android qualification is intentionally not duplicated in a second automatic workflow.
 
-`.github/workflows/unified-runner-qualification.yml` is an opt-in infrastructure/runner-health workflow. The former automatic split `android-check.yml` workflow is retired.
+`.github/workflows/unified-runner-qualification.yml` is an opt-in infrastructure/runner-health workflow. The former automatic split `android-check.yml` workflow remains retired.
 
 Signing material is never exposed to pull-request jobs.
 
