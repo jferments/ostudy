@@ -54,6 +54,7 @@ expectContains(
   "sync cancellation command registration",
 );
 expectContains(compositionRoot, "device_sync::reconcile_startup(&paths)", "stale-session startup reconciliation");
+expectContains(compositionRoot, "logging::initialize(paths.app_data_dir())", "persistent diagnostic initialization");
 expectContains(settingsUi, 'role="status"', "accessible scanner result status");
 expectContains(settingsUi, "Sync offer detected", "visual offer detection result");
 expectContains(settingsUi, "await receiveOffer(scanned, true)", "automatic receive after QR detection");
@@ -86,7 +87,8 @@ expectContains(
   "first-contact sender rows merge without synthetic delete conflicts",
 );
 expectContains(logging, 'DIAGNOSTIC_FILE: &str = "ostudy.jsonl"', "persistent diagnostic log");
-expectContains(logging, '__android_log_write', "explicit Android Logcat bridge");
+expectContains(logging, "append_persistent(&line)", "diagnostic write path");
+expectNotContains(logging, 'cfg(target_os = "android")', "platform-specific branch in logging core");
 
 if (failures.length > 0) {
   console.error("Device-sync QR/offer contract failed:");
@@ -94,7 +96,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Device-sync QR uses nonblocking native delivery; one scan accepts a sender-scoped offer, active sessions are cancellable and same-peer overlap is rejected, local app settings stay off the wire/merge allowlist, diagnostics are persistent, and API settings are sender opt-in.",
+  "OK   Device-sync QR uses nonblocking native delivery; one scan accepts a sender-scoped offer, active sessions are cancellable and same-peer overlap is rejected, local app settings stay off the wire/merge allowlist, diagnostics persist portably, and API settings are sender opt-in.",
 );
 
 async function read(relativePath) {
