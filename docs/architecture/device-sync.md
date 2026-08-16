@@ -61,7 +61,7 @@ The source device sends one snapshot per QR session. To exchange changes in both
 
 ## Android QR acquisition
 
-Android can launch an installed camera application to capture the displayed QR code. The app-private image is decoded by ML Kit's QR barcode decoder and deleted immediately afterward. This barcode capability is separate from document OCR: PDF text recognition remains Tesseract-first.
+Android can launch an installed camera application to capture the displayed QR code. The app-private image is decoded by ML Kit's QR barcode decoder and deleted immediately afterward. Barcode decoding and document OCR use separate ML Kit APIs: PDF pages that require visual text recovery are handled by bundled ML Kit Text Recognition v2.
 
 Desktop users can paste the invitation text when no camera adapter is available.
 
