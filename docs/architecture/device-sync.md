@@ -1,76 +1,132 @@
 # Device synchronization architecture
 
-ostudy synchronizes trusted installations without introducing a mandatory cloud account or copying a live SQLite database between devices.
+ostudy device synchronization is an explicit, local-network transfer between two installations. It is **not** a cloud account, background replication service, or live CRDT. A user chooses when one device will send a synchronization offer, and another device chooses whether to accept it.
 
-## Scope
+The implementation shares the existing SQLite/domain model, but never copies a live SQLite database between running applications. The sender creates a coherent point-in-time synchronization package, authenticates and encrypts the transport, and the receiver merges the package through the same integrity-aware application data model used elsewhere.
 
-The synchronization snapshot contains durable study data from an explicit table allowlist:
+## Product semantics
 
-- decks, folders, notes, generated card presentations, templates, tags, and their relationships;
-- scheduling rows, immutable review events, and practice-session evidence;
-- committed card-image metadata and bounded image payloads;
-- ordinary application settings when the user enables that option;
-- AI provider, endpoint, model, and task-default metadata when the user enables that option.
+Protocol version 2 uses a **one-way offer** model:
 
-API keys and other credential bytes are not written into snapshots. They remain in the platform secure store. Device-only filesystem paths, Android permission state, window geometry, and temporary processing data are also outside the sync contract.
+1. The sending device creates a short-lived invitation.
+2. The invitation records the sender identity, private-LAN endpoint, one-time pairing secret/key-agreement material, expiry, and the sender-selected transfer scope.
+3. The receiving device scans the QR code or pastes the invitation text.
+4. Both devices authenticate the invitation/session and derive fresh transport keys.
+5. The sender transmits its selected snapshot.
+6. The receiver merges the snapshot locally and returns only a completion acknowledgement.
 
-## Stable identity and common bases
+The receiving device does **not** upload its library as part of accepting the offer. A reverse transfer is a separate explicit action: the other device creates its own new offer when the user actually wants to send changes back.
 
-Each installation receives a random 32-character device identity stored in app-private data. Every durable entity keeps its existing stable application identity. A trusted peer also has a saved acknowledged base snapshot.
+On Android, scanning a valid QR code accepts the offer and begins receiving immediately. Pasted invitation text uses an explicit **Accept sync offer** action because paste is not itself an intentional camera acceptance gesture.
 
-A merge compares three states:
+## What synchronizes
 
-1. the last snapshot acknowledged for that peer;
-2. the current local library;
-3. the newly received remote snapshot.
+The ordinary study-library scope includes the durable entities required for the same study content and learning history to exist on another installation, including:
 
-This permits disjoint changes to merge without treating the newest whole database as authoritative.
+- deck folders and decks;
+- notes/cards and card presentations;
+- tags and note/tag relationships;
+- card templates, template fields/rules, and template assets;
+- managed image metadata and the corresponding validated image files;
+- card schedules;
+- practice-session snapshots needed by durable practice/history semantics;
+- review events and historical attribution rows.
 
-## Merge behavior
+The merge table allowlist lives in `src-tauri/src/device_sync/merge.rs`. A database table is not synchronized merely because it exists in the application schema.
 
-Changes to different fields merge automatically. Examples include changing a deck description on one device while changing its name on another, or moving a card while another device edits its content.
+### Device-local settings are never synchronized
 
-Set-like relationship tables use stable composite identities. Independent tag additions, folder memberships, and note-asset relationships therefore union rather than replacing an entire array.
+`app_settings` is intentionally **not** part of the synchronization allowlist. The sender also removes every `app_settings` row from the packaged SQLite snapshot before the package can be transmitted.
 
-Immutable review events and practice sessions are unioned by their stable event identity. The history is never silently discarded because another device has a newer schedule row.
+This keeps platform- and device-specific preferences independent, including themes, font choice, UI scale, motion preferences, density/layout choices, and other appearance/application settings. An empty remote settings table is never interpreted as a request to delete local settings.
 
-The following cases create explicit conflicts:
+PR #51 briefly exposed `app_settings` conflicts during pre-merge physical testing. Protocol v2 retires those old conflict records while preserving the local device's value.
 
-- both devices changed the same field from the same base;
-- one device deleted a record while the other edited it;
-- both devices independently created different values under the same stable identity;
-- an append-only event identity refers to different immutable data.
+### API provider settings are a separate sender-controlled opt-in
 
-The preview retains the local value, remote value, and common-base value. The user chooses a side or enters a custom text value before the merge is committed.
+The only settings category currently eligible for synchronization is AI/API provider configuration, and it is **off by default** for every offer.
 
-## Assets and crash safety
+When the sender leaves **Include API provider settings and saved credentials** off:
 
-Card images are content-hashed, bounded per file and per snapshot, and validated before use. Changed assets are written to private staging files. They are promoted with reversible backups before the SQLite merge transaction commits. A failed database transaction restores the previous files; a failed file promotion never commits rows that reference unavailable bytes.
+- `ai_provider_profiles` is removed from the outgoing snapshot;
+- `ai_task_defaults` is removed from the outgoing snapshot;
+- provider probe/capability/operation cache rows are removed;
+- no secure credential bytes are collected.
 
-The acknowledged base is bookkeeping rather than user data. If writing that base fails after a successful database commit, ostudy records a diagnostic and reports the committed merge as successful instead of claiming that durable data was rolled back.
+When the sender explicitly enables the option:
 
-## QR pairing and LAN transport
+- provider profile metadata and task defaults may be merged;
+- ephemeral probe/capability/operation results are still omitted;
+- SQLite credential-storage markers/epochs are stripped from the package;
+- saved credential bytes, when available, travel separately through the authenticated encrypted session and are written through the receiver's secure secret store.
 
-A QR invitation identifies a short-lived one-shot private-LAN TCP endpoint. The first pairing invitation also carries a random 256-bit pairing secret plus the host's public identity and ephemeral key material. After the authenticated key agreement, synchronization metadata, package frames, and acknowledgements are protected with ChaCha20-Poly1305 authenticated encryption before they enter the socket.
+The receiver does not need a matching sharing toggle. Its secure secret store must be technically available before credential bytes can be accepted. File-based snapshots/backups never gain credential bytes from this feature.
 
-The session identity, endpoint, expiry, device identities, and ephemeral keys are bound into the signed/proven pairing transcript. The receiver therefore cannot silently redirect an invitation to a different peer or session without failing authentication.
+## Snapshot/package boundary
 
-Endpoint validation accepts only numeric private, link-local, or loopback IP addresses with an explicit port. Public addresses are rejected and invitations expire after a short interval.
+`device_sync/package.rs` creates a package from a SQLite backup snapshot rather than copying the live database file. Before serialization it sanitizes the snapshot according to the offer scope.
 
-After the receiver authenticates and decrypts the snapshot, it returns an encrypted acknowledgement containing its device identity and the received snapshot identity. Both installations retain the trusted peer identity and synchronization baseline; secret key material remains in the platform secure store.
+The package contains:
 
-The source device sends one snapshot per QR session. To exchange changes in both directions, either device can start the next session for the already trusted peer. A later protocol version can add simultaneous bidirectional exchange without changing the merge format.
+- versioned package metadata;
+- one coherent SQLite snapshot as a bounded blob;
+- validated managed-image payloads with IDs, relative paths, MIME types, sizes, and SHA-256 hashes.
+
+On receipt, ostudy validates package format/version, SQLite integrity, schema compatibility, asset paths, MIME signatures, byte sizes, and hashes before merge/install work proceeds.
+
+The package format version is independent from the application database schema version. Protocol-v2 clients reject unsupported/expired protocol-v1 invitations and require a fresh offer from an updated sender.
+
+## Pairing and transport security
+
+Pairing uses stable device identity plus fresh per-offer session material:
+
+- Ed25519 device identity signatures;
+- X25519 ephemeral key agreement;
+- HKDF key derivation;
+- ChaCha20-Poly1305 encrypted frames;
+- a fresh one-time random pairing secret embedded in the short-lived invitation;
+- authenticated transcript binding for session identity, endpoint, expiry, and sender-selected API scope.
+
+The transport is framed **TCP**, not HTTP. The listener binds locally and advertised endpoints are restricted to private, link-local, or loopback addresses. Invitations are short lived and bounded in size.
+
+There is no long-term reusable transport secret encoded in future QR codes. Stable peer identity and merge baselines recognize devices across sessions; every offer receives new ephemeral/session cryptographic material.
 
 ## Android QR acquisition
 
-Android uses the embedded ZXing scanner for QR-code acquisition and restricts it to the QR barcode format. The scanner returns only the bounded invitation text to the shared Rust pairing command. This is intentionally independent of document OCR: rendered PDF pages that require visual text recovery use bundled ML Kit Text Recognition v2.
+Android QR acquisition is implemented by the private ostudy Tauri platform plugin using the embedded ZXing scanner. It is QR-only and does not depend on an external barcode application.
 
-Desktop users can paste the invitation text when no camera adapter is available.
+This is separate from Android document OCR: PDF/text OCR uses bundled ML Kit Text Recognition v2, while pairing QR capture uses ZXing.
 
-## File fallback
+The callback-based Android Activity result is awaited from a Tauri blocking worker rather than from a synchronous command/event-loop wait. This prevents the native activity-result/lifecycle delivery from being stalled by the command that opened the camera.
 
-The same versioned snapshot can be saved through the system document provider or shared through the platform share sheet. File transfer uses the same validation, common-base comparison, conflict preview, and commit logic as the encrypted LAN path. The file fallback intentionally excludes credentials and should be transferred through a channel the user trusts.
+## Merge semantics
 
-## Deletions and retired peers
+The receiver uses deterministic three-way row merging when it has a saved common baseline for the peer:
 
-Soft-deletion metadata participates in normal merging, preventing an older device from silently overwriting a known deletion. Removing a trusted peer deletes its transport key and saved common base. Long-term tombstone collection must account for every still-trusted peer before physically purging synchronization history.
+- unchanged-on-one-side / changed-on-the-other takes the changed value;
+- independent field edits can merge automatically;
+- same-field concurrent edits create an explicit conflict;
+- delete-versus-edit preserves the surviving row and records a conflict rather than silently discarding content;
+- managed-asset identity/content mismatches fail rather than selecting arbitrary image bytes.
+
+Conflict records store both candidate payloads and the deterministically selected working value. The user can later choose the appropriate side or delete the record. Resolved decisions become ordinary local data and can be sent in a future offer.
+
+After the receiver merges an offer, it records the resulting peer baseline. After the sender receives the receiver's completion acknowledgement, it records the exact snapshot it sent as its baseline for that peer. This preserves useful three-way context for a later reverse offer **without uploading the receiver's library during acceptance**.
+
+## Failure and lifecycle boundaries
+
+A synchronization session has explicit waiting, connecting, transferring, merging, completed, failed, expired, or canceled state. Temporary transfer workspaces live under app-private storage and are removed when the operation completes or unwinds.
+
+Important boundaries:
+
+- accepting an invitation is not a background subscription;
+- a process kill ends the active network session;
+- the invitation expires rather than becoming a permanent listener;
+- database/package validation failures do not silently downgrade into partial success;
+- credential transfer is never inferred from a previously paired device—it must be selected again by the sender for the new offer.
+
+## Trust removal
+
+Removing a trusted device removes its peer record and stored common-baseline/conflict/session relationship data according to the sync-store rules. It does not delete the learner's decks/cards merely because those records previously arrived from that peer.
+
+A later transfer to or from that installation requires a fresh invitation and authentication.
