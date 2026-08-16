@@ -1,0 +1,76 @@
+name: PR 51 unresolved Rust symbols
+
+on:
+  push:
+    branches:
+      - agent/android-completion-a4-a7
+
+permissions:
+  contents: write
+
+jobs:
+  classify:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(pr51): unresolved Rust symbols') }}
+    runs-on: [self-hosted, ostudy-unified]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/android-completion-a4-a7
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Encode unresolved names
+        run: |
+          test -f .github/pr51-integration-status.txt
+          rm -f .github/pr51-rust-symbol-*
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          text = Path('.github/pr51-integration-status.txt').read_text(errors='replace')
+          patterns = {
+              'crate-ring': r'undeclared crate or module `ring`|unresolved import `ring`',
+              'crate-qrcode': r'undeclared crate or module `qrcode`|unresolved import `qrcode`',
+              'module-device-sync': r'cannot find module `device_sync`|unresolved import .*device_sync',
+              'module-device-sync-transport': r'cannot find module `device_sync_transport`|unresolved import .*device_sync_transport',
+              'module-device-sync-qr': r'cannot find module `device_sync_qr`|unresolved import .*device_sync_qr',
+              'module-document-background': r'cannot find module `document_background`|unresolved import .*document_background',
+              'external-json': r'ExternalFileKind::Json|no variant or associated item named `Json`',
+              'scan-qr-result': r'ScanQrCodeResult',
+              'scan-qr-method': r'scan_qr_code',
+              'background-request': r'BeginBackgroundExecutionRequest|UpdateBackgroundExecutionRequest|EndBackgroundExecutionRequest',
+              'platform-runtime': r'PlatformRuntime',
+              'file-port-types': r'ExternalExportSource|ExternalFileRequest|ExternalImportTarget|FileFilter|ShareSource',
+              'secret-types': r'SecretLocator|SecretStoreAvailability',
+              'qrcode-color': r'qrcode::Color|unresolved import .*Color',
+              'ring-aead': r'LessSafeKey|UnboundKey|Aad|Nonce|CHACHA20_POLY1305',
+              'url-host': r'url::Host|unresolved import .*Host',
+              'helper-preview': r'preview_remote_snapshot',
+              'helper-identity': r'sync_identity',
+              'helper-ack': r'acknowledge_transport_base',
+              'helper-remove-base': r'remove_transport_base',
+              'prepared-export-path': r'prepared_export_relative_path',
+              'command-error-serialization': r'CommandError::serialization',
+              'tokio-net': r'tokio::net|could not find `net` in `tokio`',
+              'reqwest-json': r'no method named `json`|reqwest.*json',
+          }
+          for name, pattern in patterns.items():
+              if re.search(pattern, text, re.I):
+                  Path(f'.github/pr51-rust-symbol-{name}').touch()
+
+          codes = sorted(set(re.findall(r'error\[(E\d+)\]', text)))
+          for code in codes:
+              Path(f'.github/pr51-rust-symbol-code-{code.lower()}').touch()
+          if not list(Path('.github').glob('pr51-rust-symbol-*')):
+              Path('.github/pr51-rust-symbol-unclassified').touch()
+          PY
+
+      - name: Commit markers and remove workflow
+        run: |
+          rm -f .github/workflows/pr51-rust-symbols.yml
+          git config user.name "ostudy-ci"
+          git config user.email "158022198+jferments@users.noreply.github.com"
+          git add .github/pr51-rust-symbol-* .github/workflows/pr51-rust-symbols.yml
+          git commit -m "chore(pr51): unresolved Rust symbols"
+          git push origin HEAD:agent/android-completion-a4-a7
