@@ -14,6 +14,7 @@ mod cancellation;
 mod credentials;
 mod crypto;
 mod merge;
+mod network;
 mod package;
 mod store;
 mod transport;
@@ -53,7 +54,6 @@ const DEFAULT_EXPIRY_SECONDS: i64 = 300;
 const MIN_EXPIRY_SECONDS: i64 = 60;
 const MAX_EXPIRY_SECONDS: i64 = 900;
 const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(100);
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_INVITATION_CHARS: usize = 8 * 1024;
 
 #[derive(Debug, Deserialize)]
@@ -246,8 +246,6 @@ pub fn get_device_sync_state(
 ) -> Result<DeviceSyncStateDto, CommandError> {
     let store = SyncStore::open(paths.inner())?;
     let (identity, identity_key) = ensure_identity(&store, runtime.inner())?;
-    // PR #51 briefly allowed app_settings into the merge set. Preserve the
-    // local value and retire those obsolete conflicts on first state load.
     for conflict in store
         .list_conflicts()?
         .into_iter()
@@ -308,13 +306,7 @@ pub fn start_device_pairing(
         .unwrap_or(DEFAULT_EXPIRY_SECONDS)
         .clamp(MIN_EXPIRY_SECONDS, MAX_EXPIRY_SECONDS);
     let expires_at = unix_time_millis()?.saturating_add(expiry_seconds.saturating_mul(1_000));
-    let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0)).map_err(|error| {
-        CommandError::new(
-            "device_sync_listener_failed",
-            format!("ostudy could not open a local synchronization listener: {error}"),
-        )
-    })?;
-    listener.set_nonblocking(true).map_err(CommandError::io)?;
+    let listener = network::bind_listener()?;
     let port = listener.local_addr().map_err(CommandError::io)?.port();
     let host_ip = resolve_host_ip(input.host_override.as_deref())?;
     let endpoint = SocketAddr::new(host_ip, port).to_string();
@@ -580,8 +572,6 @@ pub fn resolve_device_sync_conflict(
     let store = SyncStore::open(paths.inner())?;
     let conflict = store.conflict(&input.conflict_id)?;
     if conflict.table_name == "app_settings" {
-        // Old PR #51 pre-v2 conflicts are retired without ever applying their
-        // remote appearance value to this device.
         return store.resolve_conflict(&input.conflict_id, "keep_left");
     }
     let payload = match input.resolution.as_str() {
@@ -844,15 +834,7 @@ fn run_join_session(
             "Device synchronization is restricted to private local-network addresses.",
         ));
     }
-    let mut stream = TcpStream::connect_timeout(&address, CONNECT_TIMEOUT).map_err(|error| {
-        CommandError::new(
-            "device_sync_connection_failed",
-            format!(
-                "The sending device could not be reached at {}: {error}",
-                invitation.endpoint
-            ),
-        )
-    })?;
+    let mut stream = network::connect_to_sender(address, &invitation.endpoint)?;
     cancel_signal.attach_stream(&stream)?;
     cancel_signal.check()?;
     crate::logging::info(
