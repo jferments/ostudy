@@ -16,32 +16,28 @@ describe("device synchronization IPC", () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
   });
 
-  it("starts a bounded pairing listener with explicit credential consent", async () => {
+  it("starts a bounded one-way sender offer with explicit API-settings scope", async () => {
     await startDevicePairing({
       hostOverride: "192.168.1.42",
-      includeCredentials: true,
+      includeApiSettings: true,
       expiresInSeconds: 300,
     });
 
     expect(invoke).toHaveBeenCalledWith("start_device_pairing", {
       input: {
         hostOverride: "192.168.1.42",
-        includeCredentials: true,
+        includeApiSettings: true,
         expiresInSeconds: 300,
       },
     });
   });
 
-  it("joins using only the invitation and explicit credential consent", async () => {
-    await joinDevicePairing({
-      invitation: "ostudy-sync://pair/example",
-      includeCredentials: false,
-    });
+  it("accepts an offer using only the sender invitation", async () => {
+    await joinDevicePairing("ostudy-sync://pair/example");
 
     expect(invoke).toHaveBeenCalledWith("join_device_pairing", {
       input: {
         invitation: "ostudy-sync://pair/example",
-        includeCredentials: false,
       },
     });
   });
