@@ -432,7 +432,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                       {scanFeedback === "scanning"
                         ? "Camera open — looking for an ostudy sync offer…"
                         : scanFeedback === "detected"
-                          ? "Sync offer detected — ready to retry acceptance."
+                          ? "Sync offer detected, but the connection did not complete. Review the error above, then retry while this offer is still valid."
                           : scanFeedback === "receiving"
                             ? "Sync offer detected — receiving from the sending device…"
                             : scanFeedback === "received"
@@ -461,7 +461,11 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                 disabled={busyAction !== null || !joinInvitation.trim() || !state.localNetworkAvailable}
                 onClick={() => void joinPairing()}
               >
-                {busyAction === "receive" ? "Receiving…" : "Accept sync offer"}
+                {busyAction === "receive"
+                  ? "Receiving…"
+                  : scanFeedback === "detected" && joinInvitation.trim()
+                    ? "Retry connection"
+                    : "Accept sync offer"}
               </button>
             </article>
           </div>
@@ -579,7 +583,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   </article>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
         </>
       ) : null}
