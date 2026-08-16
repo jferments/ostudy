@@ -87,6 +87,40 @@ jobs:
               '    let ephemeral_public_key = unsigned.ephemeral_public_key.to_string();\n',
               '',
           )
+          scan_command = '''
+#[tauri::command]
+pub fn scan_device_pairing_qr(app: AppHandle) -> Result<Option<String>, CommandError> {
+    #[cfg(mobile)]
+    {
+        use tauri_plugin_ostudy_platform::{OstudyPlatformExt, ScanQrCodeRequest};
+
+        let result = app
+            .ostudy_platform()
+            .scan_qr_code(ScanQrCodeRequest {
+                prompt: "Scan the ostudy pairing code shown on the other device".to_string(),
+            })
+            .map_err(|error| {
+                CommandError::new(
+                    "device_sync_qr_scan_failed",
+                    format!("The native QR scanner failed: {error}"),
+                )
+            })?;
+        Ok(if result.cancelled { None } else { result.contents })
+    }
+    #[cfg(not(mobile))]
+    {
+        let _ = app;
+        Err(CommandError::new(
+            "device_sync_qr_scan_unavailable",
+            "Use the pairing invitation text or scan it with the receiving mobile device.",
+        ))
+    }
+}
+
+'''
+          marker = '#[tauri::command]\npub fn remove_device_sync_peer('
+          if 'pub fn scan_device_pairing_qr(' not in text:
+              text = text.replace(marker, scan_command + marker)
           sync.write_text(text, encoding="utf-8")
 
           merge = Path("src-tauri/src/device_sync/merge.rs")
@@ -109,6 +143,36 @@ jobs:
               '            Some(&edited),\n',
           )
           merge.write_text(text, encoding="utf-8")
+
+          android = Path("src-tauri/src/platform/android.rs")
+          text = android.read_text(encoding="utf-8")
+          text = text.replace(
+              'ServiceCapability::unavailable("android_ml_kit_ocr_unavailable")',
+              'ServiceCapability::unavailable("android_tesseract_and_ml_kit_ocr_unavailable")',
+          )
+          text = text.replace(
+              'camera: ServiceCapability::unavailable("android_camera_adapter_not_implemented"),\n'
+              '                qr_scan: ServiceCapability::unavailable("android_qr_adapter_not_implemented"),',
+              'camera: ServiceCapability::available(),\n'
+              '                qr_scan: ServiceCapability::available(),',
+          )
+          text = text.replace(
+              'background_execution: ServiceCapability::unavailable(\n'
+              '                    "android_background_execution_not_implemented",\n'
+              '                ),',
+              'background_execution: ServiceCapability::available(),',
+          )
+          android.write_text(text, encoding="utf-8")
+
+          lib = Path("src-tauri/src/lib.rs")
+          text = lib.read_text(encoding="utf-8")
+          if 'device_sync::scan_device_pairing_qr,' not in text:
+              text = text.replace(
+                  '            device_sync::join_device_pairing,\n',
+                  '            device_sync::join_device_pairing,\n'
+                  '            device_sync::scan_device_pairing_qr,\n',
+              )
+          lib.write_text(text, encoding="utf-8")
           PY
 
       - name: Resolve the lockfile and format Rust
