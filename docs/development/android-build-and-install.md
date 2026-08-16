@@ -91,12 +91,15 @@ For direct installation use an APK. Release signing material must remain outside
 the repository; a release build intended for distribution must be signed through
 the Android signing configuration supplied by the release environment.
 
-## CI artifact workflow
+## CI package workflow
 
-The **Android artifact** workflow runs only on the unified self-hosted runner.
-It can be dispatched manually for a debug APK, release APK, or release AAB.
-Version tags build the release AAB. The workflow includes the exact source SHA in
-the artifact name.
+The existing **Android package** workflow runs only on the unified self-hosted
+runner. It can be dispatched manually for a debug APK, release APK, or release
+AAB. The uploaded artifact name includes the selected artifact kind and exact
+source SHA. PR qualification is deliberately not duplicated in a second Android
+workflow: `.github/workflows/check.yml` remains the single automatic pull-request
+gate and runs Linux full, Android compile/package, and the API 36 emulator smoke
+serially when the PR is ready for review.
 
 ## Qualification before installation
 
