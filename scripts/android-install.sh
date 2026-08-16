@@ -96,4 +96,4 @@ adb "${adb_args[@]}" install -r "$apk"
 
 package_name="io.github.jferments.ostudy"
 adb "${adb_args[@]}" shell monkey -p "$package_name" -c android.intent.category.LAUNCHER 1 >/dev/null
-printf 'OK   Installed and launched ostudy on %s.\n' "${SERIAL:-${devices[0]} }"
+printf 'OK   Installed and launched ostudy on %s.\n' "${SERIAL:-${devices[0]}}"

@@ -79,7 +79,7 @@ impl CapabilityProvider for AndroidCapabilityProvider {
         {
             ServiceCapability::available()
         } else {
-            ServiceCapability::unavailable("android_ml_kit_ocr_unavailable")
+            ServiceCapability::unavailable("android_tesseract_and_ml_kit_ocr_unavailable")
         };
         PlatformCapabilitySnapshot {
             schema_version: 1,
@@ -102,14 +102,12 @@ impl CapabilityProvider for AndroidCapabilityProvider {
                     "android_pdf_renderer_has_no_native_text_api",
                 ),
                 ocr,
-                camera: ServiceCapability::unavailable("android_camera_adapter_not_implemented"),
-                qr_scan: ServiceCapability::unavailable("android_qr_adapter_not_implemented"),
+                camera: ServiceCapability::available(),
+                qr_scan: ServiceCapability::available(),
                 haptics: ServiceCapability::unavailable("android_haptics_adapter_not_implemented"),
                 system_share: ServiceCapability::available(),
                 local_network: environment_capability(),
-                background_execution: ServiceCapability::unavailable(
-                    "android_background_execution_not_implemented",
-                ),
+                background_execution: ServiceCapability::available(),
             },
         }
     }

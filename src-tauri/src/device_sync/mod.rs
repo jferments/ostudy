@@ -107,6 +107,7 @@ pub struct DeviceSyncStateDto {
 pub struct PairingInvitationDto {
     pub session_id: String,
     pub invitation: String,
+    pub qr_svg: String,
     pub endpoint: String,
     pub fingerprint: String,
     pub expires_at: i64,
@@ -314,6 +315,7 @@ pub fn start_device_pairing(
             "The pairing invitation exceeds the supported QR-code size.",
         ));
     }
+    let qr_svg = render_pairing_qr(&invitation)?;
     store.create_session(&session_id, "host", &endpoint, expires_at)?;
 
     let host_app = app.clone();
@@ -364,6 +366,7 @@ pub fn start_device_pairing(
     Ok(PairingInvitationDto {
         session_id,
         invitation,
+        qr_svg,
         endpoint,
         fingerprint: identity_key.fingerprint(),
         expires_at,
@@ -414,6 +417,39 @@ pub async fn join_device_pairing(
         }
     }
     result
+}
+
+#[tauri::command]
+pub fn scan_device_pairing_qr(app: AppHandle) -> Result<Option<String>, CommandError> {
+    #[cfg(mobile)]
+    {
+        use tauri_plugin_ostudy_platform::{OstudyPlatformExt, ScanQrCodeRequest};
+
+        let result = app
+            .ostudy_platform()
+            .scan_qr_code(ScanQrCodeRequest {
+                prompt: "Scan the ostudy pairing code shown on the other device".to_string(),
+            })
+            .map_err(|error| {
+                CommandError::new(
+                    "device_sync_qr_scan_failed",
+                    format!("The native QR scanner failed: {error}"),
+                )
+            })?;
+        Ok(if result.cancelled {
+            None
+        } else {
+            result.contents
+        })
+    }
+    #[cfg(not(mobile))]
+    {
+        let _ = app;
+        Err(CommandError::new(
+            "device_sync_qr_scan_unavailable",
+            "Use the pairing invitation text or scan it with the receiving mobile device.",
+        ))
+    }
 }
 
 #[tauri::command]
@@ -828,6 +864,22 @@ fn ensure_identity(
     let identity_key = IdentityKey::load_or_create(runtime.secure_secret_store().as_ref())?;
     let identity = store.set_identity_public_key(&identity_key.public_key_base64())?;
     Ok((identity, identity_key))
+}
+
+fn render_pairing_qr(invitation: &str) -> Result<String, CommandError> {
+    use qrcode::{render::svg, QrCode};
+
+    let code = QrCode::new(invitation.as_bytes()).map_err(|_| {
+        CommandError::new(
+            "device_sync_invitation_too_large",
+            "The pairing invitation is too large to render as a QR code.",
+        )
+    })?;
+    Ok(code
+        .render::<svg::Color>()
+        .min_dimensions(320, 320)
+        .max_dimensions(640, 640)
+        .build())
 }
 
 fn parse_invitation(value: &str) -> Result<PairingInvitation, CommandError> {
