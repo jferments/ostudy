@@ -138,9 +138,10 @@ where
     F: Future<Output = Result<T, CommandError>>,
 {
     let signal = ACTIVE_DOCUMENT_TASKS.begin(document_id)?;
-    let foreground_execution = MobileForegroundExecution::begin(document_id)?;
-    let result = CURRENT_DOCUMENT_SIGNAL.scope(signal, future).await;
-    drop(foreground_execution);
+    let result = {
+        let _foreground_execution = MobileForegroundExecution::begin(document_id)?;
+        CURRENT_DOCUMENT_SIGNAL.scope(signal, future).await
+    };
     ACTIVE_DOCUMENT_TASKS.finish(document_id);
     result
 }
