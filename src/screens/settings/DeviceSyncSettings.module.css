@@ -146,8 +146,16 @@
   line-height: 1.45;
 }
 
-.scanStatus[data-state="detected"] {
+.scanStatus[data-state="scanning"],
+.scanStatus[data-state="receiving"] {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 32%, var(--surface));
+}
+
+.scanStatus[data-state="detected"],
+.scanStatus[data-state="received"] {
   border-color: color-mix(in srgb, var(--success) 58%, var(--border));
+  background: color-mix(in srgb, var(--success) 8%, var(--surface));
 }
 
 .scanStatusDot {
@@ -158,14 +166,20 @@
   background: var(--muted);
 }
 
-.scanStatus[data-state="scanning"] .scanStatusDot {
+.scanStatus[data-state="scanning"] .scanStatusDot,
+.scanStatus[data-state="receiving"] .scanStatusDot {
   background: var(--accent);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-.scanStatus[data-state="detected"] .scanStatusDot {
+.scanStatus[data-state="detected"] .scanStatusDot,
+.scanStatus[data-state="received"] .scanStatusDot {
   background: var(--success);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 16%, transparent);
+}
+
+.scanStatus[data-state="cancelled"] .scanStatusDot {
+  background: var(--muted);
 }
 
 .credentialToggle {
