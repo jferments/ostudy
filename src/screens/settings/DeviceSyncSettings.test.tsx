@@ -183,6 +183,23 @@ describe("DeviceSyncSettings", () => {
     expect(screen.queryByDisplayValue("ostudy-sync://pair/scanned")).toBeNull();
   });
 
+  it("turns a failed automatic scan into an explicit retry without rescanning", async () => {
+    vi.mocked(syncIpc.joinDevicePairing).mockRejectedValueOnce(
+      new Error("The sending device could not be reached at 192.168.1.10:44000: timed out"),
+    );
+    renderSync();
+    await screen.findByText("Android phone");
+    fireEvent.click(screen.getByRole("button", { name: "Scan and receive" }));
+
+    expect(await screen.findByRole("button", { name: "Retry connection" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("connection did not complete");
+    expect(screen.getByText(/sending device could not be reached/iu)).toBeTruthy();
+    expect(syncIpc.joinDevicePairing).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry connection" }));
+    await waitFor(() => expect(syncIpc.joinDevicePairing).toHaveBeenCalledTimes(2));
+  });
+
   it("accepts pasted invitation text without a receiver-side API toggle", async () => {
     renderSync();
     await screen.findByText("Android phone");
