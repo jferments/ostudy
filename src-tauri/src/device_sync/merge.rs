@@ -170,6 +170,29 @@ pub(crate) fn merge_remote_database(
     })
 }
 
+pub(crate) fn remember_sent_database(
+    snapshot: &Connection,
+    store: &SyncStore,
+    peer_id: &str,
+) -> Result<(), CommandError> {
+    for spec in SYNC_TABLES {
+        if !table_exists(snapshot, spec.name)? {
+            continue;
+        }
+        let rows = load_table(snapshot, spec)?;
+        let mut baseline_rows = Vec::with_capacity(rows.len());
+        for (key, payload) in rows {
+            baseline_rows.push((
+                key,
+                Some(serde_json::to_string(&payload).map_err(CommandError::serialization)?),
+                payload_hash(Some(&payload))?,
+            ));
+        }
+        store.replace_table_baselines(peer_id, spec.name, &baseline_rows)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn apply_conflict_payload(
     connection: &mut Connection,
     table_name: &str,
