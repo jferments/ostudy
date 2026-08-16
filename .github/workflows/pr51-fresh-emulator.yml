@@ -1,0 +1,82 @@
+name: PR 51 fresh Android emulator smoke
+
+on:
+  push:
+    branches:
+      - agent/android-completion-a4-a7
+
+permissions:
+  contents: write
+
+jobs:
+  smoke:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(pr51): fresh emulator smoke') }}
+    runs-on: [self-hosted, ostudy-unified]
+    timeout-minutes: 90
+    env:
+      CI: true
+      CARGO_TERM_COLOR: never
+      GRADLE_USER_HOME: ${{ github.workspace }}/.runner-cache/gradle
+      OSTUDY_CARGO_TARGET_DIR: ${{ github.workspace }}/.runner-cache/cargo-target
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/android-completion-a4-a7
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Run Android emulator smoke
+        id: smoke
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          bash ./scripts/android-smoke.sh 2>&1 | tee "$RUNNER_TEMP/pr51-fresh-emulator.log"
+
+      - name: Record exact result
+        env:
+          OUTCOME: ${{ steps.smoke.outcome }}
+        run: |
+          rm -f .github/pr51-fresh-emulator-*
+          if [[ "$OUTCOME" == "success" ]]; then
+            touch .github/pr51-fresh-emulator-pass
+          else
+            touch .github/pr51-fresh-emulator-fail
+            cp "$RUNNER_TEMP/pr51-fresh-emulator.log" .github/pr51-fresh-emulator.log
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path('.github/pr51-fresh-emulator.log').read_text(errors='replace')
+          patterns = {
+              'boot': r'emulator.*failed|boot.*timeout|device offline',
+              'install': r'INSTALL_FAILED|adb install.*failed',
+              'launch': r'Unable to start|Activity.*not started|crash|FATAL EXCEPTION',
+              'instrumentation': r'INSTRUMENTATION_FAILED|FAILURES!!!|There were failing tests',
+              'insets': r'AndroidInsetsTest|system.*inset|soft input|adjustResize',
+              'ocr': r'AndroidOcrSmokeTest|Tesseract|traineddata',
+              'navigation': r'back navigation|navigation smoke|bottom navigation',
+              'timeout': r'timed out|timeout',
+          }
+          for name, pattern in patterns.items():
+              if re.search(pattern, text, re.I):
+                  Path(f'.github/pr51-fresh-emulator-{name}').touch()
+          PY
+          fi
+          rm -f .github/workflows/pr51-fresh-emulator.yml
+          git config user.name "ostudy-ci"
+          git config user.email "158022198+jferments@users.noreply.github.com"
+          git add .github/pr51-fresh-emulator-* .github/workflows/pr51-fresh-emulator.yml
+          git commit -m "chore(pr51): fresh emulator smoke ${OUTCOME}"
+          git push origin HEAD:agent/android-completion-a4-a7
+          [[ "$OUTCOME" == "success" ]]
+
+      - name: Upload bounded emulator evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pr51-emulator-${{ github.sha }}
+          path: |
+            .artifacts/android-smoke/**
+            src-tauri/gen/android/app/build/reports/**
+            src-tauri/gen/android/app/build/outputs/androidTest-results/**
+          if-no-files-found: ignore
+          retention-days: 14
