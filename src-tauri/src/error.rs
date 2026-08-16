@@ -17,8 +17,14 @@ impl CommandError {
         }
     }
 
+    #[track_caller]
     pub fn database(error: impl std::fmt::Display) -> Self {
-        Self::database_at("database_error", "operation=unspecified", error)
+        let caller = std::panic::Location::caller();
+        Self::database_at(
+            "database_error",
+            format!("caller={}:{}", caller.file(), caller.line()),
+            error,
+        )
     }
 
     pub fn database_at(
