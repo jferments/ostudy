@@ -1,77 +1,95 @@
 # Synchronize trusted devices
 
-Device synchronization is local-first. ostudy does not require an account or upload the library to a central ostudy service.
+Device synchronization lets one ostudy installation send study data directly to another installation on the same private network. There is no ostudy cloud account involved.
 
-## Pair and synchronize devices
+Open **Settings → Backup/Sync → Device synchronization**.
 
-1. Put both devices on the same private network.
-2. Open **Settings → Device Sync** on the device that will send the first snapshot.
-3. Give the installation a recognizable device name.
-4. Leave **Transfer API credentials** disabled unless both devices are physically under your control and you intentionally want the destination secure store to receive those keys.
-5. Select **Pair a new device** to create a short-lived QR invitation.
-6. On Android, select **Scan QR with camera** on the receiving device. Desktop builds can paste the invitation text shown beside the QR code.
-7. Let the encrypted transfer and merge complete, then review any conflicts that ostudy records under **Conflicts to resolve**.
+## Send from this device
 
-The QR invitation expires after a short interval and contains a fresh random pairing secret plus the host's public identity and ephemeral key material. The library snapshot and any explicitly selected credentials are encrypted before they enter the local network.
+Use **Send to another device** on the device whose library changes you want to share.
 
-The first successful session records the other installation as a trusted peer and saves the common synchronization baseline. Starting another **Pair a new device** session between the same installations creates a new short-lived QR/secret but recognizes the stable peer identities and uses the saved baseline for three-way merging. No long-lived transport secret is embedded in a synchronization file.
+1. Give the installation a recognizable device name if needed.
+2. Leave **Include API provider settings and saved credentials** off unless you intentionally want to copy API configuration from this device.
+3. Select **Create sync offer**.
+4. Keep ostudy open while the short-lived QR code/invitation is waiting.
+5. On the receiving device, scan the QR code or paste the invitation text.
 
-## Exchange changes in both directions
+The device that creates the offer is the **sender**. The receiving device does not need to generate a second invitation.
 
-Protocol version 1 sends one current snapshot per QR session. To exchange offline changes in both directions:
+### Sending API settings
 
-1. Run a session from device A to device B.
-2. Resolve any conflicts on B.
-3. Start a new QR session from B and join it from A.
-4. Resolve any remaining conflicts on A.
+The API option is off by default for every offer.
 
-Because both installations retain the peer identity and common baseline, the return session normally merges only the remaining differences rather than treating either whole database as authoritative.
+When it is off, the transfer does not include provider profiles, API task defaults, or saved API credentials.
 
-## What merges automatically
+When the sender explicitly enables it, ostudy can also send the sender's AI-provider configuration. Saved credential bytes are included only when they are available from the sender's secure secret store and the receiver can store them securely.
 
-ostudy automatically combines independent work, including:
+This option does **not** include ordinary application settings. Theme, font, UI scale, motion, density/layout preferences, and other appearance/device preferences remain local to each installation.
 
-- cards created separately on two devices;
-- different fields edited on the same deck or card;
-- independent tag and folder relationships;
-- immutable review events and practice sessions;
-- image assets with distinct content hashes.
+## Receive on Android by scanning
 
-## What requires a decision
+On the receiving Android device:
 
-ostudy records an explicit conflict when:
+1. Open **Settings → Backup/Sync → Device synchronization**.
+2. Select **Scan and receive**.
+3. Center the complete QR code inside the camera frame, including the white border.
+4. Hold the phone steady until the scanner detects the code.
 
-- both devices changed the same field from the same common base;
-- one device deleted an item while the other edited it;
-- the same immutable event identity contains different data;
-- both devices changed the same scheduling row.
+A successful QR scan is the acceptance gesture. ostudy closes the scanner and immediately connects to the sending device, authenticates the offer, receives the selected data, and merges it locally. There is no second **Pair and synchronize** confirmation and no reverse invitation to create.
 
-Scheduling rows are treated atomically. ostudy never combines interval, due date, stability, difficulty, and revision values from two different devices into a schedule that existed on neither device. Immutable review history is retained even when a schedule conflict must be resolved.
+If the scan is canceled, no synchronization starts.
 
-Open **Conflicts to resolve**, choose the local or remote version (or the available merged resolution), and apply that decision explicitly. A conflict remains recorded until you resolve it.
+## Receive from pasted invitation text
 
-## Settings and AI connections
+When camera scanning is unavailable, the sender can choose **Copy invitation text** and transfer that text through another trusted channel.
 
-The synchronization package includes ordinary application settings and AI connection-profile metadata supported by the current schema. Device-specific filesystem state, Android permissions, and temporary processing state remain outside the package.
+On the receiving device:
 
-AI connection-profile metadata can include provider type, endpoint, model ID, and task defaults. File snapshots never contain API keys.
+1. Paste it into **Synchronization invitation**.
+2. Select **Accept sync offer**.
 
-API credentials can be transferred only when **Transfer API credentials** is explicitly enabled for the encrypted QR/LAN session. The destination writes accepted credential bytes through its secure-store boundary (Android Keystore on Android) rather than placing them in SQLite or a synchronization file.
+The direction is identical to QR pairing: the device that created the invitation sends, and the device that accepts it receives.
 
-A local endpoint such as `127.0.0.1` still refers to the destination device itself. A phone cannot reach a model running on a desktop through the desktop's loopback address; configure a private-network endpoint or authenticated proxy that the phone can reach.
+## What transfers
 
-## File fallback
+The standard study-library offer covers data needed to carry study material and learning state between installations, including decks/folders, cards, tags, templates, managed images, schedules, practice/history records, and review history.
 
-When the devices cannot reach one another on the local network, use the synchronization file fallback in **Settings → Device Sync**. The file uses the same versioned snapshot and merge rules as LAN synchronization, but intentionally excludes every credential byte. Transfer it through a channel you trust and select the intended peer identity when importing it.
+General application/appearance settings do not transfer.
+
+API provider configuration and saved credentials transfer only when the **sender explicitly enables** that option for the current offer.
+
+## Sending changes back later
+
+Accepting an offer is deliberately one-way. It does not give the sender permission to pull the receiver's library, and it does not start a permanent background sync relationship.
+
+If you later want to send phone changes back to the desktop, create a **new sync offer on the phone** and accept it on the desktop. That reverse offer is a new intentional send action, not the second half of the original pairing.
+
+Because paired devices retain stable identity and common merge baselines, later offers can distinguish ordinary one-sided edits from concurrent edits without requiring the receiving device to upload its library during the first acceptance.
+
+## Conflicts
+
+ostudy merges compatible edits automatically. When both devices changed the same field, or one deleted a record while the other edited it, ostudy records an explicit conflict instead of silently throwing away one side.
+
+Open **Conflicts requiring a decision** to inspect the two versions and choose the desired result. Managed-image identity mismatches fail rather than picking arbitrary image bytes.
+
+Appearance/theme settings never appear here in protocol v2 because they are excluded from synchronization. If you tested an earlier PR #51 build that created an `app_settings`/`uiScale` conflict, updating to protocol v2 retires that obsolete conflict while keeping the current device's local appearance value.
+
+## Network requirements
+
+Both devices must be able to reach each other on the same private network. Guest Wi-Fi/client isolation can prevent peer-to-peer connections even when both devices have internet access.
+
+The sender normally detects its LAN address automatically. Use **Advanced LAN address override** only if needed, and enter the sender's private LAN IP rather than `127.0.0.1`.
+
+For a local desktop AI service used from Android, remember that `127.0.0.1` on the phone means the phone itself; configure the provider with the desktop's reachable LAN address where appropriate.
+
+## Invitation lifetime and compatibility
+
+Offers expire after a short period. Create a fresh offer if one expires or the sending application is restarted.
+
+Protocol-v1 invitations from earlier PR #51 test builds are intentionally not compatible with the corrected one-way protocol. After updating both installations, create a fresh protocol-v2 offer.
 
 ## Removing a trusted device
 
-Select **Forget** beside the peer. ostudy removes that peer's trust record, synchronization baselines, conflicts, and related session records. Pair/synchronize again to establish a new common base.
+Removing a trusted device forgets its sync trust/baseline relationship. It does not delete decks/cards that already exist in your library.
 
-Do not forget a device merely because it is temporarily offline. Deletion history must remain available to every still-trusted device so an old offline copy cannot silently overwrite known changes.
-
-## Android PDF jobs while the app is backgrounded
-
-A user-started PDF generation job enters an Android foreground service with a visible progress notification and a partial wake lock. Native PDF rendering, selective ML Kit OCR, text normalization, AI generation, and durable database commits can continue while the activity is not visible.
-
-Android may still terminate the process under exceptional resource pressure or after a system restart. ostudy checkpoints document work durably; reopening the app resumes or retries from saved state instead of treating the WebView component as the owner of the job. Extremely large documents can still be more practical on a paired desktop, but ordinary PDF processing is not desktop-only.
+A future transfer with that installation requires a new invitation.
