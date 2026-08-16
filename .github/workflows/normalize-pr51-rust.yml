@@ -33,187 +33,8 @@ jobs:
 
       - name: Apply deterministic source repairs
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          sync = Path("src-tauri/src/device_sync/mod.rs")
-          text = sync.read_text(encoding="utf-8")
-          text = text.replace("    path::{Path, PathBuf},\n", "    path::PathBuf,\n")
-          text = text.replace(
-              '        "merged" => input.merged_payload_json.as_deref().ok_or_else(|| {\n'
-              '            CommandError::new(\n'
-              '                "device_sync_resolution_invalid",\n'
-              '                "A merged conflict resolution must include the merged row payload.",\n'
-              '            )\n'
-              '        })?,\n',
-              '        "merged" => Some(input.merged_payload_json.as_deref().ok_or_else(|| {\n'
-              '            CommandError::new(\n'
-              '                "device_sync_resolution_invalid",\n'
-              '                "A merged conflict resolution must include the merged row payload.",\n'
-              '            )\n'
-              '        })?),\n',
-          )
-          text = text.replace(
-              '    let unsigned_server = UnsignedServerHello {\n'
-              '        protocol_version: PROTOCOL_VERSION,\n'
-              '        session_id: &invitation.session_id,\n'
-              '        device_id: &identity.device_id,\n'
-              '        display_name: &identity.display_name,\n'
-              '        identity_public_key: &identity.public_key_base64,\n'
-              '        identity_fingerprint: &identity_key.fingerprint(),\n',
-              '    let identity_fingerprint = identity_key.fingerprint();\n'
-              '    let unsigned_server = UnsignedServerHello {\n'
-              '        protocol_version: PROTOCOL_VERSION,\n'
-              '        session_id: &invitation.session_id,\n'
-              '        device_id: &identity.device_id,\n'
-              '        display_name: &identity.display_name,\n'
-              '        identity_public_key: &identity.public_key_base64,\n'
-              '        identity_fingerprint: &identity_fingerprint,\n',
-          )
-          text = text.replace(
-              '            identity_fingerprint: identity_key.fingerprint(),\n',
-              '            identity_fingerprint: identity_fingerprint.clone(),\n',
-          )
-          text = text.replace(
-              '    let unsigned = UnsignedClientHello {\n',
-              '    let ephemeral_public_key = BASE64_STANDARD.encode(&ephemeral.public_key);\n'
-              '    let unsigned = UnsignedClientHello {\n',
-          )
-          text = text.replace(
-              '        ephemeral_public_key: &BASE64_STANDARD.encode(&ephemeral.public_key),\n',
-              '        ephemeral_public_key: &ephemeral_public_key,\n',
-          )
-          text = text.replace(
-              '    let ephemeral_public_key = unsigned.ephemeral_public_key.to_string();\n',
-              '',
-          )
-          scan_command = '''
-#[tauri::command]
-pub fn scan_device_pairing_qr(app: AppHandle) -> Result<Option<String>, CommandError> {
-    #[cfg(mobile)]
-    {
-        use tauri_plugin_ostudy_platform::{OstudyPlatformExt, ScanQrCodeRequest};
-
-        let result = app
-            .ostudy_platform()
-            .scan_qr_code(ScanQrCodeRequest {
-                prompt: "Scan the ostudy pairing code shown on the other device".to_string(),
-            })
-            .map_err(|error| {
-                CommandError::new(
-                    "device_sync_qr_scan_failed",
-                    format!("The native QR scanner failed: {error}"),
-                )
-            })?;
-        Ok(if result.cancelled { None } else { result.contents })
-    }
-    #[cfg(not(mobile))]
-    {
-        let _ = app;
-        Err(CommandError::new(
-            "device_sync_qr_scan_unavailable",
-            "Use the pairing invitation text or scan it with the receiving mobile device.",
-        ))
-    }
-}
-
-'''
-          marker = '#[tauri::command]\npub fn remove_device_sync_peer('
-          if 'pub fn scan_device_pairing_qr(' not in text:
-              text = text.replace(marker, scan_command + marker)
-
-          text = text.replace(
-              '    pub invitation: String,\n    pub endpoint: String,\n',
-              '    pub invitation: String,\n    pub qr_svg: String,\n    pub endpoint: String,\n',
-          )
-          text = text.replace(
-              '    if invitation.len() > MAX_INVITATION_CHARS {\n',
-              '    if invitation.len() > MAX_INVITATION_CHARS {\n',
-          )
-          if 'let qr_svg = render_pairing_qr(&invitation)?;' not in text:
-              text = text.replace(
-                  '    store.create_session(&session_id, "host", &endpoint, expires_at)?;\n',
-                  '    let qr_svg = render_pairing_qr(&invitation)?;\n'
-                  '    store.create_session(&session_id, "host", &endpoint, expires_at)?;\n',
-              )
-          text = text.replace(
-              '        invitation,\n        endpoint,\n',
-              '        invitation,\n        qr_svg,\n        endpoint,\n',
-          )
-          qr_helper = '''
-fn render_pairing_qr(invitation: &str) -> Result<String, CommandError> {
-    use qrcode::{render::svg, QrCode};
-
-    let code = QrCode::new(invitation.as_bytes()).map_err(|_| {
-        CommandError::new(
-            "device_sync_invitation_too_large",
-            "The pairing invitation is too large to render as a QR code.",
-        )
-    })?;
-    Ok(code
-        .render::<svg::Color>()
-        .min_dimensions(320, 320)
-        .max_dimensions(640, 640)
-        .build())
-}
-
-'''
-          parse_marker = 'fn parse_invitation(value: &str) -> Result<PairingInvitation, CommandError> {'
-          if 'fn render_pairing_qr(' not in text:
-              text = text.replace(parse_marker, qr_helper + parse_marker)
-          sync.write_text(text, encoding="utf-8")
-
-          merge = Path("src-tauri/src/device_sync/merge.rs")
-          text = merge.read_text(encoding="utf-8")
-          text = text.replace(
-              '        let row = row(&[("id", CellValue::Text("a".repeat(32)))]);\n'
-              '        let (merged, conflicts) = merge_rows(\n'
-              '            Some(&row),\n'
-              '            None,\n'
-              '            Some(&row),\n',
-              '        let base = row(&[\n'
-              '            ("id", CellValue::Text("a".repeat(32))),\n'
-              '            ("name", CellValue::Text("Base".to_string())),\n'
-              '        ]);\n'
-              '        let mut edited = base.clone();\n'
-              '        edited.insert("name".to_string(), CellValue::Text("Edited".to_string()));\n'
-              '        let (merged, conflicts) = merge_rows(\n'
-              '            Some(&base),\n'
-              '            None,\n'
-              '            Some(&edited),\n',
-          )
-          merge.write_text(text, encoding="utf-8")
-
-          android = Path("src-tauri/src/platform/android.rs")
-          text = android.read_text(encoding="utf-8")
-          text = text.replace(
-              'ServiceCapability::unavailable("android_ml_kit_ocr_unavailable")',
-              'ServiceCapability::unavailable("android_tesseract_and_ml_kit_ocr_unavailable")',
-          )
-          text = text.replace(
-              'camera: ServiceCapability::unavailable("android_camera_adapter_not_implemented"),\n'
-              '                qr_scan: ServiceCapability::unavailable("android_qr_adapter_not_implemented"),',
-              'camera: ServiceCapability::available(),\n'
-              '                qr_scan: ServiceCapability::available(),',
-          )
-          text = text.replace(
-              'background_execution: ServiceCapability::unavailable(\n'
-              '                    "android_background_execution_not_implemented",\n'
-              '                ),',
-              'background_execution: ServiceCapability::available(),',
-          )
-          android.write_text(text, encoding="utf-8")
-
-          lib = Path("src-tauri/src/lib.rs")
-          text = lib.read_text(encoding="utf-8")
-          if 'device_sync::scan_device_pairing_qr,' not in text:
-              text = text.replace(
-                  '            device_sync::join_device_pairing,\n',
-                  '            device_sync::join_device_pairing,\n'
-                  '            device_sync::scan_device_pairing_qr,\n',
-              )
-          lib.write_text(text, encoding="utf-8")
-          PY
+          python3 ./scripts/normalize-pr51.py
+          chmod +x ./scripts/android-install.sh
 
       - name: Resolve the lockfile and format Rust
         run: |
@@ -230,20 +51,20 @@ fn render_pairing_qr(invitation: &str) -> Result<String, CommandError> {
           if [[ -z "$changed" ]]; then
             exit 0
           fi
-          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^src-tauri/(Cargo\.lock|.*\.rs)$' || true)"
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^(src-tauri/(Cargo\.lock|.*\.rs)|scripts/android-install\.sh)$' || true)"
           if [[ -n "$unexpected" ]]; then
             echo "Normalization changed unexpected files:" >&2
             printf '%s\n' "$unexpected" >&2
             exit 1
           fi
 
-      - name: Commit canonical Rust candidates
+      - name: Commit canonical candidates
         run: |
-          if git diff --quiet -- src-tauri; then
+          if git diff --quiet -- src-tauri scripts/android-install.sh; then
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src-tauri/Cargo.lock src-tauri/src
-          git commit -m "chore: normalize PR 51 Rust candidates [normalized-rust]"
+          git add src-tauri/Cargo.lock src-tauri/src scripts/android-install.sh
+          git commit -m "chore: normalize PR 51 candidates [normalized-rust]"
           git push origin HEAD:agent/android-completion-a4-a7
