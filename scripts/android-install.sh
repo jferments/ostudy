@@ -80,12 +80,16 @@ fi
 variant="$MODE"
 mapfile -t candidates < <(
   find src-tauri/gen/android/app/build/outputs/apk \
-    -type f -name "*${variant}*.apk" -printf '%T@ %p\n' 2>/dev/null \
+    -type f \
+    -name "*${variant}*.apk" \
+    ! -path '*/androidTest/*' \
+    ! -name '*androidTest*.apk' \
+    -printf '%T@ %p\n' 2>/dev/null \
     | sort -nr \
     | awk '{ $1=""; sub(/^ /, ""); print }'
 )
 if ((${#candidates[@]} == 0)); then
-  printf 'No %s APK was found. Run without --no-build first.\n' "$MODE" >&2
+  printf 'No installable %s APK was found. Run without --no-build first.\n' "$MODE" >&2
   exit 1
 fi
 apk="${candidates[0]}"
