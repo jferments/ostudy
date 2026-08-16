@@ -13,6 +13,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::{error::CommandError, paths::AppPaths, util::unix_time_millis};
 
 const ACTIVE_STATES_SQL: &str = "'waiting', 'connecting', 'transferring', 'merging'";
+const CANCELLABLE_STATES_SQL: &str = "'waiting', 'connecting', 'transferring'";
 
 #[derive(Clone, Debug)]
 pub(crate) struct SyncCancellationSignal {
@@ -135,7 +136,7 @@ pub(crate) fn cancel_session(paths: &AppPaths, session_id: &str) -> Result<(), C
                  SET state = 'canceled', completed_at = ?1,
                      error_code = 'device_sync_canceled',
                      error_message = 'Synchronization was canceled by the user.'
-                 WHERE id = ?2 AND state IN ({ACTIVE_STATES_SQL})"
+                 WHERE id = ?2 AND state IN ({CANCELLABLE_STATES_SQL})"
             ),
             params![now, session_id],
         )
@@ -147,6 +148,22 @@ pub(crate) fn cancel_session(paths: &AppPaths, session_id: &str) -> Result<(), C
             )
         })?;
     if changed != 1 {
+        let state: Option<String> = connection
+            .query_row("SELECT state FROM sessions WHERE id = ?1", [session_id], |row| row.get(0))
+            .optional()
+            .map_err(|error| {
+                CommandError::database_at(
+                    "device_sync_database_error",
+                    format!("operation=cancel_session_lookup session_id={session_id}"),
+                    error,
+                )
+            })?;
+        if state.as_deref() == Some("merging") {
+            return Err(CommandError::new(
+                "device_sync_merge_committing",
+                "The synchronization merge is already committing atomically. Let it finish, then review the result.",
+            ));
+        }
         return Err(CommandError::new(
             "device_sync_session_not_active",
             "That synchronization request is no longer active.",
@@ -171,7 +188,7 @@ pub(crate) fn cancel_superseded_unclaimed_hosts(
         .prepare(&format!(
             "SELECT id FROM sessions
              WHERE direction = 'host' AND peer_id IS NULL
-               AND state IN ({ACTIVE_STATES_SQL})"
+               AND state IN ({CANCELLABLE_STATES_SQL})"
         ))
         .map_err(|error| {
             CommandError::database_at(
@@ -208,7 +225,7 @@ pub(crate) fn cancel_superseded_unclaimed_hosts(
                          error_code = 'device_sync_superseded',
                          error_message = 'A newer outgoing synchronization offer replaced this waiting offer.'
                      WHERE direction = 'host' AND peer_id IS NULL
-                       AND state IN ({ACTIVE_STATES_SQL})"
+                       AND state IN ({CANCELLABLE_STATES_SQL})"
                 ),
                 [now],
             )
@@ -424,10 +441,7 @@ fn open_store(paths: &AppPaths, operation: &str) -> Result<Connection, CommandEr
 }
 
 pub(crate) fn canceled_error() -> CommandError {
-    CommandError::new(
-        "device_sync_canceled",
-        "Synchronization was canceled.",
-    )
+    CommandError::new("device_sync_canceled", "Synchronization was canceled.")
 }
 
 fn peer_busy_error() -> CommandError {
@@ -479,10 +493,18 @@ mod tests {
         let canceled = cancel_superseded_unclaimed_hosts(&paths).unwrap();
         assert_eq!(canceled, vec!["1".repeat(32)]);
         let host_state: String = connection
-            .query_row("SELECT state FROM sessions WHERE id = ?1", ["1".repeat(32)], |row| row.get(0))
+            .query_row(
+                "SELECT state FROM sessions WHERE id = ?1",
+                ["1".repeat(32)],
+                |row| row.get(0),
+            )
             .unwrap();
         let join_state: String = connection
-            .query_row("SELECT state FROM sessions WHERE id = ?1", ["2".repeat(32)], |row| row.get(0))
+            .query_row(
+                "SELECT state FROM sessions WHERE id = ?1",
+                ["2".repeat(32)],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(host_state, "canceled");
         assert_eq!(join_state, "connecting");
@@ -508,9 +530,31 @@ mod tests {
         finish(&session_id);
         let state: String = open_store(&paths, "fixture")
             .unwrap()
-            .query_row("SELECT state FROM sessions WHERE id = ?1", [session_id], |row| row.get(0))
+            .query_row(
+                "SELECT state FROM sessions WHERE id = ?1",
+                [session_id],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(state, "canceled");
+    }
+
+    #[test]
+    fn merging_session_rejects_cancel_to_preserve_atomic_commit_boundary() {
+        let paths = test_paths("merge-cancel");
+        initialize_store(&paths);
+        let session_id = "7".repeat(32);
+        let now = unix_time_millis().unwrap();
+        open_store(&paths, "fixture")
+            .unwrap()
+            .execute(
+                "INSERT INTO sessions (id, direction, state, endpoint_hint, created_at, expires_at)
+                 VALUES (?1, 'join', 'merging', '192.168.1.2:1', ?2, ?3)",
+                params![session_id, now, now + 60_000],
+            )
+            .unwrap();
+        let error = cancel_session(&paths, &session_id).unwrap_err();
+        assert_eq!(error.code, "device_sync_merge_committing");
     }
 
     #[test]
