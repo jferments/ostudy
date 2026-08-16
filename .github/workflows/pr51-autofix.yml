@@ -1,0 +1,93 @@
+name: PR 51 bounded compiler suggestions
+
+on:
+  push:
+    branches:
+      - agent/android-completion-a4-a7
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr51-bounded-autofix
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(pr51): apply bounded compiler suggestions') }}
+    runs-on: [self-hosted, ostudy-unified]
+    timeout-minutes: 45
+    env:
+      CI: true
+      CARGO_TERM_COLOR: never
+      GRADLE_USER_HOME: ${{ github.workspace }}/.runner-cache/gradle
+      OSTUDY_CARGO_TARGET_DIR: ${{ github.workspace }}/.runner-cache/cargo-target
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/android-completion-a4-a7
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Skip until an integration failure is present
+        id: status
+        run: |
+          if [[ -f .github/pr51-integration-status.txt ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install exact JavaScript graph
+        if: steps.status.outputs.present == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply only rustc machine-applicable suggestions
+        id: rust_fix
+        if: steps.status.outputs.present == 'true' && !contains(github.event.head_commit.message, 'record integration failure')
+        continue-on-error: true
+        run: |
+          cargo fix \
+            --manifest-path src-tauri/Cargo.toml \
+            --allow-dirty \
+            --allow-staged \
+            --all-targets \
+            2>&1 | tee "$RUNNER_TEMP/pr51-cargo-fix.log"
+          cargo fmt --manifest-path src-tauri/Cargo.toml
+
+      - name: Recheck Rust and frontend types
+        id: recheck
+        if: steps.status.outputs.present == 'true'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          {
+            cargo check --manifest-path src-tauri/Cargo.toml
+            pnpm exec tsc -b
+          } 2>&1 | tee "$RUNNER_TEMP/pr51-autofix-recheck.log"
+
+      - name: Persist suggestion diff and updated diagnostic
+        if: steps.status.outputs.present == 'true'
+        env:
+          EXPECTED_BRANCH: agent/android-completion-a4-a7
+          RECHECK_OUTCOME: ${{ steps.recheck.outcome }}
+        run: |
+          {
+            echo "autofix_recheck=$RECHECK_OUTCOME"
+            if [[ -f "$RUNNER_TEMP/pr51-cargo-fix.log" ]]; then
+              echo
+              echo "===== pr51-cargo-fix.log ====="
+              tail -n 120 "$RUNNER_TEMP/pr51-cargo-fix.log"
+            fi
+            if [[ -f "$RUNNER_TEMP/pr51-autofix-recheck.log" ]]; then
+              echo
+              echo "===== pr51-autofix-recheck.log ====="
+              tail -n 220 "$RUNNER_TEMP/pr51-autofix-recheck.log"
+            fi
+          } > .github/pr51-autofix-status.txt
+          git config user.name "ostudy-ci"
+          git config user.email "158022198+jferments@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "chore(pr51): apply bounded compiler suggestions"
+          git push origin HEAD:"$EXPECTED_BRANCH"
