@@ -28,6 +28,8 @@ node "$SCRIPT_DIR/verify-project-manifests.mjs"
 node "$SCRIPT_DIR/generate-ui-tokens.mjs" --check
 node "$SCRIPT_DIR/verify-ui-token-usage.mjs"
 node "$SCRIPT_DIR/verify-button-contrast.mjs"
+node "$SCRIPT_DIR/verify-deck-toolbar-layout.mjs"
+node "$SCRIPT_DIR/verify-device-sync-qr-ui.mjs"
 node "$SCRIPT_DIR/verify-library-backup-threading.mjs"
 node "$SCRIPT_DIR/verify-ipc-contract.mjs"
 node "$SCRIPT_DIR/verify-repository-policy.mjs"
