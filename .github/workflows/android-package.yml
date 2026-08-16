@@ -6,14 +6,19 @@ on:
       artifact:
         description: Android artifact to build
         required: true
-        default: aab
+        default: debug-apk
         type: choice
         options:
-          - apk
-          - aab
+          - debug-apk
+          - release-apk
+          - release-aab
 
 permissions:
   contents: read
+
+concurrency:
+  group: android-package-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   package:
@@ -29,6 +34,7 @@ jobs:
         with:
           clean: true
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Expose pinned user toolchains and persistent caches
         run: |
@@ -56,19 +62,31 @@ jobs:
           android_write_local_properties
           android_emit_github_environment
 
-      - name: Build unsigned release artifact
+      - name: Build selected Android artifact
         env:
           ARTIFACT: ${{ inputs.artifact }}
         run: |
-          if [[ "$ARTIFACT" == aab ]]; then
-            bash ./scripts/android-build.sh --release --aab --target all
-          else
-            bash ./scripts/android-build.sh --release --apk --target all
-            apk="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' -printf '%T@ %p\n' | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
-            bash ./scripts/verify-android-package.sh "$apk" release
-          fi
+          case "$ARTIFACT" in
+            debug-apk)
+              bash ./scripts/android-build.sh --debug --apk --target aarch64
+              apk="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*debug*.apk' -printf '%T@ %p\n' | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
+              bash ./scripts/verify-android-package.sh "$apk" debug
+              ;;
+            release-apk)
+              bash ./scripts/android-build.sh --release --apk --target all
+              apk="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*release*.apk' -printf '%T@ %p\n' | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
+              bash ./scripts/verify-android-package.sh "$apk" release
+              ;;
+            release-aab)
+              bash ./scripts/android-build.sh --release --aab --target all
+              ;;
+            *)
+              printf 'Unsupported Android artifact kind: %s\n' "$ARTIFACT" >&2
+              exit 2
+              ;;
+          esac
 
-      - name: Upload unsigned package
+      - name: Upload Android package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ostudy-android-${{ inputs.artifact }}-${{ github.sha }}
@@ -77,3 +95,4 @@ jobs:
             src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
           if-no-files-found: error
           retention-days: 14
+          compression-level: 0
