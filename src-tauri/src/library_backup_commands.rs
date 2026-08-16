@@ -20,7 +20,7 @@ use crate::{
 };
 
 #[tauri::command]
-pub async fn prepare_library_backup(
+pub async fn prepare_library_backup_async(
     app: AppHandle,
     input: PrepareLibraryBackupInput,
 ) -> Result<PreparedLibraryBackupDto, CommandError> {
@@ -33,7 +33,7 @@ pub async fn prepare_library_backup(
 }
 
 #[tauri::command]
-pub async fn prepare_library_restore(
+pub async fn prepare_library_restore_async(
     app: AppHandle,
     input: PrepareLibraryRestoreInput,
 ) -> Result<LibraryRestoreResultDto, CommandError> {
