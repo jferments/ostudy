@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ShowToast } from "../../components/Toast";
 import { getErrorMessage } from "../../ipc/common";
 import {
+  cancelDeviceSyncSession,
   getDeviceSyncState,
   joinDevicePairing,
   removeDeviceSyncPeer,
@@ -12,6 +13,7 @@ import {
   updateDeviceSyncName,
   type DeviceSyncConflict,
   type DeviceSyncResult,
+  type DeviceSyncSession,
   type DeviceSyncState,
   type PairingInvitation,
 } from "../../ipc/deviceSync";
@@ -25,6 +27,8 @@ interface DeviceSyncSettingsProps {
 
 type ScanFeedback = "idle" | "scanning" | "detected" | "receiving" | "received" | "cancelled";
 
+const ACTIVE_SESSION_STATES = new Set(["waiting", "connecting", "transferring", "merging"]);
+
 export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const [state, setState] = useState<DeviceSyncState | null>(null);
   const [deviceName, setDeviceName] = useState("");
@@ -33,6 +37,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const [includeApiSettings, setIncludeApiSettings] = useState(false);
   const [invitation, setInvitation] = useState<PairingInvitation | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [cancelingSessionId, setCancelingSessionId] = useState<string | null>(null);
   const [scanFeedback, setScanFeedback] = useState<ScanFeedback>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const confirm = useConfirm();
@@ -55,20 +60,21 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     void refresh();
   }, []);
 
-  useEffect(() => {
-    if (!invitation || invitation.expiresAt <= Date.now()) return;
-    const interval = window.setInterval(() => void refresh(true), 2_500);
-    return () => window.clearInterval(interval);
-  }, [invitation]);
-
   const credentialsAvailable = state?.secureCredentialsAvailable === true;
   const activeSessions = useMemo(
-    () =>
-      state?.sessions.filter((session) =>
-        ["waiting", "connecting", "transferring", "merging"].includes(session.state),
-      ) ?? [],
+    () => state?.sessions.filter((session) => ACTIVE_SESSION_STATES.has(session.state)) ?? [],
     [state],
   );
+  const hasUnclaimedSendingOffer = activeSessions.some(
+    (session) => session.direction === "host" && session.peerId === null,
+  );
+
+  useEffect(() => {
+    const invitationWaiting = invitation !== null && invitation.expiresAt > Date.now();
+    if (!invitationWaiting && busyAction !== "receive" && activeSessions.length === 0) return;
+    const interval = window.setInterval(() => void refresh(true), 1_500);
+    return () => window.clearInterval(interval);
+  }, [activeSessions.length, busyAction, invitation]);
 
   async function saveDeviceName(): Promise<void> {
     if (busyAction) return;
@@ -96,7 +102,12 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
       });
       setInvitation(created);
       await refresh(true);
-      showToast("info", "Sync offer is ready on this device for five minutes.");
+      showToast(
+        "info",
+        hasUnclaimedSendingOffer
+          ? "The previous waiting offer was canceled and replaced with a new five-minute offer."
+          : "Sync offer is ready on this device for five minutes.",
+      );
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -135,6 +146,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     } catch (error: unknown) {
       if (fromScanner) setScanFeedback("detected");
       setErrorMessage(getErrorMessage(error));
+      await refresh(true);
     } finally {
       setBusyAction(null);
     }
@@ -166,6 +178,25 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   async function joinPairing(): Promise<void> {
     if (busyAction || !joinInvitation.trim()) return;
     await receiveOffer(joinInvitation, false);
+  }
+
+  async function cancelSession(session: DeviceSyncSession): Promise<void> {
+    if (cancelingSessionId) return;
+    setCancelingSessionId(session.id);
+    setErrorMessage(null);
+    try {
+      await cancelDeviceSyncSession(session.id);
+      if (invitation?.sessionId === session.id) setInvitation(null);
+      await refresh(true);
+      showToast(
+        "info",
+        `${session.direction === "host" ? "Sending" : "Receiving"} request canceled.`,
+      );
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setCancelingSessionId(null);
+    }
   }
 
   async function copyInvitation(): Promise<void> {
@@ -287,7 +318,8 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
               <h3>Send to another device</h3>
               <p>
                 Create a short-lived synchronization offer containing this device's study library.
-                The receiving device only needs to scan or accept this one invitation.
+                The receiving device only needs to scan or accept this one invitation. Creating a
+                new waiting offer replaces the previous unclaimed offer.
               </p>
               <label className={`${settingsStyles.switchRow} ${styles.credentialToggle}`}>
                 <span>
@@ -330,7 +362,11 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                 disabled={busyAction !== null || !state.localNetworkAvailable}
                 onClick={() => void hostPairing()}
               >
-                {busyAction === "host" ? "Opening listener…" : "Create sync offer"}
+                {busyAction === "host"
+                  ? "Opening listener…"
+                  : hasUnclaimedSendingOffer
+                    ? "Replace waiting offer"
+                    : "Create sync offer"}
               </button>
 
               {invitation && qrSource ? (
@@ -433,10 +469,21 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
           {activeSessions.length > 0 ? (
             <div className={styles.sessionStrip} aria-label="Active synchronization sessions">
               {activeSessions.map((session) => (
-                <span key={session.id}>
-                  <strong>{session.direction === "host" ? "Sending" : "Receiving"}</strong>
-                  {humanizeState(session.state)} · {session.endpointHint}
-                </span>
+                <div className={styles.sessionPill} key={session.id}>
+                  <span>
+                    <strong>{session.direction === "host" ? "Sending" : "Receiving"}</strong>
+                    {humanizeState(session.state)} · {sessionPeerLabel(session, state)}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={cancelingSessionId !== null}
+                    aria-label={`Cancel ${session.direction === "host" ? "sending" : "receiving"} request`}
+                    onClick={() => void cancelSession(session)}
+                  >
+                    {cancelingSessionId === session.id ? "Canceling…" : "Cancel"}
+                  </button>
+                </div>
               ))}
             </div>
           ) : null}
@@ -570,6 +617,11 @@ function formatDateTime(value: number): string {
 
 function humanizeState(value: string): string {
   return value.replaceAll("_", " ").replace(/^./, (character) => character.toUpperCase());
+}
+
+function sessionPeerLabel(session: DeviceSyncSession, state: DeviceSyncState): string {
+  if (!session.peerId) return session.endpointHint;
+  return state.peers.find((peer) => peer.id === session.peerId)?.displayName ?? session.endpointHint;
 }
 
 function humanizeTable(value: string): string {
