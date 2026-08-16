@@ -143,7 +143,8 @@ describe("DeviceSyncSettings", () => {
     await screen.findByText("Android phone");
     fireEvent.click(screen.getByRole("button", { name: "Scan pairing QR code" }));
     expect(await screen.findByText(/Scan cancelled/u)).toBeTruthy();
-    expect(screen.getByLabelText("Pairing invitation")).toHaveValue("");
+    const invitation = screen.getByLabelText("Pairing invitation") as HTMLTextAreaElement;
+    expect(invitation.value).toBe("");
   });
 
   it("keeps concurrent card edits visible until an explicit side is selected", async () => {
