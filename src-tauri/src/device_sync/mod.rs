@@ -412,16 +412,15 @@ pub async fn join_device_pairing(
     store.update_session(&invitation.session_id, None, "connecting", None)?;
     let session_id = invitation.session_id.clone();
     let worker_app = app.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        run_join_session(worker_app, invitation)
-    })
-    .await
-    .map_err(|_| {
-        CommandError::new(
-            "device_sync_worker_interrupted",
-            "The device synchronization worker ended before returning a result.",
-        )
-    })?;
+    let result =
+        tauri::async_runtime::spawn_blocking(move || run_join_session(worker_app, invitation))
+            .await
+            .map_err(|_| {
+                CommandError::new(
+                    "device_sync_worker_interrupted",
+                    "The device synchronization worker ended before returning a result.",
+                )
+            })?;
     match &result {
         Ok(value) => {
             store.update_session(&session_id, Some(&value.peer.id), "completed", None)?;
@@ -818,7 +817,8 @@ fn run_join_session(
     // The package sanitizer removes the bytes, and this temporary-schema guard
     // makes the merge engine skip these tables entirely. Empty remote tables
     // must not be interpreted as a request to delete local device settings.
-    let remote_database = Connection::open(&extracted.database_path).map_err(CommandError::database)?;
+    let remote_database =
+        Connection::open(&extracted.database_path).map_err(CommandError::database)?;
     remote_database
         .execute_batch("PRAGMA foreign_keys = OFF; DROP TABLE IF EXISTS app_settings;")
         .map_err(CommandError::database)?;
