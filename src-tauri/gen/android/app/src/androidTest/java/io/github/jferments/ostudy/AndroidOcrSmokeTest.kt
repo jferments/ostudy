@@ -4,56 +4,52 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Typeface
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.filters.LargeTest
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
-import java.io.FileOutputStream
+import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
+@LargeTest
 class AndroidOcrSmokeTest {
   @Test
-  fun bundledTesseractModelInitializesAndRecognizesRenderedEnglishText() {
-    val context = InstrumentationRegistry.getInstrumentation().targetContext
-    val dataRoot = File(context.noBackupFilesDir, "instrumentation-tesseract")
-    val model = File(dataRoot, "tessdata/eng.traineddata")
-    model.parentFile?.mkdirs()
-    context.assets.open("tessdata/eng.traineddata").use { input ->
-      FileOutputStream(model, false).use(input::copyTo)
-    }
-    assertTrue("The bundled English model must be substantive.", model.length() > 1_000_000L)
-
-    val bitmap = Bitmap.createBitmap(1_400, 320, Bitmap.Config.ARGB_8888)
+  fun bundledMlKitRecognizesHighContrastEnglishTextOffline() {
+    val bitmap = Bitmap.createBitmap(1_600, 420, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     canvas.drawColor(Color.WHITE)
-    canvas.drawText(
-      "NURSING STUDY 123",
-      60f,
-      210f,
-      Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.BLACK
-        textSize = 128f
-      },
-    )
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = Color.BLACK
+      textSize = 150f
+      typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+    }
+    canvas.drawText("OSTUDY FLASHCARDS", 70f, 260f, paint)
 
-    val apiClass = Class.forName("cz.adaptech.tesseract4android.TessBaseAPI")
-    val api = apiClass.getConstructor().newInstance()
+    val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     try {
-      val initialized = apiClass
-        .getMethod("init", String::class.java, String::class.java)
-        .invoke(api, dataRoot.absolutePath, "eng") as Boolean
-      assertTrue("Tesseract must initialize from the bundled model.", initialized)
-      apiClass.getMethod("setPageSegMode", Integer.TYPE).invoke(api, 6)
-      apiClass.getMethod("setImage", Bitmap::class.java).invoke(api, bitmap)
-      val text = (apiClass.getMethod("getUTF8Text").invoke(api) as String).uppercase()
-      assertTrue("Tesseract should recognize the rendered nursing label: $text", text.contains("NURSING"))
-      assertTrue("Tesseract should recognize the rendered study label: $text", text.contains("STUDY"))
+      val result = Tasks.await(
+        recognizer.process(InputImage.fromBitmap(bitmap, 0)),
+        20,
+        TimeUnit.SECONDS,
+      )
+      val recognized = result.text.uppercase()
+      assertTrue(
+        "Expected ML Kit to recognize the synthetic OSTUDY line, got: $recognized",
+        recognized.contains("OSTUDY"),
+      )
+      assertTrue(
+        "Expected ML Kit to recognize the synthetic FLASHCARDS line, got: $recognized",
+        recognized.contains("FLASH"),
+      )
     } finally {
-      runCatching { apiClass.getMethod("recycle").invoke(api) }
+      recognizer.close()
       bitmap.recycle()
-      dataRoot.deleteRecursively()
     }
   }
 }
