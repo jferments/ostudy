@@ -114,6 +114,12 @@ export function joinDevicePairing(invitation: string): Promise<DeviceSyncResult>
   });
 }
 
+export function cancelDeviceSyncSession(sessionId: string): Promise<void> {
+  return invoke<void>("cancel_device_sync_session", {
+    input: { sessionId },
+  });
+}
+
 export function scanDevicePairingQr(): Promise<string | null> {
   return invoke<string | null>("scan_device_pairing_qr_async");
 }
