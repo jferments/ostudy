@@ -113,6 +113,10 @@ export function joinDevicePairing(input: {
   return invoke<DeviceSyncResult>("join_device_pairing", { input });
 }
 
+export function scanDevicePairingQr(): Promise<string | null> {
+  return invoke<string | null>("scan_device_pairing_qr");
+}
+
 export function removeDeviceSyncPeer(peerId: string): Promise<void> {
   return invoke<void>("remove_device_sync_peer", {
     input: { peerId },
