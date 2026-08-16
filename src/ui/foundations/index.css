@@ -221,6 +221,18 @@
 }
 
 @layer utilities {
+  /*
+   * Legacy accent buttons predate semantic foreground tokens and hard-coded a
+   * white label. Dark/synthwave palettes can intentionally use a light accent,
+   * so the foreground must always follow the theme's audited on-accent token.
+   * The modern Button primitive already uses the same semantic contract.
+   */
+  .primary-button,
+  .small-primary-button,
+  .practice-reveal-button {
+    color: var(--on-accent);
+  }
+
   .sr-only {
     position: absolute !important;
     width: 1px !important;
