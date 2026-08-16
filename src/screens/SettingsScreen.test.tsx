@@ -159,7 +159,7 @@ describe("SettingsScreen", () => {
       "Review/Scheduling",
     ]);
     expect(tabs[0].getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("tabpanel").textContent).toContain("Interface appearance");
+    expect(screen.getByRole("tabpanel").textContent).toContain("Typography");
   });
 
   it("keeps storage information at the bottom of Backup/Sync", async () => {
