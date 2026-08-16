@@ -43,6 +43,7 @@ mod external_file_recovery;
 mod external_file_streaming;
 mod external_files;
 mod library_backup;
+mod library_backup_commands;
 mod logging;
 mod paths;
 mod pdf_backend;
@@ -312,8 +313,8 @@ pub fn run() {
             document_operations::open_document_source,
             document_operations::delete_pdf_document,
             documents::set_document_archived,
-            library_backup::prepare_library_backup,
-            library_backup::prepare_library_restore,
+            library_backup_commands::prepare_library_backup,
+            library_backup_commands::prepare_library_restore,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
             practice_selection::start_card_practice,
