@@ -1,0 +1,109 @@
+name: PR 51 finalize clean Android branch
+
+on:
+  push:
+    branches:
+      - agent/android-completion-a4-a7
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr51-finalize-clean
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(pr51): finalize clean Android branch') }}
+    runs-on: [self-hosted, ostudy-unified]
+    timeout-minutes: 180
+    env:
+      CI: true
+      CARGO_TERM_COLOR: never
+      GRADLE_USER_HOME: ${{ github.workspace }}/.runner-cache/gradle
+      OSTUDY_CARGO_TARGET_DIR: ${{ github.workspace }}/.runner-cache/cargo-target
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/android-completion-a4-a7
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Remove every temporary PR-specific artifact from the candidate tree
+        run: |
+          rm -f .github/pr51-* scripts/pr51-*
+          find .github/workflows -maxdepth 1 -type f -name 'pr51-*' -delete
+
+      - name: Run fast qualification
+        run: bash ./scripts/check-fast.sh 2>&1 | tee "$RUNNER_TEMP/pr51-final-fast.log"
+
+      - name: Run authoritative full Linux qualification
+        run: bash ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/pr51-final-full.log"
+
+      - name: Run Android compile and instrumentation-package qualification
+        run: bash ./scripts/android-test.sh 2>&1 | tee "$RUNNER_TEMP/pr51-final-android.log"
+
+      - name: Run API-36 emulator and native instrumentation smoke
+        run: bash ./scripts/android-smoke.sh 2>&1 | tee "$RUNNER_TEMP/pr51-final-emulator.log"
+
+      - name: Build debug and release packages through public wrappers
+        run: |
+          pnpm install --frozen-lockfile
+          {
+            pnpm android:build:debug
+            pnpm android:build:release
+            pnpm android:bundle:release
+            pnpm android:artifacts
+          } 2>&1 | tee "$RUNNER_TEMP/pr51-final-packages.log"
+
+      - name: Install public debug wrapper on a fresh emulator
+        run: |
+          set -o pipefail
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          adb kill-server || true
+          nohup "$ANDROID_HOME/emulator/emulator" \
+            -avd ostudy-api36-phone \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -no-snapshot-load \
+            -no-snapshot-save \
+            -gpu swiftshader_indirect \
+            > "$RUNNER_TEMP/pr51-final-install-emulator.log" 2>&1 &
+          emulator_pid=$!
+          cleanup() {
+            adb emu kill >/dev/null 2>&1 || true
+            kill "$emulator_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          timeout 300 bash -c '
+            until [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" == "1" ]]; do
+              sleep 2
+            done
+          '
+          pnpm android:install:debug 2>&1 | tee "$RUNNER_TEMP/pr51-final-install-wrapper.log"
+          adb shell pm path io.github.jferments.ostudy | grep -F 'package:'
+          adb shell am start -W -n io.github.jferments.ostudy/.MainActivity \
+            | tee -a "$RUNNER_TEMP/pr51-final-install-wrapper.log"
+          adb shell pidof io.github.jferments.ostudy
+
+      - name: Commit only the clean, fully qualified tree
+        run: |
+          git config user.name "ostudy-ci"
+          git config user.email "158022198+jferments@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "chore(pr51): finalize clean Android branch"
+          git push origin HEAD:agent/android-completion-a4-a7
+
+      - name: Upload bounded final evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pr51-finalize-failure-${{ github.sha }}
+          path: |
+            src-tauri/gen/android/app/build/reports/**
+            src-tauri/gen/android/app/build/outputs/**
+            .artifacts/android-smoke/**
+          if-no-files-found: ignore
+          retention-days: 14
