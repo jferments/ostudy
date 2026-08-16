@@ -94,8 +94,16 @@ for (const route of routes) {
   );
 
   for (const command of route.commands) {
-    expectContains(mobile, `run_mobile_plugin("${command}"`, `Rust mobile call ${command}`);
-    expectContains(kotlin, `fun ${command}(`, `${route.className} command ${command}`);
+    expectMatches(
+      mobile,
+      new RegExp(`run_mobile_plugin\\s*\\(\\s*"${escapeRegExp(command)}"`, "u"),
+      `Rust mobile call ${command}`,
+    );
+    expectMatches(
+      kotlin,
+      new RegExp(`fun\\s+${escapeRegExp(command)}\\s*\\(`, "u"),
+      `${route.className} command ${command}`,
+    );
   }
 }
 
@@ -150,6 +158,10 @@ async function read(relativePath) {
 
 function expectContains(source, expected, label) {
   if (!source.includes(expected)) failures.push(`Missing ${label}: ${expected}`);
+}
+
+function expectMatches(source, pattern, label) {
+  if (!pattern.test(source)) failures.push(`Missing ${label}: ${pattern}`);
 }
 
 function functionBlock(source, name) {
