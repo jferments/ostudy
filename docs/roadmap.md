@@ -13,10 +13,12 @@ The following capabilities are already present in the active codebase:
 - FSRS scheduling, workload controls, voluntary and due-only study, and detailed learning analytics;
 - portable deck exchange, generated JSON import, and complete personal-library backup including recoverable unfinished authoring drafts;
 - configurable llama.cpp/Unsloth and DeepSeek provider profiles with native credential and network boundaries;
-- a managed PDF library and an initial document-to-flashcard generation workflow on desktop;
-- responsive shared UI foundations, themes, keyboard behavior, and accessibility primitives;
-- a buildable Android application with authoring, practice, analytics, system file/share integration, process restoration, and Keystore-backed credentials;
-- tiered local and self-hosted CI validation.
+- a managed PDF library and document-to-flashcard generation on Linux and Android;
+- Android PDF page rendering through `PdfRenderer` and bundled ML Kit Text Recognition v2 for selective on-device OCR;
+- explicit encrypted private-LAN synchronization offers between trusted ostudy installations, with three-way merging and conflict records;
+- responsive shared UI foundations, locally hosted selectable fonts, themes, keyboard behavior, and accessibility primitives;
+- a qualified Android source-build/debug-install path with authoring, practice, analytics, file/share integration, process restoration, Keystore-backed credentials, documents, and QR pairing;
+- tiered local and self-hosted Linux/Android CI validation, including an API 36 emulator smoke suite.
 
 Historical stage plans are kept under [`history/`](history/) for project archaeology. They are not the current roadmap.
 
@@ -24,21 +26,25 @@ Historical stage plans are kept under [`history/`](history/) for project archaeo
 
 The shared runtime exposes typed platform capabilities for external files, secure secrets, lifecycle, time zones, and resource observation. External imports are staged into managed storage, exports are prepared before publication, card images use opaque asset identities, and card/template/bulk/AI-profile metadata editors retain bounded device-local drafts across process loss. Final authoring saves retire the exact flushed draft inside the canonical SQLite transaction, and backup format version 3 restores persistent drafts with their staged images.
 
-## Completed Android application foundation (A1-A3)
+## Completed Android application and document foundation (A1-A7)
 
-The generated Tauri Android shell now boots the shared application and uses a private Kotlin plugin for Android-only APIs. Android supports ordinary deck/card/template authoring, practice, analytics, durable drafts, interrupted-practice restoration, managed images, Storage Access Framework import/export, outgoing and confirmed incoming system shares, complete backup/restore, Android Keystore credentials, connectivity observations, system Back, safe areas, and software-keyboard insets.
+The Tauri Android shell boots the shared application and uses narrow Kotlin adapters for Android-only APIs. Android supports ordinary deck/card/template authoring, practice, analytics, durable drafts, interrupted-practice restoration, managed images, Storage Access Framework import/export, outgoing and confirmed incoming shares, complete backup/restore, Android Keystore credentials, connectivity observations, system Back, safe areas, and software-keyboard insets.
 
-The repository includes pinned SDK/NDK tooling, Android project/package verifiers, unsigned APK/AAB workflows, and an official API 36 emulator smoke suite. PDF import, rendering, OCR, and AI document generation remain an explicit Android development stub and are the next Android-specific platform phase rather than hidden partial functionality.
+The document pipeline now retains the shared Rust validation/planning/checkpoint/transaction boundaries while using Android `PdfRenderer` for page rasterization and bundled ML Kit Text Recognition v2 for pages that need visual text recovery. Long-running user-started document work can hold an Android foreground-service lease with a visible notification; process interruption still relies on durable checkpoints rather than pretending process death is transparent.
+
+Trusted-device synchronization now uses authenticated encrypted TCP over private LAN addresses. A protocol-v2 invitation is a one-way offer from the device that created it: Android can scan the offer and immediately receive the sender-selected study data without creating a second invitation. Ordinary application/appearance settings are excluded from sync; API provider settings and saved credentials are a sender-controlled opt-in for each offer.
+
+The repository includes pinned SDK/NDK tooling, Android project/package verifiers, debug/release APK and AAB build paths, and an official API 36 emulator smoke suite. Public Android distribution still requires release signing/store work described below.
 
 ## Current priorities
 
-### 1. Stabilize document and PDF processing
+### 1. Stabilize document and PDF processing across desktop and Android
 
-PDF generation is the newest large subsystem and remains the most important reliability target. Work in this area includes improving extraction quality, OCR recovery, provider compatibility, progress reporting, cancellation, retries, diagnostic clarity, generated-card quality, and behavior on large or unusual documents. The goal is not merely to make one test PDF succeed, but to make failures understandable and recoverable without corrupting the local library.
+PDF generation remains one of the newest large subsystems. Ongoing work includes improving extraction quality, OCR recovery, provider compatibility, progress reporting, cancellation, retries, diagnostic clarity, generated-card quality, and representative corpus coverage for large, rotated, low-contrast, multi-column, table-heavy, and otherwise unusual documents. Android additionally needs continued physical-device coverage across camera/storage vendors and resource-constrained devices.
 
-### 2. Add Android document processing
+### 2. Harden cross-device synchronization on real devices
 
-Android now covers the ordinary study application but intentionally omits PDF/document processing. The next Android phase requires a native page renderer, independent text rescue, on-device OCR, bounded mobile work planning, lifecycle-safe checkpoints, and representative document-corpus testing without weakening the shared document validation pipeline.
+The encrypted one-way-offer protocol and three-way merge engine are implemented. The next work is broader physical-device qualification, clearer conflict UX, more representative asset/history test matrices, performance measurement on large libraries, and future transfer-efficiency improvements that preserve the explicit user-controlled send/receive model. Sync must continue to keep device-local appearance/application settings separate and require fresh sender consent before transferring API configuration or credentials.
 
 ### 3. Refine everyday authoring and review ergonomics
 
@@ -50,7 +56,7 @@ Ubuntu/Debian Linux is the primary qualified desktop path. Windows and macOS nee
 
 ### 5. Continue accessibility and responsive refinement
 
-The shared UI foundation supports compact layouts, keyboard operation, reduced motion, safe-area-aware overlays, Android system insets, touch targets, and theme tokens. Remaining work is a systematic screen-by-screen audit, especially around dense analytics, document workflows, high interface scaling, and assistive technology on both desktop and mobile.
+The shared UI foundation supports compact layouts, keyboard operation, reduced motion, safe-area-aware overlays, Android system insets, touch targets, theme tokens, and configurable typography. Remaining work is a systematic screen-by-screen audit, especially around dense analytics, document workflows, high interface scaling, and assistive technology on both desktop and mobile.
 
 ## Next product capabilities
 
@@ -76,7 +82,9 @@ Use deterministic analytics and optional AI interpretation to identify weak area
 
 ### User-controlled synchronization
 
-Synchronization between a learner's own devices is planned. The design must preserve local ownership, support reliable conflict resolution, avoid requiring a single proprietary service, and protect credentials and private study material. The exact transport and encryption design has not yet been accepted, so current documentation does not claim that sync exists.
+The first synchronization implementation is local-first and explicit: one device creates a short-lived encrypted send offer and the other accepts it. Stable peer identity and saved baselines support later three-way merging without turning pairing into a permanent background subscription.
+
+Future sync work may improve trusted-peer ergonomics, transfer efficiency, discovery, large-library performance, and additional platform adapters, but should preserve the current constraints: no mandatory proprietary cloud account, no silent credential transfer, no automatic synchronization of theme/UI preferences, and explicit conflict handling when both devices changed the same durable study state.
 
 ### iOS, Windows, and macOS
 
@@ -101,3 +109,4 @@ Future features should preserve the following commitments:
 5. Scheduling and analytics remain reproducible from ostudy-owned data.
 6. Released migrations and interchange formats remain readable through explicit compatibility paths.
 7. Platform expansion should reuse shared domain behavior rather than fork the product into unrelated implementations.
+8. Device synchronization must keep local UI/appearance preferences local and transfer sensitive API configuration only through explicit sender opt-in.
