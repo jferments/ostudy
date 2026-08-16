@@ -21,7 +21,6 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import com.googlecode.tesseract.android.TessBaseAPI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,16 +31,11 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
-import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 import kotlin.math.ceil
 
 private const val PDF_RENDER_ENGINE = "android-pdf-renderer-v1"
-private const val TESSERACT_ENGINE = "tesseract4android-4.9.0/tesseract-5.5.1"
-private const val ML_KIT_ENGINE = "ml-kit-text-recognition-v2-bundled-latin-16.0.1"
-private const val OCR_ENGINE = "$TESSERACT_ENGINE-primary+$ML_KIT_ENGINE-fallback"
+private const val OCR_ENGINE = "ml-kit-text-recognition-v2-bundled-latin-16.0.1"
 private const val MAX_PDF_PAGES = 500
 private const val MIN_RENDER_DPI = 72
 private const val MAX_RENDER_DPI = 300
@@ -52,11 +46,7 @@ private const val MAX_OCR_SOURCE_BYTES = 64L * 1024L * 1024L
 private const val MIN_OCR_TIMEOUT_SECONDS = 1
 private const val MAX_OCR_TIMEOUT_SECONDS = 180
 private const val PDF_POINTS_PER_INCH = 72.0
-private const val TESSERACT_MIN_CONFIDENCE = 0.15
-private const val TESSERACT_MIN_NONSPACE = 8
-private const val TESSERACT_MIN_ALPHANUMERIC = 4
 private val JOB_ID_PATTERN = Regex("[A-Za-z0-9_-]{1,128}")
-private val OCR_LANGUAGE_PATTERN = Regex("[a-z]{3}(?:\+[a-z]{3}){0,3}")
 
 @InvokeArg
 class OpenPdfArgs {
@@ -107,7 +97,6 @@ class EndBackgroundExecutionArgs {
 class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessions = ConcurrentHashMap<String, PdfSession>()
-    private val tessdataLock = Any()
 
     override fun load(webView: WebView) {
         val owner = activity as? LifecycleOwner ?: return
@@ -315,40 +304,12 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
                 }
 
                 val started = System.nanoTime()
-                var tesseractFailure: Throwable? = null
-                var weakTesseract: NativeOcrResult? = null
-                val selected = try {
-                    recognizeWithTesseract(source, args.language, args.timeoutSeconds).also {
-                        if (!isUsableTesseractResult(it)) weakTesseract = it
-                    }.takeIf(::isUsableTesseractResult)
-                } catch (error: Exception) {
-                    tesseractFailure = error
-                    null
-                } catch (error: LinkageError) {
-                    tesseractFailure = error
-                    null
-                } ?: try {
-                    recognizeWithMlKit(source, args.language, args.timeoutSeconds).copy(
-                        engine = buildString {
-                            append(ML_KIT_ENGINE)
-                            append("-fallback")
-                            if (tesseractFailure is TimeoutException) append("-after-tesseract-timeout")
-                            else if (tesseractFailure != null) append("-after-tesseract-error")
-                            else append("-after-tesseract-weak-result")
-                        },
-                    )
-                } catch (fallbackError: Exception) {
-                    weakTesseract ?: throw IllegalStateException(
-                        "Tesseract failed (${safeMessage(tesseractFailure)}) and the ML Kit " +
-                            "fallback failed (${safeMessage(fallbackError)}).",
-                    )
-                }
-
+                val result = recognizeWithMlKit(source, args.language, args.timeoutSeconds)
                 val response = JSObject().apply {
-                    put("text", selected.text)
-                    put("confidence", selected.confidence)
-                    put("engine", selected.engine)
-                    put("language", selected.language)
+                    put("text", result.text)
+                    put("confidence", result.confidence)
+                    put("engine", result.engine)
+                    put("language", result.language)
                     put("width", dimensions.first)
                     put("height", dimensions.second)
                     put(
@@ -362,51 +323,6 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
                     invoke.reject("Android on-device OCR failed: ${safeMessage(error)}")
                 }
             }
-        }
-    }
-
-    private fun recognizeWithTesseract(
-        source: File,
-        requestedLanguage: String,
-        timeoutSeconds: Int,
-    ): NativeOcrResult {
-        val language = tesseractLanguage(requestedLanguage)
-        val dataRoot = ensureTesseractData(language)
-        val api = TessBaseAPI()
-        val executor = Executors.newSingleThreadExecutor { runnable ->
-            Thread(runnable, "ostudy-tesseract").apply { isDaemon = true }
-        }
-        var future: Future<NativeOcrResult>? = null
-        try {
-            require(api.init(dataRoot.absolutePath, language, TessBaseAPI.OEM_LSTM_ONLY)) {
-                "Tesseract could not initialize its '$language' model."
-            }
-            api.setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO)
-            api.setVariable("preserve_interword_spaces", "1")
-            future = executor.submit<NativeOcrResult> {
-                api.setImage(source)
-                // getHOCRText performs the recognition through Tesseract's
-                // stoppable path; getUTF8Text then reads the same result.
-                api.getHOCRText(0)
-                NativeOcrResult(
-                    text = api.getUTF8Text().orEmpty(),
-                    confidence = (api.meanConfidence().toDouble() / 100.0).coerceIn(0.0, 1.0),
-                    engine = TESSERACT_ENGINE,
-                    language = language,
-                )
-            }
-            return future.get(timeoutSeconds.toLong(), TimeUnit.SECONDS)
-        } catch (error: TimeoutException) {
-            runCatching { api.stop() }
-            future?.cancel(true)
-            throw TimeoutException(
-                "Tesseract exceeded the bounded $timeoutSeconds second OCR timeout.",
-            )
-        } finally {
-            executor.shutdownNow()
-            executor.awaitTermination(5, TimeUnit.SECONDS)
-            runCatching { api.clear() }
-            runCatching { api.recycle() }
         }
     }
 
@@ -428,64 +344,9 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
         return NativeOcrResult(
             text = recognized.text,
             confidence = meanConfidence(recognized),
-            engine = ML_KIT_ENGINE,
+            engine = OCR_ENGINE,
             language = dominantLanguage(recognized, requestedLanguage),
         )
-    }
-
-    private fun ensureTesseractData(language: String): File {
-        val root = File(activity.filesDir, "tesseract")
-        val tessdata = File(root, "tessdata")
-        val model = File(tessdata, "$language.traineddata")
-        if (model.isFile && model.length() > 0) return root
-        require(language == "eng") {
-            "The Tesseract '$language' model is not installed on this device."
-        }
-
-        synchronized(tessdataLock) {
-            if (model.isFile && model.length() > 0) return root
-            tessdata.mkdirs()
-            val partial = File(tessdata, "${model.name}.partial")
-            partial.delete()
-            activity.assets.open("tessdata/eng.traineddata").buffered().use { input ->
-                FileOutputStream(partial, false).buffered().use(input::copyTo)
-            }
-            require(partial.length() > 0) { "The bundled English Tesseract model is empty." }
-            if (model.exists()) model.delete()
-            if (!partial.renameTo(model)) {
-                partial.copyTo(model, overwrite = true)
-                partial.delete()
-            }
-        }
-        return root
-    }
-
-    private fun tesseractLanguage(requested: String): String {
-        val normalized = requested.trim().lowercase()
-        val mapped = normalized.split('+').joinToString("+") { language ->
-            when (language) {
-                "", "en", "eng", "en-us", "en-gb" -> "eng"
-                "es" -> "spa"
-                "fr" -> "fra"
-                "de" -> "deu"
-                "it" -> "ita"
-                "pt" -> "por"
-                "nl" -> "nld"
-                else -> language.take(3)
-            }
-        }
-        require(OCR_LANGUAGE_PATTERN.matches(mapped)) {
-            "The requested Tesseract language identifier is invalid."
-        }
-        return mapped
-    }
-
-    private fun isUsableTesseractResult(result: NativeOcrResult): Boolean {
-        val nonspace = result.text.count { !it.isWhitespace() }
-        val alphanumeric = result.text.count(Char::isLetterOrDigit)
-        return nonspace >= TESSERACT_MIN_NONSPACE &&
-            alphanumeric >= TESSERACT_MIN_ALPHANUMERIC &&
-            result.confidence >= TESSERACT_MIN_CONFIDENCE
     }
 
     private fun scaledDimension(points: Int, dpi: Int): Int {
