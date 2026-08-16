@@ -145,8 +145,8 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
       showReceiveResult(result);
     } catch (error: unknown) {
       if (fromScanner) setScanFeedback("detected");
-      setErrorMessage(getErrorMessage(error));
       await refresh(true);
+      setErrorMessage(getErrorMessage(error));
     } finally {
       setBusyAction(null);
     }
