@@ -17,10 +17,13 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.integration.android.IntentIntegrator
 
 private const val MAX_QR_CONTENT_CHARS = 16 * 1024
+private const val QR_SCAN_TIMEOUT_MILLIS = 60_000L
+private const val DEFAULT_SCAN_PROMPT =
+    "Center the entire ostudy pairing code inside the frame and hold steady. The camera closes when the code is detected."
 
 @InvokeArg
 class ScanQrCodeArgs {
-    var prompt: String = "Scan an ostudy pairing code"
+    var prompt: String = DEFAULT_SCAN_PROMPT
 }
 
 @TauriPlugin
@@ -48,10 +51,14 @@ class OstudyQrPlugin(private val activity: Activity) : Plugin(activity) {
             scanOpen = true
             val intent = IntentIntegrator(activity)
                 .setDesiredBarcodeFormats(listOf(BarcodeFormat.QR_CODE.name))
-                .setPrompt(args.prompt.take(160).ifBlank { "Scan an ostudy pairing code" })
-                .setBeepEnabled(false)
+                .setPrompt(args.prompt.take(240).ifBlank { DEFAULT_SCAN_PROMPT })
+                // Audible/haptic confirmation complements the in-app visual
+                // "Pairing code detected" state after the capture activity closes.
+                .setBeepEnabled(true)
                 .setBarcodeImageEnabled(false)
+                .setCameraId(0)
                 .setOrientationLocked(false)
+                .setTimeout(QR_SCAN_TIMEOUT_MILLIS)
                 .createScanIntent()
             startActivityForResult(invoke, intent, "scanQrCodeResult")
         } catch (error: Exception) {
