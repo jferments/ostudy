@@ -1,0 +1,399 @@
+.syncCard {
+  display: grid;
+  gap: 22px;
+}
+
+.identityGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+}
+
+.identityMeta {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.identityMeta > span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 720;
+}
+
+.identityMeta code {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pairingGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pairingPanel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 16px;
+  background: var(--surface-strong);
+}
+
+.pairingPanel h3,
+.listHeading h3 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.pairingPanel > p,
+.emptyCopy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.pairingPanel textarea {
+  width: 100%;
+  min-height: 116px;
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+
+.invitationPanel {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 12px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--accent-soft) 48%, var(--surface));
+}
+
+.qrFrame {
+  display: grid;
+  width: min(100%, 340px);
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 12px;
+  padding: 12px;
+  background: #ffffff;
+  box-shadow: var(--ostudy-shadow-level-2);
+}
+
+.qrFrame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+  object-fit: contain;
+}
+
+.invitationDetails {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 6px;
+}
+
+.invitationDetails > strong {
+  color: var(--text);
+}
+
+.invitationDetails > span,
+.invitationDetails > code {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invitationPanel button {
+  width: 100%;
+  justify-self: stretch;
+}
+
+.scanHint {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.scanStatus {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.scanStatus[data-state="scanning"],
+.scanStatus[data-state="receiving"] {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 32%, var(--surface));
+}
+
+.scanStatus[data-state="detected"],
+.scanStatus[data-state="received"] {
+  border-color: color-mix(in srgb, var(--success) 58%, var(--border));
+  background: color-mix(in srgb, var(--success) 8%, var(--surface));
+}
+
+.scanStatusDot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.scanStatus[data-state="scanning"] .scanStatusDot,
+.scanStatus[data-state="receiving"] .scanStatusDot {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.scanStatus[data-state="detected"] .scanStatusDot,
+.scanStatus[data-state="received"] .scanStatusDot {
+  background: var(--success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 16%, transparent);
+}
+
+.scanStatus[data-state="cancelled"] .scanStatusDot {
+  background: var(--muted);
+}
+
+.credentialToggle {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface-strong);
+}
+
+.sessionStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.sessionPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 999px;
+  padding: 4px 6px 4px 10px;
+  background: var(--accent-soft);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.sessionPill > span {
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sessionPill strong {
+  color: var(--text);
+}
+
+.sessionPill button {
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.74rem;
+}
+
+.listSection {
+  display: grid;
+  gap: 12px;
+}
+
+.listHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.listHeading > span {
+  display: inline-grid;
+  min-width: 28px;
+  min-height: 28px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 780;
+}
+
+.peerList,
+.conflictList {
+  display: grid;
+  gap: 10px;
+}
+
+.peerList > article,
+.conflictList > article {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface-strong);
+}
+
+.peerList > article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.peerList article > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.peerList span,
+.peerList small,
+.conflictHeading span,
+.conflictHeading small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conflictList > article {
+  display: grid;
+  gap: 12px;
+}
+
+.conflictHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.conflictHeading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.conflictVersions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.conflictVersions > div {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--surface);
+}
+
+.conflictVersions pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.42;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.conflictVersions p {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 920px) {
+  .identityGrid {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .identityMeta {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .pairingGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .identityGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .identityGrid > button,
+  .identityMeta {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .identityGrid > button,
+  .pairingPanel > button {
+    width: 100%;
+  }
+
+  .qrFrame {
+    width: min(100%, 320px);
+  }
+
+  .sessionPill {
+    width: 100%;
+    justify-content: space-between;
+    border-radius: 12px;
+  }
+
+  .sessionPill > span {
+    flex-wrap: wrap;
+  }
+
+  .peerList > article,
+  .conflictHeading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .peerList > article > button {
+    align-self: flex-start;
+  }
+
+  .conflictVersions {
+    grid-template-columns: 1fr;
+  }
+}

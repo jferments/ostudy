@@ -13,6 +13,7 @@ import {
   type DeckSummary,
 } from "../ipc/decks";
 import type { ExternalImportPurpose } from "../ipc/externalFiles";
+import { getNativePlatformSnapshot } from "../ipc/platform";
 import {
   completePracticeSession,
   markPracticeCardRevealed,
@@ -30,6 +31,13 @@ interface AndroidSmokeSnapshot {
   smokeDeckId: string | null;
   smokeCardCount: number;
   recentReviewCount: number;
+}
+
+interface AndroidPlatformHealthSnapshot {
+  runtimeFamily: string;
+  nativePdfRender: string;
+  ocr: string;
+  qrScan: string;
 }
 
 interface AndroidPracticeRestoreSnapshot {
@@ -56,6 +64,7 @@ interface AndroidFileOperationSnapshot {
 }
 
 interface AndroidTestBridge {
+  platformHealth(): Promise<AndroidPlatformHealthSnapshot>;
   seedAndReview(): Promise<AndroidSmokeSnapshot>;
   snapshot(): Promise<AndroidSmokeSnapshot>;
   beginInterruptedPractice(): Promise<AndroidPracticeRestoreSnapshot>;
@@ -87,6 +96,7 @@ let fileOperation: AndroidFileOperationSnapshot = {
 export function installAndroidTestBridge(): void {
   if (import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE !== "1") return;
   window.__OSTUDY_ANDROID_TEST__ = {
+    platformHealth,
     seedAndReview,
     snapshot,
     beginInterruptedPractice,
@@ -94,6 +104,16 @@ export function installAndroidTestBridge(): void {
     startImportPicker,
     startDeckExportPicker,
     fileOperationSnapshot,
+  };
+}
+
+async function platformHealth(): Promise<AndroidPlatformHealthSnapshot> {
+  const snapshot = await getNativePlatformSnapshot();
+  return {
+    runtimeFamily: snapshot.runtimeFamily,
+    nativePdfRender: snapshot.services.nativePdfRender.state,
+    ocr: snapshot.services.ocr.state,
+    qrScan: snapshot.services.qrScan.state,
   };
 }
 

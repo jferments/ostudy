@@ -20,6 +20,11 @@ use tokio::sync::Notify;
 
 use crate::error::CommandError;
 
+#[cfg(mobile)]
+use tauri::AppHandle;
+#[cfg(mobile)]
+use tauri_plugin_ostudy_platform::{BeginBackgroundExecutionRequest, OstudyPlatformExt};
+
 #[derive(Clone, Debug)]
 pub(crate) struct CancellationSignal {
     canceled: Arc<AtomicBool>,
@@ -133,7 +138,10 @@ where
     F: Future<Output = Result<T, CommandError>>,
 {
     let signal = ACTIVE_DOCUMENT_TASKS.begin(document_id)?;
-    let result = CURRENT_DOCUMENT_SIGNAL.scope(signal, future).await;
+    let result = {
+        let _foreground_execution = MobileForegroundExecution::begin(document_id)?;
+        CURRENT_DOCUMENT_SIGNAL.scope(signal, future).await
+    };
     ACTIVE_DOCUMENT_TASKS.finish(document_id);
     result
 }
@@ -163,6 +171,61 @@ fn registry_error() -> CommandError {
         "document_task_registry_unavailable",
         "The document task registry is unavailable. Restart ostudy and try again.",
     )
+}
+
+#[cfg(mobile)]
+struct MobileForegroundExecution {
+    app: AppHandle,
+    document_id: String,
+}
+
+#[cfg(mobile)]
+impl MobileForegroundExecution {
+    fn begin(document_id: &str) -> Result<Self, CommandError> {
+        let app = crate::pdf_render_backend::android_app_handle().map_err(|error| {
+            CommandError::new(
+                "mobile_background_execution_unavailable",
+                format!("Mobile document execution is not initialized: {error}"),
+            )
+        })?;
+        app.ostudy_platform()
+            .begin_background_execution(BeginBackgroundExecutionRequest {
+                job_id: document_id.to_string(),
+                title: "Processing study document".to_string(),
+                detail: "Extracting text, rendering pages, and generating study material."
+                    .to_string(),
+            })
+            .map_err(|error| {
+                CommandError::new(
+                    "mobile_background_execution_failed",
+                    format!("Mobile foreground document execution could not start: {error}"),
+                )
+            })?;
+        Ok(Self {
+            app,
+            document_id: document_id.to_string(),
+        })
+    }
+}
+
+#[cfg(mobile)]
+impl Drop for MobileForegroundExecution {
+    fn drop(&mut self) {
+        let _ = self
+            .app
+            .ostudy_platform()
+            .end_background_execution(self.document_id.clone());
+    }
+}
+
+#[cfg(not(mobile))]
+struct MobileForegroundExecution;
+
+#[cfg(not(mobile))]
+impl MobileForegroundExecution {
+    fn begin(_document_id: &str) -> Result<Self, CommandError> {
+        Ok(Self)
+    }
 }
 
 #[cfg(test)]

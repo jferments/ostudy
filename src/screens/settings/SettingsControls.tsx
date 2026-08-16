@@ -1,4 +1,5 @@
 import type { AppSettings } from "../../ipc/settings";
+import { FONT_PRESET_OPTIONS } from "../../ui/appearance/appearanceTypes";
 import styles from "./Settings.module.css";
 
 interface ThemeOptionProps {
@@ -44,6 +45,8 @@ export function FontControl({
   const isCustom = value.startsWith("custom:");
   const mode = isCustom ? "custom" : value;
   const custom = isCustom ? value.slice("custom:".length) : "";
+  const bundled = FONT_PRESET_OPTIONS.filter((option) => option.group === "bundled");
+  const system = FONT_PRESET_OPTIONS.filter((option) => option.group === "system");
   return (
     <div className={styles.settingControl}>
       <label>
@@ -58,12 +61,20 @@ export function FontControl({
             )
           }
         >
-          <option value="system">System sans-serif</option>
-          <option value="atkinson">Atkinson Hyperlegible</option>
-          <option value="plex">IBM Plex Sans</option>
-          <option value="humanist">Humanist sans-serif</option>
-          <option value="serif">Serif</option>
-          <option value="mono">Monospace</option>
+          <optgroup label="Bundled fonts">
+            {bundled.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="System and accessibility fonts">
+            {system.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </optgroup>
           <option value="custom">Installed font…</option>
         </select>
       </label>

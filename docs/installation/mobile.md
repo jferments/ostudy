@@ -4,7 +4,7 @@ Android and iOS remain separate delivery targets over one shared ostudy applicat
 
 ## Android
 
-Android phases A1–A3 are implemented as a source-build application. The repository contains a generated Tauri Android project, a private Kotlin platform plugin, pinned Android SDK/NDK tooling, APK/AAB build wrappers, official-emulator smoke tests, and self-hosted GitHub workflows.
+Android is implemented as a source-build Tauri application. The repository contains a generated Tauri Android project, a private Kotlin platform plugin, pinned Android SDK/NDK tooling, APK/AAB build wrappers, official-emulator smoke tests, and self-hosted GitHub workflows.
 
 The Android application supports:
 
@@ -12,19 +12,24 @@ The Android application supports:
 - managed card/template images;
 - practice, scheduling controls, interrupted-session restoration, and analytics;
 - durable authoring drafts after backgrounding or process death;
-- `.studydeck`, generated `.ostudy.json`, and complete `.ostudybackup` import;
+- `.studydeck`, generated `.ostudy.json`, complete `.ostudybackup`, and PDF import;
 - system document-picker export and restore;
 - Android Sharesheet send and confirmed incoming share import;
 - Android Keystore-backed AI-provider credentials;
-- cloud and LAN AI-provider profile connectivity.
+- cloud and LAN AI-provider profile connectivity;
+- native PDF page rendering through Android `PdfRenderer`;
+- selective on-device PDF OCR through bundled ML Kit Text Recognition v2;
+- foreground document processing for user-started long-running PDF jobs;
+- encrypted same-LAN device synchronization with QR pairing, common-base merging, and explicit conflicts;
+- optional encrypted AI-credential transfer between trusted devices.
 
-PDF import, PDF rendering, OCR, and AI document generation intentionally remain an Android development stub during A1–A3. Existing desktop document rows and managed files are preserved when a complete backup is restored on Android.
+Android does not package Tesseract or `tessdata`. Shared Rust keeps usable embedded PDF text and calls the Android ML Kit adapter only for pages that require visual text recovery.
 
-See [Build and install ostudy for Android](android.md) and [Android development architecture](../development/android.md).
+See [Build and install ostudy for Android](android.md), [Android build and install](../development/android-build-and-install.md), and [Android development architecture](../development/android.md).
 
 ## iOS
 
-iOS remains planned. The shared P0–P2 runtime and the Android work validate the ports and mobile UI patterns that a future Swift implementation will reuse, but there is no generated iOS project, installable application, native adapter set, or supported iOS build procedure yet.
+iOS remains planned. The shared runtime and Android work validate the ports, merge protocol, document boundaries, and mobile UI patterns that a future Swift implementation can reuse, but there is no generated iOS project, installable application, native adapter set, or supported iOS build procedure yet.
 
 ## Shared portability foundation
 
@@ -35,7 +40,9 @@ The following behavior remains common across desktop and mobile:
 - validated rich-content and import formats;
 - provider-profile metadata and narrow AI task contracts;
 - React feature views, controllers, and adaptive shared UI;
-- staged-import, prepared-export, durable-draft, backup, and operation-identity state machines.
+- staged-import, prepared-export, durable-draft, backup, and operation-identity state machines;
+- document extraction planning, OCR selection, checkpoints, and generation semantics;
+- trusted-device snapshot, merge, conflict, and encrypted-transport contracts.
 
 ## Native mobile adapters
 
@@ -45,11 +52,13 @@ Platform-specific code remains limited to operating-system boundaries:
 - lifecycle, process restoration, system Back, safe areas, and software keyboards;
 - protected credential storage;
 - Sharesheets and incoming intents;
-- connectivity and future local-network permissions;
-- future mobile PDF rendering and OCR;
+- connectivity and local-network access;
+- PDF rasterization and OCR;
+- QR camera acquisition;
+- foreground/background execution policy;
 - signing, store packaging, and upgrade testing.
 
-Kotlin and future Swift code do not write the ostudy database or implement scheduling, analytics, package validation, or authoring transactions.
+Kotlin and future Swift code do not write the ostudy database or implement scheduling, analytics, package validation, synchronization merge semantics, or authoring transactions.
 
 ## Mobile acceptance requirements
 
@@ -60,8 +69,10 @@ A mobile application is considered usable only after end-to-end qualification fo
 - card authoring, practice, scheduling controls, and analytics;
 - import, export, backup, restore, and system sharing;
 - provider credentials and mobile network policy;
+- PDF rendering, OCR, cancellation, and durable recovery;
+- device pairing, encrypted transfer, merge conflicts, and asset synchronization;
 - cancellation and recovery when backgrounded or terminated;
 - battery, memory, storage, and representative phone/tablet layouts;
 - package permissions and native-library compatibility.
 
-Android A1–A3 has automated shared, compile/package, and official-emulator smoke paths for the supported non-document feature set. PDF/OCR/document-generation acceptance belongs to later Android phases.
+The maintained Android qualification path combines shared Linux/Tauri checks, Android compile/package checks, and the official API 36 emulator smoke suite on the unified self-hosted runner.

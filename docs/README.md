@@ -8,7 +8,8 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 
 - [Getting started](user-guide/getting-started.md) introduces the application, its main workspaces, and a practical first study session.
 - [AI providers](user-guide/ai-providers.md) explains local, LAN, and cloud model connections without exposing provider-specific implementation details.
-- [Documents and AI-generated flashcards](user-guide/documents-and-ai-generation.md) describes the desktop PDF workflow, privacy boundary, retries, and current limitations.
+- [Documents and AI-generated flashcards](user-guide/documents-and-ai-generation.md) describes the cross-platform PDF workflow, local extraction/OCR boundary, provider privacy, retries, and current limitations.
+- [Synchronize trusted devices](user-guide/device-sync.md) explains QR/LAN synchronization, conflict resolution, file fallback, settings, and optional credential transfer.
 - [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) explains personal backups, portable deck files, generated JSON imports, and system sharing.
 
 ## Install or build ostudy
@@ -30,6 +31,7 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 - [Architecture overview](architecture/overview.md) explains the frontend, native domain, persistence, and platform boundaries.
 - [Platform services](architecture/platform-services.md) defines the typed operating-system ports, opaque file flow, secure-store boundary, lifecycle/time/resource observations, and enforcement rules.
 - [AI and document processing](architecture/ai-and-document-processing.md) documents provider isolation and the PDF extraction, rendering, OCR, and generation pipeline.
+- [Device synchronization](architecture/device-sync.md) documents the trusted-device identity, encrypted LAN transport, common-base merge, conflicts, and asset/credential boundaries.
 - [Card format and data model](architecture/card-format-and-data-model.md) describes notes, scheduled presentations, rich content, templates, search, and interchange formats.
 - [UI architecture](architecture/ui.md) describes shared interaction primitives, responsive layouts, accessibility, and platform adapters.
 - [Architecture Decision Records](decisions/) preserve the reasoning behind durable cross-module decisions.
@@ -38,6 +40,7 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 
 - [Development guide](development/guide.md) covers setup, repository layout, change design, and day-to-day commands.
 - [Android development architecture](development/android.md) documents the Kotlin/Rust boundary, generated project, emulator tests, package checks, and Android workflows.
+- [Android build and install](development/android-build-and-install.md) gives the exact debug/release build, APK install, artifact, and qualification commands.
 - [Unified Linux/Android runner](development/unified-linux-android-runner.md) documents the isolated single-VM CI architecture, security boundary, nested-KVM qualification, workflow model, recovery, and rollback.
 - [Unified runner setup and operations](development/unified-runner-setup.md) gives the maintained ML-tower/libvirt provisioning, registration, service-management, snapshot, and retirement procedure.
 - [Legacy split Android runner notes](development/android-self-hosted-runner.md) records the retired split-runner topology and migration context.

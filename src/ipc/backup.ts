@@ -20,7 +20,7 @@ export interface LibraryRestoreResult {
 export async function prepareLibraryBackup(
   operationId: string,
 ): Promise<PreparedLibraryBackup> {
-  return invoke<PreparedLibraryBackup>("prepare_library_backup", {
+  return invoke<PreparedLibraryBackup>("prepare_library_backup_async", {
     input: { operationId },
   });
 }
@@ -28,7 +28,7 @@ export async function prepareLibraryBackup(
 export async function prepareLibraryRestore(
   stagedFileId: string,
 ): Promise<LibraryRestoreResult> {
-  return invoke<LibraryRestoreResult>("prepare_library_restore", {
+  return invoke<LibraryRestoreResult>("prepare_library_restore_async", {
     input: { stagedFileId },
   });
 }

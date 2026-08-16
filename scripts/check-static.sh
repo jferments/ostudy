@@ -27,10 +27,17 @@ step "Environment and repository contracts"
 node "$SCRIPT_DIR/verify-project-manifests.mjs"
 node "$SCRIPT_DIR/generate-ui-tokens.mjs" --check
 node "$SCRIPT_DIR/verify-ui-token-usage.mjs"
+node "$SCRIPT_DIR/verify-button-contrast.mjs"
+node "$SCRIPT_DIR/verify-deck-toolbar-layout.mjs"
+node "$SCRIPT_DIR/verify-device-sync-qr-ui.mjs"
+node "$SCRIPT_DIR/verify-library-backup-threading.mjs"
 node "$SCRIPT_DIR/verify-ipc-contract.mjs"
 node "$SCRIPT_DIR/verify-repository-policy.mjs"
 node "$SCRIPT_DIR/verify-platform-boundaries.mjs"
 node "$SCRIPT_DIR/verify-external-file-streaming.mjs"
+node "$SCRIPT_DIR/verify-android-project.mjs"
+node "$SCRIPT_DIR/verify-android-plugin-routing.mjs"
+node "$SCRIPT_DIR/verify-local-fonts.mjs"
 node "$SCRIPT_DIR/verify-documentation.mjs"
 [[ -f pnpm-lock.yaml && -f src-tauri/Cargo.lock ]] || {
   printf 'ERROR: committed pnpm and Cargo lockfiles are required.\n' >&2
@@ -45,6 +52,7 @@ python3 -m unittest discover -s tests/scripts -p 'test_*.py'
 step "Frozen JavaScript installation and dependency verification"
 pnpm install --frozen-lockfile
 pnpm run verify:versions
+pnpm run verify:fonts
 [[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]]
 
 step "Frontend type checking"

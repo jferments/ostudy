@@ -1,8 +1,8 @@
 # Build and install ostudy for Android
 
-The Android application uses the same React interface, Rust application logic, SQLite schema, scheduling engine, analytics, import formats, and backup format as the desktop application. Kotlin is limited to Android APIs such as the document picker, Sharesheet, lifecycle, system Back, window insets, connectivity, and Android Keystore.
+The Android application uses the same React interface, Rust application logic, SQLite schema, scheduling engine, analytics, document pipeline, synchronization merge engine, import formats, and backup format as the desktop application. Kotlin is limited to Android APIs such as the document picker, Sharesheet, lifecycle, system Back, window/IME insets, connectivity, Android Keystore, PDF rasterization, ML Kit OCR, QR acquisition, and foreground services.
 
-Phases A1–A3 include deck/card authoring, practice, analytics, managed images, deck and JSON import, deck/backup export, incoming and outgoing system sharing, complete backup/restore, durable editor recovery, interrupted-practice restoration, and secure AI-provider credentials. PDF processing, OCR, and AI document generation intentionally remain a development stub on Android.
+The current Android build supports ordinary study/authoring features plus PDF import/generation, bundled ML Kit document OCR, encrypted same-LAN device synchronization, QR pairing, and optional secure AI-credential transfer.
 
 ## Supported development baseline
 
@@ -95,7 +95,7 @@ pnpm android:avd status
 pnpm android:avd stop
 ```
 
-The official Android Emulator is the qualification environment. Waydroid can be useful for a quick informal installation check on Linux, but it does not replace the API-level, clean-data, process-lifecycle, and 16 KiB native-library checks performed by the emulator suite.
+The official Android Emulator is the qualification environment. Waydroid can be useful for a quick informal installation check on Linux, but it does not replace the API-level, clean-data, process-lifecycle, native-inset, OCR, and native-library checks performed by the emulator suite.
 
 ## 4. Run ostudy in Android development mode
 
@@ -125,7 +125,7 @@ bash ./scripts/android-dev.sh --device <serial> --host 192.168.1.25
 
 Allow the development port through the local firewall. `localhost` inside Android means the Android device itself, not the development computer. The standard Android Emulator can reach the host through `10.0.2.2` when testing a local AI server.
 
-## 5. Build an installable debug APK
+## 5. Build and install a debug APK
 
 For a physical arm64 phone:
 
@@ -145,15 +145,25 @@ Generated APKs are under:
 src-tauri/gen/android/app/build/outputs/apk/
 ```
 
-Install the newest debug APK:
+The maintained install wrapper builds, verifies, installs, and launches the normal debug application:
 
 ```bash
-apk="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' \
-  ! -path '*/androidTest/*' -printf '%T@ %p\n' | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
-adb install -r -t "$apk"
+pnpm android:install
 ```
 
-The debug build uses application ID `io.github.jferments.ostudy.dev`, so it can coexist with a future signed release build. Its app-private data is separate from the release package.
+If more than one device is connected:
+
+```bash
+bash ./scripts/android-install.sh --debug --target aarch64 --serial <adb-serial>
+```
+
+Install an already-built debug APK without rebuilding:
+
+```bash
+pnpm android:install:existing
+```
+
+The install wrapper deliberately excludes instrumentation APKs from artifact discovery. The debug build uses application ID `io.github.jferments.ostudy.dev`, so it can coexist with a future signed release build. Its app-private data is separate from the release package.
 
 ## 6. Run automated Android qualification
 
@@ -169,7 +179,9 @@ Run the complete official-emulator smoke suite:
 pnpm android:smoke
 ```
 
-The smoke suite starts a clean API 36 AVD, builds an x86_64 APK with an explicitly opt-in test bridge, installs the application and instrumentation APK, creates a deck/card, performs a review, restarts the app, verifies persistence and analytics, checks the Android Documents development stub and system Back behavior, and restores an interrupted revealed practice session after reload and process restart.
+The smoke suite starts a clean API 36 AVD, builds an x86_64 APK with an explicitly opt-in test bridge, installs the application and instrumentation APK, and verifies representative application behavior. Native instrumentation also verifies system/cutout inset ownership, `adjustResize` keyboard behavior, and a real offline ML Kit recognition pass against a synthetic high-contrast text image.
+
+The UI smoke creates a deck/card, performs a review, restarts the app, verifies persistence and analytics, checks Android Back behavior, restores an interrupted practice session, exercises document-picker cancellation, and verifies native picker ownership is released between operations.
 
 Diagnostics are written to:
 
@@ -179,21 +191,52 @@ artifacts/android-smoke/
 
 The test bridge is not present in normal debug builds unless `--smoke-bridge` is requested, and the package verifier rejects it in a release APK.
 
-## 7. Build a release bundle
+## 7. PDF processing and OCR
 
-Build an unsigned multi-ABI Android App Bundle:
+Android PDF processing uses the shared durable document pipeline with Android-specific native adapters:
+
+- embedded PDF text/structure is inspected first;
+- pages that need visual recovery are rasterized with Android `PdfRenderer`;
+- selected rendered pages are recognized with bundled ML Kit Text Recognition v2;
+- shared Rust owns page selection, byte/dimension limits, cancellation, checkpoints, source windows, provider requests, and final SQLite commits.
+
+Android does **not** require Tesseract, Tesseract4Android, a Tesseract sidecar, or separately installed `tessdata`.
+
+A user-started long-running PDF generation task acquires an Android foreground service with a visible processing notification and a partial wake lock. Activity backgrounding therefore does not make the WebView the lifetime owner of the operation. Full process death or a device restart still ends the process; durable checkpoints let ostudy recover and retry/resume when reopened.
+
+## 8. Trusted-device synchronization
+
+Open **Settings → Backup/Sync → Device synchronization** on both installations. Devices must be able to reach one another on the same private network.
+
+Protocol version 2 treats every invitation as a **one-way offer from the device that created it**. On the sending device, choose whether to include API provider settings/saved credentials, then select **Create sync offer**. Android can select **Scan and receive**; once the QR code is detected, the scan itself accepts the offer and receiving starts immediately. Pasted invitation text uses **Accept sync offer**.
+
+The receiver never has to generate a reverse invitation to complete that transfer, and accepting an offer does not upload the receiver's library to the sender. To send Android-side changes back later, intentionally create a new offer on Android and accept that offer on the desktop.
+
+Shared Rust authenticates the devices, encrypts synchronization frames, validates the versioned package, performs common-base merging, and records explicit conflicts rather than silently discarding overlapping edits. General `app_settings` are excluded from both the outgoing package and the merge allowlist, so themes, fonts, UI scale, motion, and other device-specific preferences remain local.
+
+API provider profiles/task defaults are also excluded by default. They are included only when the **sender** enables the API-sharing option for that offer. Saved credential bytes use the authenticated encrypted channel and are written through Android Keystore rather than SQLite when the receiving secure store is available.
+
+See [Synchronize trusted devices](../user-guide/device-sync.md) for the user workflow and [Device synchronization architecture](../architecture/device-sync.md) for protocol details.
+
+## 9. Build release artifacts
+
+Build a release APK for direct distribution:
+
+```bash
+pnpm android:build:release
+```
+
+Build a multi-ABI Android App Bundle:
 
 ```bash
 pnpm android:build:aab
 ```
 
-The `.aab` is placed under:
+Release outputs are under the generated Gradle `build/outputs` tree. An AAB is an application-store input, not a directly installable phone package.
 
-```text
-src-tauri/gen/android/app/build/outputs/bundle/
-```
+A release intended for distribution still requires a protected signing keystore and release workflow configuration. Do not commit a keystore, passwords, or `keystore.properties`. Signing material is deliberately unavailable to pull-request jobs.
 
-A release intended for Google Play still requires a protected signing keystore and release workflow configuration. Do not commit a keystore, passwords, or `keystore.properties`. The current workflow deliberately produces unsigned QA artifacts until the project is ready to establish its permanent release key and Play App Signing configuration.
+The manual **Android package** workflow on the unified self-hosted runner can build a debug APK, release APK, or release AAB and uploads the selected artifact with the exact source SHA in its artifact name.
 
 ## Android storage and permissions
 
@@ -205,24 +248,30 @@ Android Auto Backup and device-transfer backup are disabled for the application 
 
 ## Secure provider credentials
 
-Secure AI-provider credentials use an AES-256-GCM key generated in Android Keystore. Encrypted records remain in app-private preferences excluded from backup. Session-only credentials still disappear when Android kills the process. Credentials are never included in SQLite learner data, authoring drafts, deck exports, complete backups, diagnostics, or incoming/outgoing shares.
+Secure AI-provider credentials use an AES-256-GCM key generated in Android Keystore. Encrypted records remain in app-private preferences excluded from backup. Session-only credentials still disappear when Android kills the process. Credentials are never included in SQLite learner data, authoring drafts, deck exports, complete backups, diagnostics, or ordinary incoming/outgoing shares.
+
+Device Sync can transfer selected secure credentials only when explicitly enabled **by the sender** for an authenticated encrypted LAN offer. File-based synchronization never contains credential bytes.
 
 ## Manual acceptance before merging an Android change
 
-1. Create, edit, archive, and delete decks and cards.
-2. Add a managed image to a card and template; restart and verify rendering.
-3. Start practice, reveal and rate cards, then verify Analytics.
-4. Background and resume during editing and practice.
-5. Force-stop and relaunch during an unfinished card/template/bulk draft.
-6. Force-stop and relaunch during revealed-but-unrated practice.
-7. Import a `.studydeck` and generated `.ostudy.json` through the picker.
-8. Save and restore an `.ostudybackup` through a document provider.
-9. Save and share a deck through Android's system interfaces.
-10. Send a supported file to ostudy from Files and confirm before import.
+1. Confirm the app header is below the Android status/cutout region and the bottom ostudy navigation is above gesture/three-button system navigation.
+2. Open Create Deck and other representative editors; show the software keyboard and confirm the focused field and actions remain reachable.
+3. Create, edit, archive, and delete decks and cards.
+4. Add a managed image to a card and template; restart and verify rendering.
+5. Start practice, reveal and rate cards, then verify Analytics.
+6. Background and resume during editing and practice.
+7. Force-stop and relaunch during an unfinished card/template/bulk draft and during revealed-but-unrated practice.
+8. Import a `.studydeck` and generated `.ostudy.json` through the picker.
+9. Save and restore an `.ostudybackup` through a document provider.
+10. Save and share a deck through Android's system interfaces, and send a supported file to ostudy from Files.
 11. Save a provider credential, restart, and test the provider profile.
-12. Confirm that Documents shows the Android development placeholder and performs no PDF/OCR work.
-13. Rotate, resize, test landscape, and test the software keyboard.
-14. Verify system Back closes overlays/nested screens and returns home from the root.
+12. Import a digital-text PDF and confirm generation succeeds without unnecessary page OCR.
+13. Import a scanned/image-only PDF and confirm ML Kit OCR recovers usable text and generation can complete.
+14. Start a longer PDF job, background the app, and verify the foreground processing notification remains visible.
+15. Cancel/retry a PDF job and verify cards are not duplicated or partially committed.
+16. Create one desktop sync offer and scan it on Android. Confirm the Android app receives the desktop library without creating a phone invitation or pressing a second confirmation button. Repeat with API sharing off/on and confirm Android appearance settings never change.
+17. Create an intentional reverse offer from Android only when testing Android→desktop changes; verify ordinary one-sided edits use the stored baseline and intentional same-field edits surface as explicit conflicts.
+18. Rotate, test landscape, test the software keyboard, and verify system Back closes overlays/nested screens correctly.
 
 ## Troubleshooting
 
@@ -234,7 +283,7 @@ Run:
 pnpm android:doctor:emulator
 ```
 
-The regular test path requires KVM. A nested virtual machine may not expose hardware virtualization even when the outer host supports it; use a host-level self-hosted runner or physical device in that case.
+The regular test path requires KVM. A nested virtual machine may not expose hardware virtualization even when the outer host supports it; use a properly configured self-hosted runner or physical device in that case.
 
 ### Android Studio cannot find the SDK
 
@@ -252,3 +301,7 @@ Run any repository Android script once. It writes `src-tauri/gen/android/local.p
 ### A document provider import fails
 
 Retry with a local Downloads copy and inspect Logcat. ostudy deliberately rejects empty, oversized, changing, malformed, or unsupported content even when the provider supplied a plausible filename or MIME type.
+
+### PDF OCR fails
+
+No Tesseract installation is required on Android. Capture the document-processing phase and redacted error text, verify the page image is readable at normal zoom, and inspect Logcat for the native ML Kit adapter error. Very low-resolution scans, unusual scripts not covered by the bundled Latin recognizer, extreme page dimensions, or malformed PDFs may still need preprocessing or a future script-specific model.

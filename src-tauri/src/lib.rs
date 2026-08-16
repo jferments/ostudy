@@ -21,6 +21,8 @@ mod decks;
 mod deletion;
 mod deletion_commands;
 mod deletion_purge;
+mod device_sync;
+mod device_sync_qr_commands;
 mod diagnostics;
 mod document_backup;
 mod document_checkpoints;
@@ -42,6 +44,7 @@ mod external_file_recovery;
 mod external_file_streaming;
 mod external_files;
 mod library_backup;
+mod library_backup_commands;
 mod logging;
 mod paths;
 mod pdf_backend;
@@ -94,9 +97,15 @@ static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .register_uri_scheme_protocol("ostudy-asset", asset_protocol::respond)
-        .plugin(tauri_plugin_ostudy_platform::init())
+        .plugin(tauri_plugin_ostudy_platform::init());
+    #[cfg(mobile)]
+    let builder = builder
+        .plugin(tauri_plugin_ostudy_platform::init_documents())
+        .plugin(tauri_plugin_ostudy_platform::init_qr());
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -107,6 +116,7 @@ pub fn run() {
             })?;
             let resource_directory = app.path().resource_dir().ok();
             let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
+            logging::initialize(paths.app_data_dir());
             let pending_restore =
                 library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
             let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
@@ -117,6 +127,8 @@ pub fn run() {
             let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
                 .map_err(|error| io::Error::other(error.to_string()))?;
 
+            device_sync::reconcile_startup(&paths)
+                .map_err(|error| io::Error::other(error.message))?;
             external_file_recovery::reconcile_interrupted_staging(&database, &paths)
                 .map_err(|error| io::Error::other(error.message))?;
             external_files::reconcile_startup(&database, &paths)
@@ -163,9 +175,10 @@ pub fn run() {
             logging::info(
                 "application_started",
                 format!(
-                    "data_directory={} database={} asset_reconciliation=complete document_reconciliation=complete ai_gateway=ready pdf_extraction={} pdf_renderer={}",
+                    "data_directory={} database={} diagnostic_log={} asset_reconciliation=complete document_reconciliation=complete ai_gateway=ready pdf_extraction={} pdf_renderer={}",
                     paths.app_data_dir().display(),
                     paths.database_path().display(),
+                    logging::diagnostic_log_path(paths.app_data_dir()).display(),
                     pdf_backend::active_backend_id(),
                     pdf_render_backend::active_backend_id()
                 ),
@@ -261,6 +274,14 @@ pub fn run() {
             settings::get_app_info,
             platform::get_platform_capabilities,
             platform::set_platform_back_interception,
+            device_sync::get_device_sync_state,
+            device_sync::update_device_sync_name,
+            device_sync::start_device_pairing,
+            device_sync::join_device_pairing,
+            device_sync::cancel_device_sync_session,
+            device_sync_qr_commands::scan_device_pairing_qr_async,
+            device_sync::remove_device_sync_peer,
+            device_sync::resolve_device_sync_conflict,
             ui_checkpoint::get_ui_checkpoint,
             ui_checkpoint::save_ui_checkpoint,
             ui_checkpoint::clear_ui_checkpoint,
@@ -298,8 +319,8 @@ pub fn run() {
             document_operations::open_document_source,
             document_operations::delete_pdf_document,
             documents::set_document_archived,
-            library_backup::prepare_library_backup,
-            library_backup::prepare_library_restore,
+            library_backup_commands::prepare_library_backup_async,
+            library_backup_commands::prepare_library_restore_async,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
             practice_selection::start_card_practice,

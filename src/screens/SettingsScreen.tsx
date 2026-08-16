@@ -23,8 +23,8 @@ type SettingsTab = "storage" | "appearance" | "ai" | "review";
 
 const DEFAULTS: AppSettings = {
   theme: "dark",
-  uiFont: "system",
-  cardFont: "system",
+  uiFont: "plex",
+  cardFont: "plex",
   uiScale: 100,
   cardBaseSize: 18,
   motionPreference: "system",
@@ -47,7 +47,7 @@ export function SettingsScreen({
   onDirtyChange,
   showToast,
 }: SettingsScreenProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("storage");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
   const [draft, setDraft] = useState(settings);
   const [savedBaseline, setSavedBaseline] = useState(settings);
   const [isSaving, setIsSaving] = useState(false);
@@ -123,14 +123,14 @@ export function SettingsScreen({
 
   const tabs: ReadonlyArray<TabDefinition<SettingsTab>> = [
     {
-      value: "storage",
-      label: "Storage/Backup",
-      panel: <StorageBackupSettings draft={draft} update={update} showToast={showToast} />,
-    },
-    {
       value: "appearance",
       label: "Appearance",
       panel: <AppearanceSettings draft={draft} update={update} />,
+    },
+    {
+      value: "storage",
+      label: "Backup/Sync",
+      panel: <StorageBackupSettings draft={draft} update={update} showToast={showToast} />,
     },
     {
       value: "ai",

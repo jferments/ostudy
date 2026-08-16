@@ -5,6 +5,7 @@
  * their own layers while the semantic visual system overrides their variables
  * and new UI is implemented through scoped modules.
  */
+@import "./local-fonts.css" layer(tokens);
 @import "../tokens/generated/reference.css" layer(tokens);
 @import "../tokens/generated/component.css" layer(tokens);
 @import "../tokens/generated/theme-light.css" layer(tokens);
@@ -220,6 +221,18 @@
 }
 
 @layer utilities {
+  /*
+   * Legacy accent buttons predate semantic foreground tokens and hard-coded a
+   * white label. Dark/synthwave palettes can intentionally use a light accent,
+   * so the foreground must always follow the theme's audited on-accent token.
+   * The modern Button primitive already uses the same semantic contract.
+   */
+  .primary-button,
+  .small-primary-button,
+  .practice-reveal-button {
+    color: var(--on-accent);
+  }
+
   .sr-only {
     position: absolute !important;
     width: 1px !important;

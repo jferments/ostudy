@@ -6,8 +6,9 @@
   .toolbar h2 { margin-top: var(--ostudy-space-1); font-size: clamp(1.3rem, 2.4vw, 1.8rem); }
   .toolbar p { margin-top: var(--ostudy-space-2); color: var(--ostudy-color-text-secondary); }
   .eyebrow { color: var(--ostudy-color-text-accent); font-size: .7rem; font-weight: 820; letter-spacing: .12em; text-transform: uppercase; }
-  .toolbarActions { display: flex; min-width: 0; flex-wrap: wrap; justify-content: flex-end; gap: var(--ostudy-space-2); }
-  .density { display: inline-flex; align-items: center; border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-medium); padding: 3px; background: var(--ostudy-color-surface-soft); }
+  .toolbarActions { display: flex; min-width: 0; flex: 0 0 auto; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: var(--ostudy-space-2); }
+  .toolbarActions > button { flex: 0 0 auto; white-space: nowrap; }
+  .density { display: inline-flex; flex: 0 0 auto; align-items: center; border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-medium); padding: 3px; background: var(--ostudy-color-surface-soft); }
   .density > button { min-height: 34px; border: 0; border-radius: var(--ostudy-radius-small); padding: 0 var(--ostudy-space-3); background: transparent; color: var(--ostudy-color-text-muted); font-weight: 720; }
   .density > button[aria-pressed="true"] { background: var(--ostudy-color-surface-raised); color: var(--ostudy-color-text-accent); box-shadow: var(--ostudy-shadow-level-1); }
 
@@ -22,7 +23,11 @@
   .sectionHeading p { margin-top: 2px; color: var(--ostudy-color-text-muted); font-size: .78rem; }
   .folderList { display: grid; min-width: 0; gap: var(--ostudy-space-4); }
   .folder { display: grid; min-width: 0; gap: var(--ostudy-space-3); padding: var(--ostudy-space-4); }
-  .folderHeader { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--ostudy-space-3); }
+  .folderHeader { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--ostudy-space-3); }
+  .folderToggle { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--ostudy-space-3); border: 0; border-radius: var(--ostudy-radius-medium); padding: 0; background: transparent; color: var(--ostudy-color-text-primary); text-align: start; }
+  .folderToggle:hover { background: color-mix(in srgb, var(--ostudy-color-surface-soft) 70%, transparent); }
+  .folderToggle:focus-visible { outline: none; box-shadow: var(--ostudy-shadow-focus); }
+  .folderChevron { display: grid; width: 30px; height: 30px; place-items: center; border-radius: var(--ostudy-radius-small); color: var(--ostudy-color-text-muted); }
   .folderIcon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: var(--ostudy-radius-medium); background: var(--ostudy-color-accent-soft); color: var(--ostudy-color-text-accent); }
   .folderTitle { min-width: 0; }
   .folderTitle h4,
@@ -74,17 +79,21 @@
   :root[data-motion="reduced"] .deckItem,
   :root[data-motion="none"] .deckItem { transform: none; transition: none; }
 
-  @media (max-width: 900px) {
+  @media (max-width: 1200px) {
     .toolbar { flex-direction: column; }
-    .toolbarActions { width: 100%; justify-content: stretch; }
-    .toolbarActions > * { flex: 1 1 auto; }
-    .density { flex: 2 1 250px; }
-    .density > button { flex: 1; }
-    .folderHeader { grid-template-columns: auto minmax(0, 1fr); }
-    .folderActions { grid-column: 1 / -1; justify-content: flex-start; }
+    .toolbarActions { width: 100%; flex-wrap: nowrap; justify-content: flex-end; }
+  }
+
+  @media (max-width: 900px) {
+    .folderHeader { grid-template-columns: 1fr; }
+    .folderActions { justify-content: flex-start; }
   }
 
   @media (max-width: 640px) {
+    .toolbarActions { flex-wrap: wrap; justify-content: stretch; }
+    .toolbarActions > * { flex: 1 1 auto; }
+    .density { flex: 2 1 250px; }
+    .density > button { flex: 1; }
     .folder { padding: var(--ostudy-space-3); }
     .deckItem { grid-template-columns: 34px minmax(0, 1fr); }
     .deckActions { grid-column: 1 / -1; border-block-start: 1px solid var(--ostudy-color-border-subtle); border-inline-start: 0; justify-content: flex-end; }
@@ -98,6 +107,7 @@
   @media (pointer: coarse) {
     .folderActions button,
     .deckActions button { min-height: var(--touch-target-min); }
+    .folderToggle { min-height: var(--touch-target-min); }
     .dragHandle { width: var(--touch-target-min); }
   }
 }

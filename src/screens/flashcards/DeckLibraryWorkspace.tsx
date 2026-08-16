@@ -665,7 +665,9 @@ function FolderSection({
   onDragStart: (event: DragEvent<HTMLElement>, deck: DeckSummary) => void;
   onDrop: (event: DragEvent<HTMLElement>, index: number) => void;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
   const due = decks.reduce((sum, deck) => sum + deck.studyableDueCount, 0);
+  const contentId = `deck-folder-${folder.id}`;
   return (
     <Surface
       as="section"
@@ -675,11 +677,25 @@ function FolderSection({
       onDrop={(event) => onDrop(event, decks.length)}
     >
       <header className={styles.folderHeader}>
-        <span className={styles.folderIcon}><Icon name="folder-open" size={22} /></span>
-        <div className={styles.folderTitle}>
-          <h4>{folder.name}</h4>
-          <span>{decks.length} {decks.length === 1 ? "deck" : "decks"} · {due} ready</span>
-        </div>
+        <button
+          type="button"
+          className={styles.folderToggle}
+          aria-expanded={!collapsed}
+          aria-controls={contentId}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${folder.name} folder`}
+          onClick={() => setCollapsed((current) => !current)}
+        >
+          <span className={styles.folderIcon}>
+            <Icon name={collapsed ? "folder" : "folder-open"} size={22} />
+          </span>
+          <span className={styles.folderTitle}>
+            <h4>{folder.name}</h4>
+            <span>{decks.length} {decks.length === 1 ? "deck" : "decks"} · {due} ready</span>
+          </span>
+          <span className={styles.folderChevron} aria-hidden="true">
+            <Icon name={collapsed ? "chevron-right" : "chevron-down"} size={18} />
+          </span>
+        </button>
         <div className={styles.folderActions}>
           <button type="button" disabled={disabled || folderIndex === 0} aria-label={`Move ${folder.name} folder up`} onClick={() => onMoveFolder(folderIndex - 1)}>↑</button>
           <button type="button" disabled={disabled || folderIndex === folderCount - 1} aria-label={`Move ${folder.name} folder down`} onClick={() => onMoveFolder(folderIndex + 1)}>↓</button>
@@ -687,31 +703,33 @@ function FolderSection({
           <button type="button" disabled={disabled} className={styles.dangerText} onClick={onDelete}>Delete</button>
         </div>
       </header>
-      {decks.length === 0 ? (
-        <div className={styles.emptyFolder}>
-          <Artwork slot="empty.folder" />
-          <p>Drag a deck here or use its Move action.</p>
-        </div>
-      ) : (
-        <div className={styles.deckList}>
-          {decks.map((deck, index) => (
-            <DeckItem
-              key={deck.id}
-              deck={deck}
-              density={density}
-              index={index}
-              count={decks.length}
-              disabled={disabled}
-              onOpen={() => onOpenDeck(deck.id)}
-              onPractice={() => void onPracticeDeck(deck.id, "library")}
-              onMove={() => onMoveDeck(deck)}
-              onMovePosition={(target) => onMoveDeckPosition(deck, target)}
-              onDragStart={(event) => onDragStart(event, deck)}
-              onDrop={(event) => onDrop(event, index)}
-            />
-          ))}
-        </div>
-      )}
+      {!collapsed ? (
+        decks.length === 0 ? (
+          <div id={contentId} className={styles.emptyFolder}>
+            <Artwork slot="empty.folder" />
+            <p>Drag a deck here or use its Move action.</p>
+          </div>
+        ) : (
+          <div id={contentId} className={styles.deckList}>
+            {decks.map((deck, index) => (
+              <DeckItem
+                key={deck.id}
+                deck={deck}
+                density={density}
+                index={index}
+                count={decks.length}
+                disabled={disabled}
+                onOpen={() => onOpenDeck(deck.id)}
+                onPractice={() => void onPracticeDeck(deck.id, "library")}
+                onMove={() => onMoveDeck(deck)}
+                onMovePosition={(target) => onMoveDeckPosition(deck, target)}
+                onDragStart={(event) => onDragStart(event, deck)}
+                onDrop={(event) => onDrop(event, index)}
+              />
+            ))}
+          </div>
+        )
+      ) : null}
     </Surface>
   );
 }

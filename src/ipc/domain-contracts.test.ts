@@ -427,10 +427,10 @@ describe("typed Tauri IPC wrappers", () => {
       "import_deck",
       { input: { stagedFileId: "1".repeat(32), operationId: importOperationId } },
     );
-    await expectInvocation(() => prepareLibraryBackup(importOperationId), "prepare_library_backup", { input: { operationId: importOperationId } });
+    await expectInvocation(() => prepareLibraryBackup(importOperationId), "prepare_library_backup_async", { input: { operationId: importOperationId } });
     await expectInvocation(
       () => prepareLibraryRestore("1".repeat(32)),
-      "prepare_library_restore",
+      "prepare_library_restore_async",
       { input: { stagedFileId: "1".repeat(32) } },
     );
   });

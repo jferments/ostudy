@@ -8,7 +8,21 @@ use crate::{
 };
 
 const THEMES: &[&str] = &["light", "dark", "console", "synthwave"];
-const FONT_PRESETS: &[&str] = &["system", "atkinson", "plex", "humanist", "serif", "mono"];
+const FONT_PRESETS: &[&str] = &[
+    "system",
+    "atkinson",
+    "plex",
+    "albert",
+    "space-grotesk",
+    "spline-sans",
+    "sora",
+    "roboto-slab",
+    "sofia-sans",
+    "lato",
+    "humanist",
+    "serif",
+    "mono",
+];
 const MOTION_PREFERENCES: &[&str] = &["system", "full", "reduced", "none"];
 const MATERIAL_PREFERENCES: &[&str] = &["automatic", "rich", "simple"];
 const DECK_VIEW_DENSITIES: &[&str] = &["comfortable", "compact"];
@@ -42,6 +56,7 @@ pub struct AppInfoDto {
     pub data_directory: String,
     pub database_path: String,
     pub image_directory: String,
+    pub diagnostic_log_path: String,
     pub database_schema_version: i64,
 }
 
@@ -76,6 +91,9 @@ pub fn get_app_info(
         data_directory: paths.app_data_dir().to_string_lossy().into_owned(),
         database_path: paths.database_path().to_string_lossy().into_owned(),
         image_directory: paths.images_dir().to_string_lossy().into_owned(),
+        diagnostic_log_path: crate::logging::diagnostic_log_path(paths.app_data_dir())
+            .to_string_lossy()
+            .into_owned(),
         database_schema_version: schema_version,
     })
 }
@@ -87,8 +105,8 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
     };
     Ok(AppSettingsDto {
         theme: get_setting(connection, "theme", "dark".to_string())?,
-        ui_font: get_setting(connection, "uiFont", "system".to_string())?,
-        card_font: get_setting(connection, "cardFont", "system".to_string())?,
+        ui_font: get_font_setting(connection, "uiFont")?,
+        card_font: get_font_setting(connection, "cardFont")?,
         ui_scale: get_setting(connection, "uiScale", 100_i64)?,
         card_base_size: get_setting(connection, "cardBaseSize", 18_i64)?,
         motion_preference,
@@ -120,6 +138,29 @@ fn legacy_motion_preference(connection: &Connection) -> Result<String, CommandEr
         "system"
     }
     .to_string())
+}
+
+fn get_font_setting(connection: &Connection, key: &str) -> Result<String, CommandError> {
+    let row: Option<(String, i64)> = connection
+        .query_row(
+            "SELECT value_json, updated_at FROM app_settings WHERE key = ?1",
+            [key],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    let Some((serialized, updated_at)) = row else {
+        return Ok("plex".to_string());
+    };
+    let value: String = serde_json::from_str(&serialized).map_err(CommandError::serialization)?;
+    // Migration 0002 seeded system fonts at timestamp zero. That sentinel lets
+    // the new default become Plex without overwriting an explicit user choice:
+    // every real settings save writes a nonzero wall-clock timestamp.
+    if updated_at == 0 && value == "system" {
+        Ok("plex".to_string())
+    } else {
+        Ok(value)
+    }
 }
 
 fn get_setting<T>(connection: &Connection, key: &str, default: T) -> Result<T, CommandError>
@@ -322,6 +363,8 @@ mod tests {
         let mut settings = database
             .with_connection(load_settings)
             .expect("settings should load");
+        assert_eq!(settings.ui_font, "plex");
+        assert_eq!(settings.card_font, "plex");
         assert_eq!(settings.daily_new_limit, 20);
         assert_eq!(settings.daily_review_limit, 200);
         settings.daily_new_limit = 12;
@@ -334,6 +377,45 @@ mod tests {
             .expect("settings should reload");
         assert_eq!(loaded.daily_new_limit, 12);
         assert_eq!(loaded.daily_review_limit, 80);
+    }
+
+    #[test]
+    fn explicit_system_font_choice_survives_the_new_default() {
+        let database = Database::open_in_memory().expect("database should open");
+        let mut settings = database
+            .with_connection(load_settings)
+            .expect("settings should load");
+        assert_eq!(settings.ui_font, "plex");
+        assert_eq!(settings.card_font, "plex");
+        settings.ui_font = "system".to_string();
+        settings.card_font = "system".to_string();
+        database
+            .with_connection(|connection| save_settings_in_connection(connection, &settings))
+            .expect("explicit font settings should save");
+        let loaded = database
+            .with_connection(load_settings)
+            .expect("settings should reload");
+        assert_eq!(loaded.ui_font, "system");
+        assert_eq!(loaded.card_font, "system");
+    }
+
+    #[test]
+    fn accepts_bundled_font_presets() {
+        for preset in [
+            "plex",
+            "albert",
+            "space-grotesk",
+            "spline-sans",
+            "sora",
+            "roboto-slab",
+            "sofia-sans",
+            "lato",
+        ] {
+            assert!(
+                validate_font(preset).is_ok(),
+                "preset {preset} should be valid"
+            );
+        }
     }
 
     #[test]

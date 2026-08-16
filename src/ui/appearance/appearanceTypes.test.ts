@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import type { AppSettings } from "../../ipc/settings";
 import {
+  FONT_PRESET_OPTIONS,
   resolveAppearanceProfile,
+  resolveFontFamily,
   resolveMaterial,
   resolveMotion,
 } from "./appearanceTypes";
 
 const settings: AppSettings = {
   theme: "dark",
-  uiFont: "system",
-  cardFont: "system",
+  uiFont: "plex",
+  cardFont: "plex",
   uiScale: 100,
   cardBaseSize: 18,
   motionPreference: "system",
@@ -67,5 +69,27 @@ describe("appearance resolution", () => {
       environment,
     );
     expect(profile.motion).toBe("none");
+  });
+
+  it("exposes each bundled font preset and resolves it to a local-first family", () => {
+    const bundled = FONT_PRESET_OPTIONS.filter((option) => option.group === "bundled");
+    expect(bundled.map((option) => option.value)).toEqual([
+      "plex",
+      "albert",
+      "space-grotesk",
+      "spline-sans",
+      "sora",
+      "roboto-slab",
+      "sofia-sans",
+      "lato",
+    ]);
+    expect(resolveFontFamily("plex", "dark")).toContain("'IBM Plex Sans'");
+    expect(resolveFontFamily("albert", "dark")).toContain("'Albert Sans'");
+    expect(resolveFontFamily("space-grotesk", "dark")).toContain("'Space Grotesk'");
+    expect(resolveFontFamily("spline-sans", "dark")).toContain("'Spline Sans'");
+    expect(resolveFontFamily("sora", "dark")).toContain("'Sora'");
+    expect(resolveFontFamily("roboto-slab", "dark")).toContain("'Roboto Slab'");
+    expect(resolveFontFamily("sofia-sans", "dark")).toContain("'Sofia Sans'");
+    expect(resolveFontFamily("lato", "dark")).toContain("'Lato'");
   });
 });

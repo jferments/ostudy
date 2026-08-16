@@ -1,17 +1,18 @@
 //! Platform-aware OCR boundary used when the native PDF text layer is unreliable.
 //!
 //! ostudy owns the OCR contract rather than making document ingestion depend on
-//! one executable. Desktop currently adapts the oxidize-pdf `OcrProvider` trait
-//! to local Tesseract CLI. Android/iOS deliberately do not attempt subprocess
-//! execution; those targets are reserved for native Kotlin/Swift OCR adapters
-//! when the Tauri mobile projects are introduced. Until then they fail locally
-//! before model traffic instead of pretending a desktop sidecar can run there.
+//! one executable. Desktop adapts the oxidize-pdf `OcrProvider` trait to local
+//! Tesseract CLI. Android stages the bounded PNG in app-private storage and calls
+//! the bundled ML Kit Text Recognition v2 adapter through the private Tauri
+//! platform plugin. iOS remains reserved for Apple Vision.
 
 use oxidize_pdf::{
     graphics::ImageFormat, OcrEngine, OcrError, OcrOptions, OcrProcessingResult, OcrProvider,
     OcrResult,
 };
 
+#[cfg(target_os = "android")]
+use crate::pdf_render_backend;
 use crate::task_cancellation;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -24,12 +25,22 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(target_os = "android")]
+use std::{
+    fs,
+    sync::atomic::{AtomicU64, Ordering},
+};
+#[cfg(target_os = "android")]
+use tauri::Manager;
+#[cfg(target_os = "android")]
+use tauri_plugin_ostudy_platform::{OstudyPlatformExt, RecognizeImageRequest};
+
 const OCR_CANCELED_MARKER: &str = "ostudy_document_ocr_canceled";
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const ENGINE_NAME: &str = "Tesseract CLI via ostudy platform OCR";
 #[cfg(target_os = "android")]
-const ENGINE_NAME: &str = "Android native OCR adapter";
+const ENGINE_NAME: &str = "ML Kit Text Recognition v2 (bundled Latin)";
 #[cfg(target_os = "ios")]
 const ENGINE_NAME: &str = "Apple Vision OCR adapter";
 
@@ -55,17 +66,20 @@ const STRONG_OCR_MIN_ALPHABETIC: usize = 8;
 const STRONG_OCR_MIN_CONFIDENCE: f64 = 0.45;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 static WORKSPACE_COUNTER: AtomicU64 = AtomicU64::new(0);
+#[cfg(target_os = "android")]
+static ANDROID_OCR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Platform-neutral provider presented to document ingestion.
 ///
-/// The compatibility alias below keeps the PR #39 call site stable while the
+/// The compatibility alias keeps the original call-site name stable while the
 /// implementation is generalized. New code should reason about this type as a
-/// platform OCR provider, not as a guarantee that a Tesseract child process is
-/// available on every target.
+/// platform OCR provider, not as a guarantee that Tesseract exists everywhere.
 #[derive(Clone, Debug)]
 pub(crate) struct PlatformOcrProvider {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     executable: String,
+    #[cfg(target_os = "android")]
+    app: Option<tauri::AppHandle>,
     document_id: Option<String>,
 }
 
@@ -88,6 +102,8 @@ impl PlatformOcrProvider {
         Self {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             executable,
+            #[cfg(target_os = "android")]
+            app: pdf_render_backend::android_app_handle().ok(),
             document_id: None,
         }
     }
@@ -105,10 +121,27 @@ impl PlatformOcrProvider {
 
         #[cfg(target_os = "android")]
         {
-            Err(OcrError::Configuration(
-                "This Android build does not yet include ostudy's native on-device OCR adapter. Corrupted PDF text will not be sent to an AI provider until that adapter is available."
-                    .to_string(),
-            ))
+            let app = self.app.as_ref().ok_or_else(|| {
+                OcrError::Configuration(
+                    "Android OCR was initialized before the native platform runtime.".to_string(),
+                )
+            })?;
+            let capabilities = app
+                .ostudy_platform()
+                .document_capabilities()
+                .map_err(|error| {
+                    OcrError::ProviderNotAvailable(format!(
+                        "Could not query Android document services: {error}"
+                    ))
+                })?;
+            if capabilities.ocr_available {
+                Ok(())
+            } else {
+                Err(OcrError::ProviderNotAvailable(
+                    "Android reported that its bundled on-device OCR adapter is unavailable."
+                        .to_string(),
+                ))
+            }
         }
         #[cfg(target_os = "ios")]
         {
@@ -145,6 +178,65 @@ impl PlatformOcrProvider {
         self.document_id
             .as_deref()
             .is_some_and(task_cancellation::is_document_task_canceled)
+    }
+
+    #[cfg(target_os = "android")]
+    fn process_android_ml_kit(
+        &self,
+        image_data: &[u8],
+        options: &OcrOptions,
+    ) -> OcrResult<OcrProcessingResult> {
+        let expected_dimensions = png_dimensions(image_data)?;
+        let app = self.app.as_ref().ok_or_else(|| {
+            OcrError::Configuration(
+                "Android OCR was initialized before the native platform runtime.".to_string(),
+            )
+        })?;
+        let directory = app
+            .path()
+            .app_cache_dir()
+            .map_err(|error| OcrError::Configuration(error.to_string()))?
+            .join("android-ocr");
+        fs::create_dir_all(&directory)?;
+        let sequence = ANDROID_OCR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let input = directory.join(format!(
+            "ocr-{}-{}-{sequence}.png",
+            std::process::id(),
+            crate::platform::now_utc_millis().unwrap_or_default()
+        ));
+        fs::write(&input, image_data)?;
+        let source_path = input.to_str().ok_or_else(|| {
+            OcrError::Configuration("Android's OCR cache path is not valid UTF-8.".to_string())
+        })?;
+        let result = app
+            .ostudy_platform()
+            .recognize_image(RecognizeImageRequest {
+                source_path: source_path.to_string(),
+                language: options.language.clone(),
+                timeout_seconds: options.timeout_seconds.max(1),
+            });
+        let _ = fs::remove_file(&input);
+        let result = result.map_err(|error| {
+            OcrError::ProcessingFailed(format!("Android on-device OCR failed: {error}"))
+        })?;
+        if self.is_canceled() {
+            return Err(canceled_ocr_error());
+        }
+        if (result.width, result.height) != expected_dimensions {
+            return Err(OcrError::InvalidImageData(
+                "Android OCR decoded image dimensions that differ from the bounded PNG header."
+                    .to_string(),
+            ));
+        }
+        Ok(OcrProcessingResult::new(
+            result.text,
+            result.confidence.clamp(0.0, 1.0),
+            Vec::new(),
+            result.duration_millis,
+            result.engine,
+            result.language,
+            expected_dimensions,
+        ))
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -312,13 +404,16 @@ impl OcrProvider for PlatformOcrProvider {
             return Err(canceled_ocr_error());
         }
 
-        #[cfg(any(target_os = "android", target_os = "ios"))]
+        #[cfg(target_os = "android")]
+        {
+            self.ensure_available()?;
+            self.process_android_ml_kit(image_data, options)
+        }
+        #[cfg(target_os = "ios")]
         {
             let _ = options;
             self.ensure_available()?;
-            unreachable!(
-                "mobile OCR availability cannot succeed before its native adapter is linked"
-            )
+            unreachable!("iOS OCR availability cannot succeed before Apple Vision is linked")
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
@@ -336,8 +431,7 @@ impl OcrProvider for PlatformOcrProvider {
 
     fn engine_type(&self) -> OcrEngine {
         // oxidize-pdf 4.2.x has no generic/native-mobile engine discriminator.
-        // This value describes the implemented provider today; ostudy persists
-        // the more precise `engine_name` string for document provenance.
+        // ostudy persists the more precise `engine_name` string for provenance.
         OcrEngine::Tesseract
     }
 }
@@ -449,7 +543,6 @@ fn confidence_milli(value: f64) -> usize {
     (value.clamp(0.0, 1.0) * 1_000.0).round() as usize
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn png_dimensions(image_data: &[u8]) -> OcrResult<(u32, u32)> {
     const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
     if image_data.len() < 24 || !image_data.starts_with(PNG_SIGNATURE) {
@@ -596,7 +689,6 @@ mod tests {
         )));
     }
 
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
     fn png_dimensions_rejects_non_png_data() {
         assert!(png_dimensions(b"not-a-png").is_err());

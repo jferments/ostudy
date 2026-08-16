@@ -19,6 +19,7 @@ use tauri_plugin_ostudy_platform::{
 
 use crate::{
     error::CommandError,
+    pdf_render_backend,
     platform::{
         CapabilityProvider, Clock, ExternalAcquireResult, ExternalExportSource, ExternalFilePort,
         ExternalFileRequest, ExternalImportTarget, ExternalPublishResult,
@@ -30,6 +31,7 @@ use crate::{
 };
 
 pub(super) fn runtime(app: AppHandle) -> PlatformRuntime {
+    pdf_render_backend::install_android_app(app.clone());
     let clock = Arc::new(AndroidSystemClock);
     PlatformRuntime::from_parts(
         Arc::new(AndroidCapabilityProvider { app: app.clone() }),
@@ -55,12 +57,29 @@ impl CapabilityProvider for AndroidCapabilityProvider {
             .secret_availability()
             .map(|value| value.state == "available")
             .unwrap_or(false);
+        let document_capabilities = self.app.ostudy_platform().document_capabilities().ok();
         let environment_capability = || {
             if environment_available {
                 ServiceCapability::available()
             } else {
                 ServiceCapability::unavailable("android_platform_environment_unavailable")
             }
+        };
+        let pdf_render = if document_capabilities
+            .as_ref()
+            .is_some_and(|value| value.pdf_render_available)
+        {
+            ServiceCapability::available()
+        } else {
+            ServiceCapability::unavailable("android_pdf_renderer_unavailable")
+        };
+        let ocr = if document_capabilities
+            .as_ref()
+            .is_some_and(|value| value.ocr_available)
+        {
+            ServiceCapability::available()
+        } else {
+            ServiceCapability::unavailable("android_ml_kit_ocr_unavailable")
         };
         PlatformCapabilitySnapshot {
             schema_version: 1,
@@ -78,21 +97,17 @@ impl CapabilityProvider for AndroidCapabilityProvider {
                 lifecycle_events: ServiceCapability::available(),
                 local_time_zone: environment_capability(),
                 resource_observation: environment_capability(),
-                native_pdf_render: ServiceCapability::unavailable(
-                    "android_document_processing_development_stub",
-                ),
+                native_pdf_render: pdf_render,
                 native_pdf_text_rescue: ServiceCapability::unavailable(
-                    "android_document_processing_development_stub",
+                    "android_pdf_renderer_has_no_native_text_api",
                 ),
-                ocr: ServiceCapability::unavailable("android_document_processing_development_stub"),
-                camera: ServiceCapability::unavailable("android_camera_adapter_not_implemented"),
-                qr_scan: ServiceCapability::unavailable("android_qr_adapter_not_implemented"),
+                ocr,
+                camera: ServiceCapability::available(),
+                qr_scan: ServiceCapability::available(),
                 haptics: ServiceCapability::unavailable("android_haptics_adapter_not_implemented"),
                 system_share: ServiceCapability::available(),
                 local_network: environment_capability(),
-                background_execution: ServiceCapability::unavailable(
-                    "android_background_execution_not_implemented",
-                ),
+                background_execution: ServiceCapability::available(),
             },
         }
     }

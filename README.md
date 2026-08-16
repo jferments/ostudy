@@ -2,11 +2,11 @@
 
 ![ostudy](assets/images/github_banner.png)
 
-**ostudy** is a free, open-source study application that combines flexible flashcards, spaced repetition, learning analytics, and optional AI-assisted authoring. Your library lives on your own computer, core study features do not require an account, and AI is used only through a provider that you explicitly configure.
+**ostudy** is a free, open-source study application that combines flexible flashcards, spaced repetition, learning analytics, and optional AI-assisted authoring. Your library lives on your own computer or mobile device, core study features do not require an account, and AI is used only through a provider that you explicitly configure.
 
 The project is being built for learners who want the convenience of modern AI study tools without giving a single subscription service permanent control over their notes, review history, or choice of model. You can connect ostudy to an existing local model server or to a supported cloud API. When you use a paid API, you pay that provider directly rather than buying a separate study-app subscription; for many light or moderate study workflows this can be substantially less expensive, although the actual cost depends on the model, document size, and usage.
 
-ostudy is under active development. Linux is the currently qualified desktop path. Windows and macOS source-build support is being prepared for regular qualification, and Android and iOS are planned. See [Platform availability](#platform-availability) and the [roadmap](docs/roadmap.md) for the current status rather than assuming that every planned platform or AI feature has already shipped.
+ostudy is under active development. Linux is the primary qualified desktop path, and Android now has a qualified source-build/debug-install path with API-36 emulator coverage. Windows, macOS, and iOS still need regular platform qualification and release packaging. See [Platform availability](#platform-availability) and the [roadmap](docs/roadmap.md) for current status rather than assuming every planned platform has a public signed release.
 
 ## Why ostudy
 
@@ -15,9 +15,9 @@ ostudy is under active development. Linux is the currently qualified desktop pat
 - **Choice of AI.** Current builds support existing llama.cpp/Unsloth GGUF servers and DeepSeek. Ollama, OpenAI, Gemini, and Claude integrations are planned.
 - **Local models and direct API access.** Use a free model running on hardware you control, or pay a supported model provider directly instead of adding another monthly study-app fee.
 - **No forced cloud fallback.** A local provider is never silently replaced with a cloud provider. ostudy sends requests only to the profile selected for the task.
-- **Portable data.** Share individual decks, import generated cards, and make complete local backups without depending on an online account.
+- **Portable data.** Share individual decks, import generated cards, make complete local backups, and explicitly synchronize study data between trusted devices on a private LAN.
 - **Detailed learning feedback.** Spaced repetition, scheduling controls, search, tags, and analytics are part of the study system rather than separate paid add-ons.
-- **Built for major platforms.** Linux is the current qualified target, with Windows, macOS, Android, and iOS included in the project’s cross-platform roadmap.
+- **Built for major platforms.** Linux and Android share the same study/domain core; Windows, macOS, and iOS remain in the cross-platform roadmap.
 
 ## Features
 
@@ -43,19 +43,23 @@ ostudy is under active development. Linux is the currently qualified desktop pat
 - Use an existing local model server, a model running on another computer you control, or a supported cloud API.
 - Stop a long-running generation job, retry a failed job, or generate additional cards from the same retained document.
 - Edit or delete generated cards through the same ordinary deck tools used for manually created cards.
+- On Android, native `PdfRenderer` plus bundled ML Kit Text Recognition v2 provides the mobile PDF/OCR path without requiring Tesseract.
 
 PDF processing is one of the newest parts of ostudy and is still being hardened. The [document-generation guide](docs/user-guide/documents-and-ai-generation.md) explains the current workflow and limitations. The lower-level extraction, rendering, OCR, and model design is documented separately in [AI and document processing](docs/architecture/ai-and-document-processing.md).
 
-### Own, back up, and share your library
+### Own, back up, share, and synchronize your library
 
 - Share a portable deck with a friend without including your personal review history.
 - Import structured card files created by an LLM or another authoring tool.
 - Create a complete backup of your local library and managed files.
-- Keep AI credentials out of shared decks and backup files.
+- Send study-library changes directly to another trusted ostudy installation over an authenticated encrypted private-LAN session.
+- Keep ordinary appearance/application settings device-local during synchronization.
+- Include API provider settings and saved credentials only when the **sending device explicitly opts in** for that synchronization offer.
+- Keep AI credentials out of shared decks, complete backup files, and ordinary synchronization packages.
 
 ## Planned study tools
 
-The document platform is intended to support more than flashcard generation. Planned work includes source-grounded study guides, practice tests and quizzes, interactive AI tutoring, user-controlled synchronization between devices, regularly qualified Windows and macOS releases, and native Android and iOS applications. These are roadmap items, not current feature claims. See the [project roadmap](docs/roadmap.md) for priorities and status.
+The document platform is intended to support more than flashcard generation. Planned work includes source-grounded study guides, practice tests and quizzes, interactive AI tutoring, regularly qualified Windows and macOS releases, and native iOS support. These are roadmap items, not current feature claims. See the [project roadmap](docs/roadmap.md) for priorities and status.
 
 ## Platform availability
 
@@ -65,10 +69,10 @@ The document platform is intended to support more than flashcard generation. Pla
 | Other Linux distributions | May build from source, but package and native-dependency setup varies by distribution. |
 | Windows | Source-build support is in progress and is not yet continuously qualified. |
 | macOS | Source-build support is in progress and is not yet continuously qualified. |
-| Android | Planned; no installable mobile application is currently provided. |
+| Android | Qualified source-build/debug-install path with Android 9/API 28 minimum, API 36 target, and API-36 emulator qualification; public signed distribution is not yet provided. |
 | iOS | Planned; no installable mobile application is currently provided. |
 
-Detailed and platform-specific instructions live in the [installation guide](docs/installation/README.md).
+Detailed and platform-specific instructions live in the [installation guide](docs/installation/README.md). Android developers can go directly to [Build and install ostudy for Android](docs/installation/android.md).
 
 ## Build and run on Ubuntu or Debian
 
@@ -105,6 +109,7 @@ The [documentation index](docs/README.md) is the starting point for all detailed
 
 - [Getting started](docs/user-guide/getting-started.md)
 - [Backups, imports, and sharing](docs/user-guide/backups-imports-and-sharing.md)
+- [Synchronize trusted devices](docs/user-guide/device-sync.md)
 - [AI providers](docs/user-guide/ai-providers.md)
 - [Roadmap](docs/roadmap.md)
 - [Installation](docs/installation/README.md)

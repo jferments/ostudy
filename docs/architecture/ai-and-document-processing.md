@@ -9,8 +9,8 @@ There is no generic prompt IPC command and no silent provider fallback.
 Managed documents are durable local sources. The active PDF adapter is deliberately split into independent native capabilities:
 
 - `pdf_backend.rs`: native text and structure extraction through oxidize-pdf;
-- `pdf_render_backend.rs`: visible-page rasterization through externally provisioned PDFium on desktop;
-- `pdf_ocr_backend.rs`: platform-aware OCR provider contract, with Tesseract as the current desktop implementation;
+- `pdf_render_backend.rs`: visible-page rasterization through externally provisioned PDFium on desktop and Android `PdfRenderer` on Android;
+- `pdf_ocr_backend.rs`: platform-aware OCR provider contract, with Tesseract CLI on desktop and bundled ML Kit Text Recognition v2 on Android;
 - `document_ingestion.rs`: extraction-quality validation, selective OCR recovery, derivative persistence, and progress;
 - `system_resources.rs`: CPU/RAM-aware concurrency planning for independent extraction/OCR work;
 - `document_semantics.rs`: ostudy-owned semantic chunks and hard-bounded provider windows;
@@ -31,12 +31,15 @@ immutable PDF
     │                       │
     │                       └── extraction-quality gate
     │                                   │
-    └── PDFium ───────> faithful page raster
+    └── platform raster ──> faithful page image
+          │
+          ├── desktop: PDFium
+          └── Android: PdfRenderer
                                     │
                                     └── platform OCR when native text is unreliable
 ```
 
-This separation is intentional. oxidize-pdf remains useful for RAG-oriented semantic structure even when one font mapping is corrupt, while PDFium provides a Chromium-grade raster source for visual grounding and OCR.
+This separation is intentional. oxidize-pdf remains useful for RAG-oriented semantic structure even when one font mapping is corrupt, while the platform renderer supplies a visual source for grounding and OCR.
 
 ## PDF extraction and malformed-text recovery
 
@@ -46,9 +49,13 @@ The canonical structure-aware `ExtractionProfile::Rag` partition/chunk pass rema
 
 Extracted text is untrusted until it passes quality validation. The validator detects at least Private Use Area mappings, replacement characters, invalid controls, the observed pathological high-Latin substitution pattern, native page extraction exceptions, sparse/missing page text, and corrupt structured semantics when raw page text remains readable.
 
-Good raw page text with bad semantic structure uses page-text semantic fallback instead of OCR. The quality system deliberately has two levels: localized malformed glyph mappings invalidate structured semantics and are removed from the native page-text fallback, while only page-wide unusability may become an OCR candidate. **Readable native text is never replaced merely because it is short, image-heavy, table-heavy, or contains a minority of unmapped scientific-symbol/font glyphs.** Before any candidate is rasterized for Tesseract, ostudy asks PDFium for a second, independent native-text extraction of that page. If PDFium produces usable text, that native text is cleaned and used for semantic fallback instead. OCR is therefore reserved for pages where the primary native extraction and the PDFium native-text rescue both fail to provide usable text, including genuine image-only pages, extraction failures, or whole-page obfuscation/corruption. Blank/image-only pages may remain visual evidence when no text is recoverable. Recovered text passes the same quality boundary again; ostudy does not hard-code a substitution alphabet for one PDF/font.
+Good raw page text with bad semantic structure uses page-text semantic fallback instead of OCR. The quality system deliberately has two levels: localized malformed glyph mappings invalidate structured semantics and are removed from the native page-text fallback, while only page-wide unusability may become an OCR candidate. **Readable native text is never replaced merely because it is short, image-heavy, table-heavy, or contains a minority of unmapped scientific-symbol/font glyphs.**
 
-## PDFium rendering and native runtime trust
+Desktop builds can ask PDFium for a second independent native-text extraction before OCR. If that rescue produces usable text, it is cleaned and used for semantic fallback. Android `PdfRenderer` does not expose an equivalent text layer, so an Android page whose primary native extraction is genuinely unusable is rasterized and sent directly to the bounded ML Kit OCR adapter. In both cases OCR remains reserved for pages where trustworthy native text is unavailable. Blank/image-only pages may remain visual evidence when no text is recoverable. Recovered text passes the same quality boundary again; ostudy does not hard-code a substitution alphabet for one PDF/font.
+
+## Rendering backends and native runtime trust
+
+### Desktop PDFium
 
 Desktop rendering binds directly through `pdfium-render 0.9.3` against PDFium API build `7881`. The Rust dependency graph does **not** contain `pdfium-bundled` or another native-runtime downloader.
 
@@ -58,16 +65,24 @@ Builders can avoid the default binary distribution by setting `OSTUDY_PDFIUM_PAT
 
 Official-source PDFium builds are supported operationally through `OSTUDY_PDFIUM_PATH`, but are not the default bootstrap because PDFium uses Chromium's depot_tools/gclient/GN/Ninja build infrastructure.
 
-Two raster classes exist:
+Two desktop raster classes exist:
 
 - **120 DPI durable pages** for visual grounding, backup, and provider image context;
 - **300 DPI temporary OCR pages** used only while recognition is running.
 
 PDFium rendering stays serialized within the process. Upstream PDFium does not guarantee concurrent calls; pdfium-render's thread-safe mode serializes access. CPU scaling is instead applied to independent extraction and OCR tasks.
 
-The render backend identity is versioned as `pdfium-render-0.9.3/pdfium-api-7881-external-v2-120dpi`, so Retry rebuilds derivatives created by earlier render contracts.
+The desktop render backend identity is versioned as `pdfium-render-0.9.3/pdfium-api-7881-external-v2-120dpi`, so Retry rebuilds derivatives created by earlier render contracts.
 
-## Resource-aware parallel OCR
+### Android PdfRenderer
+
+Android does not load the desktop PDFium runtime. `OstudyDocumentPlugin` opens only app-private managed PDFs with Android `PdfRenderer`, rasterizes the requested bounded page into a white-background bitmap, encodes a PNG into app-private cache, and returns page number/dimensions/byte count to Rust. It enforces the same document/page safety boundary before the image can enter OCR or provider planning.
+
+The Android renderer is deliberately narrow: Kotlin renders pages but does not select OCR candidates, read/write learner data, create cards, or contact providers. The active Android render identity is versioned separately so stale derivatives can be invalidated after adapter changes.
+
+## Resource-aware OCR
+
+### Desktop Tesseract
 
 Desktop OCR uses Tesseract only after the extraction-quality gate selects affected pages. Normal PDFs never require OCR.
 
@@ -87,9 +102,15 @@ There is no fixed eight-worker ceiling. The shared resource planner chooses `N` 
 
 Each Tesseract worker has its own provider instance and temporary workspace. Recognition uses explicit 300-DPI input and begins with page-segmentation mode 3. Weak/sparse output can retry with PSM 6 and PSM 11 inside the same bounded page timeout. The best result is selected using substantive text coverage and confidence, then revalidated before semantic reconstruction.
 
-OCR/source text, provider prompts, credentials, and raw provider responses are not written to diagnostics. Safe metrics may include page number, selected PSM, confidence bucket, recognized-character counts, CPU/RAM planning inputs, selected worker count, and queue capacity.
+Desktop cancellation terminates active Tesseract children and prevents partial recovered text from being committed.
 
-Cancellation is exact-document scoped. Stop generation terminates active Tesseract children and prevents partial recovered text from being committed.
+### Android ML Kit
+
+Android packages the bundled ML Kit Text Recognition v2 Latin model and has no Tesseract/Tesseract4Android/tessdata lifecycle. Rust stages a bounded PNG in app-private cache and calls the private Android plugin. The plugin validates source size, decoded dimensions, pixel count, and timeout before recognition, closes the recognizer after each request, and returns text/confidence/language observations/dimensions/duration plus a versioned ML Kit engine identity.
+
+Cancellation remains exact-document scoped in shared Rust. If cancellation occurs while a native recognition call is already executing, the task result is discarded and no canceled recovered text is committed or sent to a provider.
+
+OCR/source text, provider prompts, credentials, and raw provider responses are not written to diagnostics. Safe metrics may include page number, engine identity, confidence bucket, recognized-character counts, CPU/RAM planning inputs, selected worker count, and queue capacity.
 
 ### Desktop native dependency installation
 
@@ -97,14 +118,9 @@ Linux/macOS use `scripts/install-native-deps.sh`; Windows uses `scripts/install-
 
 PDFium is version/hash pinned by ostudy. Tesseract is intentionally installed through established platform channels instead of a custom ostudy binary bundle: apt on Debian/Ubuntu, Homebrew/MacPorts on macOS, and the Tesseract-documented UB Mannheim Windows distribution via winget when available. `OSTUDY_TESSERACT_PATH` supports non-PATH installations.
 
-### Mobile OCR and rendering
+### iOS
 
-The document core depends on rendering/OCR contracts rather than desktop subprocess assumptions.
-
-- Android: planned native Tauri/Kotlin renderer/OCR adapters; preferred OCR engine is bundled/offline ML Kit Text Recognition v2.
-- iOS: planned native Tauri/Swift renderer/OCR adapters; preferred OCR engine is Apple Vision.
-
-The native dependency manifest already records target-specific PDFium artifacts for future mobile packaging, but the mobile projects/adapters are not implemented yet. Current Android/iOS cfg branches therefore fail locally before corrupted source reaches an AI provider rather than pretending desktop PDFium/Tesseract runtime behavior is available.
+iOS remains planned. A future native Tauri/Swift adapter can use Apple Vision behind the same OCR contract without changing ingestion, persistence, or generation code. Until the iOS project and adapter exist, iOS must fail locally before corrupted source reaches an AI provider rather than pretending the Android or desktop runtime is available.
 
 ## Hard-bounded semantic source windows
 
@@ -156,13 +172,13 @@ A structurally valid response can contain one semantically unusable card; that c
 
 ## Long-running tasks, close protection, and cancellation
 
-A running document task owns one process-local cancellation signal keyed by document ID. The same registry spans extraction, PDFium rendering, OCR, and provider execution.
+A running document task owns one process-local cancellation signal keyed by document ID. The same registry spans extraction, platform rendering, OCR, and provider execution.
 
-**Stop generation** cancels only that document task and drops its exact provider stream/active OCR work. Durable completed checkpoints remain reusable; canceled documents remain retryable.
+**Stop generation** cancels only that document task and drops its exact provider stream/active OCR result. Durable completed checkpoints remain reusable; canceled documents remain retryable.
 
-Application close is guarded natively. If the main window receives `CloseRequested` while any document task is active, ostudy prevents the close and shows a native warning that the running request will be interrupted and uncommitted work may be lost. **Keep working** leaves the process/job running; **Close ostudy** proceeds with shutdown. No warning appears when no document job is active.
+On desktop, application close is guarded natively. If the main window receives `CloseRequested` while any document task is active, ostudy prevents the close and shows a native warning that the running request will be interrupted and uncommitted work may be lost. **Keep working** leaves the process/job running; **Close ostudy** proceeds with shutdown. No warning appears when no document job is active.
 
-Startup reconciliation marks interrupted durable state retryable and never resumes provider transmission automatically.
+On Android, a user-started document task acquires a native foreground `dataSync` service lease with a visible notification and bounded partial wake lock. Backgrounding the Activity therefore does not make the WebView the task owner. Full process death/reboot still ends the native process; startup/document reconciliation uses durable checkpoints and never resumes provider transmission invisibly.
 
 ## Progress and provenance
 
@@ -180,7 +196,7 @@ The delete workflow stages the managed document directory before the SQLite tran
 
 ## Privacy and trust
 
-PDF import, extraction, semantic chunking, PDFium rendering, OCR, native outline assembly, and checkpoint persistence are local. Only explicit provider requests cross the configured AI endpoint boundary. There is no automatic provider fallback.
+PDF import, extraction, semantic chunking, platform rendering, OCR, native outline assembly, and checkpoint persistence are local. Only explicit provider requests cross the configured AI endpoint boundary. There is no automatic provider fallback.
 
 Source material is untrusted data and cannot replace system/task instructions. Credentials, Authorization headers, raw provider responses, reasoning content, and OCR/source text are not written to diagnostics.
 
