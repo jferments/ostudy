@@ -382,9 +382,7 @@ pub(crate) fn finish_terminal(
             )
         })?;
     if let Some((code, message)) = error {
-        let details = format!(
-            "session={session_id} state={state} code={code} message={message}"
-        );
+        let details = format!("session={session_id} state={state} code={code} message={message}");
         if state == "failed" || state == "expired" {
             crate::logging::error("device_sync_session_ended", details);
         } else {
