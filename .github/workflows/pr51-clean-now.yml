@@ -1,0 +1,51 @@
+name: PR 51 remove temporary development artifacts
+
+on:
+  push:
+    branches:
+      - agent/android-completion-a4-a7
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr51-clean-now
+  cancel-in-progress: true
+
+jobs:
+  clean:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(pr51): remove temporary development artifacts') }}
+    runs-on: [self-hosted, ostudy-unified]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/android-completion-a4-a7
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Remove all PR-specific development machinery and diagnostics
+        run: |
+          rm -f .github/pr51-* scripts/pr51-*
+          find .github/workflows -maxdepth 1 -type f -name 'pr51-*' -delete
+
+      - name: Ensure the device-sync guide is indexed
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          index = Path('docs/user-guide/README.md')
+          content = index.read_text(encoding='utf-8')
+          if 'device-sync.md' not in content:
+              separator = '' if content.endswith('\n\n') else ('\n' if content.endswith('\n') else '\n\n')
+              content += separator + '- [Synchronize trusted devices](device-sync.md)\n'
+              index.write_text(content, encoding='utf-8')
+          PY
+
+      - name: Commit the clean branch
+        run: |
+          git config user.name "ostudy-ci"
+          git config user.email "158022198+jferments@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "chore(pr51): remove temporary development artifacts"
+          git push origin HEAD:agent/android-completion-a4-a7
