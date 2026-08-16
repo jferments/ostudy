@@ -10,6 +10,7 @@
 //! a synchronization package. AI provider configuration and secure credentials
 //! are an independent sender-controlled opt-in scope.
 
+mod cancellation;
 mod credentials;
 mod crypto;
 mod merge;
@@ -67,6 +68,12 @@ pub struct StartDevicePairingInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JoinDevicePairingInput {
     pub invitation: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CancelDeviceSyncSessionInput {
+    pub session_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -227,6 +234,11 @@ struct ReceiverAcknowledgement {
     transferred_credential_count: usize,
 }
 
+pub(crate) fn reconcile_startup(paths: &AppPaths) -> Result<(), CommandError> {
+    let _store = SyncStore::open(paths)?;
+    cancellation::reconcile_startup(paths)
+}
+
 #[tauri::command]
 pub fn get_device_sync_state(
     paths: State<'_, AppPaths>,
@@ -285,6 +297,12 @@ pub fn start_device_pairing(
 ) -> Result<PairingInvitationDto, CommandError> {
     let store = SyncStore::open(paths.inner())?;
     let (identity, identity_key) = ensure_identity(&store, runtime.inner())?;
+    for superseded in cancellation::cancel_superseded_unclaimed_hosts(paths.inner())? {
+        crate::logging::info(
+            "device_sync_offer_superseded",
+            format!("session={superseded} reason=newer_unclaimed_offer"),
+        );
+    }
     let expiry_seconds = input
         .expires_in_seconds
         .unwrap_or(DEFAULT_EXPIRY_SECONDS)
@@ -336,50 +354,84 @@ pub fn start_device_pairing(
     }
     let qr_svg = render_pairing_qr(&invitation)?;
     store.create_session(&session_id, "host", &endpoint, expires_at)?;
+    let cancel_signal = cancellation::begin(&session_id)?;
+    crate::logging::info(
+        "device_sync_offer_created",
+        format!("session={session_id} endpoint={endpoint} api_scope={}", input.include_api_settings),
+    );
     let host_app = app.clone();
     let host_session = session_id.clone();
-    thread::Builder::new()
+    let worker_signal = cancel_signal.clone();
+    let spawn_result = thread::Builder::new()
         .name(format!("ostudy-sync-send-{}", &session_id[..8]))
         .spawn(move || {
-            let result = run_host_listener(
-                host_app.clone(),
-                listener,
-                invitation_payload,
-                pairing_secret,
-                ephemeral,
+            let result = cancellation::normalize_result(
+                &worker_signal,
+                run_host_listener(
+                    host_app.clone(),
+                    listener,
+                    invitation_payload,
+                    pairing_secret,
+                    ephemeral,
+                    worker_signal.clone(),
+                ),
             );
             let paths = host_app.state::<AppPaths>();
-            if let Ok(store) = SyncStore::open(paths.inner()) {
-                match result {
-                    Ok(peer_id) => {
-                        let _ =
-                            store.update_session(&host_session, Some(&peer_id), "completed", None);
-                    }
-                    Err(error) if error.code == "device_sync_invitation_expired" => {
-                        let _ = store.update_session(
-                            &host_session,
-                            None,
-                            "expired",
-                            Some((&error.code, &error.message)),
-                        );
-                    }
-                    Err(error) => {
-                        let _ = store.update_session(
-                            &host_session,
-                            None,
-                            "failed",
-                            Some((&error.code, &error.message)),
-                        );
-                    }
+            match &result {
+                Ok(peer_id) => {
+                    let _ = cancellation::finish_terminal(
+                        paths.inner(),
+                        &host_session,
+                        Some(peer_id),
+                        "completed",
+                        None,
+                    );
+                }
+                Err(error) if error.code == "device_sync_invitation_expired" => {
+                    let _ = cancellation::finish_terminal(
+                        paths.inner(),
+                        &host_session,
+                        None,
+                        "expired",
+                        Some((&error.code, &error.message)),
+                    );
+                }
+                Err(error) if error.code == "device_sync_canceled" => {
+                    let _ = cancellation::finish_terminal(
+                        paths.inner(),
+                        &host_session,
+                        None,
+                        "canceled",
+                        Some((&error.code, &error.message)),
+                    );
+                }
+                Err(error) => {
+                    let _ = cancellation::finish_terminal(
+                        paths.inner(),
+                        &host_session,
+                        None,
+                        "failed",
+                        Some((&error.code, &error.message)),
+                    );
                 }
             }
-        })
-        .map_err(|error| {
-            CommandError::new(
-                "device_sync_listener_failed",
-                format!("The local synchronization worker could not start: {error}"),
-            )
-        })?;
+            cancellation::finish(&host_session);
+        });
+    if let Err(error) = spawn_result {
+        cancellation::finish(&session_id);
+        let command_error = CommandError::new(
+            "device_sync_listener_failed",
+            format!("The local synchronization worker could not start: {error}"),
+        );
+        let _ = cancellation::finish_terminal(
+            paths.inner(),
+            &session_id,
+            None,
+            "failed",
+            Some((&command_error.code, &command_error.message)),
+        );
+        return Err(command_error);
+    }
 
     Ok(PairingInvitationDto {
         session_id,
@@ -401,6 +453,7 @@ pub async fn join_device_pairing(
     input: JoinDevicePairingInput,
 ) -> Result<DeviceSyncResultDto, CommandError> {
     let invitation = parse_invitation(&input.invitation)?;
+    cancellation::ensure_peer_available(paths.inner(), &invitation.host_device_id)?;
     let store = SyncStore::open(paths.inner())?;
     ensure_identity(&store, runtime.inner())?;
     store.create_session(
@@ -409,24 +462,51 @@ pub async fn join_device_pairing(
         &invitation.endpoint,
         invitation.expires_at,
     )?;
+    let cancel_signal = cancellation::begin(&invitation.session_id)?;
     store.update_session(&invitation.session_id, None, "connecting", None)?;
+    crate::logging::info(
+        "device_sync_receive_started",
+        format!(
+            "session={} sender={} endpoint={}",
+            invitation.session_id, invitation.host_device_id, invitation.endpoint
+        ),
+    );
     let session_id = invitation.session_id.clone();
     let worker_app = app.clone();
-    let result =
-        tauri::async_runtime::spawn_blocking(move || run_join_session(worker_app, invitation))
-            .await
-            .map_err(|_| {
-                CommandError::new(
-                    "device_sync_worker_interrupted",
-                    "The device synchronization worker ended before returning a result.",
-                )
-            })?;
+    let worker_signal = cancel_signal.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        run_join_session(worker_app, invitation, worker_signal)
+    })
+    .await
+    .map_err(|_| {
+        CommandError::new(
+            "device_sync_worker_interrupted",
+            "The device synchronization worker ended before returning a result.",
+        )
+    })?;
+    let result = cancellation::normalize_result(&cancel_signal, result);
     match &result {
         Ok(value) => {
-            store.update_session(&session_id, Some(&value.peer.id), "completed", None)?;
+            cancellation::finish_terminal(
+                paths.inner(),
+                &session_id,
+                Some(&value.peer.id),
+                "completed",
+                None,
+            )?;
+        }
+        Err(error) if error.code == "device_sync_canceled" => {
+            cancellation::finish_terminal(
+                paths.inner(),
+                &session_id,
+                None,
+                "canceled",
+                Some((&error.code, &error.message)),
+            )?;
         }
         Err(error) => {
-            store.update_session(
+            cancellation::finish_terminal(
+                paths.inner(),
                 &session_id,
                 None,
                 "failed",
@@ -434,7 +514,16 @@ pub async fn join_device_pairing(
             )?;
         }
     }
+    cancellation::finish(&session_id);
     result
+}
+
+#[tauri::command]
+pub fn cancel_device_sync_session(
+    paths: State<'_, AppPaths>,
+    input: CancelDeviceSyncSessionInput,
+) -> Result<(), CommandError> {
+    cancellation::cancel_session(paths.inner(), &input.session_id)
 }
 
 #[tauri::command]
@@ -521,6 +610,7 @@ fn run_host_listener(
     invitation: PairingInvitation,
     pairing_secret: [u8; 32],
     ephemeral: EphemeralKey,
+    cancel_signal: cancellation::SyncCancellationSignal,
 ) -> Result<String, CommandError> {
     let deadline = Instant::now()
         + Duration::from_millis(
@@ -533,6 +623,7 @@ fn run_host_listener(
             .unwrap_or_default(),
         );
     loop {
+        cancel_signal.check()?;
         if Instant::now() >= deadline || unix_time_millis()? >= invitation.expires_at {
             return Err(CommandError::new(
                 "device_sync_invitation_expired",
@@ -547,14 +638,17 @@ fn run_host_listener(
                         "The synchronization connection did not originate from a private local-network address.",
                     ));
                 }
-                return handle_host_connection(
+                cancel_signal.attach_stream(&stream)?;
+                let result = handle_host_connection(
                     app,
                     stream,
                     remote_address,
                     invitation,
                     pairing_secret,
                     ephemeral,
+                    cancel_signal.clone(),
                 );
+                return cancellation::normalize_result(&cancel_signal, result);
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 thread::sleep(ACCEPT_POLL_INTERVAL);
@@ -576,13 +670,16 @@ fn handle_host_connection(
     invitation: PairingInvitation,
     pairing_secret: [u8; 32],
     ephemeral: EphemeralKey,
+    cancel_signal: cancellation::SyncCancellationSignal,
 ) -> Result<String, CommandError> {
+    cancel_signal.check()?;
     let paths = app.state::<AppPaths>();
     let database = app.state::<Database>();
     let runtime = app.state::<PlatformRuntime>();
     let store = SyncStore::open(paths.inner())?;
     let (identity, identity_key) = ensure_identity(&store, runtime.inner())?;
     let hello: ClientHello = read_plain_json(&mut stream)?;
+    cancel_signal.check()?;
     validate_client_hello(&invitation, &hello, &pairing_secret)?;
     let transcript = client_transcript(&invitation, &hello)?;
     let client_ephemeral =
@@ -623,6 +720,7 @@ fn handle_host_connection(
             identity_signature: identity_key.sign(&server_transcript),
         },
     )?;
+    cancel_signal.check()?;
 
     let peer_fingerprint = fingerprint_from_base64(&hello.identity_public_key)?;
     store.upsert_peer(
@@ -638,8 +736,14 @@ fn handle_host_connection(
             "The receiving device was not persisted after authentication.",
         )
     })?;
+    cancellation::claim_peer(paths.inner(), &invitation.session_id, &peer.id)?;
     store.update_session(&invitation.session_id, Some(&peer.id), "transferring", None)?;
+    crate::logging::info(
+        "device_sync_sender_authenticated",
+        format!("session={} peer={}", invitation.session_id, peer.id),
+    );
 
+    cancel_signal.check()?;
     let workspace = SyncWorkspace::new(paths.inner(), &invitation.session_id, "send")?;
     let outgoing_package = workspace.path.join("outgoing.syncpkg");
     let outgoing_summary = package::create_package(
@@ -648,6 +752,7 @@ fn handle_host_connection(
         &outgoing_package,
         invitation.include_api_settings,
     )?;
+    cancel_signal.check()?;
     let outgoing_credentials = if credentials_included {
         credentials::collect_credentials(database.inner(), runtime.secure_secret_store())?
     } else {
@@ -667,8 +772,10 @@ fn handle_host_connection(
         },
     )?;
     channel.send_file(&outgoing_package)?;
+    cancel_signal.check()?;
 
     let acknowledgement: ReceiverAcknowledgement = channel.receive_json(FRAME_COMPLETE)?;
+    cancel_signal.check()?;
     if acknowledgement.protocol_version != PROTOCOL_VERSION
         || acknowledgement.session_id != invitation.session_id
     {
@@ -718,7 +825,9 @@ fn handle_host_connection(
 fn run_join_session(
     app: AppHandle,
     invitation: PairingInvitation,
+    cancel_signal: cancellation::SyncCancellationSignal,
 ) -> Result<DeviceSyncResultDto, CommandError> {
+    cancel_signal.check()?;
     let paths = app.state::<AppPaths>();
     let database = app.state::<Database>();
     let runtime = app.state::<PlatformRuntime>();
@@ -745,6 +854,12 @@ fn run_join_session(
             ),
         )
     })?;
+    cancel_signal.attach_stream(&stream)?;
+    cancel_signal.check()?;
+    crate::logging::info(
+        "device_sync_receive_connected",
+        format!("session={} endpoint={}", invitation.session_id, invitation.endpoint),
+    );
     let pairing_secret = crypto::decode_standard(&invitation.pairing_secret, "pairing secret")?;
     let host_ephemeral = crypto::decode_standard(
         &invitation.host_ephemeral_public_key,
@@ -795,6 +910,7 @@ fn run_join_session(
     )?;
     let mut channel = SecureChannel::new(stream, keys)?;
     let server: ServerHello = channel.receive_json(FRAME_METADATA)?;
+    cancel_signal.check()?;
     validate_server_hello(
         &invitation,
         &server,
@@ -814,19 +930,33 @@ fn run_join_session(
             "The sending device was not persisted after authentication.",
         )
     })?;
+    cancellation::claim_peer(paths.inner(), &invitation.session_id, &sender.id)?;
     store.update_session(
         &invitation.session_id,
         Some(&sender.id),
         "transferring",
         None,
     )?;
+    crate::logging::info(
+        "device_sync_receive_authenticated",
+        format!("session={} sender={}", invitation.session_id, sender.id),
+    );
 
+    cancel_signal.check()?;
     let metadata: TransferMetadata = channel.receive_json(FRAME_METADATA)?;
     validate_transfer_metadata(&invitation, &server, &metadata)?;
     let workspace = SyncWorkspace::new(paths.inner(), &invitation.session_id, "receive")?;
     let incoming_package = workspace.path.join("incoming.syncpkg");
     channel.receive_file(&incoming_package)?;
+    cancel_signal.check()?;
     store.update_session(&invitation.session_id, Some(&sender.id), "merging", None)?;
+    crate::logging::info(
+        "device_sync_package_received",
+        format!(
+            "session={} sender={} bytes={}",
+            invitation.session_id, sender.id, metadata.package.package_bytes
+        ),
+    );
 
     let extracted = package::extract_package(&incoming_package, &workspace.path.join("incoming"))?;
     if extracted.include_api_settings != invitation.include_api_settings {
@@ -837,6 +967,7 @@ fn run_join_session(
     }
     log_staged_assets("receive", &extracted.assets);
     package::install_assets(paths.inner(), &extracted.assets)?;
+    cancel_signal.check()?;
 
     // The package sanitizer removes the bytes, and this temporary-schema guard
     // makes the merge engine skip these tables entirely. Empty remote tables
@@ -858,6 +989,11 @@ fn run_join_session(
         .execute_batch("PRAGMA foreign_keys = ON;")
         .map_err(CommandError::database)?;
 
+    cancel_signal.check()?;
+    crate::logging::info(
+        "device_sync_merge_started",
+        format!("session={} sender={}", invitation.session_id, sender.id),
+    );
     let merge = database.with_connection(|local| {
         merge::merge_remote_database(
             local,
@@ -867,6 +1003,14 @@ fn run_join_session(
             &sender.id,
         )
     })?;
+    crate::logging::info(
+        "device_sync_merge_completed",
+        format!(
+            "session={} sender={} changed_rows={} conflicts={}",
+            invitation.session_id, sender.id, merge.changed_row_count, merge.conflict_count
+        ),
+    );
+    cancel_signal.check()?;
     let transferred_credential_count = if server.credentials_included {
         credentials::apply_credentials(
             database.inner(),
@@ -876,6 +1020,7 @@ fn run_join_session(
     } else {
         0
     };
+    cancel_signal.check()?;
     channel.send_json(
         FRAME_COMPLETE,
         &ReceiverAcknowledgement {
