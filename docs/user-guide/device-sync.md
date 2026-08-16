@@ -16,6 +16,8 @@ Use **Send to another device** on the device whose library changes you want to s
 
 The device that creates the offer is the **sender**. The receiving device does not need to generate a second invitation.
 
+Only one unclaimed outgoing offer is kept at a time. If you create a new offer while the previous QR is still waiting, ostudy cancels the old listener and replaces it. Once an offer has authenticated a particular peer, a different peer may still have a separate active transfer, but ostudy rejects overlapping active synchronization sessions with the same peer.
+
 ### Sending API settings
 
 The API option is off by default for every offer.
@@ -50,6 +52,14 @@ On the receiving device:
 
 The direction is identical to QR pairing: the device that created the invitation sends, and the device that accepts it receives.
 
+## Canceling a request
+
+Active requests appear beneath the send/receive panels with their direction, current phase, peer name when known, and a **Cancel** action.
+
+Waiting, connecting, and transferring sessions can be canceled. Cancellation closes the active transport socket as well as marking the durable session canceled, so a stalled network request does not remain displayed as active. The database merge itself is an atomic commit boundary; once a receiver has entered the final **Merging** phase, ostudy lets that short commit finish instead of interrupting it halfway through.
+
+If ostudy is restarted while a request is still recorded as waiting/connecting/transferring/merging, startup marks that old request canceled/interrupted because its process-local socket cannot have survived the restart.
+
 ## What transfers
 
 The standard study-library offer covers data needed to carry study material and learning state between installations, including decks/folders, cards, tags, templates, managed images, schedules, practice/history records, and review history.
@@ -81,6 +91,14 @@ Both devices must be able to reach each other on the same private network. Guest
 The sender normally detects its LAN address automatically. Use **Advanced LAN address override** only if needed, and enter the sender's private LAN IP rather than `127.0.0.1`.
 
 For a local desktop AI service used from Android, remember that `127.0.0.1` on the phone means the phone itself; configure the provider with the desktop's reachable LAN address where appropriate.
+
+## Diagnostics
+
+Native diagnostic events are stored as JSON Lines in the app-private `diagnostics/ostudy.jsonl` file. The exact path for the current installation is shown at **Settings → Backup/Sync → Storage → Diagnostics**. The file rotates at a bounded size, retaining the previous segment as `ostudy.previous.jsonl`.
+
+Database failures keep their detailed SQLite error out of the ordinary UI, but the diagnostic event includes the raw SQLite message plus its native source call site. Device synchronization also records major phases such as offer creation, connection, authentication, package receipt, merge start, and merge completion so a failed physical-device transfer can be localized without guessing from a generic error message.
+
+On a debuggable Android installation connected over USB, you can read the app-private path with `adb shell run-as io.github.jferments.ostudy.dev` or copy the JSONL file with `adb exec-out run-as ... cat ...` once you know the displayed path.
 
 ## Invitation lifetime and compatibility
 
