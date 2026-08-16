@@ -149,7 +149,11 @@ pub(crate) fn cancel_session(paths: &AppPaths, session_id: &str) -> Result<(), C
         })?;
     if changed != 1 {
         let state: Option<String> = connection
-            .query_row("SELECT state FROM sessions WHERE id = ?1", [session_id], |row| row.get(0))
+            .query_row(
+                "SELECT state FROM sessions WHERE id = ?1",
+                [session_id],
+                |row| row.get(0),
+            )
             .optional()
             .map_err(|error| {
                 CommandError::database_at(
@@ -250,10 +254,7 @@ pub(crate) fn cancel_superseded_unclaimed_hosts(
     Ok(ids)
 }
 
-pub(crate) fn ensure_peer_available(
-    paths: &AppPaths,
-    peer_id: &str,
-) -> Result<(), CommandError> {
+pub(crate) fn ensure_peer_available(paths: &AppPaths, peer_id: &str) -> Result<(), CommandError> {
     crate::util::validate_entity_id(peer_id, "paired device")?;
     let connection = open_store(paths, "ensure_peer_available")?;
     let active: Option<String> = connection
@@ -429,7 +430,9 @@ fn open_store(paths: &AppPaths, operation: &str) -> Result<Connection, CommandEr
             )
         })?;
     connection
-        .execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;")
+        .execute_batch(
+            "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;",
+        )
         .map_err(|error| {
             CommandError::database_at(
                 "device_sync_database_error",
