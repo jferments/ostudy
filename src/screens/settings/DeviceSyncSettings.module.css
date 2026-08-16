@@ -74,33 +74,46 @@
 
 .invitationPanel {
   display: grid;
-  grid-template-columns: minmax(130px, 180px) minmax(0, 1fr);
-  align-items: center;
+  justify-items: center;
   gap: 14px;
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
   border-radius: 12px;
-  padding: 14px;
+  padding: 16px;
   background: color-mix(in srgb, var(--accent-soft) 48%, var(--surface));
 }
 
-.invitationPanel img {
-  grid-row: 1 / span 2;
-  width: 100%;
-  max-width: 180px;
-  border: 8px solid white;
-  border-radius: 8px;
-  background: white;
-  aspect-ratio: 1;
-}
-
-.invitationPanel > div {
+.qrFrame {
   display: grid;
-  min-width: 0;
-  gap: 5px;
+  width: min(100%, 340px);
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 12px;
+  padding: 12px;
+  background: #ffffff;
+  box-shadow: var(--ostudy-shadow-level-2);
 }
 
-.invitationPanel span,
-.invitationPanel code {
+.qrFrame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+  object-fit: contain;
+}
+
+.invitationDetails {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 6px;
+}
+
+.invitationDetails > strong {
+  color: var(--text);
+}
+
+.invitationDetails > span,
+.invitationDetails > code {
   overflow: hidden;
   color: var(--muted);
   font-size: 0.78rem;
@@ -109,7 +122,50 @@
 }
 
 .invitationPanel button {
-  justify-self: start;
+  width: 100%;
+  justify-self: stretch;
+}
+
+.scanHint {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.scanStatus {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.scanStatus[data-state="detected"] {
+  border-color: color-mix(in srgb, var(--success) 58%, var(--border));
+}
+
+.scanStatusDot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.scanStatus[data-state="scanning"] .scanStatusDot {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.scanStatus[data-state="detected"] .scanStatusDot {
+  background: var(--success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 16%, transparent);
 }
 
 .credentialToggle {
@@ -285,23 +341,8 @@
     width: 100%;
   }
 
-  .invitationPanel {
-    grid-template-columns: 1fr;
-    justify-items: center;
-  }
-
-  .invitationPanel img {
-    grid-row: auto;
-    max-width: 220px;
-  }
-
-  .invitationPanel > div {
-    width: 100%;
-  }
-
-  .invitationPanel button {
-    width: 100%;
-    justify-self: stretch;
+  .qrFrame {
+    width: min(100%, 320px);
   }
 
   .peerList > article,
