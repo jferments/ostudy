@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native regression for the deck-library action placement and containment contract."""
+"""Native regressions for Flashcards tabs and deck-library action containment."""
 
 from __future__ import annotations
 
@@ -15,6 +15,61 @@ import smoke as webdriver
 import ui_platform_smoke as ui
 
 
+def verify_compact_tabs(session_id: str, width: int) -> None:
+    if width > 760:
+        return
+    measurements = ui.execute(
+        session_id,
+        """
+        const list = document.querySelector(
+          '[role="tablist"][aria-label="Flashcards workspaces"]'
+        );
+        if (!(list instanceof HTMLElement)) return null;
+        const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
+        if (tabs.length !== 5 || tabs.some((tab) => !(tab instanceof HTMLElement))) {
+          return null;
+        }
+        const rects = tabs.map((tab) => tab.getBoundingClientRect());
+        const listRect = list.getBoundingClientRect();
+        return {
+          count: rects.length,
+          firstRowTop: rects[0].top,
+          firstRowTop2: rects[1].top,
+          firstRowTop3: rects[2].top,
+          secondRowTop: rects[3].top,
+          secondRowTop2: rects[4].top,
+          secondRowCenter: (rects[3].left + rects[4].right) / 2,
+          listCenter: (listRect.left + listRect.right) / 2,
+          clientWidth: list.clientWidth,
+          scrollWidth: list.scrollWidth,
+        };
+        """,
+    )
+    if not isinstance(measurements, dict):
+        raise AssertionError(f"Could not measure compact Flashcards tabs at {width}px")
+    first_top = float(measurements["firstRowTop"])
+    if any(
+        abs(float(measurements[key]) - first_top) > 2
+        for key in ("firstRowTop2", "firstRowTop3")
+    ):
+        raise AssertionError(
+            f"The first three Flashcards tabs did not share one row at {width}px: {measurements!r}"
+        )
+    second_top = float(measurements["secondRowTop"])
+    if abs(float(measurements["secondRowTop2"]) - second_top) > 2 or second_top <= first_top + 2:
+        raise AssertionError(
+            f"The final two Flashcards tabs did not form a second row at {width}px: {measurements!r}"
+        )
+    if abs(float(measurements["secondRowCenter"]) - float(measurements["listCenter"])) > 3:
+        raise AssertionError(
+            f"The second Flashcards tab row was not centered at {width}px: {measurements!r}"
+        )
+    if int(measurements["scrollWidth"]) > int(measurements["clientWidth"]) + 1:
+        raise AssertionError(
+            f"The Flashcards tabs still required horizontal scrolling at {width}px: {measurements!r}"
+        )
+
+
 def verify_toolbar(session_id: str, width: int, height: int, deadline: float) -> None:
     ui.set_window_rect(session_id, width, height)
     flashcards = webdriver.find_element(
@@ -25,6 +80,7 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
     )
     webdriver.click(session_id, flashcards)
     webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
+    verify_compact_tabs(session_id, width)
     decks = ui.find_workspace_tab(session_id, "Decks", deadline)
     webdriver.click(session_id, decks)
     folders_heading = webdriver.find_element(
@@ -141,18 +197,19 @@ def main() -> int:
         session_id = webdriver.create_session(application)
         webdriver.verify_shell(session_id, webdriver.deadline_after())
         verify_toolbar(session_id, 390, 760, webdriver.deadline_after(45))
+        verify_toolbar(session_id, 700, 760, webdriver.deadline_after(45))
         # 1174px reproduces the manually reported screenshot dimensions closely;
         # 1280px covers the default desktop window width.
         verify_toolbar(session_id, 1174, 760, webdriver.deadline_after(45))
         verify_toolbar(session_id, 1280, 760, webdriver.deadline_after(45))
         print(
-            "Native deck-library control smoke passed: New folder stays inside the Folders "
-            "section, New deck remains in the top toolbar, and both action groups stay "
-            "contained at compact, medium, and default desktop widths."
+            "Native Flashcards layout smoke passed: compact tabs wrap into a centered 3+2 "
+            "layout without horizontal scrolling, New folder stays inside the Folders section, "
+            "New deck remains in the top toolbar, and both action groups stay contained."
         )
         return 0
     except Exception:
-        print("\n--- tauri-driver deck-library control log ---")
+        print("\n--- tauri-driver Flashcards layout log ---")
         try:
             print(log_path.read_text(encoding="utf-8"))
         except OSError:
