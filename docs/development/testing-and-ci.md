@@ -15,7 +15,7 @@ ostudy-unified
 
 The runner is an Ubuntu 24.04 libvirt/QEMU/KVM virtual machine on `ML-tower`. It runs Linux/Tauri checks directly and the official Android Emulator through nested KVM. The VM has no host filesystem share, no forwarded SSH agent, no Docker/libvirt host-control socket, no signing credentials, and no personal ostudy data.
 
-See [Unified Linux and Android self-hosted runner](unified-linux-android-runner.md) for the architecture and [Unified runner setup](unified-runner-setup.md) for provisioning and recovery.
+See [Unified Linux and Android self-hosted runner](unified-linux-and-android-runner.md) for the architecture and [Unified runner setup](unified-runner-setup.md) for provisioning and recovery.
 
 ## Local validation tiers
 
@@ -36,6 +36,127 @@ Use the repository tiers in increasing order:
 
 `check.sh` is the authoritative Linux/shared merge gate. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, and the native WebDriver persistence smoke test.
 
-Native WebDriver[[Y[ÛÚİ\\ÈH™XY[Û›HÛ[™ÈÜ\˜][Ûˆ[™Û\˜]\ÈH˜[œÚY[š]™\ˆ\ØÛÛ›™XİÚ][ˆ]È^\İ[™ÈXY[™Kˆ]]][™ÈÛÛ[X[™ÈİXÚ\ÈÙ\ÜÚ[ÛˆÜ™X][Û‹ÛXÚÜË›Ü›HİX›Z\ÜÚ[Û‹[™Xİ[ÛœÈ\™H™]™\ˆ]]ÛX]XØ[H™]šYY™XØ]\ÙHHÜ\˜][ÛˆX^H[™XYH]™H™Y[ˆ\YY™Y›Ü™H]È™\ÜÛœÙHØ\ÈÜİˆ][K\İYÙHÛ[ÚÙHØÙ[˜\š[ÜÈÚİ[[ÛÈ\ÜÙ\[™XYKY\İX›\ÚY˜]šYØ][Ûˆİ]H[œİXYÙˆ\ÜİZ[™È™Y[™[ÛXÚÜÈ™]ÙY[ˆY˜XÙ[^[İ]ÚXÚÜËˆ™\ÜÛœÚ]™HXÚË]ÛÛ˜\ˆÚXÚÜÈ\™Y›Ü™H™K\™\ÛÛ™HHÙ[XİY›\ÚØ\™È›İ]H[™XÚÜÈÛÜšÜÜXÙHY\ˆXXÚ™\Ú^™H˜]\ˆ[ˆ™]Z[š[™È[[Y[QÈXÜ›ÜÜÈ™XXİ^[İ]™\XÙ[Y[Ë‚‚”İXØÙ\ÜÙ[ÚXÚÈİ[\È\™HÙ^YYHH^XİÛİ\˜ÙH™YK™[]˜[[˜XÚÙYš[\ËÛÛ™\œÚ[ÛœË[™]›Ü›KˆÙ]ÔÕUWÑ“ÔÑWĞÒPÒÏLXÚ[ˆ[X™\˜][H\\ÜÚ[™È^Xİ]™YH™]\ÙKˆH˜Z[Y[ˆÚ]KZÙY\X\Y˜XİØÜš]\ÈHİ\\ÜXÚYšXÈ™\›ÙXÙKœÚÈ\ÙH]›Øİ\ÙY™\^H™Y›Ü™H™\X][™ÈHœ›ØY\ˆY\‹‚‚ˆÈÈ[™›ÚY]X[YšXØ][Û‚‚[™›ÚY\Ù\ÈHØ[YHÚ\™Y\XØ][Ûˆ[™ÛXZ[ˆÛÙKÛÈ™XYHÚ[™Ù\È]\İ\ÜÈ›İH[^[Ø]H[™H[™›ÚYØ]\Ë‚‚ÛÛ\[KÜXÚØYÙH]X[YšXØ][Û‚‚˜˜\Ú‹‹ÜØÜš\ËØ[™›ÚY]\İœÚ˜‚•\È™\šYšY\ÈH[›™YÑËÓ‘ËÒ‘È[š\›Û›Y[[™Ù[™\˜]Y[™›ÚY›Ú™Xİ[œÈHÚ\™Y\İÛÛ˜XİÈ™\]Z\™YHH[™›ÚYZ[ÛÛ\[\ÈH[™›ÚY\İ\™Ù]È[™Ûİ[‹ÑÜ˜YH›Ú™XİZ[ÈHXYÈTÈ[™[œİ[Y[][ÛˆXÚØYÙK[™™\šYšY\ÈXÚØYÙKÜ\›Z\ÜÚ[Û‹Ø[YÛ›Y[ÛÛœİ˜Z[Ë‚‚“Ù™šXÚX[[][]Üˆ]X[YšXØ][Û‚‚˜˜\Ú‹‹ÜØÜš\ËØ[™›ÚYY[][]Ü‹\Û[ÚÙKœÚ˜‚•HÛ[ÚÙHİZ]H›ÛİÈH[›™YTHÍˆÛÛÙÛHT\È—Í[][]Üˆ\Ú[™ÈÕ“HXØÙ[\˜][Ûˆ[™™\šYšY\È˜]]™H][˜ÚÔS]HZYÜ˜][Û‹İYHÛÜšÙ›İÜË\œÚ\İ[˜ÙKÜ™\İ\™Z]š[Ü‹[™›ÚY˜XÚË›ØÙ\ÜÈ™\İÜ˜][Û‹[™[™›ÚYŞ\İ[HØİ[Y[XÚÙ\‹Ú[\ÜÙ^Ü™Z]š[Ü‹ˆ]\Ù\ÈHœ™\ÚU‘]H[XYÙHHY˜][‚‚•HÛ[ÚÙK[Û›H˜]˜TØÜš\œšYÙH\È[˜X›YÛ›H›Üˆ\İTÜÈ[™\È™Z™XİYH™[X\ÙHXÚØYÙH™\šYšXØ][Û‹‚‚ˆÈÈ]]ÛX]XÈÚ]XˆXİ[ÛœÈ™Z]š[Ü‚‚˜™Ú]X‹İÛÜšÙ›İÜËØÚXÚË[[\ÈHÚ[™ÛH]]ÛX]XÈ]X[YšXØ][ÛˆÛÜšÙ›İËˆHÚ[™ÛHÙ\šX[^™Y›ØˆX]Ú\ÈHÛ™K\[›™\ˆÜÛÙŞH[™]›ÚYÈ]š[™È[^[™[™›ÚY›ØœÈ]Y]YH™Z[™XXÚİ\ˆÚ[H™\X][™ÈÚXÚÛİ]ÜÙ]\ÛÜšË‚‚]]ÛX]XÈØ]\È\™H[[[Û˜[HÛÛœÙ\˜]]™N‚‚‹H˜Y[™\]Y\İˆ˜\İÂ‹H™XYKY›Ü‹\™]šY]È[™\]Y\İˆ[Y[Â‹H›Û‹Y˜Y™[Ü[™YÜŞ[˜Ú›Ûš^™Y[™\]Y\İˆ[Y[Â‹H\ÚÈXZ[˜ˆ[Y[‚‚˜[Y[[œË[ˆÜ™\‚‚˜^[šYšYY[›™\ˆ™Y›YÚ¸¡¤ˆÚXÚËœÚ¸¡¤ˆ[™›ÚY]\İœÚ¸¡¤ˆ[™›ÚYY[][]Ü‹\Û[ÚÙKœÚ˜‚•HØ[YHÛÜšÙ›İÈİ\ÜÈX[X[\Ü]ÚÚ]^XÚ]™Y›YÚİ]XØ˜\İ[^Y[[™›ÚYY[[™[Y[Ø]\Ë‚‚‘]™\HØÜš\YÒHØ]H]]ÛX]XØ[Hİ\ÈÚ]HİË[›Ú\ÙHXYÛ›ÜİXÈš[\‚‚˜^Ø\›‹ÜİYOZ[™›Â˜‚•\ÈØ\\™\ÈHÜšYÚ[˜[[\›˜[Ü\˜][Ûˆ[Y[[™HÚ]İ][ˆY][Û˜[]X[YšXØ][Ûˆ[‹ˆH˜Z[\™Hİ[[X\H[ˆÛÛXš[™\ÈÜ˜\\‹ØÛÛ\[\ˆİ]]Ú]›İ[™YİXİ\™Y]™[È[™[Z]ÈHÛX[\İ\ÙY[™\›ÙXİ[ÛˆÛÛ[X[™ˆÒHÙ\È›İ]]ÛX]XØ[H™\[ˆH˜Z[YØ]H]XYÈ]™[ˆÚ[™ÈÛÈÛÛœİ[Y\ÈİXœİ[X[[›™\ˆ[YKX^H\˜\ÙH\ÛÛ]Yİ]K[™Ø[ˆÛÛ™\›Û™]\›Z[š\İXÈY™XİÈ[È˜[ÙHÜ™Y[œË‚‚ÛÛ˜İ\œ™[˜ŞHØ[˜Ù[][Ûˆ™\XÙ\ÈØœÛÛ]H[œÈ›ÜˆHØ[YH[™\]Y\İÜ™Y‹ˆHÜ™Y[ˆ™\İ[]X[YšY\ÈÛ›HH^XİXYÒH]^Xİ]Y‚‚•H›Ü›Y\ˆ]]ÛX]XÈ[™›ÚYXÚXÚË[[Ü]ÛÜšÙ›İÈ\È™]\™YˆÛˆHÚ[™ÛH[›™\‹Ù\\˜]H]]ÛX]XÈ[^Ğ[™›ÚY›ØœÈÛ›HÜ™X]HY][Û˜[]Y]YZ[™È[™™\X]YÙ]\ˆ[™›ÚY]X[YšXØ][Ûˆ\È›İÈ\ÙˆH]]Üš]]]™HÙ\šX[^™YÚXÚØ›Ø‹‚‚ˆÈÈÚYİÈ[™[›™\‹ZX[]X[YšXØ][Û‚‚˜™Ú]X‹İÛÜšÙ›İÜËİ[šYšYY\[›™\‹\]X[YšXØ][Û‹[[™[XZ[œÈ[ˆÜZ[ˆ[›™\‹ZX[ÜÚYİÈÛÜšÙ›İËˆ]\™Ù]ÈÛ›HÜİYK][šYšYY[™Ø[ˆ^Xİ]N‚‚˜^œ™Y›YÚ›[^Y˜\İ›[^Y[˜[™›ÚYY[˜[Y[˜‚‘\š[™È[™œ˜\İXİ\™HÛÜšËÛ™H^XÚ]‹X›ÙHX\šÙ\ˆX^HXİ]˜]HH[™Kˆ›Ü›X[›ÙXİ[™\]Y\İÈÈ›İ™YYHX\šÙ\ˆ[™HÚYİÈ›ØˆÙ\È›İ™\XÙHH]]Üš]]]™HÚXÚØ™\İ[‚‚ˆÈÈXÚØYÚ[™È[™™[X\Ù\Â‚˜™Ú]X‹İÛÜšÙ›İÜËØ[™›ÚY\XÚØYÙK[[\ÈX[X[[Û›H[™Z[È[œÚYÛ™YPHTËĞPPˆ\Y˜XİÈÛˆÜİYK][šYšYY‚‚˜™Ú]X‹İÛÜšÙ›İÜËÜ™[X\ÙK[[Z[ÈYÙÙY[^\Y˜XİÈÛˆHØ[YH\ÛÛ]Y[›™\‹ˆ]Ù\È›İÛÛZ[ˆ[™›ÚYÚYÛš[™ÈX]\šX[Üˆ™[X\ÙHÙXÜ™]ËˆX›XÈ[™›ÚY\İšX][Ûˆİ[™\]Z\™\ÈHÙ\\˜][H™]šY]ÙYÚYÛš[™ËÔ^H\ÚYÛš[™È\ÚYÛ‹‚‚ˆÈÈ˜Z[\™H]šY[˜ÙB‚”]X[YšXØ][Ûˆ˜Z[\™\È™\Ù\™H›İ[™YXYÛ›ÜİXÜÈ˜]\ˆ[ˆ\Ù\ˆİYH]K‚‚‘XXÚ˜Z[[™ÈØÜš\Üš]\ÈH[š\]YHØ\\™HÈH[›™\‹][\Ü˜\HÔÕUWÑPQÓ“ÔÕP×ĞT•QPÕÔ“ÓÕˆHØ\\™H[˜ÛY\Î‚‚‹HH˜Z[Y›İ[™\H[™^]İ]\ÎÂ‹HH^XİÛÛ[Z][™Xİ]™Hš[\Â‹HH™XÛÛ[Y[™YİXœŞ\İ[K\ÜXÚYšXÈš[\Â‹H[ˆ^Xİ]X›H›Øİ\ÙY™\›ÙXÙKœÚÂ‹H›İ[™Y][˜Ú\‹Ø\XØ][Ûˆ”ÓÓ“Z[ÈÚ[ˆ^H^\İÂ‹HH›İ[™YÛÛ[X[™ÙÈ›Üˆ\ÛÛ]Y˜]]™HÛ[ÚÙH˜Z[\™\Ë‚‚“˜]]™HÙX‘š]™\ˆÛ[ÚÙH\İÈ\ÙH[\Ü˜\HÈÛY\ËˆZ\ˆ\XØ][ÛˆÙÜÈ\™HÛÜYY™Y›Ü™HÛX[\ˆH™]XX›H˜[œÜÜ\ØÛÛ›™Xİ\È™]Z[™Y\È
-Š˜[œÚY[ÙX‘š]™\ŠŠˆ]šY[˜ÙH]™[ˆÚ[ˆHÛ™HÛX[‹\İ]H™]HİXØÙYYËÛÈHÜ™Y[ˆÚXÚÈÙ\È›İ\˜\ÙHH^\İ[˜ÙHÙˆH™XÛİ™\™Y›ZÙK‚‚•HXİ[ÛœÈİ[[X\H\œÙ\È\XØ][Ûˆ”ÓÓ“[™İXİ\™Y[™›ÚYÙØØ]™XÛÜ™ËÚİÚ[™ÈHš[˜[Ø\›š[™ËÙ\œ›Üˆ[Y[[™H™^ÈHÜ™[˜\H\İØÛÛ\[\ˆ^Ù\œˆš]\İ˜Z[\™\È\™H˜\œ›İÙYÈHY[YšYY\İš[NÈ\İ˜Z[\™\È\™H˜\œ›İÙYÈH^Xİ˜Z[Y\İÚ[ˆÜÜÚX›K‚‚”ÛX[İXİ\™YXYÛ›ÜİXÈØ\\™\È\™H\ØYYÚ]ËY^H™][[Ûˆ]™[ˆÚ[ˆ^HÛÛZ[ˆÛ›HH™XÛİ™\™Y˜[œÚY[˜Z[\™Kˆ[˜Z[\™HÜ˜\\ˆÙÜËÜ˜YH™\ÜË[][]ÜˆÙØØ]ØÜ™Y[œÚİ[™RHY\˜\˜ÚH]šY[˜ÙH\ÙHMY^H™][[Û‹ˆHÛX[ˆ[ˆÚ]›ÈØ\\™HÙ\È›İ›ÙXÙHHXYÛ›ÜİXÈ\Y˜Xİ‚‚‘XYÛ›ÜİXÜÈ]\İ›İÛÛZ[ˆHÔS]HX\›™\ˆXœ˜\KØ\™ËYÜË[\]\ËX[˜YÙY[XYÙ\ËÛİ\˜ÙHœËĞÔ‹ÜÛİ\˜ÙH^›İšY\ˆ›Û\ËÜ™\ÜÛœÙ\ËÜ™Y[X[ËÙ^\İÜ™HZ[^Üˆ]]Üš^˜][ÛˆXY\œË‚‚”ÙYHÑXYÛ›ÜİXÜÈ[™XYÈš[\œ×JXYÛ›ÜİXÜË›Y
-H›ÜˆØØ[™\^H[™š[\ˆ\ØØ[][Û‹‚‚ˆÈÈÙ[‹ZÜİY[›™\ˆÙXİ\š]B‚”[\™\]Y\İ›ØœÈ\ÙHZ[š[][HÚ]XˆÚÙ[ˆ\›Z\ÜÚ[ÛœÈ[™^Xİ]H[\İY™\ÜÚ]ÜHÛÙH[œÚYHH\ÛÛ]Y“H˜]\ˆ[ˆÛˆS]İÙ\˜‚‚‘È›İ[œİ[ÛÙ^Üˆ[›İ\ˆ]]Û›Û[İ\ÈÛÙK]Üš][™È›ØÙ\ÜÈÛˆH[›™\‹ˆÈ›İÚ]™HH[›™\ˆÜİš[\Ş\İ[H[İ[ËHÜİÔÒš]˜]HÙ^K›ÜØ\™YYÙ[XØÙ\ÜËØÚÙ\‹ÛXš\ÜİXÛÛ›ÛÛØÚÙ]Ë™[X\ÙHÚYÛš[™ÈÙ^\ËÜˆ\œÛÛ˜[]K‚‚•H“HÙY\ÈHİÙ\™Y[Ù™ˆ™KYÚ]X‹\[›™\˜Û˜\Úİœ›ÛH™Y›Ü™H[›™\ˆ™YÚ\İ˜][Û‹ˆ™\İÜš[™È]Û˜\Úİ™[[İ™\ÈH[›™\ˆ™YÚ\İ˜][Ûˆİ]NÈ™YÚ\İ\ˆ]YØZ[ˆÚ]H™]ÈÛ™K][YHÚ]XˆÚÙ[ˆY\ˆH™\İÜ™K‚‚ˆÈÈX[X[XØÙ\[˜ÙB‚]]ÛX][Ûˆ›İXİÈÛ›İÛˆÛÛ˜XİË›İš\İX[Üˆ^\šY[X[]X[]Kˆ›Üˆ\Ù\‹]š\ÚX›HÛÜšËX[X[H^\˜Ú\ÙHHY™™XİYÛÜšÙ›İÈÛˆH™[]˜[]›Ü›HY\ˆ]]ÛX]Y]X[YšXØ][Û‹[˜ÛY[™È\œ›Ü‹ØØ[˜Ù[][Û‹Ü™\İ\™Z]š[ÜˆÚ[ˆ\XØX›K‚‚ˆÈÈ™[X\ÙH]X[YšXØ][Û‚‚‘›ÜˆH™[X\ÙHØ[™Y]K[ÛÈ[‚‚˜˜\Ú‹‹ÜØÜš\ËÜ™[X\ÙKXÚXÚËœÚ˜‚•H™[X\ÙHÚXÚÈ™\X]ÈHÛÛ\]HÚ\™Y]X[YšXØ][Ûˆœ›ÛHHÛX[ˆÛİ\˜ÙHÛÜH[™™\šYšY\È™\œÚ[Û‹Ø\Y˜Xİ\Üİ[\[ÛœË‚
+Native WebDriver element lookup is a read-only polling operation and tolerates a transient driver HTTP disconnect within its existing deadline. Mutating commands such as session creation, clicks, form submission, and actions are never automatically retried because the operation may already have been applied before its response was lost. Multi-stage smoke scenarios should also assert already-established navigation state instead of issuing redundant clicks between adjacent layout checks. Responsive deck-toolbar checks therefore re-resolve the selected Flashcards route and Decks workspace after each resize rather than retaining element IDs across React layout replacement.
+
+Successful check stamps are keyed by the exact source tree, relevant untracked files, tool versions, and platform. Set `OSTUDY_FORCE_CHECK=1` when deliberately bypassing exact-tree reuse. A failed run with `--keep-artifacts` writes a step-specific `reproduce.sh`; use that focused replay before repeating a broader tier.
+
+## Android qualification
+
+Android uses the same shared application and domain code, so ready changes must pass both the Linux full gate and the Android gates.
+
+Compile/package qualification:
+
+```bash
+./scripts/android-test.sh
+```
+
+This verifies the pinned SDK/NDK/JDK environment and generated Android project, runs the shared test contracts required by the Android build, compiles the Android Rust targets and Kotlin/Gradle project, builds the debug APK and instrumentation package, and verifies package/permission/alignment constraints.
+
+Official emulator qualification:
+
+```bash
+./scripts/android-emulator-smoke.sh
+```
+
+The smoke suite boots the pinned API 36 Google APIs x86_64 emulator using KVM acceleration and verifies native launch, SQLite migration, study workflows, persistence/restart behavior, Android Back, process restoration, and Android system document picker/import/export behavior. It uses a fresh AVD data image by default.
+
+The smoke-only JavaScript bridge is enabled only for test APKs and is rejected by release package verification.
+
+## Automatic GitHub Actions behavior
+
+`.github/workflows/check.yml` is the single automatic qualification workflow. A single serialized job matches the one-runner topology and avoids having Linux and Android jobs queue behind each other while repeating checkout/setup work.
+
+Automatic gates are intentionally conservative:
+
+- draft pull request: `fast`;
+- ready-for-review pull request: `all-full`;
+- non-draft reopened/synchronized pull request: `all-full`;
+- push to `main`: `all-full`.
+
+`all-full` runs, in order:
+
+```text
+unified runner preflight
+â†’ check.sh
+â†’ android-test.sh
+â†’ android-emulator-smoke.sh
+```
+
+The same workflow supports manual dispatch with explicit `preflight`, `static`, `fast`, `linux-full`, `android-full`, and `all-full` gates.
+
+Every scripted CI gate automatically starts with the low-noise diagnostic filter:
+
+```text
+warn,ostudy=info
+```
+
+This captures the original internal operation timeline without an additional qualification run. A failure summary then combines wrapper/compiler output with bounded structured events and emits the smallest useful reproduction command. CI does not automatically rerun the failed gate at debug level: doing so consumes substantial runner time, may erase isolated state, and can convert nondeterministic defects into false greens.
+
+Concurrency cancellation replaces obsolete runs for the same pull request/ref. A green result qualifies only the exact head SHA it executed.
+
+The former automatic `android-check.yml` split workflow is retired. On a single runner, separate automatic Linux/Android jobs only create additional queueing and repeated setup. Android qualification is now part of the authoritative serialized `Check` job.
+
+## Shadow and runner-health qualification
+
+`.github/workflows/unified-runner-qualification.yml` remains an opt-in runner-health/shadow workflow. It targets only `ostudy-unified` and can execute:
+
+```text
+preflight
+linux-fast
+linux-full
+android-full
+all-full
+```
+
+During infrastructure work, one explicit PR-body marker may activate a lane. Normal product pull requests do not need a marker and the shadow job does not replace the authoritative `Check` result.
+
+## Packaging and releases
+
+`.github/workflows/android-package.yml` is manual-only and builds unsigned QA APK/AAB artifacts on `ostudy-unified`.
+
+`.github/workflows/release.yml` builds tagged Linux artifacts on the same isolated runner. It does not contain Android signing material or release secrets. Public Android distribution still requires a separately reviewed signing/Play App Signing design.
+
+## Failure evidence
+
+Qualification failures preserve bounded diagnostics rather than user study data.
+
+Each failing script writes a unique capture to the runner-temporary `OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT`. A capture includes:
+
+- the failed boundary and exit status;
+- the exact commit and active filter;
+- a recommended subsystem-specific filter;
+- an executable focused `reproduce.sh`;
+- bounded launcher/application JSONL tails when they exist;
+- a bounded command log for isolated native smoke failures.
+
+Native WebDriver smoke tests use temporary XDG homes. Their application logs are copied before cleanup. A retryable transport disconnect is retained as **transient WebDriver** evidence even when the one clean-state retry succeeds, so a green check does not erase the existence of a recovered flake.
+
+The Actions summary parses application JSONL and structured Android Logcat records, showing the final warning/error timeline next to the ordinary test/compiler excerpt. Vitest failures are narrowed to the identified test file; Rust failures are narrowed to the exact failed test when possible.
+
+Small structured diagnostic captures are uploaded with 7-day retention even when they contain only a recovered transient failure. Full failure wrapper logs, Gradle reports, emulator Logcat, screenshot, and UI hierarchy evidence use 14-day retention. A clean run with no capture does not produce a diagnostic artifact.
+
+Diagnostics must not contain the SQLite learner library, cards, tags, templates, managed images, source PDFs, OCR/source text, provider prompts/responses, credentials, Keystore plaintext, or Authorization headers.
+
+See [Diagnostics and debug filters](diagnostics.md) for local replay and filter escalation.
+
+## Self-hosted runner security
+
+Pull-request jobs use minimum GitHub token permissions and execute untrusted repository code inside the isolated VM rather than on `ML-tower`.
+
+Do not install Codex or another autonomous code-writing process on the runner. Do not give the runner host filesystem mounts, the host SSH private key, forwarded agent access, Docker/libvirt host-control sockets, release signing keys, or personal data.
+
+The VM keeps a powered-off `pre-github-runner` snapshot from before runner registration. Restoring that snapshot removes the runner registration state; register it again with a new one-time GitHub token after a restore.
+
+## Manual acceptance
+
+Automation protects known contracts, not visual or experiential quality. For user-visible work, manually exercise the affected workflow on the relevant platform after automated qualification, including error/cancellation/restart behavior when applicable.
+
+## Release qualification
+
+For a release candidate, also run:
+
+```bash
+./scripts/release-check.sh
+```
+
+The release check repeats the complete shared qualification from a clean source copy and verifies version/artifact assumptions.
