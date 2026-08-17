@@ -10,6 +10,7 @@ ostudy is a client of an existing model service. It does not install llama.cpp, 
 | --- | --- | --- |
 | llama.cpp / Unsloth GGUF | Available | Connects to an existing llama.cpp-compatible server and uses the server/model chat template. |
 | DeepSeek | Available | Connects to DeepSeek's official cloud API using the configured credential. |
+| OpenRouter | Available | Uses OpenRouter's fixed official API, account-visible model discovery, strict structured output, and privacy-preserving routing defaults. |
 | Ollama | Planned | Listed in the catalog, but the native adapter is not implemented. |
 | OpenAI | Planned | Listed in the catalog, but the native adapter is not implemented. |
 | Gemini | Planned | Listed in the catalog, but the native adapter is not implemented. |
