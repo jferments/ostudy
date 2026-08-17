@@ -24,7 +24,9 @@ The original SQL remains permanently recoverable from Git history at cutoff comm
 - historical data repairs for synthetic development data;
 - compatibility with developer-only schema versions 1 through 26.
 
-A database without the `ostudy-public-v1` lineage marker is never modified or deleted. Startup returns an explicit pre-public-reset error, and `scripts/reset-pre-public-data.sh` moves the complete old data directory to a timestamped sibling backup before creating an empty directory.
+A database without the `ostudy-public-v1` lineage marker is never silently migrated, deleted, or reset. Lineage inspection occurs before write-capable SQLite durability configuration; the on-disk regression requires a rejected legacy database to remain byte-for-byte identical and to create no WAL/shared-memory sidecars. Native startup converts the expected compatibility condition into a visible **One-time data reset required** dialog and the structured `application_startup_blocked` diagnostic rather than allowing the Tauri setup hook to panic. `scripts/reset-pre-public-data.sh` remains the explicit transition: it moves the complete old data directory to a timestamped sibling backup before creating an empty directory.
+
+The full Linux qualification gate launches the exact built binary against a synthetic pre-public on-disk database. That smoke must remain alive behind the reset dialog, emit the expected structured reason code, avoid `panic_captured`, and leave the seeded database unchanged before the candidate can qualify.
 
 ## Policy after public release
 
