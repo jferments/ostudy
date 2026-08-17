@@ -16,16 +16,22 @@ class DiagnosticFailureSummaryTests(unittest.TestCase):
         self,
         gate_log: str,
         events: list[dict[str, object]],
-        context: str,
+        context: str | list[str],
         logcat_lines: list[str] | None = None,
     ) -> str:
         with tempfile.TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)
             log_path = directory / "gate.log"
-            diagnostic_directory = directory / "diagnostics" / "failure"
-            diagnostic_directory.mkdir(parents=True)
+            diagnostic_root = directory / "diagnostics"
+            contexts = [context] if isinstance(context, str) else context
+            diagnostic_directories = []
+            for index, context_text in enumerate(contexts):
+                diagnostic_directory = diagnostic_root / f"capture-{index}"
+                diagnostic_directory.mkdir(parents=True)
+                (diagnostic_directory / "context.txt").write_text(context_text, encoding="utf-8")
+                diagnostic_directories.append(diagnostic_directory)
+            diagnostic_directory = diagnostic_directories[0]
             log_path.write_text(gate_log, encoding="utf-8")
-            (diagnostic_directory / "context.txt").write_text(context, encoding="utf-8")
             (diagnostic_directory / "application.jsonl").write_text(
                 "\n".join(json.dumps(event) for event in events) + "\n",
                 encoding="utf-8",
@@ -122,6 +128,28 @@ class DiagnosticFailureSummaryTests(unittest.TestCase):
             output,
         )
         self.assertIn("OSTUDY_LOG='warn,ostudy.database=debug'", output)
+
+    def test_nested_wrapper_noise_does_not_override_precise_failure_context(self) -> None:
+        output = self.run_summary(
+            "\n".join(
+                [
+                    "FAIL  src/screens/DocumentsScreen.test.tsx",
+                    "FAST CHECK FAILED during: React tests (exit 1)",
+                    "FULL CHECK FAILED during: initialization (exit 1)",
+                ]
+            ),
+            [],
+            [
+                "kind=failure\nstep=React tests\nstatus=1\nreplayFilter=warn,ostudy.frontend=debug",
+                "kind=failure\nstep=initialization\nstatus=1\nreplayFilter=warn,ostudy=debug",
+            ],
+        )
+        self.assertIn(
+            "pnpm vitest run 'src/screens/DocumentsScreen.test.tsx' --reporter=verbose",
+            output,
+        )
+        self.assertIn("OSTUDY_LOG='warn,ostudy.frontend=debug'", output)
+        self.assertNotIn("OSTUDY_LOG='warn,ostudy=debug'", output)
 
     def test_android_logcat_embedded_json_is_parsed(self) -> None:
         event = {
