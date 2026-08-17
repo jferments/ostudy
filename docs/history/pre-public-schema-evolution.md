@@ -2,7 +2,7 @@
 
 Before ostudy's first public release, the local schema evolved through 26 development migrations. No public installation depended on those intermediate states, so PR #54 folded their final result into `0001_public_baseline.sql` and began the supported migration lineage at `ostudy-public-v1`.
 
-The original SQL remains permanently recoverable from Git history immediately before this baseline commit. It is not copied into a runtime archive because duplicate migration trees invite accidental registration and maintenance drift.
+The original SQL remains permanently recoverable from Git history at cutoff commit `61b50d91170ce8bd00653af9f7e5f1cec686341f`, the `main` head immediately after PR #52 and before the public-baseline branch began. It is not copied into a runtime archive because duplicate migration trees invite accidental registration and maintenance drift.
 
 ## Durable architectural eras
 

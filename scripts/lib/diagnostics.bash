@@ -5,6 +5,22 @@
 
 OSTUDY_DIAGNOSTIC_REMAINDER=()
 
+ostudy_resolve_application_diagnostic_log() {
+  if [[ -n "${OSTUDY_DIAGNOSTIC_LOG_PATH:-}" ]]; then
+    printf '%s\n' "$OSTUDY_DIAGNOSTIC_LOG_PATH"
+    return 0
+  fi
+
+  local app_data_dir
+  if [[ -n "${OSTUDY_APP_DATA_DIR:-}" ]]; then
+    app_data_dir="$OSTUDY_APP_DATA_DIR"
+  else
+    # Tauri app_data_dir resolves to data_dir/<bundle identifier>.
+    app_data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/io.github.jferments.ostudy"
+  fi
+  printf '%s\n' "$app_data_dir/diagnostics/ostudy.jsonl"
+}
+
 ostudy_diagnostic_target() {
   case "$1" in
     app|startup) printf 'ostudy.app' ;;
@@ -126,11 +142,12 @@ ostudy_capture_failure_artifacts() {
   [[ "${OSTUDY_KEEP_FAILURE_ARTIFACTS:-0}" == 1 || "${CI:-false}" == true ]] || return 0
 
   local root="${OSTUDY_ROOT_DIR:-$(pwd)}"
-  local timestamp artifact_dir state_root data_root
+  local timestamp artifact_dir state_root application_log application_previous
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   artifact_dir="$root/.artifacts/diagnostics/$timestamp"
   state_root="${XDG_STATE_HOME:-$HOME/.local/state}/ostudy"
-  data_root="${XDG_DATA_HOME:-$HOME/.local/share}/ostudy/diagnostics"
+  application_log="$(ostudy_resolve_application_diagnostic_log)"
+  application_previous="$(dirname -- "$application_log")/ostudy.previous.jsonl"
   mkdir -p "$artifact_dir"
   {
     printf 'step=%s\n' "$step"
@@ -143,7 +160,7 @@ ostudy_capture_failure_artifacts() {
   } > "$artifact_dir/context.txt"
   ostudy_copy_bounded_log "$state_root/ostudy.jsonl" "$artifact_dir/launcher.jsonl"
   ostudy_copy_bounded_log "$state_root/ostudy.jsonl.1" "$artifact_dir/launcher.previous.jsonl"
-  ostudy_copy_bounded_log "$data_root/ostudy.jsonl" "$artifact_dir/application.jsonl"
-  ostudy_copy_bounded_log "$data_root/ostudy.previous.jsonl" "$artifact_dir/application.previous.jsonl"
+  ostudy_copy_bounded_log "$application_log" "$artifact_dir/application.jsonl"
+  ostudy_copy_bounded_log "$application_previous" "$artifact_dir/application.previous.jsonl"
   printf 'Diagnostic artifacts: %s\n' "$artifact_dir" >&2
 }
