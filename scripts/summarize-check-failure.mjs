@@ -5,6 +5,7 @@ import { basename, join } from "node:path";
 
 const ANSI_ESCAPE = /\u001b\[[0-?]*[ -/]*[@-~]/gu;
 const TEST_FILE_PATTERN = /(?:^|\s)([A-Za-z0-9_./-]+\.(?:test|spec)\.[cm]?[jt]sx?)(?=\s|$)/gu;
+const VITEST_FAILED_FILE_PATTERN = /^\s*FAIL\s+([A-Za-z0-9_./-]+\.(?:test|spec)\.[cm]?[jt]sx?)(?=\s|$)/gmu;
 const RUST_FAILED_TEST_PATTERN = /^test (.+) \.\.\. FAILED$/gmu;
 const diagnosticRoots = [];
 const files = [];
@@ -98,7 +99,10 @@ console.log();
 console.log("Run the smallest failed boundary first; do not rerun the complete Linux and Android matrix unless that focused command passes:");
 console.log();
 console.log("```bash");
-console.log(`OSTUDY_FORCE_CHECK=1 \\\nOSTUDY_KEEP_FAILURE_ARTIFACTS=1 \\\nOSTUDY_LOG=${shellQuote(reproduction.filter)} \\\n${reproduction.command}`);
+console.log(`OSTUDY_FORCE_CHECK=1 \\
+OSTUDY_KEEP_FAILURE_ARTIFACTS=1 \\
+OSTUDY_LOG=${shellQuote(reproduction.filter)} \\
+${reproduction.command}`);
 console.log("```");
 
 renderStructuredDiagnostics(events);
@@ -178,7 +182,11 @@ function focusedReproduction(step, text, diagnosticContexts) {
   const filter = context?.replayFilter ?? recommendedFilter(lower);
 
   if (lower.includes("react tests")) {
-    const testFiles = uniqueMatches(text, TEST_FILE_PATTERN, 1).slice(0, 8);
+    const failedTestFiles = uniqueMatches(text, VITEST_FAILED_FILE_PATTERN, 1).slice(0, 8);
+    const testFiles =
+      failedTestFiles.length > 0
+        ? failedTestFiles
+        : uniqueMatches(text, TEST_FILE_PATTERN, 1).slice(0, 8);
     return {
       filter,
       command:
@@ -255,6 +263,43 @@ function shellQuote(value) {
   return `'${String(value).replaceAll("'", `'"'"'`)}'`;
 }
 
+function latestApplicationSession(events) {
+  const sessions = new Map();
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    if (typeof event.sessionId !== "string" || event.sessionId.length === 0) continue;
+    const timestamp = Number(event.timestampMs ?? 0);
+    const existing = sessions.get(event.sessionId);
+    if (!existing) {
+      sessions.set(event.sessionId, {
+        id: event.sessionId,
+        firstTimestamp: timestamp,
+        lastTimestamp: timestamp,
+        lastIndex: index,
+      });
+      continue;
+    }
+    existing.firstTimestamp = Math.min(existing.firstTimestamp, timestamp);
+    if (timestamp > existing.lastTimestamp || (timestamp === existing.lastTimestamp && index > existing.lastIndex)) {
+      existing.lastTimestamp = timestamp;
+      existing.lastIndex = index;
+    }
+  }
+
+  if (sessions.size === 0) return events;
+
+  const latest = [...sessions.values()].sort(
+    (left, right) => left.lastTimestamp - right.lastTimestamp || left.lastIndex - right.lastIndex,
+  ).at(-1);
+  if (!latest) return events;
+
+  return events.filter((event) => {
+    if (event.sessionId === latest.id) return true;
+    if (typeof event.sessionId === "string" && event.sessionId.length > 0) return false;
+    return Number(event.timestampMs ?? 0) >= latest.firstTimestamp;
+  });
+}
+
 function renderStructuredDiagnostics(rawEvents) {
   if (rawEvents.length === 0) return;
   const deduplicated = new Map();
@@ -265,8 +310,9 @@ function renderStructuredDiagnostics(rawEvents) {
   const ordered = [...deduplicated.values()].sort(
     (left, right) => Number(left.timestampMs ?? 0) - Number(right.timestampMs ?? 0),
   );
-  const notable = ordered.filter((event) => event.level === "error" || event.level === "warn");
-  const selected = (notable.length > 0 ? notable : ordered).slice(-20);
+  const scoped = latestApplicationSession(ordered);
+  const notable = scoped.filter((event) => event.level === "error" || event.level === "warn");
+  const selected = (notable.length > 0 ? notable : scoped).slice(-20);
   if (selected.length === 0) return;
 
   console.log();
@@ -274,8 +320,8 @@ function renderStructuredDiagnostics(rawEvents) {
   console.log();
   console.log(
     notable.length > 0
-      ? `Parsed ${ordered.length} bounded event(s); showing the last ${selected.length} warning/error event(s).`
-      : `Parsed ${ordered.length} bounded event(s); no warning/error record was emitted, so the last ${selected.length} timeline event(s) are shown.`,
+      ? `Parsed ${ordered.length} bounded event(s); showing the last ${selected.length} warning/error event(s) from the latest application session.`
+      : `Parsed ${ordered.length} bounded event(s); no warning/error record was emitted in the latest application session, so the last ${selected.length} timeline event(s) are shown.`,
   );
   console.log();
   for (const event of selected) {
