@@ -10,6 +10,7 @@ const [
   qrCommand,
   frontendIpc,
   compositionRoot,
+  startup,
   settingsUi,
   settingsCss,
   syncCore,
@@ -23,6 +24,7 @@ const [
   read("src-tauri/src/device_sync_qr_commands.rs"),
   read("src/ipc/deviceSync.ts"),
   read("src-tauri/src/lib.rs"),
+  read("src-tauri/src/startup.rs"),
   read("src/screens/settings/DeviceSyncSettings.tsx"),
   read("src/screens/settings/DeviceSyncSettings.module.css"),
   read("src-tauri/src/device_sync/mod.rs"),
@@ -58,8 +60,9 @@ expectContains(
   "device_sync::cancel_device_sync_session",
   "sync cancellation command registration",
 );
-expectContains(compositionRoot, "device_sync::reconcile_startup(&paths)", "stale-session startup reconciliation");
-expectContains(compositionRoot, "logging::initialize(paths.app_data_dir())", "persistent diagnostic initialization");
+expectContains(compositionRoot, ".setup(startup::setup)", "startup composition boundary registration");
+expectContains(startup, "device_sync::reconcile_startup(&paths)", "stale-session startup reconciliation");
+expectContains(startup, "logging::initialize(paths.app_data_dir())", "persistent diagnostic initialization");
 expectContains(settingsUi, 'role="status"', "accessible scanner result status");
 expectContains(settingsUi, "Sync offer detected", "visual offer detection result");
 expectContains(settingsUi, "await receiveOffer(scanned, true)", "automatic receive after QR detection");
