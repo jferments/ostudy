@@ -60,7 +60,9 @@ jobs:
           '''
           if old not in source:
               raise SystemExit("Could not narrow the OpenRouter profile insert transformation.")
-          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          source = source.replace(old, new, 1)
+          source = source.replace("PROVIDER_ADAPTER_REVISION", "ADAPTER_REVISION")
+          path.write_text(source, encoding="utf-8")
           PY
             python3 scripts/internal/apply_openrouter_zdr.py
           fi
