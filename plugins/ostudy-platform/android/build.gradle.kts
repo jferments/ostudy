@@ -40,7 +40,7 @@ dependencies {
     // offline without a separate native OCR runtime or trained-data lifecycle.
     implementation("com.google.mlkit:text-recognition:16.0.1")
 
-    // QR scanning is bundled in-app so pairing never depends on an external
-    // barcode application or a network-delivered model.
-    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // Google Code Scanner delegates the permissionless scanner UI to Google Play
+    // services and returns only the decoded Barcode result to ostudy.
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 }
