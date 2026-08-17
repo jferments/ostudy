@@ -6,8 +6,8 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use crate::{
     ai::AiRuntimeState, asset_lifecycle, database, deletion, deletion_purge, device_sync,
     document_delete_reconciliation, document_operations, documents, editor_drafts,
-    external_file_recovery, external_files, library_backup, logging, paths::AppPaths,
-    pdf_backend, pdf_render_backend::PdfRenderRuntime, platform,
+    external_file_recovery, external_files, library_backup, logging, paths::AppPaths, pdf_backend,
+    pdf_render_backend::PdfRenderRuntime, platform,
 };
 
 const STARTUP_CONFIGURATION_EXIT_CODE: i32 = 78;
@@ -46,23 +46,22 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let resource_directory = app.path().resource_dir().ok();
     let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
     logging::initialize(paths.app_data_dir());
-    let pending_restore = library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
+    let pending_restore =
+        library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
     let database = database::Database::open(paths.database_path()).map_err(io::Error::other)?;
     let platform_runtime = platform::PlatformRuntime::for_app(app.handle().clone());
     platform::install_global(platform_runtime.clone()).map_err(io::Error::other)?;
-    let ai_runtime = AiRuntimeState::new(platform_runtime.secure_secret_store())
-        .map_err(io::Error::other)?;
+    let ai_runtime =
+        AiRuntimeState::new(platform_runtime.secure_secret_store()).map_err(io::Error::other)?;
     let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
         .map_err(|error| io::Error::other(error.to_string()))?;
 
-    device_sync::reconcile_startup(&paths)
-        .map_err(|error| io::Error::other(error.message))?;
+    device_sync::reconcile_startup(&paths).map_err(|error| io::Error::other(error.message))?;
     external_file_recovery::reconcile_interrupted_staging(&database, &paths)
         .map_err(|error| io::Error::other(error.message))?;
     external_files::reconcile_startup(&database, &paths)
         .map_err(|error| io::Error::other(error.message))?;
-    editor_drafts::reconcile_startup(&database)
-        .map_err(|error| io::Error::other(error.message))?;
+    editor_drafts::reconcile_startup(&database).map_err(|error| io::Error::other(error.message))?;
     deletion::finalize_expired_deletions(&database)
         .map_err(|error| io::Error::other(error.message))?;
     deletion_purge::purge_finalized_deletions(&database)
