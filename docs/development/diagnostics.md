@@ -9,6 +9,7 @@ Normal application and test runs use the `info` filter with noisy dependency tar
 ./scripts/check.sh --log-filter='warn,ostudy.database=debug,ostudy.ai.provider.openrouter=trace'
 ./scripts/android-test.sh --debug=qr --keep-artifacts
 ./scripts/smoke-native.sh --debug=frontend --keep-artifacts
+./scripts/smoke-startup-compatibility.sh --debug=database --keep-artifacts
 ```
 
 Equivalent environment configuration:
@@ -18,6 +19,24 @@ OSTUDY_LOG='warn,ostudy.documents=debug' ./scripts/dev.sh
 ```
 
 Targets include `app`, `database`, `ai`, `qr`, `device_sync`, `documents`, `frontend`, `filesystem`, and `diagnostics`. Target rules use longest-prefix matching. Debug/trace fields must contain only counts, durations, safe identifiers, provider/model identifiers, and normalized outcomes—never credentials, prompts, study content, OCR text, SQL parameters, or QR payloads.
+
+## Startup failures
+
+A compatibility or operational failure during native initialization must not escape through Tauri's setup hook as a Rust panic. ostudy catches startup failures at the composition boundary, hides the unusable main window, writes a structured event, presents a native dialog, and exits deliberately after the dialog is dismissed.
+
+The pre-public schema cutover uses:
+
+```text
+target: ostudy.app.startup
+event: application_startup_blocked
+reasonCode: pre_public_database_requires_reset
+```
+
+That event means the existing development database was recognized before write-capable SQLite connection settings were applied. The dialog shows the exact application-data directory and the explicit `reset-pre-public-data.sh` command on desktop. The database itself must remain byte-for-byte unchanged, with no WAL/shared-memory sidecars created by the rejected startup.
+
+Unexpected native initialization errors use `application_startup_failed` with a bounded reason code rather than exposing arbitrary internal error details in the user-facing dialog. The original bounded native error remains available through local process/diagnostic evidence.
+
+The full Linux gate runs `scripts/smoke-startup-compatibility.sh` against the actual standalone binary. Unlike normal WebDriver tests, this smoke deliberately seeds a real legacy SQLite file and verifies that the process remains alive behind the reset dialog, emits `application_startup_blocked`, does not emit `panic_captured`, and does not mutate the database.
 
 ## Automated qualification baseline
 
@@ -29,7 +48,7 @@ warn,ostudy=info
 
 That baseline records internal lifecycle and operation outcomes while leaving unrelated dependency output at warning level. Capturing the first failing run is intentional: rerunning the complete Linux/Android gate with debug enabled is slower, can destroy the original temporary application state, and can hide an intermittent failure.
 
-CI writes bounded captures under the runner-owned `OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT`. One nested qualification invocation produces one authoritative failure capture: the innermost precise boundary claims the failure before outer wrapper traps can replace it with duplicate `initialization` records. Normal failures include the qualification step, exit status, exact commit, active filter, a recommended subsystem filter, recent launcher/application records, and a focused replay script. Native WebDriver tests copy diagnostics out of their isolated XDG data directory before that directory is deleted. A retryable WebDriver transport disconnect is recorded as a **transient** capture even when the single permitted clean-state retry succeeds.
+CI writes bounded captures under the runner-owned `OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT`. One nested qualification invocation produces one authoritative failure capture: the innermost precise boundary claims the failure before outer wrapper traps can replace it with duplicate `initialization` records. Normal failures include the qualification step, exit status, exact commit, active filter, a recommended subsystem filter, recent launcher/application records, and a focused replay script. Native WebDriver tests copy diagnostics out of their isolated XDG data directory before that directory is deleted. A retryable WebDriver transport disconnect is recorded as a **transient** capture even when the single permitted clean-state retry succeeds. The startup compatibility smoke likewise captures its isolated native startup log before cleanup when it fails.
 
 The Actions failure summary combines three sources:
 
@@ -46,6 +65,8 @@ A local check run with `--keep-artifacts` writes a unique directory under:
 ```text
 .artifacts/diagnostics/<utc>-<failed-step>.<unique-suffix>/
 ```
+
+The `.artifacts/` tree is intentionally Git-ignored and excluded from clean release-source copies. Qualification also compares Git-visible worktree state at test boundaries, so diagnostics or other tooling that accidentally creates an untracked root file fails the responsible boundary rather than leaving unexplained repository dirtiness for a later command.
 
 The directory contains `context.txt` and an executable `reproduce.sh`. Run the generated script first:
 
