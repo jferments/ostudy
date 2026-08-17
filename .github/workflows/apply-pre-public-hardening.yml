@@ -32,6 +32,20 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Correct generator-safe SQL identifier quoting
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/apply-pre-public-hardening.py")
+          source = path.read_text(encoding="utf-8")
+          old = r'"SELECT \"table\", rowid FROM pragma_foreign_key_check LIMIT 1"'
+          new = r'"SELECT [table], rowid FROM pragma_foreign_key_check LIMIT 1"'
+          if source.count(old) != 1:
+              raise SystemExit(f"expected one SQL quoting repair target, found {source.count(old)}")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
+
       - name: Apply deterministic source and schema transformations
         run: python3 scripts/apply-pre-public-hardening.py
 
