@@ -15,7 +15,7 @@ ostudy-unified
 
 The runner is an Ubuntu 24.04 libvirt/QEMU/KVM virtual machine on `ML-tower`. It runs Linux/Tauri checks directly and the official Android Emulator through nested KVM. The VM has no host filesystem share, no forwarded SSH agent, no Docker/libvirt host-control socket, no signing credentials, and no personal ostudy data.
 
-See [Unified Linux and Android self-hosted runner](unified-linux-and-android-runner.md) for the architecture and [Unified runner setup](unified-runner-setup.md) for provisioning and recovery.
+See [Unified Linux and Android self-hosted runner](unified-linux-android-runner.md) for the architecture and [Unified runner setup](unified-runner-setup.md) for provisioning and recovery.
 
 ## Local validation tiers
 
