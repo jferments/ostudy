@@ -9,6 +9,7 @@ import { Tabs, type TabDefinition } from "../ui/primitives/Tabs";
 import { AiLlmSettings } from "./settings/AiLlmSettings";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { DefaultAiModelSettings } from "./settings/DefaultAiModelSettings";
+import { DiagnosticsSettings } from "./settings/DiagnosticsSettings";
 import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
 import { StorageBackupSettings } from "./settings/StorageBackupSettings";
 
@@ -20,7 +21,7 @@ interface SettingsScreenProps {
   showToast: ShowToast;
 }
 
-type SettingsTab = "storage" | "appearance" | "ai" | "review";
+type SettingsTab = "storage" | "appearance" | "ai" | "review" | "diagnostics";
 
 const DEFAULTS: AppSettings = {
   theme: "dark",
@@ -148,6 +149,11 @@ export function SettingsScreen({
       label: "Review/Scheduling",
       panel: <ReviewSchedulingSettings draft={draft} update={update} />,
     },
+    {
+      value: "diagnostics",
+      label: "Diagnostics",
+      panel: <DiagnosticsSettings showToast={showToast} />,
+    },
   ];
 
   const defaultsLabel =
@@ -156,6 +162,8 @@ export function SettingsScreen({
       : activeTab === "review"
         ? "scheduling"
         : "safety";
+  const canRestoreDefaults =
+    activeTab === "appearance" || activeTab === "review" || activeTab === "storage";
 
   return (
     <div className="screen settings-screen" aria-busy={isSaving || aiController.mutating}>
@@ -165,7 +173,7 @@ export function SettingsScreen({
         compact
         actions={
           <div className="header-actions">
-            {activeTab !== "ai" ? (
+            {canRestoreDefaults ? (
               <button
                 type="button"
                 className="secondary-button"
