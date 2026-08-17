@@ -1470,6 +1470,7 @@ mod automatic_layout;
 
 #[cfg(test)]
 use automatic_layout::materialize_automatic_template_document;
+#[cfg(test)]
 use automatic_layout::{
     automatic_template_field_lookup_from_dtos, normalize_typed_template_layout,
     AutomaticTemplateFieldLookup,
