@@ -1,0 +1,49 @@
+name: Apply deck-toolbar state assertion
+
+on:
+  push:
+    branches:
+      - agent/pre-public-platform-hardening
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-deck-toolbar-state-assertion
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - ostudy-unified
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/pre-public-platform-hardening
+          clean: true
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Replace redundant responsive navigation clicks
+        run: |
+          python3 scripts/apply-deck-toolbar-state-assertion.py
+          python3 -m py_compile tests/webdriver/deck_toolbar_layout_smoke.py
+          rm scripts/apply-deck-toolbar-state-assertion.py
+          rm .github/workflows/apply-deck-toolbar-state-assertion.yml
+          rm -f scripts/deck-toolbar-state-trigger.txt
+
+      - name: Commit source-only result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test: assert deck-toolbar navigation state after resize"
+          git push origin HEAD:agent/pre-public-platform-hardening
