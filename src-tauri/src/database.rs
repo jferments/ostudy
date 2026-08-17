@@ -17,7 +17,7 @@ use crate::{
 };
 
 const PUBLIC_SCHEMA_LINEAGE: &str = "ostudy-public-v1";
-const PRE_PUBLIC_RESET_PREFIX: &str = "PRE_PUBLIC_DATABASE_REQUIRES_RESET";
+pub(crate) const PRE_PUBLIC_RESET_PREFIX: &str = "PRE_PUBLIC_DATABASE_REQUIRES_RESET";
 
 struct Migration {
     version: i64,
@@ -88,7 +88,10 @@ enum DatabaseLineage {
 }
 
 fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
-    configure_connection(connection)?;
+    // Lineage inspection must happen before journal/durability configuration.
+    // `PRAGMA journal_mode = WAL` can write SQLite state, so running it first
+    // would violate the promise that an unsupported pre-public database is
+    // rejected without modification.
     let lineage = inspect_lineage(connection)?;
     match lineage {
         DatabaseLineage::Empty | DatabaseLineage::Public => {}
@@ -103,6 +106,7 @@ fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
             ));
         }
     }
+    configure_connection(connection)?;
 
     let started = Instant::now();
     let migrated = apply_migrations(connection, matches!(lineage, DatabaseLineage::Empty))?;
@@ -449,6 +453,44 @@ mod tests {
             )
             .unwrap();
         assert_eq!(decks_exist, 1, "legacy data must not be silently deleted");
+    }
+
+    #[test]
+    fn pre_public_disk_database_is_byte_for_byte_unchanged_on_rejection() {
+        let unique = unix_time_millis().unwrap_or(0);
+        let root = std::env::temp_dir().join(format!(
+            "ostudy-pre-public-database-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("temporary database directory should exist");
+        let path = root.join("library.sqlite3");
+        {
+            let connection = Connection::open(&path).expect("legacy database should open");
+            connection
+                .execute_batch(
+                    "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, applied_at INTEGER NOT NULL) STRICT;
+                     INSERT INTO schema_migrations VALUES (26, 'deck_folders', 'legacy', 0);
+                     CREATE TABLE decks (id TEXT PRIMARY KEY) STRICT;",
+                )
+                .expect("legacy fixture should load");
+        }
+        let before = std::fs::read(&path).expect("legacy database bytes should be readable");
+        let error = match Database::open(&path) {
+            Ok(_) => panic!("legacy database must not open"),
+            Err(error) => error,
+        };
+        assert!(error.starts_with(PRE_PUBLIC_RESET_PREFIX));
+        let after = std::fs::read(&path).expect("legacy database bytes should remain readable");
+        assert_eq!(before, after, "legacy database bytes must remain unchanged");
+        assert!(
+            !root.join("library.sqlite3-wal").exists(),
+            "legacy rejection must not create a WAL sidecar"
+        );
+        assert!(
+            !root.join("library.sqlite3-shm").exists(),
+            "legacy rejection must not create a shared-memory sidecar"
+        );
+        std::fs::remove_dir_all(&root).expect("temporary database directory should be removed");
     }
 
     #[test]
