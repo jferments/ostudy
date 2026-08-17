@@ -3,11 +3,21 @@ import { createRoot } from "react-dom/client";
 
 import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
+import { installGlobalWebviewDiagnostics, queueFrontendDiagnostic } from "./ipc/diagnostics";
 import { PlatformProvider } from "./platform/PlatformProvider";
 import { ExperienceProvider } from "./ui/feedback/ExperienceProvider";
 import "./ui/foundations/index.css";
 import { HelpProvider } from "./ui/help/HelpProvider";
 import { OverlayProvider } from "./ui/overlays/OverlayProvider";
+
+installGlobalWebviewDiagnostics();
+queueFrontendDiagnostic({
+  level: "debug",
+  target: "frontend.bootstrap",
+  event: "webview_bootstrap_started",
+  message: "The React webview bootstrap started.",
+  fields: { strictMode: true },
+});
 
 const root = document.getElementById("root");
 if (!root) throw new Error("The ostudy root element is missing.");
@@ -57,13 +67,28 @@ if (import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE === "1") {
     .then(({ installAndroidTestBridge }) => {
       installAndroidTestBridge();
       const smokeWindow = window as Window & { __OSTUDY_ANDROID_TEST__?: unknown };
-      setAndroidTestBridgeDiagnostic(
-        typeof smokeWindow.__OSTUDY_ANDROID_TEST__ === "object" ? "ready" : "missing",
-      );
+      const state =
+        typeof smokeWindow.__OSTUDY_ANDROID_TEST__ === "object" ? "ready" : "missing";
+      setAndroidTestBridgeDiagnostic(state);
+      queueFrontendDiagnostic({
+        level: state === "ready" ? "debug" : "warn",
+        target: "frontend.android_test_bridge",
+        event: "android_test_bridge_loaded",
+        message: "The Android smoke-test bridge finished loading.",
+        fields: { state },
+      });
     })
     .catch((error: unknown) => {
       setAndroidTestBridgeDiagnostic("error", error);
-      console.error("Unable to install the Android smoke test bridge:", error);
+      queueFrontendDiagnostic({
+        level: "error",
+        target: "frontend.android_test_bridge",
+        event: "android_test_bridge_failed",
+        message: "The Android smoke-test bridge could not be installed.",
+        fields: {
+          errorType: error instanceof Error ? error.name : typeof error,
+        },
+      });
     });
 }
 
