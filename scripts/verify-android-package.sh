@@ -48,6 +48,7 @@ target_sdk="$(sed -n "s/^targetSdkVersion:'\([^']*\)'.*/\1/p" <<< "$badging")"
 }
 
 for forbidden_permission in \
+  android.permission.CAMERA \
   android.permission.READ_EXTERNAL_STORAGE \
   android.permission.WRITE_EXTERNAL_STORAGE \
   android.permission.MANAGE_EXTERNAL_STORAGE \
@@ -97,5 +98,5 @@ if [[ "$MODE" == release ]]; then
   fi
 fi
 
-printf 'OK   Android APK package=%s minSdk=%s targetSdk=%s nativeLibraries=%s zipAlignment=16KiB\n' \
+printf 'OK   Android APK package=%s minSdk=%s targetSdk=%s nativeLibraries=%s zipAlignment=16KiB permissionlessQr=true\n' \
   "$actual_package" "$min_sdk" "$target_sdk" "${#libraries[@]}"
