@@ -59,6 +59,7 @@ mod projections;
 mod schedule_controls;
 mod scheduler;
 mod settings;
+mod startup;
 mod study_calendar;
 mod studyability;
 mod studydeck;
@@ -81,15 +82,8 @@ mod stage34_35_regression_tests;
 #[cfg(test)]
 mod stage36_38_regression_tests;
 
-use std::{
-    io,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use ai::AiRuntimeState;
-use database::Database;
-use paths::AppPaths;
-use pdf_render_backend::PdfRenderRuntime;
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
@@ -109,85 +103,7 @@ pub fn run() {
     let result = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
-            let app_data_directory = app.path().app_data_dir().map_err(|error| {
-                io::Error::other(format!(
-                    "Could not resolve the application data directory: {error}"
-                ))
-            })?;
-            let resource_directory = app.path().resource_dir().ok();
-            let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
-            logging::initialize(paths.app_data_dir());
-            let pending_restore =
-                library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
-            let database = Database::open(paths.database_path()).map_err(io::Error::other)?;
-            let platform_runtime = platform::PlatformRuntime::for_app(app.handle().clone());
-            platform::install_global(platform_runtime.clone()).map_err(io::Error::other)?;
-            let ai_runtime = AiRuntimeState::new(platform_runtime.secure_secret_store())
-                .map_err(io::Error::other)?;
-            let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
-                .map_err(|error| io::Error::other(error.to_string()))?;
-
-            device_sync::reconcile_startup(&paths)
-                .map_err(|error| io::Error::other(error.message))?;
-            external_file_recovery::reconcile_interrupted_staging(&database, &paths)
-                .map_err(|error| io::Error::other(error.message))?;
-            external_files::reconcile_startup(&database, &paths)
-                .map_err(|error| io::Error::other(error.message))?;
-            editor_drafts::reconcile_startup(&database)
-                .map_err(|error| io::Error::other(error.message))?;
-            deletion::finalize_expired_deletions(&database)
-                .map_err(|error| io::Error::other(error.message))?;
-            deletion_purge::purge_finalized_deletions(&database)
-                .map_err(|error| io::Error::other(error.message))?;
-            asset_lifecycle::reconcile_startup(&database, &paths)
-                .map_err(|error| io::Error::other(error.message))?;
-            document_delete_reconciliation::restore_interrupted_deletions(&database, &paths)
-                .map_err(|error| io::Error::other(error.message))?;
-            documents::reconcile_startup(&database, &paths)
-                .map_err(|error| io::Error::other(error.message))?;
-            document_operations::reconcile_deleted_document_trash(&paths)
-                .map_err(|error| io::Error::other(error.message))?;
-            if let Some(restore) = pending_restore {
-                restore.commit();
-            }
-
-            if !app.manage(paths.clone()) {
-                return Err(io::Error::other("Application paths were already initialized.").into());
-            }
-            if !app.manage(database) {
-                return Err(io::Error::other("The database state was already initialized.").into());
-            }
-            if !app.manage(platform_runtime.clone()) {
-                return Err(io::Error::other("The platform runtime was already initialized.").into());
-            }
-            if !app.manage(ai_runtime) {
-                return Err(io::Error::other("The AI runtime state was already initialized.").into());
-            }
-            if !app.manage(pdf_render_runtime) {
-                return Err(io::Error::other("The PDF renderer state was already initialized.").into());
-            }
-
-            let lifecycle = platform_runtime
-                .lifecycle()
-                .transition(platform::LifecyclePhase::Foreground);
-            let _ = app.emit("ostudy-lifecycle", lifecycle);
-
-            logging::info_target(
-                "app.startup",
-                "application_started",
-                "ostudy completed durable startup and reconciliation.",
-                serde_json::json!({
-                    "databaseFile": "library.sqlite3",
-                    "assetReconciliation": "complete",
-                    "documentReconciliation": "complete",
-                    "aiGateway": "ready",
-                    "pdfExtraction": pdf_backend::active_backend_id(),
-                    "pdfRenderer": pdf_render_backend::active_backend_id(),
-                }),
-            );
-            Ok(())
-        })
+        .setup(startup::setup)
         .on_window_event(|window, event| {
             let tauri::WindowEvent::CloseRequested { api, .. } = event else {
                 return;
