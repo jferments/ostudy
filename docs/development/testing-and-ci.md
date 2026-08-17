@@ -83,11 +83,15 @@ Automatic gates are intentionally conservative:
 - non-draft reopened/synchronized pull request: `all-full`;
 - push to `main`: `all-full`.
 
+Every non-`preflight` run executes **static qualification first** as a separately named boundary before fast, Linux-full, or Android work. The later tier reuses the exact-tree static stamp instead of repeating successful static work. A static failure therefore stops the expensive product gates immediately and is attributed directly to the static step rather than appearing later as a nested initialization failure.
+
 `all-full` runs, in order:
 
 ```text
 unified runner preflight
+→ check-static.sh
 → check.sh
+   → fast qualification (reusing the static stamp)
    → built-binary legacy-data startup compatibility smoke
    → native WebDriver persistence/UI smoke
 → android-test.sh
@@ -95,6 +99,15 @@ unified runner preflight
 ```
 
 The same workflow supports manual dispatch with explicit `preflight`, `static`, `fast`, `linux-full`, `android-full`, and `all-full` gates.
+
+### Exact-head status visibility
+
+The workflow publishes two legacy commit-status contexts in addition to the normal GitHub Actions check run:
+
+- `ostudy/static` — pending while static qualification runs, then success/failure/error for that exact SHA;
+- `ostudy/qualification` — pending while the selected qualification tier runs, then the final exact-head result.
+
+These status records contain only the SHA, result, short description, and Actions run URL. The workflow token has `contents: read` plus `statuses: write`; it does not gain source-code write permission. The explicit status contexts exist so tooling that can read commit statuses but cannot read Actions check-run APIs can still verify that the exact submitted head cleared static qualification and, later, the complete requested gate.
 
 Every scripted CI gate automatically starts with the low-noise diagnostic filter:
 
@@ -155,7 +168,7 @@ See [Diagnostics and debug filters](diagnostics.md) for local replay and filter 
 
 ## Self-hosted runner security
 
-Pull-request jobs use minimum GitHub token permissions and execute untrusted repository code inside the isolated VM rather than on `ML-tower`.
+Pull-request jobs use minimum GitHub token permissions needed for qualification: repository contents are read-only and exact-head commit statuses are write-only metadata. The jobs execute untrusted repository code inside the isolated VM rather than on `ML-tower`.
 
 Do not install Codex or another autonomous code-writing process on the runner. Do not give the runner host filesystem mounts, the host SSH private key, forwarded agent access, Docker/libvirt host-control sockets, release signing keys, or personal data.
 
