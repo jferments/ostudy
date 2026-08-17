@@ -26,9 +26,21 @@ prepare_cargo_target "$ROOT_DIR"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/build-state.sh"
 
+WORKTREE_BASELINE="$(mktemp -t ostudy-full-worktree.XXXXXXXX)"
+cleanup_worktree_baseline() { rm -f -- "$WORKTREE_BASELINE"; }
+trap cleanup_worktree_baseline EXIT
+ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
+
 CURRENT_STEP="initialization"
-step() { CURRENT_STEP="$*"; printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"; }
-trap 'status=$?; printf "\n\033[1;31mFULL CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
+step() {
+  if [[ "$CURRENT_STEP" != initialization ]]; then
+    ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
+  fi
+  CURRENT_STEP="$*"
+  ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
+  printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"
+}
+trap 'status=$?; ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP" || true; printf "\n\033[1;31mFULL CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
 
 if [[ "${OSTUDY_FAST_CHECK_PASSED:-0}" == "1" ]]; then
   printf '\n\033[1;32mREUSE Fast qualification passed earlier in this workflow.\033[0m\n'
@@ -75,12 +87,17 @@ pnpm tauri build --debug --no-bundle --ci -- --locked
 ostudy_write_build_stamp "$(node -p "require('./package.json').version")"
 
 if [[ "${OSTUDY_SKIP_NATIVE_SMOKE:-0}" == "1" ]]; then
-  printf '\nSKIP Native WebDriver smoke test (OSTUDY_SKIP_NATIVE_SMOKE=1).\n'
+  printf '\nSKIP Native startup compatibility smoke (OSTUDY_SKIP_NATIVE_SMOKE=1).\n'
+  printf 'SKIP Native WebDriver smoke test (OSTUDY_SKIP_NATIVE_SMOKE=1).\n'
 else
+  step "Native startup compatibility smoke"
+  "$SCRIPT_DIR/smoke-startup-compatibility.sh"
+
   step "Native Tauri/WebDriver smoke test"
   "$SCRIPT_DIR/smoke-native.sh"
 fi
 
+ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
 ostudy_write_check_stamp full
 trap - ERR
 printf '\n\033[1;32mAll ostudy checks passed.\033[0m\n'
