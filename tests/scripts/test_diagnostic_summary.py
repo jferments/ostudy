@@ -121,7 +121,7 @@ class DiagnosticFailureSummaryTests(unittest.TestCase):
             "'database::tests::public_baseline_is_idempotent_and_matches_manifest' -- --exact --nocapture",
             output,
         )
-        self.assertIn("OSUDY_LOG='warn,ostudy.database=debug'", output)
+        self.assertIn("OSTUDY_LOG='warn,ostudy.database=debug'", output)
 
     def test_android_logcat_embedded_json_is_parsed(self) -> None:
         event = {
