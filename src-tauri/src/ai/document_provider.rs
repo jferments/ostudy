@@ -104,9 +104,9 @@ pub(crate) fn load_document_provider_capabilities(
             }
         }
 
-        // The document service currently uses DeepSeek strict tool calling even
-        // though its generic connection probe describes JSON-object support.
-        // Provider wire details remain here rather than leaking into planners.
+        // DeepSeek document generation uses strict tool calling even though its
+        // generic probe describes JSON-object support. Provider wire details
+        // remain here rather than leaking into planners.
         if provider_kind == "deepseek" {
             result.structured_output = StructuredOutputStrategy::StrictTool;
         }
@@ -116,7 +116,7 @@ pub(crate) fn load_document_provider_capabilities(
 
 fn structured_strategy(provider_kind: &str) -> StructuredOutputStrategy {
     match provider_kind {
-        "llama_cpp" => StructuredOutputStrategy::JsonSchema,
+        "llama_cpp" | "openrouter" => StructuredOutputStrategy::JsonSchema,
         "deepseek" => StructuredOutputStrategy::StrictTool,
         _ => StructuredOutputStrategy::Unknown,
     }
@@ -156,6 +156,15 @@ mod tests {
         assert_eq!(
             capabilities.structured_output,
             StructuredOutputStrategy::StrictTool
+        );
+    }
+
+    #[test]
+    fn openrouter_document_strategy_is_strict_json_schema() {
+        let capabilities = DocumentProviderCapabilities::conservative("openrouter", "model");
+        assert_eq!(
+            capabilities.structured_output,
+            StructuredOutputStrategy::JsonSchema
         );
     }
 
