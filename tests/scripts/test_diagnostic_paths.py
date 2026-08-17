@@ -104,6 +104,18 @@ class DiagnosticPathResolutionTests(unittest.TestCase):
         )
         self.assertEqual(resolved, "warn,ostudy.database=debug")
 
+    def test_startup_failure_gets_database_app_filter_and_direct_replay(self) -> None:
+        resolved = self.run_library(
+            "printf '%s|%s' "
+            '"$(ostudy_recommended_filter_for_step \'Native startup compatibility smoke\')" '
+            '"$(ostudy_replay_command_for_step \'Native startup compatibility smoke\')"',
+            {},
+        )
+        self.assertEqual(
+            resolved,
+            "warn,ostudy.app=debug,ostudy.database=debug|bash ./scripts/smoke-startup-compatibility.sh",
+        )
+
     def test_nested_failure_traps_keep_only_the_precise_capture(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             artifact_root = Path(raw_directory) / "artifacts"
