@@ -115,7 +115,9 @@ const contracts = [
       contents.testingDoc.includes("transient WebDriver") &&
       contents.testingDoc.includes("failure-capture token") &&
       contents.testingDoc.includes("ostudy/static") &&
-      contents.testingDoc.includes("static qualification first"),
+      contents.testingDoc.includes("static qualification first") &&
+      contents.testingDoc.indexOf("check-static.sh") <
+        contents.testingDoc.indexOf("unified runner/KVM preflight"),
   ],
 ];
 
