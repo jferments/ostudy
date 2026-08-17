@@ -133,8 +133,9 @@ verify_gradle_contracts() (
 
 if ((RUN_EMULATOR == 1)); then
   bash ./scripts/android-emulator-smoke.sh
+  ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android Emulator smoke qualification"
   verify_gradle_contracts
-  ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android emulator qualification"
+  ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android Gradle contract verification"
   trap - ERR
   printf 'OK   Android shared checks, emulator instrumentation, and Gradle contracts passed.\n'
   exit 0
@@ -145,11 +146,17 @@ fi
 # by the direct Gradle checks and postbuild tasks below.
 export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
 bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
+# android-build.sh owns restoration of the tracked generated sources that Tauri
+# rewrites. Assert immediately so any newly introduced generator mutation is
+# attributed to materialization rather than a later Gradle test.
+ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Tauri Android build materialization"
 verify_gradle_contracts
+ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android Gradle contract verification"
 
 # Direct Gradle work that follows must reuse the Tauri build output instead of
 # re-entering `android-studio-script` after Tauri's temporary CLI socket closes.
 bash ./scripts/android-gradle-postbuild.sh test-packages
+ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android Gradle postbuild"
 
 app_apk="$ROOT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
 test_apk="$({
