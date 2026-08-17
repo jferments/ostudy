@@ -4,7 +4,7 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
-export OSTUDY_QUALIFICATION_COMMAND="./scripts/smoke-startup-compatibility.sh"
+export OSTUDY_QUALIFICATION_COMMAND="bash ./scripts/smoke-startup-compatibility.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/build-state.sh"
 # shellcheck disable=SC1091
@@ -13,7 +13,7 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 ostudy_parse_diagnostic_args "$@"
 if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
-  printf 'Usage: ./scripts/smoke-startup-compatibility.sh [diagnostic options]\n' >&2
+  printf 'Usage: bash ./scripts/smoke-startup-compatibility.sh [diagnostic options]\n' >&2
   ostudy_diagnostic_usage >&2
   exit 2
 fi
@@ -38,7 +38,7 @@ if [[ -z "${DISPLAY:-}" && "${OSTUDY_IN_STARTUP_XVFB:-0}" != "1" ]]; then
     printf 'ERROR: xvfb-run is required for a headless startup compatibility smoke test.\n' >&2
     exit 1
   }
-  exec env OSTUDY_IN_STARTUP_XVFB=1 xvfb-run -a "$0" "$@"
+  exec env OSTUDY_IN_STARTUP_XVFB=1 xvfb-run -a bash "$0" "$@"
 fi
 
 TEMP_ROOT="$(mktemp -d -t ostudy-startup-compat.XXXXXXXX)"
