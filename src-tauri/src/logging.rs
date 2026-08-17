@@ -121,7 +121,7 @@ impl FilterConfig {
         if !default_explicit && !rules.is_empty() {
             default_level = LogLevel::Warn;
         }
-        rules.sort_by(|left, right| right.target.len().cmp(&left.target.len()));
+        rules.sort_by_key(|rule| std::cmp::Reverse(rule.target.len()));
         Ok(Self {
             raw: raw.to_string(),
             default_level,
@@ -347,20 +347,8 @@ pub fn info(event: &str, message: impl AsRef<str>) {
     info_target("app", event, message, Value::Null);
 }
 
-pub fn warn(event: &str, message: impl AsRef<str>) {
-    warn_target("app", event, message, Value::Null);
-}
-
 pub fn error(event: &str, message: impl AsRef<str>) {
     error_target("app", event, message, Value::Null);
-}
-
-pub fn debug(event: &str, message: impl AsRef<str>) {
-    debug_target("app", event, message, Value::Null);
-}
-
-pub fn trace(event: &str, message: impl AsRef<str>) {
-    trace_target("app", event, message, Value::Null);
 }
 
 pub fn info_target(target: &str, event: &str, message: impl AsRef<str>, fields: Value) {
@@ -381,17 +369,6 @@ pub fn debug_target(target: &str, event: &str, message: impl AsRef<str>, fields:
 
 pub fn trace_target(target: &str, event: &str, message: impl AsRef<str>, fields: Value) {
     emit(LogLevel::Trace, target, event, message.as_ref(), fields);
-}
-
-pub fn debug_lazy<F>(target: &str, event: &str, build: F)
-where
-    F: FnOnce() -> (String, Value),
-{
-    let target = normalize_target(target).unwrap_or_else(|_| "ostudy.app".to_string());
-    if enabled(LogLevel::Debug, &target) {
-        let (message, fields) = build();
-        emit(LogLevel::Debug, &target, event, &message, fields);
-    }
 }
 
 fn emit(level: LogLevel, target: &str, event: &str, message: &str, fields: Value) {
@@ -551,7 +528,7 @@ fn sanitize_value(value: Value, depth: usize) -> Value {
 }
 
 fn sensitive_key(key: &str) -> bool {
-    let key = key.to_ascii_lowercase().replace('-', "").replace('_', "");
+    let key = key.to_ascii_lowercase().replace(['-', '_'], "");
     [
         "authorization",
         "apikey",

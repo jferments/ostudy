@@ -1335,7 +1335,6 @@ pub(crate) fn render_projected_presentation(
 }
 
 pub(crate) mod templates;
-pub(crate) use templates::apply_card_type_template_repairs;
 use templates::{
     create_card_template_in_connection, delete_card_template_in_connection,
     ensure_template_revision, generate_automatic_template_cards_in_connection,

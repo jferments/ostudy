@@ -1467,7 +1467,6 @@ mod template_summary_tests {
 }
 
 mod automatic_layout;
-mod repair;
 
 #[cfg(test)]
 use automatic_layout::materialize_automatic_template_document;
@@ -1480,7 +1479,6 @@ pub(super) use automatic_layout::{
     prepare_automatic_create_template_input, prepare_automatic_update_template_input,
     render_automatic_template_previews,
 };
-pub(crate) use repair::apply_card_type_template_repairs;
 
 #[cfg(test)]
 mod asset_tests;

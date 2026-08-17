@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::params;
 
 use crate::{asset_lifecycle, error::CommandError, paths::AppPaths};
 

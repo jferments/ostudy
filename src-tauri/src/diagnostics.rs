@@ -93,15 +93,15 @@ pub fn set_diagnostic_filter(
             .name("ostudy-diagnostic-filter-expiry".to_string())
             .spawn(move || {
                 thread::sleep(Duration::from_secs(expires_in_seconds));
-                if FILTER_GENERATION.load(Ordering::Acquire) == generation {
-                    if logging::set_filter(&expiry_filter).is_ok() {
-                        logging::info_target(
-                            "diagnostics.config",
-                            "diagnostic_filter_expired",
-                            "The temporary diagnostic filter expired and the previous filter was restored.",
-                            serde_json::json!({ "durationSeconds": expires_in_seconds }),
-                        );
-                    }
+                if FILTER_GENERATION.load(Ordering::Acquire) == generation
+                    && logging::set_filter(&expiry_filter).is_ok()
+                {
+                    logging::info_target(
+                        "diagnostics.config",
+                        "diagnostic_filter_expired",
+                        "The temporary diagnostic filter expired and the previous filter was restored.",
+                        serde_json::json!({ "durationSeconds": expires_in_seconds }),
+                    );
                 }
             });
         if spawn_result.is_err() {
