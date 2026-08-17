@@ -136,23 +136,44 @@ function parseContext(text) {
   );
 }
 
+function preferredContext(diagnosticContexts, step = null) {
+  const reversed = [...diagnosticContexts].reverse();
+  return (
+    reversed.find((context) => context.kind === "failure" && step && context.step === step) ??
+    reversed.find(
+      (context) => context.kind === "failure" && context.step && context.step !== "initialization",
+    ) ??
+    reversed.find((context) => context.kind === "failure") ??
+    reversed.find((context) => context.kind === "transient") ??
+    reversed[0]
+  );
+}
+
 function findFailure(logEntries, diagnosticContexts) {
   const lines = logEntries.flatMap(({ text }) => text.split("\n"));
-  const failureLines = lines.filter((line) =>
-    /(?:STATIC|FAST|FULL) CHECK FAILED during:|Android smoke case failed:/u.test(line),
-  );
-  const line = failureLines.at(-1)?.trim() ?? "";
-  const scriptedStep = line.match(/CHECK FAILED during: (.+?) \(exit/u)?.[1];
-  const androidCase = line.match(/Android smoke case failed: ([^ ]+)/u)?.[1];
-  const context = diagnosticContexts.at(-1);
+  const failures = lines
+    .filter((line) => /(?:STATIC|FAST|FULL) CHECK FAILED during:|Android smoke case failed:/u.test(line))
+    .map((line) => {
+      const trimmed = line.trim();
+      const scriptedStep = trimmed.match(/CHECK FAILED during: (.+?) \(exit/u)?.[1];
+      const androidCase = trimmed.match(/Android smoke case failed: ([^ ]+)/u)?.[1];
+      return {
+        line: trimmed,
+        step: scriptedStep ?? (androidCase ? `Android smoke ${androidCase}` : null),
+      };
+    });
+  const failure =
+    [...failures].reverse().find((entry) => entry.step && entry.step !== "initialization") ??
+    failures.at(-1);
+  const context = preferredContext(diagnosticContexts, failure?.step ?? null);
   return {
-    line,
-    step: scriptedStep ?? (androidCase ? `Android smoke ${androidCase}` : context?.step ?? "qualification"),
+    line: failure?.line ?? "",
+    step: failure?.step ?? context?.step ?? "qualification",
   };
 }
 
 function focusedReproduction(step, text, diagnosticContexts) {
-  const context = diagnosticContexts.at(-1);
+  const context = preferredContext(diagnosticContexts, step);
   const lower = step.toLowerCase();
   const filter = context?.replayFilter ?? recommendedFilter(lower);
 
