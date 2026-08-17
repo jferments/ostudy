@@ -17,6 +17,7 @@ use super::{
     endpoint_policy::{join_endpoint, validate_endpoint, NetworkScope},
     gateway::{AiGatewayError, SafeAiError},
     profiles::{load_profile_snapshot, ProfileSnapshot},
+    providers,
     secrets::CredentialStorage,
     AiRuntimeState,
 };
@@ -754,7 +755,7 @@ fn outline_completion_tokens(task: &DocumentTaskContext) -> usize {
 
 fn outline_completion_tokens_for_provider(provider_kind: ProviderKind) -> usize {
     match provider_kind {
-        ProviderKind::Deepseek => 3_072,
+        ProviderKind::Deepseek | ProviderKind::Openrouter => 3_072,
         ProviderKind::LlamaCpp => 2_048,
         _ => 2_048,
     }
@@ -866,6 +867,28 @@ async fn request_curation_with_retry(
     }
 }
 
+fn openrouter_document_body(profile: &ProfileSnapshot, request: &JsonTaskRequest<'_>) -> Value {
+    json!({
+        "model": profile.model_id.as_str(),
+        "messages": [
+            { "role": "system", "content": request.system_prompt },
+            { "role": "user", "content": request.user_text }
+        ],
+        "temperature": 0.12,
+        "max_tokens": request.max_tokens,
+        "stream": false,
+        "provider": providers::openrouter_provider_preferences(true),
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "ostudy_document_task",
+                "strict": true,
+                "schema": request.schema
+            }
+        }
+    })
+}
+
 async fn request_json(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
@@ -951,6 +974,10 @@ async fn request_json(
                 }),
             )
         }
+        ProviderKind::Openrouter => (
+            completion_endpoint(&task.profile)?,
+            openrouter_document_body(&task.profile, &request),
+        ),
         _ => {
             return Err(CommandError::new(
                 "ai_provider_not_implemented",
@@ -2126,6 +2153,7 @@ fn completion_endpoint(profile: &ProfileSnapshot) -> Result<Url, CommandError> {
             )
         }
         ProviderKind::Deepseek => deepseek_strict_completion_endpoint(profile),
+        ProviderKind::Openrouter => join_endpoint(&profile.base_url, "chat/completions"),
         _ => Err(CommandError::new(
             "ai_provider_not_implemented",
             "The selected AI provider cannot analyze PDF documents in this ostudy build.",
@@ -2311,6 +2339,45 @@ mod tests {
             })),
             (Some(9), Some(4), Some(13))
         );
+    }
+
+    #[test]
+    fn openrouter_document_requests_require_private_parameter_compatible_json_schema() {
+        let profile = ProfileSnapshot {
+            id: "a".repeat(32),
+            provider_kind: ProviderKind::Openrouter,
+            base_url: "https://openrouter.ai/api/v1/".to_string(),
+            model_id: "openai/example".to_string(),
+            auth_mode: super::super::catalog::AuthMode::Bearer,
+            enabled: true,
+            allow_insecure_http: false,
+            request_timeout_ms: 60_000,
+            credential_epoch: 0,
+            revision: 1,
+        };
+        let schema = json!({ "type": "object" });
+        let request = JsonTaskRequest {
+            system_prompt: "system",
+            user_text: "source",
+            schema: &schema,
+            max_tokens: 128,
+            images: &[],
+        };
+        let body = openrouter_document_body(&profile, &request);
+        assert_eq!(
+            body.pointer("/provider/require_parameters"),
+            Some(&json!(true))
+        );
+        assert_eq!(
+            body.pointer("/provider/data_collection"),
+            Some(&json!("deny"))
+        );
+        assert_eq!(
+            body.pointer("/response_format/type"),
+            Some(&json!("json_schema"))
+        );
+        assert!(body.get("plugins").is_none());
+        assert!(body.get("debug").is_none());
     }
 
     #[test]

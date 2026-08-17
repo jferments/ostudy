@@ -1,12 +1,22 @@
-use std::{path::Path, sync::Mutex, time::Duration};
+use std::{
+    path::Path,
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+use serde::Serialize;
+use serde_json::json;
 
 use crate::{
     data_repairs::{apply_required_repairs, verify_repair_ledger, RepairPhase},
     error::CommandError,
+    logging::LogLevel,
     util::unix_time_millis,
 };
+
+const PUBLIC_SCHEMA_LINEAGE: &str = "ostudy-public-v1";
+const PRE_PUBLIC_RESET_PREFIX: &str = "PRE_PUBLIC_DATABASE_REQUIRES_RESET";
 
 struct Migration {
     version: i64,
@@ -15,166 +25,14 @@ struct Migration {
     sql: &'static str,
 }
 
-const MIGRATIONS: &[Migration] = &[
-    Migration {
-        version: 1,
-        name: "create_decks",
-        checksum: "771e157d6f7eb5e1c024862966718e46ef744298f49287636c75167065904fd6",
-        sql: include_str!("../migrations/0001_decks.sql"),
-    },
-    Migration {
-        version: 2,
-        name: "cards_assets_settings_practice",
-        checksum: "af64ceea1bfb3f1c04fed33f4558fae051174b50b15873d9ddf5ab4b36e55c8b",
-        sql: include_str!("../migrations/0002_cards_assets_settings_practice.sql"),
-    },
-    Migration {
-        version: 3,
-        name: "fsrs_reviews",
-        checksum: "49dd1e24e463c9a08a59e243d90143e2874459dd2a4a8d5f61613d5df7ebcae3",
-        sql: include_str!("../migrations/0003_fsrs_reviews.sql"),
-    },
-    Migration {
-        version: 4,
-        name: "card_organization",
-        checksum: "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d",
-        sql: include_str!("../migrations/0004_card_organization.sql"),
-    },
-    Migration {
-        version: 5,
-        name: "remove_legacy_duplicate_trigger",
-        checksum: "e275254085414039a7cf5f3a5e08ae35a61ea8f7d3d1b8e016a8d1f087c03029",
-        sql: include_str!("../migrations/0005_remove_legacy_duplicate_trigger.sql"),
-    },
-    Migration {
-        version: 6,
-        name: "card_types_and_templates",
-        checksum: "c07b900b2119f6eae6a4de58aeb3af9ab5882ee21d5c29ac7a5c7fcee6b86be8",
-        sql: include_str!("../migrations/0006_card_types_and_templates.sql"),
-    },
-    Migration {
-        version: 7,
-        name: "rich_templates_single_cloze",
-        checksum: "91d120cb0b72c72c40d499a2c8be9b090be96ca760b2bb5a71072e2b71ed45e1",
-        sql: include_str!("../migrations/0007_rich_templates_single_cloze.sql"),
-    },
-    Migration {
-        version: 8,
-        name: "scheduling_controls",
-        checksum: "862b5277d92154d5586b7924023fb64f7cfee08d566b52efbd625fcbab410b2e",
-        sql: include_str!("../migrations/0008_scheduling_controls.sql"),
-    },
-    Migration {
-        version: 9,
-        name: "operation_boundaries",
-        checksum: "1482b734fadc2e71720e53c397131916179a3e7966c8461bf9d4fe3d5e51dc15",
-        sql: include_str!("../migrations/0009_operation_boundaries.sql"),
-    },
-    Migration {
-        version: 10,
-        name: "transactional_schedule_actions",
-        checksum: "bff6ab81045823654725e1f022de7c2c9b1715c63205273a24fd7db03eb0a82a",
-        sql: include_str!("../migrations/0010_transactional_schedule_actions.sql"),
-    },
-    Migration {
-        version: 11,
-        name: "managed_asset_lifecycle",
-        checksum: "fc9d0b9601cbb45a99bb93b8ed448e150013186b88cb87430c84193176ad7280",
-        sql: include_str!("../migrations/0011_managed_asset_lifecycle.sql"),
-    },
-    Migration {
-        version: 12,
-        name: "versioned_data_repairs",
-        checksum: "6776fd4d70ed8bac79dd01774d27d7dca97ece65742dabd69a55077dc6a721a3",
-        sql: include_str!("../migrations/0012_versioned_data_repairs.sql"),
-    },
-    Migration {
-        version: 13,
-        name: "canonical_data_model",
-        checksum: "2e56fa0b68049f8a4d2e937b1dbdb18ec45d9c9041b06f5994b3c847f1d2f049",
-        sql: include_str!("../migrations/0013_canonical_data_model.sql"),
-    },
-    Migration {
-        version: 14,
-        name: "review_attribution_and_projection_indexes",
-        checksum: "ed5b4f510d014b34f7c6b83c3fcf7914baaa3942e51345a74fb8a7179cc1e11a",
-        sql: include_str!("../migrations/0014_review_attribution_and_projection_indexes.sql"),
-    },
-    Migration {
-        version: 15,
-        name: "ai_provider_profiles",
-        checksum: "241246c924f8b050138011088014f515bdb26145eecd4536320331d905ad783b",
-        sql: include_str!("../migrations/0015_ai_provider_profiles.sql"),
-    },
-    Migration {
-        version: 16,
-        name: "ai_provider_probe_capabilities",
-        checksum: "12b4ec2518478a9798a19e87577f440a89943d06abfe7cb725f56727a854b75a",
-        sql: include_str!("../migrations/0016_ai_provider_probe_capabilities.sql"),
-    },
-    Migration {
-        version: 17,
-        name: "document_flashcard_generation",
-        checksum: "6f503141d0a99e0e603fc465c18ae456f18a9c7c66d16b3289b4d5cd4ed7baaa",
-        sql: include_str!("../migrations/0017_document_flashcard_generation.sql"),
-    },
-    Migration {
-        version: 18,
-        name: "document_semantics_and_outline",
-        checksum: "06b0023711038b8f9ea2c90c17c5ffb9dda8b286c01e34c4881a0596e96a1c7e",
-        sql: include_str!("../migrations/0018_document_semantics_and_outline.sql"),
-    },
-    Migration {
-        version: 19,
-        name: "resumable_large_document_generation",
-        checksum: "80dc940f7018b6a754d440cbf5c3b287150b2dfb4def096539c4ff1f14d5fc66",
-        sql: include_str!("../migrations/0019_resumable_large_document_generation.sql"),
-    },
-    Migration {
-        version: 20,
-        name: "document_platform_generalization",
-        checksum: "ad25bb267ff0061d7dea31f1bac0d7376be5c5af225854b329c31ec6caf29e32",
-        sql: include_str!("../migrations/0020_document_platform_generalization.sql"),
-    },
-    Migration {
-        version: 21,
-        name: "document_ocr_fallback",
-        checksum: "31466a2bec357f46ee1e05680f3b26d5a297445bf686bfc2afd5aef470206e5d",
-        sql: include_str!("../migrations/0021_document_ocr_fallback.sql"),
-    },
-    Migration {
-        version: 22,
-        name: "document_processing_metrics",
-        checksum: "92ed1082377e685570ce3fb79aacf1610c38cbea58e60f289104d7a96ce24c8c",
-        sql: include_str!("../migrations/0022_document_processing_metrics.sql"),
-    },
-    Migration {
-        version: 23,
-        name: "document_provenance_tag_cleanup",
-        checksum: "ec70e81cd4f7c5db36793e1ced79d646ab1981ffd2eaee90244908fbc4b71892",
-        sql: include_str!("../migrations/0023_document_provenance_tag_cleanup.sql"),
-    },
-    Migration {
-        version: 24,
-        name: "external_file_transfers",
-        checksum: "392cfda8f689f8e6f08be650003cf58d283d113452efa6d6d3f905b959bcb2d8",
-        sql: include_str!("../migrations/0024_external_file_transfers.sql"),
-    },
-    Migration {
-        version: 25,
-        name: "durable_editor_drafts",
-        checksum: "842ab270202dd3e936216e57878cc2b3f503059d78fc1476b4fdeb9a05fbb54e",
-        sql: include_str!("../migrations/0025_durable_editor_drafts.sql"),
-    },
-    Migration {
-        version: 26,
-        name: "deck_folders",
-        checksum: "4361a6ea23c1fe910b078b5edfb98c1a44a5dd6e3c307df1f0436db6076bcc58",
-        sql: include_str!("../migrations/0026_deck_folders.sql"),
-    },
-];
+const MIGRATIONS: &[Migration] = &[Migration {
+    version: 1,
+    name: "public_baseline",
+    checksum: "f00628d96aa9b4b6e5331ed280dcf15f3237eb65c88d98de2d3516f77a3d9750",
+    sql: include_str!("../migrations/0001_public_baseline.sql"),
+}];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 26;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 1;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -182,8 +40,14 @@ pub struct Database {
 
 impl Database {
     pub fn open(path: &Path) -> Result<Self, String> {
+        crate::logging::debug_target(
+            "database.connection",
+            "database_open_started",
+            "The local SQLite database is being opened.",
+            json!({ "fileName": path.file_name().and_then(|value| value.to_str()).unwrap_or("library.sqlite3") }),
+        );
         let mut connection = Connection::open(path)
-            .map_err(|error| format!("Could not open {}: {error}", path.display()))?;
+            .map_err(|error| format!("Could not open the local SQLite database: {error}"))?;
         initialize_connection(&mut connection)?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -214,13 +78,52 @@ impl Database {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum DatabaseLineage {
+    Empty,
+    Public,
+    PrePublic,
+    Unknown(String),
+}
+
 fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
     configure_connection(connection)?;
-    apply_migrations_through(connection, 12)?;
-    apply_required_repairs(connection, RepairPhase::BeforeMigration(13))?;
-    apply_migrations_after(connection, 12)?;
-    apply_required_repairs(connection, RepairPhase::AfterMigration(14))?;
+    let lineage = inspect_lineage(connection)?;
+    match lineage {
+        DatabaseLineage::Empty | DatabaseLineage::Public => {}
+        DatabaseLineage::PrePublic => {
+            return Err(format!(
+                "{PRE_PUBLIC_RESET_PREFIX}: This database predates ostudy's public schema baseline. Stop ostudy, preserve a backup if needed, and run scripts/reset-pre-public-data.sh with the exact application data directory. The database was not modified."
+            ));
+        }
+        DatabaseLineage::Unknown(value) => {
+            return Err(format!(
+                "This database belongs to an unsupported schema lineage ({value}). The database was not modified."
+            ));
+        }
+    }
+
+    let started = Instant::now();
+    let migrated = apply_migrations(connection, matches!(lineage, DatabaseLineage::Empty))?;
+    apply_required_repairs(
+        connection,
+        RepairPhase::AfterMigration(LATEST_SCHEMA_VERSION),
+    )?;
     verify_repair_ledger(connection)?;
+    if migrated || crate::logging::enabled(LogLevel::Debug, "ostudy.database.integrity") {
+        verify_integrity(connection)?;
+    }
+    crate::logging::info_target(
+        "database.migration",
+        "database_schema_ready",
+        "The public database schema is ready.",
+        json!({
+            "schemaLineage": PUBLIC_SCHEMA_LINEAGE,
+            "schemaVersion": LATEST_SCHEMA_VERSION,
+            "migrationApplied": migrated,
+            "durationMs": i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX),
+        }),
+    );
     Ok(())
 }
 
@@ -230,96 +133,115 @@ fn configure_connection(connection: &Connection) -> Result<(), String> {
         .map_err(|error| format!("Could not configure SQLite busy timeout: {error}"))?;
     connection
         .execute_batch(
-            "PRAGMA foreign_keys = ON;\n\
-             PRAGMA journal_mode = WAL;\n\
+            "PRAGMA foreign_keys = ON;
+             PRAGMA journal_mode = WAL;
              PRAGMA synchronous = FULL;",
         )
         .map_err(|error| format!("Could not configure SQLite durability settings: {error}"))
 }
 
-fn initialize_migration_ledger(connection: &Connection) -> Result<(), String> {
-    connection
-        .execute_batch(
-            "CREATE TABLE IF NOT EXISTS schema_migrations (\n\
-                 version     INTEGER PRIMARY KEY,\n\
-                 name        TEXT NOT NULL,\n\
-                 checksum    TEXT NOT NULL,\n\
-                 applied_at  INTEGER NOT NULL\n\
-             ) STRICT;",
+fn inspect_lineage(connection: &Connection) -> Result<DatabaseLineage, String> {
+    let metadata_exists: i64 = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'schema_metadata')",
+            [],
+            |row| row.get(0),
         )
-        .map_err(|error| format!("Could not initialize migration ledger: {error}"))
+        .map_err(|error| format!("Could not inspect the schema lineage table: {error}"))?;
+    if metadata_exists != 0 {
+        let value: Option<String> = connection
+            .query_row(
+                "SELECT value FROM schema_metadata WHERE key = 'schema_lineage'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| format!("Could not read the schema lineage: {error}"))?;
+        return Ok(match value {
+            Some(value) if value == PUBLIC_SCHEMA_LINEAGE => DatabaseLineage::Public,
+            Some(value) => DatabaseLineage::Unknown(value),
+            None => DatabaseLineage::Unknown("missing".to_string()),
+        });
+    }
+
+    let object_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not inspect database contents: {error}"))?;
+    if object_count == 0 {
+        Ok(DatabaseLineage::Empty)
+    } else {
+        Ok(DatabaseLineage::PrePublic)
+    }
 }
 
-#[cfg(test)]
-fn apply_migrations(connection: &mut Connection) -> Result<(), String> {
-    apply_migration_range(connection, 1, LATEST_SCHEMA_VERSION)
-}
-
-fn apply_migrations_through(
-    connection: &mut Connection,
-    maximum_version: i64,
-) -> Result<(), String> {
-    apply_migration_range(connection, 1, maximum_version)
-}
-
-fn apply_migrations_after(
-    connection: &mut Connection,
-    minimum_exclusive: i64,
-) -> Result<(), String> {
-    apply_migration_range(
-        connection,
-        minimum_exclusive.saturating_add(1),
-        LATEST_SCHEMA_VERSION,
-    )
-}
-
-fn apply_migration_range(
-    connection: &mut Connection,
-    minimum_version: i64,
-    maximum_version: i64,
-) -> Result<(), String> {
-    initialize_migration_ledger(connection)?;
-    let newest_version: Option<i64> = connection
-        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
-            row.get(0)
-        })
-        .map_err(|error| format!("Could not read the database schema version: {error}"))?;
-    if newest_version.unwrap_or(0) > LATEST_SCHEMA_VERSION {
+fn apply_migrations(connection: &mut Connection, empty_database: bool) -> Result<bool, String> {
+    let mut applied = false;
+    if !empty_database {
+        verify_public_ledger_exists(connection)?;
+    }
+    let newest_version = if empty_database {
+        0
+    } else {
+        connection
+            .query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| format!("Could not read the database schema version: {error}"))?
+    };
+    if newest_version > LATEST_SCHEMA_VERSION {
         return Err(format!(
-            "This database was created by a newer ostudy version (schema {}).",
-            newest_version.unwrap_or_default()
+            "This database was created by a newer ostudy version (public schema {newest_version})."
         ));
     }
 
-    for migration in MIGRATIONS.iter().filter(|migration| {
-        migration.version >= minimum_version && migration.version <= maximum_version
-    }) {
-        let existing: Option<(String, String)> = connection
-            .query_row(
-                "SELECT name, checksum FROM schema_migrations WHERE version = ?1",
-                [migration.version],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()
-            .map_err(|error| {
-                format!("Could not inspect migration {}: {error}", migration.version)
-            })?;
+    for migration in MIGRATIONS {
+        let existing: Option<(String, String)> = if empty_database && migration.version == 1 {
+            None
+        } else {
+            connection
+                .query_row(
+                    "SELECT name, checksum FROM schema_migrations WHERE version = ?1",
+                    [migration.version],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(|error| {
+                    format!("Could not inspect migration {}: {error}", migration.version)
+                })?
+        };
         if let Some((name, checksum)) = existing {
             if name != migration.name || checksum != migration.checksum {
                 return Err(format!(
-                    "Migration {} does not match this application build. The database was not modified.",
+                    "Public migration {} does not match this application build. The database was not modified.",
                     migration.version
                 ));
             }
             continue;
         }
+        apply_transactional_migration(connection, migration)?;
+        applied = true;
+    }
+    Ok(applied)
+}
 
-        let applied_at = unix_time_millis().map_err(|error| error.message)?;
-        if matches!(migration.version, 13 | 20) {
-            apply_foreign_key_disabled_migration(connection, migration, applied_at)?;
-        } else {
-            apply_transactional_migration(connection, migration, applied_at)?;
-        }
+fn verify_public_ledger_exists(connection: &Connection) -> Result<(), String> {
+    let exists: i64 = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'schema_migrations')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("Could not inspect the public migration ledger: {error}"))?;
+    if exists == 0 {
+        return Err(
+            "The public schema lineage is present but its migration ledger is missing.".to_string(),
+        );
     }
     Ok(())
 }
@@ -327,143 +249,107 @@ fn apply_migration_range(
 fn apply_transactional_migration(
     connection: &mut Connection,
     migration: &Migration,
-    applied_at: i64,
 ) -> Result<(), String> {
-    let transaction = connection.transaction().map_err(|error| {
-        format!(
-            "Could not begin database migration {}: {error}",
-            migration.version
-        )
-    })?;
-    transaction
-        .execute_batch(migration.sql)
-        .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
-    record_migration(&transaction, migration, applied_at)?;
-    transaction
-        .commit()
-        .map_err(|error| format!("Could not commit migration {}: {error}", migration.version))
-}
-
-fn record_migration(
-    connection: &Connection,
-    migration: &Migration,
-    applied_at: i64,
-) -> Result<(), String> {
-    connection
-        .execute(
-            "INSERT INTO schema_migrations (version, name, checksum, applied_at)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![
-                migration.version,
-                migration.name,
-                migration.checksum,
-                applied_at
-            ],
-        )
-        .map_err(|error| format!("Could not record migration {}: {error}", migration.version))?;
-    connection
-        .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
+    let started = Instant::now();
+    crate::logging::info_target(
+        "database.migration",
+        "database_migration_started",
+        "A public database migration started.",
+        json!({ "version": migration.version, "name": migration.name }),
+    );
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| {
-            format!(
-                "Could not set SQLite user_version for migration {}: {error}",
-                migration.version
-            )
-        })
-}
-
-fn apply_foreign_key_disabled_migration(
-    connection: &mut Connection,
-    migration: &Migration,
-    applied_at: i64,
-) -> Result<(), String> {
-    connection
-        .execute_batch("PRAGMA foreign_keys = OFF;")
-        .map_err(|error| {
-            format!(
-                "Could not disable foreign keys for migration {}: {error}",
-                migration.version
-            )
-        })?;
-
-    let migration_result = (|| {
-        let transaction = connection.transaction().map_err(|error| {
             format!(
                 "Could not begin database migration {}: {error}",
                 migration.version
             )
         })?;
-        transaction
-            .execute_batch(migration.sql)
-            .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
+    transaction
+        .execute_batch(migration.sql)
+        .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
+    let applied_at = unix_time_millis().map_err(|error| error.message)?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?1, ?2, ?3, ?4)",
+            params![migration.version, migration.name, migration.checksum, applied_at],
+        )
+        .map_err(|error| format!("Could not record migration {}: {error}", migration.version))?;
+    transaction
+        .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
+        .map_err(|error| format!("Could not set SQLite user_version: {error}"))?;
+    transaction
+        .commit()
+        .map_err(|error| format!("Could not commit migration {}: {error}", migration.version))?;
+    crate::logging::info_target(
+        "database.migration",
+        "database_migration_completed",
+        "A public database migration completed.",
+        json!({
+            "version": migration.version,
+            "name": migration.name,
+            "durationMs": i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX),
+        }),
+    );
+    Ok(())
+}
 
-        let has_violation = {
-            let mut statement =
-                transaction
-                    .prepare("PRAGMA foreign_key_check")
-                    .map_err(|error| {
-                        format!(
-                            "Could not prepare migration {} foreign-key validation: {error}",
-                            migration.version
-                        )
-                    })?;
-            let mut rows = statement.query([]).map_err(|error| {
-                format!(
-                    "Could not run migration {} foreign-key validation: {error}",
-                    migration.version
-                )
-            })?;
-            rows.next()
-                .map_err(|error| {
-                    format!(
-                        "Could not inspect migration {} foreign-key validation: {error}",
-                        migration.version
-                    )
-                })?
-                .is_some()
-        };
-        if has_violation {
-            return Err(format!(
-                "Migration {} would leave invalid foreign-key references. The database was not modified.",
-                migration.version
-            ));
-        }
-        record_migration(&transaction, migration, applied_at)?;
-        transaction
-            .commit()
-            .map_err(|error| format!("Could not commit migration {}: {error}", migration.version))
-    })();
-
-    let enforcement_result = connection
-        .execute_batch("PRAGMA foreign_keys = ON;")
-        .map_err(|error| {
-            format!(
-                "Could not restore foreign-key enforcement after migration {}: {error}",
-                migration.version
-            )
-        });
-
-    match (migration_result, enforcement_result) {
-        (Err(error), _) => Err(error),
-        (Ok(()), Err(error)) => Err(error),
-        (Ok(()), Ok(())) => Ok(()),
+fn verify_integrity(connection: &Connection) -> Result<(), String> {
+    let foreign_key_violation: Option<(String, i64)> = connection
+        .query_row(
+            "SELECT [table], rowid FROM pragma_foreign_key_check LIMIT 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|error| format!("Could not run SQLite foreign-key validation: {error}"))?;
+    if let Some((table, rowid)) = foreign_key_violation {
+        return Err(format!(
+            "The migrated database contains an invalid foreign-key reference in table {table} at row {rowid}."
+        ));
     }
+    let result: String = connection
+        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+        .map_err(|error| format!("Could not run SQLite integrity_check: {error}"))?;
+    if result != "ok" {
+        return Err(format!("SQLite integrity_check failed: {result}"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct SchemaObject {
+    object_type: String,
+    name: String,
+    sql: String,
+}
+
+#[cfg(test)]
+fn schema_objects(connection: &Connection) -> Result<Vec<SchemaObject>, rusqlite::Error> {
+    let mut statement = connection.prepare(
+        "SELECT type, name, RTRIM(sql, ';') FROM sqlite_schema
+         WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'
+           AND name NOT GLOB 'cards_fts_*'
+         ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'view' THEN 1
+                  WHEN 'index' THEN 2 WHEN 'trigger' THEN 3 ELSE 4 END,
+                  name",
+    )?;
+    statement
+        .query_map([], |row| {
+            Ok(SchemaObject {
+                object_type: row.get(0)?,
+                name: row.get(1)?,
+                sql: row.get::<_, String>(2)?.trim().to_string(),
+            })
+        })?
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    struct ReleasedSchemaFixture {
-        release: &'static str,
-        schema_version: i64,
-        sql: &'static str,
-    }
-
-    const RELEASED_SCHEMA_FIXTURES: &[ReleasedSchemaFixture] = &[ReleasedSchemaFixture {
-        release: "0.1.0",
-        schema_version: 3,
-        sql: include_str!("../tests/fixtures/v0.1.0.sql"),
-    }];
 
     #[test]
     fn bundled_sqlite_version_is_the_audited_release() {
@@ -471,145 +357,94 @@ mod tests {
     }
 
     #[test]
-    fn migrations_and_repairs_are_idempotent_and_reach_latest_schema() {
+    fn public_baseline_is_idempotent_and_matches_manifest() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
                 let before = connection.total_changes();
-                apply_migrations(connection)
+                initialize_connection(connection)
                     .map_err(|error| CommandError::new("migration_error", error))?;
-                apply_required_repairs(connection, RepairPhase::BeforeMigration(13))
-                    .map_err(|error| CommandError::new("repair_error", error))?;
-                apply_required_repairs(connection, RepairPhase::AfterMigration(14))
-                    .map_err(|error| CommandError::new("repair_error", error))?;
                 assert_eq!(before, connection.total_changes());
                 let version: i64 = connection
                     .query_row("PRAGMA user_version", [], |row| row.get(0))
                     .map_err(CommandError::database)?;
                 assert_eq!(version, LATEST_SCHEMA_VERSION);
-                for table in [
-                    "decks",
-                    "notes",
-                    "cards",
-                    "card_schedules",
-                    "review_events",
-                    "practice_session_card_snapshots",
-                    "practice_session_card_tag_snapshots",
-                    "review_event_attributions",
-                    "review_event_tag_attributions",
-                    "data_repairs",
-                    "ai_provider_profiles",
-                    "ai_task_defaults",
-                    "ai_provider_probe_results",
-                    "ai_provider_capabilities",
-                    "ai_document_usage_samples",
-                    "documents",
-                    "document_pages",
-                    "document_generation_jobs",
-                    "document_generation_units",
-                    "document_decks",
-                    "document_semantic_elements",
-                    "document_semantic_chunks",
-                    "document_outlines",
-                    "document_generation_windows",
-                    "document_outline_checkpoints",
-                    "document_generation_checkpoints",
-                    "deck_folders",
-                    "library_organization",
-                ] {
-                    let exists: i64 = connection
-                        .query_row(
-                            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = ?1)",
-                            [table],
-                            |row| row.get(0),
-                        )
-                        .map_err(CommandError::database)?;
-                    assert_eq!(exists, 1, "missing table {table}");
-                }
-                let folder_column_exists: i64 = connection
+                let lineage: String = connection
                     .query_row(
-                        "SELECT EXISTS(
-                             SELECT 1 FROM pragma_table_info('decks') WHERE name = 'folder_id'
-                         )",
+                        "SELECT value FROM schema_metadata WHERE key = 'schema_lineage'",
                         [],
                         |row| row.get(0),
                     )
                     .map_err(CommandError::database)?;
-                assert_eq!(folder_column_exists, 1, "missing decks.folder_id");
-                for trigger in [
-                    "deck_library_revision_after_insert",
-                    "deck_library_revision_after_delete",
-                    "deck_library_revision_after_visibility_change",
-                ] {
-                    let exists: i64 = connection
-                        .query_row(
-                            "SELECT EXISTS(
-                                 SELECT 1 FROM sqlite_master
-                                 WHERE type = 'trigger' AND name = ?1
-                             )",
-                            [trigger],
-                            |row| row.get(0),
-                        )
-                        .map_err(CommandError::database)?;
-                    assert_eq!(exists, 1, "missing trigger {trigger}");
-                }
-
-                let metadata: (String, String) = connection
-                    .query_row(
-                        "SELECT source_format, source_unit_kind FROM documents LIMIT 1",
-                        [],
-                        |row| Ok((row.get(0)?, row.get(1)?)),
-                    )
-                    .optional()
-                    .map_err(CommandError::database)?
-                    .unwrap_or_else(|| ("pdf".to_string(), "page".to_string()));
-                assert_eq!(metadata, ("pdf".to_string(), "page".to_string()));
-
-                for column in [
-                    "extraction_mode",
-                    "ocr_page_count",
-                    "ocr_completed_page_count",
-                    "ocr_mean_confidence",
-                    "ocr_engine",
-                ] {
-                    let exists: i64 = connection
-                        .query_row(
-                            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('documents') WHERE name = ?1)",
-                            [column],
-                            |row| row.get(0),
-                        )
-                        .map_err(CommandError::database)?;
-                    assert_eq!(exists, 1, "missing OCR document column {column}");
-                }
+                assert_eq!(lineage, PUBLIC_SCHEMA_LINEAGE);
+                let manifest: serde_json::Value = serde_json::from_str(include_str!(
+                    "../tests/fixtures/public-baseline-schema.json"
+                ))
+                .map_err(CommandError::serialization)?;
+                let expected = manifest
+                    .get("objects")
+                    .cloned()
+                    .ok_or_else(|| CommandError::new("fixture_error", "Missing schema objects."))?;
+                let actual = serde_json::to_value(
+                    schema_objects(connection).map_err(CommandError::database)?,
+                )
+                .map_err(CommandError::serialization)?;
+                assert_eq!(actual, expected);
                 Ok(())
             })
-            .expect("canonical reopen should not write");
+            .expect("public schema should be stable");
     }
 
     #[test]
-    fn released_schema_upgrades_forward_without_losing_integrity() {
-        let fixture = &RELEASED_SCHEMA_FIXTURES[0];
-        assert_eq!(fixture.release, "0.1.0");
-        assert_eq!(fixture.schema_version, 3);
+    fn pre_public_database_requires_explicit_non_destructive_reset() {
         let mut connection = Connection::open_in_memory().expect("database should open");
         connection
-            .execute_batch(fixture.sql)
-            .expect("release fixture should load");
-        initialize_connection(&mut connection).expect("fixture should upgrade");
-        let version: i64 = connection
-            .query_row("PRAGMA user_version", [], |row| row.get(0))
-            .expect("version should load");
-        assert_eq!(version, LATEST_SCHEMA_VERSION);
-        let foreign_key_errors: i64 = connection
-            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
-                row.get(0)
-            })
-            .expect("foreign key check should run");
-        assert_eq!(foreign_key_errors, 0);
+            .execute_batch(
+                "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, applied_at INTEGER NOT NULL) STRICT;
+                 INSERT INTO schema_migrations VALUES (26, 'deck_folders', 'legacy', 0);
+                 CREATE TABLE decks (id TEXT PRIMARY KEY) STRICT;",
+            )
+            .expect("legacy fixture should load");
+        let error = initialize_connection(&mut connection).expect_err("legacy database must stop");
+        assert!(error.starts_with(PRE_PUBLIC_RESET_PREFIX));
+        let decks_exist: i64 = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name = 'decks')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(decks_exist, 1, "legacy data must not be silently deleted");
     }
 
     #[test]
-    fn provider_adapter_keys_are_not_closed_sqlite_enums() {
+    fn public_migration_checksum_and_future_version_are_enforced() {
+        let mut connection = Connection::open_in_memory().expect("database should open");
+        initialize_connection(&mut connection).expect("baseline should apply");
+        connection
+            .execute(
+                "UPDATE schema_migrations SET checksum = 'modified' WHERE version = 1",
+                [],
+            )
+            .unwrap();
+        assert!(initialize_connection(&mut connection).is_err());
+        connection
+            .execute(
+                "UPDATE schema_migrations SET checksum = ?1 WHERE version = 1",
+                [MIGRATIONS[0].checksum],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (2, 'future', 'future', 0)",
+                [],
+            )
+            .unwrap();
+        assert!(initialize_connection(&mut connection).is_err());
+    }
+
+    #[test]
+    fn openrouter_is_a_valid_extensible_provider_key() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
@@ -617,16 +452,17 @@ mod tests {
                     .execute(
                         "INSERT INTO ai_provider_profiles (
                              id, display_name, normalized_name, provider_kind, base_url,
-                             auth_mode, enabled, allow_insecure_http, request_timeout_ms,
-                             credential_storage, credential_epoch, revision, created_at, updated_at
-                         ) VALUES (?1, 'Future adapter', 'future adapter', 'future_adapter',
-                                   'https://example.invalid/', 'bearer', 1, 0, 60000,
-                                   'session', 0, 1, 1, 1)",
-                        ["0123456789abcdef0123456789abcdef"],
+                             model_id, auth_mode, enabled, allow_insecure_http,
+                             request_timeout_ms, credential_storage, credential_epoch,
+                             revision, created_at, updated_at
+                         ) VALUES (?1, 'OpenRouter', 'openrouter', 'openrouter',
+                                   'https://openrouter.ai/api/v1/', 'openai/example',
+                                   'bearer', 1, 0, 60000, 'session', 0, 1, 0, 0)",
+                        ["a".repeat(32)],
                     )
                     .map_err(CommandError::database)?;
                 Ok(())
             })
-            .expect("future adapter key should fit generalized durable schema");
+            .expect("OpenRouter profile should satisfy the public baseline");
     }
 }

@@ -144,14 +144,19 @@ mod tests {
 
     #[test]
     fn structured_probe_requires_parameter_compatible_private_routing() {
-        let body = structured_probe_body(
-            "openai/example",
-            "echo",
-            json!({ "type": "object" }),
+        let body = structured_probe_body("openai/example", "echo", json!({ "type": "object" }));
+        assert_eq!(
+            body.pointer("/provider/require_parameters"),
+            Some(&json!(true))
         );
-        assert_eq!(body.pointer("/provider/require_parameters"), Some(&json!(true)));
-        assert_eq!(body.pointer("/provider/data_collection"), Some(&json!("deny")));
-        assert_eq!(body.pointer("/response_format/type"), Some(&json!("json_schema")));
+        assert_eq!(
+            body.pointer("/provider/data_collection"),
+            Some(&json!("deny"))
+        );
+        assert_eq!(
+            body.pointer("/response_format/type"),
+            Some(&json!("json_schema"))
+        );
         assert!(body.get("debug").is_none());
         assert!(body.get("plugins").is_none());
     }

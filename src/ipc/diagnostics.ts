@@ -80,13 +80,14 @@ function sanitizeFields(
 }
 
 function normalizedDiagnostic(event: FrontendDiagnosticEvent): FrontendDiagnosticEvent {
+  const fields = sanitizeFields(event.fields);
   return {
     level: event.level,
     target: normalizedTarget(event.target),
     event: normalizedEvent(event.event),
     message: boundedText(event.message, MAX_MESSAGE_CHARS),
-    stack: event.stack ? boundedText(event.stack, MAX_STACK_CHARS) : undefined,
-    fields: sanitizeFields(event.fields),
+    ...(event.stack ? { stack: boundedText(event.stack, MAX_STACK_CHARS) } : {}),
+    ...(fields ? { fields } : {}),
   };
 }
 
@@ -123,7 +124,7 @@ export async function recordWebviewDiagnostic(
       input: {
         event: normalizedEvent(event),
         message: boundedText(error.message, MAX_MESSAGE_CHARS),
-        stack: stack ? boundedText(stack, MAX_STACK_CHARS) : undefined,
+        ...(stack ? { stack: boundedText(stack, MAX_STACK_CHARS) } : {}),
       },
     });
   } catch {

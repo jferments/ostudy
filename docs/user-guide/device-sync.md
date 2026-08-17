@@ -119,3 +119,7 @@ Protocol-v1 invitations from earlier PR #51 test builds are intentionally not co
 Removing a trusted device forgets its sync trust/baseline relationship. It does not delete decks/cards that already exist in your library.
 
 A future transfer with that installation requires a new invitation.
+
+## Android QR scanner backend
+
+Android pairing uses Google Code Scanner. The scanner UI and camera permission are owned by Google Play services; ostudy itself does not request the camera permission. The scanner accepts QR codes only and returns the decoded pairing envelope to ostudy for protocol and cryptographic validation. Devices without a compatible Google Play services scanner module receive an unavailable-scanner message and can use the manual pairing path.

@@ -1006,10 +1006,14 @@ fn validate_provider_configuration(
             "That AI provider is planned but is not available in this ostudy build.",
         ));
     }
-    if provider_kind == ProviderKind::Deepseek && auth_mode != AuthMode::Bearer {
+    if matches!(
+        provider_kind,
+        ProviderKind::Deepseek | ProviderKind::Openrouter
+    ) && auth_mode != AuthMode::Bearer
+    {
         return Err(CommandError::new(
             "invalid_ai_auth_mode",
-            "DeepSeek profiles require bearer-token authentication.",
+            "Built-in cloud provider profiles require bearer-token authentication.",
         ));
     }
     Ok(())

@@ -11,6 +11,7 @@ use crate::task_cancellation::{current_signal, CancellationSignal};
 const CONNECT_TIMEOUT_SECONDS: u64 = 10;
 const MAX_ERROR_BODY_BYTES: usize = 32 * 1024;
 const STREAM_WIRE_MULTIPLIER: usize = 16;
+const OPENROUTER_HOST: &str = "openrouter.ai";
 
 #[derive(Clone)]
 pub struct AiGateway {
@@ -128,12 +129,16 @@ impl AiGateway {
         })?;
         object.insert("stream".to_string(), Value::Bool(true));
 
+        let openrouter = is_openrouter_url(&url);
         let mut request = self
             .streaming_client
             .post(url)
             .header(reqwest::header::ACCEPT, "text/event-stream")
             .header(reqwest::header::CACHE_CONTROL, "no-cache")
             .json(&streaming_body);
+        if openrouter {
+            request = request.header("X-OpenRouter-Title", "ostudy");
+        }
         if let Some(secret) = bearer {
             request = request.bearer_auth(secret);
         }
@@ -246,11 +251,15 @@ impl AiGateway {
         timeout_ms: i64,
         maximum_bytes: usize,
     ) -> Result<Value, AiGatewayError> {
+        let openrouter = is_openrouter_url(&url);
         let mut request = self
             .client
             .request(method, url)
             .timeout(Duration::from_millis(timeout_ms as u64))
             .header(reqwest::header::ACCEPT, "application/json");
+        if openrouter {
+            request = request.header("X-OpenRouter-Title", "ostudy");
+        }
         if let Some(secret) = bearer {
             request = request.bearer_auth(secret);
         }
@@ -447,6 +456,9 @@ impl SseChatAccumulator {
                 None,
             )
         })?;
+        if value.get("error").is_some() {
+            return Err(classify_stream_event_error(&value));
+        }
         let choice = value
             .get("choices")
             .and_then(Value::as_array)
@@ -562,6 +574,64 @@ fn trim_ascii(mut bytes: &[u8]) -> &[u8] {
     bytes
 }
 
+fn is_openrouter_url(url: &Url) -> bool {
+    url.scheme() == "https" && url.host_str() == Some(OPENROUTER_HOST)
+}
+
+fn classify_stream_event_error(value: &Value) -> AiGatewayError {
+    let code = value
+        .pointer("/error/code")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .or_else(|| {
+            value
+                .pointer("/error/code")
+                .and_then(Value::as_i64)
+                .map(|value| value.to_string())
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+    let normalized = code.to_ascii_lowercase();
+    let (safe_code, message, retryable) = match normalized.as_str() {
+        "401" | "unauthorized" => (
+            "ai_authentication_failed",
+            "The AI provider rejected the saved credential.",
+            false,
+        ),
+        "402" | "insufficient_credits" => (
+            "ai_insufficient_credits",
+            "The AI provider account does not have enough credits for this request.",
+            false,
+        ),
+        "429" | "rate_limit_exceeded" => (
+            "ai_rate_limited",
+            "The AI provider rate-limited the request.",
+            true,
+        ),
+        "503" | "no_available_providers" => (
+            "ai_no_compatible_endpoint",
+            "No compatible model endpoint was available for the requested parameters and privacy policy.",
+            true,
+        ),
+        "context_length_exceeded" => (
+            "ai_context_length_exceeded",
+            "The provider rejected the request because it exceeded the model context window.",
+            false,
+        ),
+        _ => (
+            "ai_stream_interrupted",
+            "The AI provider reported an error after streaming began. Partial output was discarded.",
+            true,
+        ),
+    };
+    crate::logging::warn_target(
+        "ai.gateway.streaming",
+        "provider_stream_error",
+        message,
+        json!({ "providerCode": code }),
+    );
+    error(safe_code, message, retryable, None)
+}
+
 fn initial_timeout_error(message: &'static str) -> AiGatewayError {
     error("ai_initial_response_timeout", message, true, None)
 }
@@ -672,6 +742,32 @@ pub fn error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_in_band_stream_errors_after_partial_output() {
+        let mut stream = SseChatAccumulator::new(1_024, 16_384);
+        stream
+            .push_bytes(b"data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n")
+            .expect("first delta should parse");
+        let failure = stream
+            .push_bytes(b"data: {\"error\":{\"code\":\"server_error\",\"message\":\"private upstream detail\"}}\n")
+            .expect_err("embedded stream error should abort the response");
+        assert_eq!(failure.safe.code, "ai_stream_interrupted");
+        assert!(!failure.safe.message.contains("private upstream detail"));
+    }
+
+    #[test]
+    fn recognizes_only_the_fixed_openrouter_https_host_for_attribution() {
+        assert!(is_openrouter_url(
+            &Url::parse("https://openrouter.ai/api/v1/models").unwrap()
+        ));
+        assert!(!is_openrouter_url(
+            &Url::parse("https://openrouter.ai.evil.example/api/v1/models").unwrap()
+        ));
+        assert!(!is_openrouter_url(
+            &Url::parse("http://openrouter.ai/api/v1/models").unwrap()
+        ));
+    }
 
     #[test]
     fn classifies_rate_limits_without_exposing_provider_bodies() {

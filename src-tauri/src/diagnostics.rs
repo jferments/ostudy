@@ -153,9 +153,7 @@ pub fn record_webview_diagnostic_batch(
     if input.events.len() > MAX_BATCH_EVENTS {
         return Err(CommandError::new(
             "diagnostic_batch_too_large",
-            format!(
-                "A diagnostic batch can contain at most {MAX_BATCH_EVENTS} events."
-            ),
+            format!("A diagnostic batch can contain at most {MAX_BATCH_EVENTS} events."),
         ));
     }
     let encoded_size = serde_json::to_vec(&input.events)
@@ -164,9 +162,7 @@ pub fn record_webview_diagnostic_batch(
     if encoded_size > MAX_BATCH_BYTES {
         return Err(CommandError::new(
             "diagnostic_batch_too_large",
-            format!(
-                "A diagnostic batch can contain at most {MAX_BATCH_BYTES} encoded bytes."
-            ),
+            format!("A diagnostic batch can contain at most {MAX_BATCH_BYTES} encoded bytes."),
         ));
     }
     for event in input.events {

@@ -100,7 +100,11 @@ impl FilterConfig {
         let mut default_level = LogLevel::Info;
         let mut default_explicit = false;
         let mut rules = Vec::new();
-        for entry in raw.split(',').map(str::trim).filter(|entry| !entry.is_empty()) {
+        for entry in raw
+            .split(',')
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+        {
             if let Some((target, level)) = entry.rsplit_once('=') {
                 rules.push(FilterRule {
                     target: normalize_target(target)?,
@@ -109,9 +113,8 @@ impl FilterConfig {
                     })?,
                 });
             } else {
-                default_level = LogLevel::parse(entry).ok_or_else(|| {
-                    format!("Unsupported diagnostic filter entry: {entry}")
-                })?;
+                default_level = LogLevel::parse(entry)
+                    .ok_or_else(|| format!("Unsupported diagnostic filter entry: {entry}"))?;
                 default_explicit = true;
             }
         }
@@ -165,7 +168,9 @@ impl WriterState {
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .join(PREVIOUS_DIAGNOSTIC_FILE);
-        let current_bytes = fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0);
+        let current_bytes = fs::metadata(&path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
         Ok(Self {
             writer: Some(open_writer(&path)?),
             path,
@@ -175,9 +180,10 @@ impl WriterState {
     }
 
     fn write_line(&mut self, line: &str) -> std::io::Result<()> {
-        let bytes = u64::try_from(line.len()).unwrap_or(u64::MAX).saturating_add(1);
-        if self.current_bytes > 0
-            && self.current_bytes.saturating_add(bytes) > MAX_DIAGNOSTIC_BYTES
+        let bytes = u64::try_from(line.len())
+            .unwrap_or(u64::MAX)
+            .saturating_add(1);
+        if self.current_bytes > 0 && self.current_bytes.saturating_add(bytes) > MAX_DIAGNOSTIC_BYTES
         {
             self.rotate()?;
         }
@@ -328,7 +334,12 @@ pub fn set_filter(raw: &str) -> Result<DiagnosticConfigSnapshot, String> {
 pub fn enabled(level: LogLevel, target: &str) -> bool {
     FILTER
         .get()
-        .and_then(|filter| filter.read().ok().map(|filter| filter.enabled(level, target)))
+        .and_then(|filter| {
+            filter
+                .read()
+                .ok()
+                .map(|filter| filter.enabled(level, target))
+        })
         .unwrap_or_else(|| FilterConfig::default_filter().enabled(level, target))
 }
 
@@ -540,10 +551,7 @@ fn sanitize_value(value: Value, depth: usize) -> Value {
 }
 
 fn sensitive_key(key: &str) -> bool {
-    let key = key
-        .to_ascii_lowercase()
-        .replace('-', "")
-        .replace('_', "");
+    let key = key.to_ascii_lowercase().replace('-', "").replace('_', "");
     [
         "authorization",
         "apikey",
@@ -679,11 +687,16 @@ mod tests {
         let path = root.join(DIAGNOSTIC_FILE);
         let mut writer = WriterState::open(path.clone()).expect("writer should open");
         writer.current_bytes = MAX_DIAGNOSTIC_BYTES;
-        writer.write_line("{\"event\":\"rotation\"}").expect("write should rotate");
+        writer
+            .write_line("{\"event\":\"rotation\"}")
+            .expect("write should rotate");
         writer.flush();
         assert!(path.exists());
         assert!(root.join(PREVIOUS_DIAGNOSTIC_FILE).exists());
-        assert_eq!(fs::read_dir(&root).expect("directory should read").count(), 2);
+        assert_eq!(
+            fs::read_dir(&root).expect("directory should read").count(),
+            2
+        );
         let _ = fs::remove_dir_all(root);
     }
 }

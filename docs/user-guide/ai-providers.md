@@ -95,3 +95,9 @@ When verification fails, check these in order:
 Use profile verification before starting a long document job. A failed profile test should be fixed at the provider boundary rather than retried repeatedly through document generation.
 
 For implementation details, see [AI and document processing](../architecture/ai-and-document-processing.md).
+
+## OpenRouter
+
+Create an **OpenRouter** profile in Settings → AI/LLM, save the API key in the operating-system credential store, retrieve the account-visible model catalog, select a model, and run the connection/capability test. ostudy uses OpenRouter's fixed official API endpoint.
+
+For document generation, ostudy requests strict JSON Schema output only from parameter-compatible endpoints and sets OpenRouter's provider-data-collection policy to `deny`. It does not enable provider-side prompt/body debugging or context-compression plugins. A stricter policy can reduce endpoint availability; the connection test reports that as a routing/capability failure rather than silently weakening the request.

@@ -76,11 +76,9 @@ impl ProviderKind {
     pub fn default_auth_mode(self) -> AuthMode {
         match self {
             Self::LlamaCpp | Self::Ollama => AuthMode::None,
-            Self::Deepseek
-            | Self::Openrouter
-            | Self::Openai
-            | Self::Gemini
-            | Self::Claude => AuthMode::Bearer,
+            Self::Deepseek | Self::Openrouter | Self::Openai | Self::Gemini | Self::Claude => {
+                AuthMode::Bearer
+            }
         }
     }
 

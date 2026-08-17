@@ -236,6 +236,22 @@ mod tests {
     }
 
     #[test]
+    fn keeps_openrouter_on_the_official_endpoint() {
+        assert!(validate_endpoint(
+            ProviderKind::Openrouter,
+            "https://openrouter.ai/api/v1/",
+            false,
+        )
+        .is_ok());
+        assert!(validate_endpoint(
+            ProviderKind::Openrouter,
+            "https://proxy.example.com/",
+            false,
+        )
+        .is_err());
+    }
+
+    #[test]
     fn keeps_deepseek_on_the_official_endpoint() {
         assert!(
             validate_endpoint(ProviderKind::Deepseek, "https://api.deepseek.com/", false,).is_ok()

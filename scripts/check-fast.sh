@@ -37,7 +37,14 @@ if [[ "${OSTUDY_STATIC_CHECK_PASSED:-0}" == "1" ]] \
   || { ostudy_frontend_prerequisites_present && ostudy_check_stamp_is_current static; }; then
   printf '\n\033[1;32mREUSE Static qualification already passed for this exact source tree.\033[0m\n'
 else
-  bash "$SCRIPT_DIR/check-static.sh" ${OSTUDY_DIAGNOSTICS_ACTIVE:+--log-filter="$OSTUDY_LOG"}
+  STATIC_ARGS=()
+  if [[ "${OSTUDY_DIAGNOSTICS_ACTIVE:-0}" == 1 ]]; then
+    STATIC_ARGS+=("--log-filter=$OSTUDY_LOG")
+  fi
+  if [[ "${OSTUDY_KEEP_FAILURE_ARTIFACTS:-0}" == 1 ]]; then
+    STATIC_ARGS+=(--keep-artifacts)
+  fi
+  bash "$SCRIPT_DIR/check-static.sh" "${STATIC_ARGS[@]}"
 fi
 
 step "Provision audited PDFium runtime"
@@ -86,16 +93,16 @@ cargo test \
   --locked \
   --all-features \
   --lib \
-  database::tests::migrations_and_repairs_are_idempotent_and_reach_latest_schema \
+  database::tests::public_baseline_is_idempotent_and_matches_manifest \
   -- --exact
 
-step "Forward-upgrade integrity contract"
+step "Public migration immutability contract"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
   --locked \
   --all-features \
   --lib \
-  database::tests::released_schema_upgrades_forward_without_losing_integrity \
+  database::tests::public_migration_checksum_and_future_version_are_enforced \
   -- --exact
 
 ostudy_write_check_stamp fast

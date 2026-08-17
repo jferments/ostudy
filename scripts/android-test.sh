@@ -5,17 +5,23 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/android-env.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/diagnostics.sh"
+export OSTUDY_ROOT_DIR="$ROOT_DIR"
+ostudy_parse_diagnostic_args "$@"
 
 RUN_EMULATOR=0
-case "${1:-}" in
-  "") ;;
-  --emulator) RUN_EMULATOR=1 ;;
-  -h|--help)
-    printf 'Usage: ./scripts/android-test.sh [--emulator]\n'
-    exit 0
-    ;;
-  *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
-esac
+for argument in "${OSTUDY_DIAGNOSTIC_REMAINDER[@]}"; do
+  case "$argument" in
+    --emulator) RUN_EMULATOR=1 ;;
+    -h|--help)
+      printf 'Usage: ./scripts/android-test.sh [--emulator] [diagnostic options]\n'
+      ostudy_diagnostic_usage
+      exit 0
+      ;;
+    *) printf 'Unknown option: %s\n' "$argument" >&2; exit 2 ;;
+  esac
+done
 
 cd "$ROOT_DIR"
 printf 'Android parallelism: %s logical workers (Cargo=%s, Vitest=%s, Gradle=%s).\n' \
@@ -29,6 +35,7 @@ fi
 android_write_local_properties
 node ./scripts/verify-android-project.mjs
 node ./scripts/verify-android-plugin-routing.mjs
+node ./scripts/verify-android-qr-scanner.mjs
 node ./scripts/verify-local-fonts.mjs
 pnpm install --frozen-lockfile
 pnpm run verify:fonts
@@ -95,7 +102,15 @@ verify_gradle_contracts() (
     printf 'Android dependency resolution did not select the pinned Kotlin stdlib 1.9.25 line.\n' >&2
     exit 1
   fi
-  printf 'OK   Android Kotlin metadata dependency graph resolves to Kotlin 1.9.25 and coroutines 1.8.1.\n'
+  if ! grep -Eq 'play-services-code-scanner:16\.1\.0' "$dependency_report"; then
+    printf 'Android dependency resolution did not include Google Code Scanner 16.1.0.\n' >&2
+    exit 1
+  fi
+  if grep -Eqi 'journeyapps|zxing-android-embedded' "$dependency_report"; then
+    printf 'The removed ZXing Embedded scanner remains in the Android dependency graph.\n' >&2
+    exit 1
+  fi
+  printf 'OK   Android Kotlin, coroutines, and Google Code Scanner dependency contracts passed.\n'
 
   printf '\nCompile-checking the private Android platform plugin...\n'
   (

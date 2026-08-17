@@ -1,0 +1,633 @@
+{
+  "formatVersion": 1,
+  "schemaLineage": "ostudy-public-v1",
+  "schemaVersion": 1,
+  "baselineSha256": "f00628d96aa9b4b6e5331ed280dcf15f3237eb65c88d98de2d3516f77a3d9750",
+  "objects": [
+    {
+      "objectType": "table",
+      "name": "ai_document_usage_samples",
+      "sql": "CREATE TABLE ai_document_usage_samples (\n    id                       INTEGER PRIMARY KEY,\n    provider_kind            TEXT NOT NULL CHECK(length(provider_kind) BETWEEN 1 AND 80),\n    model_id                 TEXT NOT NULL CHECK(length(model_id) BETWEEN 1 AND 300),\n    task_kind                TEXT NOT NULL CHECK(length(task_kind) BETWEEN 1 AND 80),\n    source_format            TEXT NOT NULL CHECK(length(source_format) BETWEEN 1 AND 40),\n    source_unit_count        INTEGER NOT NULL CHECK(source_unit_count >= 0),\n    source_text_chars        INTEGER NOT NULL CHECK(source_text_chars >= 0),\n    estimated_source_tokens  INTEGER NOT NULL CHECK(estimated_source_tokens >= 0),\n    image_count              INTEGER NOT NULL CHECK(image_count >= 0),\n    max_output_tokens        INTEGER NOT NULL CHECK(max_output_tokens >= 0),\n    prompt_tokens            INTEGER NOT NULL CHECK(prompt_tokens >= 0),\n    completion_tokens        INTEGER NOT NULL CHECK(completion_tokens >= 0),\n    reasoning_tokens         INTEGER NOT NULL CHECK(reasoning_tokens >= 0),\n    created_at               INTEGER NOT NULL\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "ai_profile_operations",
+      "sql": "CREATE TABLE ai_profile_operations (\n    operation_id        TEXT PRIMARY KEY CHECK(length(operation_id) = 32),\n    operation_kind      TEXT NOT NULL\n                        CHECK(operation_kind IN (\n                            'create_profile', 'update_profile',\n                            'delete_profile', 'set_task_default',\n                            'set_credential', 'clear_credential'\n                        )),\n    profile_id          TEXT,\n    committed_at        INTEGER NOT NULL\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "ai_provider_capabilities",
+      "sql": "CREATE TABLE ai_provider_capabilities (\n    profile_id          TEXT NOT NULL\n                        REFERENCES ai_provider_profiles(id) ON DELETE CASCADE,\n    capability_key      TEXT NOT NULL CHECK(length(capability_key) BETWEEN 1 AND 80),\n    status              TEXT NOT NULL\n                        CHECK(status IN ('supported', 'unsupported', 'unknown')),\n    source_kind         TEXT NOT NULL CHECK(source_kind IN ('declared', 'probed')),\n    value_json          TEXT NOT NULL DEFAULT 'null' CHECK(length(value_json) <= 2048),\n    checked_at          INTEGER NOT NULL,\n    PRIMARY KEY(profile_id, capability_key)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "ai_provider_probe_results",
+      "sql": "CREATE TABLE ai_provider_probe_results (\n    profile_id              TEXT PRIMARY KEY\n                            REFERENCES ai_provider_profiles(id) ON DELETE CASCADE,\n    profile_revision        INTEGER NOT NULL CHECK(profile_revision >= 1),\n    credential_epoch        INTEGER NOT NULL CHECK(credential_epoch >= 0),\n    tested_model_id         TEXT NOT NULL CHECK(length(tested_model_id) <= 300),\n    adapter_revision        INTEGER NOT NULL CHECK(adapter_revision >= 1),\n    result_schema_version   INTEGER NOT NULL CHECK(result_schema_version >= 1),\n    overall_status          TEXT NOT NULL\n                            CHECK(overall_status IN ('verified', 'partial', 'failed')),\n    result_json             TEXT NOT NULL CHECK(length(result_json) <= 32768),\n    tested_at               INTEGER NOT NULL\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "ai_provider_profiles",
+      "sql": "CREATE TABLE \"ai_provider_profiles\" (\n    id                      TEXT PRIMARY KEY CHECK(length(id) = 32),\n    display_name            TEXT NOT NULL CHECK(length(trim(display_name)) BETWEEN 1 AND 100),\n    normalized_name         TEXT NOT NULL CHECK(length(normalized_name) BETWEEN 1 AND 100),\n    provider_kind           TEXT NOT NULL CHECK(length(provider_kind) BETWEEN 1 AND 80),\n    base_url                TEXT NOT NULL CHECK(length(base_url) BETWEEN 1 AND 2048),\n    model_id                TEXT NOT NULL DEFAULT '' CHECK(length(model_id) <= 300),\n    auth_mode               TEXT NOT NULL CHECK(auth_mode IN ('none', 'bearer')),\n    enabled                 INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),\n    allow_insecure_http     INTEGER NOT NULL DEFAULT 0 CHECK(allow_insecure_http IN (0, 1)),\n    request_timeout_ms      INTEGER NOT NULL DEFAULT 60000\n                            CHECK(request_timeout_ms BETWEEN 1000 AND 300000),\n    credential_storage      TEXT NOT NULL DEFAULT 'none'\n                            CHECK(credential_storage IN ('none', 'secure', 'session')),\n    credential_epoch        INTEGER NOT NULL DEFAULT 0 CHECK(credential_epoch >= 0),\n    revision                INTEGER NOT NULL DEFAULT 1 CHECK(revision >= 1),\n    created_at              INTEGER NOT NULL,\n    updated_at              INTEGER NOT NULL,\n    deleted_at              INTEGER\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "ai_task_defaults",
+      "sql": "CREATE TABLE ai_task_defaults (\n    task_kind       TEXT PRIMARY KEY CHECK(task_kind IN ('flashcard_generation')),\n    profile_id      TEXT REFERENCES ai_provider_profiles(id) ON DELETE SET NULL,\n    updated_at      INTEGER NOT NULL\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "app_settings",
+      "sql": "CREATE TABLE app_settings (\n    key         TEXT PRIMARY KEY,\n    value_json  TEXT NOT NULL,\n    updated_at  INTEGER NOT NULL\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "asset_drafts",
+      "sql": "CREATE TABLE asset_drafts (\n    id            TEXT PRIMARY KEY CHECK(length(id) = 32),\n    purpose       TEXT NOT NULL CHECK(purpose IN ('card', 'template', 'import')),\n    owner_id      TEXT,\n    created_at    INTEGER NOT NULL,\n    updated_at    INTEGER NOT NULL,\n    expires_at    INTEGER NOT NULL,\n    committed_at  INTEGER,\n    canceled_at   INTEGER, retention_mode TEXT NOT NULL DEFAULT 'ephemeral'\n    CHECK(retention_mode IN ('ephemeral', 'persistent_editor')), editor_draft_id TEXT,\n    CHECK(expires_at >= created_at),\n    CHECK(committed_at IS NULL OR committed_at >= created_at),\n    CHECK(canceled_at IS NULL OR canceled_at >= created_at),\n    CHECK(NOT (committed_at IS NOT NULL AND canceled_at IS NOT NULL))\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "asset_reconciliation_events",
+      "sql": "CREATE TABLE asset_reconciliation_events (\n    id             TEXT PRIMARY KEY CHECK(length(id) = 32),\n    asset_id       TEXT REFERENCES assets(id) ON DELETE SET NULL,\n    action         TEXT NOT NULL CHECK(action IN (\n                       'staged', 'promoted', 'verified', 'missing',\n                       'quarantined', 'restored', 'deleted', 'orphan_quarantined'\n                   )),\n    from_path      TEXT,\n    to_path        TEXT,\n    detail         TEXT NOT NULL DEFAULT '',\n    occurred_at    INTEGER NOT NULL\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "assets",
+      "sql": "CREATE TABLE assets (\n    id                 TEXT PRIMARY KEY CHECK(length(id) = 32),\n    original_filename  TEXT NOT NULL,\n    mime_type          TEXT NOT NULL,\n    byte_size          INTEGER NOT NULL CHECK(byte_size >= 0),\n    relative_path      TEXT NOT NULL UNIQUE,\n    created_at         INTEGER NOT NULL,\n    deleted_at         INTEGER\n, lifecycle_state TEXT NOT NULL DEFAULT 'ready'\n    CHECK(lifecycle_state IN ('staged', 'ready', 'missing', 'quarantined', 'deleted')), draft_id TEXT REFERENCES asset_drafts(id) ON DELETE SET NULL, staged_relative_path TEXT, quarantine_relative_path TEXT, ready_at INTEGER, verified_at INTEGER, updated_at INTEGER NOT NULL DEFAULT 0, lifecycle_reason TEXT NOT NULL DEFAULT '') STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "card_schedules",
+      "sql": "CREATE TABLE card_schedules (\n    card_id             TEXT PRIMARY KEY REFERENCES cards(id) ON DELETE CASCADE,\n    state               INTEGER NOT NULL CHECK(state BETWEEN 0 AND 3),\n    due_at              INTEGER NOT NULL,\n    stability           REAL NOT NULL DEFAULT 0.0 CHECK(stability >= 0.0),\n    difficulty          REAL NOT NULL DEFAULT 0.0 CHECK(difficulty >= 0.0),\n    elapsed_days        INTEGER NOT NULL DEFAULT 0 CHECK(elapsed_days >= 0),\n    scheduled_days      INTEGER NOT NULL DEFAULT 0 CHECK(scheduled_days >= 0),\n    reps                INTEGER NOT NULL DEFAULT 0 CHECK(reps >= 0),\n    lapses              INTEGER NOT NULL DEFAULT 0 CHECK(lapses >= 0),\n    last_review_at      INTEGER NOT NULL,\n    scheduler_name      TEXT NOT NULL,\n    scheduler_version   TEXT NOT NULL,\n    updated_at          INTEGER NOT NULL\n, revision INTEGER NOT NULL DEFAULT 1\n    CHECK(revision >= 1)) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "card_search_fts",
+      "sql": "CREATE VIRTUAL TABLE card_search_fts USING fts5(\n    note_id UNINDEXED,\n    deck_id UNINDEXED,\n    question,\n    answer,\n    tags,\n    tokenize = 'unicode61 remove_diacritics 2'\n)"
+    },
+    {
+      "objectType": "table",
+      "name": "card_template_assets",
+      "sql": "CREATE TABLE card_template_assets (\n    template_id  TEXT NOT NULL REFERENCES card_templates(id) ON DELETE CASCADE,\n    asset_id     TEXT NOT NULL REFERENCES assets(id) ON DELETE RESTRICT,\n    PRIMARY KEY(template_id, asset_id)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "card_template_fields",
+      "sql": "CREATE TABLE card_template_fields (\n    id               TEXT PRIMARY KEY CHECK(length(id) = 32),\n    template_id      TEXT NOT NULL REFERENCES card_templates(id) ON DELETE CASCADE,\n    name             TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 64),\n    normalized_name  TEXT NOT NULL CHECK(length(trim(normalized_name)) BETWEEN 1 AND 64),\n    description      TEXT NOT NULL DEFAULT '' CHECK(length(description) <= 500),\n    position         INTEGER NOT NULL CHECK(position >= 0),\n    UNIQUE(template_id, normalized_name),\n    UNIQUE(template_id, position)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "card_template_rules",
+      "sql": "CREATE TABLE card_template_rules (\n    id             TEXT PRIMARY KEY CHECK(length(id) = 32),\n    template_id    TEXT NOT NULL REFERENCES card_templates(id) ON DELETE CASCADE,\n    name           TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 80),\n    position       INTEGER NOT NULL CHECK(position >= 0), front_doc TEXT, back_doc TEXT,\n    UNIQUE(template_id, name),\n    UNIQUE(template_id, position)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "card_templates",
+      "sql": "CREATE TABLE card_templates (\n    id               TEXT PRIMARY KEY CHECK(length(id) = 32),\n    name             TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 80),\n    normalized_name  TEXT NOT NULL CHECK(length(trim(normalized_name)) BETWEEN 1 AND 80),\n    description      TEXT NOT NULL DEFAULT '' CHECK(length(description) <= 2000),\n    created_at       INTEGER NOT NULL,\n    updated_at       INTEGER NOT NULL,\n    deleted_at       INTEGER,\n    revision         INTEGER NOT NULL DEFAULT 1 CHECK(revision >= 1)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "cards",
+      "sql": "CREATE TABLE \"cards\" (\n    id                TEXT PRIMARY KEY CHECK(length(id) = 32),\n    note_id           TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,\n    deck_id           TEXT NOT NULL REFERENCES decks(id) ON DELETE CASCADE,\n    direction         TEXT NOT NULL DEFAULT 'forward'\n                      CHECK(direction IN ('forward', 'reverse')),\n    template_ordinal  INTEGER NOT NULL DEFAULT 0 CHECK(template_ordinal >= 0),\n    created_at        INTEGER NOT NULL,\n    updated_at        INTEGER NOT NULL,\n    suspended_at      INTEGER,\n    deleted_at        INTEGER,\n    buried_until      INTEGER, archive_suspended_at INTEGER,\n    UNIQUE(note_id, direction, template_ordinal)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "data_repairs",
+      "sql": "CREATE TABLE data_repairs (\n    version       INTEGER PRIMARY KEY,\n    name          TEXT NOT NULL,\n    checksum      TEXT NOT NULL,\n    applied_at    INTEGER NOT NULL,\n    changed_rows  INTEGER NOT NULL DEFAULT 0 CHECK(changed_rows >= 0)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "deck_folders",
+      "sql": "CREATE TABLE deck_folders (\n    id              TEXT PRIMARY KEY NOT NULL,\n    name            TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 120),\n    sort_order      INTEGER NOT NULL DEFAULT 0,\n    created_at      INTEGER NOT NULL,\n    updated_at      INTEGER NOT NULL,\n    revision        INTEGER NOT NULL DEFAULT 1 CHECK(revision >= 1)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "deck_import_operations",
+      "sql": "CREATE TABLE deck_import_operations (\n    id                     TEXT PRIMARY KEY CHECK(length(id) = 32),\n    request_fingerprint    TEXT NOT NULL CHECK(length(request_fingerprint) = 64),\n    package_format         TEXT NOT NULL,\n    package_version        INTEGER NOT NULL CHECK(package_version >= 1),\n    status                 TEXT NOT NULL CHECK(status IN ('pending', 'completed', 'failed')),\n    -- The committed result is immutable operation history rather than live deck\n    -- ownership. Keeping the ID as plain text allows a later deck deletion\n    -- without invalidating an already-completed retry record.\n    result_deck_id         TEXT,\n    result_card_count      INTEGER CHECK(result_card_count IS NULL OR result_card_count >= 0),\n    result_asset_count     INTEGER CHECK(result_asset_count IS NULL OR result_asset_count >= 0),\n    error_code             TEXT,\n    created_at             INTEGER NOT NULL,\n    updated_at             INTEGER NOT NULL,\n    completed_at           INTEGER,\n    CHECK (\n        (status = 'completed'\n         AND result_deck_id IS NOT NULL\n         AND result_card_count IS NOT NULL\n         AND result_asset_count IS NOT NULL\n         AND completed_at IS NOT NULL\n         AND error_code IS NULL)\n        OR\n        (status = 'pending'\n         AND result_deck_id IS NULL\n         AND result_card_count IS NULL\n         AND result_asset_count IS NULL\n         AND completed_at IS NULL\n         AND error_code IS NULL)\n        OR\n        (status = 'failed'\n         AND result_deck_id IS NULL\n         AND result_card_count IS NULL\n         AND result_asset_count IS NULL\n         AND completed_at IS NULL\n         AND error_code IS NOT NULL)\n    )\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "decks",
+      "sql": "CREATE TABLE decks (\n    id              TEXT PRIMARY KEY NOT NULL,\n    name            TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 200),\n    description     TEXT NOT NULL DEFAULT '' CHECK(length(description) <= 2000),\n    sort_order      INTEGER NOT NULL DEFAULT 0,\n    created_at      INTEGER NOT NULL,\n    updated_at      INTEGER NOT NULL,\n    archived_at     INTEGER,\n    deleted_at      INTEGER,\n    revision        INTEGER NOT NULL DEFAULT 1 CHECK(revision >= 1)\n, folder_id TEXT REFERENCES deck_folders(id) ON DELETE SET NULL) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "deletion_operations",
+      "sql": "CREATE TABLE deletion_operations (\n    id             TEXT PRIMARY KEY CHECK(length(id) = 32),\n    entity_kind    TEXT NOT NULL CHECK(entity_kind IN ('deck', 'cards')),\n    subject_label  TEXT NOT NULL,\n    deck_id        TEXT,\n    note_ids_json  TEXT NOT NULL,\n    card_ids_json  TEXT NOT NULL,\n    deleted_at     INTEGER NOT NULL,\n    expires_at     INTEGER NOT NULL,\n    restored_at    INTEGER,\n    finalized_at   INTEGER,\n    created_at     INTEGER NOT NULL,\n    CHECK(expires_at >= deleted_at),\n    CHECK(restored_at IS NULL OR restored_at >= deleted_at),\n    CHECK(finalized_at IS NULL OR finalized_at >= deleted_at),\n    CHECK(NOT (restored_at IS NOT NULL AND finalized_at IS NOT NULL))\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "document_decks",
+      "sql": "CREATE TABLE document_decks (\n    document_id     TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,\n    deck_id         TEXT NOT NULL REFERENCES decks(id) ON DELETE CASCADE,\n    job_id          TEXT NOT NULL REFERENCES document_generation_jobs(id) ON DELETE CASCADE,\n    created_at      INTEGER NOT NULL,\n    PRIMARY KEY(document_id, deck_id)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "document_generation_checkpoints",
+      "sql": "CREATE TABLE document_generation_checkpoints (\n    document_id       TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,\n    contract_key      TEXT NOT NULL CHECK(length(contract_key) = 64),\n    source_sha256     TEXT NOT NULL CHECK(length(source_sha256) = 64),\n    window_index      INTEGER NOT NULL CHECK(window_index >= 0),\n    partition_index   INTEGER NOT NULL CHECK(partition_index >= 0),\n    partition_title   TEXT NOT NULL CHECK(length(partition_title) <= 500),\n    page_start        INTEGER NOT NULL CHECK(page_start >= 1),\n    page_end          INTEGER NOT NULL CHECK(page_end >= page_start),\n    token_estimate    INTEGER NOT NULL CHECK(token_estimate >= 0),\n    cards_json        TEXT NOT NULL CHECK(length(cards_json) <= 2097152),\n    card_count        INTEGER NOT NULL CHECK(card_count >= 0),\n    created_at        INTEGER NOT NULL,\n    updated_at        INTEGER NOT NULL,\n    PRIMARY KEY(document_id, contract_key, window_index)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "document_generation_jobs",
+      "sql": "CREATE TABLE \"document_generation_jobs\" (\n    id                           TEXT PRIMARY KEY CHECK(length(id) = 32),\n    document_id                  TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,\n    profile_id                   TEXT REFERENCES ai_provider_profiles(id) ON DELETE SET NULL,\n    provider_kind                TEXT NOT NULL CHECK(length(provider_kind) BETWEEN 1 AND 80),\n    model_id                     TEXT NOT NULL CHECK(length(model_id) BETWEEN 1 AND 300),\n    profile_revision             INTEGER NOT NULL CHECK(profile_revision >= 1),\n    credential_epoch            INTEGER NOT NULL CHECK(credential_epoch >= 0),\n    network_scope                TEXT NOT NULL CHECK(network_scope IN ('local', 'lan', 'cloud')),\n    state                        TEXT NOT NULL\n                                 CHECK(state IN (\n                                     'queued', 'extracting', 'generating', 'committing',\n                                     'succeeded', 'failed', 'interrupted', 'canceled'\n                                 )),\n    page_count                   INTEGER NOT NULL CHECK(page_count >= 1),\n    processed_page_count         INTEGER NOT NULL DEFAULT 0 CHECK(processed_page_count >= 0),\n    generated_candidate_count    INTEGER NOT NULL DEFAULT 0\n                                 CHECK(generated_candidate_count >= 0),\n    generated_deck_id            TEXT REFERENCES decks(id) ON DELETE SET NULL,\n    safe_error_code              TEXT NOT NULL DEFAULT '' CHECK(length(safe_error_code) <= 80),\n    safe_error_message           TEXT NOT NULL DEFAULT '' CHECK(length(safe_error_message) <= 1000),\n    created_at                   INTEGER NOT NULL,\n    started_at                   INTEGER,\n    updated_at                   INTEGER NOT NULL,\n    completed_at                 INTEGER,\n    CHECK(processed_page_count <= page_count)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "document_generation_units",
+      "sql": "CREATE TABLE document_generation_units (\n    job_id                  TEXT NOT NULL REFERENCES document_generation_jobs(id) ON DELETE CASCADE,\n    page_number             INTEGER NOT NULL CHECK(page_number >= 1),\n    state                   TEXT NOT NULL\n                            CHECK(state IN (\n                                'pending', 'running', 'succeeded', 'skipped', 'failed'\n                            )),\n    cards_json              TEXT NOT NULL DEFAULT '[]' CHECK(length(cards_json) <= 1048576),\n    card_count              INTEGER NOT NULL DEFAULT 0 CHECK(card_count >= 0),\n    safe_error_code         TEXT NOT NULL DEFAULT '' CHECK(length(safe_error_code) <= 80),\n    safe_error_message      TEXT NOT NULL DEFAULT '' CHECK(length(safe_error_message) <= 1000),\n    updated_at              INTEGER NOT NULL,\n    PRIMARY KEY(job_id, page_number)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "document_generation_windows",
+      "sql": "CREATE TABLE document_generation_windows (\n    job_id                TEXT NOT NULL REFERENCES document_generation_jobs(id) ON DELETE CASCADE,\n    window_index          INTEGER NOT NULL CHECK(window_index >= 0),\n    first_chunk_index     INTEGER NOT NULL CHECK(first_chunk_index >= 0),\n    last_chunk_index      INTEGER NOT NULL CHECK(last_chunk_index >= first_chunk_index),\n    page_start            INTEGER NOT NULL CHECK(page_start >= 1),\n    page_end              INTEGER NOT NULL CHECK(page_end >= page_start),\n    page_numbers_json     TEXT NOT NULL CHECK(length(page_numbers_json) <= 32000),\n    token_estimate        INTEGER NOT NULL CHECK(token_estimate >= 0),\n    state                 TEXT NOT NULL\n                          CHECK(state IN (\n                              'pending', 'running', 'succeeded', 'skipped', 'failed'\n                          )),\n    card_count            INTEGER NOT NULL DEFAULT 0 CHECK(card_count >= 0),\n    safe_error_code       TEXT NOT NULL DEFAULT '' CHECK(length(safe_error_code) <= 80),\n    safe_error_message    TEXT NOT NULL DEFAULT '' CHECK(length(safe_error_message) <= 1000),\n    updated_at            INTEGER NOT NULL,\n    PRIMARY KEY(job_id, window_index)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "document_outline_checkpoints",
+      "sql": "CREATE TABLE document_outline_checkpoints (\n    document_id       TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,\n    contract_key      TEXT NOT NULL CHECK(length(contract_key) = 64),\n    source_sha256     TEXT NOT NULL CHECK(length(source_sha256) = 64),\n    window_index      INTEGER NOT NULL CHECK(window_index >= 0),\n    partition_index   INTEGER NOT NULL CHECK(partition_index >= 0),\n    partition_title   TEXT NOT NULL CHECK(length(partition_title) <= 500),\n    page_start        INTEGER NOT NULL CHECK(page_start >= 1),\n    page_end          INTEGER NOT NULL CHECK(page_end >= page_start),\n    token_estimate    INTEGER NOT NULL CHECK(token_estimate >= 0),\n    fragment_json     TEXT NOT NULL CHECK(length(fragment_json) <= 1048576),\n    created_at        INTEGER NOT NULL,\n    updated_at        INTEGER NOT NULL,\n    PRIMARY KEY(document_id, contract_key, window_index)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "document_outlines",
+      "sql": "CREATE TABLE \"document_outlines\" (\n    document_id          TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,\n    schema_version       INTEGER NOT NULL CHECK(schema_version >= 1),\n    prompt_version       INTEGER NOT NULL CHECK(prompt_version >= 1),\n    profile_id           TEXT REFERENCES ai_provider_profiles(id) ON DELETE SET NULL,\n    provider_kind        TEXT NOT NULL CHECK(length(provider_kind) BETWEEN 1 AND 80),\n    model_id             TEXT NOT NULL CHECK(length(model_id) BETWEEN 1 AND 300),\n    profile_revision     INTEGER NOT NULL CHECK(profile_revision >= 1),\n    credential_epoch     INTEGER NOT NULL CHECK(credential_epoch >= 0),\n    extraction_backend   TEXT NOT NULL CHECK(length(extraction_backend) BETWEEN 1 AND 80),\n    outline_json         TEXT NOT NULL CHECK(length(outline_json) <= 2097152),\n    summary_text         TEXT NOT NULL CHECK(length(summary_text) <= 100000),\n    created_at           INTEGER NOT NULL,\n    updated_at           INTEGER NOT NULL\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "document_pages",
+      "sql": "CREATE TABLE document_pages (\n    document_id              TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,\n    page_number              INTEGER NOT NULL CHECK(page_number >= 1),\n    plain_text               TEXT NOT NULL CHECK(length(plain_text) <= 200000),\n    text_sha256              TEXT NOT NULL CHECK(length(text_sha256) = 64),\n    render_relative_path     TEXT NOT NULL UNIQUE\n                             CHECK(length(render_relative_path) BETWEEN 1 AND 1024),\n    render_mime_type         TEXT NOT NULL CHECK(render_mime_type = 'image/png'),\n    render_byte_size         INTEGER NOT NULL CHECK(render_byte_size > 0),\n    render_sha256            TEXT NOT NULL CHECK(length(render_sha256) = 64),\n    created_at               INTEGER NOT NULL,\n    updated_at               INTEGER NOT NULL,\n    PRIMARY KEY(document_id, page_number)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "document_semantic_chunks",
+      "sql": "CREATE TABLE document_semantic_chunks (\n    document_id          TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,\n    chunk_index          INTEGER NOT NULL CHECK(chunk_index >= 0),\n    text                 TEXT NOT NULL CHECK(length(text) <= 1000000),\n    full_text            TEXT NOT NULL CHECK(length(full_text) <= 1100000),\n    page_numbers_json    TEXT NOT NULL CHECK(length(page_numbers_json) <= 32000),\n    bounding_boxes_json  TEXT NOT NULL CHECK(length(bounding_boxes_json) <= 200000),\n    element_types_json   TEXT NOT NULL CHECK(length(element_types_json) <= 32000),\n    heading_context      TEXT CHECK(heading_context IS NULL OR length(heading_context) <= 2000),\n    token_estimate       INTEGER NOT NULL CHECK(token_estimate >= 0),\n    is_oversized         INTEGER NOT NULL CHECK(is_oversized IN (0, 1)),\n    text_sha256          TEXT NOT NULL CHECK(length(text_sha256) = 64),\n    created_at           INTEGER NOT NULL,\n    PRIMARY KEY(document_id, chunk_index)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "document_semantic_elements",
+      "sql": "CREATE TABLE document_semantic_elements (\n    document_id       TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,\n    element_index     INTEGER NOT NULL CHECK(element_index >= 0),\n    page_number       INTEGER NOT NULL CHECK(page_number >= 1),\n    element_type      TEXT NOT NULL\n                      CHECK(element_type IN (\n                          'title', 'paragraph', 'table', 'header', 'footer',\n                          'list_item', 'image', 'code_block', 'key_value'\n                      )),\n    text              TEXT NOT NULL CHECK(length(text) <= 250000),\n    parent_heading    TEXT CHECK(parent_heading IS NULL OR length(parent_heading) <= 1000),\n    heading_path_json TEXT NOT NULL CHECK(length(heading_path_json) <= 16000),\n    bbox_x            REAL NOT NULL,\n    bbox_y            REAL NOT NULL,\n    bbox_width        REAL NOT NULL CHECK(bbox_width >= 0),\n    bbox_height       REAL NOT NULL CHECK(bbox_height >= 0),\n    confidence        REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),\n    font_name         TEXT CHECK(font_name IS NULL OR length(font_name) <= 500),\n    font_size         REAL,\n    is_bold           INTEGER NOT NULL CHECK(is_bold IN (0, 1)),\n    is_italic         INTEGER NOT NULL CHECK(is_italic IN (0, 1)),\n    text_sha256       TEXT NOT NULL CHECK(length(text_sha256) = 64),\n    created_at        INTEGER NOT NULL,\n    PRIMARY KEY(document_id, element_index)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "documents",
+      "sql": "CREATE TABLE documents (\n    id                       TEXT PRIMARY KEY CHECK(length(id) = 32),\n    title                    TEXT NOT NULL\n                             CHECK(length(trim(title)) BETWEEN 1 AND 200),\n    original_filename        TEXT NOT NULL\n                             CHECK(length(trim(original_filename)) BETWEEN 1 AND 255),\n    mime_type                TEXT NOT NULL CHECK(mime_type = 'application/pdf'),\n    byte_size                INTEGER NOT NULL CHECK(byte_size > 0),\n    sha256                   TEXT NOT NULL UNIQUE CHECK(length(sha256) = 64),\n    source_relative_path     TEXT NOT NULL UNIQUE\n                             CHECK(length(source_relative_path) BETWEEN 1 AND 1024),\n    staged_relative_path     TEXT\n                             CHECK(staged_relative_path IS NULL OR\n                                   length(staged_relative_path) BETWEEN 1 AND 1024),\n    lifecycle_state          TEXT NOT NULL\n                             CHECK(lifecycle_state IN (\n                                 'processing', 'ready', 'failed', 'archived'\n                             )),\n    page_count               INTEGER NOT NULL DEFAULT 0 CHECK(page_count >= 0),\n    extracted_page_count     INTEGER NOT NULL DEFAULT 0 CHECK(extracted_page_count >= 0),\n    rendered_page_count      INTEGER NOT NULL DEFAULT 0 CHECK(rendered_page_count >= 0),\n    generated_note_count     INTEGER NOT NULL DEFAULT 0 CHECK(generated_note_count >= 0),\n    generated_card_count     INTEGER NOT NULL DEFAULT 0 CHECK(generated_card_count >= 0),\n    generated_deck_id        TEXT REFERENCES decks(id) ON DELETE SET NULL,\n    safe_error_code          TEXT NOT NULL DEFAULT '' CHECK(length(safe_error_code) <= 80),\n    safe_error_message       TEXT NOT NULL DEFAULT '' CHECK(length(safe_error_message) <= 1000),\n    created_at               INTEGER NOT NULL,\n    updated_at               INTEGER NOT NULL,\n    completed_at             INTEGER,\n    archived_at              INTEGER,\n    revision                 INTEGER NOT NULL DEFAULT 1 CHECK(revision >= 1), extraction_backend TEXT NOT NULL DEFAULT 'legacy'\n    CHECK(length(extraction_backend) BETWEEN 1 AND 80), render_backend TEXT NOT NULL DEFAULT 'legacy'\n    CHECK(length(render_backend) BETWEEN 1 AND 80), semantic_element_count INTEGER NOT NULL DEFAULT 0\n    CHECK(semantic_element_count >= 0), semantic_chunk_count INTEGER NOT NULL DEFAULT 0\n    CHECK(semantic_chunk_count >= 0), outline_state TEXT NOT NULL DEFAULT 'pending'\n    CHECK(outline_state IN ('pending', 'building', 'ready', 'failed')), scale_mode TEXT NOT NULL DEFAULT 'standard'\n    CHECK(scale_mode IN ('standard', 'large')), estimated_source_tokens INTEGER NOT NULL DEFAULT 0\n    CHECK(estimated_source_tokens >= 0), outline_window_count INTEGER NOT NULL DEFAULT 0\n    CHECK(outline_window_count >= 0), outline_completed_window_count INTEGER NOT NULL DEFAULT 0\n    CHECK(outline_completed_window_count >= 0), generation_window_count INTEGER NOT NULL DEFAULT 0\n    CHECK(generation_window_count >= 0), generation_completed_window_count INTEGER NOT NULL DEFAULT 0\n    CHECK(generation_completed_window_count >= 0), source_format TEXT NOT NULL DEFAULT 'pdf'\n    CHECK(length(source_format) BETWEEN 1 AND 40), source_unit_kind TEXT NOT NULL DEFAULT 'page'\n    CHECK(length(source_unit_kind) BETWEEN 1 AND 40), extraction_mode TEXT NOT NULL DEFAULT 'native'\n    CHECK(extraction_mode IN ('native', 'page_text_fallback', 'ocr_fallback')), ocr_page_count INTEGER NOT NULL DEFAULT 0\n    CHECK(ocr_page_count >= 0), ocr_completed_page_count INTEGER NOT NULL DEFAULT 0\n    CHECK(ocr_completed_page_count >= 0), ocr_mean_confidence REAL\n    CHECK(ocr_mean_confidence IS NULL\n          OR (ocr_mean_confidence >= 0.0 AND ocr_mean_confidence <= 1.0)), ocr_engine TEXT NOT NULL DEFAULT ''\n    CHECK(length(ocr_engine) <= 120), processing_started_at INTEGER, processing_duration_ms INTEGER\n    CHECK(processing_duration_ms IS NULL OR processing_duration_ms >= 0), api_token_count INTEGER\n    CHECK(api_token_count IS NULL OR api_token_count >= 0), api_token_usage_complete INTEGER NOT NULL DEFAULT 0\n    CHECK(api_token_usage_complete IN (0, 1)),\n    CHECK(extracted_page_count <= page_count),\n    CHECK(rendered_page_count <= page_count),\n    CHECK((lifecycle_state = 'archived') = (archived_at IS NOT NULL))\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "editor_draft_assets",
+      "sql": "CREATE TABLE editor_draft_assets (\n    draft_id  TEXT NOT NULL REFERENCES editor_drafts(id) ON DELETE CASCADE,\n    asset_id  TEXT NOT NULL REFERENCES assets(id) ON DELETE RESTRICT,\n    PRIMARY KEY(draft_id, asset_id)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "editor_drafts",
+      "sql": "CREATE TABLE editor_drafts (\n    id                      TEXT PRIMARY KEY CHECK(length(id) = 32),\n    open_operation_id       TEXT NOT NULL UNIQUE CHECK(length(open_operation_id) = 32),\n    draft_kind              TEXT NOT NULL CHECK(draft_kind IN (\n                                'card', 'template', 'bulk_cards', 'ai_profile'\n                            )),\n    target_entity_id        TEXT,\n    context_entity_id       TEXT,\n    base_revision           INTEGER CHECK(base_revision IS NULL OR base_revision >= 1),\n    payload_schema_version  INTEGER NOT NULL CHECK(payload_schema_version >= 1),\n    payload_json            TEXT NOT NULL,\n    payload_sha256          TEXT NOT NULL CHECK(length(payload_sha256) = 64),\n    revision                INTEGER NOT NULL DEFAULT 1 CHECK(revision >= 1),\n    state                   TEXT NOT NULL CHECK(state IN (\n                                'active', 'committed', 'discarded', 'conflicted'\n                            )),\n    asset_draft_id          TEXT,\n    created_at              INTEGER NOT NULL,\n    updated_at              INTEGER NOT NULL,\n    last_opened_at          INTEGER NOT NULL,\n    committed_at            INTEGER,\n    discarded_at            INTEGER,\n    conflicted_at           INTEGER,\n    CHECK(NOT (committed_at IS NOT NULL AND discarded_at IS NOT NULL)),\n    CHECK(NOT (committed_at IS NOT NULL AND conflicted_at IS NOT NULL)),\n    CHECK(NOT (discarded_at IS NOT NULL AND conflicted_at IS NOT NULL))\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "library_organization",
+      "sql": "CREATE TABLE library_organization (\n    singleton_id    INTEGER PRIMARY KEY NOT NULL CHECK(singleton_id = 1),\n    revision        INTEGER NOT NULL CHECK(revision >= 1),\n    updated_at      INTEGER NOT NULL\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "note_assets",
+      "sql": "CREATE TABLE note_assets (\n    note_id   TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,\n    asset_id  TEXT NOT NULL REFERENCES assets(id) ON DELETE RESTRICT,\n    side      TEXT NOT NULL CHECK(side IN ('front', 'back')),\n    PRIMARY KEY(note_id, asset_id, side)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "note_tags",
+      "sql": "CREATE TABLE note_tags (\n    note_id  TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,\n    tag_id   TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,\n    PRIMARY KEY(note_id, tag_id)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "notes",
+      "sql": "CREATE TABLE \"notes\" (\n    id                      TEXT PRIMARY KEY CHECK(length(id) = 32),\n    deck_id                 TEXT NOT NULL REFERENCES decks(id) ON DELETE CASCADE,\n    note_type               TEXT NOT NULL DEFAULT 'basic'\n                            CHECK(note_type IN ('basic', 'cloze')),\n    content_format          TEXT NOT NULL DEFAULT 'tiptap-json'\n                            CHECK(content_format = 'tiptap-json'),\n    content_schema_version  INTEGER NOT NULL DEFAULT 1 CHECK(content_schema_version >= 1),\n    front_doc               TEXT NOT NULL,\n    back_doc                TEXT NOT NULL,\n    front_text              TEXT NOT NULL,\n    back_text               TEXT NOT NULL,\n    created_at              INTEGER NOT NULL,\n    updated_at              INTEGER NOT NULL,\n    deleted_at              INTEGER,\n    revision                INTEGER NOT NULL DEFAULT 1 CHECK(revision >= 1),\n    duplicate_hash          TEXT NOT NULL DEFAULT '',\n    reverse_enabled         INTEGER NOT NULL DEFAULT 0 CHECK(reverse_enabled IN (0, 1)),\n    cloze_source            TEXT NOT NULL DEFAULT '',\n    cloze_mode              TEXT NOT NULL DEFAULT 'one_at_a_time'\n                            CHECK(cloze_mode IN ('one_at_a_time', 'all_together'))\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "practice_session_card_snapshots",
+      "sql": "CREATE TABLE practice_session_card_snapshots (\n    session_id                TEXT NOT NULL\n                              REFERENCES practice_sessions(id) ON DELETE CASCADE,\n    card_id                   TEXT NOT NULL CHECK(length(card_id) = 32),\n    note_id                   TEXT NOT NULL CHECK(length(note_id) = 32),\n    note_revision             INTEGER NOT NULL CHECK(note_revision >= 1),\n    owner_deck_id_at_capture  TEXT NOT NULL CHECK(length(owner_deck_id_at_capture) = 32),\n    captured_deck_name        TEXT NOT NULL,\n    direction                 TEXT NOT NULL CHECK(direction IN ('forward', 'reverse')),\n    card_type                 TEXT NOT NULL CHECK(card_type IN ('basic', 'cloze')),\n    card_label                TEXT NOT NULL,\n    presentation_variant      TEXT NOT NULL,\n    front_doc_json            TEXT NOT NULL,\n    back_doc_json             TEXT NOT NULL,\n    front_text                TEXT NOT NULL,\n    back_text                 TEXT NOT NULL,\n    question_excerpt          TEXT NOT NULL,\n    question_text_hash        TEXT NOT NULL CHECK(length(question_text_hash) = 64),\n    question_was_truncated    INTEGER NOT NULL CHECK(question_was_truncated IN (0, 1)),\n    captured_at               INTEGER NOT NULL,\n    PRIMARY KEY(session_id, card_id)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "practice_session_card_tag_snapshots",
+      "sql": "CREATE TABLE practice_session_card_tag_snapshots (\n    session_id  TEXT NOT NULL,\n    card_id     TEXT NOT NULL CHECK(length(card_id) = 32),\n    tag_id      TEXT NOT NULL CHECK(length(tag_id) = 32),\n    tag_name    TEXT NOT NULL,\n    PRIMARY KEY(session_id, card_id, tag_id),\n    FOREIGN KEY(session_id, card_id)\n        REFERENCES practice_session_card_snapshots(session_id, card_id)\n        ON DELETE CASCADE\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "practice_session_cards",
+      "sql": "CREATE TABLE practice_session_cards (\n    session_id   TEXT NOT NULL REFERENCES practice_sessions(id) ON DELETE CASCADE,\n    card_id      TEXT NOT NULL REFERENCES cards(id) ON DELETE RESTRICT,\n    position     INTEGER NOT NULL CHECK(position >= 0),\n    viewed_at    INTEGER,\n    revealed_at  INTEGER, rated_at INTEGER, rating INTEGER\n    CHECK(rating IS NULL OR rating BETWEEN 1 AND 4), response_time_ms INTEGER\n    CHECK(response_time_ms IS NULL OR response_time_ms >= 0), presentation_variant TEXT NOT NULL DEFAULT ''\n    CHECK(length(presentation_variant) <= 64), dismissed_at INTEGER, disposition TEXT\n    CHECK(disposition IS NULL OR disposition IN ('buried', 'suspended')),\n    PRIMARY KEY(session_id, card_id),\n    UNIQUE(session_id, position)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "practice_sessions",
+      "sql": "CREATE TABLE practice_sessions (\n    id                       TEXT PRIMARY KEY CHECK(length(id) = 32),\n    selected_deck_ids_json   TEXT NOT NULL,\n    shuffle                  INTEGER NOT NULL CHECK(shuffle IN (0, 1)),\n    card_count               INTEGER NOT NULL CHECK(card_count >= 0),\n    viewed_count             INTEGER NOT NULL DEFAULT 0 CHECK(viewed_count >= 0),\n    revealed_count           INTEGER NOT NULL DEFAULT 0 CHECK(revealed_count >= 0),\n    started_at               INTEGER NOT NULL,\n    completed_at             INTEGER\n, rated_count INTEGER NOT NULL DEFAULT 0\n    CHECK(rated_count >= 0), correct_count INTEGER NOT NULL DEFAULT 0\n    CHECK(correct_count >= 0), mode TEXT NOT NULL DEFAULT 'scheduled'\n    CHECK(mode IN ('scheduled', 'extra', 'custom')), start_operation_id TEXT\n    CHECK(start_operation_id IS NULL OR length(start_operation_id) = 32), start_request_fingerprint TEXT, selected_tag_ids_json TEXT NOT NULL DEFAULT '[]') STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "prepared_exports",
+      "sql": "CREATE TABLE prepared_exports (\n    id                  TEXT PRIMARY KEY CHECK(length(id) = 32),\n    operation_id        TEXT NOT NULL UNIQUE CHECK(length(operation_id) = 32),\n    purpose             TEXT NOT NULL CHECK(purpose IN ('studydeck', 'library_backup')),\n    suggested_filename  TEXT NOT NULL,\n    media_type          TEXT NOT NULL,\n    byte_size           INTEGER NOT NULL CHECK(byte_size > 0),\n    sha256              TEXT NOT NULL CHECK(length(sha256) = 64),\n    relative_path       TEXT NOT NULL UNIQUE,\n    state               TEXT NOT NULL CHECK(state IN (\n                            'prepared', 'published', 'released', 'failed'\n                        )),\n    summary_json        TEXT NOT NULL,\n    created_at          INTEGER NOT NULL,\n    updated_at          INTEGER NOT NULL,\n    expires_at          INTEGER NOT NULL,\n    published_at        INTEGER,\n    released_at         INTEGER,\n    CHECK(expires_at >= created_at),\n    CHECK(published_at IS NULL OR published_at >= created_at),\n    CHECK(released_at IS NULL OR released_at >= created_at)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "review_event_attributions",
+      "sql": "CREATE TABLE review_event_attributions (\n    review_event_id            TEXT PRIMARY KEY\n                               REFERENCES review_events(id) ON DELETE CASCADE,\n    reviewed_at                INTEGER NOT NULL,\n    review_local_date          TEXT NOT NULL\n                               CHECK(review_local_date GLOB\n                                   '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),\n    time_zone_id               TEXT NOT NULL,\n    utc_offset_minutes         INTEGER NOT NULL CHECK(utc_offset_minutes BETWEEN -1440 AND 1440),\n    card_id                    TEXT NOT NULL CHECK(length(card_id) = 32),\n    note_id                    TEXT NOT NULL CHECK(length(note_id) = 32),\n    note_revision              INTEGER NOT NULL CHECK(note_revision >= 1),\n    owner_deck_id_at_review    TEXT NOT NULL CHECK(length(owner_deck_id_at_review) = 32),\n    captured_deck_name         TEXT NOT NULL,\n    direction                  TEXT NOT NULL CHECK(direction IN ('forward', 'reverse')),\n    card_type                  TEXT NOT NULL CHECK(card_type IN ('basic', 'cloze')),\n    card_label                 TEXT NOT NULL,\n    presentation_variant       TEXT NOT NULL,\n    question_excerpt           TEXT NOT NULL,\n    question_text_hash         TEXT NOT NULL CHECK(length(question_text_hash) = 64),\n    question_was_truncated     INTEGER NOT NULL CHECK(question_was_truncated IN (0, 1)),\n    attribution_source         TEXT NOT NULL\n                               CHECK(attribution_source IN (\n                                   'captured',\n                                   'legacy_current_state_backfill'\n                               ))\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "review_event_tag_attributions",
+      "sql": "CREATE TABLE review_event_tag_attributions (\n    review_event_id  TEXT NOT NULL\n                     REFERENCES review_event_attributions(review_event_id)\n                     ON DELETE CASCADE,\n    tag_id           TEXT NOT NULL CHECK(length(tag_id) = 32),\n    tag_name         TEXT NOT NULL,\n    PRIMARY KEY(review_event_id, tag_id)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "review_events",
+      "sql": "CREATE TABLE review_events (\n    id                      TEXT PRIMARY KEY CHECK(length(id) = 32),\n    submission_id           TEXT NOT NULL UNIQUE CHECK(length(submission_id) = 32),\n    session_id              TEXT REFERENCES practice_sessions(id) ON DELETE SET NULL,\n    card_id                 TEXT NOT NULL REFERENCES cards(id) ON DELETE RESTRICT,\n    reviewed_at             INTEGER NOT NULL,\n    rating                  INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 4),\n    answer_correct          INTEGER NOT NULL CHECK(answer_correct IN (0, 1)),\n    confidence              TEXT NOT NULL\n                            CHECK(confidence IN (\n                                'wrong',\n                                'not_confident',\n                                'somewhat_confident',\n                                'very_confident'\n                            )),\n    response_time_ms        INTEGER NOT NULL\n                            CHECK(response_time_ms BETWEEN 0 AND 86400000),\n    state_before            INTEGER NOT NULL CHECK(state_before BETWEEN 0 AND 3),\n    state_after             INTEGER NOT NULL CHECK(state_after BETWEEN 0 AND 3),\n    due_before              INTEGER NOT NULL,\n    due_after               INTEGER NOT NULL,\n    stability_before        REAL NOT NULL CHECK(stability_before >= 0.0),\n    stability_after         REAL NOT NULL CHECK(stability_after >= 0.0),\n    difficulty_before       REAL NOT NULL CHECK(difficulty_before >= 0.0),\n    difficulty_after        REAL NOT NULL CHECK(difficulty_after >= 0.0),\n    scheduled_days_before   INTEGER NOT NULL CHECK(scheduled_days_before >= 0),\n    scheduled_days_after    INTEGER NOT NULL CHECK(scheduled_days_after >= 0),\n    scheduler_name          TEXT NOT NULL,\n    scheduler_version       TEXT NOT NULL,\n    created_at              INTEGER NOT NULL\n, request_fingerprint TEXT, result_completed INTEGER\n    CHECK(result_completed IS NULL OR result_completed IN (0, 1)), result_rated_count INTEGER\n    CHECK(result_rated_count IS NULL OR result_rated_count >= 0), result_correct_count INTEGER\n    CHECK(result_correct_count IS NULL OR result_correct_count >= 0)) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "schedule_action_events",
+      "sql": "CREATE TABLE schedule_action_events (\n    id                    TEXT PRIMARY KEY CHECK(length(id) = 32),\n    operation_id          TEXT NOT NULL\n                          REFERENCES schedule_action_operations(id) ON DELETE RESTRICT,\n    session_id            TEXT REFERENCES practice_sessions(id) ON DELETE SET NULL,\n    card_id               TEXT NOT NULL REFERENCES cards(id) ON DELETE RESTRICT,\n    action                TEXT NOT NULL CHECK(action IN (\n                              'suspend', 'resume', 'bury', 'unbury',\n                              'reset', 'reschedule'\n                          )),\n    due_before            INTEGER NOT NULL,\n    due_after             INTEGER NOT NULL,\n    state_before          INTEGER NOT NULL CHECK(state_before BETWEEN 0 AND 3),\n    state_after           INTEGER NOT NULL CHECK(state_after BETWEEN 0 AND 3),\n    suspended_before      INTEGER,\n    suspended_after       INTEGER,\n    buried_until_before   INTEGER,\n    buried_until_after    INTEGER,\n    schedule_revision_before INTEGER NOT NULL CHECK(schedule_revision_before >= 1),\n    schedule_revision_after  INTEGER NOT NULL CHECK(schedule_revision_after >= 1),\n    occurred_at           INTEGER NOT NULL,\n    created_at            INTEGER NOT NULL,\n    UNIQUE(operation_id, card_id)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "schedule_action_operations",
+      "sql": "CREATE TABLE schedule_action_operations (\n    id                    TEXT PRIMARY KEY CHECK(length(id) = 32),\n    request_fingerprint   TEXT,\n    session_id            TEXT REFERENCES practice_sessions(id) ON DELETE SET NULL,\n    action                TEXT NOT NULL CHECK(action IN (\n                              'suspend', 'resume', 'bury', 'unbury',\n                              'reset', 'reschedule'\n                          )),\n    due_at                INTEGER,\n    requested_count       INTEGER NOT NULL\n                          CHECK(requested_count BETWEEN 1 AND 10000),\n    changed_count         INTEGER NOT NULL CHECK(changed_count >= 0),\n    unchanged_count       INTEGER NOT NULL CHECK(unchanged_count >= 0),\n    rejected_count        INTEGER NOT NULL CHECK(rejected_count >= 0),\n    occurred_at           INTEGER NOT NULL,\n    created_at            INTEGER NOT NULL, reschedule_intent_json TEXT,\n    CHECK(changed_count + unchanged_count + rejected_count = requested_count),\n    CHECK(\n        (action = 'reschedule' AND due_at IS NOT NULL)\n        OR (action <> 'reschedule' AND due_at IS NULL)\n    )\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "schema_metadata",
+      "sql": "CREATE TABLE schema_metadata (\n    key TEXT PRIMARY KEY,\n    value TEXT NOT NULL\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "schema_migrations",
+      "sql": "CREATE TABLE schema_migrations (\n    version INTEGER PRIMARY KEY,\n    name TEXT NOT NULL,\n    checksum TEXT NOT NULL,\n    applied_at INTEGER NOT NULL\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "staged_external_imports",
+      "sql": "CREATE TABLE staged_external_imports (\n    id              TEXT PRIMARY KEY CHECK(length(id) = 32),\n    operation_id    TEXT NOT NULL UNIQUE CHECK(length(operation_id) = 32),\n    purpose         TEXT NOT NULL CHECK(purpose IN (\n                        'image', 'pdf_document', 'study_content', 'library_backup'\n                    )),\n    detected_kind   TEXT NOT NULL CHECK(detected_kind IN (\n                        'png', 'jpeg', 'gif', 'webp', 'pdf',\n                        'studydeck', 'generated_json', 'ostudybackup'\n                    )),\n    display_name    TEXT NOT NULL,\n    media_type      TEXT NOT NULL,\n    byte_size       INTEGER NOT NULL CHECK(byte_size > 0),\n    sha256          TEXT NOT NULL CHECK(length(sha256) = 64),\n    relative_path   TEXT NOT NULL UNIQUE,\n    state           TEXT NOT NULL CHECK(state IN (\n                        'staging', 'staged', 'consumed', 'released', 'failed'\n                    )),\n    result_json     TEXT NOT NULL DEFAULT '',\n    created_at      INTEGER NOT NULL,\n    updated_at      INTEGER NOT NULL,\n    expires_at      INTEGER NOT NULL,\n    consumed_at     INTEGER,\n    released_at     INTEGER,\n    CHECK(expires_at >= created_at),\n    CHECK(consumed_at IS NULL OR consumed_at >= created_at),\n    CHECK(released_at IS NULL OR released_at >= created_at)\n) STRICT"
+    },
+    {
+      "objectType": "table",
+      "name": "tags",
+      "sql": "CREATE TABLE tags (\n    id               TEXT PRIMARY KEY CHECK(length(id) = 32),\n    name             TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 64),\n    normalized_name  TEXT NOT NULL UNIQUE\n                     CHECK(length(trim(normalized_name)) BETWEEN 1 AND 64),\n    created_at       INTEGER NOT NULL,\n    updated_at       INTEGER NOT NULL\n) STRICT"
+    },
+    {
+      "objectType": "index",
+      "name": "ai_document_usage_samples_model_time_idx",
+      "sql": "CREATE INDEX ai_document_usage_samples_model_time_idx\n    ON ai_document_usage_samples(provider_kind, model_id, created_at DESC)"
+    },
+    {
+      "objectType": "index",
+      "name": "ai_provider_profiles_active_name_idx",
+      "sql": "CREATE UNIQUE INDEX ai_provider_profiles_active_name_idx\n    ON ai_provider_profiles(normalized_name)\n    WHERE deleted_at IS NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "ai_provider_profiles_active_updated_idx",
+      "sql": "CREATE INDEX ai_provider_profiles_active_updated_idx\n    ON ai_provider_profiles(updated_at DESC)\n    WHERE deleted_at IS NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "asset_drafts_editor_draft_idx",
+      "sql": "CREATE UNIQUE INDEX asset_drafts_editor_draft_idx\n    ON asset_drafts(editor_draft_id)\n    WHERE editor_draft_id IS NOT NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "asset_drafts_expiry_idx",
+      "sql": "CREATE INDEX asset_drafts_expiry_idx\n    ON asset_drafts(expires_at)\n    WHERE committed_at IS NULL AND canceled_at IS NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "asset_reconciliation_events_asset_time_idx",
+      "sql": "CREATE INDEX asset_reconciliation_events_asset_time_idx\n    ON asset_reconciliation_events(asset_id, occurred_at DESC)"
+    },
+    {
+      "objectType": "index",
+      "name": "assets_draft_idx",
+      "sql": "CREATE INDEX assets_draft_idx\n    ON assets(draft_id)\n    WHERE draft_id IS NOT NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "assets_lifecycle_state_idx",
+      "sql": "CREATE INDEX assets_lifecycle_state_idx\n    ON assets(lifecycle_state, updated_at)"
+    },
+    {
+      "objectType": "index",
+      "name": "assets_quarantine_path_idx",
+      "sql": "CREATE UNIQUE INDEX assets_quarantine_path_idx\n    ON assets(quarantine_relative_path)\n    WHERE quarantine_relative_path IS NOT NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "assets_staged_path_idx",
+      "sql": "CREATE UNIQUE INDEX assets_staged_path_idx\n    ON assets(staged_relative_path)\n    WHERE staged_relative_path IS NOT NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "card_schedules_due_idx",
+      "sql": "CREATE INDEX card_schedules_due_idx\n    ON card_schedules(due_at, state)"
+    },
+    {
+      "objectType": "index",
+      "name": "card_template_assets_asset_idx",
+      "sql": "CREATE INDEX card_template_assets_asset_idx\n    ON card_template_assets(asset_id)"
+    },
+    {
+      "objectType": "index",
+      "name": "card_template_fields_template_idx",
+      "sql": "CREATE INDEX card_template_fields_template_idx\n    ON card_template_fields(template_id, position)"
+    },
+    {
+      "objectType": "index",
+      "name": "card_template_rules_template_idx",
+      "sql": "CREATE INDEX card_template_rules_template_idx\n    ON card_template_rules(template_id, position)"
+    },
+    {
+      "objectType": "index",
+      "name": "card_templates_active_name_idx",
+      "sql": "CREATE UNIQUE INDEX card_templates_active_name_idx\n    ON card_templates(normalized_name)\n    WHERE deleted_at IS NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "cards_buried_until_idx",
+      "sql": "CREATE INDEX cards_buried_until_idx\n    ON cards(buried_until)\n    WHERE buried_until IS NOT NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "cards_deck_active_idx",
+      "sql": "CREATE INDEX cards_deck_active_idx\n    ON cards(deck_id, updated_at DESC)\n    WHERE deleted_at IS NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "cards_studyability_idx",
+      "sql": "CREATE INDEX cards_studyability_idx\n    ON cards(deck_id, suspended_at, archive_suspended_at, buried_until, id)\n    WHERE deleted_at IS NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "deck_folders_sort",
+      "sql": "CREATE INDEX deck_folders_sort\n    ON deck_folders(sort_order, name COLLATE NOCASE, created_at)"
+    },
+    {
+      "objectType": "index",
+      "name": "deck_import_operations_status_idx",
+      "sql": "CREATE INDEX deck_import_operations_status_idx\n    ON deck_import_operations(status, updated_at)"
+    },
+    {
+      "objectType": "index",
+      "name": "decks_active_sort",
+      "sql": "CREATE INDEX decks_active_sort\n    ON decks(deleted_at, archived_at, sort_order, name COLLATE NOCASE)"
+    },
+    {
+      "objectType": "index",
+      "name": "decks_folder_sort",
+      "sql": "CREATE INDEX decks_folder_sort\n    ON decks(deleted_at, archived_at, folder_id, sort_order, name COLLATE NOCASE)"
+    },
+    {
+      "objectType": "index",
+      "name": "deletion_operations_expiry_idx",
+      "sql": "CREATE INDEX deletion_operations_expiry_idx\n    ON deletion_operations(expires_at)\n    WHERE restored_at IS NULL AND finalized_at IS NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "document_decks_deck_idx",
+      "sql": "CREATE INDEX document_decks_deck_idx ON document_decks(deck_id)"
+    },
+    {
+      "objectType": "index",
+      "name": "document_generation_checkpoints_order_idx",
+      "sql": "CREATE INDEX document_generation_checkpoints_order_idx\n    ON document_generation_checkpoints(document_id, contract_key, window_index)"
+    },
+    {
+      "objectType": "index",
+      "name": "document_generation_jobs_active_idx",
+      "sql": "CREATE INDEX document_generation_jobs_active_idx\n    ON document_generation_jobs(state, updated_at)\n    WHERE state IN ('queued', 'extracting', 'generating', 'committing', 'interrupted')"
+    },
+    {
+      "objectType": "index",
+      "name": "document_generation_jobs_document_time_idx",
+      "sql": "CREATE INDEX document_generation_jobs_document_time_idx\n    ON document_generation_jobs(document_id, created_at DESC)"
+    },
+    {
+      "objectType": "index",
+      "name": "document_generation_units_state_idx",
+      "sql": "CREATE INDEX document_generation_units_state_idx\n    ON document_generation_units(job_id, state, page_number)"
+    },
+    {
+      "objectType": "index",
+      "name": "document_generation_windows_state_idx",
+      "sql": "CREATE INDEX document_generation_windows_state_idx\n    ON document_generation_windows(job_id, state, window_index)"
+    },
+    {
+      "objectType": "index",
+      "name": "document_outline_checkpoints_order_idx",
+      "sql": "CREATE INDEX document_outline_checkpoints_order_idx\n    ON document_outline_checkpoints(document_id, contract_key, window_index)"
+    },
+    {
+      "objectType": "index",
+      "name": "document_pages_document_idx",
+      "sql": "CREATE INDEX document_pages_document_idx\n    ON document_pages(document_id, page_number)"
+    },
+    {
+      "objectType": "index",
+      "name": "document_semantic_chunks_pages_idx",
+      "sql": "CREATE INDEX document_semantic_chunks_pages_idx\n    ON document_semantic_chunks(document_id, chunk_index)"
+    },
+    {
+      "objectType": "index",
+      "name": "document_semantic_elements_page_idx",
+      "sql": "CREATE INDEX document_semantic_elements_page_idx\n    ON document_semantic_elements(document_id, page_number, element_index)"
+    },
+    {
+      "objectType": "index",
+      "name": "document_semantic_elements_type_idx",
+      "sql": "CREATE INDEX document_semantic_elements_type_idx\n    ON document_semantic_elements(document_id, element_type, page_number)"
+    },
+    {
+      "objectType": "index",
+      "name": "documents_active_updated_idx",
+      "sql": "CREATE INDEX documents_active_updated_idx\n    ON documents(updated_at DESC, id)\n    WHERE archived_at IS NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "documents_archived_updated_idx",
+      "sql": "CREATE INDEX documents_archived_updated_idx\n    ON documents(updated_at DESC, id)\n    WHERE archived_at IS NOT NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "documents_generated_deck_idx",
+      "sql": "CREATE INDEX documents_generated_deck_idx\n    ON documents(generated_deck_id)\n    WHERE generated_deck_id IS NOT NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "editor_draft_assets_asset_idx",
+      "sql": "CREATE INDEX editor_draft_assets_asset_idx\n    ON editor_draft_assets(asset_id)"
+    },
+    {
+      "objectType": "index",
+      "name": "editor_drafts_active_context_idx",
+      "sql": "CREATE INDEX editor_drafts_active_context_idx\n    ON editor_drafts(draft_kind, context_entity_id, updated_at DESC)\n    WHERE state = 'active'"
+    },
+    {
+      "objectType": "index",
+      "name": "editor_drafts_active_target_idx",
+      "sql": "CREATE UNIQUE INDEX editor_drafts_active_target_idx\n    ON editor_drafts(draft_kind, target_entity_id)\n    WHERE state = 'active' AND target_entity_id IS NOT NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "editor_drafts_state_updated_idx",
+      "sql": "CREATE INDEX editor_drafts_state_updated_idx\n    ON editor_drafts(state, updated_at DESC)"
+    },
+    {
+      "objectType": "index",
+      "name": "note_assets_asset_idx",
+      "sql": "CREATE INDEX note_assets_asset_idx ON note_assets(asset_id)"
+    },
+    {
+      "objectType": "index",
+      "name": "note_tags_tag_idx",
+      "sql": "CREATE INDEX note_tags_tag_idx ON note_tags(tag_id, note_id)"
+    },
+    {
+      "objectType": "index",
+      "name": "notes_deck_active_idx",
+      "sql": "CREATE INDEX notes_deck_active_idx\n    ON notes(deck_id, updated_at DESC)\n    WHERE deleted_at IS NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "notes_deck_duplicate_idx",
+      "sql": "CREATE INDEX notes_deck_duplicate_idx\n    ON notes(deck_id, duplicate_hash)\n    WHERE deleted_at IS NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "practice_session_card_snapshots_session_position_idx",
+      "sql": "CREATE INDEX practice_session_card_snapshots_session_position_idx\n    ON practice_session_card_snapshots(session_id, card_id)"
+    },
+    {
+      "objectType": "index",
+      "name": "practice_session_card_tag_snapshots_tag_idx",
+      "sql": "CREATE INDEX practice_session_card_tag_snapshots_tag_idx\n    ON practice_session_card_tag_snapshots(tag_id, session_id, card_id)"
+    },
+    {
+      "objectType": "index",
+      "name": "practice_sessions_start_operation_idx",
+      "sql": "CREATE UNIQUE INDEX practice_sessions_start_operation_idx\n    ON practice_sessions(start_operation_id)\n    WHERE start_operation_id IS NOT NULL"
+    },
+    {
+      "objectType": "index",
+      "name": "practice_sessions_started_idx",
+      "sql": "CREATE INDEX practice_sessions_started_idx\n    ON practice_sessions(started_at DESC)"
+    },
+    {
+      "objectType": "index",
+      "name": "prepared_exports_state_expiry_idx",
+      "sql": "CREATE INDEX prepared_exports_state_expiry_idx\n    ON prepared_exports(state, expires_at)"
+    },
+    {
+      "objectType": "index",
+      "name": "review_event_attributions_capture_deck_idx",
+      "sql": "CREATE INDEX review_event_attributions_capture_deck_idx\n    ON review_event_attributions(owner_deck_id_at_review, review_local_date, reviewed_at DESC)"
+    },
+    {
+      "objectType": "index",
+      "name": "review_event_attributions_card_date_idx",
+      "sql": "CREATE INDEX review_event_attributions_card_date_idx\n    ON review_event_attributions(card_id, review_local_date, reviewed_at DESC)"
+    },
+    {
+      "objectType": "index",
+      "name": "review_event_attributions_local_date_idx",
+      "sql": "CREATE INDEX review_event_attributions_local_date_idx\n    ON review_event_attributions(review_local_date, reviewed_at DESC, review_event_id)"
+    },
+    {
+      "objectType": "index",
+      "name": "review_event_tag_attributions_tag_idx",
+      "sql": "CREATE INDEX review_event_tag_attributions_tag_idx\n    ON review_event_tag_attributions(tag_id, review_event_id)"
+    },
+    {
+      "objectType": "index",
+      "name": "review_events_card_reviewed_created_idx",
+      "sql": "CREATE INDEX review_events_card_reviewed_created_idx\n    ON review_events(card_id, reviewed_at DESC, created_at DESC, id DESC)"
+    },
+    {
+      "objectType": "index",
+      "name": "review_events_card_reviewed_idx",
+      "sql": "CREATE INDEX review_events_card_reviewed_idx\n    ON review_events(card_id, reviewed_at DESC)"
+    },
+    {
+      "objectType": "index",
+      "name": "review_events_reviewed_idx",
+      "sql": "CREATE INDEX review_events_reviewed_idx\n    ON review_events(reviewed_at DESC)"
+    },
+    {
+      "objectType": "index",
+      "name": "schedule_action_events_card_time_idx",
+      "sql": "CREATE INDEX schedule_action_events_card_time_idx\n    ON schedule_action_events(card_id, occurred_at DESC)"
+    },
+    {
+      "objectType": "index",
+      "name": "schedule_action_events_operation_idx",
+      "sql": "CREATE INDEX schedule_action_events_operation_idx\n    ON schedule_action_events(operation_id)"
+    },
+    {
+      "objectType": "index",
+      "name": "schedule_action_operations_time_idx",
+      "sql": "CREATE INDEX schedule_action_operations_time_idx\n    ON schedule_action_operations(occurred_at DESC)"
+    },
+    {
+      "objectType": "index",
+      "name": "staged_external_imports_state_expiry_idx",
+      "sql": "CREATE INDEX staged_external_imports_state_expiry_idx\n    ON staged_external_imports(state, expires_at)"
+    },
+    {
+      "objectType": "trigger",
+      "name": "deck_library_revision_after_delete",
+      "sql": "CREATE TRIGGER deck_library_revision_after_delete\nAFTER DELETE ON decks\nBEGIN\n    UPDATE library_organization\n    SET revision = revision + 1,\n        updated_at = MAX(updated_at, OLD.updated_at)\n    WHERE singleton_id = 1;\nEND"
+    },
+    {
+      "objectType": "trigger",
+      "name": "deck_library_revision_after_insert",
+      "sql": "CREATE TRIGGER deck_library_revision_after_insert\nAFTER INSERT ON decks\nBEGIN\n    UPDATE library_organization\n    SET revision = revision + 1,\n        updated_at = MAX(updated_at, NEW.updated_at)\n    WHERE singleton_id = 1;\nEND"
+    },
+    {
+      "objectType": "trigger",
+      "name": "deck_library_revision_after_visibility_change",
+      "sql": "CREATE TRIGGER deck_library_revision_after_visibility_change\nAFTER UPDATE OF deleted_at, archived_at ON decks\nWHEN OLD.deleted_at IS NOT NEW.deleted_at\n  OR OLD.archived_at IS NOT NEW.archived_at\nBEGIN\n    UPDATE library_organization\n    SET revision = revision + 1,\n        updated_at = MAX(updated_at, NEW.updated_at)\n    WHERE singleton_id = 1;\nEND"
+    },
+    {
+      "objectType": "trigger",
+      "name": "note_tags_search_after_delete",
+      "sql": "CREATE TRIGGER note_tags_search_after_delete\nAFTER DELETE ON note_tags\nBEGIN\n    UPDATE card_search_fts\n    SET tags = COALESCE((\n        SELECT group_concat(t.name, ' ')\n        FROM note_tags nt\n        JOIN tags t ON t.id = nt.tag_id\n        WHERE nt.note_id = OLD.note_id\n    ), '')\n    WHERE rowid = (SELECT rowid FROM notes WHERE id = OLD.note_id);\nEND"
+    },
+    {
+      "objectType": "trigger",
+      "name": "note_tags_search_after_insert",
+      "sql": "CREATE TRIGGER note_tags_search_after_insert\nAFTER INSERT ON note_tags\nBEGIN\n    UPDATE card_search_fts\n    SET tags = COALESCE((\n        SELECT group_concat(t.name, ' ')\n        FROM note_tags nt\n        JOIN tags t ON t.id = nt.tag_id\n        WHERE nt.note_id = NEW.note_id\n    ), '')\n    WHERE rowid = (SELECT rowid FROM notes WHERE id = NEW.note_id);\nEND"
+    },
+    {
+      "objectType": "trigger",
+      "name": "notes_search_after_delete",
+      "sql": "CREATE TRIGGER notes_search_after_delete\nAFTER DELETE ON notes\nBEGIN\n    DELETE FROM card_search_fts WHERE rowid = OLD.rowid;\nEND"
+    },
+    {
+      "objectType": "trigger",
+      "name": "notes_search_after_insert",
+      "sql": "CREATE TRIGGER notes_search_after_insert\nAFTER INSERT ON notes\nWHEN NEW.deleted_at IS NULL\nBEGIN\n    INSERT INTO card_search_fts(rowid, note_id, deck_id, question, answer, tags)\n    VALUES (NEW.rowid, NEW.id, NEW.deck_id, NEW.front_text, NEW.back_text, '');\nEND"
+    },
+    {
+      "objectType": "trigger",
+      "name": "notes_search_after_update",
+      "sql": "CREATE TRIGGER notes_search_after_update\nAFTER UPDATE OF deck_id, front_text, back_text, deleted_at ON notes\nBEGIN\n    DELETE FROM card_search_fts WHERE rowid = OLD.rowid;\n    INSERT INTO card_search_fts(rowid, note_id, deck_id, question, answer, tags)\n    SELECT\n        NEW.rowid,\n        NEW.id,\n        NEW.deck_id,\n        NEW.front_text,\n        NEW.back_text,\n        COALESCE((\n            SELECT group_concat(t.name, ' ')\n            FROM note_tags nt\n            JOIN tags t ON t.id = nt.tag_id\n            WHERE nt.note_id = NEW.id\n        ), '')\n    WHERE NEW.deleted_at IS NULL\n      AND EXISTS (\n          SELECT 1\n          FROM decks d\n          WHERE d.id = NEW.deck_id\n            AND d.deleted_at IS NULL\n            AND d.archived_at IS NULL\n      );\nEND"
+    },
+    {
+      "objectType": "trigger",
+      "name": "tags_search_after_update",
+      "sql": "CREATE TRIGGER tags_search_after_update\nAFTER UPDATE OF name ON tags\nBEGIN\n    UPDATE card_search_fts\n    SET tags = COALESCE((\n        SELECT group_concat(t.name, ' ')\n        FROM note_tags nt\n        JOIN tags t ON t.id = nt.tag_id\n        WHERE nt.note_id = card_search_fts.note_id\n    ), '')\n    WHERE note_id IN (\n        SELECT note_id FROM note_tags WHERE tag_id = NEW.id\n    );\nEND"
+    },
+    {
+      "objectType": "trigger",
+      "name": "template_rules_canonical_docs_before_insert",
+      "sql": "CREATE TRIGGER template_rules_canonical_docs_before_insert\nBEFORE INSERT ON card_template_rules\nWHEN NEW.front_doc IS NULL OR NEW.back_doc IS NULL\nBEGIN\n    SELECT RAISE(ABORT, 'template layouts are required');\nEND"
+    },
+    {
+      "objectType": "trigger",
+      "name": "template_rules_canonical_docs_before_update",
+      "sql": "CREATE TRIGGER template_rules_canonical_docs_before_update\nBEFORE UPDATE OF front_doc, back_doc ON card_template_rules\nWHEN NEW.front_doc IS NULL OR NEW.back_doc IS NULL\nBEGIN\n    SELECT RAISE(ABORT, 'template layouts are required');\nEND"
+    }
+  ]
+}

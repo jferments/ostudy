@@ -1355,7 +1355,7 @@ fn apply_transactional_migration(
 fn verify_integrity(connection: &Connection) -> Result<(), String> {{
     let foreign_key_violation: Option<(String, i64)> = connection
         .query_row(
-            "SELECT \"table\", rowid FROM pragma_foreign_key_check LIMIT 1",
+            "SELECT [table], rowid FROM pragma_foreign_key_check LIMIT 1",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )

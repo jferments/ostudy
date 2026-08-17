@@ -97,6 +97,7 @@ static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    logging::install_panic_hook();
     let builder = tauri::Builder::default()
         .register_uri_scheme_protocol("ostudy-asset", asset_protocol::respond)
         .plugin(tauri_plugin_ostudy_platform::init());
@@ -105,7 +106,7 @@ pub fn run() {
         .plugin(tauri_plugin_ostudy_platform::init_documents())
         .plugin(tauri_plugin_ostudy_platform::init_qr());
 
-    builder
+    let result = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -172,16 +173,18 @@ pub fn run() {
                 .transition(platform::LifecyclePhase::Foreground);
             let _ = app.emit("ostudy-lifecycle", lifecycle);
 
-            logging::info(
+            logging::info_target(
+                "app.startup",
                 "application_started",
-                format!(
-                    "data_directory={} database={} diagnostic_log={} asset_reconciliation=complete document_reconciliation=complete ai_gateway=ready pdf_extraction={} pdf_renderer={}",
-                    paths.app_data_dir().display(),
-                    paths.database_path().display(),
-                    logging::diagnostic_log_path(paths.app_data_dir()).display(),
-                    pdf_backend::active_backend_id(),
-                    pdf_render_backend::active_backend_id()
-                ),
+                "ostudy completed durable startup and reconciliation.",
+                serde_json::json!({
+                    "databaseFile": "library.sqlite3",
+                    "assetReconciliation": "complete",
+                    "documentReconciliation": "complete",
+                    "aiGateway": "ready",
+                    "pdfExtraction": pdf_backend::active_backend_id(),
+                    "pdfRenderer": pdf_render_backend::active_backend_id(),
+                }),
             );
             Ok(())
         })
@@ -269,6 +272,10 @@ pub fn run() {
             assets::import_image,
             deletion::undo_deletion,
             diagnostics::record_webview_diagnostic,
+            diagnostics::record_webview_diagnostic_batch,
+            diagnostics::get_diagnostic_configuration,
+            diagnostics::set_diagnostic_filter,
+            diagnostics::flush_diagnostics,
             settings::get_settings,
             settings::save_settings,
             settings::get_app_info,
@@ -337,6 +344,7 @@ pub fn run() {
             studydeck::prepare_deck_export,
             studydeck::import_deck
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running ostudy");
+        .run(tauri::generate_context!());
+    logging::shutdown();
+    result.expect("error while running ostudy");
 }

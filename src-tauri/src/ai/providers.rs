@@ -12,6 +12,10 @@ use super::{
     profiles::ProfileSnapshot,
 };
 
+pub(crate) fn openrouter_provider_preferences(require_parameters: bool) -> Value {
+    openrouter::provider_preferences(require_parameters)
+}
+
 const DEFAULT_MAX_MODEL_LIST_BYTES: usize = 512 * 1024;
 const DEFAULT_MAX_MODELS: usize = 500;
 const MAX_COMPLETION_BYTES: usize = 256 * 1024;
@@ -93,9 +97,7 @@ impl ProviderAdapter {
     fn model_limits(self) -> (usize, usize) {
         match self {
             Self::Openrouter => (openrouter::MAX_MODEL_LIST_BYTES, openrouter::MAX_MODELS),
-            Self::LlamaCpp | Self::Deepseek => {
-                (DEFAULT_MAX_MODEL_LIST_BYTES, DEFAULT_MAX_MODELS)
-            }
+            Self::LlamaCpp | Self::Deepseek => (DEFAULT_MAX_MODEL_LIST_BYTES, DEFAULT_MAX_MODELS),
         }
     }
 
@@ -122,12 +124,7 @@ impl ProviderAdapter {
         }
     }
 
-    fn structured_probe_body(
-        self,
-        profile: &ProfileSnapshot,
-        echo: &str,
-        schema: Value,
-    ) -> Value {
+    fn structured_probe_body(self, profile: &ProfileSnapshot, echo: &str, schema: Value) -> Value {
         match self {
             Self::LlamaCpp => json!({
                 "model": profile.model_id,
@@ -178,9 +175,7 @@ impl ProviderAdapter {
                 "thinking": { "type": "disabled" },
                 "response_format": { "type": "json_object" }
             }),
-            Self::Openrouter => {
-                openrouter::structured_probe_body(&profile.model_id, echo, schema)
-            }
+            Self::Openrouter => openrouter::structured_probe_body(&profile.model_id, echo, schema),
         }
     }
 }
@@ -203,9 +198,34 @@ pub async fn list_models(
             "maximumModels": maximum_models,
         }),
     );
-    let value = gateway
+    let value = match gateway
         .get_json(url, bearer, profile.request_timeout_ms, maximum_bytes)
-        .await?;
+        .await
+    {
+        Ok(value) => value,
+        Err(error_value)
+            if adapter == ProviderAdapter::Openrouter
+                && error_value.safe.code == "ai_http_not_found" =>
+        {
+            crate::logging::warn_target(
+                "ai.provider.openrouter",
+                "openrouter_user_model_catalog_unavailable",
+                "The account-filtered OpenRouter model catalog was unavailable; ostudy is using the public catalog for this refresh.",
+                json!({}),
+            );
+            let public_url =
+                join_endpoint(&profile.base_url, "models").map_err(command_to_gateway)?;
+            gateway
+                .get_json(
+                    public_url,
+                    bearer,
+                    profile.request_timeout_ms,
+                    maximum_bytes,
+                )
+                .await?
+        }
+        Err(error_value) => return Err(error_value),
+    };
     let models = parse_model_list(&value, adapter, maximum_models)?;
     crate::logging::debug_target(
         "ai.provider",
@@ -332,7 +352,7 @@ async fn send_completion(
         "A bounded provider capability probe started.",
         json!({
             "providerKind": profile.provider_kind.as_str(),
-            "modelId": profile.model_id,
+            "modelId": profile.model_id.as_str(),
         }),
     );
     let value = gateway
@@ -351,7 +371,7 @@ async fn send_completion(
         "The bounded provider capability probe completed.",
         json!({
             "providerKind": profile.provider_kind.as_str(),
-            "finishReason": outcome.finish_reason,
+            "finishReason": outcome.finish_reason.as_deref(),
             "promptTokens": outcome.prompt_tokens,
             "completionTokens": outcome.completion_tokens,
         }),
@@ -438,9 +458,7 @@ fn parse_model_list(
                 id.to_string(),
                 item.get("owned_by")
                     .and_then(Value::as_str)
-                    .filter(|value| {
-                        value.len() <= 200 && !value.chars().any(char::is_control)
-                    })
+                    .filter(|value| value.len() <= 200 && !value.chars().any(char::is_control))
                     .map(ToString::to_string),
             )
         };
@@ -619,9 +637,7 @@ mod tests {
 
     #[test]
     fn rejects_structurally_empty_completion_responses() {
-        assert!(
-            parse_completion(&json!({ "choices": [] }), ProviderAdapter::LlamaCpp).is_err()
-        );
+        assert!(parse_completion(&json!({ "choices": [] }), ProviderAdapter::LlamaCpp).is_err());
     }
 
     #[test]

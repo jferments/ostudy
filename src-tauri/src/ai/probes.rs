@@ -20,7 +20,7 @@ use super::{
     AiRuntimeState,
 };
 
-const ADAPTER_REVISION: i64 = 2;
+const ADAPTER_REVISION: i64 = 3;
 const RESULT_SCHEMA_VERSION: i64 = 1;
 const MAX_PERSISTED_RESULT_BYTES: usize = 32 * 1024;
 
@@ -696,8 +696,10 @@ fn build_capabilities(
         &mut capabilities,
         "json_schema_output",
         match profile.provider_kind {
-            ProviderKind::LlamaCpp if structured_output => CapabilityStatus::Supported,
-            ProviderKind::LlamaCpp => CapabilityStatus::Unknown,
+            ProviderKind::LlamaCpp | ProviderKind::Openrouter if structured_output => {
+                CapabilityStatus::Supported
+            }
+            ProviderKind::LlamaCpp | ProviderKind::Openrouter => CapabilityStatus::Unknown,
             ProviderKind::Deepseek => CapabilityStatus::Unsupported,
             _ => CapabilityStatus::Unknown,
         },
@@ -885,13 +887,16 @@ mod tests {
         ProfileSnapshot {
             id: "0123456789abcdef0123456789abcdef".to_string(),
             provider_kind,
-            base_url: if provider_kind == ProviderKind::LlamaCpp {
-                "http://127.0.0.1:8080/".to_string()
-            } else {
-                "https://api.deepseek.com/".to_string()
+            base_url: match provider_kind {
+                ProviderKind::LlamaCpp => "http://127.0.0.1:8080/".to_string(),
+                ProviderKind::Openrouter => "https://openrouter.ai/api/v1/".to_string(),
+                _ => "https://api.deepseek.com/".to_string(),
             },
             model_id: model_id.to_string(),
-            auth_mode: if provider_kind == ProviderKind::Deepseek {
+            auth_mode: if matches!(
+                provider_kind,
+                ProviderKind::Deepseek | ProviderKind::Openrouter
+            ) {
                 AuthMode::Bearer
             } else {
                 AuthMode::None
@@ -912,6 +917,24 @@ mod tests {
             .find(|capability| capability.key == "json_schema_output")
             .expect("schema capability should exist");
         assert_eq!(schema.status, CapabilityStatus::Unsupported);
+    }
+
+    #[test]
+    fn openrouter_probes_can_report_provider_enforced_json_schema() {
+        let profile = profile(ProviderKind::Openrouter, "openai/example");
+        let capabilities = build_capabilities(
+            &profile,
+            true,
+            true,
+            true,
+            true,
+            &ProviderProperties::default(),
+        );
+        let schema = capabilities
+            .iter()
+            .find(|capability| capability.key == "json_schema_output")
+            .expect("schema capability should exist");
+        assert_eq!(schema.status, CapabilityStatus::Supported);
     }
 
     #[test]
