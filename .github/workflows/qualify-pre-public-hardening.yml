@@ -40,6 +40,7 @@ jobs:
           grep -RIl --exclude-dir=.git 'lib/diagnostics.sh' scripts run-app.sh | xargs -r sed -i 's#lib/diagnostics\.sh#lib/diagnostics.bash#g'
           cat > "$RUNNER_TEMP/patch-hardening.py" <<'PY'
           from pathlib import Path
+          import re
 
           verifier = Path("scripts/verify-project-manifests.mjs")
           source = verifier.read_text(encoding="utf-8")
@@ -56,6 +57,19 @@ jobs:
           if source.count(old) != 1:
               raise SystemExit(f"expected one settings-tab expectation target, found {source.count(old)}")
           test.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          logging = Path("src-tauri/src/logging.rs")
+          source = logging.read_text(encoding="utf-8")
+          old = "time::{Duration, SystemTime, UNIX_EPOCH}"
+          if source.count(old) != 1:
+              raise SystemExit(f"expected one direct clock import, found {source.count(old)}")
+          source = source.replace(old, "time::Duration", 1)
+          pattern = r"fn timestamp_millis\(\) -> i64 \{[\s\S]*?\n\}\n\nfn platform_name\(\) -> &'static str \{[\s\S]*?\n\}\n\n(?=#\[cfg\(test\)\])"
+          replacement = "fn timestamp_millis() -> i64 {\n    crate::platform::now_utc_millis().unwrap_or_default()\n}\n\nfn platform_name() -> &'static str {\n    std::env::consts::OS\n}\n\n"
+          source, count = re.subn(pattern, replacement, source, count=1)
+          if count != 1:
+              raise SystemExit(f"expected one clock/platform implementation block, found {count}")
+          logging.write_text(source, encoding="utf-8")
           PY
           python3 "$RUNNER_TEMP/patch-hardening.py"
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
