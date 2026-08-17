@@ -19,14 +19,14 @@ step() { CURRENT_STEP="$*"; printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"
 trap 'status=$?; printf "\n\033[1;31mFAST CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; exit "$status"' ERR
 
 if [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
-  && ostudy_javascript_dependencies_present \
+  && ostudy_frontend_prerequisites_present \
   && ostudy_check_stamp_is_current fast; then
   printf '\n\033[1;32mREUSE Fast qualification already passed for this exact source tree.\033[0m\n'
   exit 0
 fi
 
 if [[ "${OSTUDY_STATIC_CHECK_PASSED:-0}" == "1" ]] \
-  || { ostudy_javascript_dependencies_present && ostudy_check_stamp_is_current static; }; then
+  || { ostudy_frontend_prerequisites_present && ostudy_check_stamp_is_current static; }; then
   printf '\n\033[1;32mREUSE Static qualification already passed for this exact source tree.\033[0m\n'
 else
   bash "$SCRIPT_DIR/check-static.sh"

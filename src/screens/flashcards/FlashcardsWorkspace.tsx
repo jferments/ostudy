@@ -40,13 +40,14 @@ interface FlashcardsWorkspaceProps {
 const WORKSPACES: ReadonlyArray<{
   value: FlashcardsWorkspaceName;
   label: string;
+  compactLabel: string;
   icon: IconName;
 }> = [
-  { value: "decks", label: "Decks", icon: "cards" },
-  { value: "templates", label: "Templates", icon: "template" },
-  { value: "search", label: "Search", icon: "search" },
-  { value: "transfer", label: "Import/Export", icon: "import" },
-  { value: "create", label: "Create Cards", icon: "plus" },
+  { value: "decks", label: "Decks", compactLabel: "Decks", icon: "cards" },
+  { value: "templates", label: "Templates", compactLabel: "Templates", icon: "template" },
+  { value: "search", label: "Search", compactLabel: "Search", icon: "search" },
+  { value: "transfer", label: "Import/Export", compactLabel: "Transfer", icon: "import" },
+  { value: "create", label: "Create Cards", compactLabel: "Create", icon: "plus" },
 ];
 
 export function FlashcardsWorkspace({
@@ -128,12 +129,7 @@ export function FlashcardsWorkspace({
 
   return (
     <PageScaffold width="full" className={`flashcards-workspace ${styles.workspace}`}>
-      <PageHeader
-        eyebrow="Study library"
-        title="Flashcards"
-        description="Organize decks, design reusable templates, find cards, transfer study content, and create new material from one workspace."
-        icon="cards"
-      />
+      <PageHeader title="Flashcards" icon="cards" compact />
 
       <div className={styles.tabScroller}>
         <div
@@ -152,6 +148,7 @@ export function FlashcardsWorkspace({
                 }}
                 type="button"
                 role="tab"
+                aria-label={item.label}
                 aria-selected={selected}
                 tabIndex={selected ? 0 : -1}
                 className={styles.tab}
@@ -160,7 +157,9 @@ export function FlashcardsWorkspace({
                 onKeyDown={(event) => handleTabKeyDown(event, index)}
               >
                 <Icon name={item.icon} size={18} />
-                <span>{item.label}</span>
+                <span className={styles.tabLabel} data-compact-label={item.compactLabel}>
+                  {item.label}
+                </span>
               </button>
             );
           })}

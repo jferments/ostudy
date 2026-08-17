@@ -10,16 +10,31 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const requireInstalled = process.argv.includes("--installed");
 const failures = [];
 
-const [appearance, controls, rustSettings, localCss, foundations, packageJson, gitignore] =
-  await Promise.all([
-    read("src/ui/appearance/appearanceTypes.ts"),
-    read("src/screens/settings/SettingsControls.tsx"),
-    read("src-tauri/src/settings.rs"),
-    read("src/ui/foundations/local-fonts.css"),
-    read("src/ui/foundations/index.css"),
-    read("package.json"),
-    read(".gitignore"),
-  ]);
+const [
+  appearance,
+  controls,
+  rustSettings,
+  localCss,
+  foundations,
+  packageJson,
+  gitignore,
+  checkState,
+  checkStatic,
+  checkFast,
+  checkFull,
+] = await Promise.all([
+  read("src/ui/appearance/appearanceTypes.ts"),
+  read("src/screens/settings/SettingsControls.tsx"),
+  read("src-tauri/src/settings.rs"),
+  read("src/ui/foundations/local-fonts.css"),
+  read("src/ui/foundations/index.css"),
+  read("package.json"),
+  read(".gitignore"),
+  read("scripts/check-state.sh"),
+  read("scripts/check-static.sh"),
+  read("scripts/check-fast.sh"),
+  read("scripts/check.sh"),
+]);
 
 for (const font of localFontSources) {
   expectContains(appearance, `value: "${font.id}"`, `appearance option ${font.id}`);
@@ -50,6 +65,36 @@ expectContains(packageJson, '"prebuild": "node ./scripts/install-local-fonts.mjs
 expectContains(packageJson, '"predev": "node ./scripts/install-local-fonts.mjs"', "development font guard");
 expectContains(gitignore, "src/assets/fonts/*.woff2", "downloaded font ignore rule");
 
+expectContains(
+  checkState,
+  "ostudy_local_fonts_present()",
+  "qualification-state local-font prerequisite",
+);
+expectContains(
+  checkState,
+  'verify-local-fonts.mjs" --installed',
+  "qualification-state installed-font check",
+);
+expectContains(
+  checkState,
+  "ostudy_frontend_prerequisites_present()",
+  "combined frontend prerequisite guard",
+);
+for (const [source, label] of [
+  [checkStatic, "static qualification reuse"],
+  [checkFast, "fast qualification reuse"],
+  [checkFull, "full qualification reuse"],
+]) {
+  expectContains(source, "ostudy_frontend_prerequisites_present", label);
+}
+expectContains(checkStatic, "pnpm run fonts:install", "explicit static-gate font provisioning");
+expectBefore(
+  checkStatic,
+  "pnpm run fonts:install",
+  "pnpm run verify:fonts",
+  "font provisioning before installed-font verification",
+);
+
 if (failures.length > 0) {
   console.error("Local font contract failed:");
   for (const failure of failures) console.error(`  - ${failure}`);
@@ -59,7 +104,7 @@ if (failures.length > 0) {
 console.log(
   requireInstalled
     ? "OK   Selectable local font assets are installed and valid WOFF2 files."
-    : "OK   Selectable local font manifests, CSS, settings, and installer contracts agree.",
+    : "OK   Selectable local font manifests, CSS, settings, installer, and qualification contracts agree.",
 );
 
 async function read(relativePath) {
@@ -68,4 +113,12 @@ async function read(relativePath) {
 
 function expectContains(source, expected, label) {
   if (!source.includes(expected)) failures.push(`Missing ${label}: ${expected}`);
+}
+
+function expectBefore(source, first, second, label) {
+  const firstIndex = source.indexOf(first);
+  const secondIndex = source.indexOf(second);
+  if (firstIndex < 0 || secondIndex < 0 || firstIndex >= secondIndex) {
+    failures.push(`Invalid ${label}: expected ${first} before ${second}`);
+  }
 }

@@ -39,6 +39,14 @@
 }
 
 @font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("../../assets/fonts/roboto-latin-variable.woff2") format("woff2");
+}
+
+@font-face {
   font-family: "Roboto Slab";
   font-style: normal;
   font-weight: 300 700;
@@ -76,4 +84,36 @@
   font-weight: 700;
   font-display: swap;
   src: url("../../assets/fonts/lato-latin-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("../../assets/fonts/ubuntu-latin-300.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../../assets/fonts/ubuntu-latin-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../../assets/fonts/ubuntu-latin-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../../assets/fonts/ubuntu-latin-700.woff2") format("woff2");
 }

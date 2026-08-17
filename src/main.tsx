@@ -41,10 +41,14 @@ function setAndroidTestBridgeDiagnostic(
 
   if (apply() || androidTestBridgeDiagnosticScheduled) return;
   androidTestBridgeDiagnosticScheduled = true;
-  document.addEventListener("DOMContentLoaded", () => {
-    androidTestBridgeDiagnosticScheduled = false;
-    apply();
-  }, { once: true });
+  document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+      androidTestBridgeDiagnosticScheduled = false;
+      apply();
+    },
+    { once: true },
+  );
 }
 
 if (import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE === "1") {

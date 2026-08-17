@@ -1,9 +1,5 @@
-import {
-  type DeckSummary,
-} from "../../ipc/decks";
-import {
-  type PracticeWorkloadOverview,
-} from "../../ipc/practice";
+import type { DeckSummary } from "../../ipc/decks";
+import type { PracticeWorkloadOverview } from "../../ipc/practice";
 import { formatConfidence, type RecentDeckSummary } from "./confidence";
 
 interface PracticeSetupProps {
@@ -49,36 +45,10 @@ export function PracticeSetup({
 
   return (
     <>
-      <section className="practice-workload-panel" aria-live="polite">
-        <div>
-          <span>Today</span>
-          <strong>{workload?.reviewsRemaining ?? 0}</strong>
-          <small>reviews remaining</small>
-        </div>
-        <div>
-          <span>New</span>
-          <strong>{workload?.newRemaining ?? 0}</strong>
-          <small>cards remaining</small>
-        </div>
-        <div>
-          <span>Ready now</span>
-          <strong>
-            {(workload?.studyableDueReviews ?? 0) + (workload?.studyableDueNew ?? 0)}
-          </strong>
-          <small>studyable cards</small>
-        </div>
-        <div>
-          <span>Priority</span>
-          <strong>{workload?.needsMorePractice ?? 0}</strong>
-          <small>need more practice</small>
-        </div>
-        {isLoadingWorkload ? <span className="workload-loading">Updating…</span> : null}
-      </section>
-
       <section className="practice-setup-panel">
         <div className="panel-heading-row">
           <div>
-            <h2>Choose decks</h2>
+            <h2>Select decks to study</h2>
             <span>{selectedDeckIds.size} selected</span>
           </div>
           <div className="inline-actions">
@@ -194,12 +164,35 @@ export function PracticeSetup({
         </div>
       </section>
 
+      <section className="practice-workload-panel" aria-label="Practice workload" aria-live="polite">
+        <div>
+          <span>Today</span>
+          <strong>{workload?.reviewsRemaining ?? 0}</strong>
+          <small>reviews remaining</small>
+        </div>
+        <div>
+          <span>New</span>
+          <strong>{workload?.newRemaining ?? 0}</strong>
+          <small>cards remaining</small>
+        </div>
+        <div>
+          <span>Ready now</span>
+          <strong>
+            {(workload?.studyableDueReviews ?? 0) + (workload?.studyableDueNew ?? 0)}
+          </strong>
+          <small>studyable cards</small>
+        </div>
+        <div>
+          <span>Priority</span>
+          <strong>{workload?.needsMorePractice ?? 0}</strong>
+          <small>need more practice</small>
+        </div>
+        {isLoadingWorkload ? <span className="workload-loading">Updating…</span> : null}
+      </section>
+
       <section className="recent-practice-section" aria-labelledby="recent-practice-heading">
         <div className="recent-practice-heading-row">
-          <div>
-            <h2 id="recent-practice-heading">Recently practiced</h2>
-            <p>Latest results by current deck, scored from 0 (Wrong) to 3 (Easy).</p>
-          </div>
+          <h2 id="recent-practice-heading">Recently practiced</h2>
         </div>
         {recentDecks.length === 0 ? (
           <p className="recent-practice-empty">

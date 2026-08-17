@@ -22,7 +22,7 @@ describe("HelpProvider", () => {
 
     fireEvent.click(trigger);
     const dialog = await screen.findByRole("dialog", { name: "Deck folders" });
-    expect(within(dialog).getByText(/Deleting a folder moves its decks to Unfiled/u)).toBeTruthy();
+    expect(within(dialog).getByText(/Deleting a folder moves its decks to Unsorted decks/u)).toBeTruthy();
     expect(within(dialog).getByText("Flashcards and deck organization")).toBeTruthy();
   });
 

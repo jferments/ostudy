@@ -4,6 +4,7 @@ import type { ShowToast } from "../components/Toast";
 import { useAiProfilesController } from "../controllers/aiProfilesController";
 import { getErrorMessage } from "../ipc/common";
 import { saveSettings, type AppSettings } from "../ipc/settings";
+import { PageHeader } from "../ui/patterns/WorkspacePatterns";
 import { Tabs, type TabDefinition } from "../ui/primitives/Tabs";
 import { AiLlmSettings } from "./settings/AiLlmSettings";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
@@ -158,34 +159,35 @@ export function SettingsScreen({
 
   return (
     <div className="screen settings-screen" aria-busy={isSaving || aiController.mutating}>
-      <header className="screen-header compact-screen-header">
-        <div>
-          <h1>Settings</h1>
-          <p>Configure local study behavior, storage, and explicit AI provider connections.</p>
-        </div>
-        <div className="header-actions">
-          {activeTab !== "ai" ? (
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={isSaving}
-              onClick={restoreCurrentDefaults}
-            >
-              Restore {defaultsLabel} defaults
-            </button>
-          ) : null}
-          {preferencesDirty ? (
-            <button
-              type="button"
-              className="primary-button"
-              disabled={isSaving}
-              onClick={() => void persist()}
-            >
-              {isSaving ? "Saving…" : "Save preferences"}
-            </button>
-          ) : null}
-        </div>
-      </header>
+      <PageHeader
+        title="Settings"
+        icon="settings"
+        compact
+        actions={
+          <div className="header-actions">
+            {activeTab !== "ai" ? (
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={isSaving}
+                onClick={restoreCurrentDefaults}
+              >
+                Restore {defaultsLabel} defaults
+              </button>
+            ) : null}
+            {preferencesDirty ? (
+              <button
+                type="button"
+                className="primary-button"
+                disabled={isSaving}
+                onClick={() => void persist()}
+              >
+                {isSaving ? "Saving…" : "Save preferences"}
+              </button>
+            ) : null}
+          </div>
+        }
+      />
 
       {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
       {preferencesDirty ? (

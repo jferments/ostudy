@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 
 import * as aiProfiles from "../ipc/aiProfiles";
 import { DocumentsSection } from "./DocumentsSection";
@@ -9,7 +10,13 @@ vi.mock("../ipc/aiProfiles", () => ({
   listAiProviderProfiles: vi.fn(),
 }));
 vi.mock("./DocumentsScreen", () => ({
-  DocumentsScreen: () => <div>Document library content</div>,
+  DocumentsScreen: ({ headerSupplement }: { headerSupplement?: ReactNode }) => (
+    <div>
+      <h1>Documents</h1>
+      {headerSupplement}
+      <div>Document library content</div>
+    </div>
+  ),
 }));
 
 const profileId = "a".repeat(32);
@@ -47,10 +54,14 @@ describe("DocumentsSection", () => {
     vi.mocked(aiProfiles.listAiProviderProfiles).mockResolvedValue([profile()]);
   });
 
-  it("shows only the current flashcard-generation model above Documents", async () => {
+  it("shows only the current flashcard-generation model immediately below Documents", async () => {
     render(<DocumentsSection refreshDecks={vi.fn()} showToast={vi.fn()} />);
 
-    expect(await screen.findByText("Current Flashcard Generation model")).toBeTruthy();
+    const heading = screen.getByRole("heading", { name: "Documents" });
+    const model = await screen.findByText("Current Flashcard Generation model");
+    expect(
+      Boolean(heading.compareDocumentPosition(model) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
     expect(screen.getByText("unsloth/Qwen3.6-27B-MTP-GGUF")).toBeTruthy();
     expect(screen.queryByText("llama.cpp / Unsloth GGUF")).toBeNull();
     expect(screen.queryByText(/stay on this computer/u)).toBeNull();

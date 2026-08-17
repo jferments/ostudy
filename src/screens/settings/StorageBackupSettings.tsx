@@ -166,12 +166,21 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
 
       <section className={styles.fullWidthCard}>
         <h2>Storage</h2>
+        <p className={styles.securityNote}>
+          <strong>Local library</strong>
+          <br />
+          The active study library is stored on this device. Backup and device-sync controls are
+          available above.
+        </p>
         {appInfo ? (
           <dl className={styles.pathList}>
             <PathRow label="Application data" value={appInfo.dataDirectory} />
             <PathRow label="Database" value={appInfo.databasePath} />
             <PathRow label="Images" value={appInfo.imageDirectory} />
-            <PathRow label="Diagnostics" value={appInfo.diagnosticLogPath ?? "Available after restart"} />
+            <PathRow
+              label="Diagnostics"
+              value={appInfo.diagnosticLogPath ?? "Available after restart"}
+            />
             <PathRow label="Version" value={appInfo.appVersion} />
             <PathRow label="Schema" value={String(appInfo.databaseSchemaVersion)} />
           </dl>

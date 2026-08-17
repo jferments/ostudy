@@ -62,36 +62,39 @@ export function DocumentsSection({ refreshDecks, showToast }: DocumentsSectionPr
     ? "Loading…"
     : profile?.modelId || profile?.displayName || "Not configured";
 
+  const providerPanel = (
+    <Surface
+      as="aside"
+      level={2}
+      material="translucent"
+      className={styles.providerPanel}
+      aria-label="Current Flashcard Generation model"
+    >
+      <span className={styles.icon} aria-hidden="true">
+        <Icon name="sparkles" size={21} />
+      </span>
+      <div className={styles.providerCopy}>
+        <p className={styles.label}>Current Flashcard Generation model</p>
+        <strong>{modelLabel}</strong>
+        <small>
+          {isLoading
+            ? "Reading the current task default"
+            : profile
+              ? "Selected in Settings"
+              : "Configure a provider before generating cards"}
+        </small>
+      </div>
+      <HelpTrigger topicId="documents.provider" label="Help with document AI profiles" />
+    </Surface>
+  );
+
   return (
     <div className={styles.section} data-tour-anchor="documents.upload">
-      <Surface
-        as="aside"
-        level={2}
-        material="translucent"
-        className={styles.providerPanel}
-        aria-label="Current Flashcard Generation model"
-      >
-        <span className={styles.icon} aria-hidden="true">
-          <Icon name="sparkles" size={21} />
-        </span>
-        <div className={styles.providerCopy}>
-          <p className={styles.label}>Current Flashcard Generation model</p>
-          <strong>{modelLabel}</strong>
-          <small>
-            {isLoading
-              ? "Reading the current task default"
-              : profile
-                ? "Selected in Settings"
-                : "Configure a provider before generating cards"}
-          </small>
-        </div>
-        <HelpTrigger
-          topicId="documents.provider"
-          label="Help with document AI profiles"
-        />
-      </Surface>
-
-      <DocumentsScreen refreshDecks={refreshDecks} showToast={showToast} />
+      <DocumentsScreen
+        refreshDecks={refreshDecks}
+        showToast={showToast}
+        headerSupplement={providerPanel}
+      />
     </div>
   );
 }

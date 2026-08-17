@@ -11,8 +11,10 @@ The main navigation contains five areas:
 - **Flashcards** for decks, templates, Search, imports and exports, and card creation;
 - **Documents** for retaining local source documents and generating flashcards from them;
 - **Practice** for scheduled and custom study sessions;
-- **Analytics** for current workload and historical learning evidence;
+- **Analytics** for current workload, practice history, and topic-level patterns;
 - **Settings** for storage, appearance, AI providers, and review scheduling.
+
+Each workspace begins with a compact icon and heading so the functional controls remain near the top of the screen. Use contextual help and this guide for explanations that do not need to remain permanently visible in the workspace.
 
 On a narrow mobile window, Flashcards, Practice, and Analytics remain directly available while Documents and Settings appear under **More**. Android Back closes the top overlay or nested editor before leaving the current area.
 
@@ -22,9 +24,13 @@ Short contextual tutorials can introduce an unfamiliar workspace the first time 
 
 Open **Flashcards → Decks** and create a deck for one subject or study goal. A deck can contain Basic cards, reversible Basic cards, Fill in the blank cards, or cards produced from a custom template.
 
-Folders provide one optional level of organization above decks. Folders appear first, followed by **Unfiled decks**. Move a deck by dragging its handle on a pointer device, by choosing **Move**, or with the labeled up/down controls. Dragging is never required.
+Folders provide one optional level of organization above decks. Folders appear first, followed by **Unsorted decks**. Create a folder from the **Folders** heading. Drag a folder handle to reorder folders. Drag a deck handle to reorder the deck or place it in a different folder; dropping a deck in **Unsorted decks** removes its folder assignment.
 
-Deleting a folder does not delete its decks. The decks return to Unfiled with their cards, schedules, and review history unchanged. Deleting a deck remains a separate, explicit action.
+Dragging is not required. Focus a folder handle and use **Up**, **Down**, **Home**, or **End** to change its position. Focus a deck handle and use **Up**, **Down**, **Home**, or **End** within its current group, or **Left** and **Right** to move it between folder groups and Unsorted decks. These keyboard operations use the same revision-checked organization commands as pointer and touch dragging.
+
+Use a folder's collapse control to hide its deck rows without changing organization. **Collapse all** closes every folder at once. The control tooltip identifies whether the next action will collapse or expand the folder.
+
+Deleting a folder does not delete its decks. The decks return to Unsorted decks with their cards, schedules, and review history unchanged. Deleting a deck remains a separate, explicit action.
 
 Use **Comfortable** density when descriptions and progress are useful, or **Compact** density when you want to see more decks at once. Density changes presentation only.
 
@@ -78,7 +84,7 @@ See [Backups, imports, and sharing](backups-imports-and-sharing.md) for the exac
 
 ## 7. Run a practice session
 
-Open **Practice** when you want the normal scheduled workload. Scheduled practice applies your daily new-card and review limits and prioritizes cards according to the current schedule.
+Open **Practice** when you want the normal scheduled workload. Choose the decks under **Select decks to study** first. The workload statistics below the deck selection then show the scheduled reviews, new cards, currently ready cards, and priority material for that scope. Scheduled practice applies your daily new-card and review limits and prioritizes cards according to the current schedule.
 
 You can also press **Practice** directly on a deck. A deck-launched session is an explicit request to practice that deck, so it includes all currently studyable cards in the deck rather than silently truncating the session to the remaining daily new-card allowance. Archived, suspended, or currently buried cards remain excluded. If you end a session early, ostudy returns to the screen that launched it; a session started from a deck detail page returns to that same deck.
 
@@ -101,16 +107,16 @@ You can suspend cards that should leave normal circulation, bury them temporaril
 
 ## 8. Review your progress
 
-Open **Analytics** to examine practice volume, remembered-answer rate, confidence, time spent, due workload, repeated misses, deck and tag performance, recent sessions, and individual reviews. Current inventory and historical evidence are treated separately so renaming, moving, archiving, and deleting material have predictable effects.
+Open **Analytics** to examine practice volume, remembered-answer rate, confidence, time spent, due workload, repeated misses, deck and tag performance, recent sessions, and individual reviews. Current inventory and historical review records are treated separately so renaming, moving, archiving, and deleting material have predictable effects.
 
-Use analytics to choose a useful next action, not as a score to maximize. A high review count can mean productive practice or an overloaded schedule; retention, response time, and topic-level patterns provide the surrounding context.
+Use analytics to choose a useful next action, not as a score to maximize. A high review count can mean productive practice or an overloaded schedule; retention, response time, and topic-level patterns provide the surrounding context. Topic-level **Practice** buttons remain in the final table column; the table scrolls horizontally on narrower desktop windows without clipping those actions.
 
 ## 9. Customize appearance and accessibility
 
 Open **Settings → Appearance** to preview and save:
 
 - Light, Dark, Console, or Synthwave theme;
-- interface and default card fonts;
+- interface and default card fonts, including bundled IBM Plex Sans, Roboto, Ubuntu, and the other listed families;
 - interface scale and default card text size;
 - full, reduced, system-controlled, or disabled nonessential motion;
 - automatic, rich, or simple opaque materials;
@@ -134,7 +140,7 @@ See [AI providers](ai-providers.md) before entering a credential or exposing a L
 
 ## 11. Generate flashcards from a PDF
 
-Open **Documents** and import a PDF. The provider panel shows the current model selected for the Flashcard Generation task.
+Open **Documents** and import a PDF. The compact model tile directly below the Documents heading shows the current model selected for the Flashcard Generation task.
 
 ostudy retains the source in its local document library, extracts usable native text, renders page images for visual evidence, and uses OCR only as a last-resort recovery path when native text extraction cannot provide usable text. It then sends bounded document context to the configured provider and creates an ordinary deck from the generated cards.
 
@@ -147,9 +153,10 @@ See [Documents and AI generation](documents-and-ai-generation.md) for processing
 A useful first test of the application is:
 
 1. Create two small decks and place one inside a folder.
-2. Add five Basic cards, one Reversible note, and one Fill in the blank note.
-3. Add two tags and find the cards through **Flashcards → Search** using a folder scope and one study-state filter.
-4. Practice a deck and use more than one confidence response.
-5. Inspect the completion summary and then open Analytics.
-6. Switch themes, enable reduced motion, and verify that the same workflow remains clear without card flips or particles.
-7. Export one deck, create a complete backup, restart ostudy, and confirm the folder, order, cards, and history remain available.
+2. Reorder the folder and decks once with drag-and-drop and once with the keyboard handle shortcuts.
+3. Add five Basic cards, one Reversible note, and one Fill in the blank note.
+4. Add two tags and find the cards through **Flashcards → Search** using a folder scope and one study-state filter.
+5. Practice a deck and use more than one confidence response.
+6. Inspect the completion summary and then open Analytics.
+7. Switch themes, enable reduced motion, and verify that the same workflow remains clear without card flips or particles.
+8. Export one deck, create a complete backup, restart ostudy, and confirm the folder, order, cards, and history remain available.

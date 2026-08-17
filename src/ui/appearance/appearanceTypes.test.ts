@@ -79,17 +79,21 @@ describe("appearance resolution", () => {
       "space-grotesk",
       "spline-sans",
       "sora",
+      "roboto",
       "roboto-slab",
       "sofia-sans",
       "lato",
+      "ubuntu",
     ]);
     expect(resolveFontFamily("plex", "dark")).toContain("'IBM Plex Sans'");
     expect(resolveFontFamily("albert", "dark")).toContain("'Albert Sans'");
     expect(resolveFontFamily("space-grotesk", "dark")).toContain("'Space Grotesk'");
     expect(resolveFontFamily("spline-sans", "dark")).toContain("'Spline Sans'");
     expect(resolveFontFamily("sora", "dark")).toContain("'Sora'");
+    expect(resolveFontFamily("roboto", "dark")).toContain("'Roboto'");
     expect(resolveFontFamily("roboto-slab", "dark")).toContain("'Roboto Slab'");
     expect(resolveFontFamily("sofia-sans", "dark")).toContain("'Sofia Sans'");
     expect(resolveFontFamily("lato", "dark")).toContain("'Lato'");
+    expect(resolveFontFamily("ubuntu", "dark")).toContain("'Ubuntu'");
   });
 });

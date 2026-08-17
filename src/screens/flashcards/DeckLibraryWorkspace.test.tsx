@@ -85,16 +85,18 @@ const settings = {
 };
 
 function renderLibrary({
-  refreshDecks = vi.fn(async () => [pharmacology, anatomy]),
+  decks = [pharmacology, anatomy],
+  refreshDecks = vi.fn(async () => decks),
   showToast = vi.fn(),
 }: {
+  decks?: DeckSummary[];
   refreshDecks?: () => Promise<DeckSummary[]>;
   showToast?: ShowToast;
 } = {}) {
   return render(
     <OverlayProvider>
       <DeckLibraryWorkspace
-        decks={[pharmacology, anatomy]}
+        decks={decks}
         settings={settings}
         refreshDecks={refreshDecks}
         onPracticeDeck={vi.fn()}
@@ -117,43 +119,53 @@ describe("DeckLibraryWorkspace", () => {
     vi.mocked(settingsIpc.saveSettings).mockImplementation(async (input) => input);
   });
 
-  it("renders folders before loose decks and keeps both deck groups studyable", async () => {
+  it("puts folder controls in the Folders section and keeps every deck studyable", async () => {
     renderLibrary();
 
     const folderHeading = await screen.findByRole("heading", { name: "Folders" });
-    const unfiledHeading = screen.getByRole("heading", { name: "Unfiled decks" });
+    const unsortedHeading = screen.getByRole("heading", { name: "Unsorted decks" });
     expect(
       Boolean(
-        folderHeading.compareDocumentPosition(unfiledHeading) &
+        folderHeading.compareDocumentPosition(unsortedHeading) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
+    const folderSection = folderHeading.closest("section");
+    expect(folderSection).not.toBeNull();
+    expect(within(folderSection as HTMLElement).getByRole("button", { name: "New folder" })).toBeTruthy();
     expect(screen.getByText("Pharmacology")).toBeTruthy();
     expect(screen.getByText("Anatomy")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Practice" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
+    expect(screen.queryByText("↑")).toBeNull();
+    expect(screen.queryByText("↓")).toBeNull();
+    expect(screen.queryByText("Organize what you study")).toBeNull();
   });
 
-  it("collapses and expands a folder without changing its organization", async () => {
+  it("collapses individual folders and exposes a collapse-all control", async () => {
     renderLibrary();
 
     const collapse = await screen.findByRole("button", { name: "Collapse Nursing folder" });
     expect(collapse.getAttribute("aria-expanded")).toBe("true");
+    expect(collapse.getAttribute("title")).toBe("Collapse folder");
     expect(screen.getByText("Pharmacology")).toBeTruthy();
 
-    fireEvent.click(collapse);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
 
     const expand = screen.getByRole("button", { name: "Expand Nursing folder" });
     expect(expand.getAttribute("aria-expanded")).toBe("false");
+    expect(expand.getAttribute("title")).toBe("Expand folder");
     expect(screen.queryByText("Pharmacology")).toBeNull();
+    expect(screen.getByRole("button", { name: "Collapse all" }).hasAttribute("disabled")).toBe(true);
     expect(folderIpc.moveDeckInLibrary).not.toHaveBeenCalled();
     expect(folderIpc.updateDeckFolder).not.toHaveBeenCalled();
 
     fireEvent.click(expand);
-    expect(screen.getByRole("button", { name: "Collapse Nursing folder" }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "Collapse Nursing folder" })).toBeTruthy();
     expect(screen.getByText("Pharmacology")).toBeTruthy();
   });
 
-  it("moves a deck through the same revisioned command used by drag and keyboard actions", async () => {
+  it("moves a deck between groups with the drag handle keyboard alternative", async () => {
     const moved = {
       revision: 5,
       folders: [folder],
@@ -165,14 +177,8 @@ describe("DeckLibraryWorkspace", () => {
     vi.mocked(folderIpc.moveDeckInLibrary).mockResolvedValue(moved);
     renderLibrary();
 
-    const anatomyRow = (await screen.findByText("Anatomy")).closest("article");
-    expect(anatomyRow).not.toBeNull();
-    fireEvent.click(within(anatomyRow as HTMLElement).getByRole("button", { name: "Move" }));
-    const dialog = await screen.findByRole("dialog", { name: "Move “Anatomy”" });
-    fireEvent.change(within(dialog).getByRole("combobox", { name: "Destination" }), {
-      target: { value: folder.id },
-    });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Move deck" }));
+    const anatomyHandle = await screen.findByRole("button", { name: /Reorder Anatomy\./ });
+    fireEvent.keyDown(anatomyHandle, { key: "ArrowLeft" });
 
     await waitFor(() =>
       expect(folderIpc.moveDeckInLibrary).toHaveBeenCalledWith({
@@ -213,6 +219,43 @@ describe("DeckLibraryWorkspace", () => {
     });
   });
 
+  it("reorders folders with the drag handle keyboard alternative", async () => {
+    const secondFolder = {
+      ...folder,
+      id: "g".repeat(32),
+      name: "Clinical",
+      sortOrder: 2000,
+    };
+    const twoFolderOrganization = {
+      revision: 4,
+      folders: [folder, secondFolder],
+      placements: [
+        { deckId: pharmacology.id, folderId: folder.id, sortOrder: 1000 },
+        { deckId: anatomy.id, folderId: secondFolder.id, sortOrder: 1000 },
+      ],
+    };
+    vi.mocked(folderIpc.getDeckLibraryOrganization).mockResolvedValue(twoFolderOrganization);
+    vi.mocked(folderIpc.moveDeckFolder).mockResolvedValue({
+      ...twoFolderOrganization,
+      revision: 5,
+      folders: [secondFolder, folder],
+    });
+    renderLibrary();
+
+    const folderHandle = await screen.findByRole("button", {
+      name: /Reorder Nursing folder\./,
+    });
+    fireEvent.keyDown(folderHandle, { key: "ArrowDown" });
+
+    await waitFor(() =>
+      expect(folderIpc.moveDeckFolder).toHaveBeenCalledWith({
+        folderId: folder.id,
+        targetIndex: 1,
+        expectedOrganizationRevision: 4,
+      }),
+    );
+  });
+
   it("reloads the authoritative revision after a stale organization conflict", async () => {
     const refreshed = { ...organization, revision: 5 };
     const created = {
@@ -230,17 +273,12 @@ describe("DeckLibraryWorkspace", () => {
     vi.mocked(folderIpc.createDeckFolder).mockResolvedValue(created);
     renderLibrary();
 
-    const anatomyRow = (await screen.findByText("Anatomy")).closest("article");
-    expect(anatomyRow).not.toBeNull();
-    fireEvent.click(within(anatomyRow as HTMLElement).getByRole("button", { name: "Move" }));
-    const moveDialog = await screen.findByRole("dialog", { name: "Move “Anatomy”" });
-    fireEvent.change(within(moveDialog).getByRole("combobox", { name: "Destination" }), {
-      target: { value: folder.id },
-    });
-    fireEvent.click(within(moveDialog).getByRole("button", { name: "Move deck" }));
+    fireEvent.keyDown(
+      await screen.findByRole("button", { name: /Reorder Anatomy\./ }),
+      { key: "ArrowLeft" },
+    );
 
     await waitFor(() => expect(folderIpc.getDeckLibraryOrganization).toHaveBeenCalledTimes(2));
-    fireEvent.click(within(moveDialog).getByRole("button", { name: "Cancel" }));
     fireEvent.click(screen.getByRole("button", { name: "New folder" }));
     const folderDialog = await screen.findByRole("dialog", { name: "Create a folder" });
     fireEvent.change(within(folderDialog).getByRole("textbox", { name: "Folder name" }), {

@@ -16,7 +16,7 @@ step() { CURRENT_STEP="$*"; printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"
 trap 'status=$?; printf "\n\033[1;31mSTATIC CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; exit "$status"' ERR
 
 if [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
-  && ostudy_javascript_dependencies_present \
+  && ostudy_frontend_prerequisites_present \
   && ostudy_check_stamp_is_current static; then
   printf '\n\033[1;32mREUSE Static qualification already passed for this exact source tree.\033[0m\n'
   exit 0
@@ -51,6 +51,10 @@ python3 -m unittest discover -s tests/scripts -p 'test_*.py'
 
 step "Frozen JavaScript installation and dependency verification"
 pnpm install --frozen-lockfile
+# pnpm can legitimately decide that an unchanged installation needs no lifecycle
+# work. Font assets are gitignored runtime inputs, so provision them explicitly
+# before the installed-font contract instead of relying on postinstall side effects.
+pnpm run fonts:install
 pnpm run verify:versions
 pnpm run verify:fonts
 [[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]]

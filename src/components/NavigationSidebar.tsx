@@ -125,10 +125,6 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
           );
         })}
       </nav>
-      <div className={styles.footer}>
-        <span className={styles.statusDot} aria-hidden="true" />
-        <span>Local library</span>
-      </div>
     </aside>
   );
 }

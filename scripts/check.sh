@@ -24,7 +24,7 @@ trap 'status=$?; printf "\n\033[1;31mFULL CHECK FAILED during: %s (exit %s)\033[
 if [[ "${OSTUDY_FAST_CHECK_PASSED:-0}" == "1" ]]; then
   printf '\n\033[1;32mREUSE Fast qualification passed earlier in this workflow.\033[0m\n'
 elif [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
-  && ostudy_javascript_dependencies_present \
+  && ostudy_frontend_prerequisites_present \
   && ostudy_check_stamp_is_current fast; then
   printf '\n\033[1;32mREUSE Fast qualification already passed for this exact source tree.\033[0m\n'
 else

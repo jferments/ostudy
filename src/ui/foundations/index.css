@@ -21,6 +21,7 @@
 @import "../../styles/features/analytics.css" layer(features);
 @import "../../styles/features/assets.css" layer(features);
 @import "../../styles/features/ui-overhaul.css" layer(features);
+@import "../../styles/features/page-density.css" layer(features);
 
 @layer tokens {
   :root {

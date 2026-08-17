@@ -28,7 +28,7 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     title: "Deck folders",
     summary: "Folders organize decks without changing their cards, schedules, or review history.",
     details:
-      "A deck belongs to at most one folder. Dragging is optional: the Move action and up/down controls provide the same operation. Deleting a folder moves its decks to Unfiled and does not delete cards or historical learning evidence.",
+      "Drag a folder handle to reorder folders. Drag a deck handle to reorder it or place it in another folder. Keyboard users can focus a handle: Up and Down reorder within a group, Home and End jump to an edge, and Left or Right moves a deck between folder groups and Unsorted decks. Collapse controls only change presentation. Deleting a folder moves its decks to Unsorted decks and never deletes cards or review history.",
     documentation: "Flashcards and deck organization",
     tutorialModuleId: "orientation",
   },
@@ -70,7 +70,7 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     title: "Document AI profile",
     summary: "Documents use the profile selected for the Flashcard Generation task in Settings.",
     details:
-      "Provider credentials remain in the native secret-storage boundary. The source is adopted into managed local storage before processing, and generated cards become an ordinary editable deck.",
+      "The current model appears directly below the Documents heading. Provider credentials remain in the native secret-storage boundary. The source is adopted into managed local storage before processing, and generated cards become an ordinary editable deck.",
     documentation: "Documents and AI-generated flashcards",
     tutorialModuleId: "documents",
   },
@@ -97,7 +97,7 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     title: "Daily limits",
     summary: "Daily limits manage workload without deleting or permanently hiding due cards.",
     details:
-      "Scheduled study respects the limits. Extra practice remains available when you intentionally choose a deck or custom scope.",
+      "Select the decks you want to study first. The workload summary below the selection shows what the scheduled session will include. Scheduled study respects the limits; extra practice remains available when you intentionally choose a deck or custom scope.",
     documentation: "Practice, confidence, and scheduling",
   },
   "settings.materialEffects": {

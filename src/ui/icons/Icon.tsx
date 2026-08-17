@@ -4,6 +4,7 @@ export type IconName =
   | "archive"
   | "analytics"
   | "back"
+  | "brain"
   | "cards"
   | "check"
   | "chevron-down"
@@ -71,16 +72,20 @@ function iconPath(name: IconName) {
         </>
       );
     case "analytics":
-      return (
-        <>
-          <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
-        </>
-      );
+      return <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />;
     case "back":
       return (
         <>
           <path d="m15 18-6-6 6-6" />
           <path d="M9 12h11" />
+        </>
+      );
+    case "brain":
+      return (
+        <>
+          <path d="M9.5 4.6A3.2 3.2 0 0 0 4 6.8a3.4 3.4 0 0 0-.2 5.7A3.5 3.5 0 0 0 7 18.2 3 3 0 0 0 12 20V6.2a3 3 0 0 0-2.5-1.6Z" />
+          <path d="M14.5 4.6A3.2 3.2 0 0 1 20 6.8a3.4 3.4 0 0 1 .2 5.7 3.5 3.5 0 0 1-3.2 5.7A3 3 0 0 1 12 20V6.2a3 3 0 0 1 2.5-1.6Z" />
+          <path d="M7.5 9.5c1.5 0 2.5 1 2.5 2.5M16.5 9.5c-1.5 0-2.5 1-2.5 2.5M8 15c1.2 0 2 .7 2 1.8M16 15c-1.2 0-2 .7-2 1.8" />
         </>
       );
     case "cards":
@@ -97,11 +102,7 @@ function iconPath(name: IconName) {
     case "chevron-right":
       return <path d="m9 6 6 6-6 6" />;
     case "close":
-      return (
-        <>
-          <path d="m6 6 12 12M18 6 6 18" />
-        </>
-      );
+      return <path d="m6 6 12 12M18 6 6 18" />;
     case "copy":
       return (
         <>
@@ -110,11 +111,7 @@ function iconPath(name: IconName) {
         </>
       );
     case "delete":
-      return (
-        <>
-          <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" />
-        </>
-      );
+      return <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" />;
     case "document":
       return (
         <>
@@ -169,11 +166,7 @@ function iconPath(name: IconName) {
         </>
       );
     case "menu":
-      return (
-        <>
-          <path d="M4 7h16M4 12h16M4 17h16" />
-        </>
-      );
+      return <path d="M4 7h16M4 12h16M4 17h16" />;
     case "move":
       return (
         <>
@@ -182,11 +175,7 @@ function iconPath(name: IconName) {
         </>
       );
     case "plus":
-      return (
-        <>
-          <path d="M12 5v14M5 12h14" />
-        </>
-      );
+      return <path d="M12 5v14M5 12h14" />;
     case "practice":
       return (
         <>
