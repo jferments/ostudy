@@ -108,7 +108,13 @@ pub fn run() {
             let tauri::WindowEvent::CloseRequested { api, .. } = event else {
                 return;
             };
-            let lifecycle = window.state::<platform::PlatformRuntime>().lifecycle();
+            // A startup compatibility block intentionally exits before durable
+            // platform state is managed. Do not turn that controlled path into
+            // a second panic while Tauri processes window shutdown events.
+            let Some(platform_runtime) = window.try_state::<platform::PlatformRuntime>() else {
+                return;
+            };
+            let lifecycle = platform_runtime.lifecycle();
             let requested = lifecycle.transition(platform::LifecyclePhase::TerminationRequested);
             let _ = window.emit("ostudy-lifecycle", requested);
             if window.label() != "main" || !task_cancellation::has_active_document_tasks() {
