@@ -33,19 +33,54 @@ fi
 TEMP_HOME="$(mktemp -d -t ostudy-smoke.XXXXXXXX)"
 cleanup() { rm -rf -- "$TEMP_HOME"; }
 trap cleanup EXIT
-export XDG_DATA_HOME="$TEMP_HOME/data"
-export XDG_CONFIG_HOME="$TEMP_HOME/config"
-export XDG_CACHE_HOME="$TEMP_HOME/cache"
-export XDG_STATE_HOME="$TEMP_HOME/state"
-mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_STATE_HOME"
+
+is_retryable_driver_failure() {
+  local log_file="$1"
+  grep -Eq \
+    'RemoteDisconnected|ConnectionResetError|Connection refused|remote end closed connection|tauri-driver.*(closed|terminated)' \
+    "$log_file"
+}
 
 run_smoke() {
   local label="$1"
   local script="$2"
-  printf '\n==> %s\n' "$label"
-  # SIGINT lets Python unwind through finally blocks and terminate tauri-driver.
-  timeout --signal=INT 300s \
-    python3 -u "$script" --application "$OSTUDY_BINARY"
+  local slug attempt attempt_home log_file status
+  slug="$(printf '%s' "$label" | tr '[:upper:] /' '[:lower:]--' | tr -cd '[:alnum:]_-')"
+
+  for attempt in 1 2; do
+    attempt_home="$TEMP_HOME/$slug/attempt-$attempt"
+    log_file="$TEMP_HOME/$slug/attempt-$attempt.log"
+    rm -rf -- "$attempt_home"
+    mkdir -p \
+      "$attempt_home/data" \
+      "$attempt_home/config" \
+      "$attempt_home/cache" \
+      "$attempt_home/state"
+
+    printf '\n==> %s%s\n' \
+      "$label" \
+      "$([[ "$attempt" -eq 1 ]] && printf '' || printf ' (driver retry)')"
+
+    set +e
+    # SIGINT lets Python unwind through finally blocks and terminate tauri-driver.
+    XDG_DATA_HOME="$attempt_home/data" \
+    XDG_CONFIG_HOME="$attempt_home/config" \
+    XDG_CACHE_HOME="$attempt_home/cache" \
+    XDG_STATE_HOME="$attempt_home/state" \
+      timeout --signal=INT 300s \
+        python3 -u "$script" --application "$OSTUDY_BINARY" 2>&1 | tee "$log_file"
+    status="${PIPESTATUS[0]}"
+    set -e
+
+    if [[ "$status" -eq 0 ]]; then
+      return 0
+    fi
+    if [[ "$attempt" -eq 1 ]] && is_retryable_driver_failure "$log_file"; then
+      printf 'WARN: WebDriver transport disconnected; retrying once with isolated application state.\n' >&2
+      continue
+    fi
+    return "$status"
+  done
 }
 
 run_smoke "Native durable-library WebDriver smoke" \
