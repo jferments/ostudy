@@ -29,7 +29,7 @@ warn,ostudy=info
 
 That baseline records internal lifecycle and operation outcomes while leaving unrelated dependency output at warning level. Capturing the first failing run is intentional: rerunning the complete Linux/Android gate with debug enabled is slower, can destroy the original temporary application state, and can hide an intermittent failure.
 
-CI writes bounded captures under the runner-owned `OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT`. Normal failures include the qualification step, exit status, exact commit, active filter, a recommended subsystem filter, recent launcher/application records, and a focused replay script. Native WebDriver tests copy diagnostics out of their isolated XDG data directory before that directory is deleted. A retryable WebDriver transport disconnect is recorded as a **transient** capture even when the single permitted clean-state retry succeeds.
+CI writes bounded captures under the runner-owned `OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT`. One nested qualification invocation produces one authoritative failure capture: the innermost precise boundary claims the failure before outer wrapper traps can replace it with duplicate `initialization` records. Normal failures include the qualification step, exit status, exact commit, active filter, a recommended subsystem filter, recent launcher/application records, and a focused replay script. Native WebDriver tests copy diagnostics out of their isolated XDG data directory before that directory is deleted. A retryable WebDriver transport disconnect is recorded as a **transient** capture even when the single permitted clean-state retry succeeds.
 
 The Actions failure summary combines three sources:
 
