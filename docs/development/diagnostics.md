@@ -9,7 +9,7 @@ Normal application and test runs use the `info` filter with noisy dependency tar
 ./scripts/check.sh --log-filter='warn,ostudy.database=debug,ostudy.ai.provider.openrouter=trace'
 ./scripts/android-test.sh --debug=qr --keep-artifacts
 ./scripts/smoke-native.sh --debug=frontend --keep-artifacts
-./scripts/smoke-startup-compatibility.sh --debug=database --keep-artifacts
+bash ./scripts/smoke-startup-compatibility.sh --debug=database --keep-artifacts
 ```
 
 Equivalent environment configuration:
