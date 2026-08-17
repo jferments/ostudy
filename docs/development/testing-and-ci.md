@@ -83,13 +83,14 @@ Automatic gates are intentionally conservative:
 - non-draft reopened/synchronized pull request: `all-full`;
 - push to `main`: `all-full`.
 
-Every non-`preflight` run executes **static qualification first** as a separately named boundary before fast, Linux-full, or Android work. The later tier reuses the exact-tree static stamp instead of repeating successful static work. A static failure therefore stops the expensive product gates immediately and is attributed directly to the static step rather than appearing later as a nested initialization failure.
+Every non-`preflight` run executes **static qualification first** as the first substantive qualification boundary, before KVM/runner preflight, dependency-graph validation, fast, Linux-full, or Android work. The later tier reuses the exact-tree static stamp instead of repeating successful static work. A static failure therefore stops expensive product gates immediately and is attributed directly to the static step rather than appearing later as a nested initialization failure.
 
 `all-full` runs, in order:
 
 ```text
-unified runner preflight
-→ check-static.sh
+check-static.sh
+→ unified runner/KVM preflight
+→ locked Rust dependency-graph validation
 → check.sh
    → fast qualification (reusing the static stamp)
    → built-binary legacy-data startup compatibility smoke
