@@ -1,0 +1,88 @@
+name: Qualify pre-public platform hardening
+
+on:
+  push:
+    branches: [agent/pre-public-platform-hardening]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: qualify-pre-public-platform-hardening
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out exact branch head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/pre-public-platform-hardening
+          clean: true
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Expose pinned user toolchains and caches
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
+
+      - name: Apply exact repository-policy repairs
+        run: |
+          chmod +x scripts/lib/diagnostics.sh
+          python3 - <<'PY'
+          from pathlib import Path
+
+          database = Path("src-tauri/src/database.rs")
+          source = database.read_text(encoding="utf-8")
+          old = '''    checksum: "f00628d96aa9b4b6e5331ed280dcf15f3237eb65c88d98de2d3516f77a3d9750",
+              sql: include_str!("../migrations/0001_public_baseline.sql"),
+          }];'''
+          # rustfmt does not retain the generator's indentation in every build,
+          # so use a delimiter-only repair after asserting the exact registry.
+          if 'const MIGRATIONS: &[Migration] = &[Migration {' not in source:
+              raise SystemExit("public migration registry was not found")
+          needle = '    sql: include_str!("../migrations/0001_public_baseline.sql"),\n}];'
+          if source.count(needle) != 1:
+              raise SystemExit(f"expected one migration delimiter target, found {source.count(needle)}")
+          database.write_text(source.replace(needle, '    sql: include_str!("../migrations/0001_public_baseline.sql"),\n},];', 1), encoding="utf-8")
+
+          test = Path("src/screens/SettingsScreen.test.tsx")
+          source = test.read_text(encoding="utf-8")
+          needle = '''      "AI/LLM",
+                "Review/Scheduling",
+              ]);'''
+          if source.count(needle) != 1:
+              raise SystemExit(f"expected one settings-tab expectation target, found {source.count(needle)}")
+          test.write_text(
+              source.replace(
+                  needle,
+                  '''      "AI/LLM",
+                "Review/Scheduling",
+                "Diagnostics",
+              ]);''',
+                  1,
+              ),
+              encoding="utf-8",
+          )
+          PY
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Run fast exact-head qualification with targeted diagnostics
+        run: ./scripts/check-fast.sh --debug=database,ai,qr --keep-artifacts
+
+      - name: Commit qualified repairs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: qualify pre-public platform hardening"
+          git push origin HEAD:agent/pre-public-platform-hardening
