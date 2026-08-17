@@ -40,19 +40,19 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          database = Path("src-tauri/src/database.rs")
-          source = database.read_text(encoding="utf-8")
-          old = '''    checksum: "f00628d96aa9b4b6e5331ed280dcf15f3237eb65c88d98de2d3516f77a3d9750",
-              sql: include_str!("../migrations/0001_public_baseline.sql"),
-          }];'''
-          # rustfmt does not retain the generator's indentation in every build,
-          # so use a delimiter-only repair after asserting the exact registry.
-          if 'const MIGRATIONS: &[Migration] = &[Migration {' not in source:
-              raise SystemExit("public migration registry was not found")
-          needle = '    sql: include_str!("../migrations/0001_public_baseline.sql"),\n}];'
+          verifier = Path("scripts/verify-project-manifests.mjs")
+          source = verifier.read_text(encoding="utf-8")
+          needle = '''for (const match of database.matchAll(/Migration\\s*\\{([\\s\\S]*?)\\},/gu)) {
+'''
+          replacement = '''const migrationRegistrySource =
+            database.split("const MIGRATIONS:")[1]?.split("pub(crate) const LATEST_SCHEMA_VERSION")[0] ?? "";
+          for (const match of migrationRegistrySource.matchAll(/Migration\\s*\\{([\\s\\S]*?)\\}/gu)) {
+'''
           if source.count(needle) != 1:
-              raise SystemExit(f"expected one migration delimiter target, found {source.count(needle)}")
-          database.write_text(source.replace(needle, '    sql: include_str!("../migrations/0001_public_baseline.sql"),\n},];', 1), encoding="utf-8")
+              raise SystemExit(
+                  f"expected one migration-registry parser target, found {source.count(needle)}"
+              )
+          verifier.write_text(source.replace(needle, replacement, 1), encoding="utf-8")
 
           test = Path("src/screens/SettingsScreen.test.tsx")
           source = test.read_text(encoding="utf-8")
@@ -60,7 +60,9 @@ jobs:
                 "Review/Scheduling",
               ]);'''
           if source.count(needle) != 1:
-              raise SystemExit(f"expected one settings-tab expectation target, found {source.count(needle)}")
+              raise SystemExit(
+                  f"expected one settings-tab expectation target, found {source.count(needle)}"
+              )
           test.write_text(
               source.replace(
                   needle,
@@ -74,6 +76,10 @@ jobs:
           )
           PY
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          git add \
+            scripts/lib/diagnostics.sh \
+            scripts/verify-project-manifests.mjs \
+            src/screens/SettingsScreen.test.tsx
 
       - name: Run fast exact-head qualification with targeted diagnostics
         run: ./scripts/check-fast.sh --debug=database,ai,qr --keep-artifacts
