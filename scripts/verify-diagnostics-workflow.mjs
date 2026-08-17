@@ -18,6 +18,10 @@ const contents = Object.fromEntries(
 );
 
 const staticIndex = contents.workflow.indexOf("- name: Run static qualification first");
+const runnerPreflightIndex = contents.workflow.indexOf(
+  "- name: Verify unified runner resources and nested KVM",
+);
+const metadataIndex = contents.workflow.indexOf("- name: Require committed Rust dependency graph");
 const fastIndex = contents.workflow.indexOf("- name: Run fast qualification");
 const linuxIndex = contents.workflow.indexOf("- name: Run authoritative Linux qualification");
 const androidIndex = contents.workflow.indexOf(
@@ -31,7 +35,7 @@ const contracts = [
   ],
   [
     "CI retains bounded failure artifacts without a separate debug rerun",
-    contents.library.includes('OSTUDY_KEEP_FAILURE_ARTIFACTS=1'),
+    contents.library.includes("OSTUDY_KEEP_FAILURE_ARTIFACTS=1"),
   ],
   [
     "diagnostic artifacts support a runner-owned root",
@@ -59,13 +63,17 @@ const contracts = [
     ),
   ],
   [
-    "static qualification runs before every expensive product gate",
+    "static qualification is the first substantive qualification boundary",
     staticIndex >= 0 &&
+      runnerPreflightIndex > staticIndex &&
+      metadataIndex > staticIndex &&
       fastIndex > staticIndex &&
       linuxIndex > staticIndex &&
       androidIndex > staticIndex &&
       contents.workflow.includes("if: steps.gate.outputs.gate != 'preflight'") &&
-      contents.workflow.includes('bash ./scripts/check-static.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"'),
+      contents.workflow.includes(
+        'bash ./scripts/check-static.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"',
+      ),
   ],
   [
     "connector-visible exact-head statuses expose static and overall qualification",
@@ -119,5 +127,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   CI runs static qualification first, publishes connector-visible exact-head status, captures a low-noise structured timeline, preserves isolated failure state, emits focused replay commands, and uploads bounded transient/failure evidence.",
+  "OK   CI runs static qualification before runner/full gates, publishes connector-visible exact-head status, captures a low-noise structured timeline, preserves isolated failure state, emits focused replay commands, and uploads bounded transient/failure evidence.",
 );
