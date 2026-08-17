@@ -11,7 +11,7 @@ CREATE TABLE ai_provider_profiles (
     normalized_name         TEXT NOT NULL CHECK(length(normalized_name) BETWEEN 1 AND 100),
     provider_kind           TEXT NOT NULL
                             CHECK(provider_kind IN (
-                                'llama_cpp', 'deepseek', 'ollama',
+                                'llama_cpp', 'deepseek', 'openrouter', 'ollama',
                                 'openai', 'gemini', 'claude'
                             )),
     base_url                TEXT NOT NULL CHECK(length(base_url) BETWEEN 1 AND 2048),
