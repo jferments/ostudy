@@ -8,7 +8,7 @@ use std::{
         OnceLock, RwLock,
     },
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 use serde::Serialize;
@@ -625,27 +625,11 @@ fn bounded_text(value: &str, maximum: usize) -> String {
 }
 
 fn timestamp_millis() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .ok()
-        .and_then(|duration| i64::try_from(duration.as_millis()).ok())
-        .unwrap_or_default()
+    crate::platform::now_utc_millis().unwrap_or_default()
 }
 
 fn platform_name() -> &'static str {
-    if cfg!(target_os = "android") {
-        "android"
-    } else if cfg!(target_os = "ios") {
-        "ios"
-    } else if cfg!(target_os = "windows") {
-        "windows"
-    } else if cfg!(target_os = "macos") {
-        "macos"
-    } else if cfg!(target_os = "linux") {
-        "linux"
-    } else {
-        "unknown"
-    }
+    std::env::consts::OS
 }
 
 #[cfg(test)]

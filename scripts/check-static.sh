@@ -8,7 +8,7 @@ source "$ROOT_DIR/versions.env"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/check-state.sh"
 # shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib/diagnostics.sh"
+source "$SCRIPT_DIR/lib/diagnostics.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 ostudy_parse_diagnostic_args "$@"

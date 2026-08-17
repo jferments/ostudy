@@ -6,7 +6,7 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/android-env.sh"
 # shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib/diagnostics.sh"
+source "$SCRIPT_DIR/lib/diagnostics.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 ostudy_parse_diagnostic_args "$@"
 

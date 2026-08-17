@@ -182,7 +182,9 @@ const migrationFiles = (await readdir(migrationDirectory))
   .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
   .sort();
 const registry = new Map();
-for (const match of database.matchAll(/Migration\s*\{([\s\S]*?)\},/gu)) {
+const migrationRegistrySource =
+  database.split("const MIGRATIONS:")[1]?.split("pub(crate) const LATEST_SCHEMA_VERSION")[0] ?? "";
+for (const match of migrationRegistrySource.matchAll(/Migration\s*\{([\s\S]*?)\}/gu)) {
   const body = match[1];
   const version = Number(body.match(/version:\s*(\d+)/u)?.[1]);
   const checksum = body.match(/checksum:\s*"([0-9a-f]{64})"/u)?.[1];

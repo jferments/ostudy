@@ -6,7 +6,7 @@ export OSTUDY_ROOT_DIR="$ROOT_DIR"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/scripts/build-state.sh"
 # shellcheck disable=SC1091
-source "$ROOT_DIR/scripts/lib/diagnostics.sh"
+source "$ROOT_DIR/scripts/lib/diagnostics.bash"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 ostudy_parse_diagnostic_args "$@"
 if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
