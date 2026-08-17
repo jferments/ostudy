@@ -41,8 +41,8 @@ const contracts = [
   ],
   [
     "the authoritative workflow owns a runner-temp diagnostic directory",
-    /OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT:\s*\$\{\{ runner\.temp \}\}\/ostudy-diagnostics/u.test(
-      contents.workflow,
+    contents.workflow.includes(
+      'echo "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT=$RUNNER_TEMP/ostudy-diagnostics" >> "$GITHUB_ENV"',
     ),
   ],
   [

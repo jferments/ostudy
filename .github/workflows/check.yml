@@ -48,7 +48,6 @@ jobs:
       OSTUDY_DIAGNOSTICS_ACTIVE: "1"
       OSTUDY_DIAGNOSTICS_AUTOMATIC: "1"
       OSTUDY_KEEP_FAILURE_ARTIFACTS: "1"
-      OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT: ${{ runner.temp }}/ostudy-diagnostics
 
     steps:
       - name: Check out exact source head
@@ -65,6 +64,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          echo "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT=$RUNNER_TEMP/ostudy-diagnostics" >> "$GITHUB_ENV"
           mkdir -p \
             "$HOME/.cache/ostudy/gradle" \
             "$HOME/.cache/ostudy/cargo-target"
