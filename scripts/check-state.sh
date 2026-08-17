@@ -50,6 +50,7 @@ ostudy_assert_worktree_unchanged() {
 ostudy_reset_worktree_baseline() {
   local baseline="$1"
   ostudy_capture_worktree_state "$baseline"
+  ostudy_report_worktree_baseline "$baseline"
 }
 
 ostudy_check_fingerprint() {
