@@ -11,7 +11,7 @@ source "$SCRIPT_DIR/check-state.sh"
 source "$SCRIPT_DIR/cargo-target.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/diagnostics.bash"
-export OSUTDY_ROOT_DIR="$ROOT_DIR"
+export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export OSTUDY_QUALIFICATION_COMMAND="./scripts/check.sh"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
@@ -71,7 +71,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
 step "Standalone Tauri build"
 pnpm tauri build --debug --no-bundle --ci -- --locked
 "$SCRIPT_DIR/verify-rust-dependencies.sh"
-[[ -x "$OSUTDY_BINARY" ]]
+[[ -x "$OSTUDY_BINARY" ]]
 ostudy_write_build_stamp "$(node -p "require('./package.json').version")"
 
 if [[ "${OSTUDY_SKIP_NATIVE_SMOKE:-0}" == "1" ]]; then
