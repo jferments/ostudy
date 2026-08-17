@@ -4,9 +4,19 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
+export OSTUDY_QUALIFICATION_COMMAND="./scripts/smoke-native.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/build-state.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/diagnostics.bash"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+ostudy_parse_diagnostic_args "$@"
+if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
+  printf 'Usage: ./scripts/smoke-native.sh [diagnostic options]\n' >&2
+  ostudy_diagnostic_usage >&2
+  exit 2
+fi
 
 ostudy_require_current_build
 command -v tauri-driver >/dev/null 2>&1 || {
@@ -44,12 +54,13 @@ is_retryable_driver_failure() {
 run_smoke() {
   local label="$1"
   local script="$2"
-  local slug attempt attempt_home log_file status
+  local slug attempt attempt_home log_file application_log status
   slug="$(printf '%s' "$label" | tr '[:upper:] /' '[:lower:]--' | tr -cd '[:alnum:]_-')"
 
   for attempt in 1 2; do
     attempt_home="$TEMP_HOME/$slug/attempt-$attempt"
     log_file="$TEMP_HOME/$slug/attempt-$attempt.log"
+    application_log="$attempt_home/data/io.github.jferments.ostudy/diagnostics/ostudy.jsonl"
     rm -rf -- "$attempt_home"
     mkdir -p \
       "$attempt_home/data" \
@@ -76,9 +87,15 @@ run_smoke() {
       return 0
     fi
     if [[ "$attempt" -eq 1 ]] && is_retryable_driver_failure "$log_file"; then
+      ostudy_capture_transient_artifacts \
+        "$label (recovered WebDriver transport failure)" \
+        "$status" \
+        "$log_file" \
+        "$application_log"
       printf 'WARN: WebDriver transport disconnected; retrying once with isolated application state.\n' >&2
       continue
     fi
+    ostudy_capture_failure_artifacts "$label" "$status" "$log_file" "$application_log"
     return "$status"
   done
 }

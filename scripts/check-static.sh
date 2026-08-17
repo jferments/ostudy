@@ -10,6 +10,7 @@ source "$SCRIPT_DIR/check-state.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/diagnostics.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
+export OSTUDY_QUALIFICATION_COMMAND="./scripts/check-static.sh"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 ostudy_parse_diagnostic_args "$@"
 if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
@@ -46,6 +47,7 @@ node "$SCRIPT_DIR/verify-platform-boundaries.mjs"
 node "$SCRIPT_DIR/verify-external-file-streaming.mjs"
 node "$SCRIPT_DIR/verify-android-project.mjs"
 node "$SCRIPT_DIR/verify-android-plugin-routing.mjs"
+node "$SCRIPT_DIR/verify-diagnostics-workflow.mjs"
 node "$SCRIPT_DIR/verify-local-fonts.mjs"
 node "$SCRIPT_DIR/verify-documentation.mjs"
 [[ -f pnpm-lock.yaml && -f src-tauri/Cargo.lock ]] || {

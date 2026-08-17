@@ -8,6 +8,7 @@ Normal application and test runs use the `info` filter with noisy dependency tar
 ./scripts/check-fast.sh --debug=migrations --keep-artifacts
 ./scripts/check.sh --log-filter='warn,ostudy.database=debug,ostudy.ai.provider.openrouter=trace'
 ./scripts/android-test.sh --debug=qr --keep-artifacts
+./scripts/smoke-native.sh --debug=frontend --keep-artifacts
 ```
 
 Equivalent environment configuration:
@@ -18,11 +19,58 @@ OSTUDY_LOG='warn,ostudy.documents=debug' ./scripts/dev.sh
 
 Targets include `app`, `database`, `ai`, `qr`, `device_sync`, `documents`, `frontend`, `filesystem`, and `diagnostics`. Target rules use longest-prefix matching. Debug/trace fields must contain only counts, durations, safe identifiers, provider/model identifiers, and normalized outcomes—never credentials, prompts, study content, OCR text, SQL parameters, or QR payloads.
 
+## Automated qualification baseline
+
+The authoritative GitHub Actions job enables this low-noise first-run filter automatically:
+
+```text
+warn,ostudy=info
+```
+
+That baseline records internal lifecycle and operation outcomes while leaving unrelated dependency output at warning level. Capturing the first failing run is intentional: rerunning the complete Linux/Android gate with debug enabled is slower, can destroy the original temporary application state, and can hide an intermittent failure.
+
+CI writes bounded captures under the runner-owned `OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT`. Normal failures include the qualification step, exit status, exact commit, active filter, a recommended subsystem filter, recent launcher/application records, and a focused replay script. Native WebDriver tests copy diagnostics out of their isolated XDG data directory before that directory is deleted. A retryable WebDriver transport disconnect is recorded as a **transient** capture even when the single permitted clean-state retry succeeds.
+
+The Actions failure summary combines three sources:
+
+1. the ordinary gate log and its concise compiler/test failure excerpt;
+2. structured application warning/error events from captured JSONL files and Android Logcat;
+3. the smallest useful local reproduction command.
+
+This makes the initial CI failure useful without automatically rerunning a costly gate or treating a recovered flake as invisible.
+
+## Focused failure replay
+
+A local check run with `--keep-artifacts` writes a unique directory under:
+
+```text
+.artifacts/diagnostics/<utc>-<failed-step>.<unique-suffix>/
+```
+
+The directory contains `context.txt` and an executable `reproduce.sh`. Run the generated script first:
+
+```bash
+.artifacts/diagnostics/<capture>/reproduce.sh
+```
+
+The replay bypasses exact-tree check stamps, keeps bounded artifacts, and uses a step-specific diagnostic filter. Examples of the automatic narrowing are:
+
+- migration/schema failure → `warn,ostudy.database=debug`;
+- OpenRouter/document failure → `warn,ostudy.ai=debug,ostudy.documents=debug`;
+- WebDriver/frontend failure → `warn,ostudy.app=debug,ostudy.frontend=debug`;
+- QR/device-sync failure → `warn,ostudy.app=info,ostudy.qr=debug,ostudy.device_sync=debug`.
+
+For Vitest failures, the Actions summary narrows the replay to the failed test file when it can identify one. For Rust test failures, it narrows to the exact failed test name. Only after the focused command passes should the broader `check-fast.sh`, `check.sh`, or Android matrix be rerun.
+
+Escalate from `debug` to `trace` only for the affected subsystem. Avoid application-wide trace output unless a cross-subsystem ordering defect genuinely requires it.
+
 ## Retention and performance
 
 Every encoded diagnostic event is capped at 64 KiB. If structured fields exceed that bound, ostudy retains the event metadata and replaces the fields with an explicit omission record. Free-text redaction recognizes opaque bearer/basic credentials in addition to provider-shaped keys, and tests cover both inline and whitespace-separated authorization forms.
 
-Application JSONL files are capped at two 2 MiB generations under the application diagnostics directory. Script failure artifacts contain only bounded log tails and build context under `.artifacts/diagnostics/`; they do not contain the SQLite database or managed user files.
+Application JSONL files are capped at two 2 MiB generations under the application diagnostics directory. Script failure artifacts contain only bounded log tails and build context. Local captures default to `.artifacts/diagnostics/`; CI redirects them to runner-temporary storage. They do not contain the SQLite database or managed user files.
+
+Failure-only wrapper/build evidence is retained for 14 days. Small structured diagnostic captures, including recovered transient WebDriver failures, are retained for 7 days. Clean runs with no capture do not create a diagnostic artifact.
 
 ## Exporting bounded diagnostics
 

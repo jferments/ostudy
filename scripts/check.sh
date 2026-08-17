@@ -11,7 +11,8 @@ source "$SCRIPT_DIR/check-state.sh"
 source "$SCRIPT_DIR/cargo-target.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/diagnostics.bash"
-export OSTUDY_ROOT_DIR="$ROOT_DIR"
+export OSUTDY_ROOT_DIR="$ROOT_DIR"
+export OSTUDY_QUALIFICATION_COMMAND="./scripts/check.sh"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
 ostudy_parse_diagnostic_args "$@"
@@ -37,7 +38,7 @@ elif [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
   printf '\n\033[1;32mREUSE Fast qualification already passed for this exact source tree.\033[0m\n'
 else
   FAST_ARGS=()
-  if [[ "${OSTUDY_DIAGNOSTICS_ACTIVE:-0}" == 1 ]]; then
+  if [[ "${OSTUDY_DIAGNOSTICS_ACTIVE:-0}" == 1 && "${OSTUDY_DIAGNOSTICS_AUTOMATIC:-0}" != 1 ]]; then
     FAST_ARGS+=("--log-filter=$OSTUDY_LOG")
   fi
   if [[ "${OSTUDY_KEEP_FAILURE_ARTIFACTS:-0}" == 1 ]]; then
@@ -70,7 +71,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
 step "Standalone Tauri build"
 pnpm tauri build --debug --no-bundle --ci -- --locked
 "$SCRIPT_DIR/verify-rust-dependencies.sh"
-[[ -x "$OSTUDY_BINARY" ]]
+[[ -x "$OSUTDY_BINARY" ]]
 ostudy_write_build_stamp "$(node -p "require('./package.json').version")"
 
 if [[ "${OSTUDY_SKIP_NATIVE_SMOKE:-0}" == "1" ]]; then

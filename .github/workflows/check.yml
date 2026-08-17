@@ -43,6 +43,12 @@ jobs:
       CI: "true"
       CARGO_TERM_COLOR: always
       QUALIFIED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      OSTUDY_CI_LOG_FILTER: warn,ostudy=info
+      OSTUDY_LOG: warn,ostudy=info
+      OSTUDY_DIAGNOSTICS_ACTIVE: "1"
+      OSTUDY_DIAGNOSTICS_AUTOMATIC: "1"
+      OSTUDY_KEEP_FAILURE_ARTIFACTS: "1"
+      OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT: ${{ runner.temp }}/ostudy-diagnostics
 
     steps:
       - name: Check out exact source head
@@ -130,6 +136,8 @@ jobs:
         if: failure()
         run: |
           node ./scripts/summarize-check-failure.mjs \
+            --diagnostics "$RUNNER_TEMP/ostudy-diagnostics" \
+            --diagnostics "$RUNNER_TEMP/android-smoke" \
             "$RUNNER_TEMP/ostudy-static-check.log" \
             "$RUNNER_TEMP/ostudy-fast-check.log" \
             "$RUNNER_TEMP/ostudy-full-check.log" \
@@ -140,6 +148,15 @@ jobs:
       - name: Export diagnostics after failure
         if: failure()
         run: bash ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-unified-diagnostics.tar.gz"
+
+      - name: Upload bounded diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ostudy-diagnostics-${{ env.QUALIFIED_SHA }}
+          path: ${{ runner.temp }}/ostudy-diagnostics/**
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload bounded failure evidence
         if: failure()
@@ -170,6 +187,7 @@ jobs:
             echo "- Head: \`$QUALIFIED_SHA\`"
             echo "- Runner: \`$RUNNER_NAME\`"
             echo "- Gate: \`$GATE\`"
+            echo "- Diagnostic baseline: \`$OSTUDY_CI_LOG_FILTER\`"
             echo "- Status: **$JOB_STATUS**"
           } >> "$GITHUB_STEP_SUMMARY"
 
