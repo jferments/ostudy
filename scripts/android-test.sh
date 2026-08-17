@@ -7,6 +7,8 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/android-env.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/diagnostics.bash"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/check-state.sh"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 ostudy_parse_diagnostic_args "$@"
 
@@ -24,6 +26,12 @@ for argument in "${OSTUDY_DIAGNOSTIC_REMAINDER[@]}"; do
 done
 
 cd "$ROOT_DIR"
+WORKTREE_BASELINE="$(mktemp -t ostudy-android-worktree.XXXXXXXX)"
+cleanup_worktree_baseline() { rm -f -- "$WORKTREE_BASELINE"; }
+trap cleanup_worktree_baseline EXIT
+ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
+trap 'status=$?; ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android qualification" || true; exit "$status"' ERR
+
 printf 'Android parallelism: %s logical workers (Cargo=%s, Vitest=%s, Gradle=%s).\n' \
   "$OSTUDY_ANDROID_JOBS" "$CARGO_BUILD_JOBS" "$VITEST_MAX_WORKERS" "$OSTUDY_GRADLE_WORKERS"
 
@@ -126,6 +134,8 @@ verify_gradle_contracts() (
 if ((RUN_EMULATOR == 1)); then
   bash ./scripts/android-emulator-smoke.sh
   verify_gradle_contracts
+  ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android emulator qualification"
+  trap - ERR
   printf 'OK   Android shared checks, emulator instrumentation, and Gradle contracts passed.\n'
   exit 0
 fi
@@ -155,4 +165,6 @@ if [[ -z "$test_apk" || ! -f "$test_apk" ]]; then
   exit 1
 fi
 bash ./scripts/verify-android-package.sh "$app_apk" debug
+ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android compile/package qualification"
+trap - ERR
 printf 'OK   Android compile, parallel unit-test, Gradle-contract, instrumentation-package, and APK checks passed.\n'
