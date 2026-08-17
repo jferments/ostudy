@@ -120,6 +120,32 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
         ) {
           return null;
         }
+
+        // HelpTrigger renders an absolutely positioned, opacity-zero tooltip inside
+        // these groups. That tooltip is intentionally wider than its icon and is
+        // included in an ancestor's scrollWidth even when no visible control
+        // overflows. Measure the interactive controls themselves instead.
+        const controlMetrics = (group) => {
+          const groupRect = group.getBoundingClientRect();
+          const controls = [...group.querySelectorAll('button')]
+            .filter((control) => control instanceof HTMLElement);
+          const rects = controls.map((control) => control.getBoundingClientRect());
+          return {
+            left: groupRect.left,
+            right: groupRect.right,
+            controlCount: controls.length,
+            minControlLeft: rects.length
+              ? Math.min(...rects.map((rect) => rect.left))
+              : groupRect.left,
+            maxControlRight: rects.length
+              ? Math.max(...rects.map((rect) => rect.right))
+              : groupRect.right,
+            clippedLabelCount: controls.filter(
+              (control) => control.scrollWidth > control.clientWidth + 1
+            ).length,
+          };
+        };
+
         const f = folder.getBoundingClientRect();
         const d = deck.getBoundingClientRect();
         const viewport = document.documentElement.clientWidth;
@@ -131,10 +157,8 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
           deckLeft: d.left,
           deckRight: d.right,
           viewport,
-          folderActionsClient: folderActions.clientWidth,
-          folderActionsScroll: folderActions.scrollWidth,
-          deckActionsClient: deckActions.clientWidth,
-          deckActionsScroll: deckActions.scrollWidth,
+          folderActions: controlMetrics(folderActions),
+          deckActions: controlMetrics(deckActions),
         };
         """,
         [
@@ -162,14 +186,28 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
         raise AssertionError(
             f"Deck-library controls escaped the viewport at {width}px: {measurements!r}"
         )
-    if int(measurements["folderActionsScroll"]) > int(measurements["folderActionsClient"]) + 1:
-        raise AssertionError(
-            f"Folders action group overflowed at {width}px: {measurements!r}"
-        )
-    if int(measurements["deckActionsScroll"]) > int(measurements["deckActionsClient"]) + 1:
-        raise AssertionError(
-            f"Deck toolbar action group overflowed at {width}px: {measurements!r}"
-        )
+
+    for key, label in (
+        ("folderActions", "Folders action group"),
+        ("deckActions", "Deck toolbar action group"),
+    ):
+        group = measurements[key]
+        if not isinstance(group, dict) or int(group.get("controlCount", 0)) == 0:
+            raise AssertionError(
+                f"{label} had no measurable controls at {width}px: {measurements!r}"
+            )
+        if (
+            float(group["minControlLeft"]) < float(group["left"]) - 1
+            or float(group["maxControlRight"]) > float(group["right"]) + 1
+        ):
+            raise AssertionError(
+                f"{label} controls escaped their container at {width}px: {measurements!r}"
+            )
+        if int(group["clippedLabelCount"]) != 0:
+            raise AssertionError(
+                f"{label} clipped one or more button labels at {width}px: {measurements!r}"
+            )
+
     ui.assert_no_horizontal_overflow(session_id, f"deck-library controls at {width}px")
 
 
@@ -205,7 +243,8 @@ def main() -> int:
         print(
             "Native Flashcards layout smoke passed: compact tabs wrap into a centered 3+2 "
             "layout without horizontal scrolling, New folder stays inside the Folders section, "
-            "New deck remains in the top toolbar, and both action groups stay contained."
+            "New deck remains in the top toolbar, and visible action controls stay contained "
+            "without clipped labels."
         )
         return 0
     except Exception:
