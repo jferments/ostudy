@@ -35,6 +35,8 @@ pub struct CreateAiProviderProfileInput {
     pub auth_mode: AuthMode,
     pub enabled: bool,
     pub allow_insecure_http: bool,
+    #[serde(default)]
+    pub require_zero_data_retention: bool,
     pub request_timeout_ms: i64,
     #[serde(default)]
     pub editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
@@ -52,6 +54,8 @@ pub struct UpdateAiProviderProfileInput {
     pub auth_mode: AuthMode,
     pub enabled: bool,
     pub allow_insecure_http: bool,
+    #[serde(default)]
+    pub require_zero_data_retention: bool,
     pub request_timeout_ms: i64,
     #[serde(default)]
     pub editor_draft: Option<crate::editor_drafts::EditorDraftCommitRef>,
@@ -129,6 +133,7 @@ pub struct AiProviderProfileDetailDto {
     pub auth_mode: AuthMode,
     pub enabled: bool,
     pub allow_insecure_http: bool,
+    pub require_zero_data_retention: bool,
     pub request_timeout_ms: i64,
     pub credential_epoch: i64,
     pub network_scope: NetworkScope,
@@ -161,6 +166,7 @@ pub(crate) struct ProfileSnapshot {
     pub auth_mode: AuthMode,
     pub enabled: bool,
     pub allow_insecure_http: bool,
+    pub require_zero_data_retention: bool,
     pub request_timeout_ms: i64,
     pub credential_epoch: i64,
     pub revision: i64,
@@ -186,6 +192,7 @@ impl ProfileSnapshot {
                 "Select or enter a model before testing this AI provider profile.",
             ));
         }
+        validate_privacy_configuration(self.provider_kind, self.require_zero_data_retention)?;
         validate_endpoint(self.provider_kind, &self.base_url, self.allow_insecure_http)?;
         Ok(())
     }
@@ -201,6 +208,7 @@ struct StoredProfile {
     auth_mode: AuthMode,
     enabled: bool,
     allow_insecure_http: bool,
+    require_zero_data_retention: bool,
     request_timeout_ms: i64,
     credential_storage: CredentialStorage,
     credential_epoch: i64,
@@ -219,6 +227,7 @@ struct RawProfileRow {
     auth_mode: String,
     enabled: i64,
     allow_insecure_http: i64,
+    require_zero_data_retention: i64,
     request_timeout_ms: i64,
     credential_storage: String,
     credential_epoch: i64,
@@ -240,6 +249,7 @@ impl TryFrom<RawProfileRow> for StoredProfile {
             auth_mode: AuthMode::from_db(&row.auth_mode)?,
             enabled: row.enabled != 0,
             allow_insecure_http: row.allow_insecure_http != 0,
+            require_zero_data_retention: row.require_zero_data_retention != 0,
             request_timeout_ms: row.request_timeout_ms,
             credential_storage: CredentialStorage::from_db(&row.credential_storage)?,
             credential_epoch: row.credential_epoch,
@@ -260,6 +270,7 @@ impl From<&StoredProfile> for ProfileSnapshot {
             auth_mode: profile.auth_mode,
             enabled: profile.enabled,
             allow_insecure_http: profile.allow_insecure_http,
+            require_zero_data_retention: profile.require_zero_data_retention,
             request_timeout_ms: profile.request_timeout_ms,
             credential_epoch: profile.credential_epoch,
             revision: profile.revision,
@@ -334,6 +345,7 @@ pub fn update_ai_provider_profile(
     if current.revision != input.revision {
         return Err(profile_changed());
     }
+    validate_privacy_configuration(current.provider_kind, input.require_zero_data_retention)?;
     let next_endpoint = validate_endpoint(
         current.provider_kind,
         &input.base_url,
@@ -530,6 +542,7 @@ fn create_profile(
     }
 
     validate_provider_configuration(input.provider_kind, input.auth_mode)?;
+    validate_privacy_configuration(input.provider_kind, input.require_zero_data_retention)?;
     let display_name = validate_display_name(input.display_name)?;
     let normalized_name = normalize_name(&display_name);
     let model_id = validate_model_id(input.model_id)?;
@@ -552,13 +565,14 @@ fn create_profile(
             "INSERT INTO ai_provider_profiles (
                  id, display_name, normalized_name, provider_kind, base_url,
                  model_id, auth_mode, enabled, allow_insecure_http,
-                 request_timeout_ms, credential_storage, credential_epoch, revision,
+                 require_zero_data_retention, request_timeout_ms,
+                 credential_storage, credential_epoch, revision,
                  created_at, updated_at, deleted_at
              ) VALUES (
                  ?1, ?2, ?3, ?4, ?5,
                  ?6, ?7, ?8, ?9,
-                 ?10, 'none', 0, 1,
-                 ?11, ?11, NULL
+                 ?10, ?11, 'none', 0, 1,
+                 ?12, ?12, NULL
              )",
             params![
                 id,
@@ -570,6 +584,7 @@ fn create_profile(
                 input.auth_mode.as_str(),
                 bool_to_integer(input.enabled),
                 bool_to_integer(input.allow_insecure_http),
+                bool_to_integer(input.require_zero_data_retention),
                 input.request_timeout_ms,
                 now,
             ],
@@ -602,6 +617,7 @@ fn update_profile(
     input: UpdateAiProviderProfileInput,
 ) -> Result<String, CommandError> {
     validate_provider_configuration(provider_kind, input.auth_mode)?;
+    validate_privacy_configuration(provider_kind, input.require_zero_data_retention)?;
     let display_name = validate_display_name(input.display_name)?;
     let normalized_name = normalize_name(&display_name);
     let model_id = validate_model_id(input.model_id)?;
@@ -622,10 +638,11 @@ fn update_profile(
                  auth_mode = ?5,
                  enabled = ?6,
                  allow_insecure_http = ?7,
-                 request_timeout_ms = ?8,
-                 updated_at = ?9,
+                 require_zero_data_retention = ?8,
+                 request_timeout_ms = ?9,
+                 updated_at = ?10,
                  revision = revision + 1
-             WHERE id = ?10 AND revision = ?11 AND deleted_at IS NULL",
+             WHERE id = ?11 AND revision = ?12 AND deleted_at IS NULL",
             params![
                 display_name,
                 normalized_name,
@@ -634,6 +651,7 @@ fn update_profile(
                 input.auth_mode.as_str(),
                 bool_to_integer(input.enabled),
                 bool_to_integer(input.allow_insecure_http),
+                bool_to_integer(input.require_zero_data_retention),
                 input.request_timeout_ms,
                 now,
                 input.profile_id,
@@ -807,7 +825,8 @@ fn list_profiles(connection: &mut Connection) -> Result<Vec<StoredProfile>, Comm
         .prepare(
             "SELECT id, display_name, provider_kind, base_url,
                     model_id, auth_mode, enabled, allow_insecure_http,
-                    request_timeout_ms, credential_storage, credential_epoch, revision,
+                    require_zero_data_retention, request_timeout_ms,
+                    credential_storage, credential_epoch, revision,
                     created_at, updated_at
              FROM ai_provider_profiles
              WHERE deleted_at IS NULL
@@ -838,7 +857,8 @@ fn load_profile(connection: &Connection, profile_id: &str) -> Result<StoredProfi
         .query_row(
             "SELECT id, display_name, provider_kind, base_url,
                     model_id, auth_mode, enabled, allow_insecure_http,
-                    request_timeout_ms, credential_storage, credential_epoch, revision,
+                    require_zero_data_retention, request_timeout_ms,
+                    credential_storage, credential_epoch, revision,
                     created_at, updated_at
              FROM ai_provider_profiles
              WHERE id = ?1 AND deleted_at IS NULL",
@@ -867,12 +887,13 @@ fn raw_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawProfileRow> {
         auth_mode: row.get(5)?,
         enabled: row.get(6)?,
         allow_insecure_http: row.get(7)?,
-        request_timeout_ms: row.get(8)?,
-        credential_storage: row.get(9)?,
-        credential_epoch: row.get(10)?,
-        revision: row.get(11)?,
-        created_at: row.get(12)?,
-        updated_at: row.get(13)?,
+        require_zero_data_retention: row.get(8)?,
+        request_timeout_ms: row.get(9)?,
+        credential_storage: row.get(10)?,
+        credential_epoch: row.get(11)?,
+        revision: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
     })
 }
 
@@ -935,6 +956,7 @@ fn build_detail(
         auth_mode: profile.auth_mode,
         enabled: profile.enabled,
         allow_insecure_http: profile.allow_insecure_http,
+        require_zero_data_retention: profile.require_zero_data_retention,
         request_timeout_ms: profile.request_timeout_ms,
         credential_epoch: profile.credential_epoch,
         network_scope: endpoint.scope,
@@ -1014,6 +1036,19 @@ fn validate_provider_configuration(
         return Err(CommandError::new(
             "invalid_ai_auth_mode",
             "Built-in cloud provider profiles require bearer-token authentication.",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_privacy_configuration(
+    provider_kind: ProviderKind,
+    require_zero_data_retention: bool,
+) -> Result<(), CommandError> {
+    if require_zero_data_retention && provider_kind != ProviderKind::Openrouter {
+        return Err(CommandError::new(
+            "invalid_ai_privacy_policy",
+            "Zero-data-retention routing is available only for OpenRouter profiles.",
         ));
     }
     Ok(())
@@ -1216,6 +1251,7 @@ fn default_profile_input(provider_kind: ProviderKind) -> CreateAiProviderProfile
         auth_mode: provider_kind.default_auth_mode(),
         enabled: true,
         allow_insecure_http: false,
+        require_zero_data_retention: false,
         request_timeout_ms: super::catalog::DEFAULT_TIMEOUT_MS,
         editor_draft: None,
     }
@@ -1338,6 +1374,32 @@ mod tests {
                 Ok(())
             })
             .expect("credential operation should remain redacted");
+    }
+
+    #[test]
+    fn openrouter_zero_data_retention_is_persisted_and_provider_scoped() {
+        let database = Database::open_in_memory().expect("database should open");
+        let mut input = default_profile_input(ProviderKind::Openrouter);
+        input.operation_id = "17171717171717171717171717171717".to_string();
+        input.display_name = "OpenRouter ZDR".to_string();
+        input.model_id = "openai/example".to_string();
+        input.require_zero_data_retention = true;
+        let profile_id = database
+            .with_connection(|connection| create_profile(connection, input))
+            .expect("OpenRouter ZDR profile should save");
+        let snapshot = database
+            .with_connection(|connection| load_profile_snapshot(connection, &profile_id))
+            .expect("saved profile should load");
+        assert!(snapshot.require_zero_data_retention);
+
+        let mut invalid = default_profile_input(ProviderKind::LlamaCpp);
+        invalid.operation_id = "18181818181818181818181818181818".to_string();
+        invalid.display_name = "Invalid local ZDR".to_string();
+        invalid.require_zero_data_retention = true;
+        let error = database
+            .with_connection(|connection| create_profile(connection, invalid))
+            .expect_err("non-OpenRouter profiles must reject ZDR routing");
+        assert_eq!(error.code, "invalid_ai_privacy_policy");
     }
 
     #[test]

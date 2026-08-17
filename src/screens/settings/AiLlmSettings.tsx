@@ -196,6 +196,7 @@ function ProfileEditor({
   const provider = controller.catalog.find((entry) => entry.providerKind === draft.providerKind);
   const saved = controller.selectedProfile;
   const isLlama = draft.providerKind === "llama_cpp";
+  const isOpenRouter = draft.providerKind === "openrouter";
 
   return (
     <section className={styles.settingsCard} aria-busy={controller.mutating}>
@@ -305,6 +306,26 @@ function ProfileEditor({
               checked={draft.allowInsecureHttp}
               onChange={(event) =>
                 controller.updateDraft({ allowInsecureHttp: event.currentTarget.checked })
+              }
+            />
+          </label>
+        ) : null}
+        {isOpenRouter ? (
+          <label className={`${styles.switchRow} ${styles.fullWidth}`}>
+            <span>
+              <strong>Require zero data retention</strong>
+              <small>
+                Restrict OpenRouter routing to endpoints that declare zero data retention.
+                This can reduce endpoint availability.
+              </small>
+            </span>
+            <input
+              type="checkbox"
+              checked={draft.requireZeroDataRetention ?? false}
+              onChange={(event) =>
+                controller.updateDraft({
+                  requireZeroDataRetention: event.currentTarget.checked,
+                })
               }
             />
           </label>
@@ -890,6 +911,8 @@ function hasProviderSettingsChanges(
     draft.authMode !== selected.authMode ||
     draft.enabled !== selected.enabled ||
     draft.allowInsecureHttp !== selected.allowInsecureHttp ||
+    (draft.requireZeroDataRetention ?? false) !==
+      (selected.requireZeroDataRetention ?? false) ||
     draft.requestTimeoutMs !== selected.requestTimeoutMs
   );
 }
@@ -903,6 +926,7 @@ function draftFromSelected(selected: AiProviderProfileDetail): AiProfileDraft {
     authMode: selected.authMode,
     enabled: selected.enabled,
     allowInsecureHttp: selected.allowInsecureHttp,
+    requireZeroDataRetention: selected.requireZeroDataRetention ?? false,
     requestTimeoutMs: selected.requestTimeoutMs,
   };
 }
@@ -918,7 +942,7 @@ function canUseProviderCredential(profile: AiProviderProfileDetail): boolean {
 
 function cloudProviderNotice(providerKind: AiProviderKind): string {
   if (providerKind === "openrouter") {
-    return "OpenRouter is a cloud routing provider. ostudy uses its fixed official API endpoint, requests only parameter-compatible endpoints for structured generation, and denies data-collecting endpoints by default.";
+    return "OpenRouter is a cloud routing provider. ostudy uses its fixed official API endpoint, requests only parameter-compatible endpoints for structured generation, denies data-collecting endpoints by default, and can require zero-data-retention routing per profile.";
   }
   if (providerKind === "deepseek") {
     return "DeepSeek is a cloud provider. ostudy uses DeepSeek's fixed official API endpoint.";

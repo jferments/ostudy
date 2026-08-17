@@ -20,7 +20,7 @@ use super::{
     AiRuntimeState,
 };
 
-const ADAPTER_REVISION: i64 = 3;
+const ADAPTER_REVISION: i64 = 4;
 const RESULT_SCHEMA_VERSION: i64 = 1;
 const MAX_PERSISTED_RESULT_BYTES: usize = 32 * 1024;
 
@@ -903,6 +903,7 @@ mod tests {
             },
             enabled: true,
             allow_insecure_http: false,
+            require_zero_data_retention: false,
             request_timeout_ms: 60_000,
             credential_epoch: 2,
             revision: 3,

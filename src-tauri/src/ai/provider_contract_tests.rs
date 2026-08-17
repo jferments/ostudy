@@ -270,6 +270,7 @@ fn profile(
         auth_mode,
         enabled: true,
         allow_insecure_http: false,
+        require_zero_data_retention: false,
         request_timeout_ms: 5_000,
         credential_epoch: 0,
         revision: 1,

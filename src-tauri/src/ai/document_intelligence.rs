@@ -878,7 +878,10 @@ fn openrouter_document_body(profile: &ProfileSnapshot, request: &JsonTaskRequest
         "temperature": 0.12,
         "max_tokens": request.max_tokens,
         "stream": false,
-        "provider": providers::openrouter_provider_preferences(true),
+        "provider": providers::openrouter_provider_preferences(
+            true,
+            profile.require_zero_data_retention,
+        ),
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -2352,6 +2355,7 @@ mod tests {
             auth_mode: super::super::catalog::AuthMode::Bearer,
             enabled: true,
             allow_insecure_http: false,
+            require_zero_data_retention: false,
             request_timeout_ms: 60_000,
             credential_epoch: 0,
             revision: 1,

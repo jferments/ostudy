@@ -12,8 +12,11 @@ use super::{
     profiles::ProfileSnapshot,
 };
 
-pub(crate) fn openrouter_provider_preferences(require_parameters: bool) -> Value {
-    openrouter::provider_preferences(require_parameters)
+pub(crate) fn openrouter_provider_preferences(
+    require_parameters: bool,
+    require_zero_data_retention: bool,
+) -> Value {
+    openrouter::provider_preferences(require_parameters, require_zero_data_retention)
 }
 
 const DEFAULT_MAX_MODEL_LIST_BYTES: usize = 512 * 1024;
@@ -120,7 +123,11 @@ impl ProviderAdapter {
                 "stream": false,
                 "thinking": { "type": "disabled" }
             }),
-            Self::Openrouter => openrouter::text_probe_body(&profile.model_id, messages),
+            Self::Openrouter => openrouter::text_probe_body(
+                &profile.model_id,
+                messages,
+                profile.require_zero_data_retention,
+            ),
         }
     }
 
@@ -175,7 +182,12 @@ impl ProviderAdapter {
                 "thinking": { "type": "disabled" },
                 "response_format": { "type": "json_object" }
             }),
-            Self::Openrouter => openrouter::structured_probe_body(&profile.model_id, echo, schema),
+            Self::Openrouter => openrouter::structured_probe_body(
+                &profile.model_id,
+                echo,
+                schema,
+                profile.require_zero_data_retention,
+            ),
         }
     }
 }

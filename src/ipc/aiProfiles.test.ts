@@ -25,6 +25,7 @@ const draft = {
   authMode: "none" as const,
   enabled: true,
   allowInsecureHttp: false,
+  requireZeroDataRetention: false,
   requestTimeoutMs: 60_000,
 };
 
@@ -54,6 +55,7 @@ describe("AI provider IPC", () => {
         authMode: draft.authMode,
         enabled: draft.enabled,
         allowInsecureHttp: draft.allowInsecureHttp,
+        requireZeroDataRetention: draft.requireZeroDataRetention,
         requestTimeoutMs: draft.requestTimeoutMs,
       },
     });

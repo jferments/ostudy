@@ -5,18 +5,27 @@ use crate::ai::gateway::{error, AiGatewayError};
 pub(super) const MAX_MODEL_LIST_BYTES: usize = 4 * 1024 * 1024;
 pub(super) const MAX_MODELS: usize = 2_000;
 
-pub(super) fn text_probe_body(model_id: &str, messages: Value) -> Value {
+pub(super) fn text_probe_body(
+    model_id: &str,
+    messages: Value,
+    require_zero_data_retention: bool,
+) -> Value {
     json!({
         "model": model_id,
         "messages": messages,
         "temperature": 0,
         "max_tokens": 64,
         "stream": false,
-        "provider": provider_preferences(true)
+        "provider": provider_preferences(true, require_zero_data_retention)
     })
 }
 
-pub(super) fn structured_probe_body(model_id: &str, echo: &str, schema: Value) -> Value {
+pub(super) fn structured_probe_body(
+    model_id: &str,
+    echo: &str,
+    schema: Value,
+    require_zero_data_retention: bool,
+) -> Value {
     json!({
         "model": model_id,
         "messages": [
@@ -32,7 +41,7 @@ pub(super) fn structured_probe_body(model_id: &str, echo: &str, schema: Value) -
         "temperature": 0,
         "max_tokens": 128,
         "stream": false,
-        "provider": provider_preferences(true),
+        "provider": provider_preferences(true, require_zero_data_retention),
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -47,10 +56,14 @@ pub(super) fn structured_probe_body(model_id: &str, echo: &str, schema: Value) -
 /// OpenRouter defaults permit endpoints that may retain data. ostudy sends a
 /// stricter request policy for study content and requires parameter-compatible
 /// endpoints whenever the task relies on a structured-output contract.
-pub(super) fn provider_preferences(require_parameters: bool) -> Value {
+pub(super) fn provider_preferences(
+    require_parameters: bool,
+    require_zero_data_retention: bool,
+) -> Value {
     json!({
         "require_parameters": require_parameters,
         "data_collection": "deny",
+        "zdr": require_zero_data_retention,
         "allow_fallbacks": true
     })
 }
@@ -144,7 +157,8 @@ mod tests {
 
     #[test]
     fn structured_probe_requires_parameter_compatible_private_routing() {
-        let body = structured_probe_body("openai/example", "echo", json!({ "type": "object" }));
+        let body =
+            structured_probe_body("openai/example", "echo", json!({ "type": "object" }), true);
         assert_eq!(
             body.pointer("/provider/require_parameters"),
             Some(&json!(true))
@@ -153,12 +167,25 @@ mod tests {
             body.pointer("/provider/data_collection"),
             Some(&json!("deny"))
         );
+        assert_eq!(body.pointer("/provider/zdr"), Some(&json!(true)));
         assert_eq!(
             body.pointer("/response_format/type"),
             Some(&json!("json_schema"))
         );
         assert!(body.get("debug").is_none());
         assert!(body.get("plugins").is_none());
+    }
+
+    #[test]
+    fn provider_preferences_make_zdr_explicit_without_weakening_data_collection() {
+        let ordinary = provider_preferences(true, false);
+        assert_eq!(ordinary.pointer("/data_collection"), Some(&json!("deny")));
+        assert_eq!(ordinary.pointer("/zdr"), Some(&json!(false)));
+
+        let strict = provider_preferences(true, true);
+        assert_eq!(strict.pointer("/data_collection"), Some(&json!("deny")));
+        assert_eq!(strict.pointer("/zdr"), Some(&json!(true)));
+        assert_eq!(strict.pointer("/require_parameters"), Some(&json!(true)));
     }
 
     #[test]

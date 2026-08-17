@@ -27,6 +27,7 @@ A provider profile records nonsecret configuration such as:
 - the model identifier;
 - whether authentication is required;
 - request timeout and enabled state;
+- an optional OpenRouter-only zero-data-retention requirement;
 - capability evidence from the most recent successful verification;
 - whether the profile is the default for a supported task.
 
@@ -101,4 +102,4 @@ For implementation details, see [AI and document processing](../architecture/ai-
 
 Create an **OpenRouter** profile in Settings → AI/LLM, save the API key in the operating-system credential store, retrieve the account-visible model catalog, select a model, and run the connection/capability test. ostudy uses OpenRouter's fixed official API endpoint.
 
-For document generation, ostudy requests strict JSON Schema output only from parameter-compatible endpoints and sets OpenRouter's provider-data-collection policy to `deny`. It does not enable provider-side prompt/body debugging or context-compression plugins. A stricter policy can reduce endpoint availability; the connection test reports that as a routing/capability failure rather than silently weakening the request.
+For document generation, ostudy requests strict JSON Schema output only from parameter-compatible endpoints and sets OpenRouter's provider-data-collection policy to `deny`. It explicitly disables provider-side context compression so document windows are not silently changed, and it never enables prompt/body debugging. Enable **Require zero data retention** on a profile to send `provider.zdr=true`; this stronger restriction can reduce endpoint availability, and the connection test reports that as a routing/capability failure rather than silently weakening the request.

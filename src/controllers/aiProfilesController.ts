@@ -246,6 +246,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       authMode: provider.authenticationRequired ? "bearer" : "none",
       enabled: true,
       allowInsecureHttp: false,
+      requireZeroDataRetention: false,
       requestTimeoutMs: provider.defaultTimeoutMs,
     });
     setCredentialDraft("");
@@ -479,6 +480,7 @@ function draftFromProfile(profile: AiProviderProfileDetail): AiProfileDraft {
     authMode: profile.authMode,
     enabled: profile.enabled,
     allowInsecureHttp: profile.allowInsecureHttp,
+    requireZeroDataRetention: profile.requireZeroDataRetention ?? false,
     requestTimeoutMs: profile.requestTimeoutMs,
   };
 }

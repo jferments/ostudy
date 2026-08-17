@@ -66,6 +66,7 @@ export interface AiProviderProfileDetail extends AiProviderProfileSummary {
   baseUrlEditable: boolean;
   authMode: AiAuthMode;
   allowInsecureHttp: boolean;
+  requireZeroDataRetention?: boolean;
   requestTimeoutMs: number;
   credentialEpoch: number;
   createdAt: number;
@@ -79,6 +80,7 @@ export interface AiProfileDraft {
   authMode: AiAuthMode;
   enabled: boolean;
   allowInsecureHttp: boolean;
+  requireZeroDataRetention?: boolean;
   requestTimeoutMs: number;
 }
 
@@ -185,6 +187,7 @@ export async function updateAiProviderProfile(
       authMode: input.authMode,
       enabled: input.enabled,
       allowInsecureHttp: input.allowInsecureHttp,
+      requireZeroDataRetention: input.requireZeroDataRetention ?? false,
       requestTimeoutMs: input.requestTimeoutMs,
       editorDraft: input.editorDraft,
     },

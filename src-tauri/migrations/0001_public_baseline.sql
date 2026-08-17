@@ -85,6 +85,8 @@ CREATE TABLE "ai_provider_profiles" (
     auth_mode               TEXT NOT NULL CHECK(auth_mode IN ('none', 'bearer')),
     enabled                 INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
     allow_insecure_http     INTEGER NOT NULL DEFAULT 0 CHECK(allow_insecure_http IN (0, 1)),
+    require_zero_data_retention INTEGER NOT NULL DEFAULT 0
+                                CHECK(require_zero_data_retention IN (0, 1)),
     request_timeout_ms      INTEGER NOT NULL DEFAULT 60000
                             CHECK(request_timeout_ms BETWEEN 1000 AND 300000),
     credential_storage      TEXT NOT NULL DEFAULT 'none'

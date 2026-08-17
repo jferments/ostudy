@@ -29,7 +29,7 @@ struct Migration {
 const MIGRATIONS: &[Migration] = &[Migration {
     version: 1,
     name: "public_baseline",
-    checksum: "f00628d96aa9b4b6e5331ed280dcf15f3237eb65c88d98de2d3516f77a3d9750",
+    checksum: "2d978f8be026ecb820e71ba77a8585e1de51cb08fc2820714526a33284167f85",
     sql: include_str!("../migrations/0001_public_baseline.sql"),
 }];
 
