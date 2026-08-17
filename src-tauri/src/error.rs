@@ -21,8 +21,8 @@ impl CommandError {
     pub fn database(error: impl std::fmt::Display) -> Self {
         let caller = std::panic::Location::caller();
         Self::database_at(
-            "database_error",
-            format!("caller={}:{}", caller.file(), caller.line()),
+            "database_operation_failed",
+            format!("{}:{}", caller.file(), caller.line()),
             error,
         )
     }
@@ -32,7 +32,15 @@ impl CommandError {
         context: impl AsRef<str>,
         error: impl std::fmt::Display,
     ) -> Self {
-        logging::error(event, format!("{} sqlite={error}", context.as_ref()));
+        logging::error_target(
+            "database.operation",
+            event,
+            "A local SQLite operation failed.",
+            serde_json::json!({
+                "context": context.as_ref(),
+                "sqliteError": error.to_string(),
+            }),
+        );
         Self::new(
             "database_error",
             "The local database operation failed. See the ostudy diagnostic log for details.",
@@ -40,7 +48,12 @@ impl CommandError {
     }
 
     pub fn io(error: impl std::fmt::Display) -> Self {
-        logging::error("file_error", error.to_string());
+        logging::error_target(
+            "filesystem.operation",
+            "file_operation_failed",
+            "A local file operation failed.",
+            serde_json::json!({ "ioError": error.to_string() }),
+        );
         Self::new(
             "file_error",
             "The file operation failed. See the ostudy diagnostic log for details.",
@@ -48,7 +61,12 @@ impl CommandError {
     }
 
     pub fn serialization(error: impl std::fmt::Display) -> Self {
-        logging::error("serialization_error", error.to_string());
+        logging::error_target(
+            "serialization",
+            "serialization_failed",
+            "Structured application data could not be encoded or decoded.",
+            serde_json::json!({ "serializationError": error.to_string() }),
+        );
         Self::new(
             "serialization_error",
             "The card content could not be read or saved.",
