@@ -48,7 +48,7 @@ class WorktreeMutationGuardTests(unittest.TestCase):
             self.assertIn("Synthetic native gate changed Git-visible repository state", completed.stderr)
             self.assertIn("+?? Native", completed.stderr)
 
-    def test_preexisting_untracked_file_is_not_bl_id_as_gate_output(self) -> None:
+    def test_preexisting_untracked_file_is_not_blindly_attributed_to_gate(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             repo = Path(raw_directory) / "repo"
             repo.mkdir()
@@ -61,6 +61,8 @@ class WorktreeMutationGuardTests(unittest.TestCase):
                 "ostudy_assert_worktree_unchanged \"$baseline\" 'No-op gate'",
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("pre-existing Git-visible worktree state", completed.stderr)
+            self.assertIn("?? preexisting.txt", completed.stderr)
 
     def test_tracked_source_mutation_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
