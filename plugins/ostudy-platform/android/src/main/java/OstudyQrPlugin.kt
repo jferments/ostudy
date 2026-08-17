@@ -1,40 +1,48 @@
 package io.github.jferments.ostudy.platform
 
 import android.app.Activity
+import android.util.Log
 import android.webkit.WebView
-import androidx.activity.result.ActivityResult
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
-import app.tauri.annotation.ActivityCallback
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.integration.android.IntentIntegrator
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import java.util.concurrent.atomic.AtomicBoolean
 
+private const val LOG_TAG = "ostudy.qr"
 private const val MAX_QR_CONTENT_CHARS = 16 * 1024
-private const val QR_SCAN_TIMEOUT_MILLIS = 60_000L
-private const val DEFAULT_SCAN_PROMPT =
-    "Center the entire ostudy pairing code inside the frame and hold steady. The camera closes when the code is detected."
 
+/**
+ * The prompt field remains in the mobile-plugin contract so existing Rust and
+ * frontend callers do not need a platform-specific branch. Google Code Scanner
+ * owns its permissionless native UI and does not expose custom prompt text.
+ */
 @InvokeArg
 class ScanQrCodeArgs {
-    var prompt: String = DEFAULT_SCAN_PROMPT
+    var prompt: String = ""
 }
 
 @TauriPlugin
 class OstudyQrPlugin(private val activity: Activity) : Plugin(activity) {
-    @Volatile private var scanOpen = false
+    private val scanOpen = AtomicBoolean(false)
+    private val options = GmsBarcodeScannerOptions.Builder()
+        .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+        .enableAutoZoom()
+        .build()
 
     override fun load(webView: WebView) {
         val owner = activity as? LifecycleOwner ?: return
         owner.lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onDestroy(owner: LifecycleOwner) {
-                scanOpen = false
+                scanOpen.set(false)
                 owner.lifecycle.removeObserver(this)
             }
         })
@@ -42,56 +50,82 @@ class OstudyQrPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun scanQrCode(invoke: Invoke) {
-        if (scanOpen) {
+        if (!scanOpen.compareAndSet(false, true)) {
             invoke.reject("Another QR-code scanner is already open.")
             return
         }
-        val args = invoke.parseArgs(ScanQrCodeArgs::class.java)
-        try {
-            scanOpen = true
-            val intent = IntentIntegrator(activity)
-                .setDesiredBarcodeFormats(listOf(BarcodeFormat.QR_CODE.name))
-                .setPrompt(args.prompt.take(240).ifBlank { DEFAULT_SCAN_PROMPT })
-                // Audible/haptic confirmation complements the in-app visual
-                // "Pairing code detected" state after the capture activity closes.
-                .setBeepEnabled(true)
-                .setBarcodeImageEnabled(false)
-                .setCameraId(0)
-                .setOrientationLocked(false)
-                .setTimeout(QR_SCAN_TIMEOUT_MILLIS)
-                .createScanIntent()
-            startActivityForResult(invoke, intent, "scanQrCodeResult")
-        } catch (error: Exception) {
-            scanOpen = false
-            invoke.reject("The Android QR scanner could not open: ${safeMessage(error)}")
-        }
-    }
+        // Validate the existing IPC shape even though the first-party scanner
+        // controls its own native instructions.
+        invoke.parseArgs(ScanQrCodeArgs::class.java)
+        val completed = AtomicBoolean(false)
 
-    @ActivityCallback
-    fun scanQrCodeResult(invoke: Invoke, result: ActivityResult) {
-        scanOpen = false
-        val parsed = IntentIntegrator.parseActivityResult(result.resultCode, result.data)
-        if (result.resultCode == Activity.RESULT_CANCELED || parsed.contents == null) {
-            deliverWhenResumed {
-                invoke.resolve(JSObject().apply {
-                    put("cancelled", true)
-                    put("contents", null)
-                })
-            }
-            return
+        fun complete(deliver: () -> Unit) {
+            if (!completed.compareAndSet(false, true)) return
+            scanOpen.set(false)
+            deliverWhenResumed(deliver)
         }
-        val contents = parsed.contents
-        if (contents.length > MAX_QR_CONTENT_CHARS) {
-            deliverWhenResumed {
-                invoke.reject("The scanned QR code exceeds ostudy's pairing-code size limit.")
+
+        activity.runOnUiThread {
+            try {
+                Log.d(LOG_TAG, "event=qr_scan_opened backend=google_code_scanner")
+                GmsBarcodeScanning.getClient(activity, options)
+                    .startScan()
+                    .addOnSuccessListener { barcode ->
+                        val contents = barcode.rawValue
+                        when {
+                            contents == null -> complete {
+                                Log.w(LOG_TAG, "event=qr_scan_failed reason=missing_raw_value")
+                                invoke.reject("The scanned QR code did not contain readable text.")
+                            }
+                            contents.length > MAX_QR_CONTENT_CHARS -> complete {
+                                Log.w(LOG_TAG, "event=qr_scan_rejected reason=content_too_large")
+                                invoke.reject(
+                                    "The scanned QR code exceeds ostudy's pairing-code size limit.",
+                                )
+                            }
+                            else -> complete {
+                                Log.d(
+                                    LOG_TAG,
+                                    "event=qr_scan_completed content_length=${contents.length}",
+                                )
+                                invoke.resolve(JSObject().apply {
+                                    put("cancelled", false)
+                                    put("contents", contents)
+                                })
+                            }
+                        }
+                    }
+                    .addOnCanceledListener {
+                        complete {
+                            Log.d(LOG_TAG, "event=qr_scan_cancelled")
+                            invoke.resolve(JSObject().apply {
+                                put("cancelled", true)
+                                put("contents", null)
+                            })
+                        }
+                    }
+                    .addOnFailureListener { error ->
+                        complete {
+                            Log.w(
+                                LOG_TAG,
+                                "event=qr_scan_failed error_type=${error::class.java.simpleName}",
+                            )
+                            invoke.reject(
+                                "Google Code Scanner could not complete the scan: ${safeMessage(error)}",
+                            )
+                        }
+                    }
+            } catch (error: Exception) {
+                complete {
+                    Log.w(
+                        LOG_TAG,
+                        "event=qr_scan_failed phase=open error_type=${error::class.java.simpleName}",
+                    )
+                    invoke.reject(
+                        "Google Code Scanner could not open: ${safeMessage(error)}",
+                    )
+                }
             }
-            return
-        }
-        deliverWhenResumed {
-            invoke.resolve(JSObject().apply {
-                put("cancelled", false)
-                put("contents", contents)
-            })
         }
     }
 
