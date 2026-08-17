@@ -1,0 +1,658 @@
+name: Apply OpenRouter zero-data-retention support
+
+on:
+  push:
+    branches: [agent/pre-public-platform-hardening]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-openrouter-zdr
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out exact branch head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/pre-public-platform-hardening
+          clean: true
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Expose pinned toolchains and caches
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
+
+      - name: Add provider-scoped zero-data-retention configuration
+        run: |
+          cat > "$RUNNER_TEMP/apply-openrouter-zdr.py" <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import re
+          from pathlib import Path
+
+
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding="utf-8")
+
+
+          def write(path: str, source: str) -> None:
+              Path(path).write_text(source, encoding="utf-8")
+
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              source = read(path)
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one replacement target, found {count}")
+              write(path, source.replace(old, new, 1))
+
+
+          def insert_struct_field(
+              source: str,
+              struct_name: str,
+              anchor: str,
+              replacement: str,
+          ) -> str:
+              pattern = re.compile(
+                  rf"(?P<head>(?:pub(?:\(crate\))?\s+)?struct\s+{re.escape(struct_name)}\s*\{{)"
+                  rf"(?P<body>[\s\S]*?)(?P<tail>\n\}})"
+              )
+              match = pattern.search(source)
+              if match is None:
+                  raise SystemExit(f"profiles.rs: missing struct {struct_name}")
+              body = match.group("body")
+              if "require_zero_data_retention" in body:
+                  return source
+              if body.count(anchor) != 1:
+                  raise SystemExit(
+                      f"profiles.rs: {struct_name} expected one field anchor, found {body.count(anchor)}"
+                  )
+              body = body.replace(anchor, replacement, 1)
+              return source[: match.start("body")] + body + source[match.end("body") :]
+
+
+          def ensure_rust_literal_field(source: str, type_name: str, value: str) -> str:
+              pattern = re.compile(
+                  rf"{re.escape(type_name)}\s*\{{(?P<body>[\s\S]*?)\n(?P<indent>\s*)\}}"
+              )
+              cursor = 0
+              output: list[str] = []
+              changed = 0
+              for match in pattern.finditer(source):
+                  output.append(source[cursor : match.start()])
+                  block = match.group(0)
+                  body = match.group("body")
+                  if "require_zero_data_retention" not in body and "allow_insecure_http:" in body:
+                      block, count = re.subn(
+                          r"(?m)^(?P<indent>\s*)allow_insecure_http:\s*[^,\n]+,$",
+                          rf"\g<indent>allow_insecure_http: \g<0>" if False else "",
+                          block,
+                      )
+                      # Re-run with a callback so the original expression is retained.
+                      if count != 1:
+                          raise SystemExit(
+                              f"{type_name} literal expected one allow_insecure_http field, found {count}"
+                          )
+                      # The temporary replacement above deliberately produces an empty line;
+                      # reconstruct from the untouched body with the correct field value.
+                      block = match.group(0)
+                      block, count = re.subn(
+                          r"(?m)^(?P<indent>\s*)(?P<line>allow_insecure_http:\s*[^,\n]+,)$",
+                          lambda field: (
+                              f"{field.group('indent')}{field.group('line')}\n"
+                              f"{field.group('indent')}require_zero_data_retention: {value},"
+                          ),
+                          block,
+                          count=1,
+                      )
+                      if count != 1:
+                          raise SystemExit(f"could not add {type_name} privacy field")
+                      changed += 1
+                  output.append(block)
+                  cursor = match.end()
+              output.append(source[cursor:])
+              if changed == 0 and f"{type_name} {{" in source:
+                  # It is valid for every literal to have been patched explicitly already.
+                  pass
+              return "".join(output)
+
+
+          profiles_path = "src-tauri/src/ai/profiles.rs"
+          profiles = read(profiles_path)
+          profiles = insert_struct_field(
+              profiles,
+              "CreateAiProviderProfileInput",
+              "\n    pub allow_insecure_http: bool,\n    pub request_timeout_ms: i64,",
+              "\n    pub allow_insecure_http: bool,\n    #[serde(default)]\n    pub require_zero_data_retention: bool,\n    pub request_timeout_ms: i64,",
+          )
+          profiles = insert_struct_field(
+              profiles,
+              "UpdateAiProviderProfileInput",
+              "\n    pub allow_insecure_http: bool,\n    pub request_timeout_ms: i64,",
+              "\n    pub allow_insecure_http: bool,\n    #[serde(default)]\n    pub require_zero_data_retention: bool,\n    pub request_timeout_ms: i64,",
+          )
+          for struct_name in (
+              "AiProviderProfileDetailDto",
+              "ProfileSnapshot",
+              "StoredProfile",
+          ):
+              profiles = insert_struct_field(
+                  profiles,
+                  struct_name,
+                  "\n    pub allow_insecure_http: bool,\n    pub request_timeout_ms: i64,"
+                  if struct_name != "StoredProfile"
+                  else "\n    allow_insecure_http: bool,\n    request_timeout_ms: i64,",
+                  "\n    pub allow_insecure_http: bool,\n    pub require_zero_data_retention: bool,\n    pub request_timeout_ms: i64,"
+                  if struct_name != "StoredProfile"
+                  else "\n    allow_insecure_http: bool,\n    require_zero_data_retention: bool,\n    request_timeout_ms: i64,",
+              )
+          profiles = insert_struct_field(
+              profiles,
+              "RawProfileRow",
+              "\n    allow_insecure_http: i64,\n    request_timeout_ms: i64,",
+              "\n    allow_insecure_http: i64,\n    require_zero_data_retention: i64,\n    request_timeout_ms: i64,",
+          )
+
+          replacements = [
+              (
+                  "            allow_insecure_http: row.allow_insecure_http != 0,\n            request_timeout_ms: row.request_timeout_ms,",
+                  "            allow_insecure_http: row.allow_insecure_http != 0,\n            require_zero_data_retention: row.require_zero_data_retention != 0,\n            request_timeout_ms: row.request_timeout_ms,",
+              ),
+              (
+                  "            allow_insecure_http: profile.allow_insecure_http,\n            request_timeout_ms: profile.request_timeout_ms,",
+                  "            allow_insecure_http: profile.allow_insecure_http,\n            require_zero_data_retention: profile.require_zero_data_retention,\n            request_timeout_ms: profile.request_timeout_ms,",
+              ),
+              (
+                  "        validate_endpoint(\n            self.provider_kind,\n            &self.base_url,\n            self.allow_insecure_http,\n        )?;",
+                  "        validate_privacy_configuration(\n            self.provider_kind,\n            self.require_zero_data_retention,\n        )?;\n        validate_endpoint(\n            self.provider_kind,\n            &self.base_url,\n            self.allow_insecure_http,\n        )?;",
+              ),
+              (
+                  "    validate_provider_configuration(input.provider_kind, input.auth_mode)?;\n    let endpoint = validate_endpoint(",
+                  "    validate_provider_configuration(input.provider_kind, input.auth_mode)?;\n    validate_privacy_configuration(\n        input.provider_kind,\n        input.require_zero_data_retention,\n    )?;\n    let endpoint = validate_endpoint(",
+              ),
+              (
+                  "    validate_provider_configuration(provider_kind, input.auth_mode)?;\n    let next_name = validate_display_name(&input.display_name)?;",
+                  "    validate_provider_configuration(provider_kind, input.auth_mode)?;\n    validate_privacy_configuration(\n        provider_kind,\n        input.require_zero_data_retention,\n    )?;\n    let next_name = validate_display_name(&input.display_name)?;",
+              ),
+              (
+                  "             model_id, auth_mode, enabled, allow_insecure_http,\n             request_timeout_ms, credential_storage, credential_epoch, revision,",
+                  "             model_id, auth_mode, enabled, allow_insecure_http,\n             require_zero_data_retention, request_timeout_ms,\n             credential_storage, credential_epoch, revision,",
+              ),
+              (
+                  "         ) VALUES (\n             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,\n             ?10, 'none', 0, 1, ?11, ?11, NULL\n         )",
+                  "         ) VALUES (\n             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,\n             ?10, ?11, 'none', 0, 1, ?12, ?12, NULL\n         )",
+              ),
+              (
+                  "            bool_to_integer(input.allow_insecure_http),\n            input.request_timeout_ms,\n            now,",
+                  "            bool_to_integer(input.allow_insecure_http),\n            bool_to_integer(input.require_zero_data_retention),\n            input.request_timeout_ms,\n            now,",
+              ),
+              (
+                  "             allow_insecure_http = ?7,\n             request_timeout_ms = ?8,\n             updated_at = ?9,\n             revision = revision + 1\n         WHERE id = ?10 AND revision = ?11 AND deleted_at IS NULL",
+                  "             allow_insecure_http = ?7,\n             require_zero_data_retention = ?8,\n             request_timeout_ms = ?9,\n             updated_at = ?10,\n             revision = revision + 1\n         WHERE id = ?11 AND revision = ?12 AND deleted_at IS NULL",
+              ),
+              (
+                  "            bool_to_integer(input.allow_insecure_http),\n            input.request_timeout_ms,\n            now,\n            input.profile_id,",
+                  "            bool_to_integer(input.allow_insecure_http),\n            bool_to_integer(input.require_zero_data_retention),\n            input.request_timeout_ms,\n            now,\n            input.profile_id,",
+              ),
+              (
+                  "         model_id, auth_mode, enabled, allow_insecure_http, request_timeout_ms,\n         credential_storage, credential_epoch, revision, created_at, updated_at",
+                  "         model_id, auth_mode, enabled, allow_insecure_http,\n         require_zero_data_retention, request_timeout_ms,\n         credential_storage, credential_epoch, revision, created_at, updated_at",
+              ),
+              (
+                  "        allow_insecure_http: row.get(7)?,\n        request_timeout_ms: row.get(8)?,\n        credential_storage: row.get(9)?,\n        credential_epoch: row.get(10)?,\n        revision: row.get(11)?,\n        created_at: row.get(12)?,\n        updated_at: row.get(13)?,",
+                  "        allow_insecure_http: row.get(7)?,\n        require_zero_data_retention: row.get(8)?,\n        request_timeout_ms: row.get(9)?,\n        credential_storage: row.get(10)?,\n        credential_epoch: row.get(11)?,\n        revision: row.get(12)?,\n        created_at: row.get(13)?,\n        updated_at: row.get(14)?,",
+              ),
+              (
+                  "        allow_insecure_http: profile.allow_insecure_http,\n        request_timeout_ms: profile.request_timeout_ms,",
+                  "        allow_insecure_http: profile.allow_insecure_http,\n        require_zero_data_retention: profile.require_zero_data_retention,\n        request_timeout_ms: profile.request_timeout_ms,",
+              ),
+              (
+                  "fn validate_display_name(value: &str) -> Result<(String, String), CommandError> {",
+                  "fn validate_privacy_configuration(\n    provider_kind: ProviderKind,\n    require_zero_data_retention: bool,\n) -> Result<(), CommandError> {\n    if require_zero_data_retention && provider_kind != ProviderKind::Openrouter {\n        return Err(CommandError::new(\n            \"invalid_ai_privacy_policy\",\n            \"Zero-data-retention routing is available only for OpenRouter profiles.\",\n        ));\n    }\n    Ok(())\n}\n\nfn validate_display_name(value: &str) -> Result<(String, String), CommandError> {",
+              ),
+              (
+                  "            allow_insecure_http: false,\n            request_timeout_ms: 60_000,",
+                  "            allow_insecure_http: false,\n            require_zero_data_retention: false,\n            request_timeout_ms: 60_000,",
+              ),
+          ]
+          for old, new in replacements:
+              count = profiles.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"profiles.rs: expected one replacement target, found {count}: {old[:80]!r}"
+                  )
+              profiles = profiles.replace(old, new, 1)
+
+          profiles = ensure_rust_literal_field(profiles, "ProfileSnapshot", "false")
+          profiles = ensure_rust_literal_field(
+              profiles, "CreateAiProviderProfileInput", "false"
+          )
+          profiles = ensure_rust_literal_field(
+              profiles, "UpdateAiProviderProfileInput", "false"
+          )
+
+          test_marker = "    #[test]\n    fn normalizes_profile_names_and_rejects_invalid_timeouts() {"
+          if profiles.count(test_marker) != 1:
+              raise SystemExit("profiles.rs: missing test insertion marker")
+          privacy_test = '''    #[test]
+              fn openrouter_zero_data_retention_is_persisted_and_provider_scoped() {
+                  let database = Database::open_in_memory().expect("database should open");
+                  let profile_id = database
+                      .with_connection(|connection| {
+                          let mut input = default_profile_input(
+                              "17171717171717171717171717171717",
+                              "OpenRouter ZDR",
+                              ProviderKind::Openrouter,
+                          );
+                          input.model_id = "openai/example".to_string();
+                          input.require_zero_data_retention = true;
+                          create_profile(connection, input)
+                      })
+                      .expect("OpenRouter ZDR profile should save");
+                  let snapshot = database
+                      .with_connection(|connection| load_profile_snapshot(connection, &profile_id))
+                      .expect("saved OpenRouter profile should load");
+                  assert!(snapshot.require_zero_data_retention);
+
+                  let error = database
+                      .with_connection(|connection| {
+                          let mut input = default_profile_input(
+                              "18181818181818181818181818181818",
+                              "Invalid local ZDR",
+                              ProviderKind::LlamaCpp,
+                          );
+                          input.require_zero_data_retention = true;
+                          create_profile(connection, input)
+                      })
+                      .expect_err("non-OpenRouter profiles must reject ZDR routing");
+                  assert_eq!(error.code, "invalid_ai_privacy_policy");
+              }
+
+          '''
+          profiles = profiles.replace(test_marker, privacy_test + test_marker, 1)
+          write(profiles_path, profiles)
+
+          # Add the new public-baseline column. This remains migration 1 because
+          # the application has not yet shipped with the public schema lineage.
+          migration_path = "src-tauri/migrations/0001_public_baseline.sql"
+          migration = read(migration_path)
+          old = "    allow_insecure_http     INTEGER NOT NULL DEFAULT 0 CHECK(allow_insecure_http IN (0, 1)),\n    request_timeout_ms"
+          new = "    allow_insecure_http     INTEGER NOT NULL DEFAULT 0 CHECK(allow_insecure_http IN (0, 1)),\n    require_zero_data_retention INTEGER NOT NULL DEFAULT 0\n                                CHECK(require_zero_data_retention IN (0, 1)),\n    request_timeout_ms"
+          if migration.count(old) != 1:
+              raise SystemExit("public baseline: missing AI profile privacy-column anchor")
+          migration = migration.replace(old, new, 1)
+          write(migration_path, migration)
+
+          # Thread the profile privacy policy through OpenRouter probes and
+          # document generation. The provider object always contains `zdr` so a
+          # recorded/request-inspection test can distinguish explicit false from
+          # an accidentally omitted policy.
+          openrouter_path = "src-tauri/src/ai/providers/openrouter.rs"
+          openrouter = read(openrouter_path)
+          for old, new in [
+              (
+                  "pub(super) fn text_probe_body(model_id: &str, messages: Value) -> Value {",
+                  "pub(super) fn text_probe_body(\n    model_id: &str,\n    messages: Value,\n    require_zero_data_retention: bool,\n) -> Value {",
+              ),
+              (
+                  '"provider": provider_preferences(true)',
+                  '"provider": provider_preferences(true, require_zero_data_retention)',
+              ),
+              (
+                  "pub(super) fn structured_probe_body(model_id: &str, echo: &str, schema: Value) -> Value {",
+                  "pub(super) fn structured_probe_body(\n    model_id: &str,\n    echo: &str,\n    schema: Value,\n    require_zero_data_retention: bool,\n) -> Value {",
+              ),
+              (
+                  '"provider": provider_preferences(true),',
+                  '"provider": provider_preferences(true, require_zero_data_retention),',
+              ),
+              (
+                  "pub(super) fn provider_preferences(require_parameters: bool) -> Value {",
+                  "pub(super) fn provider_preferences(\n    require_parameters: bool,\n    require_zero_data_retention: bool,\n) -> Value {",
+              ),
+              (
+                  '        "data_collection": "deny",\n        "allow_fallbacks": true',
+                  '        "data_collection": "deny",\n        "zdr": require_zero_data_retention,\n        "allow_fallbacks": true',
+              ),
+              (
+                  '        let body = structured_probe_body("openai/example", "echo", json!({ "type": "object" }));',
+                  '        let body = structured_probe_body(\n            "openai/example",\n            "echo",\n            json!({ "type": "object" }),\n            true,\n        );',
+              ),
+              (
+                  '        assert_eq!(\n            body.pointer("/provider/data_collection"),\n            Some(&json!("deny"))\n        );',
+                  '        assert_eq!(\n            body.pointer("/provider/data_collection"),\n            Some(&json!("deny"))\n        );\n        assert_eq!(body.pointer("/provider/zdr"), Some(&json!(true)));',
+              ),
+          ]:
+              count = openrouter.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"openrouter.rs: expected one replacement target, found {count}: {old[:80]!r}"
+                  )
+              openrouter = openrouter.replace(old, new, 1)
+          test_marker = "    #[test]\n    fn midstream_style_errors_receive_stable_safe_categories() {"
+          if openrouter.count(test_marker) != 1:
+              raise SystemExit("openrouter.rs: missing ZDR test marker")
+          openrouter_test = '''    #[test]
+              fn provider_preferences_make_zdr_explicit_without_weakening_data_collection() {
+                  let ordinary = provider_preferences(true, false);
+                  assert_eq!(ordinary.pointer("/data_collection"), Some(&json!("deny")));
+                  assert_eq!(ordinary.pointer("/zdr"), Some(&json!(false)));
+
+                  let strict = provider_preferences(true, true);
+                  assert_eq!(strict.pointer("/data_collection"), Some(&json!("deny")));
+                  assert_eq!(strict.pointer("/zdr"), Some(&json!(true)));
+                  assert_eq!(strict.pointer("/require_parameters"), Some(&json!(true)));
+              }
+
+          '''
+          openrouter = openrouter.replace(test_marker, openrouter_test + test_marker, 1)
+          write(openrouter_path, openrouter)
+
+          providers_path = "src-tauri/src/ai/providers.rs"
+          providers = read(providers_path)
+          for old, new in [
+              (
+                  "pub(crate) fn openrouter_provider_preferences(require_parameters: bool) -> Value {\n    openrouter::provider_preferences(require_parameters)\n}",
+                  "pub(crate) fn openrouter_provider_preferences(\n    require_parameters: bool,\n    require_zero_data_retention: bool,\n) -> Value {\n    openrouter::provider_preferences(require_parameters, require_zero_data_retention)\n}",
+              ),
+              (
+                  "Self::Openrouter => openrouter::text_probe_body(&profile.model_id, messages),",
+                  "Self::Openrouter => openrouter::text_probe_body(\n                &profile.model_id,\n                messages,\n                profile.require_zero_data_retention,\n            ),",
+              ),
+              (
+                  "Self::Openrouter => openrouter::structured_probe_body(&profile.model_id, echo, schema),",
+                  "Self::Openrouter => openrouter::structured_probe_body(\n                &profile.model_id,\n                echo,\n                schema,\n                profile.require_zero_data_retention,\n            ),",
+              ),
+          ]:
+              count = providers.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"providers.rs: expected one replacement target, found {count}: {old[:80]!r}"
+                  )
+              providers = providers.replace(old, new, 1)
+          providers = ensure_rust_literal_field(providers, "ProfileSnapshot", "false")
+          write(providers_path, providers)
+
+          document_path = "src-tauri/src/ai/document_intelligence.rs"
+          document = read(document_path)
+          old = '"provider": providers::openrouter_provider_preferences(true),'
+          new = '"provider": providers::openrouter_provider_preferences(\n            true,\n            profile.require_zero_data_retention,\n        ),'
+          if document.count(old) != 1:
+              raise SystemExit(
+                  f"document_intelligence.rs: expected one OpenRouter provider policy, found {document.count(old)}"
+              )
+          document = document.replace(old, new, 1)
+          document = ensure_rust_literal_field(document, "ProfileSnapshot", "false")
+          write(document_path, document)
+
+          # Other Rust test contexts construct snapshots directly.
+          for path in Path("src-tauri/src").rglob("*.rs"):
+              if path.as_posix() in {profiles_path, providers_path, document_path}:
+                  continue
+              source = path.read_text(encoding="utf-8")
+              updated = ensure_rust_literal_field(source, "ProfileSnapshot", "false")
+              if updated != source:
+                  path.write_text(updated, encoding="utf-8")
+
+          probes_path = "src-tauri/src/ai/probes.rs"
+          probes = read(probes_path)
+          if probes.count("const PROVIDER_ADAPTER_REVISION: i64 = 3;") != 1:
+              raise SystemExit("probes.rs: expected provider adapter revision 3")
+          write(
+              probes_path,
+              probes.replace(
+                  "const PROVIDER_ADAPTER_REVISION: i64 = 3;",
+                  "const PROVIDER_ADAPTER_REVISION: i64 = 4;",
+                  1,
+              ),
+          )
+
+          # Preserve the policy in SQLite backups and prove credentials remain
+          # excluded from the database snapshot.
+          backup_path = "src-tauri/src/ai/backup_tests.rs"
+          backup = read(backup_path)
+          for old, new in [
+              (
+                  "                         model_id, auth_mode, enabled, allow_insecure_http,\n                         request_timeout_ms, credential_storage, credential_epoch, revision,",
+                  "                         model_id, auth_mode, enabled, allow_insecure_http,\n                         require_zero_data_retention, request_timeout_ms,\n                         credential_storage, credential_epoch, revision,",
+              ),
+              (
+                  "                               'https://api.deepseek.com/', 'deepseek-chat', ?3,\n                               1, 0, 60000, 'session', 0, 1, 1, 1, NULL)",
+                  "                               'https://openrouter.ai/api/v1/', 'openai/example', ?3,\n                               1, 0, 1, 60000, 'session', 0, 1, 1, 1, NULL)",
+              ),
+              (
+                  "                        ProviderKind::Deepseek.as_str(),",
+                  "                        ProviderKind::Openrouter.as_str(),",
+              ),
+              (
+                  "    let (restored_name, restored_storage): (String, String) = restored\n        .query_row(\n            \"SELECT display_name, credential_storage\n             FROM ai_provider_profiles WHERE id = ?1\",\n            [profile_id],\n            |row| Ok((row.get(0)?, row.get(1)?)),\n        )",
+                  "    let (restored_name, restored_storage, restored_zdr): (String, String, i64) =\n        restored\n            .query_row(\n                \"SELECT display_name, credential_storage, require_zero_data_retention\n                 FROM ai_provider_profiles WHERE id = ?1\",\n                [profile_id],\n                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),\n            )",
+              ),
+              (
+                  "    assert_eq!(restored_storage, \"session\");",
+                  "    assert_eq!(restored_storage, \"session\");\n    assert_eq!(restored_zdr, 1);",
+              ),
+          ]:
+              count = backup.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"backup_tests.rs: expected one replacement target, found {count}: {old[:80]!r}"
+                  )
+              backup = backup.replace(old, new, 1)
+          write(backup_path, backup)
+
+          # Frontend IPC and profile drafts expose one provider-scoped switch.
+          ipc_path = "src/ipc/aiProfiles.ts"
+          ipc = read(ipc_path)
+          for old, new in [
+              (
+                  "  allowInsecureHttp: boolean;\n  requestTimeoutMs: number;",
+                  "  allowInsecureHttp: boolean;\n  requireZeroDataRetention: boolean;\n  requestTimeoutMs: number;",
+              ),
+              (
+                  "      allowInsecureHttp: input.allowInsecureHttp,\n      requestTimeoutMs: input.requestTimeoutMs,",
+                  "      allowInsecureHttp: input.allowInsecureHttp,\n      requireZeroDataRetention: input.requireZeroDataRetention,\n      requestTimeoutMs: input.requestTimeoutMs,",
+              ),
+          ]:
+              count = ipc.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"aiProfiles.ts: expected one replacement target, found {count}: {old[:80]!r}"
+                  )
+              ipc = ipc.replace(old, new, 1)
+          write(ipc_path, ipc)
+
+          controller_path = "src/controllers/aiProfilesController.ts"
+          controller = read(controller_path)
+          for old, new in [
+              (
+                  "      allowInsecureHttp: false,\n      requestTimeoutMs: provider.defaultTimeoutMs,",
+                  "      allowInsecureHttp: false,\n      requireZeroDataRetention: false,\n      requestTimeoutMs: provider.defaultTimeoutMs,",
+              ),
+              (
+                  "    allowInsecureHttp: profile.allowInsecureHttp,\n    requestTimeoutMs: profile.requestTimeoutMs,",
+                  "    allowInsecureHttp: profile.allowInsecureHttp,\n    requireZeroDataRetention: profile.requireZeroDataRetention,\n    requestTimeoutMs: profile.requestTimeoutMs,",
+              ),
+          ]:
+              count = controller.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"aiProfilesController.ts: expected one replacement target, found {count}: {old[:80]!r}"
+                  )
+              controller = controller.replace(old, new, 1)
+          write(controller_path, controller)
+
+          settings_path = "src/screens/settings/AiLlmSettings.tsx"
+          settings = read(settings_path)
+          for old, new in [
+              (
+                  '  const isLlama = draft.providerKind === "llama_cpp";',
+                  '  const isLlama = draft.providerKind === "llama_cpp";\n  const isOpenRouter = draft.providerKind === "openrouter";',
+              ),
+              (
+                  "        ) : null}\n      </div>\n\n      {!isLlama ? (",
+                  "        ) : null}\n        {isOpenRouter ? (\n          <label className={`${styles.switchRow} ${styles.fullWidth}`}>\n            <span>\n              <strong>Require zero data retention</strong>\n              <small>\n                Restrict OpenRouter routing to endpoints that declare zero data retention.\n                This can reduce endpoint availability.\n              </small>\n            </span>\n            <input\n              type=\"checkbox\"\n              checked={draft.requireZeroDataRetention}\n              onChange={(event) =>\n                controller.updateDraft({\n                  requireZeroDataRetention: event.currentTarget.checked,\n                })\n              }\n            />\n          </label>\n        ) : null}\n      </div>\n\n      {!isLlama ? (",
+              ),
+              (
+                  "    draft.allowInsecureHttp !== selected.allowInsecureHttp ||\n    draft.requestTimeoutMs !== selected.requestTimeoutMs",
+                  "    draft.allowInsecureHttp !== selected.allowInsecureHttp ||\n    draft.requireZeroDataRetention !== selected.requireZeroDataRetention ||\n    draft.requestTimeoutMs !== selected.requestTimeoutMs",
+              ),
+              (
+                  "    allowInsecureHttp: selected.allowInsecureHttp,\n    requestTimeoutMs: selected.requestTimeoutMs,",
+                  "    allowInsecureHttp: selected.allowInsecureHttp,\n    requireZeroDataRetention: selected.requireZeroDataRetention,\n    requestTimeoutMs: selected.requestTimeoutMs,",
+              ),
+              (
+                  '    return "OpenRouter is a cloud routing provider. ostudy uses its fixed official API endpoint, requests only parameter-compatible endpoints for structured generation, and denies data-collecting endpoints by default.";',
+                  '    return "OpenRouter is a cloud routing provider. ostudy uses its fixed official API endpoint, requests only parameter-compatible endpoints for structured generation, denies data-collecting endpoints by default, and can require zero-data-retention routing per profile.";',
+              ),
+          ]:
+              count = settings.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f"AiLlmSettings.tsx: expected one replacement target, found {count}: {old[:80]!r}"
+                  )
+              settings = settings.replace(old, new, 1)
+          write(settings_path, settings)
+
+          # Test and factory object literals that model saved profiles default to
+          # the backward-compatible false value. Core implementation files above
+          # were patched explicitly so expressions are not replaced with false.
+          excluded = {
+              ipc_path,
+              controller_path,
+              settings_path,
+          }
+          for path in Path("src").rglob("*.ts*"):
+              if path.as_posix() in excluded:
+                  continue
+              lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+              output: list[str] = []
+              changed = False
+              for index, line in enumerate(lines):
+                  output.append(line)
+                  match = re.match(
+                      r"^(?P<indent>\s*)allowInsecureHttp:\s*[^;\n]+,\s*$", line
+                  )
+                  if match is None:
+                      continue
+                  lookahead = "".join(lines[index + 1 : index + 4])
+                  if "requireZeroDataRetention" in lookahead:
+                      continue
+                  newline = "\n" if line.endswith("\n") else ""
+                  output.append(
+                      f"{match.group('indent')}requireZeroDataRetention: false,{newline}"
+                  )
+                  changed = True
+              if changed:
+                  path.write_text("".join(output), encoding="utf-8")
+
+          # Add one explicit IPC assertion rather than relying only on typecheck.
+          ipc_test_path = "src/ipc/aiProfiles.test.ts"
+          ipc_test = read(ipc_test_path)
+          if "requireZeroDataRetention" not in ipc_test:
+              old = "      allowInsecureHttp: true,\n      requestTimeoutMs: 120_000,"
+              new = "      allowInsecureHttp: true,\n      requireZeroDataRetention: false,\n      requestTimeoutMs: 120_000,"
+              if ipc_test.count(old) != 1:
+                  raise SystemExit("aiProfiles.test.ts: missing profile draft anchor")
+              ipc_test = ipc_test.replace(old, new, 1)
+          write(ipc_test_path, ipc_test)
+
+          # Durable documentation records both the default deny policy and the
+          # optional stronger routing restriction.
+          adr_path = "docs/decisions/0037-openrouter-provider-adapter.md"
+          adr = read(adr_path)
+          old = "Structured document requests use strict JSON Schema plus `provider.require_parameters=true`. The default routing policy sets `provider.data_collection=deny` and allows compatible endpoint fallback. ostudy does not request OpenRouter plugins/context compression and never enables the provider's upstream-body debug echo. Streaming top-level errors abort the window and discard partial output."
+          new = "Structured document requests use strict JSON Schema plus `provider.require_parameters=true`. The default routing policy sets `provider.data_collection=deny` and allows compatible endpoint fallback. Each OpenRouter profile can additionally require `provider.zdr=true`; changing that setting increments the profile revision and invalidates older capability evidence. ostudy explicitly disables OpenRouter context compression because document windowing is owned locally, and it never enables the provider's upstream-body debug echo. Streaming top-level errors abort the window and discard partial output."
+          if adr.count(old) != 1:
+              raise SystemExit("OpenRouter ADR: missing routing-policy paragraph")
+          write(adr_path, adr.replace(old, new, 1))
+
+          guide_path = "docs/user-guide/ai-providers.md"
+          guide = read(guide_path)
+          old = "- request timeout and enabled state;\n- capability evidence from the most recent successful verification;"
+          new = "- request timeout and enabled state;\n- an optional OpenRouter-only zero-data-retention requirement;\n- capability evidence from the most recent successful verification;"
+          if guide.count(old) != 1:
+              raise SystemExit("AI provider guide: missing profile-list anchor")
+          guide = guide.replace(old, new, 1)
+          old = "For document generation, ostudy requests strict JSON Schema output only from parameter-compatible endpoints and sets OpenRouter's provider-data-collection policy to `deny`. It does not enable provider-side prompt/body debugging or context-compression plugins. A stricter policy can reduce endpoint availability; the connection test reports that as a routing/capability failure rather than silently weakening the request."
+          new = "For document generation, ostudy requests strict JSON Schema output only from parameter-compatible endpoints and sets OpenRouter's provider-data-collection policy to `deny`. It explicitly disables provider-side context compression so document windows are not silently changed, and it never enables prompt/body debugging. Enable **Require zero data retention** on a profile to send `provider.zdr=true`; this stronger restriction can reduce endpoint availability, and the connection test reports that as a routing/capability failure rather than silently weakening the request."
+          if guide.count(old) != 1:
+              raise SystemExit("AI provider guide: missing OpenRouter policy paragraph")
+          write(guide_path, guide.replace(old, new, 1))
+
+          # Update the embedded baseline checksum after every SQL byte is final.
+          migration_digest = hashlib.sha256(Path(migration_path).read_bytes()).hexdigest()
+          database_path = "src-tauri/src/database.rs"
+          database = read(database_path)
+          pattern = re.compile(
+              r'(name: "public_baseline",\n\s*checksum: ")[0-9a-f]{64}("\s*,)'
+          )
+          database, count = pattern.subn(
+              rf"\g<1>{migration_digest}\g<2>", database, count=1
+          )
+          if count != 1:
+              raise SystemExit("database.rs: could not update public baseline checksum")
+          write(database_path, database)
+          print(f"public baseline sha256={migration_digest}")
+          PY
+          python3 "$RUNNER_TEMP/apply-openrouter-zdr.py"
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Provision native runtime and regenerate the schema manifest
+        run: |
+          ./scripts/install-native-deps.sh --pdfium-only
+          OSTUDY_REGENERATE_PUBLIC_SCHEMA_MANIFEST=1 \
+            cargo test \
+              --manifest-path src-tauri/Cargo.toml \
+              --locked \
+              --all-features \
+              database::tests::regenerate_public_baseline_schema_manifest \
+              -- --exact
+
+      - name: Commit source and regenerated schema evidence
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: add OpenRouter zero-data-retention profiles"
+          git push origin HEAD:agent/pre-public-platform-hardening
+
+      - name: Run targeted cross-language qualification
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec tsc -b --pretty false
+          pnpm exec vitest run \
+            src/ipc/aiProfiles.test.ts \
+            src/screens/SettingsScreen.test.tsx \
+            src/screens/SettingsScreen.extended.test.tsx
+          cargo test \
+            --manifest-path src-tauri/Cargo.toml \
+            --locked \
+            --all-features \
+            openrouter
+          cargo test \
+            --manifest-path src-tauri/Cargo.toml \
+            --locked \
+            --all-features \
+            database_backups_preserve_profile_metadata_without_session_credentials \
+            -- --exact
+          cargo clippy \
+            --manifest-path src-tauri/Cargo.toml \
+            --locked \
+            --all-targets \
+            --all-features \
+            -- -D warnings
