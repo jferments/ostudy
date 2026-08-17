@@ -1,4 +1,4 @@
-name: Qualify pre-public platform hardening
+name: Apply pre-public hardening source repairs
 
 on:
   push:
@@ -9,11 +9,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: qualify-pre-public-platform-hardening
+  group: apply-pre-public-platform-hardening-repairs
   cancel-in-progress: false
 
 jobs:
-  qualify:
+  repair:
     if: github.actor != 'github-actions[bot]'
     runs-on: [self-hosted, linux, x64, ostudy-unified]
     timeout-minutes: 45
@@ -34,7 +34,7 @@ jobs:
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
           echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
 
-      - name: Apply exact repository-policy repairs
+      - name: Apply repository-policy repairs to source
         run: |
           git mv scripts/lib/diagnostics.sh scripts/lib/diagnostics.bash
           grep -RIl --exclude-dir=.git 'lib/diagnostics.sh' scripts run-app.sh | xargs -r sed -i 's#lib/diagnostics\.sh#lib/diagnostics.bash#g'
@@ -73,16 +73,15 @@ jobs:
           PY
           python3 "$RUNNER_TEMP/patch-hardening.py"
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
-          git add -A
 
-      - name: Run fast exact-head qualification with targeted diagnostics
-        run: ./scripts/check-fast.sh --debug=database,ai,qr --keep-artifacts
-
-      - name: Commit qualified repairs
+      - name: Commit source repairs before qualification
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "fix: qualify pre-public platform hardening"
+          git commit -m "fix: commit pre-public source repairs"
           git push origin HEAD:agent/pre-public-platform-hardening
+
+      - name: Run fast qualification on the committed repair
+        run: ./scripts/check-fast.sh --debug=database,ai,qr --keep-artifacts
