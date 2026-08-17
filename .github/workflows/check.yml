@@ -73,17 +73,6 @@ jobs:
       - name: Verify exact checkout
         run: test "$(git rev-parse HEAD)" = "$QUALIFIED_SHA"
 
-      - name: Verify unified runner resources and nested KVM
-        run: bash ./scripts/runner/guest-preflight.sh
-
-      - name: Require committed Rust dependency graph
-        run: |
-          cargo metadata \
-            --manifest-path src-tauri/Cargo.toml \
-            --format-version 1 \
-            --locked \
-            > /dev/null
-
       - name: Select qualification gate
         id: gate
         env:
@@ -182,6 +171,19 @@ jobs:
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$QUALIFIED_SHA" \
             -d "$payload" >/dev/null || \
             echo 'WARN: could not publish ostudy/static result status.' >&2
+
+      - name: Verify unified runner resources and nested KVM
+        if: steps.gate.outputs.gate != 'static'
+        run: bash ./scripts/runner/guest-preflight.sh
+
+      - name: Require committed Rust dependency graph
+        if: steps.gate.outputs.gate != 'static'
+        run: |
+          cargo metadata \
+            --manifest-path src-tauri/Cargo.toml \
+            --format-version 1 \
+            --locked \
+            > /dev/null
 
       - name: Run fast qualification
         if: steps.gate.outputs.gate == 'fast'
