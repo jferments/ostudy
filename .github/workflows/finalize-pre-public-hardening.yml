@@ -1,0 +1,83 @@
+name: Finalize pre-public platform hardening
+
+on:
+  push:
+    branches: [agent/pre-public-platform-hardening]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-openrouter-zdr-final
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out the latest development branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/pre-public-platform-hardening
+          clean: true
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Expose pinned toolchains and caches
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
+
+      - name: Apply the remaining provider privacy change if necessary
+        run: |
+          if grep -q 'require_zero_data_retention' src-tauri/src/ai/profiles.rs; then
+            echo 'OpenRouter ZDR profile support is already present.'
+          else
+            python3 scripts/internal/apply_openrouter_zdr.py
+          fi
+
+      - name: Remove one-shot implementation machinery
+        run: |
+          rm -f \
+            .github/workflows/apply-openrouter-zdr-final.yml \
+            .github/workflows/finalize-pre-public-hardening.yml \
+            scripts/internal/apply_openrouter_zdr.py
+          rmdir scripts/internal 2>/dev/null || true
+
+      - name: Format and regenerate public schema evidence
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          ./scripts/install-native-deps.sh --pdfium-only
+          OSTUDY_REGENERATE_PUBLIC_SCHEMA_MANIFEST=1 \
+            cargo test \
+              --manifest-path src-tauri/Cargo.toml \
+              --locked \
+              --all-features \
+              database::tests::regenerate_public_baseline_schema_manifest \
+              -- --exact
+
+      - name: Run complete Linux qualification with targeted diagnostics
+        run: |
+          pnpm install --frozen-lockfile
+          ./scripts/check.sh --debug=database,ai,qr --keep-artifacts
+
+      - name: Run complete Android emulator qualification
+        env:
+          OSTUDY_LOG: ostudy::qr=debug,ostudy::database=debug,ostudy::ai=debug
+          OSTUDY_KEEP_FAILURE_ARTIFACTS: "1"
+        run: ./scripts/android-test.sh --emulator
+
+      - name: Commit only the fully qualified production tree
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: complete pre-public platform hardening"
+          git push origin HEAD:agent/pre-public-platform-hardening
