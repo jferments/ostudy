@@ -72,17 +72,24 @@ def verify_compact_tabs(session_id: str, width: int) -> None:
 
 def verify_toolbar(session_id: str, width: int, height: int, deadline: float) -> None:
     ui.set_window_rect(session_id, width, height)
-    flashcards = webdriver.find_element(
+    # Each viewport check begins and ends on Flashcards > Decks. Resolve that
+    # already-established state after resizing instead of caching elements and
+    # issuing redundant clicks while React may be replacing the tab/navigation
+    # nodes during responsive layout work.
+    webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-decks']",
+        "button[data-testid='nav-decks'][aria-current='page']",
         deadline,
     )
-    webdriver.click(session_id, flashcards)
     webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
     verify_compact_tabs(session_id, width)
-    decks = ui.find_workspace_tab(session_id, "Decks", deadline)
-    webdriver.click(session_id, decks)
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//*[@role='tab' and @aria-selected='true' and normalize-space(.)='Decks']",
+        deadline,
+    )
     folders_heading = webdriver.find_element(
         session_id,
         "xpath",
