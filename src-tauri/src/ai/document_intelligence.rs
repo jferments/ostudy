@@ -10,14 +10,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use url::Url;
 
-use crate::{database::Database, document_semantics::SemanticWindow, error::CommandError};
+use crate::{
+    ai::providers, database::Database, document_semantics::SemanticWindow, error::CommandError,
+};
 
 use super::{
     catalog::ProviderKind,
     endpoint_policy::{join_endpoint, validate_endpoint, NetworkScope},
     gateway::{AiGatewayError, SafeAiError},
     profiles::{load_profile_snapshot, ProfileSnapshot},
-    providers,
     secrets::CredentialStorage,
     AiRuntimeState,
 };

@@ -76,6 +76,9 @@ impl AiGateway {
         timeout_ms: i64,
         maximum_bytes: usize,
     ) -> Result<Value, AiGatewayError> {
+        let prepared_body = prepare_provider_body(&url, body);
+        let body = prepared_body.as_ref().unwrap_or(body);
+
         // Document AI runs inside a task-local cancellation scope. Only those
         // long-running calls are transparently upgraded to SSE; provider probes
         // and model discovery retain their ordinary bounded request behavior.
@@ -575,7 +578,25 @@ fn trim_ascii(mut bytes: &[u8]) -> &[u8] {
 }
 
 fn is_openrouter_url(url: &Url) -> bool {
-    url.scheme() == "https" && url.host_str() == Some(OPENROUTER_HOST)
+    url.scheme() == "https"
+        && url.host_str() == Some(OPENROUTER_HOST)
+        && url.path().starts_with("/api/v1/")
+}
+
+fn prepare_provider_body(url: &Url, body: &Value) -> Option<Value> {
+    if !is_openrouter_url(url) {
+        return None;
+    }
+    let mut prepared = body.clone();
+    let object = prepared.as_object_mut()?;
+    object.insert(
+        "plugins".to_string(),
+        json!([{
+            "id": "context-compression",
+            "enabled": false
+        }]),
+    );
+    Some(prepared)
 }
 
 fn classify_stream_event_error(value: &Value) -> AiGatewayError {
@@ -767,6 +788,20 @@ mod tests {
         assert!(!is_openrouter_url(
             &Url::parse("http://openrouter.ai/api/v1/models").unwrap()
         ));
+    }
+
+    #[test]
+    fn openrouter_posts_disable_provider_side_context_compression() {
+        let url = Url::parse("https://openrouter.ai/api/v1/chat/completions").unwrap();
+        let prepared = prepare_provider_body(&url, &json!({ "model": "example/model" }))
+            .expect("OpenRouter requests should be normalized");
+        assert_eq!(prepared["plugins"][0]["id"], "context-compression");
+        assert_eq!(prepared["plugins"][0]["enabled"], false);
+        assert!(prepare_provider_body(
+            &Url::parse("https://api.deepseek.com/chat/completions").unwrap(),
+            &json!({})
+        )
+        .is_none());
     }
 
     #[test]

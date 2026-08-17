@@ -1306,10 +1306,9 @@ mod history_tests;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use card_commands::backfill_duplicate_hashes_in_connection;
 use card_note::hydrate_card_note;
 pub(crate) use card_note::CardNoteDto;
 pub(crate) use card_types_and_templates::{
-    apply_card_type_template_repairs, projected_presentation_variant,
-    render_projected_presentation, ProjectedPresentationInput, RenderedCardPresentation,
+    projected_presentation_variant, render_projected_presentation, ProjectedPresentationInput,
+    RenderedCardPresentation,
 };

@@ -5,6 +5,7 @@ use std::{
 };
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+#[cfg(test)]
 use serde::Serialize;
 use serde_json::json;
 
@@ -336,7 +337,7 @@ fn schema_objects(connection: &Connection) -> Result<Vec<SchemaObject>, rusqlite
                   WHEN 'index' THEN 2 WHEN 'trigger' THEN 3 ELSE 4 END,
                   name",
     )?;
-    statement
+    let objects = statement
         .query_map([], |row| {
             Ok(SchemaObject {
                 object_type: row.get(0)?,
@@ -344,7 +345,8 @@ fn schema_objects(connection: &Connection) -> Result<Vec<SchemaObject>, rusqlite
                 sql: row.get::<_, String>(2)?.trim().to_string(),
             })
         })?
-        .collect()
+        .collect();
+    objects
 }
 
 #[cfg(test)]

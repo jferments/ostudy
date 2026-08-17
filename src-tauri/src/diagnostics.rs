@@ -88,12 +88,13 @@ pub fn set_diagnostic_filter(
                 "Temporary diagnostic filters must last between one minute and one hour.",
             ));
         }
+        let expiry_filter = previous_filter.clone();
         let spawn_result = thread::Builder::new()
             .name("ostudy-diagnostic-filter-expiry".to_string())
             .spawn(move || {
                 thread::sleep(Duration::from_secs(expires_in_seconds));
                 if FILTER_GENERATION.load(Ordering::Acquire) == generation {
-                    if logging::set_filter(&previous_filter).is_ok() {
+                    if logging::set_filter(&expiry_filter).is_ok() {
                         logging::info_target(
                             "diagnostics.config",
                             "diagnostic_filter_expired",
