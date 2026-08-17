@@ -44,6 +44,11 @@ node "$SCRIPT_DIR/verify-documentation.mjs"
   exit 1
 }
 
+step "Behavior-test policy and repository script validation"
+node "$SCRIPT_DIR/verify-test-policy.mjs"
+bash "$SCRIPT_DIR/verify-script-syntax.sh"
+python3 -m unittest discover -s tests/scripts -p 'test_*.py'
+
 step "Frozen JavaScript installation and dependency verification"
 pnpm install --frozen-lockfile
 # pnpm can legitimately decide that an unchanged installation needs no lifecycle
