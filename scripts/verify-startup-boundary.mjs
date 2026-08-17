@@ -26,6 +26,11 @@ const contracts = [
     source.lib.includes("mod startup;") && source.lib.includes(".setup(startup::setup)"),
   ],
   [
+    "blocked-startup window shutdown does not require state that was never managed",
+    source.lib.includes("window.try_state::<platform::PlatformRuntime>()") &&
+      !source.lib.includes("window.state::<platform::PlatformRuntime>()"),
+  ],
+  [
     "startup compatibility errors are presented rather than returned through the Tauri setup hook",
     source.startup.includes("if let Err(error) = initialize(app)") &&
       source.startup.includes("present_startup_failure(app, &error.to_string())") &&
@@ -44,7 +49,7 @@ const contracts = [
   [
     "the built-binary legacy-data startup smoke is part of full qualification",
     source.fullCheck.includes('step "Native startup compatibility smoke"') &&
-      source.fullCheck.includes('"$SCRIPT_DIR/smoke-startup-compatibility.sh"'),
+      source.fullCheck.includes('bash "$SCRIPT_DIR/smoke-startup-compatibility.sh"'),
   ],
   [
     "startup smoke rejects panic paths and verifies byte-for-byte database stability",
