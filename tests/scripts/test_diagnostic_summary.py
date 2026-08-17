@@ -104,6 +104,27 @@ class DiagnosticFailureSummaryTests(unittest.TestCase):
         self.assertIn("`ostudy.frontend` / `settings_render_failed`", output)
         self.assertNotIn("`ostudy.app` / `app_started`", output)
 
+    def test_vitest_replay_uses_failed_file_not_earlier_passing_files(self) -> None:
+        output = self.run_summary(
+            "\n".join(
+                [
+                    "✓ src/screens/AnalyticsScreen.test.tsx (4 tests)",
+                    "✓ src/screens/DecksScreen.test.tsx (3 tests)",
+                    "FAIL  src/screens/SettingsScreen.test.tsx",
+                    "AssertionError: expected true to be false",
+                    "FAST CHECK FAILED during: React tests (exit 1)",
+                ]
+            ),
+            [],
+            "kind=failure\nstep=React tests\nstatus=1\nreplayFilter=warn,ostudy.frontend=debug",
+        )
+        self.assertIn(
+            "pnpm vitest run 'src/screens/SettingsScreen.test.tsx' --reporter=verbose",
+            output,
+        )
+        self.assertNotIn("pnpm vitest run 'src/screens/AnalyticsScreen.test.tsx'", output)
+        self.assertNotIn("pnpm vitest run 'src/screens/DecksScreen.test.tsx'", output)
+
     def test_rust_failure_gets_exact_test_replay(self) -> None:
         output = self.run_summary(
             "\n".join(
@@ -150,6 +171,36 @@ class DiagnosticFailureSummaryTests(unittest.TestCase):
         )
         self.assertIn("OSTUDY_LOG='warn,ostudy.frontend=debug'", output)
         self.assertNotIn("OSTUDY_LOG='warn,ostudy=debug'", output)
+
+    def test_structured_timeline_prefers_latest_application_session(self) -> None:
+        output = self.run_summary(
+            "FULL CHECK FAILED during: Native Tauri/WebDriver smoke test (exit 1)",
+            [
+                {
+                    "application": "ostudy",
+                    "sessionId": "old-session",
+                    "timestampMs": 1,
+                    "level": "error",
+                    "target": "ostudy.frontend",
+                    "event": "stale_failure",
+                    "message": "Failure from an earlier application process.",
+                    "fields": {},
+                },
+                {
+                    "application": "ostudy",
+                    "sessionId": "new-session",
+                    "timestampMs": 2,
+                    "level": "info",
+                    "target": "ostudy.app",
+                    "event": "current_process_started",
+                    "message": "Current application process started.",
+                    "fields": {},
+                },
+            ],
+            "kind=failure\nstep=Native Tauri/WebDriver smoke test\nstatus=1\nreplayFilter=warn,ostudy.frontend=debug",
+        )
+        self.assertIn("`ostudy.app` / `current_process_started`", output)
+        self.assertNotIn("`ostudy.frontend` / `stale_failure`", output)
 
     def test_android_logcat_embedded_json_is_parsed(self) -> None:
         event = {
