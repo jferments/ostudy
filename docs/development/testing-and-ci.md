@@ -32,13 +32,13 @@ Use the repository tiers in increasing order:
 
 `check-static.sh` verifies repository policy, manifests and lockfiles, migrations, typed IPC, dependency boundaries, documentation links, workflow policy, TypeScript checking, Rust formatting, startup-boundary source contracts, and script syntax/contracts.
 
-`check-fast.sh` adds the complete frontend test suite, locked Rust compilation, and high-return document/platform contracts.
+`check-fast.sh` adds the complete frontend test suite, locked Rust compilation, warning-free Rust linting, and high-return document/platform contracts.
 
 `check.sh` is the authoritative Linux/shared merge gate. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, a **built-binary startup compatibility smoke**, and the native WebDriver persistence/UI smoke tests.
 
 The startup compatibility smoke is intentionally different from the ordinary WebDriver tests. WebDriver scenarios use fresh isolated app-data so they can verify normal first-run and persistence behavior. The compatibility smoke instead creates a real on-disk pre-public SQLite database, launches the exact built binary against it, and requires ostudy to remain alive behind the one-time reset dialog without a Tauri setup panic. It also requires a structured `application_startup_blocked` event, byte-for-byte preservation of the legacy database, and no WAL/shared-memory sidecars. This catches failures that clean-state application tests cannot exercise.
 
-Native WebDriver element lookup is a read-only polling operation and tolerates a transient driver HTTP disconnect within its existing deadline. Mutating commands such as session creation, clicks, form submission, and actions are never automatically retried because the operation may already have been applied before its response was lost. Multi-stage smoke scenarios should also assert already-established navigation state instead of issuing redundant clicks between adjacent layout checks. Responsive deck-toolbar checks therefore re-resolve the selected Flashcards route and Decks workspace after each resize rather than retaining element IDs across React layout replacement.
+Native WebDriver element lookup is a read-only polling operation and tolerates a transient driver HTTP disconnect within its existing deadline. Mutating commands such as session creation, clicks, form submission, and actions are never automatically retried because the operation may already have been applied before its response was lost. Multi-stage smoke scenarios should assert already-established navigation state instead of issuing redundant clicks between adjacent layout checks. Responsive deck-toolbar checks therefore re-resolve the selected Flashcards route and Decks workspace after each resize rather than retaining element IDs across React layout replacement.
 
 Successful check stamps are keyed by the exact source tree, relevant untracked files, tool versions, and platform. Set `OSTUDY_FORCE_CHECK=1` when deliberately bypassing exact-tree reuse. A failed run with `--keep-artifacts` writes a step-specific `reproduce.sh`; use that focused replay before repeating a broader tier.
 
@@ -101,14 +101,37 @@ check-static.sh
 
 The same workflow supports manual dispatch with explicit `preflight`, `static`, `fast`, `linux-full`, `android-full`, and `all-full` gates.
 
-### Exact-head status visibility
+The workflow uses the minimum normal permission:
 
-The workflow publishes two legacy commit-status contexts in addition to the normal GitHub Actions check run:
+```yaml
+permissions:
+  contents: read
+```
 
-- `ostudy/static` — pending while static qualification runs, then success/failure/error for that exact SHA;
-- `ostudy/qualification` — pending while the selected qualification tier runs, then the final exact-head result.
+The ordinary GitHub Actions check run, its exact checked-out SHA, step result, summary, and uploaded failure evidence are the authoritative remote qualification record. The workflow does not mirror Actions state through additional legacy commit-status API calls.
 
-These status records contain only the SHA, result, short description, and Actions run URL. The workflow token has `contents: read` plus `statuses: write`; it does not gain source-code write permission. The explicit status contexts exist so tooling that can read commit statuses but cannot read Actions check-run APIs can still verify that the exact submitted head cleared static qualification and, later, the complete requested gate.
+### GitHub service incidents
+
+GitHub service incidents must be treated as control-plane failures, not as evidence that oStudy source code passed or failed.
+
+Before changing workflow permissions, triggers, PR state, or unrelated source merely because a run is missing or an API read fails, classify the evidence:
+
+- A completed local command or workflow log with a deterministic assertion is a repository or environment failure.
+- A stable `403 Resource not accessible by integration` limited to an API family while repository reads/writes work is normally a connector permission or capability boundary.
+- Repeated `5xx`, `502`, timeout, archive/raw download, Actions, webhook, pull-request, or broad API failures across unrelated operations require an official GitHub Status check.
+
+During a confirmed or suspected GitHub incident:
+
+1. preserve the exact branch head SHA;
+2. record the first failing operation, timestamp, HTTP class, and affected GitHub surface;
+3. check the official GitHub Status incident and affected components;
+4. use only bounded idempotent reads to determine whether a requested write actually landed;
+5. do not create no-op commits, edit unrelated files, close/reopen the PR, toggle draft state, widen token permissions, add status mirrors, or change triggers merely to force a workflow or webhook;
+6. do not infer an Actions result from a missing check-run, webhook, or empty legacy status response;
+7. keep the PR draft and describe the exact head as unqualified;
+8. after GitHub reports recovery, run the normal workflow on that exact head without incident-specific shims.
+
+The [August 17, 2026 GitHub outage audit](../history/github-outage-audit-2026-08-17.md) records the incident that established this policy and distinguishes legitimate oStudy fixes from outage-driven workflow changes that were removed.
 
 Every scripted CI gate automatically starts with the low-noise diagnostic filter:
 
@@ -169,7 +192,7 @@ See [Diagnostics and debug filters](diagnostics.md) for local replay and filter 
 
 ## Self-hosted runner security
 
-Pull-request jobs use minimum GitHub token permissions needed for qualification: repository contents are read-only and exact-head commit statuses are write-only metadata. The jobs execute untrusted repository code inside the isolated VM rather than on `ML-tower`.
+Pull-request qualification uses read-only repository contents permission and executes untrusted repository code inside the isolated VM rather than on `ML-tower`.
 
 Do not install Codex or another autonomous code-writing process on the runner. Do not give the runner host filesystem mounts, the host SSH private key, forwarded agent access, Docker/libvirt host-control sockets, release signing keys, or personal data.
 
@@ -180,6 +203,8 @@ The VM keeps a powered-off `pre-github-runner` snapshot from before runner regis
 Automation protects known contracts, not visual or experiential quality. For user-visible work, manually exercise the affected workflow on the relevant platform after automated qualification, including error/cancellation/restart behavior when applicable.
 
 For the public-baseline cutover, one manual acceptance should also start the built desktop application against retained pre-public development data. The expected result is the reset-required dialog, not a Rust panic or a partially initialized application. After the operator deliberately runs `reset-pre-public-data.sh`, a second launch should create the public baseline and proceed normally.
+
+A real Google Code Scanner camera scan on a Google Play services-enabled Android device and a live OpenRouter request remain manual acceptance boundaries because deterministic CI has neither a physical camera workflow nor a provider credential.
 
 ## Release qualification
 
