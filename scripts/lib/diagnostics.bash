@@ -175,6 +175,9 @@ ostudy_copy_bounded_log() {
 ostudy_recommended_filter_for_step() {
   local normalized="${1,,}"
   case "$normalized" in
+    *startup*)
+      printf 'warn,ostudy.app=debug,ostudy.database=debug'
+      ;;
     *database*|*migration*|*schema*|*sqlite*)
       printf 'warn,ostudy.database=debug'
       ;;
@@ -234,6 +237,9 @@ ostudy_replay_command_for_step() {
       ;;
     "Standalone Tauri build")
       printf 'pnpm tauri build --debug --no-bundle --ci -- --locked'
+      ;;
+    "Native startup compatibility smoke")
+      printf 'bash ./scripts/smoke-startup-compatibility.sh'
       ;;
     "Native Tauri/WebDriver smoke test"|Native\ *WebDriver\ smoke*)
       printf './scripts/smoke-native.sh'
