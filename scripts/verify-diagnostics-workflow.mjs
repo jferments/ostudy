@@ -17,6 +17,13 @@ const contents = Object.fromEntries(
   ),
 );
 
+const staticIndex = contents.workflow.indexOf("- name: Run static qualification first");
+const fastIndex = contents.workflow.indexOf("- name: Run fast qualification");
+const linuxIndex = contents.workflow.indexOf("- name: Run authoritative Linux qualification");
+const androidIndex = contents.workflow.indexOf(
+  "- name: Run authoritative Android compile and package qualification",
+);
+
 const contracts = [
   [
     "CI establishes a low-noise first-run diagnostic timeline",
@@ -37,7 +44,8 @@ const contracts = [
   ],
   [
     "every captured boundary writes a focused replay script",
-    contents.library.includes('reproduce.sh') && contents.library.includes("ostudy_replay_command_for_step"),
+    contents.library.includes("reproduce.sh") &&
+      contents.library.includes("ostudy_replay_command_for_step"),
   ],
   [
     "the authoritative workflow exports the first-run baseline to every platform step",
@@ -49,6 +57,22 @@ const contracts = [
     contents.workflow.includes(
       'echo "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT=$RUNNER_TEMP/ostudy-diagnostics" >> "$GITHUB_ENV"',
     ),
+  ],
+  [
+    "static qualification runs before every expensive product gate",
+    staticIndex >= 0 &&
+      fastIndex > staticIndex &&
+      linuxIndex > staticIndex &&
+      androidIndex > staticIndex &&
+      contents.workflow.includes("if: steps.gate.outputs.gate != 'preflight'") &&
+      contents.workflow.includes('bash ./scripts/check-static.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"'),
+  ],
+  [
+    "connector-visible exact-head statuses expose static and overall qualification",
+    /permissions:[\s\S]*?contents:\s*read[\s\S]*?statuses:\s*write/u.test(contents.workflow) &&
+      contents.workflow.includes("--arg context 'ostudy/static'") &&
+      contents.workflow.includes("--arg context 'ostudy/qualification'") &&
+      contents.workflow.includes("statuses/$QUALIFIED_SHA"),
   ],
   [
     "the failure summary reads structured diagnostic artifacts",
@@ -78,10 +102,12 @@ const contracts = [
       contents.diagnosticsDoc.includes("reproduce.sh"),
   ],
   [
-    "CI documentation explains the first-run diagnostic baseline",
+    "CI documentation explains the first-run diagnostic baseline and observable static gate",
     contents.testingDoc.includes("warn,ostudy=info") &&
       contents.testingDoc.includes("transient WebDriver") &&
-      contents.testingDoc.includes("failure-capture token"),
+      contents.testingDoc.includes("failure-capture token") &&
+      contents.testingDoc.includes("ostudy/static") &&
+      contents.testingDoc.includes("static qualification first"),
   ],
 ];
 
@@ -93,5 +119,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   CI captures a low-noise structured timeline, preserves isolated failure state, emits focused replay commands, and uploads bounded transient/failure evidence.",
+  "OK   CI runs static qualification first, publishes connector-visible exact-head status, captures a low-noise structured timeline, preserves isolated failure state, emits focused replay commands, and uploads bounded transient/failure evidence.",
 );
