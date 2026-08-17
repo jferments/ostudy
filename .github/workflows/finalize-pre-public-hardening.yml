@@ -39,13 +39,35 @@ jobs:
           if grep -q 'require_zero_data_retention' src-tauri/src/ai/profiles.rs; then
             echo 'OpenRouter ZDR profile support is already present.'
           else
+            python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/internal/apply_openrouter_zdr.py")
+          source = path.read_text(encoding="utf-8")
+          old = '''def replace_once(source: str, old: str, new: str, label: str) -> str:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one target, found {count}: {old[:100]!r}")
+              return source.replace(old, new, 1)
+          '''
+          new = '''def replace_once(source: str, old: str, new: str, label: str) -> str:
+              count = source.count(old)
+              if label == "profile insert params" and count == 2:
+                  return source.replace(old, new, 1)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one target, found {count}: {old[:100]!r}")
+              return source.replace(old, new, 1)
+          '''
+          if old not in source:
+              raise SystemExit("Could not narrow the OpenRouter profile insert transformation.")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
             python3 scripts/internal/apply_openrouter_zdr.py
           fi
 
       - name: Remove one-shot implementation machinery
         run: |
           rm -f \
-            .github/workflows/apply-openrouter-zdr-final.yml \
             .github/workflows/finalize-pre-public-hardening.yml \
             scripts/internal/apply_openrouter_zdr.py
           rmdir scripts/internal 2>/dev/null || true
