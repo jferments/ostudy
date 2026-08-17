@@ -6,6 +6,7 @@ import type { EditorDraftCommitRef } from "./drafts";
 export type AiProviderKind =
   | "llama_cpp"
   | "deepseek"
+  | "openrouter"
   | "ollama"
   | "openai"
   | "gemini"
