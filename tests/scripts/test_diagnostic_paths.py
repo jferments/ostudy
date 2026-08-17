@@ -91,7 +91,7 @@ class DiagnosticPathResolutionTests(unittest.TestCase):
     def test_ci_activates_low_noise_timeline_and_bounded_artifacts(self) -> None:
         resolved = self.run_library(
             "ostudy_parse_diagnostic_args >/dev/null; "
-            "printf '%s|%s|%s' \"$OSTUDY_LOG\" \"$OSTUDY_DIAGNOSTICS_AUTOMATIC\" \"$OSUTDY_KEEP_FAILURE_ARTIFACTS\"",
+            "printf '%s|%s|%s' \"$OSTUDY_LOG\" \"$OSTUDY_DIAGNOSTICS_AUTOMATIC\" \"$OSTUDY_KEEP_FAILURE_ARTIFACTS\"",
             {"CI": "true"},
         )
         self.assertEqual(resolved, "warn,ostudy=info|1|1")
@@ -118,8 +118,8 @@ class DiagnosticPathResolutionTests(unittest.TestCase):
                 f"{shlex.quote(str(command_log))} {shlex.quote(str(app_log))}; "
                 f"capture=$(find {shlex.quote(str(artifact_root))} -mindepth 1 -maxdepth 1 -type d | head -n 1); "
                 "printf '%s|%s|%s' "
-                '"$(test -f "$capture/application.jsonl" && printf yes)" ' 
-                '"$(grep -F "ostudy.frontend=debug" "$capture/reproduce.sh" >/dev/null && printf yes)" ' 
+                '"$(test -f "$capture/application.jsonl" && printf yes)" '
+                '"$(grep -F "ostudy.frontend=debug" "$capture/reproduce.sh" >/dev/null && printf yes)" '
                 '"$(grep -F "kind=failure" "$capture/context.txt" >/dev/null && printf yes)"',
                 {
                     "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT": str(artifact_root),
