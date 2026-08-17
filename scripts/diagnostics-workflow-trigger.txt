@@ -1,0 +1,1 @@
+Temporary source-push trigger for the self-deleting diagnostics maintenance workflow.
