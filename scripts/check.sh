@@ -42,6 +42,7 @@ step() {
 }
 trap 'status=$?; ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP" || true; printf "\n\033[1;31mFULL CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
 
+step "Fast qualification"
 if [[ "${OSTUDY_FAST_CHECK_PASSED:-0}" == "1" ]]; then
   printf '\n\033[1;32mREUSE Fast qualification passed earlier in this workflow.\033[0m\n'
 elif [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
