@@ -16,6 +16,17 @@ ostudy_capture_worktree_state() {
   ) > "$destination"
 }
 
+ostudy_report_worktree_baseline() {
+  local baseline="$1"
+  if [[ "${OSTUDY_WORKTREE_BASELINE_REPORTED:-0}" == 1 || ! -s "$baseline" ]]; then
+    return 0
+  fi
+  printf 'NOTE: qualification starts with pre-existing Git-visible worktree state:\n' >&2
+  sed 's/^/  /' "$baseline" >&2
+  printf 'The mutation guard will preserve this exact baseline and fail on additional changes.\n' >&2
+  export OSTUDY_WORKTREE_BASELINE_REPORTED=1
+}
+
 ostudy_assert_worktree_unchanged() {
   local baseline="$1"
   local boundary="${2:-qualification boundary}"
