@@ -91,7 +91,7 @@ if [[ "${OSTUDY_SKIP_NATIVE_SMOKE:-0}" == "1" ]]; then
   printf 'SKIP Native WebDriver smoke test (OSTUDY_SKIP_NATIVE_SMOKE=1).\n'
 else
   step "Native startup compatibility smoke"
-  "$SCRIPT_DIR/smoke-startup-compatibility.sh"
+  bash "$SCRIPT_DIR/smoke-startup-compatibility.sh"
 
   step "Native Tauri/WebDriver smoke test"
   "$SCRIPT_DIR/smoke-native.sh"
