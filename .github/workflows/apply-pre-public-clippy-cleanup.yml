@@ -1,4 +1,4 @@
-name: Apply pre-public Clippy cleanup
+name: Apply final pre-public Clippy cleanup
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-pre-public-clippy-cleanup
+  group: apply-final-pre-public-clippy-cleanup
   cancel-in-progress: false
 
 jobs:
@@ -33,106 +33,37 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
 
-      - name: Remove retired repair code and satisfy strict lint contracts
+      - name: Scope automatic-layout helpers to tests
         run: |
-          cat > "$RUNNER_TEMP/apply-clippy-cleanup.py" <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
-          import re
 
-          def replace_once(path: str, old: str, new: str) -> None:
-              file = Path(path)
-              source = file.read_text(encoding="utf-8")
-              count = source.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected one replacement target, found {count}")
-              file.write_text(source.replace(old, new, 1), encoding="utf-8")
-
-          replace_once(
-              "src-tauri/src/stage34_35_regression_tests.rs",
-              "use rusqlite::{params, Connection};",
-              "use rusqlite::params;",
-          )
-
-          # The public baseline already contains the canonicalized template and
-          # duplicate-fingerprint state. Remove the pre-release repair routines
-          # rather than carrying dead migration code into the public runtime.
-          replace_once(
-              "src-tauri/src/authoring/card_types_and_templates.rs",
-              "pub(crate) use templates::apply_card_type_template_repairs;\n",
-              "",
-          )
-          replace_once(
-              "src-tauri/src/authoring/card_types_and_templates/templates.rs",
-              "mod automatic_layout;\nmod repair;\n",
-              "mod automatic_layout;\n",
-          )
-          replace_once(
-              "src-tauri/src/authoring/card_types_and_templates/templates.rs",
-              "pub(crate) use repair::apply_card_type_template_repairs;\n",
-              "",
-          )
-          repair = Path("src-tauri/src/authoring/card_types_and_templates/templates/repair.rs")
-          if not repair.exists():
-              raise SystemExit("retired template repair module is missing before cleanup")
-          repair.unlink()
-
-          card_commands = Path("src-tauri/src/authoring/card_commands.rs")
-          source = card_commands.read_text(encoding="utf-8")
-          source, count = re.subn(
-              r"\npub\(crate\) fn backfill_duplicate_hashes_in_connection\([\s\S]*\Z",
-              "\n",
-              source,
-              count=1,
-          )
-          if count != 1:
-              raise SystemExit(f"card_commands.rs: expected one retired duplicate backfill, found {count}")
-          card_commands.write_text(source, encoding="utf-8")
-
-          logging = Path("src-tauri/src/logging.rs")
-          source = logging.read_text(encoding="utf-8")
-          source = source.replace(
-              "        rules.sort_by(|left, right| right.target.len().cmp(&left.target.len()));",
-              "        rules.sort_by_key(|rule| std::cmp::Reverse(rule.target.len()));",
-              1,
-          )
-          source = source.replace(
-              "    let key = key.to_ascii_lowercase().replace('-', \"\").replace('_', \"\");",
-              "    let key = key.to_ascii_lowercase().replace(['-', '_'], \"\");",
-              1,
-          )
-          for block in [
-              '''\npub fn warn(event: &str, message: impl AsRef<str>) {\n    warn_target("app", event, message, Value::Null);\n}\n''',
-              '''\npub fn debug(event: &str, message: impl AsRef<str>) {\n    debug_target("app", event, message, Value::Null);\n}\n''',
-              '''\npub fn trace(event: &str, message: impl AsRef<str>) {\n    trace_target("app", event, message, Value::Null);\n}\n''',
-              '''\npub fn debug_lazy<F>(target: &str, event: &str, build: F)\nwhere\n    F: FnOnce() -> (String, Value),\n{\n    let target = normalize_target(target).unwrap_or_else(|_| "ostudy.app".to_string());\n    if enabled(LogLevel::Debug, &target) {\n        let (message, fields) = build();\n        emit(LogLevel::Debug, &target, event, &message, fields);\n    }\n}\n''',
-          ]:
-              if source.count(block) != 1:
-                  raise SystemExit("logging.rs: expected one retired convenience wrapper block")
-              source = source.replace(block, "", 1)
-          logging.write_text(source, encoding="utf-8")
-
-          replace_once(
-              "src-tauri/src/diagnostics.rs",
-              "                if FILTER_GENERATION.load(Ordering::Acquire) == generation {\n                    if logging::set_filter(&expiry_filter).is_ok() {\n                        logging::info_target(\n                            \"diagnostics.config\",\n                            \"diagnostic_filter_expired\",\n                            \"The temporary diagnostic filter expired and the previous filter was restored.\",\n                            serde_json::json!({ \"durationSeconds\": expires_in_seconds }),\n                        );\n                    }\n                }",
-              "                if FILTER_GENERATION.load(Ordering::Acquire) == generation\n                    && logging::set_filter(&expiry_filter).is_ok()\n                {\n                    logging::info_target(\n                        \"diagnostics.config\",\n                        \"diagnostic_filter_expired\",\n                        \"The temporary diagnostic filter expired and the previous filter was restored.\",\n                        serde_json::json!({ \"durationSeconds\": expires_in_seconds }),\n                    );\n                }",
-          )
-
-          replace_once(
-              "src-tauri/src/library_backup.rs",
-              "    if !(3..=LATEST_SCHEMA_VERSION).contains(&version) {",
-              "    if version != LATEST_SCHEMA_VERSION {",
-          )
+          path = Path("src-tauri/src/authoring/card_types_and_templates/templates.rs")
+          source = path.read_text(encoding="utf-8")
+          old = '''use automatic_layout::{
+              automatic_template_field_lookup_from_dtos, normalize_typed_template_layout,
+              AutomaticTemplateFieldLookup,
+          };
+          '''
+          new = '''#[cfg(test)]
+          use automatic_layout::{
+              automatic_template_field_lookup_from_dtos, normalize_typed_template_layout,
+              AutomaticTemplateFieldLookup,
+          };
+          '''
+          if source.count(old) != 1:
+              raise SystemExit(f"expected one automatic-layout import block, found {source.count(old)}")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
           PY
-          python3 "$RUNNER_TEMP/apply-clippy-cleanup.py"
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
 
-      - name: Commit cleanup
+      - name: Commit final lint cleanup
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "refactor: remove retired pre-release repair code"
+          git commit -m "fix: scope automatic-layout helpers to tests"
           git push origin HEAD:agent/pre-public-platform-hardening
 
       - name: Provision native runtime and run strict Rust linting
