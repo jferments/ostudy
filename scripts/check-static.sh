@@ -20,9 +20,21 @@ if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
 fi
 cd "$ROOT_DIR"
 
+WORKTREE_BASELINE="$(mktemp -t ostudy-static-worktree.XXXXXXXX)"
+cleanup_worktree_baseline() { rm -f -- "$WORKTREE_BASELINE"; }
+trap cleanup_worktree_baseline EXIT
+ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
+
 CURRENT_STEP="initialization"
-step() { CURRENT_STEP="$*"; printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"; }
-trap 'status=$?; printf "\n\033[1;31mSTATIC CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
+step() {
+  if [[ "$CURRENT_STEP" != initialization ]]; then
+    ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
+  fi
+  CURRENT_STEP="$*"
+  ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
+  printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"
+}
+trap 'status=$?; ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP" || true; printf "\n\033[1;31mSTATIC CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
 
 if [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
   && ostudy_frontend_prerequisites_present \
@@ -48,6 +60,7 @@ node "$SCRIPT_DIR/verify-external-file-streaming.mjs"
 node "$SCRIPT_DIR/verify-android-project.mjs"
 node "$SCRIPT_DIR/verify-android-plugin-routing.mjs"
 node "$SCRIPT_DIR/verify-diagnostics-workflow.mjs"
+node "$SCRIPT_DIR/verify-startup-boundary.mjs"
 node "$SCRIPT_DIR/verify-local-fonts.mjs"
 node "$SCRIPT_DIR/verify-documentation.mjs"
 [[ -f pnpm-lock.yaml && -f src-tauri/Cargo.lock ]] || {
@@ -76,6 +89,7 @@ pnpm exec tsc -b --pretty false
 step "Rust formatting"
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 
+ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
 ostudy_write_check_stamp static
 trap - ERR
 printf '\n\033[1;32mStatic ostudy checks passed.\033[0m\n'
