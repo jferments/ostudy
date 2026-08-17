@@ -137,6 +137,13 @@ ostudy_parse_diagnostic_args() {
     export OSTUDY_KEEP_FAILURE_ARTIFACTS=1
   fi
 
+  if [[ "${OSTUDY_KEEP_FAILURE_ARTIFACTS:-0}" == 1 && -z "${OSTUDY_DIAGNOSTIC_CAPTURE_TOKEN:-}" ]]; then
+    # Nested qualification scripts inherit one token. The first failing boundary
+    # claims it atomically, preventing outer wrapper traps from replacing a
+    # precise failure with duplicate "initialization" captures.
+    export OSTUDY_DIAGNOSTIC_CAPTURE_TOKEN="${BASHPID:-$$}-${RANDOM:-0}-$(date -u +%s%N 2>/dev/null || date -u +%s)"
+  fi
+
   if [[ "${OSTUDY_DIAGNOSTICS_ACTIVE:-0}" == 1 ]]; then
     export RUST_BACKTRACE="${RUST_BACKTRACE:-1}"
     if [[ "$explicit" == 1 || "${OSTUDY_DIAGNOSTICS_AUTOMATIC:-0}" != 1 ]]; then
@@ -263,6 +270,12 @@ ostudy_capture_artifacts() {
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
   artifact_root="$(ostudy_diagnostic_artifact_root)"
   mkdir -p "$artifact_root"
+  if [[ "$kind" == failure && -n "${OSTUDY_DIAGNOSTIC_CAPTURE_TOKEN:-}" ]]; then
+    local capture_token failure_claim
+    capture_token="${OSTUDY_DIAGNOSTIC_CAPTURE_TOKEN//[^a-zA-Z0-9_.-]/_}"
+    failure_claim="$artifact_root/.failure-claim-$capture_token"
+    mkdir "$failure_claim" 2>/dev/null || return 0
+  fi
   artifact_dir="$(mktemp -d "$artifact_root/${timestamp}-$(ostudy_step_slug "$step").XXXXXX")"
   state_root="${XDG_STATE_HOME:-$HOME/.local/state}/ostudy"
   application_log="${application_override:-$(ostudy_resolve_application_diagnostic_log)}"
