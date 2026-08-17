@@ -1,0 +1,155 @@
+name: Apply pre-public compile fixes
+
+on:
+  push:
+    branches: [agent/pre-public-platform-hardening]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-pre-public-compile-fixes
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/pre-public-platform-hardening
+          clean: true
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Expose toolchains
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+
+      - name: Apply compile and contract fixes
+        run: |
+          cat > "$RUNNER_TEMP/apply-compile-fixes.py" <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              source = file.read_text(encoding="utf-8")
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one replacement target, found {count}")
+              file.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          # Retire the final regression-test dependency on deleted pre-release
+          # migrations and their historical repair phases. The surviving test
+          # verifies that reopening the public baseline is read-only.
+          path = Path("src-tauri/src/stage34_35_regression_tests.rs")
+          source = path.read_text(encoding="utf-8")
+          source = source.replace(
+              "    data_repairs::{apply_required_repairs, verify_repair_ledger, RepairPhase},\n",
+              "",
+              1,
+          )
+          pattern = re.compile(
+              r"const PRE_CANONICAL_MIGRATIONS:[\s\S]*?(?=#\[test\]\nfn canonical_database_reopen_does_not_mutate_application_rows)",
+          )
+          source, count = pattern.subn("", source, count=1)
+          if count != 1:
+              raise SystemExit(f"stage34_35_regression_tests.rs: expected one legacy migration test block, found {count}")
+          if source.count("assert_eq!(repair_rows, 3);") != 1:
+              raise SystemExit("stage34_35_regression_tests.rs: expected one legacy repair-row assertion")
+          source = source.replace("assert_eq!(repair_rows, 3);", "assert_eq!(repair_rows, 0);", 1)
+          path.write_text(source, encoding="utf-8")
+
+          # document_intelligence.rs is compiled both as ai::document_intelligence
+          # and as an adapter implementation module, so provider access must use
+          # the crate-absolute path rather than nested-module `super`.
+          replace_once(
+              "src-tauri/src/ai/document_intelligence.rs",
+              "use crate::{database::Database, document_semantics::SemanticWindow, error::CommandError};",
+              "use crate::{\n    ai::providers, database::Database, document_semantics::SemanticWindow, error::CommandError,\n};",
+          )
+          replace_once(
+              "src-tauri/src/ai/document_intelligence.rs",
+              "    profiles::{load_profile_snapshot, ProfileSnapshot},\n    providers,\n    secrets::CredentialStorage,",
+              "    profiles::{load_profile_snapshot, ProfileSnapshot},\n    secrets::CredentialStorage,",
+          )
+
+          # Keep the original diagnostic filter available if thread creation
+          # fails while moving a clone into the expiry worker.
+          replace_once(
+              "src-tauri/src/diagnostics.rs",
+              "        let spawn_result = thread::Builder::new()",
+              "        let expiry_filter = previous_filter.clone();\n        let spawn_result = thread::Builder::new()",
+          )
+          replace_once(
+              "src-tauri/src/diagnostics.rs",
+              "                    if logging::set_filter(&previous_filter).is_ok() {",
+              "                    if logging::set_filter(&expiry_filter).is_ok() {",
+          )
+
+          # Test-only schema serialization must not warn in release builds, and
+          # the rusqlite mapped-row iterator must be dropped before its statement.
+          replace_once(
+              "src-tauri/src/database.rs",
+              "use serde::Serialize;",
+              "#[cfg(test)]\nuse serde::Serialize;",
+          )
+          replace_once(
+              "src-tauri/src/database.rs",
+              "    statement\n        .query_map([], |row| {\n            Ok(SchemaObject {\n                object_type: row.get(0)?,\n                name: row.get(1)?,\n                sql: row.get::<_, String>(2)?.trim().to_string(),\n            })\n        })?\n        .collect()",
+              "    let objects = statement\n        .query_map([], |row| {\n            Ok(SchemaObject {\n                object_type: row.get(0)?,\n                name: row.get(1)?,\n                sql: row.get::<_, String>(2)?.trim().to_string(),\n            })\n        })?\n        .collect();\n    objects",
+          )
+
+          # Historical repair helpers are no longer part of the public runtime.
+          replace_once(
+              "src-tauri/src/authoring/mod.rs",
+              "pub(crate) use card_commands::backfill_duplicate_hashes_in_connection;\n",
+              "",
+          )
+          replace_once(
+              "src-tauri/src/authoring/mod.rs",
+              "    apply_card_type_template_repairs, projected_presentation_variant,\n",
+              "    projected_presentation_variant,\n",
+          )
+
+          # OpenRouter can otherwise apply context-compression transforms on
+          # small-context endpoints. oStudy owns document windowing, so every
+          # OpenRouter POST explicitly disables that provider-side mutation.
+          replace_once(
+              "src-tauri/src/ai/gateway.rs",
+              "    ) -> Result<Value, AiGatewayError> {\n        // Document AI runs inside a task-local cancellation scope. Only those",
+              "    ) -> Result<Value, AiGatewayError> {\n        let prepared_body = prepare_provider_body(&url, body);\n        let body = prepared_body.as_ref().unwrap_or(body);\n\n        // Document AI runs inside a task-local cancellation scope. Only those",
+          )
+          replace_once(
+              "src-tauri/src/ai/gateway.rs",
+              "fn is_openrouter_url(url: &Url) -> bool {\n    url.scheme() == \"https\" && url.host_str() == Some(OPENROUTER_HOST)\n}\n",
+              "fn is_openrouter_url(url: &Url) -> bool {\n    url.scheme() == \"https\"\n        && url.host_str() == Some(OPENROUTER_HOST)\n        && url.path().starts_with(\"/api/v1/\")\n}\n\nfn prepare_provider_body(url: &Url, body: &Value) -> Option<Value> {\n    if !is_openrouter_url(url) {\n        return None;\n    }\n    let mut prepared = body.clone();\n    let object = prepared.as_object_mut()?;\n    object.insert(\n        \"plugins\".to_string(),\n        json!([{\n            \"id\": \"context-compression\",\n            \"enabled\": false\n        }]),\n    );\n    Some(prepared)\n}\n",
+          )
+          replace_once(
+              "src-tauri/src/ai/gateway.rs",
+              "    #[test]\n    fn classifies_rate_limits_without_exposing_provider_bodies() {",
+              "    #[test]\n    fn openrouter_posts_disable_provider_side_context_compression() {\n        let url = Url::parse(\"https://openrouter.ai/api/v1/chat/completions\").unwrap();\n        let prepared = prepare_provider_body(&url, &json!({ \"model\": \"example/model\" }))\n            .expect(\"OpenRouter requests should be normalized\");\n        assert_eq!(prepared[\"plugins\"][0][\"id\"], \"context-compression\");\n        assert_eq!(prepared[\"plugins\"][0][\"enabled\"], false);\n        assert!(prepare_provider_body(\n            &Url::parse(\"https://api.deepseek.com/chat/completions\").unwrap(),\n            &json!({})\n        )\n        .is_none());\n    }\n\n    #[test]\n    fn classifies_rate_limits_without_exposing_provider_bodies() {",
+          )
+          PY
+          python3 "$RUNNER_TEMP/apply-compile-fixes.py"
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Commit source fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: complete public-baseline compile contracts"
+          git push origin HEAD:agent/pre-public-platform-hardening
+
+      - name: Compile-check committed source
+        run: cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
