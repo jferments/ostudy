@@ -76,11 +76,12 @@ const contracts = [
       ),
   ],
   [
-    "connector-visible exact-head statuses expose static and overall qualification",
-    /permissions:[\s\S]*?contents:\s*read[\s\S]*?statuses:\s*write/u.test(contents.workflow) &&
-      contents.workflow.includes("--arg context 'ostudy/static'") &&
-      contents.workflow.includes("--arg context 'ostudy/qualification'") &&
-      contents.workflow.includes("statuses/$QUALIFIED_SHA"),
+    "qualification keeps the minimum read-only repository permission",
+    /permissions:\s*\n\s*contents:\s*read/u.test(contents.workflow) &&
+      !/statuses:\s*write/u.test(contents.workflow) &&
+      !contents.workflow.includes("statuses/$QUALIFIED_SHA") &&
+      !contents.workflow.includes("ostudy/static") &&
+      !contents.workflow.includes("ostudy/qualification"),
   ],
   [
     "the failure summary reads structured diagnostic artifacts",
@@ -110,12 +111,12 @@ const contracts = [
       contents.diagnosticsDoc.includes("reproduce.sh"),
   ],
   [
-    "CI documentation explains the first-run diagnostic baseline and observable static gate",
+    "CI documentation explains the first-run diagnostic baseline and static-first gate",
     contents.testingDoc.includes("warn,ostudy=info") &&
       contents.testingDoc.includes("transient WebDriver") &&
       contents.testingDoc.includes("failure-capture token") &&
-      contents.testingDoc.includes("ostudy/static") &&
       contents.testingDoc.includes("static qualification first") &&
+      contents.testingDoc.includes("GitHub service incidents") &&
       contents.testingDoc.indexOf("check-static.sh") <
         contents.testingDoc.indexOf("unified runner/KVM preflight"),
   ],
@@ -129,5 +130,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   CI runs static qualification before runner/full gates, publishes connector-visible exact-head status, captures a low-noise structured timeline, preserves isolated failure state, emits focused replay commands, and uploads bounded transient/failure evidence.",
+  "OK   CI runs static qualification before runner/full gates with read-only repository access, captures a low-noise structured timeline, preserves isolated failure state, emits focused replay commands, and uploads bounded transient/failure evidence.",
 );
