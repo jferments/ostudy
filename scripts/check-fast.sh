@@ -23,9 +23,21 @@ if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
 fi
 cd "$ROOT_DIR"
 
+WORKTREE_BASELINE="$(mktemp -t ostudy-fast-worktree.XXXXXXXX)"
+cleanup_worktree_baseline() { rm -f -- "$WORKTREE_BASELINE"; }
+trap cleanup_worktree_baseline EXIT
+ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
+
 CURRENT_STEP="initialization"
-step() { CURRENT_STEP="$*"; printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"; }
-trap 'status=$?; printf "\n\033[1;31mFAST CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
+step() {
+  if [[ "$CURRENT_STEP" != initialization ]]; then
+    ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
+  fi
+  CURRENT_STEP="$*"
+  ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
+  printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"
+}
+trap 'status=$?; ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP" || true; printf "\n\033[1;31mFAST CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
 
 if [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
   && ostudy_frontend_prerequisites_present \
@@ -106,6 +118,7 @@ cargo test \
   database::tests::public_migration_checksum_and_future_version_are_enforced \
   -- --exact
 
+ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
 ostudy_write_check_stamp fast
 trap - ERR
 printf '\n\033[1;32mFast ostudy checks passed.\033[0m\n'
