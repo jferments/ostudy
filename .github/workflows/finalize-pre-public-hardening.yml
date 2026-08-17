@@ -54,6 +54,8 @@ jobs:
               count = source.count(old)
               if label == "profile insert params" and count == 2:
                   return source.replace(old, new, 1)
+              if label == "OpenRouter ADR policy" and count == 0 and "zero-data-retention" in source:
+                  return source
               if count != 1:
                   raise SystemExit(f"{label}: expected one target, found {count}: {old[:100]!r}")
               return source.replace(old, new, 1)
@@ -62,6 +64,22 @@ jobs:
               raise SystemExit("Could not narrow the OpenRouter profile insert transformation.")
           source = source.replace(old, new, 1)
           source = source.replace("PROVIDER_ADAPTER_REVISION", "ADAPTER_REVISION")
+          source = source.replace(
+              '      allowInsecureHttp: true,\\n      requestTimeoutMs: 120_000,',
+              '  allowInsecureHttp: false,\\n  requestTimeoutMs: 60_000,',
+          )
+          source = source.replace(
+              '      allowInsecureHttp: true,\\n      requireZeroDataRetention: false,\\n      requestTimeoutMs: 120_000,',
+              '  allowInsecureHttp: false,\\n  requireZeroDataRetention: false,\\n  requestTimeoutMs: 60_000,',
+          )
+          source = source.replace(
+              '        allowInsecureHttp: true,\\n        requestTimeoutMs: 120_000,',
+              '        allowInsecureHttp: draft.allowInsecureHttp,\\n        requestTimeoutMs: draft.requestTimeoutMs,',
+          )
+          source = source.replace(
+              '        allowInsecureHttp: true,\\n        requireZeroDataRetention: false,\\n        requestTimeoutMs: 120_000,',
+              '        allowInsecureHttp: draft.allowInsecureHttp,\\n        requireZeroDataRetention: draft.requireZeroDataRetention,\\n        requestTimeoutMs: draft.requestTimeoutMs,',
+          )
           path.write_text(source, encoding="utf-8")
           PY
             python3 scripts/internal/apply_openrouter_zdr.py
