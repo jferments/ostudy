@@ -120,7 +120,7 @@ During infrastructure work, one explicit PR-body marker may activate a lane. Nor
 
 Qualification failures preserve bounded diagnostics rather than user study data.
 
-Each failing script writes a unique capture to the runner-temporary `OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT`. A capture includes:
+Nested qualification wrappers share one failure-capture token, so the innermost precise failure wins and outer `initialization` traps do not create duplicate evidence. Each failing script writes its authoritative capture to the runner-temporary `OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT`. A capture includes:
 
 - the failed boundary and exit status;
 - the exact commit and active filter;
