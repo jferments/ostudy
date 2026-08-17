@@ -359,6 +359,36 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "maintenance utility"]
+    fn regenerate_public_baseline_schema_manifest() {
+        use sha2::{Digest, Sha256};
+
+        let database = Database::open_in_memory().expect("database should open");
+        let objects = database
+            .with_connection(|connection| {
+                let objects = schema_objects(connection).map_err(CommandError::database)?;
+                serde_json::to_value(objects).map_err(CommandError::serialization)
+            })
+            .expect("public schema objects should serialize");
+        let manifest = serde_json::json!({
+            "formatVersion": 1,
+            "schemaLineage": PUBLIC_SCHEMA_LINEAGE,
+            "schemaVersion": LATEST_SCHEMA_VERSION,
+            "baselineSha256": format!(
+                "{:x}",
+                Sha256::digest(MIGRATIONS[0].sql.as_bytes())
+            ),
+            "objects": objects,
+        });
+        let output = serde_json::to_string_pretty(&manifest)
+            .expect("public schema manifest should serialize");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/public-baseline-schema.json");
+        std::fs::write(path, format!("{output}\n"))
+            .expect("public schema manifest should be written");
+    }
+
+    #[test]
     fn public_baseline_is_idempotent_and_matches_manifest() {
         let database = Database::open_in_memory().expect("database should open");
         database
