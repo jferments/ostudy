@@ -23,6 +23,7 @@ class DiagnosticPathResolutionTests(unittest.TestCase):
             "OSTUDY_APP_DATA_DIR",
             "OSTUDY_CI_LOG_FILTER",
             "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT",
+            "OSTUDY_DIAGNOSTIC_CAPTURE_TOKEN",
             "OSTUDY_DIAGNOSTIC_LOG_PATH",
             "OSTUDY_DIAGNOSTICS_ACTIVE",
             "OSTUDY_DIAGNOSTICS_AUTOMATIC",
@@ -102,6 +103,23 @@ class DiagnosticPathResolutionTests(unittest.TestCase):
             {},
         )
         self.assertEqual(resolved, "warn,ostudy.database=debug")
+
+    def test_nested_failure_traps_keep_only_the_precise_capture(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            artifact_root = Path(raw_directory) / "artifacts"
+            output = self.run_library(
+                "ostudy_parse_diagnostic_args >/dev/null; "
+                "ostudy_capture_failure_artifacts 'React tests' 1; "
+                "ostudy_capture_failure_artifacts initialization 1; "
+                f"capture=$(find {shlex.quote(str(artifact_root))} -mindepth 1 -maxdepth 1 -type d ! -name '.*' | head -n 1); "
+                f"count=$(find {shlex.quote(str(artifact_root))} -mindepth 1 -maxdepth 1 -type d ! -name '.*' | wc -l); "
+                "printf '%s|%s' \"$count\" \"$(grep -F 'step=React tests' \"$capture/context.txt\" >/dev/null && printf precise)\"",
+                {
+                    "CI": "true",
+                    "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT": str(artifact_root),
+                },
+            )
+            self.assertEqual(output, "1|precise")
 
     def test_failure_capture_preserves_isolated_log_and_focused_replay(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
