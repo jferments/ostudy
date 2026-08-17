@@ -30,15 +30,25 @@ Use the repository tiers in increasing order:
 
 `check-changed.sh` is an iteration aid. It inspects the current diff and chooses a conservative focused check when one is safe.
 
-`check-static.sh` verifies repository policy, manifests and lockfiles, migrations, typed IPC, dependency boundaries, documentation links, workflow policy, TypeScript checking, Rust formatting, and script syntax/contracts.
+`check-static.sh` verifies repository policy, manifests and lockfiles, migrations, typed IPC, dependency boundaries, documentation links, workflow policy, TypeScript checking, Rust formatting, startup-boundary source contracts, and script syntax/contracts.
 
 `check-fast.sh` adds the complete frontend test suite, locked Rust compilation, and high-return document/platform contracts.
 
-`check.sh` is the authoritative Linux/shared merge gate. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, and the native WebDriver persistence smoke test.
+`check.sh` is the authoritative Linux/shared merge gate. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, a **built-binary startup compatibility smoke**, and the native WebDriver persistence/UI smoke tests.
+
+The startup compatibility smoke is intentionally different from the ordinary WebDriver tests. WebDriver scenarios use fresh isolated app-data so they can verify normal first-run and persistence behavior. The compatibility smoke instead creates a real on-disk pre-public SQLite database, launches the exact built binary against it, and requires ostudy to remain alive behind the one-time reset dialog without a Tauri setup panic. It also requires a structured `application_startup_blocked` event, byte-for-byte preservation of the legacy database, and no WAL/shared-memory sidecars. This catches failures that clean-state application tests cannot exercise.
 
 Native WebDriver element lookup is a read-only polling operation and tolerates a transient driver HTTP disconnect within its existing deadline. Mutating commands such as session creation, clicks, form submission, and actions are never automatically retried because the operation may already have been applied before its response was lost. Multi-stage smoke scenarios should also assert already-established navigation state instead of issuing redundant clicks between adjacent layout checks. Responsive deck-toolbar checks therefore re-resolve the selected Flashcards route and Decks workspace after each resize rather than retaining element IDs across React layout replacement.
 
 Successful check stamps are keyed by the exact source tree, relevant untracked files, tool versions, and platform. Set `OSTUDY_FORCE_CHECK=1` when deliberately bypassing exact-tree reuse. A failed run with `--keep-artifacts` writes a step-specific `reproduce.sh`; use that focused replay before repeating a broader tier.
+
+### Worktree stability
+
+Qualification must not mutate source-control-visible repository state. Static, fast, full, and Android qualification take a `git status --porcelain` snapshot before work begins and compare it at test boundaries. Pre-existing local changes are tolerated as part of the baseline, but a gate that creates a new untracked file or changes a tracked file fails immediately and prints the before/after Git status diff. This is specifically intended to catch generated-source rewrites and unexplained artifacts at the gate that created them instead of discovering them later.
+
+Tauri's Android materializer is known to rewrite committed generated Android sources while constructing a build. `android-build.sh` therefore saves and restores the reviewed `AndroidManifest.xml` and `BuildTask.kt` versions on every exit. The worktree mutation guard is the backstop for any additional generated source that Tauri or Gradle begins changing in the future.
+
+Local diagnostic captures use `.artifacts/diagnostics/`, which is ignored by Git and excluded from release-source copies. Diagnostic tooling must not create arbitrary root-level files as an alternative artifact path.
 
 ## Android qualification
 
@@ -50,7 +60,7 @@ Compile/package qualification:
 ./scripts/android-test.sh
 ```
 
-This verifies the pinned SDK/NDK/JDK environment and generated Android project, runs the shared test contracts required by the Android build, compiles the Android Rust targets and Kotlin/Gradle project, builds the debug APK and instrumentation package, and verifies package/permission/alignment constraints.
+This verifies the pinned SDK/NDK/JDK environment and generated Android project, runs the shared test contracts required by the Android build, compiles the Android Rust targets and Kotlin/Gradle project, builds the debug APK and instrumentation package, verifies package/permission/alignment constraints, and fails if the qualification changes Git-visible source state.
 
 Official emulator qualification:
 
@@ -78,6 +88,8 @@ Automatic gates are intentionally conservative:
 ```text
 unified runner preflight
 → check.sh
+   → built-binary legacy-data startup compatibility smoke
+   → native WebDriver persistence/UI smoke
 → android-test.sh
 → android-emulator-smoke.sh
 ```
@@ -131,6 +143,8 @@ Nested qualification wrappers share one failure-capture token, so the innermost 
 
 Native WebDriver smoke tests use temporary XDG homes. Their application logs are copied before cleanup. A retryable transport disconnect is retained as **transient WebDriver** evidence even when the one clean-state retry succeeds, so a green check does not erase the existence of a recovered flake.
 
+The built-binary startup compatibility smoke also uses isolated XDG state, but deliberately seeds a legacy database rather than a clean library. A failure captures its command/application logs before cleanup so startup panics and compatibility regressions are visible in the same diagnostic workflow.
+
 The Actions summary parses application JSONL and structured Android Logcat records, showing the final warning/error timeline next to the ordinary test/compiler excerpt. Vitest failures are narrowed to the identified test file; Rust failures are narrowed to the exact failed test when possible.
 
 Small structured diagnostic captures are uploaded with 7-day retention even when they contain only a recovered transient failure. Full failure wrapper logs, Gradle reports, emulator Logcat, screenshot, and UI hierarchy evidence use 14-day retention. A clean run with no capture does not produce a diagnostic artifact.
@@ -151,6 +165,8 @@ The VM keeps a powered-off `pre-github-runner` snapshot from before runner regis
 
 Automation protects known contracts, not visual or experiential quality. For user-visible work, manually exercise the affected workflow on the relevant platform after automated qualification, including error/cancellation/restart behavior when applicable.
 
+For the public-baseline cutover, one manual acceptance should also start the built desktop application against retained pre-public development data. The expected result is the reset-required dialog, not a Rust panic or a partially initialized application. After the operator deliberately runs `reset-pre-public-data.sh`, a second launch should create the public baseline and proceed normally.
+
 ## Release qualification
 
 For a release candidate, also run:
@@ -159,4 +175,4 @@ For a release candidate, also run:
 ./scripts/release-check.sh
 ```
 
-The release check repeats the complete shared qualification from a clean source copy and verifies version/artifact assumptions.
+The release check repeats the complete shared qualification from a clean source copy and verifies version/artifact assumptions. Local `.artifacts/` diagnostics are excluded from that clean source copy.
