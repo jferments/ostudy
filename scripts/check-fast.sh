@@ -46,6 +46,7 @@ if [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
   exit 0
 fi
 
+step "Static qualification"
 if [[ "${OSTUDY_STATIC_CHECK_PASSED:-0}" == "1" ]] \
   || { ostudy_frontend_prerequisites_present && ostudy_check_stamp_is_current static; }; then
   printf '\n\033[1;32mREUSE Static qualification already passed for this exact source tree.\033[0m\n'
