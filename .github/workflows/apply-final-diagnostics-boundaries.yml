@@ -1,0 +1,301 @@
+name: Apply final diagnostics boundaries
+
+on:
+  push:
+    branches: [agent/pre-public-platform-hardening]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-final-diagnostics-boundaries
+  cancel-in-progress: false
+
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/pre-public-platform-hardening
+          clean: true
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Expose toolchains and native cache
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+
+      - name: Harden redaction, event bounds, and schema maintenance test
+        run: |
+          cat > "$RUNNER_TEMP/apply-final-diagnostics.py" <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              source = file.read_text(encoding="utf-8")
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one replacement target, found {count}")
+              file.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          logging = Path("src-tauri/src/logging.rs")
+          source = logging.read_text(encoding="utf-8")
+          source = source.replace(
+              "const MAX_DIAGNOSTIC_BYTES: u64 = 2 * 1024 * 1024;\n",
+              "const MAX_DIAGNOSTIC_BYTES: u64 = 2 * 1024 * 1024;\nconst MAX_EVENT_BYTES: usize = 64 * 1024;\n",
+              1,
+          )
+          old_record = '''    let line = json!({
+              "schemaVersion": 1,
+              "timestampMs": timestamp_millis(),
+              "level": level.as_str(),
+              "target": target,
+              "event": normalize_event(event),
+              "message": redact_text(&bounded_text(message, MAX_MESSAGE_CHARS)),
+              "fields": sanitize_value(fields, 0),
+              "application": "ostudy",
+              "version": env!("CARGO_PKG_VERSION"),
+              "platform": platform_name(),
+              "sessionId": SESSION_ID.get().map(String::as_str).unwrap_or("uninitialized"),
+              "thread": thread_name,
+          })
+          .to_string();
+          '''
+          new_record = '''    let record = json!({
+              "schemaVersion": 1,
+              "timestampMs": timestamp_millis(),
+              "level": level.as_str(),
+              "target": target,
+              "event": normalize_event(event),
+              "message": redact_text(&bounded_text(message, MAX_MESSAGE_CHARS)),
+              "fields": sanitize_value(fields, 0),
+              "application": "ostudy",
+              "version": env!("CARGO_PKG_VERSION"),
+              "platform": platform_name(),
+              "sessionId": SESSION_ID.get().map(String::as_str).unwrap_or("uninitialized"),
+              "thread": thread_name,
+          });
+          let line = bounded_record(record);
+          '''
+          if source.count(old_record) != 1:
+              raise SystemExit(f"logging.rs: expected one emitted record block, found {source.count(old_record)}")
+          source = source.replace(old_record, new_record, 1)
+
+          insertion = '''
+          fn bounded_record(mut record: Value) -> String {
+              let encoded = record.to_string();
+              if encoded.len() <= MAX_EVENT_BYTES {
+                  return encoded;
+              }
+              let original_bytes = encoded.len();
+              if let Some(object) = record.as_object_mut() {
+                  object.insert(
+                      "fields".to_string(),
+                      json!({
+                          "diagnosticFieldsOmitted": true,
+                          "reason": "serialized_event_exceeded_limit",
+                          "originalBytes": original_bytes,
+                          "maximumBytes": MAX_EVENT_BYTES,
+                      }),
+                  );
+              }
+              let bounded = record.to_string();
+              debug_assert!(bounded.len() <= MAX_EVENT_BYTES);
+              bounded
+          }
+
+          '''
+          marker = "fn emit_drop_summary(sender: &SyncSender<WriterMessage>) {"
+          if source.count(marker) != 1:
+              raise SystemExit("logging.rs: emit_drop_summary insertion point missing")
+          source = source.replace(marker, insertion + marker, 1)
+
+          redaction_pattern = re.compile(
+              r"fn redact_text\(value: &str\) -> String \{[\s\S]*?\n\}\n\nfn secret_like_token",
+          )
+          redaction_replacement = '''fn redact_text(value: &str) -> String {
+              let mut output = Vec::new();
+              let mut redact_following = 0_usize;
+              for token in value.split_whitespace() {
+                  let trimmed = token.trim_matches(|character: char| {
+                      matches!(character, '"' | '\\'' | ',' | ';' | '(' | ')' | '[' | ']')
+                  });
+                  if redact_following > 0 {
+                      output.push(redacted_token(token, trimmed));
+                      redact_following -= 1;
+                      continue;
+                  }
+                  if secret_like_token(trimmed) {
+                      output.push(redacted_token(token, trimmed));
+                      continue;
+                  }
+                  if let Some((key, inline_value)) = trimmed.split_once('=') {
+                      if sensitive_key(key) {
+                          output.push(token.replacen(trimmed, &format!("{key}=[redacted]"), 1));
+                          if key.eq_ignore_ascii_case("authorization")
+                              && matches!(inline_value.to_ascii_lowercase().as_str(), "bearer" | "basic")
+                          {
+                              redact_following = 1;
+                          }
+                          continue;
+                      }
+                  }
+                  let label = trimmed.trim_end_matches(':');
+                  if sensitive_key(label) {
+                      output.push(token.replacen(trimmed, &format!("{label}=[redacted]"), 1));
+                      redact_following = if label.eq_ignore_ascii_case("authorization") {
+                          2
+                      } else {
+                          1
+                      };
+                      continue;
+                  }
+                  if trimmed.eq_ignore_ascii_case("bearer")
+                      || trimmed.eq_ignore_ascii_case("basic")
+                  {
+                      output.push(token.to_string());
+                      redact_following = 1;
+                      continue;
+                  }
+                  output.push(token.to_string());
+              }
+              output.join(" ")
+          }
+
+          fn redacted_token(token: &str, trimmed: &str) -> String {
+              if trimmed.is_empty() {
+                  "[redacted]".to_string()
+              } else {
+                  token.replacen(trimmed, "[redacted]", 1)
+              }
+          }
+
+          fn secret_like_token'''
+          source, count = redaction_pattern.subn(redaction_replacement, source, count=1)
+          if count != 1:
+              raise SystemExit(f"logging.rs: expected one free-text redaction function, found {count}")
+
+          test_marker = '''    #[test]
+              fn writer_keeps_only_current_and_previous_files() {
+          '''
+          tests = '''    #[test]
+              fn opaque_authorization_tokens_are_redacted() {
+                  for source in [
+                      "Authorization: Bearer opaque-token-value",
+                      "authorization=Bearer opaque-token-value",
+                      "Bearer opaque-token-value",
+                      "apiKey opaque-token-value",
+                  ] {
+                      let redacted = redact_text(source);
+                      assert!(!redacted.contains("opaque-token-value"), "{redacted}");
+                      assert!(redacted.contains("[redacted]"), "{redacted}");
+                  }
+              }
+
+              #[test]
+              fn serialized_events_have_a_hard_byte_ceiling() {
+                  let record = json!({
+                      "schemaVersion": 1,
+                      "timestampMs": 0,
+                      "level": "debug",
+                      "target": "ostudy.diagnostics.test",
+                      "event": "oversized_event",
+                      "message": "bounded",
+                      "fields": {
+                          "values": vec!["x".repeat(MAX_FIELD_CHARS); MAX_COLLECTION_ITEMS],
+                      },
+                      "application": "ostudy",
+                      "version": env!("CARGO_PKG_VERSION"),
+                      "platform": platform_name(),
+                      "sessionId": "test",
+                      "thread": "test",
+                  });
+                  let encoded = bounded_record(record);
+                  assert!(encoded.len() <= MAX_EVENT_BYTES);
+                  assert!(encoded.contains("serialized_event_exceeded_limit"));
+                  assert!(encoded.contains("diagnosticFieldsOmitted"));
+              }
+
+              #[test]
+              fn writer_keeps_only_current_and_previous_files() {
+          '''
+          if source.count(test_marker) != 1:
+              raise SystemExit("logging.rs: writer test insertion point missing")
+          source = source.replace(test_marker, tests, 1)
+          logging.write_text(source, encoding="utf-8")
+
+          database = Path("src-tauri/src/database.rs")
+          source = database.read_text(encoding="utf-8")
+          old = '''    #[test]
+              #[ignore = "maintenance utility"]
+              fn regenerate_public_baseline_schema_manifest() {
+                  use sha2::{Digest, Sha256};
+          '''
+          new = '''    #[test]
+              fn regenerate_public_baseline_schema_manifest() {
+                  if std::env::var_os("OSTUDY_REGENERATE_PUBLIC_SCHEMA_MANIFEST").is_none() {
+                      return;
+                  }
+                  use sha2::{Digest, Sha256};
+          '''
+          if source.count(old) != 1:
+              raise SystemExit(f"database.rs: expected one ignored generator, found {source.count(old)}")
+          database.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          diagnostics_doc = Path("docs/development/diagnostics.md")
+          source = diagnostics_doc.read_text(encoding="utf-8")
+          anchor = "## Retention and performance\n"
+          replacement = '''## Retention and performance
+
+Every encoded diagnostic event is capped at 64 KiB. If structured fields exceed that bound, ostudy retains the event metadata and replaces the fields with an explicit omission record. Free-text redaction recognizes opaque bearer/basic credentials in addition to provider-shaped keys, and tests cover both inline and whitespace-separated authorization forms.
+'''
+          if source.count(anchor) != 1:
+              raise SystemExit("diagnostics.md: retention section missing")
+          diagnostics_doc.write_text(source.replace(anchor, replacement, 1), encoding="utf-8")
+          PY
+          python3 "$RUNNER_TEMP/apply-final-diagnostics.py"
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Commit final diagnostics boundaries
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: harden diagnostic redaction and event bounds"
+          git push origin HEAD:agent/pre-public-platform-hardening
+
+      - name: Provision native runtime and validate targeted contracts
+        run: |
+          ./scripts/install-native-deps.sh --pdfium-only
+          cargo test \
+            --manifest-path src-tauri/Cargo.toml \
+            --locked \
+            --all-features \
+            --lib \
+            logging::tests::opaque_authorization_tokens_are_redacted \
+            -- --exact
+          cargo test \
+            --manifest-path src-tauri/Cargo.toml \
+            --locked \
+            --all-features \
+            --lib \
+            logging::tests::serialized_events_have_a_hard_byte_ceiling \
+            -- --exact
+          cargo test \
+            --manifest-path src-tauri/Cargo.toml \
+            --locked \
+            --all-features \
+            --lib \
+            database::tests::regenerate_public_baseline_schema_manifest \
+            -- --exact
+          cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
