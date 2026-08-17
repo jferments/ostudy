@@ -9,14 +9,22 @@ source "$ROOT_DIR/versions.env"
 source "$SCRIPT_DIR/check-state.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/cargo-target.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/diagnostics.sh"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
+ostudy_parse_diagnostic_args "$@"
+if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
+  printf 'Usage: ./scripts/check-fast.sh [diagnostic options]\n' >&2
+  ostudy_diagnostic_usage >&2
+  exit 2
+fi
 cd "$ROOT_DIR"
 
 CURRENT_STEP="initialization"
 step() { CURRENT_STEP="$*"; printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"; }
-trap 'status=$?; printf "\n\033[1;31mFAST CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; exit "$status"' ERR
+trap 'status=$?; printf "\n\033[1;31mFAST CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
 
 if [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
   && ostudy_frontend_prerequisites_present \
@@ -29,7 +37,7 @@ if [[ "${OSTUDY_STATIC_CHECK_PASSED:-0}" == "1" ]] \
   || { ostudy_frontend_prerequisites_present && ostudy_check_stamp_is_current static; }; then
   printf '\n\033[1;32mREUSE Static qualification already passed for this exact source tree.\033[0m\n'
 else
-  bash "$SCRIPT_DIR/check-static.sh"
+  bash "$SCRIPT_DIR/check-static.sh" ${OSTUDY_DIAGNOSTICS_ACTIVE:+--log-filter="$OSTUDY_LOG"}
 fi
 
 step "Provision audited PDFium runtime"
