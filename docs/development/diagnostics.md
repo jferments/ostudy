@@ -20,4 +20,6 @@ Targets include `app`, `database`, `ai`, `qr`, `device_sync`, `documents`, `fron
 
 ## Retention and performance
 
+Every encoded diagnostic event is capped at 64 KiB. If structured fields exceed that bound, ostudy retains the event metadata and replaces the fields with an explicit omission record. Free-text redaction recognizes opaque bearer/basic credentials in addition to provider-shaped keys, and tests cover both inline and whitespace-separated authorization forms.
+
 Application JSONL files are capped at two 2 MiB generations under the application diagnostics directory. Script failure artifacts contain only bounded log tails and build context under `.artifacts/diagnostics/`; they do not contain the SQLite database or managed user files.

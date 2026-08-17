@@ -359,8 +359,10 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "maintenance utility"]
     fn regenerate_public_baseline_schema_manifest() {
+        if std::env::var_os("OSTUDY_REGENERATE_PUBLIC_SCHEMA_MANIFEST").is_none() {
+            return;
+        }
         use sha2::{Digest, Sha256};
 
         let database = Database::open_in_memory().expect("database should open");

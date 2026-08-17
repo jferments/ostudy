@@ -18,6 +18,7 @@ const DIAGNOSTIC_DIRECTORY: &str = "diagnostics";
 const DIAGNOSTIC_FILE: &str = "ostudy.jsonl";
 const PREVIOUS_DIAGNOSTIC_FILE: &str = "ostudy.previous.jsonl";
 const MAX_DIAGNOSTIC_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_EVENT_BYTES: usize = 64 * 1024;
 const MAX_MESSAGE_CHARS: usize = 4_000;
 const MAX_FIELD_CHARS: usize = 2_000;
 const MAX_FIELD_DEPTH: usize = 8;
@@ -377,7 +378,7 @@ fn emit(level: LogLevel, target: &str, event: &str, message: &str, fields: Value
         return;
     }
     let thread_name = thread::current().name().unwrap_or("unnamed").to_string();
-    let line = json!({
+    let record = json!({
         "schemaVersion": 1,
         "timestampMs": timestamp_millis(),
         "level": level.as_str(),
@@ -390,8 +391,8 @@ fn emit(level: LogLevel, target: &str, event: &str, message: &str, fields: Value
         "platform": platform_name(),
         "sessionId": SESSION_ID.get().map(String::as_str).unwrap_or("uninitialized"),
         "thread": thread_name,
-    })
-    .to_string();
+    });
+    let line = bounded_record(record);
 
     if level <= LogLevel::Warn || cfg!(debug_assertions) {
         if level <= LogLevel::Warn {
@@ -414,6 +415,28 @@ fn emit(level: LogLevel, target: &str, event: &str, message: &str, fields: Value
             }
         }
     }
+}
+
+fn bounded_record(mut record: Value) -> String {
+    let encoded = record.to_string();
+    if encoded.len() <= MAX_EVENT_BYTES {
+        return encoded;
+    }
+    let original_bytes = encoded.len();
+    if let Some(object) = record.as_object_mut() {
+        object.insert(
+            "fields".to_string(),
+            json!({
+                "diagnosticFieldsOmitted": true,
+                "reason": "serialized_event_exceeded_limit",
+                "originalBytes": original_bytes,
+                "maximumBytes": MAX_EVENT_BYTES,
+            }),
+        );
+    }
+    let bounded = record.to_string();
+    debug_assert!(bounded.len() <= MAX_EVENT_BYTES);
+    bounded
 }
 
 fn emit_drop_summary(sender: &SyncSender<WriterMessage>) {
@@ -549,26 +572,61 @@ fn sensitive_key(key: &str) -> bool {
 }
 
 fn redact_text(value: &str) -> String {
-    value
-        .split_whitespace()
-        .map(|token| {
-            let trimmed = token.trim_matches(|character: char| {
-                matches!(character, '"' | '\'' | ',' | ';' | '(' | ')' | '[' | ']')
-            });
-            if secret_like_token(trimmed) {
-                token.replace(trimmed, "[redacted]")
-            } else if let Some((key, _)) = trimmed.split_once('=') {
-                if sensitive_key(key) {
-                    token.replace(trimmed, &format!("{key}=[redacted]"))
-                } else {
-                    token.to_string()
+    let mut output = Vec::new();
+    let mut redact_following = 0_usize;
+    for token in value.split_whitespace() {
+        let trimmed = token.trim_matches(|character: char| {
+            matches!(character, '"' | '\'' | ',' | ';' | '(' | ')' | '[' | ']')
+        });
+        if redact_following > 0 {
+            output.push(redacted_token(token, trimmed));
+            redact_following -= 1;
+            continue;
+        }
+        if secret_like_token(trimmed) {
+            output.push(redacted_token(token, trimmed));
+            continue;
+        }
+        if let Some((key, inline_value)) = trimmed.split_once('=') {
+            if sensitive_key(key) {
+                output.push(token.replacen(trimmed, &format!("{key}=[redacted]"), 1));
+                if key.eq_ignore_ascii_case("authorization")
+                    && matches!(
+                        inline_value.to_ascii_lowercase().as_str(),
+                        "bearer" | "basic"
+                    )
+                {
+                    redact_following = 1;
                 }
-            } else {
-                token.to_string()
+                continue;
             }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+        }
+        let label = trimmed.trim_end_matches(':');
+        if sensitive_key(label) {
+            output.push(token.replacen(trimmed, &format!("{label}=[redacted]"), 1));
+            redact_following = if label.eq_ignore_ascii_case("authorization") {
+                2
+            } else {
+                1
+            };
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case("bearer") || trimmed.eq_ignore_ascii_case("basic") {
+            output.push(token.to_string());
+            redact_following = 1;
+            continue;
+        }
+        output.push(token.to_string());
+    }
+    output.join(" ")
+}
+
+fn redacted_token(token: &str, trimmed: &str) -> String {
+    if trimmed.is_empty() {
+        "[redacted]".to_string()
+    } else {
+        token.replacen(trimmed, "[redacted]", 1)
+    }
 }
 
 fn secret_like_token(value: &str) -> bool {
@@ -635,6 +693,44 @@ mod tests {
         assert_eq!(value["apiKey"], "[redacted]");
         assert_eq!(value["prompt"], "[redacted]");
         assert_eq!(value["safeCount"], 4);
+    }
+
+    #[test]
+    fn opaque_authorization_tokens_are_redacted() {
+        for source in [
+            "Authorization: Bearer opaque-token-value",
+            "authorization=Bearer opaque-token-value",
+            "Bearer opaque-token-value",
+            "apiKey opaque-token-value",
+        ] {
+            let redacted = redact_text(source);
+            assert!(!redacted.contains("opaque-token-value"), "{redacted}");
+            assert!(redacted.contains("[redacted]"), "{redacted}");
+        }
+    }
+
+    #[test]
+    fn serialized_events_have_a_hard_byte_ceiling() {
+        let record = json!({
+            "schemaVersion": 1,
+            "timestampMs": 0,
+            "level": "debug",
+            "target": "ostudy.diagnostics.test",
+            "event": "oversized_event",
+            "message": "bounded",
+            "fields": {
+                "values": vec!["x".repeat(MAX_FIELD_CHARS); MAX_COLLECTION_ITEMS],
+            },
+            "application": "ostudy",
+            "version": env!("CARGO_PKG_VERSION"),
+            "platform": platform_name(),
+            "sessionId": "test",
+            "thread": "test",
+        });
+        let encoded = bounded_record(record);
+        assert!(encoded.len() <= MAX_EVENT_BYTES);
+        assert!(encoded.contains("serialized_event_exceeded_limit"));
+        assert!(encoded.contains("diagnosticFieldsOmitted"));
     }
 
     #[test]
