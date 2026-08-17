@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = resolve(fileURLToPath(new URL("..", import.meta.url)), "..");
+const root = fileURLToPath(new URL("..", import.meta.url));
 const paths = {
   gradle: resolve(root, "plugins/ostudy-platform/android/build.gradle.kts"),
   manifest: resolve(root, "plugins/ostudy-platform/android/src/main/AndroidManifest.xml"),
