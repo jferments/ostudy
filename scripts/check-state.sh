@@ -63,6 +63,15 @@ ostudy_javascript_dependencies_present() {
   [[ -d "$OSTUDY_ROOT_DIR/node_modules/.pnpm" && -x "$OSTUDY_ROOT_DIR/node_modules/.bin/tsc" ]]
 }
 
+ostudy_local_fonts_present() {
+  command -v node >/dev/null 2>&1 || return 1
+  node "$OSTUDY_ROOT_DIR/scripts/verify-local-fonts.mjs" --installed >/dev/null 2>&1
+}
+
+ostudy_frontend_prerequisites_present() {
+  ostudy_javascript_dependencies_present && ostudy_local_fonts_present
+}
+
 ostudy_clear_check_stamps() {
   rm -f -- \
     "$(ostudy_check_stamp_path static)" \
