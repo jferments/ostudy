@@ -31,6 +31,11 @@ const contracts = [
     contents.library.includes("OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT"),
   ],
   [
+    "nested qualification wrappers share one failure-capture token",
+    contents.library.includes("OSTUDY_DIAGNOSTIC_CAPTURE_TOKEN") &&
+      contents.library.includes("failure-claim"),
+  ],
+  [
     "every captured boundary writes a focused replay script",
     contents.library.includes('reproduce.sh') && contents.library.includes("ostudy_replay_command_for_step"),
   ],
@@ -75,7 +80,8 @@ const contracts = [
   [
     "CI documentation explains the first-run diagnostic baseline",
     contents.testingDoc.includes("warn,ostudy=info") &&
-      contents.testingDoc.includes("transient WebDriver"),
+      contents.testingDoc.includes("transient WebDriver") &&
+      contents.testingDoc.includes("failure-capture token"),
   ],
 ];
 
