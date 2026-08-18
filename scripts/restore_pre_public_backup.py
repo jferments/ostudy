@@ -21,7 +21,11 @@ CONTRACT_PATH = (
     / "pre_public_v26_ledger.json"
 )
 CONTRACT = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
-FINAL_PRE_PUBLIC_VERSION = int(CONTRACT["userVersion"])
+FINAL_PRE_PUBLIC_VERSION = int(CONTRACT["schemaVersion"])
+ACCEPTED_SQLITE_USER_VERSIONS = tuple(
+    int(value) for value in CONTRACT["acceptedSqliteUserVersions"]
+)
+HISTORICAL_SQLITE_USER_VERSION = 0
 EXPECTED_MIGRATIONS = [
     (int(entry["version"]), str(entry["name"]), str(entry["checksum"]))
     for entry in CONTRACT["migrations"]
@@ -118,11 +122,12 @@ def validate_final_pre_public_backup(backup_dir: Path) -> Path:
                 "The supplied backup already has the public OpenRouter profile shape."
             )
 
-        user_version = connection.execute("PRAGMA user_version").fetchone()[0]
-        if user_version != FINAL_PRE_PUBLIC_VERSION:
+        sqlite_user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        if sqlite_user_version not in ACCEPTED_SQLITE_USER_VERSIONS:
+            expected = ", ".join(str(value) for value in ACCEPTED_SQLITE_USER_VERSIONS)
             raise ValueError(
-                f"Expected final pre-public user_version {FINAL_PRE_PUBLIC_VERSION}, "
-                f"found {user_version}."
+                "Expected the historical pre-public SQLite user_version to be one "
+                f"of [{expected}], found {sqlite_user_version}."
             )
         migrations = connection.execute(
             "SELECT version, name, checksum FROM schema_migrations ORDER BY version"
