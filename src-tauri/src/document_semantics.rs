@@ -649,6 +649,31 @@ mod tests {
     }
 
     #[test]
+    fn heading_dense_fifty_five_page_source_uses_a_small_number_of_outline_windows() {
+        let mut chunks = (0..55)
+            .map(|index| chunk(index, &[index + 1], 600))
+            .collect::<Vec<_>>();
+        for (index, value) in chunks.iter_mut().enumerate() {
+            value.heading_context = Some(format!("Section {} > Topic", index + 1));
+        }
+        let plan = DocumentScalePlan::for_unit_count(55);
+        let windows = build_partitioned_semantic_windows(
+            &chunks,
+            plan,
+            plan.outline_window_max_tokens,
+            plan.outline_window_max_units,
+            plan.outline_window_overlap_tokens,
+        );
+        assert!(
+            windows.len() <= 4,
+            "55 heading-dense pages produced {} outline windows",
+            windows.len()
+        );
+        assert_eq!(windows.first().unwrap().source_locator().first(), 1);
+        assert_eq!(windows.last().unwrap().source_locator().last(), 55);
+    }
+
+    #[test]
     fn partitioned_windows_receive_unique_global_indices_within_one_partition() {
         let mut chunks = (0..11)
             .map(|index| chunk(index, &[index + 1], 100))

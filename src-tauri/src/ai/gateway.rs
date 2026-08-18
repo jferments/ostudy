@@ -319,14 +319,7 @@ impl AiGateway {
 
         if stream.content.trim().is_empty() && stream.tool_arguments.trim().is_empty() {
             let finish = stream.finish_reason.as_deref().unwrap_or("not provided");
-            return Err(error(
-                "ai_empty_response",
-                &format!(
-                    "The provider ended the streamed document request with finish_reason={finish}, but returned no final content or structured tool arguments."
-                ),
-                true,
-                None,
-            ));
+            return Err(empty_stream_failure(finish));
         }
         let usage = stream.usage.clone();
         if let Some(usage) = usage.as_ref() {
@@ -1228,6 +1221,22 @@ fn classify_provider_error_value(
     error(safe_code, &message, retryable, retry_after_seconds)
 }
 
+fn empty_stream_failure(finish_reason: &str) -> AiGatewayError {
+    let code = if finish_reason == "length" {
+        "ai_document_output_truncated"
+    } else {
+        "ai_empty_response"
+    };
+    error(
+        code,
+        &format!(
+            "The provider ended the streamed document request with finish_reason={finish_reason}, but returned no final content or structured tool arguments."
+        ),
+        true,
+        None,
+    )
+}
+
 fn should_retry_document_stream_error(error_value: &AiGatewayError) -> bool {
     matches!(
         error_value.safe.code.as_str(),
@@ -1240,6 +1249,8 @@ fn should_retry_document_stream_error(error_value: &AiGatewayError) -> bool {
             | "ai_connection_failed"
             | "ai_request_timeout"
             | "ai_initial_response_timeout"
+            | "ai_rate_limited"
+            | "ai_http_rate_limited"
     )
 }
 
@@ -1418,6 +1429,16 @@ mod tests {
         assert_eq!(failure.safe.retry_after_seconds, Some(2));
         assert!(failure.safe.message.contains("provider_overloaded"));
         assert!(!failure.safe.message.contains("private capacity detail"));
+    }
+
+    #[test]
+    fn empty_length_finished_stream_is_output_truncation() {
+        let failure = empty_stream_failure("length");
+        assert_eq!(failure.safe.code, "ai_document_output_truncated");
+        assert!(!should_retry_document_stream_error(&failure));
+
+        let ordinary_empty = empty_stream_failure("stop");
+        assert_eq!(ordinary_empty.safe.code, "ai_empty_response");
     }
 
     #[test]
