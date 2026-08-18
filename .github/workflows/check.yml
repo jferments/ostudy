@@ -34,6 +34,83 @@ permissions:
   contents: read
 
 jobs:
+  pr54-document-output-repair:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.ref == 'agent/pre-public-platform-hardening' &&
+      github.event.pull_request.draft == true
+    permissions:
+      contents: write
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out exact PR branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/pre-public-platform-hardening
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Expose pinned user toolchains
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Apply document output and telemetry fixes
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          python3 ./scripts/pr54_fix_document_telemetry.py
+          python3 ./scripts/pr54_fix_document_output_capacity.py
+          python3 ./scripts/pr54_fix_model_capability_probe.py
+          python3 ./scripts/pr54_fix_document_output_tests.py
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+          # Restore the canonical workflow itself and remove all one-shot
+          # delivery scaffolding before qualification and publication.
+          git show HEAD^:.github/workflows/check.yml > .github/workflows/check.yml
+          rm -f \
+            .github/workflows/pr54-fix-document-output-capacity.yml \
+            .github/pr54-fix-document-output-capacity-trigger.txt \
+            scripts/pr54_fix_document_telemetry.py \
+            scripts/pr54_fix_document_output_capacity.py \
+            scripts/pr54_fix_model_capability_probe.py \
+            scripts/pr54_fix_document_output_tests.py
+          git diff --check
+
+      - name: Run canonical fast qualification before publication
+        run: bash ./scripts/check-fast.sh
+
+      - name: Commit qualified product changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            .github/workflows/check.yml \
+            src-tauri/src/logging.rs \
+            src-tauri/src/task_cancellation.rs \
+            src-tauri/src/ai/providers.rs \
+            src-tauri/src/ai/document_provider.rs \
+            src-tauri/src/ai/probes.rs \
+            src-tauri/src/ai/gateway.rs \
+            src-tauri/src/ai/document_intelligence.rs \
+            src-tauri/src/ai/document_intelligence_adapter.rs \
+            src-tauri/src/document_scale.rs \
+            src-tauri/src/document_generation.rs \
+            src-tauri/src/document_checkpoints.rs \
+            src-tauri/src/documents.rs \
+            src-tauri/src/document_more.rs
+          git add -u -- \
+            .github/workflows/pr54-fix-document-output-capacity.yml \
+            .github/pr54-fix-document-output-capacity-trigger.txt \
+            scripts/pr54_fix_document_telemetry.py \
+            scripts/pr54_fix_document_output_capacity.py \
+            scripts/pr54_fix_model_capability_probe.py \
+            scripts/pr54_fix_document_output_tests.py
+          git diff --cached --check
+          git commit -m 'fix(ai): recover structured document output safely'
+          git push origin HEAD:agent/pre-public-platform-hardening
+
   check:
     if: github.event_name != 'workflow_dispatch' || inputs.apply_candidates != true
     runs-on: [self-hosted, linux, x64, ostudy-unified]
