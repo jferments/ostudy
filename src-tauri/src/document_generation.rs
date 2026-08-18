@@ -5,7 +5,10 @@
 //! exactly the same image loading, bounded retry, job transitions, progress,
 //! and total-card safety rules.
 
+use std::time::Duration;
+
 use serde_json::Value;
+use tokio::time::timeout;
 
 use crate::{
     ai::{document_intelligence, AiRuntimeState},
@@ -20,6 +23,7 @@ use crate::{
 };
 
 const MAX_GENERATED_CARDS: usize = 10_000;
+const GENERATION_PROVIDER_ATTEMPT_SECONDS: u64 = 180;
 
 pub(crate) struct GenerationExecution<'a> {
     pub database: &'a Database,
@@ -179,9 +183,6 @@ pub(crate) async fn execute_generation_windows(
                 Ok(cards) => {
                     let window = &input.windows[position];
                     if let Some(contract) = input.checkpoint_contract {
-                        // Empty output is also a completed result. Caching it
-                        // avoids paying again for a window whose correct answer
-                        // is no cards.
                         document_checkpoints::persist_generation_cards_best_effort(
                             input.database,
                             input.document_id,
@@ -248,10 +249,20 @@ async fn generation_slot(
     images: &[document_intelligence::SourcePageImage],
 ) -> Option<(usize, Result<Vec<Value>, CommandError>)> {
     let position = position?;
-    let window = &input.windows[position];
     Some((
         position,
-        generate_window_with_recovery(WindowGenerationRequest {
+        generate_with_deadline(input, position, images).await,
+    ))
+}
+
+async fn generate_with_deadline(
+    input: &GenerationExecution<'_>,
+    position: usize,
+    images: &[document_intelligence::SourcePageImage],
+) -> Result<Vec<Value>, CommandError> {
+    let window = &input.windows[position];
+    for attempt in 1..=2 {
+        let request = generate_window_with_recovery(WindowGenerationRequest {
             runtime: input.runtime,
             task: input.task,
             document_title: input.document_title,
@@ -260,9 +271,40 @@ async fn generation_slot(
             images,
             maximum_cards: input.plan.max_cards_per_window,
             diagnostic_prefix: input.diagnostic_prefix,
-        })
-        .await,
-    ))
+        });
+        match timeout(
+            Duration::from_secs(GENERATION_PROVIDER_ATTEMPT_SECONDS),
+            request,
+        )
+        .await
+        {
+            Ok(result) => return result,
+            Err(_) if attempt == 1 => {
+                crate::logging::warn_target(
+                    "ai.document.generation",
+                    "document_generation_window_deadline_retry",
+                    "A provider took too long on one bounded card-generation window; ostudy canceled that request and is retrying the source window once.",
+                    serde_json::json!({
+                        "provider": input.task.provider_kind.as_str(),
+                        "model": input.task.model_id.as_str(),
+                        "window": window.window_index + 1,
+                        "pageStart": window.page_start,
+                        "pageEnd": window.page_end,
+                        "attemptSeconds": GENERATION_PROVIDER_ATTEMPT_SECONDS,
+                    }),
+                );
+            }
+            Err(_) => {
+                return Err(CommandError::new(
+                    "ai_provider_deadline",
+                    format!(
+                        "The AI provider exceeded the {GENERATION_PROVIDER_ATTEMPT_SECONDS}-second card-generation deadline twice. ostudy canceled both incomplete requests instead of allowing this document window to stall indefinitely."
+                    ),
+                ));
+            }
+        }
+    }
+    unreachable!("the bounded two-attempt loop always returns")
 }
 
 async fn generate_window_with_recovery(
