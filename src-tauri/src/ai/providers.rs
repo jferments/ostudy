@@ -25,10 +25,22 @@ const MAX_COMPLETION_BYTES: usize = 256 * 1024;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProviderModelReasoning {
+    pub supported_efforts: Option<Vec<String>>,
+    pub default_effort: Option<String>,
+    pub default_enabled: Option<bool>,
+    pub supports_max_tokens: bool,
+    pub mandatory: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderModel {
     pub id: String,
     pub display_name: String,
     pub owned_by: Option<String>,
+    pub context_window_tokens: Option<i64>,
+    pub reasoning: Option<ProviderModelReasoning>,
 }
 
 #[derive(Clone, Debug)]
@@ -460,24 +472,33 @@ fn parse_model_list(
                 None,
             ));
         }
-        let (display_name, owned_by) = if adapter == ProviderAdapter::Openrouter {
-            (
-                openrouter::model_display_name(item, id),
-                openrouter::model_owner(item, id),
-            )
-        } else {
-            (
-                id.to_string(),
-                item.get("owned_by")
-                    .and_then(Value::as_str)
-                    .filter(|value| value.len() <= 200 && !value.chars().any(char::is_control))
-                    .map(ToString::to_string),
-            )
-        };
+        let (display_name, owned_by, context_window_tokens, reasoning) =
+            if adapter == ProviderAdapter::Openrouter {
+                (
+                    openrouter::model_display_name(item, id),
+                    openrouter::model_owner(item, id),
+                    openrouter::model_context_window_tokens(item),
+                    openrouter::model_reasoning(item),
+                )
+            } else {
+                (
+                    id.to_string(),
+                    item.get("owned_by")
+                        .and_then(Value::as_str)
+                        .filter(|value| {
+                            value.len() <= 200 && !value.chars().any(char::is_control)
+                        })
+                        .map(ToString::to_string),
+                    None,
+                    None,
+                )
+            };
         models.push(ProviderModel {
             id: id.to_string(),
             display_name,
             owned_by,
+            context_window_tokens,
+            reasoning,
         });
     }
     models.sort_by(|left, right| {
@@ -609,20 +630,42 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["model-a", "model-b"]
         );
+        assert!(models.iter().all(|model| model.reasoning.is_none()));
     }
 
     #[test]
-    fn openrouter_models_use_account_filtered_names_and_owner_slugs() {
+    fn openrouter_models_keep_names_context_and_reasoning_metadata() {
         let models = parse_model_list(
             &json!({
-                "data": [{ "id": "anthropic/claude-example", "name": "Claude Example" }]
+                "data": [{
+                    "id": "deepseek/example",
+                    "name": "DeepSeek Example",
+                    "context_length": 1_310_720,
+                    "reasoning": {
+                        "mandatory": false,
+                        "default_enabled": true,
+                        "supported_efforts": ["max", "high", "low"],
+                        "default_effort": "high"
+                    }
+                }]
             }),
             ProviderAdapter::Openrouter,
             openrouter::MAX_MODELS,
         )
         .expect("OpenRouter model list should parse");
-        assert_eq!(models[0].display_name, "Claude Example");
-        assert_eq!(models[0].owned_by.as_deref(), Some("anthropic"));
+        assert_eq!(models[0].display_name, "DeepSeek Example");
+        assert_eq!(models[0].owned_by.as_deref(), Some("deepseek"));
+        assert_eq!(models[0].context_window_tokens, Some(1_310_720));
+        let reasoning = models[0]
+            .reasoning
+            .as_ref()
+            .expect("reasoning metadata should be retained");
+        assert_eq!(
+            reasoning.supported_efforts.as_deref(),
+            Some(&["max".to_string(), "high".to_string(), "low".to_string()][..])
+        );
+        assert_eq!(reasoning.default_effort.as_deref(), Some("high"));
+        assert!(!reasoning.mandatory);
     }
 
     #[test]
