@@ -100,7 +100,10 @@ INSERT INTO review_event_attributions (
         .expect("library fixture should be seeded");
 }
 
-fn convert_public_database_to_final_pre_public(connection: &mut Connection) {
+fn convert_public_database_to_final_pre_public(
+    connection: &mut Connection,
+    sqlite_user_version: i64,
+) {
     let contract = pre_public_contract().expect("embedded contract should parse");
     connection
         .execute_batch("PRAGMA foreign_keys = OFF;")
@@ -179,7 +182,7 @@ DELETE FROM data_repairs;
             .expect("legacy repair should be recorded");
     }
     transaction
-        .execute_batch(&format!("PRAGMA user_version = {};", contract.user_version))
+        .execute_batch(&format!("PRAGMA user_version = {sqlite_user_version};"))
         .expect("legacy user_version should be set");
     transaction
         .commit()
@@ -190,7 +193,7 @@ DELETE FROM data_repairs;
 }
 
 #[test]
-fn exact_final_pre_public_database_preserves_library_and_analytics() {
+fn historical_zero_marker_preserves_library_and_analytics() {
     let path = temp_database_path("pre-public-adoption");
     let database = Database::open(&path).expect("public fixture should open");
     database
@@ -202,8 +205,9 @@ fn exact_final_pre_public_database_preserves_library_and_analytics() {
     drop(database);
 
     let mut connection = Connection::open(&path).expect("fixture database should reopen");
-    convert_public_database_to_final_pre_public(&mut connection);
+    convert_public_database_to_final_pre_public(&mut connection, 0);
     let before = preserved_data_snapshot(&connection).expect("legacy snapshot should load");
+    assert_eq!(read_sqlite_user_version(&connection).unwrap(), 0);
     drop(connection);
 
     let report = adopt_final_pre_public_database(&path)
@@ -269,6 +273,22 @@ fn exact_final_pre_public_database_preserves_library_and_analytics() {
 }
 
 #[test]
+fn explicitly_stamped_v26_marker_is_also_adoptable() {
+    let path = temp_database_path("pre-public-stamped");
+    let database = Database::open(&path).expect("public fixture should open");
+    drop(database);
+
+    let mut connection = Connection::open(&path).expect("fixture database should reopen");
+    convert_public_database_to_final_pre_public(&mut connection, 26);
+    drop(connection);
+
+    assert!(adopt_final_pre_public_database(&path)
+        .expect("stamped adoption should succeed")
+        .is_some());
+    fs::remove_dir_all(path.parent().unwrap()).expect("temporary fixture should clean up");
+}
+
+#[test]
 fn public_reopen_does_not_repeat_pre_public_adoption() {
     let path = temp_database_path("pre-public-idempotence");
     let database = Database::open(&path).expect("public fixture should open");
@@ -305,7 +325,7 @@ fn unrecognized_pre_public_database_is_not_modified_or_backed_up() {
              ) STRICT;
              INSERT INTO schema_migrations VALUES (26, 'deck_folders', 'wrong', 0);
              CREATE TABLE decks (id TEXT PRIMARY KEY) STRICT;
-             PRAGMA user_version = 26;",
+             PRAGMA user_version = 0;",
         )
         .expect("unsupported fixture should be created");
     drop(connection);
