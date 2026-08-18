@@ -3,9 +3,9 @@
   gap: 0.65rem;
   margin-top: 0.85rem;
   padding: 0.8rem 0.9rem;
-  border: 1px solid var(--line-subtle);
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
 }
 
 .heading {
@@ -18,7 +18,7 @@
 }
 
 .heading span:last-child {
-  color: var(--text-muted);
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -27,18 +27,18 @@
   height: 0.45rem;
   overflow: hidden;
   border-radius: 999px;
-  background: var(--surface-inset);
+  background: color-mix(in srgb, var(--border) 65%, transparent);
 }
 
 .fill {
   height: 100%;
   border-radius: inherit;
-  background: var(--accent-solid);
+  background: var(--accent);
   transition: width 220ms ease;
 }
 
 .detail {
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 0.8rem;
   line-height: 1.45;
 }
@@ -56,7 +56,7 @@
 
 .stats dt {
   margin-bottom: 0.1rem;
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 0.68rem;
   font-weight: 650;
   letter-spacing: 0.045em;
@@ -70,7 +70,7 @@
 }
 
 .warning {
-  color: var(--status-warning-text);
+  color: var(--danger);
 }
 
 @media (prefers-reduced-motion: reduce) {
