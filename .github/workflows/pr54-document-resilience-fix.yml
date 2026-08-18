@@ -32,6 +32,7 @@ jobs:
         run: |
           python3 ./scripts/pr54_document_resilience_fix.py
           python3 ./scripts/pr54_document_resilience_cleanup.py
+          python3 ./scripts/pr54_outline_cache_observability_fix.py
 
       - name: Canonical Rust formatting and patch validation
         run: |
@@ -52,11 +53,14 @@ jobs:
             src-tauri/src/ai/gateway.rs \
             src-tauri/src/ai/document_intelligence_adapter.rs \
             src-tauri/src/ai/document_intelligence.rs \
+            src-tauri/src/document_checkpoints.rs \
             src-tauri/src/document_generation.rs \
             src-tauri/src/document_scale.rs \
+            src-tauri/src/documents.rs \
             src/ipc/documents.ts \
             src/screens/DocumentsScreen.tsx \
             src/screens/DocumentsProgress.test.tsx \
+            docs/architecture/ai-and-document-processing.md \
             docs/architecture/document-ai-routing.md
           git diff --cached --check
           git commit -m 'fix(ai): make document generation resilient to slow provider routes'
