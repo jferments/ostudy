@@ -117,7 +117,9 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn open_database_with_pre_public_adoption(paths: &AppPaths) -> Result<database::Database, io::Error> {
+fn open_database_with_pre_public_adoption(
+    paths: &AppPaths,
+) -> Result<database::Database, io::Error> {
     match database::Database::open(paths.database_path()) {
         Ok(database) => Ok(database),
         Err(error) if error.starts_with(database::PRE_PUBLIC_RESET_PREFIX) => {
@@ -178,7 +180,9 @@ fn present_startup_failure(app: &mut tauri::App, error: &str) {
 
     match presentation.kind {
         StartupFailureKind::PrePublicDatabase => {
-            eprintln!("ostudy startup blocked: pre-public data requires manual recovery; the database was left unchanged.");
+            eprintln!(
+                "ostudy startup blocked: pre-public data requires manual recovery; the database was left unchanged."
+            );
         }
         StartupFailureKind::Internal => eprintln!("ostudy startup blocked: {error}"),
     }
@@ -247,9 +251,7 @@ mod tests {
             presentation.reason_code,
             "pre_public_database_requires_manual_recovery"
         );
-        assert!(presentation
-            .message
-            .contains("restore_pre_public_backup.py"));
+        assert!(presentation.message.contains("restore_pre_public_backup.py"));
         assert!(presentation.message.contains("confirm-empty-library"));
         assert!(presentation
             .message
