@@ -20,6 +20,15 @@ const OUTLINE_FIXED_PROMPT_RESERVE: usize = 1_200;
 const GENERATION_FIXED_PROMPT_RESERVE: usize = 1_800;
 const MIN_OUTLINE_SOURCE_TOKENS: usize = 600;
 const MIN_GENERATION_SOURCE_TOKENS: usize = 800;
+pub(crate) const OUTLINE_VISIBLE_COMPLETION_TOKENS: usize = 2_048;
+pub(crate) const GLOBAL_OUTLINE_VISIBLE_COMPLETION_TOKENS: usize = 3_072;
+pub(crate) const CURATION_VISIBLE_COMPLETION_TOKENS: usize = 2_048;
+
+pub(crate) fn generation_visible_completion_tokens(maximum_cards: usize) -> usize {
+    2_048_usize
+        .saturating_add(maximum_cards.saturating_mul(384))
+        .clamp(2_048, 8_192)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DocumentScaleClass {
@@ -83,6 +92,7 @@ impl DocumentScalePlan {
     pub(crate) fn for_capabilities(
         source_unit_count: usize,
         capabilities: &DocumentProviderCapabilities,
+        effective_reasoning_effort: &str,
         calibration: DocumentCostCalibration,
     ) -> Result<Self, CommandError> {
         let mut plan = baseline_plan(source_unit_count, &capabilities.provider_kind);
@@ -90,7 +100,10 @@ impl DocumentScalePlan {
             return Ok(plan);
         };
 
-        let outline_output = outline_completion_reserve(&capabilities.provider_kind);
+        let outline_output = capabilities.completion_token_ceiling(
+            effective_reasoning_effort,
+            OUTLINE_VISIBLE_COMPLETION_TOKENS,
+        );
         plan.outline_window_max_tokens = context_bounded_source_tokens(
             plan.outline_window_max_tokens,
             context_window,
@@ -100,7 +113,10 @@ impl DocumentScalePlan {
             calibration,
             MIN_OUTLINE_SOURCE_TOKENS,
         )?;
-        let generation_output = generation_completion_reserve(plan.max_cards_per_window);
+        let generation_output = capabilities.completion_token_ceiling(
+            effective_reasoning_effort,
+            generation_visible_completion_tokens(plan.max_cards_per_window),
+        );
         let generation_image_count = if capabilities.image_input {
             plan.max_images_per_window
         } else {
@@ -213,17 +229,10 @@ fn context_bounded_source_tokens(
     Ok(bounded)
 }
 
-fn outline_completion_reserve(_provider_kind: &str) -> usize {
-    // Local outline fragments are deliberately concise. A 1.5k-token reserve
-    // leaves ample room for the strict fragment schema without encouraging a
-    // multi-thousand-token restatement of source prose.
-    1_536
-}
-
-fn generation_completion_reserve(maximum_cards: usize) -> usize {
-    1_024_usize
-        .saturating_add(maximum_cards.saturating_mul(384))
-        .clamp(1_536, 5_120)
+pub(crate) struct DocumentBudgetContext<'a> {
+    pub capabilities: &'a DocumentProviderCapabilities,
+    pub reasoning_effort: &'a str,
+    pub calibration: DocumentCostCalibration,
 }
 
 #[cfg(test)]
@@ -241,8 +250,11 @@ pub(crate) fn validate_automatic_job(
         plan,
         outline_window_count,
         generation_window_count,
-        &DocumentProviderCapabilities::conservative(provider_kind, "unknown"),
-        DocumentCostCalibration::default(),
+        DocumentBudgetContext {
+            capabilities: &DocumentProviderCapabilities::conservative(provider_kind, "unknown"),
+            reasoning_effort: "none",
+            calibration: DocumentCostCalibration::default(),
+        },
     )
 }
 
@@ -252,9 +264,13 @@ pub(crate) fn validate_automatic_job_calibrated(
     plan: DocumentScalePlan,
     outline_window_count: usize,
     generation_window_count: usize,
-    capabilities: &DocumentProviderCapabilities,
-    calibration: DocumentCostCalibration,
+    context: DocumentBudgetContext<'_>,
 ) -> Result<DocumentJobBudget, CommandError> {
+    let DocumentBudgetContext {
+        capabilities,
+        reasoning_effort: effective_reasoning_effort,
+        calibration,
+    } = context;
     if source_unit_count > MAX_SUPPORTED_SOURCE_UNITS {
         return Err(CommandError::new(
             "document_generation_unit_limit",
@@ -271,9 +287,12 @@ pub(crate) fn validate_automatic_job_calibrated(
     let outline_source_estimate = source_tokens
         .saturating_add(outline_window_count.saturating_mul(plan.outline_window_overlap_tokens));
     let outline_prompt = calibration.calibrated_prompt_tokens(outline_source_estimate, 0);
-    let outline_fixed = outline_window_count.saturating_mul(
-        1_500_usize.saturating_add(outline_completion_reserve(&capabilities.provider_kind)),
+    let outline_completion = capabilities.completion_token_ceiling(
+        effective_reasoning_effort,
+        OUTLINE_VISIBLE_COMPLETION_TOKENS,
     );
+    let outline_fixed =
+        outline_window_count.saturating_mul(1_500_usize.saturating_add(outline_completion));
 
     let generation_source_estimate = source_tokens.saturating_add(
         generation_window_count.saturating_mul(plan.generation_window_overlap_tokens),
@@ -281,9 +300,12 @@ pub(crate) fn validate_automatic_job_calibrated(
     let maximum_images = generation_window_count.saturating_mul(plan.max_images_per_window);
     let generation_prompt =
         calibration.calibrated_prompt_tokens(generation_source_estimate, maximum_images);
-    let generation_fixed = generation_window_count.saturating_mul(
-        1_800_usize.saturating_add(generation_completion_reserve(plan.max_cards_per_window)),
+    let generation_completion = capabilities.completion_token_ceiling(
+        effective_reasoning_effort,
+        generation_visible_completion_tokens(plan.max_cards_per_window),
     );
+    let generation_fixed =
+        generation_window_count.saturating_mul(1_800_usize.saturating_add(generation_completion));
     let compact_repair_reserve = outline_window_count
         .saturating_mul(900)
         .saturating_add(generation_window_count.saturating_mul(1_200));
@@ -320,6 +342,7 @@ mod tests {
             image_input: false,
             usage_reporting: true,
             structured_output: StructuredOutputStrategy::JsonSchema,
+            reasoning: None,
         }
     }
 
@@ -340,6 +363,7 @@ mod tests {
         let plan = DocumentScalePlan::for_capabilities(
             55,
             &capabilities("openrouter", Some(12_000)),
+            "none",
             calibration,
         )
         .unwrap();
@@ -352,6 +376,7 @@ mod tests {
         let error = DocumentScalePlan::for_capabilities(
             10,
             &capabilities("llama_cpp", Some(2_048)),
+            "none",
             DocumentCostCalibration::default(),
         )
         .unwrap_err();

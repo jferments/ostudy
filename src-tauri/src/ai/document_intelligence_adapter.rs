@@ -11,9 +11,9 @@ use super::{catalog, endpoint_policy, gateway, profiles, secrets, AiRuntimeState
 mod implementation;
 
 pub(crate) use implementation::{
-    curate_document_cards, generate_window_flashcards, load_document_task_context, DocumentOutline,
-    DocumentTaskContext, OutlineBuildSources, SourcePageImage, OUTLINE_PROMPT_VERSION,
-    OUTLINE_SCHEMA_VERSION,
+    curate_document_cards, flashcard_completion_token_ceiling, generate_window_flashcards,
+    load_document_task_context, DocumentOutline, DocumentTaskContext, FlashcardGenerationLimits,
+    OutlineBuildSources, SourcePageImage, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
 };
 
 const VISUAL_ONLY_MARKER: &str = "has no extractable structured text";
@@ -199,18 +199,18 @@ async fn outline_slot(
         Err(error)
             if windows.len() > 1 && implementation::recoverable_outline_window_error(&error) =>
         {
-            crate::logging::info(
+            crate::logging::warn_target(
+                "ai.document.outline",
                 "document_outline_window_native_fallback",
-                format!(
-                    "window={}/{} partition={} pages={}-{} code={} detail={}",
-                    index + 1,
-                    windows.len(),
-                    window.partition_index + 1,
-                    window.page_start,
-                    window.page_end,
-                    error.code,
-                    error.message.chars().take(400).collect::<String>(),
-                ),
+                "Provider outline output remained invalid after bounded repair; ostudy used a deterministic source-derived fallback for this window.",
+                serde_json::json!({
+                    "window": index + 1,
+                    "totalWindows": windows.len(),
+                    "partition": window.partition_index + 1,
+                    "pageStart": window.page_start,
+                    "pageEnd": window.page_end,
+                    "code": error.code.as_str(),
+                }),
             );
             Ok(implementation::native_outline_fallback(
                 document_title,

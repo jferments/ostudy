@@ -31,6 +31,7 @@ pub(crate) struct CheckpointIdentity {
     pub model_id: String,
     pub extraction_backend: String,
     pub provider_capability_fingerprint: String,
+    pub reasoning_effort: String,
 }
 
 impl CheckpointIdentity {
@@ -45,17 +46,19 @@ impl CheckpointIdentity {
             model_id: task.model_id.clone(),
             extraction_backend: extraction_backend.to_string(),
             provider_capability_fingerprint: provider_capability_fingerprint.to_string(),
+            reasoning_effort: task.reasoning_effort.clone(),
         }
     }
 
     fn material(&self) -> String {
         format!(
-            "provider={}|profile={}|model={}|extractor={}|capabilities={}",
+            "provider={}|profile={}|model={}|extractor={}|capabilities={}|reasoning={}",
             self.provider_kind,
             self.profile_id,
             self.model_id,
             self.extraction_backend,
             self.provider_capability_fingerprint,
+            self.reasoning_effort,
         )
     }
 }
@@ -524,6 +527,7 @@ mod tests {
             model_id: "model".to_string(),
             extraction_backend: "extractor-v1".to_string(),
             provider_capability_fingerprint: "caps".to_string(),
+            reasoning_effort: "none".to_string(),
         };
         let material = identity.material();
         assert!(!material.contains("credential"));

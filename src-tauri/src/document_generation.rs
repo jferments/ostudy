@@ -336,12 +336,17 @@ async fn generate_window_with_recovery(
         input.outline,
         input.window,
         input.images,
-        first_budget,
+        document_intelligence::FlashcardGenerationLimits {
+            maximum_cards: first_budget,
+            completion_token_floor: 0,
+        },
     )
     .await;
     match first {
         Err(error) if should_retry_with_smaller_output(&error, input.maximum_cards) => {
             let reduced_budget = (input.maximum_cards / 2).max(2);
+            let completion_token_floor =
+                document_intelligence::flashcard_completion_token_ceiling(input.task, first_budget);
             record_current_provider_retry();
             crate::logging::info_target(
                 "ai.document.generation",
@@ -364,7 +369,10 @@ async fn generate_window_with_recovery(
                 input.outline,
                 input.window,
                 input.images,
-                reduced_budget,
+                document_intelligence::FlashcardGenerationLimits {
+                    maximum_cards: reduced_budget,
+                    completion_token_floor,
+                },
             )
             .await
         }
@@ -406,6 +414,15 @@ mod tests {
             crate::ai::concurrency::document_request_parallelism("lan"),
             1
         );
+    }
+
+    #[test]
+    fn compact_retry_never_reduces_the_original_completion_ceiling() {
+        let initial_visible = crate::document_scale::generation_visible_completion_tokens(16);
+        let reduced_visible = crate::document_scale::generation_visible_completion_tokens(8);
+        assert!(initial_visible > reduced_visible);
+        let retry_wire_ceiling = reduced_visible.max(initial_visible);
+        assert_eq!(retry_wire_ceiling, initial_visible);
     }
 
     #[test]

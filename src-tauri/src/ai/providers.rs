@@ -23,7 +23,7 @@ const DEFAULT_MAX_MODEL_LIST_BYTES: usize = 512 * 1024;
 const DEFAULT_MAX_MODELS: usize = 500;
 const MAX_COMPLETION_BYTES: usize = 256 * 1024;
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderModelReasoning {
     pub supported_efforts: Option<Vec<String>>,

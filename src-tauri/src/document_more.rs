@@ -76,35 +76,35 @@ pub async fn generate_more_pdf_flashcards(
     validate_entity_id(&input.document_id, "document")?;
     let document_id = input.document_id.clone();
     let database_after = database.clone();
-    let result = run_document_task(
-        &document_id,
-        generate_more_impl(database, paths, runtime, input),
-    )
+    let result = run_document_task(&document_id, async {
+        let result = generate_more_impl(database, paths, runtime, input).await;
+        if let Err(error) = &result {
+            if error.code == "ai_request_canceled" {
+                record_additional_failure(
+                    database_after.inner(),
+                    &document_id,
+                    "document_generation_canceled",
+                    CANCELED_MESSAGE,
+                );
+            } else {
+                record_additional_failure(
+                    database_after.inner(),
+                    &document_id,
+                    &error.code,
+                    &error.message,
+                );
+            }
+        }
+        result
+    })
     .await;
 
     match result {
-        Ok(value) => Ok(value),
-        Err(error) if error.code == "ai_request_canceled" => {
-            record_additional_failure(
-                database_after.inner(),
-                &document_id,
-                "document_generation_canceled",
-                CANCELED_MESSAGE,
-            );
-            Err(CommandError::new(
-                "document_generation_canceled",
-                CANCELED_MESSAGE,
-            ))
-        }
-        Err(error) => {
-            record_additional_failure(
-                database_after.inner(),
-                &document_id,
-                &error.code,
-                &error.message,
-            );
-            Err(error)
-        }
+        Err(error) if error.code == "ai_request_canceled" => Err(CommandError::new(
+            "document_generation_canceled",
+            CANCELED_MESSAGE,
+        )),
+        other => other,
     }
 }
 
@@ -135,19 +135,25 @@ async fn generate_more_impl(
         ));
     }
 
-    let task = document_intelligence::load_document_task_context(database.inner())?;
+    let mut task = document_intelligence::load_document_task_context(database.inner())?;
     let capabilities = document_provider::load_document_provider_capabilities(
         database.inner(),
         &task.profile_id,
         &task.provider_kind,
         &task.model_id,
     )?;
+    task.apply_provider_capabilities(&capabilities);
     let calibration = document_cost::load_cost_calibration(
         database.inner(),
         &task.provider_kind,
         &task.model_id,
     )?;
-    let plan = DocumentScalePlan::for_capabilities(source.unit_count, &capabilities, calibration)?;
+    let plan = DocumentScalePlan::for_capabilities(
+        source.unit_count,
+        &capabilities,
+        &task.reasoning_effort,
+        calibration,
+    )?;
     let windows = build_partitioned_semantic_windows(
         &chunks,
         plan,
@@ -170,8 +176,11 @@ async fn generate_more_impl(
         plan,
         0,
         windows.len(),
-        &capabilities,
-        calibration,
+        document_scale::DocumentBudgetContext {
+            capabilities: &capabilities,
+            reasoning_effort: &task.reasoning_effort,
+            calibration,
+        },
     )?;
     crate::logging::info(
         "document_ai_additional_scale_plan",
@@ -529,6 +538,8 @@ fn second_pass_outline(
 
 fn record_additional_failure(database: &Database, document_id: &str, code: &str, message: &str) {
     let now = unix_time_millis().unwrap_or_default();
+    let usage = crate::task_cancellation::current_usage_summary();
+    let (api_token_count, api_token_usage_complete) = usage.unwrap_or((None, false));
     let _ = database.with_connection(|connection| {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -546,9 +557,18 @@ fn record_additional_failure(database: &Database, document_id: &str, code: &str,
                          WHEN processing_started_at IS NULL THEN processing_duration_ms
                          ELSE MAX(0, ?3 - processing_started_at)
                      END,
+                     api_token_count = CASE WHEN ?4 IS NULL THEN api_token_count ELSE ?4 END,
+                     api_token_usage_complete = CASE WHEN ?4 IS NULL THEN api_token_usage_complete ELSE ?5 END,
                      updated_at = ?3, revision = revision + 1
-                 WHERE id = ?4",
-                params![bounded(code, 80), bounded(message, 1000), now, document_id],
+                 WHERE id = ?6",
+                params![
+                    bounded(code, 80),
+                    bounded(message, 1000),
+                    now,
+                    api_token_count,
+                    if api_token_usage_complete { 1_i64 } else { 0_i64 },
+                    document_id,
+                ],
             )
             .map_err(|error| {
                 CommandError::database_at(

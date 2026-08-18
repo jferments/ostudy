@@ -7,8 +7,8 @@ use tokio::time::{sleep, timeout, Instant};
 use url::Url;
 
 use crate::task_cancellation::{
-    current_signal, record_current_provider_activity, record_current_provider_request,
-    record_current_provider_retry, record_current_usage, set_current_reasoning_effort,
+    current_reasoning_effort, current_signal, record_current_provider_activity,
+    record_current_provider_request, record_current_provider_retry, record_current_usage,
     CancellationSignal, DocumentTaskUsageDelta,
 };
 
@@ -840,11 +840,10 @@ fn is_openrouter_url(url: &Url) -> bool {
 }
 
 fn prepare_provider_body(url: &Url, body: &Value) -> Option<Value> {
-    let document_task = current_signal().is_some();
-    let reasoning_effort = document_task.then(crate::settings::current_ai_reasoning_effort);
-    if let Some(reasoning_effort) = reasoning_effort.as_deref() {
-        set_current_reasoning_effort(reasoning_effort);
-    }
+    let reasoning_effort = current_signal()
+        .is_some()
+        .then(current_reasoning_effort)
+        .flatten();
     prepare_provider_body_for_document(url, body, reasoning_effort.as_deref())
 }
 

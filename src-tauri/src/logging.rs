@@ -537,7 +537,7 @@ fn sanitize_value(value: Value, depth: usize) -> Value {
                 .into_iter()
                 .take(MAX_COLLECTION_ITEMS)
                 .map(|(key, value)| {
-                    let value = if sensitive_key(&key) {
+                    let value = if sensitive_field(&key, &value) {
                         Value::String("[redacted]".to_string())
                     } else {
                         sanitize_value(value, depth + 1)
@@ -550,8 +550,29 @@ fn sanitize_value(value: Value, depth: usize) -> Value {
     }
 }
 
+fn sensitive_field(key: &str, value: &Value) -> bool {
+    sensitive_key(key)
+        && !(safe_numeric_telemetry_key(key) && (value.is_number() || value.is_null()))
+}
+
+fn safe_numeric_telemetry_key(key: &str) -> bool {
+    matches!(
+        normalized_key(key).as_str(),
+        "prompttokens"
+            | "completiontokens"
+            | "totaltokens"
+            | "reasoningtokens"
+            | "cachedprompttokens"
+            | "cachewritetokens"
+            | "sourcetokens"
+            | "estimatedjobtokens"
+            | "contextwindowtokens"
+            | "tokenestimate"
+    )
+}
+
 fn sensitive_key(key: &str) -> bool {
-    let key = key.to_ascii_lowercase().replace(['-', '_'], "");
+    let key = normalized_key(key);
     [
         "authorization",
         "apikey",
@@ -569,6 +590,24 @@ fn sensitive_key(key: &str) -> bool {
     ]
     .iter()
     .any(|candidate| key.contains(candidate))
+}
+
+fn credential_label(key: &str) -> bool {
+    matches!(
+        normalized_key(key).as_str(),
+        "authorization"
+            | "apikey"
+            | "credential"
+            | "password"
+            | "secret"
+            | "accesstoken"
+            | "refreshtoken"
+            | "bearertoken"
+    )
+}
+
+fn normalized_key(key: &str) -> String {
+    key.to_ascii_lowercase().replace(['-', '_'], "")
 }
 
 fn redact_text(value: &str) -> String {
@@ -602,7 +641,7 @@ fn redact_text(value: &str) -> String {
             }
         }
         let label = trimmed.trim_end_matches(':');
-        if sensitive_key(label) {
+        if (trimmed.ends_with(':') && sensitive_key(label)) || credential_label(label) {
             output.push(token.replacen(trimmed, &format!("{label}=[redacted]"), 1));
             redact_following = if label.eq_ignore_ascii_case("authorization") {
                 2
@@ -693,6 +732,40 @@ mod tests {
         assert_eq!(value["apiKey"], "[redacted]");
         assert_eq!(value["prompt"], "[redacted]");
         assert_eq!(value["safeCount"], 4);
+    }
+
+    #[test]
+    fn numeric_ai_telemetry_remains_analyzable_without_exposing_content() {
+        let value = sanitize_value(
+            json!({
+                "promptTokens": 185_000,
+                "completionTokens": 28_000,
+                "totalTokens": 213_000,
+                "reasoningTokens": 20_000,
+                "sourceTokens": 42_000,
+                "contextWindowTokens": 1_310_720,
+                "estimatedJobTokens": 250_000,
+                "prompt": "private source text",
+                "apiKey": "opaque-secret-value"
+            }),
+            0,
+        );
+        assert_eq!(value["promptTokens"], 185_000);
+        assert_eq!(value["completionTokens"], 28_000);
+        assert_eq!(value["totalTokens"], 213_000);
+        assert_eq!(value["reasoningTokens"], 20_000);
+        assert_eq!(value["sourceTokens"], 42_000);
+        assert_eq!(value["contextWindowTokens"], 1_310_720);
+        assert_eq!(value["estimatedJobTokens"], 250_000);
+        assert_eq!(value["prompt"], "[redacted]");
+        assert_eq!(value["apiKey"], "[redacted]");
+
+        let message =
+            redact_text("Recorded provider token usage without logging prompt or model content.");
+        assert_eq!(
+            message,
+            "Recorded provider token usage without logging prompt or model content."
+        );
     }
 
     #[test]

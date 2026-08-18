@@ -419,19 +419,25 @@ async fn process_and_generate(
         ));
     }
 
-    let task = document_intelligence::load_document_task_context(database.inner())?;
+    let mut task = document_intelligence::load_document_task_context(database.inner())?;
     let capabilities = document_provider::load_document_provider_capabilities(
         database.inner(),
         &task.profile_id,
         &task.provider_kind,
         &task.model_id,
     )?;
+    task.apply_provider_capabilities(&capabilities);
     let calibration = document_cost::load_cost_calibration(
         database.inner(),
         &task.provider_kind,
         &task.model_id,
     )?;
-    let plan = DocumentScalePlan::for_capabilities(source.unit_count, &capabilities, calibration)?;
+    let plan = DocumentScalePlan::for_capabilities(
+        source.unit_count,
+        &capabilities,
+        &task.reasoning_effort,
+        calibration,
+    )?;
     let estimated_source_tokens = chunks.iter().fold(0_usize, |total, chunk| {
         total.saturating_add(
             chunk
@@ -462,8 +468,11 @@ async fn process_and_generate(
         plan,
         outline_windows.len(),
         generation_windows.len(),
-        &capabilities,
-        calibration,
+        document_scale::DocumentBudgetContext {
+            capabilities: &capabilities,
+            reasoning_effort: &task.reasoning_effort,
+            calibration,
+        },
     )?;
     crate::logging::debug_target(
         "ai.document.plan",
@@ -880,6 +889,8 @@ fn persist_outline(
 
 fn record_document_failure(database: &Database, document_id: &str, error: &CommandError) {
     let now = unix_time_millis().unwrap_or_default();
+    let usage = crate::task_cancellation::current_usage_summary();
+    let (api_token_count, api_token_usage_complete) = usage.unwrap_or((None, false));
     let _ = database.with_connection(|connection| {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -894,12 +905,16 @@ fn record_document_failure(database: &Database, document_id: &str, error: &Comma
                          WHEN processing_started_at IS NULL THEN processing_duration_ms
                          ELSE MAX(0, ?3 - processing_started_at)
                      END,
+                     api_token_count = CASE WHEN ?4 IS NULL THEN api_token_count ELSE ?4 END,
+                     api_token_usage_complete = CASE WHEN ?4 IS NULL THEN api_token_usage_complete ELSE ?5 END,
                      updated_at = ?3, revision = revision + 1
-                 WHERE id = ?4",
+                 WHERE id = ?6",
                 params![
                     bounded_error(&error.code, 80),
                     bounded_error(&error.message, 1000),
                     now,
+                    api_token_count,
+                    if api_token_usage_complete { 1_i64 } else { 0_i64 },
                     document_id,
                 ],
             )

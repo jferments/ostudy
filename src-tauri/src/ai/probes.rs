@@ -20,7 +20,7 @@ use super::{
     AiRuntimeState,
 };
 
-const ADAPTER_REVISION: i64 = 4;
+const ADAPTER_REVISION: i64 = 5;
 const RESULT_SCHEMA_VERSION: i64 = 1;
 const MAX_PERSISTED_RESULT_BYTES: usize = 32 * 1024;
 
@@ -184,12 +184,14 @@ pub async fn list_ai_provider_models(
     let models = providers::list_models(&runtime.gateway, &profile, bearer)
         .await
         .map_err(gateway_to_command)?;
+    let retrieved_at = unix_time_millis()?;
+    persist_selected_model_declarations(database.inner(), &profile, &models, retrieved_at)?;
     Ok(AiProviderModelsDto {
         profile_id: profile.id.clone(),
         profile_revision: profile.revision,
         provider_kind: profile.provider_kind,
         models,
-        retrieved_at: unix_time_millis()?,
+        retrieved_at,
     })
 }
 
@@ -401,8 +403,15 @@ pub async fn test_ai_provider_profile(
                 Some(elapsed_ms(text_start)),
                 error_value.safe,
             ));
-            let capabilities =
-                build_capabilities(&profile, models.is_some(), false, false, false, &properties);
+            let capabilities = build_capabilities(
+                &profile,
+                models.as_deref(),
+                models.is_some(),
+                false,
+                false,
+                false,
+                &properties,
+            );
             return finish_and_persist(
                 database.inner(),
                 &profile,
@@ -456,6 +465,7 @@ pub async fn test_ai_provider_profile(
         });
     let capabilities = build_capabilities(
         &profile,
+        models.as_deref(),
         models.is_some(),
         true,
         structured_outcome.is_some(),
@@ -535,6 +545,49 @@ fn load_credential_storage(
             )
         })?;
     CredentialStorage::from_db(&storage)
+}
+
+fn persist_selected_model_declarations(
+    database: &Database,
+    profile: &ProfileSnapshot,
+    models: &[ProviderModel],
+    checked_at: i64,
+) -> Result<(), CommandError> {
+    let selected = models.iter().find(|model| model.id == profile.model_id);
+    database.with_connection(|connection| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        transaction
+            .execute(
+                "DELETE FROM ai_provider_capabilities
+                 WHERE profile_id = ?1 AND capability_key IN ('context_window_tokens', 'reasoning_control')",
+                [profile.id.as_str()],
+            )
+            .map_err(CommandError::database)?;
+        if let Some(context) = selected.and_then(|model| model.context_window_tokens) {
+            transaction
+                .execute(
+                    "INSERT INTO ai_provider_capabilities (
+                         profile_id, capability_key, status, source_kind, value_json, checked_at
+                     ) VALUES (?1, 'context_window_tokens', 'supported', 'declared', ?2, ?3)",
+                    params![profile.id, context.to_string(), checked_at],
+                )
+                .map_err(CommandError::database)?;
+        }
+        if let Some(reasoning) = selected.and_then(|model| model.reasoning.as_ref()) {
+            let value = serde_json::to_string(&Some(reasoning)).map_err(CommandError::serialization)?;
+            transaction
+                .execute(
+                    "INSERT INTO ai_provider_capabilities (
+                         profile_id, capability_key, status, source_kind, value_json, checked_at
+                     ) VALUES (?1, 'reasoning_control', 'supported', 'declared', ?2, ?3)",
+                    params![profile.id, value, checked_at],
+                )
+                .map_err(CommandError::database)?;
+        }
+        transaction.commit().map_err(CommandError::database)
+    })
 }
 
 fn finish_and_persist(
@@ -652,6 +705,7 @@ fn snapshot_matches_result(profile: &ProfileSnapshot, result: &AiProviderProbeRe
 
 fn build_capabilities(
     profile: &ProfileSnapshot,
+    models: Option<&[ProviderModel]>,
     model_listing: bool,
     text_completion: bool,
     structured_output: bool,
@@ -728,6 +782,29 @@ fn build_capabilities(
         CapabilitySource::Probed,
         None,
     );
+
+    if let Some(model) =
+        models.and_then(|models| models.iter().find(|model| model.id == profile.model_id))
+    {
+        if let Some(context_window_tokens) = model.context_window_tokens {
+            set_capability(
+                &mut capabilities,
+                "context_window_tokens",
+                CapabilityStatus::Supported,
+                CapabilitySource::Declared,
+                Some(json!(context_window_tokens)),
+            );
+        }
+        if let Some(reasoning) = model.reasoning.as_ref() {
+            set_capability(
+                &mut capabilities,
+                "reasoning_control",
+                CapabilityStatus::Supported,
+                CapabilitySource::Declared,
+                serde_json::to_value(reasoning).ok(),
+            );
+        }
+    }
 
     if let Some(present) = properties.server_chat_template_present {
         set_capability(
@@ -925,6 +1002,7 @@ mod tests {
         let profile = profile(ProviderKind::Openrouter, "openai/example");
         let capabilities = build_capabilities(
             &profile,
+            None,
             true,
             true,
             true,

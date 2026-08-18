@@ -11,7 +11,14 @@ use serde_json::{json, Value};
 use url::Url;
 
 use crate::{
-    ai::providers, database::Database, document_semantics::SemanticWindow, error::CommandError,
+    ai::providers,
+    database::Database,
+    document_scale::{
+        generation_visible_completion_tokens, CURATION_VISIBLE_COMPLETION_TOKENS,
+        GLOBAL_OUTLINE_VISIBLE_COMPLETION_TOKENS, OUTLINE_VISIBLE_COMPLETION_TOKENS,
+    },
+    document_semantics::SemanticWindow,
+    error::CommandError,
 };
 
 use super::{
@@ -60,6 +67,8 @@ pub(crate) struct DocumentTaskContext {
     pub credential_epoch: i64,
     pub network_scope: String,
     pub include_page_images: bool,
+    pub requested_reasoning_effort: String,
+    pub reasoning_effort: String,
     profile: ProfileSnapshot,
     credential_storage: CredentialStorage,
     usage: Arc<Mutex<DocumentUsageAccumulator>>,
@@ -73,6 +82,44 @@ struct DocumentUsageAccumulator {
 }
 
 impl DocumentTaskContext {
+    pub(crate) fn apply_provider_capabilities(
+        &mut self,
+        capabilities: &crate::ai::document_provider::DocumentProviderCapabilities,
+    ) {
+        self.reasoning_effort =
+            capabilities.resolve_reasoning_effort(&self.requested_reasoning_effort);
+        crate::task_cancellation::set_current_reasoning_effort(&self.reasoning_effort);
+        crate::logging::debug_target(
+            "ai.document.reasoning",
+            "document_reasoning_resolved",
+            "Resolved the document reasoning preference against current model metadata.",
+            json!({
+                "provider": self.provider_kind.as_str(),
+                "model": self.model_id.as_str(),
+                "requestedEffort": self.requested_reasoning_effort.as_str(),
+                "effectiveEffort": self.reasoning_effort.as_str(),
+            }),
+        );
+    }
+
+    fn completion_token_ceiling(&self, visible_tokens: usize) -> usize {
+        if self.provider_kind != "openrouter" || self.reasoning_effort == "none" {
+            return visible_tokens;
+        }
+        let visible_percent = match self.reasoning_effort.as_str() {
+            "minimal" => 90_usize,
+            "low" => 80,
+            "medium" => 50,
+            "high" => 20,
+            "xhigh" | "max" => 5,
+            _ => 100,
+        };
+        visible_tokens
+            .saturating_mul(100)
+            .saturating_add(visible_percent - 1)
+            / visible_percent
+    }
+
     pub(crate) fn usage_summary(&self) -> (Option<i64>, bool) {
         let Ok(usage) = self.usage.lock() else {
             return (None, false);
@@ -260,6 +307,7 @@ pub(crate) fn load_document_task_context(
         let include_page_images = profile.provider_kind == ProviderKind::LlamaCpp
             && probe_matches
             && image_status.as_deref() == Some("supported");
+        let requested_reasoning_effort = crate::settings::current_ai_reasoning_effort();
 
         Ok(DocumentTaskContext {
             profile_id: profile.id.clone(),
@@ -269,6 +317,8 @@ pub(crate) fn load_document_task_context(
             credential_epoch: profile.credential_epoch,
             network_scope: network_scope_name(endpoint.scope).to_string(),
             include_page_images,
+            requested_reasoning_effort,
+            reasoning_effort: "none".to_string(),
             profile,
             credential_storage,
             usage: Arc::new(Mutex::new(DocumentUsageAccumulator::default())),
@@ -519,6 +569,11 @@ pub(super) fn native_outline_fallback(
     }
 }
 
+pub(crate) struct FlashcardGenerationLimits {
+    pub maximum_cards: usize,
+    pub completion_token_floor: usize,
+}
+
 pub(crate) async fn generate_window_flashcards(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
@@ -526,9 +581,9 @@ pub(crate) async fn generate_window_flashcards(
     outline: &DocumentOutline,
     window: &SemanticWindow,
     images: &[SourcePageImage],
-    maximum_cards: usize,
+    limits: FlashcardGenerationLimits,
 ) -> Result<Vec<Value>, CommandError> {
-    let maximum_cards = maximum_cards.clamp(1, MAX_WINDOW_CARDS);
+    let maximum_cards = limits.maximum_cards.clamp(1, MAX_WINDOW_CARDS);
     let outline_json = outline_context_for_window(outline, window)?;
     let system = flashcard_system_prompt();
     let user = format!(
@@ -553,7 +608,16 @@ Semantic source window: PDF pages {}–{}
         window.page_end,
         window.source_text,
     );
-    request_flashcards_with_retry(runtime, task, &system, &user, images, maximum_cards).await
+    request_flashcards_with_retry(
+        runtime,
+        task,
+        &system,
+        &user,
+        images,
+        maximum_cards,
+        limits.completion_token_floor,
+    )
+    .await
 }
 
 pub(crate) async fn curate_document_cards(
@@ -748,6 +812,24 @@ async fn request_outline_with_retry(
 
     match first {
         Ok(outline) => Ok(outline),
+        Err(error) if error.code == "ai_document_output_truncated" => {
+            crate::task_cancellation::record_current_provider_retry();
+            request_json(
+                runtime,
+                task,
+                JsonTaskRequest {
+                    system_prompt: system,
+                    user_text: user,
+                    schema: &schema,
+                    max_tokens: outline_retry_completion_tokens(task),
+                    images,
+                },
+            )
+            .await
+            .and_then(|value| {
+                parse_outline_fragment(value, bounds.page_start, bounds.page_end, bounds.page_count)
+            })
+        }
         Err(error) if retryable_contract_error(&error) => {
             let repaired = format!(
                 "{user}\n\nA prior response could not be decoded as the required outline object. Generate a fresh bounded outline fragment for these pages and return only the required structured result."
@@ -759,7 +841,7 @@ async fn request_outline_with_retry(
                     system_prompt: system,
                     user_text: &repaired,
                     schema: &schema,
-                    max_tokens: outline_completion_tokens(task),
+                    max_tokens: outline_retry_completion_tokens(task),
                     images,
                 },
             )
@@ -795,7 +877,7 @@ async fn synthesize_global_outline_context(
             system_prompt: &system,
             user_text: &user,
             schema: &schema,
-            max_tokens: 1_536,
+            max_tokens: task.completion_token_ceiling(GLOBAL_OUTLINE_VISIBLE_COMPLETION_TOKENS),
             images: &[],
         },
     )
@@ -810,19 +892,24 @@ async fn synthesize_global_outline_context(
     })
 }
 
-fn outline_completion_tokens(_task: &DocumentTaskContext) -> usize {
-    1_536
+fn outline_completion_tokens(task: &DocumentTaskContext) -> usize {
+    task.completion_token_ceiling(OUTLINE_VISIBLE_COMPLETION_TOKENS)
+}
+
+fn outline_retry_completion_tokens(task: &DocumentTaskContext) -> usize {
+    task.completion_token_ceiling(OUTLINE_VISIBLE_COMPLETION_TOKENS.saturating_mul(2))
 }
 
 #[cfg(test)]
 fn outline_completion_tokens_for_provider(_provider_kind: ProviderKind) -> usize {
-    1_536
+    OUTLINE_VISIBLE_COMPLETION_TOKENS
 }
 
-fn flashcard_completion_tokens(maximum_cards: usize) -> usize {
-    1_024_usize
-        .saturating_add(maximum_cards.saturating_mul(384))
-        .clamp(1_536, 5_120)
+pub(crate) fn flashcard_completion_token_ceiling(
+    task: &DocumentTaskContext,
+    maximum_cards: usize,
+) -> usize {
+    task.completion_token_ceiling(generation_visible_completion_tokens(maximum_cards))
 }
 
 async fn request_flashcards_with_retry(
@@ -832,9 +919,11 @@ async fn request_flashcards_with_retry(
     user: &str,
     images: &[SourcePageImage],
     maximum_cards: usize,
+    completion_token_floor: usize,
 ) -> Result<Vec<Value>, CommandError> {
     let schema = flashcard_schema(maximum_cards);
-    let maximum_tokens = flashcard_completion_tokens(maximum_cards);
+    let maximum_tokens =
+        flashcard_completion_token_ceiling(task, maximum_cards).max(completion_token_floor);
     let first = request_json(
         runtime,
         task,
@@ -893,7 +982,7 @@ async fn request_curation_with_retry(
             system_prompt: &system,
             user_text: user,
             schema: &schema,
-            max_tokens: 1_536,
+            max_tokens: task.completion_token_ceiling(CURATION_VISIBLE_COMPLETION_TOKENS),
             images: &[],
         },
     )
@@ -913,7 +1002,9 @@ async fn request_curation_with_retry(
                     system_prompt: &system,
                     user_text: &repaired,
                     schema: &schema,
-                    max_tokens: 2_048,
+                    max_tokens: task.completion_token_ceiling(
+                        CURATION_VISIBLE_COMPLETION_TOKENS.saturating_mul(2),
+                    ),
                     images: &[],
                 },
             )
@@ -1096,24 +1187,39 @@ async fn request_json(
     .map_err(gateway_to_command)?;
 
     record_document_usage(task, &response);
-    ensure_document_response_complete(&response)?;
-
-    match task.profile.provider_kind {
+    ensure_document_response_not_blocked(&response)?;
+    let finish_reason = response
+        .pointer("/choices/0/finish_reason")
+        .and_then(Value::as_str);
+    let parsed = match task.profile.provider_kind {
         ProviderKind::Deepseek => parse_strict_tool_arguments(&response),
-        _ => {
-            let content = parse_completion_content(&response)?;
+        _ => parse_completion_content(&response).and_then(|content| {
             serde_json::from_str(normalize_json_content(content)).map_err(|_| {
                 CommandError::new(
                     "ai_document_output_invalid",
                     "The AI provider returned content that was not valid JSON for the document task.",
                 )
             })
-        }
+        }),
+    };
+    match parsed {
+        Ok(value) => Ok(value),
+        Err(_) if finish_reason == Some("length") => Err(truncated_output_error()),
+        Err(error) => Err(error),
     }
 }
 
 fn record_document_usage(task: &DocumentTaskContext, response: &Value) {
     let (prompt_tokens, completion_tokens, total_tokens) = response_token_usage(response);
+    let cached_prompt_tokens = response
+        .pointer("/usage/prompt_tokens_details/cached_tokens")
+        .and_then(nonnegative_json_integer);
+    let cache_write_tokens = response
+        .pointer("/usage/prompt_tokens_details/cache_write_tokens")
+        .and_then(nonnegative_json_integer);
+    let reasoning_tokens = response
+        .pointer("/usage/completion_tokens_details/reasoning_tokens")
+        .and_then(nonnegative_json_integer);
     let reported = total_tokens.is_some();
     if let Ok(mut usage) = task.usage.lock() {
         if let Some(total) = total_tokens {
@@ -1136,6 +1242,9 @@ fn record_document_usage(task: &DocumentTaskContext, response: &Value) {
             "promptTokens": prompt_tokens,
             "completionTokens": completion_tokens,
             "totalTokens": total_tokens,
+            "cachedPromptTokens": cached_prompt_tokens,
+            "cacheWriteTokens": cache_write_tokens,
+            "reasoningTokens": reasoning_tokens,
         }),
     );
 }
@@ -1927,15 +2036,18 @@ fn bounded_diagnostic(value: &str, maximum_chars: usize) -> String {
     value.chars().take(maximum_chars).collect()
 }
 
-fn ensure_document_response_complete(value: &Value) -> Result<(), CommandError> {
+fn truncated_output_error() -> CommandError {
+    CommandError::new(
+        "ai_document_output_truncated",
+        "The AI provider reached its completion limit before finishing a valid structured document result. ostudy will retry this bounded source window with more output headroom and, for card generation, a smaller card count without reducing the token ceiling.",
+    )
+}
+
+fn ensure_document_response_not_blocked(value: &Value) -> Result<(), CommandError> {
     match value
         .pointer("/choices/0/finish_reason")
         .and_then(Value::as_str)
     {
-        Some("length") => Err(CommandError::new(
-            "ai_document_output_truncated",
-            "The AI provider reached its completion limit before finishing the structured document result. ostudy uses bounded source windows and concise structured outputs; retry on a healthy endpoint or choose a model with more output capacity.",
-        )),
         Some("content_filter") => Err(CommandError::new(
             "ai_document_output_filtered",
             "The AI provider stopped the document result because of its content policy.",
@@ -2596,11 +2708,12 @@ mod tests {
     }
 
     #[test]
-    fn truncated_provider_output_is_reported_separately_from_schema_drift() {
-        let error = ensure_document_response_complete(&json!({
+    fn length_is_truncation_only_when_the_structured_result_is_incomplete() {
+        ensure_document_response_not_blocked(&json!({
             "choices": [{ "finish_reason": "length" }]
         }))
-        .unwrap_err();
+        .expect("length alone is not a policy or resource failure");
+        let error = truncated_output_error();
         assert_eq!(error.code, "ai_document_output_truncated");
         assert!(error.message.contains("completion limit"));
     }
@@ -2650,13 +2763,13 @@ mod tests {
         );
         assert_eq!(
             outline_completion_tokens_for_provider(ProviderKind::Deepseek),
-            1_536
+            2_048
         );
         assert_eq!(
             outline_completion_tokens_for_provider(ProviderKind::LlamaCpp),
-            1_536
+            2_048
         );
-        assert_eq!(flashcard_completion_tokens(8), 4_096);
+        assert_eq!(generation_visible_completion_tokens(8), 5_120);
     }
 
     #[test]

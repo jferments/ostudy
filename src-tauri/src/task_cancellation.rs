@@ -243,7 +243,6 @@ pub(crate) fn current_signal() -> Option<CancellationSignal> {
         .ok()
 }
 
-#[cfg(test)]
 pub(crate) fn current_reasoning_effort() -> Option<String> {
     CURRENT_DOCUMENT_TASK
         .try_with(|task| {
@@ -389,6 +388,21 @@ pub(crate) fn record_current_usage(delta: DocumentTaskUsageDelta) {
             progress.total_tokens = progress.total_tokens.saturating_add(total);
         }
     });
+}
+
+pub(crate) fn current_usage_summary() -> Option<(Option<i64>, bool)> {
+    CURRENT_DOCUMENT_TASK
+        .try_with(|task| {
+            task.progress.lock().ok().map(|progress| {
+                let total = (progress.usage_reported_requests > 0)
+                    .then_some(i64::try_from(progress.total_tokens).unwrap_or(i64::MAX));
+                let complete =
+                    progress.usage_reported_requests > 0 && progress.usage_unreported_requests == 0;
+                (total, complete)
+            })
+        })
+        .ok()
+        .flatten()
 }
 
 pub(crate) fn cancel_document_task(document_id: &str) -> Result<(), CommandError> {
