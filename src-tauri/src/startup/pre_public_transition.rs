@@ -250,7 +250,7 @@ fn read_ledger(connection: &Connection, table: &str) -> Result<Vec<LedgerEntry>,
     let mut statement = connection
         .prepare(&sql)
         .map_err(|error| format!("Could not inspect {table}: {error}"))?;
-    statement
+    let rows = statement
         .query_map([], |row| {
             Ok(LedgerEntry {
                 version: row.get(0)?,
@@ -258,8 +258,8 @@ fn read_ledger(connection: &Connection, table: &str) -> Result<Vec<LedgerEntry>,
                 checksum: row.get(2)?,
             })
         })
-        .map_err(|error| format!("Could not read {table}: {error}"))?
-        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not read {table}: {error}"))?;
+    rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("Could not decode {table}: {error}"))
 }
 
@@ -350,10 +350,10 @@ fn text_column_values(
     let mut statement = connection
         .prepare(&sql)
         .map_err(|error| format!("Could not inspect {table}.{column}: {error}"))?;
-    statement
+    let rows = statement
         .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|error| format!("Could not read {table}.{column}: {error}"))?
-        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not read {table}.{column}: {error}"))?;
+    rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("Could not decode {table}.{column}: {error}"))
 }
 
