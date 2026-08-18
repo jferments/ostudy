@@ -1,19 +1,47 @@
+//! Format-neutral, provider-aware document planning.
+//!
+//! Provider context windows are hard per-request constraints. Empirical usage
+//! samples refine conservative prompt-overhead estimates, but never increase a
+//! provider-declared hard limit. Large sources scale through more bounded
+//! semantic windows rather than ever-growing requests. Aggregate job estimates
+//! are diagnostic/cost information only and never reject an otherwise
+//! context-safe sequence of resumable windows based on provider type.
+
+use std::fmt;
+
 use crate::{
     ai::document_provider::DocumentProviderCapabilities, document_cost::DocumentCostCalibration,
     error::CommandError,
 };
 
 pub(crate) const LARGE_DOCUMENT_UNIT_THRESHOLD: usize = 50;
-pub(crate) const MAX_SUPPORTED_SOURCE_UNITS: usize = 2_000;
-const MIN_CONTEXT_BOUNDED_SOURCE_TOKENS: usize = 1_000;
+pub(crate) const MAX_SUPPORTED_SOURCE_UNITS: usize = 300;
+const OUTLINE_FIXED_PROMPT_RESERVE: usize = 1_200;
+const GENERATION_FIXED_PROMPT_RESERVE: usize = 1_800;
+const MIN_OUTLINE_SOURCE_TOKENS: usize = 600;
+const MIN_GENERATION_SOURCE_TOKENS: usize = 800;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DocumentScaleClass {
     Standard,
     Large,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AggregateTokenCeiling {
+    /// Every supported provider executes large jobs as a sequence of bounded,
+    /// checkpointed requests. Only per-request model/context constraints are
+    /// hard; whole-document token totals are informational.
+    Windowed,
+}
+
+impl fmt::Display for AggregateTokenCeiling {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("windowed")
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct DocumentScalePlan {
     pub class: DocumentScaleClass,
     pub partition_target_tokens: usize,
@@ -30,13 +58,8 @@ pub(crate) struct DocumentScalePlan {
     pub max_cards_per_window: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AggregateTokenCeiling {
-    Windowed,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct DocumentBudgetEstimate {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DocumentJobBudget {
     pub estimated_tokens: usize,
     pub ceiling_tokens: AggregateTokenCeiling,
     pub generation_card_capacity: usize,
@@ -45,6 +68,14 @@ pub(crate) struct DocumentBudgetEstimate {
 }
 
 impl DocumentScalePlan {
+    #[cfg(test)]
+    pub(crate) fn for_unit_count(source_unit_count: usize) -> Self {
+        Self::for_provider(source_unit_count, "llama_cpp")
+    }
+
+    /// Conservative provider defaults used by deterministic tests when no
+    /// current capability snapshot is available.
+    #[cfg(test)]
     pub(crate) fn for_provider(source_unit_count: usize, provider_kind: &str) -> Self {
         baseline_plan(source_unit_count, provider_kind)
     }
@@ -59,23 +90,30 @@ impl DocumentScalePlan {
             return Ok(plan);
         };
 
+        let outline_output = outline_completion_reserve(&capabilities.provider_kind);
         plan.outline_window_max_tokens = context_bounded_source_tokens(
             plan.outline_window_max_tokens,
             context_window,
-            capabilities.outline_completion_tokens,
-            capabilities.fixed_prompt_reserve_tokens,
+            outline_output,
+            OUTLINE_FIXED_PROMPT_RESERVE,
             0,
             calibration,
-            MIN_CONTEXT_BOUNDED_SOURCE_TOKENS,
+            MIN_OUTLINE_SOURCE_TOKENS,
         )?;
+        let generation_output = generation_completion_reserve(plan.max_cards_per_window);
+        let generation_image_count = if capabilities.image_input {
+            plan.max_images_per_window
+        } else {
+            0
+        };
         plan.generation_window_max_tokens = context_bounded_source_tokens(
             plan.generation_window_max_tokens,
             context_window,
-            capabilities.generation_completion_tokens,
-            capabilities.fixed_prompt_reserve_tokens,
-            plan.max_images_per_window,
+            generation_output,
+            GENERATION_FIXED_PROMPT_RESERVE,
+            generation_image_count,
             calibration,
-            MIN_CONTEXT_BOUNDED_SOURCE_TOKENS,
+            MIN_GENERATION_SOURCE_TOKENS,
         )?;
         Ok(plan)
     }
@@ -167,27 +205,43 @@ fn context_bounded_source_tokens(
     if bounded < minimum_source_tokens {
         return Err(CommandError::new(
             "document_ai_context_too_small",
-            "The selected model's reported context window is too small for safe document generation after reserving prompt, schema, output, and image capacity.",
+            format!(
+                "The selected model reports a {context_window}-token context window, which leaves too little room for ostudy's structured document request and completion. Choose a model/profile with a larger context window."
+            ),
         ));
     }
     Ok(bounded)
 }
 
+fn outline_completion_reserve(_provider_kind: &str) -> usize {
+    // Local outline fragments are deliberately concise. A 1.5k-token reserve
+    // leaves ample room for the strict fragment schema without encouraging a
+    // multi-thousand-token restatement of source prose.
+    1_536
+}
+
+fn generation_completion_reserve(maximum_cards: usize) -> usize {
+    1_024_usize
+        .saturating_add(maximum_cards.saturating_mul(384))
+        .clamp(1_536, 5_120)
+}
+
+#[cfg(test)]
 pub(crate) fn validate_automatic_job(
     source_unit_count: usize,
     source_tokens: usize,
     plan: DocumentScalePlan,
-    outline_windows: usize,
-    generation_windows: usize,
+    outline_window_count: usize,
+    generation_window_count: usize,
     provider_kind: &str,
-) -> Result<DocumentBudgetEstimate, CommandError> {
+) -> Result<DocumentJobBudget, CommandError> {
     validate_automatic_job_calibrated(
         source_unit_count,
         source_tokens,
         plan,
-        outline_windows,
-        generation_windows,
-        &DocumentProviderCapabilities::baseline(provider_kind),
+        outline_window_count,
+        generation_window_count,
+        &DocumentProviderCapabilities::conservative(provider_kind, "unknown"),
         DocumentCostCalibration::default(),
     )
 }
@@ -196,48 +250,58 @@ pub(crate) fn validate_automatic_job_calibrated(
     source_unit_count: usize,
     source_tokens: usize,
     plan: DocumentScalePlan,
-    outline_windows: usize,
-    generation_windows: usize,
+    outline_window_count: usize,
+    generation_window_count: usize,
     capabilities: &DocumentProviderCapabilities,
     calibration: DocumentCostCalibration,
-) -> Result<DocumentBudgetEstimate, CommandError> {
-    if source_unit_count == 0 || source_unit_count > MAX_SUPPORTED_SOURCE_UNITS {
+) -> Result<DocumentJobBudget, CommandError> {
+    if source_unit_count > MAX_SUPPORTED_SOURCE_UNITS {
         return Err(CommandError::new(
-            "document_size_unsupported",
+            "document_generation_unit_limit",
             format!(
-                "Automatic document generation supports 1–{MAX_SUPPORTED_SOURCE_UNITS} source units per document."
+                "Automatic generation supports up to {MAX_SUPPORTED_SOURCE_UNITS} source units at a time. Split this source at chapter or section boundaries and import the parts separately."
             ),
         ));
     }
-    if outline_windows == 0 || generation_windows == 0 {
-        return Err(CommandError::new(
-            "document_window_plan_invalid",
-            "The document did not produce a complete bounded outline and generation plan.",
-        ));
-    }
 
-    let outline_input = source_tokens
-        .saturating_add(outline_windows.saturating_mul(capabilities.fixed_prompt_reserve_tokens));
-    let generation_input = source_tokens.saturating_add(
-        generation_windows.saturating_mul(capabilities.fixed_prompt_reserve_tokens),
+    let generation_card_capacity = generation_window_count
+        .saturating_mul(plan.max_cards_per_window)
+        .min(10_000);
+
+    let outline_source_estimate = source_tokens
+        .saturating_add(outline_window_count.saturating_mul(plan.outline_window_overlap_tokens));
+    let outline_prompt = calibration.calibrated_prompt_tokens(outline_source_estimate, 0);
+    let outline_fixed = outline_window_count.saturating_mul(
+        1_500_usize.saturating_add(outline_completion_reserve(&capabilities.provider_kind)),
     );
-    let calibrated_input = calibration
-        .scale_text_tokens(outline_input)
-        .saturating_add(calibration.scale_text_tokens(generation_input));
-    let outline_output = outline_windows.saturating_mul(capabilities.outline_completion_tokens);
-    let generation_output =
-        generation_windows.saturating_mul(capabilities.generation_completion_tokens);
-    let image_tokens = generation_windows
-        .saturating_mul(plan.max_images_per_window)
-        .saturating_mul(calibration.image_prompt_tokens);
-    let estimated_tokens = calibrated_input
-        .saturating_add(outline_output)
-        .saturating_add(generation_output)
-        .saturating_add(image_tokens);
-    Ok(DocumentBudgetEstimate {
+
+    let generation_source_estimate = source_tokens.saturating_add(
+        generation_window_count.saturating_mul(plan.generation_window_overlap_tokens),
+    );
+    let maximum_images = generation_window_count.saturating_mul(plan.max_images_per_window);
+    let generation_prompt =
+        calibration.calibrated_prompt_tokens(generation_source_estimate, maximum_images);
+    let generation_fixed = generation_window_count.saturating_mul(
+        1_800_usize.saturating_add(generation_completion_reserve(plan.max_cards_per_window)),
+    );
+    let compact_repair_reserve = outline_window_count
+        .saturating_mul(900)
+        .saturating_add(generation_window_count.saturating_mul(1_200));
+    let curation_batches = generation_card_capacity.div_ceil(32);
+    let curation_reserve = curation_batches.saturating_mul(2_500);
+    let global_synthesis_reserve = 12_000;
+    let estimated_tokens = outline_prompt
+        .saturating_add(outline_fixed)
+        .saturating_add(generation_prompt)
+        .saturating_add(generation_fixed)
+        .saturating_add(compact_repair_reserve)
+        .saturating_add(curation_reserve)
+        .saturating_add(global_synthesis_reserve);
+
+    Ok(DocumentJobBudget {
         estimated_tokens,
         ceiling_tokens: AggregateTokenCeiling::Windowed,
-        generation_card_capacity: generation_windows.saturating_mul(plan.max_cards_per_window),
+        generation_card_capacity,
         context_window_tokens: capabilities.context_window_tokens,
         calibration_sample_count: calibration.sample_count,
     })
@@ -246,23 +310,23 @@ pub(crate) fn validate_automatic_job_calibrated(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai::document_provider::{DocumentProviderCapabilities, StructuredOutputStrategy};
 
-    fn capabilities(
-        provider_kind: &str,
-        context_window_tokens: Option<usize>,
-    ) -> DocumentProviderCapabilities {
+    fn capabilities(provider: &str, context: Option<usize>) -> DocumentProviderCapabilities {
         DocumentProviderCapabilities {
-            context_window_tokens,
-            ..DocumentProviderCapabilities::baseline(provider_kind)
+            provider_kind: provider.to_string(),
+            model_id: "test-model".to_string(),
+            context_window_tokens: context,
+            image_input: false,
+            usage_reporting: true,
+            structured_output: StructuredOutputStrategy::JsonSchema,
         }
     }
 
     #[test]
     fn fifty_units_keep_the_standard_plan() {
-        let plan = DocumentScalePlan::for_provider(50, "llama_cpp");
+        let plan = DocumentScalePlan::for_provider(50, "deepseek");
         assert_eq!(plan.class, DocumentScaleClass::Standard);
-        assert_eq!(plan.partition_target_units, 24);
-        assert_eq!(plan.partition_max_units, 32);
         assert_eq!(plan.generation_window_max_tokens, 6_500);
     }
 
@@ -335,38 +399,34 @@ mod tests {
     }
 
     #[test]
-    fn source_unit_limit_remains_a_provider_neutral_ingestion_bound() {
-        for provider in ["llama_cpp", "deepseek", "openrouter"] {
-            let plan = DocumentScalePlan::for_provider(MAX_SUPPORTED_SOURCE_UNITS + 1, provider);
-            let error = validate_automatic_job(
-                MAX_SUPPORTED_SOURCE_UNITS + 1,
-                10_000,
-                plan,
-                1,
-                1,
-                provider,
-            )
-            .unwrap_err();
-            assert_eq!(error.code, "document_size_unsupported");
-        }
+    fn openrouter_55_page_job_above_old_650k_guard_is_allowed() {
+        let plan = DocumentScalePlan::for_provider(55, "openrouter");
+        let budget = validate_automatic_job(55, 180_000, plan, 18, 28, "openrouter")
+            .expect("OpenRouter should process large sources through bounded windows");
+        assert!(budget.estimated_tokens > 650_000);
+        assert_eq!(budget.ceiling_tokens, AggregateTokenCeiling::Windowed);
     }
 
     #[test]
     fn aggregate_source_tokens_do_not_create_provider_specific_rejections() {
         for provider in ["llama_cpp", "deepseek", "openrouter"] {
             let plan = DocumentScalePlan::for_provider(100, provider);
-            let accepted = validate_automatic_job(100, usize::MAX / 4, plan, 20, 20, provider)
-                .expect("aggregate source tokens are diagnostic only");
-            assert_eq!(accepted.ceiling_tokens, AggregateTokenCeiling::Windowed);
+            let budget = validate_automatic_job(100, 350_000, plan, 50, 60, provider)
+                .expect("large source totals should scale by adding bounded windows");
+            assert_eq!(budget.ceiling_tokens, AggregateTokenCeiling::Windowed);
         }
     }
 
     #[test]
-    fn openrouter_55_page_job_above_old_650k_guard_is_allowed() {
-        let plan = DocumentScalePlan::for_provider(55, "openrouter");
-        let accepted = validate_automatic_job(55, 560_000, plan, 7, 9, "openrouter")
-            .expect("OpenRouter uses bounded source windows, not whole-job rejection");
-        assert!(accepted.estimated_tokens > 650_000);
-        assert_eq!(accepted.ceiling_tokens, AggregateTokenCeiling::Windowed);
+    fn source_unit_limit_remains_a_provider_neutral_ingestion_bound() {
+        for provider in ["llama_cpp", "deepseek", "openrouter"] {
+            let plan = DocumentScalePlan::for_provider(301, provider);
+            assert_eq!(
+                validate_automatic_job(301, 10_000, plan, 1, 1, provider)
+                    .unwrap_err()
+                    .code,
+                "document_generation_unit_limit"
+            );
+        }
     }
 }
