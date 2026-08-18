@@ -6,6 +6,7 @@ const files = {
   lib: "src-tauri/src/lib.rs",
   startup: "src-tauri/src/startup.rs",
   transition: "src-tauri/src/startup/pre_public_transition.rs",
+  ledger: "src-tauri/src/startup/pre_public_v26_ledger.json",
   database: "src-tauri/src/database.rs",
   fullCheck: "scripts/check.sh",
   smoke: "scripts/smoke-startup-compatibility.sh",
@@ -19,6 +20,7 @@ const source = Object.fromEntries(
     Object.entries(files).map(async ([key, path]) => [key, await readFile(path, "utf8")]),
   ),
 );
+const ledger = JSON.parse(source.ledger);
 
 const lineageIndex = source.database.indexOf("let lineage = inspect_lineage(connection)?;");
 const configureIndex = source.database.indexOf("configure_connection(connection)?;");
@@ -55,13 +57,28 @@ const contracts = [
     lineageIndex >= 0 && configureIndex >= 0 && lineageIndex < configureIndex,
   ],
   [
-    "final pre-public adoption is exact-ledger, backed up, transactional, and count preserving",
-    source.transition.includes("const FINAL_PRE_PUBLIC_VERSION: i64 = 26") &&
-      source.transition.includes("PRE_PUBLIC_MIGRATIONS") &&
-      source.transition.includes("PRE_PUBLIC_REPAIRS") &&
-      source.transition.includes("Backup::new") &&
+    "the immutable final pre-public contract contains all 26 migrations and 3 repairs",
+    ledger.userVersion === 26 &&
+      Array.isArray(ledger.migrations) &&
+      ledger.migrations.length === 26 &&
+      ledger.migrations.at(-1)?.name === "deck_folders" &&
+      Array.isArray(ledger.repairs) &&
+      ledger.repairs.length === 3 &&
+      ledger.repairs.at(-1)?.name === "review_event_historical_attribution",
+  ],
+  [
+    "Rust and recovery tooling consume the same immutable lineage contract",
+    source.transition.includes('include_str!("pre_public_v26_ledger.json")') &&
+      source.transition.includes("pre_public_contract()") &&
+      source.restore.includes("pre_public_v26_ledger.json") &&
+      source.restore.includes("CONTRACT_PATH"),
+  ],
+  [
+    "final pre-public adoption is exact-ledger, backed up, transactional, and data preserving",
+    source.transition.includes("Backup::new") &&
       source.transition.includes("TransactionBehavior::Immediate") &&
-      source.transition.includes("Learner-data counts changed during adoption") &&
+      source.transition.includes("preserved_data_snapshot") &&
+      source.transition.includes("Learner data changed during adoption") &&
       source.transition.includes("pre_public_database_adoption_completed"),
   ],
   [
@@ -110,5 +127,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Startup preserves exact final pre-public v26 libraries through verified SQLite backup/adoption, blocks unsupported lineages without Tauri setup panics, and full qualification exercises the built-binary data-preservation boundary.",
+  "OK   Startup preserves exact final pre-public v26 libraries through a shared verified lineage contract, consistent SQLite backup/adoption, manual recovery for unsupported data, and built-binary data-preservation qualification.",
 );
