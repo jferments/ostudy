@@ -99,12 +99,9 @@ impl AiGateway {
                 Err(first_error) if should_retry_document_stream_error(&first_error) => {
                     let delay = document_retry_delay(&first_error);
                     let delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
-                    let model = body
-                        .get("model")
-                        .and_then(Value::as_str)
-                        .and_then(|value| {
-                            safe_metadata_string(value, MAX_SAFE_PROVIDER_METADATA_CHARS)
-                        });
+                    let model = body.get("model").and_then(Value::as_str).and_then(|value| {
+                        safe_metadata_string(value, MAX_SAFE_PROVIDER_METADATA_CHARS)
+                    });
                     crate::logging::warn_target(
                         "ai.gateway.retry",
                         "provider_request_retry",
@@ -256,7 +253,8 @@ impl AiGateway {
             ));
         }
         if !status.is_success() {
-            let bytes = read_bounded_body(&mut response, MAX_ERROR_BODY_BYTES, cancellation).await?;
+            let bytes =
+                read_bounded_body(&mut response, MAX_ERROR_BODY_BYTES, cancellation).await?;
             return Err(classify_provider_error_response(
                 status.as_u16(),
                 retry_after_seconds,
@@ -813,9 +811,9 @@ fn selected_openrouter_provider(value: &Value) -> Option<String> {
             .pointer("/openrouter_metadata/endpoints/available")
             .and_then(Value::as_array)
             .and_then(|endpoints| {
-                endpoints
-                    .iter()
-                    .find(|endpoint| endpoint.get("selected").and_then(Value::as_bool) == Some(true))
+                endpoints.iter().find(|endpoint| {
+                    endpoint.get("selected").and_then(Value::as_bool) == Some(true)
+                })
             })
             .and_then(|endpoint| {
                 safe_json_string(endpoint.get("provider"), MAX_SAFE_PROVIDER_METADATA_CHARS)
@@ -907,12 +905,15 @@ fn classify_provider_error_value(
     generation_id: Option<&str>,
     streaming: bool,
 ) -> AiGatewayError {
-    let error_value = provider_error_object(value).unwrap_or(&Value::Null);
+    let null_error = Value::Null;
+    let error_value = provider_error_object(value).unwrap_or(&null_error);
     let code = provider_error_code(error_value);
-    let provider_status = provider_error_status(error_value)
-        .or_else(|| http_status.filter(|status| *status >= 400));
+    let provider_status =
+        provider_error_status(error_value).or_else(|| http_status.filter(|status| *status >= 400));
     let error_type = safe_json_string(
-        error_value.pointer("/metadata/error_type").or_else(|| error_value.get("error_type")),
+        error_value
+            .pointer("/metadata/error_type")
+            .or_else(|| error_value.get("error_type")),
         120,
     );
     let provider_code = safe_json_string(
@@ -920,17 +921,17 @@ fn classify_provider_error_value(
         MAX_SAFE_PROVIDER_METADATA_CHARS,
     );
     let upstream_provider = selected_openrouter_provider(value);
-    let model = safe_json_string(value.get("model"), MAX_SAFE_PROVIDER_METADATA_CHARS).or_else(|| {
-        safe_json_string(
-            value.pointer("/openrouter_metadata/requested"),
-            MAX_SAFE_PROVIDER_METADATA_CHARS,
-        )
-    });
+    let model =
+        safe_json_string(value.get("model"), MAX_SAFE_PROVIDER_METADATA_CHARS).or_else(|| {
+            safe_json_string(
+                value.pointer("/openrouter_metadata/requested"),
+                MAX_SAFE_PROVIDER_METADATA_CHARS,
+            )
+        });
     let finish_reason = safe_json_string(value.pointer("/choices/0/finish_reason"), 120);
     let native_finish_reason =
         safe_json_string(value.pointer("/choices/0/native_finish_reason"), 120);
-    let routing_strategy =
-        safe_json_string(value.pointer("/openrouter_metadata/strategy"), 120);
+    let routing_strategy = safe_json_string(value.pointer("/openrouter_metadata/strategy"), 120);
     let routing_summary = safe_json_string(
         value.pointer("/openrouter_metadata/summary"),
         MAX_SAFE_PROVIDER_METADATA_CHARS,
@@ -1269,7 +1270,10 @@ mod tests {
         assert!(failure.safe.message.contains("provider_unavailable"));
         assert!(failure.safe.message.contains("HTTP 502"));
         assert!(failure.safe.message.contains("DeepSeek"));
-        assert!(failure.safe.message.contains("Partial output was discarded"));
+        assert!(failure
+            .safe
+            .message
+            .contains("Partial output was discarded"));
         assert!(!failure.safe.message.contains("private upstream detail"));
     }
 
