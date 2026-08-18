@@ -29,7 +29,9 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Apply real-provider acceptance fixes
-        run: python3 ./scripts/pr54_document_resilience_fix.py
+        run: |
+          python3 ./scripts/pr54_document_resilience_fix.py
+          python3 ./scripts/pr54_document_resilience_cleanup.py
 
       - name: Canonical Rust formatting and patch validation
         run: |
