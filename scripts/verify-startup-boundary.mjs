@@ -5,9 +5,12 @@ import { readFile } from "node:fs/promises";
 const files = {
   lib: "src-tauri/src/lib.rs",
   startup: "src-tauri/src/startup.rs",
+  transition: "src-tauri/src/startup/pre_public_transition.rs",
   database: "src-tauri/src/database.rs",
   fullCheck: "scripts/check.sh",
   smoke: "scripts/smoke-startup-compatibility.sh",
+  reset: "scripts/reset-pre-public-data.sh",
+  restore: "scripts/restore_pre_public_backup.py",
   checkState: "scripts/check-state.sh",
 };
 
@@ -31,11 +34,16 @@ const contracts = [
       !source.lib.includes("window.state::<platform::PlatformRuntime>()"),
   ],
   [
-    "startup compatibility errors are presented rather than returned through the Tauri setup hook",
+    "startup attempts verified final-v26 adoption before presenting manual recovery",
+    source.startup.includes("open_database_with_pre_public_adoption") &&
+      source.startup.includes("adopt_final_pre_public_database(paths.database_path())") &&
+      source.startup.includes("pre_public_database_requires_manual_recovery"),
+  ],
+  [
+    "unsupported startup failures are presented rather than returned through Tauri setup",
     source.startup.includes("if let Err(error) = initialize(app)") &&
       source.startup.includes("present_startup_failure(app, &error.to_string())") &&
-      source.startup.includes("application_startup_blocked") &&
-      source.startup.includes("pre_public_database_requires_reset"),
+      source.startup.includes("application_startup_blocked"),
   ],
   [
     "startup failure presentation uses the nonblocking dialog API",
@@ -47,17 +55,44 @@ const contracts = [
     lineageIndex >= 0 && configureIndex >= 0 && lineageIndex < configureIndex,
   ],
   [
-    "the built-binary legacy-data startup smoke is part of full qualification",
+    "final pre-public adoption is exact-ledger, backed up, transactional, and count preserving",
+    source.transition.includes("const FINAL_PRE_PUBLIC_VERSION: i64 = 26") &&
+      source.transition.includes("PRE_PUBLIC_MIGRATIONS") &&
+      source.transition.includes("PRE_PUBLIC_REPAIRS") &&
+      source.transition.includes("Backup::new") &&
+      source.transition.includes("TransactionBehavior::Immediate") &&
+      source.transition.includes("Learner-data counts changed during adoption") &&
+      source.transition.includes("pre_public_database_adoption_completed"),
+  ],
+  [
+    "the built-binary adoption smoke is part of full qualification",
     source.fullCheck.includes('step "Native startup compatibility smoke"') &&
       source.fullCheck.includes('bash "$SCRIPT_DIR/smoke-startup-compatibility.sh"'),
   ],
   [
-    "startup smoke rejects panic paths and verifies byte-for-byte database stability",
-    source.smoke.includes("application_startup_blocked") &&
-      source.smoke.includes("panic_captured") &&
-      source.smoke.includes('before_sha="$(sha256sum "$DATABASE"') &&
-      source.smoke.includes('after_sha="$(sha256sum "$DATABASE"') &&
-      source.smoke.includes('[[ ! -e "$DATABASE-wal" && ! -e "$DATABASE-shm" ]]'),
+    "startup smoke verifies preserved decks and analytics through a usable built application",
+    source.smoke.includes("pre_public_database_adoption_completed") &&
+      source.smoke.includes("application_started") &&
+      source.smoke.includes("before_decks") &&
+      source.smoke.includes("before_reviews") &&
+      source.smoke.includes("after_attributions") &&
+      source.smoke.includes("library.sqlite3.pre-public-v26-") &&
+      !source.smoke.includes('"event":"application_startup_blocked"'),
+  ],
+  [
+    "archived pre-public data has a non-destructive verified restore path",
+    source.restore.includes("validate_final_pre_public_backup") &&
+      source.restore.includes("EXPECTED_MIGRATIONS") &&
+      source.restore.includes("EXPECTED_REPAIRS") &&
+      source.restore.includes("Archived the previous active directory") &&
+      source.restore.includes("original timestamped pre-public backup was retained unchanged"),
+  ],
+  [
+    "empty-library reset requires explicit destructive intent",
+    source.reset.includes("--confirm-empty-library") &&
+      source.reset.includes("INTENTIONALLY archives") &&
+      source.reset.includes("restore_pre_public_backup.py") &&
+      !source.reset.includes("--confirm) CONFIRMED=1"),
   ],
   [
     "qualification has a Git-visible worktree mutation guard",
@@ -75,5 +110,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Startup failures are presented without Tauri setup panics, legacy database rejection is write-free, and full qualification exercises the built-binary compatibility boundary.",
+  "OK   Startup preserves exact final pre-public v26 libraries through verified SQLite backup/adoption, blocks unsupported lineages without Tauri setup panics, and full qualification exercises the built-binary data-preservation boundary.",
 );
