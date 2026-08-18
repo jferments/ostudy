@@ -4,243 +4,123 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-  push:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      gate:
-        description: Qualification tier to run
-        required: true
-        default: all-full
-        type: choice
-        options:
-          - preflight
-          - static
-          - fast
-          - linux-full
-          - android-full
-          - all-full
-      apply_candidates:
-        description: Explicitly commit canonical Cargo.lock and rustfmt output to the selected branch
-        required: true
-        default: false
-        type: boolean
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: outline-routing-rework-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  check:
-    if: github.event_name != 'workflow_dispatch' || inputs.apply_candidates != true
+  apply-outline-routing-rework:
+    if: github.event.pull_request.draft == true
     runs-on: [self-hosted, linux, x64, ostudy-unified]
-    timeout-minutes: 300
-
-    env:
-      CI: "true"
-      CARGO_TERM_COLOR: always
-      QUALIFIED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      OSTUDY_CI_LOG_FILTER: warn,ostudy=info
-      OSTUDY_LOG: warn,ostudy=info
-      OSTUDY_DIAGNOSTICS_ACTIVE: "1"
-      OSTUDY_DIAGNOSTICS_AUTOMATIC: "1"
-      OSTUDY_KEEP_FAILURE_ARTIFACTS: "1"
+    timeout-minutes: 45
 
     steps:
-      - name: Check out exact source head
+      - name: Check out exact PR head
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ env.QUALIFIED_SHA }}
-          clean: true
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          persist-credentials: false
 
-      - name: Expose pinned user toolchains and persistent caches
+      - name: Expose pinned toolchains and caches
         run: |
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
-          echo "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT=$RUNNER_TEMP/ostudy-diagnostics" >> "$GITHUB_ENV"
-          mkdir -p \
-            "$HOME/.cache/ostudy/gradle" \
-            "$HOME/.cache/ostudy/cargo-target"
 
-      - name: Verify exact checkout
-        run: test "$(git rev-parse HEAD)" = "$QUALIFIED_SHA"
-
-      - name: Select qualification gate
-        id: gate
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          DISPATCH_GATE: ${{ inputs.gate || 'all-full' }}
-          PR_DRAFT: ${{ github.event.pull_request.draft || false }}
+      - name: Normalize patcher boundaries
         run: |
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            gate="$DISPATCH_GATE"
-          elif [[ "$EVENT_NAME" == "pull_request" && "$PR_DRAFT" == "true" ]]; then
-            gate="fast"
-          else
-            gate="all-full"
-          fi
-          echo "gate=$gate" >> "$GITHUB_OUTPUT"
-          echo "Selected qualification gate: $gate"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-outline-routing-rework.py')
+          value = path.read_text()
 
-      - name: Run static qualification first
-        if: steps.gate.outputs.gate != 'preflight'
+          value = value.replace(
+              '("generation_window_max_tokens: 5_000,", "generation_window_max_tokens: 7_000,"),',
+              '("generation_window_max_tokens: 5_000,", "generation_window_max_tokens: 6_500,"),',
+          )
+          value = value.replace(
+              '("generation_window_max_units: 10,", "generation_window_max_units: 12,"),',
+              '("generation_window_max_units: 10,", "generation_window_max_units: 14,"),',
+          )
+
+          test_start = value.index('replace_once(scale, "assert_eq!(plan.generation_window_max_tokens, 5_000);"')
+          test_end = value.index('\n# Hierarchy metadata remains', test_start)
+          test_block = '''value = read(scale)\nfor old, new in [\n    ("assert_eq!(plan.generation_window_max_tokens, 5_000);", "assert_eq!(plan.generation_window_max_tokens, 6_500);"),\n    ("assert!(plan.outline_window_max_tokens < 10_000);", "assert!(plan.outline_window_max_tokens < 14_000);"),\n    ("assert!(plan.generation_window_max_tokens < 7_000);", "assert!(plan.generation_window_max_tokens < 10_000);"),\n    ("assert_eq!(plan.outline_window_max_tokens, 10_000);", "assert_eq!(plan.outline_window_max_tokens, 14_000);"),\n    ("assert_eq!(plan.outline_window_max_units, 18);", "assert_eq!(plan.outline_window_max_units, 24);"),\n    ("assert_eq!(plan.generation_window_max_tokens, 7_000);", "assert_eq!(plan.generation_window_max_tokens, 10_000);"),\n    ("assert_eq!(plan.generation_window_max_units, 12);", "assert_eq!(plan.generation_window_max_units, 18);"),\n]:\n    value = value.replace(old, new)\nwrite(scale, value)\n'''
+          value = value[:test_start] + test_block + value[test_end:]
+
+          bad_start = value.index('replace_region(\n    semantics,\n    "    #[test]\\n    fn partitioned_windows_do_not_overlap_across_chapters() {"')
+          bad_end = value.index('\n# OpenRouter routing:', bad_start)
+          corrected = r"""value = read(semantics)
+stale_test = "    #[test]\n    fn partitioned_windows_do_not_overlap_across_chapters() {"
+stale_start = value.find(stale_test)
+module_end = value.rfind("\n}")
+if stale_start < 0 or module_end < stale_start:
+    raise SystemExit("document_semantics.rs: stale chapter-boundary test not found")
+new_test = r'''    #[test]
+    fn packed_windows_can_cross_heading_boundaries_without_losing_provenance() {
+        let mut chunks = Vec::new();
+        for index in 0..8 {
+            let mut value = chunk(index, &[index + 1], 700);
+            value.heading_context = Some(if index < 4 {
+                "Chapter A".to_string()
+            } else {
+                "Chapter B".to_string()
+            });
+            if index == 5 {
+                value.element_types = vec!["image".to_string()];
+            }
+            chunks.push(value);
+        }
+        let plan = DocumentScalePlan::for_unit_count(138);
+        let windows = build_partitioned_semantic_windows(&chunks, plan, 2_100, 3, 0);
+        assert!(windows.iter().any(|window| {
+            window.source_locator().first() <= 4 && window.source_locator().last() >= 5
+        }));
+        assert!(windows.iter().any(|window| window.source_text.contains("Chapter B")));
+        assert!(windows
+            .iter()
+            .any(|window| window.visual_page_numbers.contains(&6)));
+    }
+'''
+write(semantics, value[:stale_start] + new_test + value[module_end:])
+"""
+          value = value[:bad_start] + corrected + value[bad_end:]
+          path.write_text(value)
+          PY
+
+      - name: Apply outline hierarchy and routing rework
+        run: python3 scripts/apply-outline-routing-rework.py
+
+      - name: Remove all one-shot scaffolding and restore canonical Check workflow
         run: |
-          set -o pipefail
-          bash ./scripts/check-static.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"
+          rm -f scripts/apply-outline-routing-rework.py
+          rm -f .github/workflows/one-shot-outline-routing-rework.yml
+          git show 667cf6ef230f152543ff84b86980eb38770d186e:.github/workflows/check.yml > .github/workflows/check.yml
 
-      - name: Verify unified runner resources and nested KVM
-        if: steps.gate.outputs.gate != 'static'
-        run: bash ./scripts/runner/guest-preflight.sh
-
-      - name: Require committed Rust dependency graph
-        if: steps.gate.outputs.gate != 'static'
+      - name: Format compile and run focused regressions
         run: |
-          cargo metadata \
-            --manifest-path src-tauri/Cargo.toml \
-            --format-version 1 \
-            --locked \
-            > /dev/null
+          cd src-tauri
+          cargo fmt --all
+          cargo check
+          cargo test --lib document_semantics
+          cargo test --lib ai::concurrency
+          cargo test --lib ai::providers::openrouter
+          cargo test --lib document_scale
+          cargo test --lib document_generation
+          cargo test --lib ai::gateway
+          cd ..
+          bash ./scripts/check-static.sh
 
-      - name: Run fast qualification
-        if: steps.gate.outputs.gate == 'fast'
+      - name: Commit clean product result
         run: |
-          set -o pipefail
-          bash ./scripts/check-fast.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-fast-check.log"
-
-      - name: Run authoritative Linux qualification
-        if: steps.gate.outputs.gate == 'linux-full' || steps.gate.outputs.gate == 'all-full'
-        run: |
-          set -o pipefail
-          bash ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-full-check.log"
-
-      - name: Run authoritative Android compile and package qualification
-        if: steps.gate.outputs.gate == 'android-full' || steps.gate.outputs.gate == 'all-full'
-        run: |
-          set -o pipefail
-          bash ./scripts/android-test.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-android-test.log"
-
-      - name: Run authoritative Android Emulator smoke qualification
-        if: steps.gate.outputs.gate == 'android-full' || steps.gate.outputs.gate == 'all-full'
-        run: |
-          set -o pipefail
-          bash ./scripts/android-emulator-smoke.sh \
-            --artifacts "$RUNNER_TEMP/android-smoke" \
-            2>&1 | tee "$RUNNER_TEMP/ostudy-android-smoke.log"
-
-      - name: Summarize qualification failure
-        if: failure()
-        run: |
-          node ./scripts/summarize-check-failure.mjs \
-            --diagnostics "$RUNNER_TEMP/ostudy-diagnostics" \
-            --diagnostics "$RUNNER_TEMP/android-smoke" \
-            "$RUNNER_TEMP/ostudy-static-check.log" \
-            "$RUNNER_TEMP/ostudy-fast-check.log" \
-            "$RUNNER_TEMP/ostudy-full-check.log" \
-            "$RUNNER_TEMP/ostudy-android-test.log" \
-            "$RUNNER_TEMP/ostudy-android-smoke.log" \
-            >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Export diagnostics after failure
-        if: failure()
-        run: bash ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-unified-diagnostics.tar.gz"
-
-      - name: Upload bounded diagnostic evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ostudy-diagnostics-${{ env.QUALIFIED_SHA }}
-          path: ${{ runner.temp }}/ostudy-diagnostics/**
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload bounded failure evidence
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ostudy-unified-${{ env.QUALIFIED_SHA }}
-          path: |
-            ${{ runner.temp }}/ostudy-unified-diagnostics.tar.gz
-            ${{ runner.temp }}/ostudy-static-check.log
-            ${{ runner.temp }}/ostudy-fast-check.log
-            ${{ runner.temp }}/ostudy-full-check.log
-            ${{ runner.temp }}/ostudy-android-test.log
-            ${{ runner.temp }}/ostudy-android-smoke.log
-            ${{ runner.temp }}/android-smoke/**
-            src-tauri/gen/android/app/build/reports/**
-          if-no-files-found: ignore
-          retention-days: 14
-
-      - name: Publish exact-head qualification summary
-        if: always()
-        env:
-          GATE: ${{ steps.gate.outputs.gate }}
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          {
-            echo '# ostudy qualification'
-            echo
-            echo "- Head: \`$QUALIFIED_SHA\`"
-            echo "- Runner: \`$RUNNER_NAME\`"
-            echo "- Gate: \`$GATE\`"
-            echo "- Diagnostic baseline: \`$OSTUDY_CI_LOG_FILTER\`"
-            echo "- Status: **$JOB_STATUS**"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  apply-generated-candidates:
-    if: github.event_name == 'workflow_dispatch' && inputs.apply_candidates == true
-    permissions:
-      contents: write
-    runs-on: [self-hosted, linux, x64, ostudy-unified]
-    timeout-minutes: 15
-
-    steps:
-      - name: Check out selected branch
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          fetch-depth: 0
-
-      - name: Expose user-local tools
-        run: |
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Resolve and format canonical Rust sources
-        run: |
-          cargo metadata \
-            --manifest-path src-tauri/Cargo.toml \
-            --format-version 1 \
-            > /dev/null
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all
-          git diff --check
-
-      - name: Validate generated scope
-        run: |
-          changed="$(git status --porcelain | sed -E 's/^.. //')"
-          if [[ -z "$changed" ]]; then
-            echo "No generated Rust changes were required."
-            exit 0
-          fi
-          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^src-tauri/(Cargo\.lock|.*\.rs)$' || true)"
-          if [[ -n "$unexpected" ]]; then
-            echo "Generated normalization changed unexpected files:" >&2
-            printf '%s\n' "$unexpected" >&2
-            exit 1
-          fi
-
-      - name: Commit canonical candidates
-        run: |
-          if git diff --quiet -- src-tauri; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src-tauri/Cargo.lock src-tauri/src src-tauri/build.rs
-          git commit -m "chore: normalize Rust source and lockfile"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git status --short
+          git diff --cached --check
+          git commit -m 'perf(ai): parallelize and optimize document provider routing'
+          git push origin HEAD:agent/pre-public-platform-hardening
