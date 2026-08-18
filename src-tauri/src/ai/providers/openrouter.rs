@@ -8,6 +8,9 @@ pub(super) const MAX_MODEL_LIST_BYTES: usize = 4 * 1024 * 1024;
 pub(super) const MAX_MODELS: usize = 2_000;
 
 const REASONING_EFFORTS: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+const HIGH_PRECISION_QUANTIZATIONS: [&str; 5] = ["int8", "fp8", "fp16", "bf16", "fp32"];
+const PREFERRED_MIN_THROUGHPUT_TPS: u64 = 40;
+const PREFERRED_MAX_P90_LATENCY_SECONDS: u64 = 20;
 
 pub(super) fn text_probe_body(
     model_id: &str,
@@ -60,6 +63,11 @@ pub(super) fn structured_probe_body(
 /// OpenRouter defaults permit endpoints that may retain data. ostudy sends a
 /// stricter request policy for study content and requires parameter-compatible
 /// endpoints whenever the task relies on a structured-output contract.
+///
+/// Endpoint precision is a hard quality boundary: INT4/FP4/FP6 and endpoints
+/// whose quantization is unknown are never selected. Within the eligible set,
+/// price is the primary sort while throughput/latency are soft preferences so
+/// an outage can still fall back to another high-precision endpoint.
 pub(super) fn provider_preferences(
     require_parameters: bool,
     require_zero_data_retention: bool,
@@ -68,7 +76,15 @@ pub(super) fn provider_preferences(
         "require_parameters": require_parameters,
         "data_collection": "deny",
         "zdr": require_zero_data_retention,
-        "allow_fallbacks": true
+        "allow_fallbacks": true,
+        "quantizations": HIGH_PRECISION_QUANTIZATIONS,
+        "sort": "price",
+        "preferred_min_throughput": {
+            "p50": PREFERRED_MIN_THROUGHPUT_TPS
+        },
+        "preferred_max_latency": {
+            "p90": PREFERRED_MAX_P90_LATENCY_SECONDS
+        }
     })
 }
 
@@ -222,7 +238,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_preferences_make_zdr_explicit_without_weakening_data_collection() {
+    fn provider_preferences_enforce_precision_and_prefer_cheap_fast_routes() {
         let ordinary = provider_preferences(true, false);
         assert_eq!(ordinary.pointer("/data_collection"), Some(&json!("deny")));
         assert_eq!(ordinary.pointer("/zdr"), Some(&json!(false)));
@@ -231,6 +247,23 @@ mod tests {
         assert_eq!(strict.pointer("/data_collection"), Some(&json!("deny")));
         assert_eq!(strict.pointer("/zdr"), Some(&json!(true)));
         assert_eq!(strict.pointer("/require_parameters"), Some(&json!(true)));
+        assert_eq!(strict.pointer("/sort"), Some(&json!("price")));
+        assert_eq!(
+            strict.pointer("/preferred_min_throughput/p50"),
+            Some(&json!(40))
+        );
+        assert_eq!(
+            strict.pointer("/preferred_max_latency/p90"),
+            Some(&json!(20))
+        );
+        assert_eq!(
+            strict.pointer("/quantizations"),
+            Some(&json!(["int8", "fp8", "fp16", "bf16", "fp32"]))
+        );
+        let serialized = strict["quantizations"].to_string();
+        for rejected in ["int4", "fp4", "fp6", "unknown"] {
+            assert!(!serialized.contains(rejected));
+        }
     }
 
     #[test]
