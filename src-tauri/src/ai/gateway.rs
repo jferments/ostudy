@@ -8,7 +8,8 @@ use url::Url;
 
 use crate::task_cancellation::{
     current_document_id, current_signal, record_current_provider_request,
-    record_current_provider_retry, CancellationSignal,
+    record_current_provider_retry, record_current_usage, set_current_reasoning_effort,
+    CancellationSignal, DocumentTaskUsageDelta,
 };
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 10;
@@ -749,13 +750,25 @@ fn is_openrouter_url(url: &Url) -> bool {
 
 fn prepare_provider_body(url: &Url, body: &Value) -> Option<Value> {
     let session = current_document_id();
-    prepare_provider_body_for_document(url, body, session.as_deref())
+    let reasoning_effort = session
+        .as_ref()
+        .map(|_| crate::settings::current_ai_reasoning_effort());
+    if let Some(reasoning_effort) = reasoning_effort.as_deref() {
+        set_current_reasoning_effort(reasoning_effort);
+    }
+    prepare_provider_body_for_document(
+        url,
+        body,
+        session.as_deref(),
+        reasoning_effort.as_deref(),
+    )
 }
 
 fn prepare_provider_body_for_document(
     url: &Url,
     body: &Value,
     document_id: Option<&str>,
+    reasoning_effort: Option<&str>,
 ) -> Option<Value> {
     if !is_openrouter_url(url) {
         return None;
@@ -775,27 +788,36 @@ fn prepare_provider_body_for_document(
             Value::String(format!("ostudy-document-{document_id}")),
         );
     }
+    if let Some(reasoning_effort) = reasoning_effort.filter(|value| *value != "automatic") {
+        object.insert(
+            "reasoning".to_string(),
+            json!({
+                "effort": reasoning_effort,
+                "exclude": true
+            }),
+        );
+    }
     Some(prepared)
 }
 
 fn safe_usage_envelope(value: &Value) -> Option<Value> {
     let usage = value.get("usage")?.as_object()?;
-    let prompt_tokens = nonnegative_integer_value(usage.get("prompt_tokens"));
-    let completion_tokens = nonnegative_integer_value(usage.get("completion_tokens"));
-    let total_tokens = nonnegative_integer_value(usage.get("total_tokens"));
-    let cached_tokens = nonnegative_integer_value(
+    let prompt_tokens = nonnegative_integer(usage.get("prompt_tokens"));
+    let completion_tokens = nonnegative_integer(usage.get("completion_tokens"));
+    let total_tokens = nonnegative_integer(usage.get("total_tokens"));
+    let cached_tokens = nonnegative_integer(
         usage
             .get("prompt_tokens_details")
             .and_then(Value::as_object)
             .and_then(|details| details.get("cached_tokens")),
     );
-    let cache_write_tokens = nonnegative_integer_value(
+    let cache_write_tokens = nonnegative_integer(
         usage
             .get("prompt_tokens_details")
             .and_then(Value::as_object)
             .and_then(|details| details.get("cache_write_tokens")),
     );
-    let reasoning_tokens = nonnegative_integer_value(
+    let reasoning_tokens = nonnegative_integer(
         usage
             .get("completion_tokens_details")
             .and_then(Value::as_object)
@@ -816,6 +838,14 @@ fn safe_usage_envelope(value: &Value) -> Option<Value> {
     {
         return None;
     }
+    record_current_usage(DocumentTaskUsageDelta {
+        prompt_tokens,
+        completion_tokens,
+        reasoning_tokens,
+        total_tokens,
+        cached_prompt_tokens: cached_tokens,
+        cache_write_tokens,
+    });
     Some(json!({
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
@@ -831,16 +861,14 @@ fn safe_usage_envelope(value: &Value) -> Option<Value> {
     }))
 }
 
-fn nonnegative_integer_value(value: Option<&Value>) -> Option<Value> {
-    value
-        .and_then(|value| {
-            value.as_u64().or_else(|| {
-                value
-                    .as_i64()
-                    .and_then(|value| u64::try_from(value).ok())
-            })
+fn nonnegative_integer(value: Option<&Value>) -> Option<u64> {
+    value.and_then(|value| {
+        value.as_u64().or_else(|| {
+            value
+                .as_i64()
+                .and_then(|value| u64::try_from(value).ok())
         })
-        .map(Value::from)
+    })
 }
 
 fn provider_error_object(value: &Value) -> Option<&Value> {
@@ -1431,12 +1459,13 @@ mod tests {
     }
 
     #[test]
-    fn openrouter_posts_disable_provider_side_context_compression_and_use_sticky_document_sessions() {
+    fn openrouter_posts_disable_provider_side_context_compression_and_apply_document_policy() {
         let url = Url::parse("https://openrouter.ai/api/v1/chat/completions").unwrap();
         let prepared = prepare_provider_body_for_document(
             &url,
             &json!({ "model": "example/model" }),
             Some("0123456789abcdef0123456789abcdef"),
+            Some("low"),
         )
         .expect("OpenRouter requests should be normalized");
         assert_eq!(prepared["plugins"][0]["id"], "context-compression");
@@ -1445,6 +1474,17 @@ mod tests {
             prepared["session_id"],
             "ostudy-document-0123456789abcdef0123456789abcdef"
         );
+        assert_eq!(prepared["reasoning"]["effort"], "low");
+        assert_eq!(prepared["reasoning"]["exclude"], true);
+
+        let automatic = prepare_provider_body_for_document(
+            &url,
+            &json!({ "model": "example/model" }),
+            Some("document"),
+            Some("automatic"),
+        )
+        .unwrap();
+        assert!(automatic.get("reasoning").is_none());
         assert!(prepare_provider_body(
             &Url::parse("https://api.deepseek.com/chat/completions").unwrap(),
             &json!({})
