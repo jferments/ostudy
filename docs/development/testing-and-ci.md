@@ -36,14 +36,15 @@ Use the repository tiers in increasing order:
 
 `check.sh` is the authoritative Linux/shared merge gate. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, a **built-binary pre-public adoption smoke**, and the native WebDriver persistence/UI smoke tests.
 
-The adoption smoke is intentionally different from the ordinary WebDriver tests. WebDriver scenarios use fresh isolated app-data so they can verify normal first-run and persistence behavior. The adoption smoke instead creates a real on-disk database with the exact final development lineage: SQLite `user_version` 26, all 26 immutable migration identities/checksums, all 3 repair identities/checksums, and representative deck/card/review/analytics rows. It launches the exact built binary and requires ostudy to:
+The adoption smoke is intentionally different from the ordinary WebDriver tests. WebDriver scenarios use fresh isolated app-data so they can verify normal first-run and persistence behavior. The adoption smoke instead creates a real on-disk database with the exact final development lineage: all 26 immutable migration identities/checksums, all 3 repair identities/checksums, the terminal v26 schema, the historical SQLite `user_version = 0` marker, and representative deck/card/review/analytics rows. The old migration runner never assigned `PRAGMA user_version`; the immutable ledgers are therefore the authoritative version record. A separate unit test also accepts an explicitly stamped `user_version = 26` copy when every other exact-lineage check matches. The smoke launches the exact built binary and requires ostudy to:
 
 1. create a consistent SQLite backup;
 2. adopt `ostudy-public-v1` transactionally;
 3. preserve every application-table row count and the seeded deck/card/review/attribution rows;
 4. emit `pre_public_database_adoption_completed` and `application_started`;
-5. remain alive as a usable application;
-6. avoid `application_startup_blocked`, `panic_captured`, and Tauri setup failure.
+5. flush those startup/adoption events to the persistent JSONL log;
+6. remain alive as a usable application;
+7. avoid `application_startup_blocked`, `panic_captured`, and Tauri setup failure.
 
 This directly covers the state that fresh WebDriver homes cannot exercise. Separate unit tests verify that unsupported pre-public databases are not modified or backed up automatically.
 
@@ -222,7 +223,7 @@ python3 ./scripts/restore_pre_public_backup.py \
   --confirm
 ```
 
-The recovery helper validates the exact v26 lineage, copies the archive back, archives the currently active directory, and leaves the original timestamped archive untouched. The next startup performs the verified adoption. `reset-pre-public-data.sh --confirm-empty-library` is only for an intentional blank-library test.
+The recovery helper validates the exact final migration/repair ledgers and accepted historical SQLite marker, copies the archive back, archives the currently active directory, and leaves the original timestamped archive untouched. The next startup performs the verified adoption. `reset-pre-public-data.sh --confirm-empty-library` is only for an intentional blank-library test.
 
 A real Google Code Scanner camera scan on a Google Play services-enabled Android device and a live OpenRouter request remain manual acceptance boundaries because deterministic CI has neither a physical camera workflow nor a provider credential.
 
