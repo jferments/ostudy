@@ -4,15 +4,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocumentGenerationProgress, DocumentSummary } from "../ipc/documents";
 import { DocumentsScreen } from "./DocumentsScreen";
 
-const listDocuments = vi.fn();
-const getDocumentGenerationProgress = vi.fn();
+const documentIpcMocks = vi.hoisted(() => ({
+  listDocuments: vi.fn(),
+  getDocumentGenerationProgress: vi.fn(),
+}));
 
 vi.mock("../ipc/documents", async () => {
   const actual = await vi.importActual<typeof import("../ipc/documents")>("../ipc/documents");
   return {
     ...actual,
-    listDocuments,
-    getDocumentGenerationProgress,
+    listDocuments: documentIpcMocks.listDocuments,
+    getDocumentGenerationProgress: documentIpcMocks.getDocumentGenerationProgress,
   };
 });
 
@@ -85,8 +87,8 @@ const progress: DocumentGenerationProgress = {
 describe("DocumentsScreen live generation progress", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    listDocuments.mockResolvedValue([document]);
-    getDocumentGenerationProgress.mockResolvedValue(progress);
+    documentIpcMocks.listDocuments.mockResolvedValue([document]);
+    documentIpcMocks.getDocumentGenerationProgress.mockResolvedValue(progress);
   });
 
   it("shows stage, window progress, elapsed runtime, requests, retries, reasoning and cache usage", async () => {
@@ -97,13 +99,15 @@ describe("DocumentsScreen live generation progress", () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getAllByText("Building outline 3/10").length).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(screen.getAllByText("Building outline 3/10").length).toBeGreaterThan(0),
+    );
     expect(screen.getByText("15k")).toBeTruthy();
     expect(screen.getByText("7")).toBeTruthy();
     expect(screen.getByText("1")).toBeTruthy();
     expect(screen.getByText("low · 2k")).toBeTruthy();
     expect(screen.getByText("12k / 3k")).toBeTruthy();
     expect(screen.getByText("6k (50.0%)")).toBeTruthy();
-    expect(getDocumentGenerationProgress).toHaveBeenCalledWith(document.id);
+    expect(documentIpcMocks.getDocumentGenerationProgress).toHaveBeenCalledWith(document.id);
   });
 });
