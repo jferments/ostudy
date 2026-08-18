@@ -143,6 +143,28 @@ replace_once(
     );''',
     "AI-targeted outline start diagnostic",
 )
+# Make reference arithmetic explicit in concurrent ranges.
+p = Path("src-tauri/src/ai/document_intelligence_adapter.rs")
+value = p.read_text().replace(
+    "batch.last().map(|index| index + 1)",
+    "batch.last().map(|index| *index + 1)",
+)
+p.write_text(value)
+p = Path("src-tauri/src/document_generation.rs")
+value = p.read_text().replace(
+    "batch.last().map(|position| position + 1)",
+    "batch.last().map(|position| *position + 1)",
+)
+p.write_text(value)
+
+# Update the pre-existing live-progress regression to the new non-duplicative
+# stage copy and assert the single-window detail separately.
+replace_once(
+    "src/screens/DocumentsProgress.test.tsx",
+    '    expect(screen.getAllByText("Building outline 3/10").length).toBeGreaterThan(0);',
+    '    expect(screen.getAllByText("Building outline").length).toBeGreaterThan(0);\n    expect(screen.getByText("Window 4 of 10 · pages 13–18.")).toBeTruthy();',
+    "outline progress UI regression",
+)
 
 replace_once(
     "docs/architecture/ai-and-document-processing.md",
