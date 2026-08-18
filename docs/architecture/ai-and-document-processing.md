@@ -172,7 +172,7 @@ A structurally valid response can contain one semantically unusable card; that c
 
 ## Long-running tasks, close protection, and cancellation
 
-A running document task owns one process-local cancellation signal keyed by document ID. The same registry spans extraction, platform rendering, OCR, and provider execution. Independent remote-provider outline/generation windows execute with bounded concurrency (currently OpenRouter 4, direct DeepSeek 2, local llama.cpp 1); network work may finish out of order, but checkpoints and SQLite state are committed serially in source-window order. Each remote request also has a bounded work deadline so one accepted but stalled stream cannot pin an entire document indefinitely.
+A running document task owns one process-local cancellation signal keyed by document ID. The same registry spans extraction, platform rendering, OCR, and provider execution. Independent remote-provider outline/generation windows execute with bounded concurrency (currently OpenRouter 4, direct DeepSeek 2, local llama.cpp 1); network work may finish out of order, but checkpoints and SQLite state are committed serially in source-window order. Provider resilience is based on useful stream progress rather than a blunt whole-request wall clock: OpenRouter requests that produce no usable model output for 75 seconds are canceled, while actively producing streams may run longer; non-OpenRouter/local inference receives a substantially larger no-progress allowance.
 
 **Stop generation** cancels only that document task and drops its exact provider stream/active OCR result. Durable completed checkpoints remain reusable; canceled documents remain retryable.
 

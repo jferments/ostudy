@@ -120,7 +120,7 @@ describe("DocumentsScreen live generation progress", () => {
     );
 
     expect((await screen.findAllByText("Generating cards")).length).toBeGreaterThan(0);
-    expect(screen.getByText("Active windows 2–5 of 9 · pages 9–35.")).toBeTruthy();
+    expect(await screen.findByText("Active windows 2–5 of 9 · pages 9–35.")).toBeTruthy();
     expect(screen.queryByText("Generating cards 1/9")).toBeNull();
     expect(screen.queryByText(/Current window 2\/9/u)).toBeNull();
   });
@@ -134,7 +134,8 @@ describe("DocumentsScreen live generation progress", () => {
     );
 
     expect(await screen.findByText("low · 2.0k")).toBeTruthy();
-    expect(screen.getAllByText("Building outline 3/10").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Building outline").length).toBeGreaterThan(0);
+    expect(screen.getByText("Window 4 of 10 · pages 13–18.")).toBeTruthy();
     expect(screen.getAllByText("1m 30s").length).toBeGreaterThan(0);
     expect(screen.getByText("15k")).toBeTruthy();
     expect(screen.getByText("7")).toBeTruthy();

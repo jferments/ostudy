@@ -8,7 +8,6 @@
 use std::time::Instant;
 
 use serde_json::Value;
-use tokio::time::timeout;
 
 use crate::{
     ai::{document_intelligence, AiRuntimeState},
@@ -25,7 +24,6 @@ use crate::{
 };
 
 const MAX_GENERATED_CARDS: usize = 10_000;
-const GENERATION_PROVIDER_ATTEMPT_SECONDS: u64 = 180;
 
 pub(crate) struct GenerationExecution<'a> {
     pub database: &'a Database,
@@ -131,7 +129,7 @@ pub(crate) async fn execute_generation_windows(
         set_current_task_phase_range(
             "generating",
             Some(batch[0] + 1),
-            batch.last().map(|position| position + 1),
+            batch.last().map(|position| *position + 1),
             completed,
             input.windows.len(),
             Some(first.page_start),

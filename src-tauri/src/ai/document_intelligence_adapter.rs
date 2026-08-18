@@ -18,7 +18,6 @@ pub(crate) use implementation::{
 };
 
 const VISUAL_ONLY_MARKER: &str = "has no extractable structured text";
-const OUTLINE_PROVIDER_ATTEMPT_SECONDS: u64 = 120;
 
 /// Build the reusable global outline used by all later generation windows.
 ///
@@ -106,7 +105,7 @@ where
         set_current_task_phase_range(
             "outline",
             Some(batch[0] + 1),
-            batch.last().map(|index| index + 1),
+            batch.last().map(|index| *index + 1),
             completed,
             windows.len(),
             Some(first.page_start),
@@ -172,19 +171,20 @@ async fn outline_slot(
 ) -> Option<(usize, Result<DocumentOutline, CommandError>)> {
     let index = index?;
     let window = &windows[index];
-    crate::logging::info(
+    crate::logging::debug_target(
+        "ai.document.outline",
         "document_outline_window_started",
-        format!(
-            "provider={} model={} window={}/{} partition={} pages={}-{} source_tokens={}",
-            task.provider_kind,
-            task.model_id,
-            index + 1,
-            windows.len(),
-            window.partition_index + 1,
-            window.page_start,
-            window.page_end,
-            window.token_estimate,
-        ),
+        "A bounded outline fragment started without logging document content.",
+        serde_json::json!({
+            "provider": task.provider_kind.as_str(),
+            "model": task.model_id.as_str(),
+            "window": index + 1,
+            "totalWindows": windows.len(),
+            "partition": window.partition_index + 1,
+            "pageStart": window.page_start,
+            "pageEnd": window.page_end,
+            "sourceTokens": window.token_estimate,
+        }),
     );
     let started = Instant::now();
     let result = match request_outline_with_resilience(

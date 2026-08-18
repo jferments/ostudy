@@ -20,7 +20,7 @@ use crate::{
     util::unix_time_millis,
 };
 
-const OUTLINE_CHECKPOINT_CONTRACT: &str = "document-outline-v2";
+const OUTLINE_CHECKPOINT_CONTRACT: &str = "document-outline-v3";
 const GENERATION_CHECKPOINT_CONTRACT: &str = "document-generation-v2";
 const MAX_CHECKPOINT_CARDS: usize = 16;
 

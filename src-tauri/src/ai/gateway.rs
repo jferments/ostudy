@@ -16,7 +16,8 @@ const MAX_ERROR_BODY_BYTES: usize = 32 * 1024;
 const STREAM_WIRE_MULTIPLIER: usize = 16;
 const OPENROUTER_HOST: &str = "openrouter.ai";
 const DOCUMENT_RETRY_DELAY_MILLIS: u64 = 750;
-const DOCUMENT_STREAM_PROGRESS_TIMEOUT_SECONDS: u64 = 75;
+const OPENROUTER_STREAM_PROGRESS_TIMEOUT_SECONDS: u64 = 75;
+const DEFAULT_STREAM_PROGRESS_TIMEOUT_SECONDS: u64 = 600;
 const MAX_SAFE_PROVIDER_METADATA_CHARS: usize = 300;
 
 #[derive(Clone)]
@@ -187,8 +188,10 @@ impl AiGateway {
     /// `initial_response_timeout_ms` is intentionally *not* a job deadline. It
     /// covers connection establishment and receipt of provider response headers.
     /// Successful headers are the provider acknowledgment boundary. After that,
-    /// ostudy waits for streamed completion content without a wall-clock limit,
-    /// while still enforcing response-size bounds and exact-task cancellation.
+    /// ostudy does not impose a blunt total inference deadline: actively producing
+    /// streams may run as needed, while a provider that stops producing usable
+    /// model output is canceled by a provider-aware progress timeout. Response-size
+    /// bounds and exact-task cancellation remain authoritative.
     /// This deliberately avoids optional llama.cpp progress/ping request fields
     /// so older compatible llama-server/Unsloth builds are not rejected merely
     /// because they do not recognize newer transport extensions.
@@ -205,7 +208,6 @@ impl AiGateway {
             return Err(canceled_error());
         }
         let initial_timeout = Duration::from_millis(initial_response_timeout_ms.max(1) as u64);
-        let progress_timeout = Duration::from_secs(DOCUMENT_STREAM_PROGRESS_TIMEOUT_SECONDS);
         let request_started = Instant::now();
         let mut streaming_body = body.clone();
         let object = streaming_body.as_object_mut().ok_or_else(|| {
@@ -219,6 +221,12 @@ impl AiGateway {
         object.insert("stream".to_string(), Value::Bool(true));
 
         let openrouter = is_openrouter_url(&url);
+        let progress_timeout_seconds = if openrouter {
+            OPENROUTER_STREAM_PROGRESS_TIMEOUT_SECONDS
+        } else {
+            DEFAULT_STREAM_PROGRESS_TIMEOUT_SECONDS
+        };
+        let progress_timeout = Duration::from_secs(progress_timeout_seconds);
         let mut request = self
             .streaming_client
             .post(url)
@@ -278,7 +286,7 @@ impl AiGateway {
             _ = cancellation.canceled() => return Err(canceled_error()),
             result = timeout(progress_timeout, response.chunk()) => match result {
                 Ok(result) => result.map_err(classify_reqwest_error)?,
-                Err(_) => return Err(stream_progress_timeout_error()),
+                Err(_) => return Err(stream_progress_timeout_error(progress_timeout_seconds)),
             },
         };
         let first_chunk = first_chunk.ok_or_else(|| {
@@ -323,7 +331,7 @@ impl AiGateway {
                 _ = cancellation.canceled() => return Err(canceled_error()),
                 result = timeout(remaining, response.chunk()) => match result {
                     Ok(result) => result.map_err(classify_reqwest_error)?,
-                    Err(_) => return Err(stream_progress_timeout_error()),
+                    Err(_) => return Err(stream_progress_timeout_error(progress_timeout_seconds)),
                 },
             };
             let Some(chunk) = next else {
@@ -1276,11 +1284,11 @@ fn classify_provider_error_value(
     error(safe_code, &message, retryable, retry_after_seconds)
 }
 
-fn stream_progress_timeout_error() -> AiGatewayError {
+fn stream_progress_timeout_error(timeout_seconds: u64) -> AiGatewayError {
     error(
         "ai_stream_progress_timeout",
         &format!(
-            "The AI provider produced no usable streamed output for {DOCUMENT_STREAM_PROGRESS_TIMEOUT_SECONDS} seconds. ostudy canceled this stalled request so the document can retry or resume without waiting indefinitely."
+            "The AI provider produced no usable streamed output for {timeout_seconds} seconds. ostudy canceled this stalled request so the document can retry or resume without waiting indefinitely."
         ),
         true,
         None,
@@ -1522,7 +1530,7 @@ mod tests {
 
     #[test]
     fn progress_timeout_is_not_retried_identically_by_the_gateway() {
-        let failure = stream_progress_timeout_error();
+        let failure = stream_progress_timeout_error(OPENROUTER_STREAM_PROGRESS_TIMEOUT_SECONDS);
         assert_eq!(failure.safe.code, "ai_stream_progress_timeout");
         assert!(!should_retry_document_stream_error(&failure));
     }

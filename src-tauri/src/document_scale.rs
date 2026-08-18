@@ -181,7 +181,7 @@ fn baseline_plan(source_unit_count: usize, provider_kind: &str) -> DocumentScale
         generation_window_max_units: 18,
         generation_window_overlap_tokens: 500,
         max_images_per_window: if provider_kind == "deepseek" { 0 } else { 3 },
-        max_cards_per_window: 16,
+        max_cards_per_window: 10,
     }
 }
 
