@@ -5,16 +5,16 @@ on:
     branches: [agent/pre-public-platform-hardening]
 
 concurrency:
-  group: one-shot-rustfmt-${{ github.ref }}
+  group: one-shot-document-routing-finalize-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: write
 
 jobs:
-  format-and-restore:
+  finalize:
     runs-on: [self-hosted, linux, x64, ostudy-unified]
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Check out branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -22,8 +22,51 @@ jobs:
           ref: agent/pre-public-platform-hardening
           fetch-depth: 0
 
-      - name: Expose pinned Rust toolchain
-        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Expose pinned toolchains
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+
+      - name: Classify output-length exhaustion correctly
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src-tauri/src/ai/gateway.rs')
+          value = path.read_text()
+          old = '''        if stream.content.trim().is_empty() && stream.tool_arguments.trim().is_empty() {
+              let finish = stream.finish_reason.as_deref().unwrap_or("not provided");
+              return Err(error(
+                  "ai_empty_response",
+                  &format!(
+                      "The provider ended the streamed document request with finish_reason={finish}, but returned no final content or structured tool arguments."
+                  ),
+                  true,
+                  None,
+              ));
+          }
+          '''
+          new = '''        if stream.content.trim().is_empty() && stream.tool_arguments.trim().is_empty() {
+              let finish = stream.finish_reason.as_deref().unwrap_or("not provided");
+              let code = if finish == "length" {
+                  "ai_document_output_truncated"
+              } else {
+                  "ai_empty_response"
+              };
+              return Err(error(
+                  code,
+                  &format!(
+                      "The provider ended the streamed document request with finish_reason={finish}, but returned no final content or structured tool arguments."
+                  ),
+                  true,
+                  None,
+              ));
+          }
+          '''
+          if old not in value:
+              raise SystemExit('gateway empty-stream classification anchor not found')
+          path.write_text(value.replace(old, new, 1))
+          PY
 
       - name: Apply canonical rustfmt and restore canonical workflow
         run: |
@@ -31,11 +74,19 @@ jobs:
           git show 667cf6ef230f152543ff84b86980eb38770d186e:.github/workflows/check.yml > .github/workflows/check.yml
           git diff --check
 
-      - name: Commit formatting only
+      - name: Compile and run focused document AI tests
+        run: |
+          cargo check --manifest-path src-tauri/Cargo.toml --locked
+          cargo test --manifest-path src-tauri/Cargo.toml --lib document_semantics
+          cargo test --manifest-path src-tauri/Cargo.toml --lib document_scale
+          cargo test --manifest-path src-tauri/Cargo.toml --lib ai::providers::openrouter
+          cargo test --manifest-path src-tauri/Cargo.toml --lib document_generation
+
+      - name: Commit finalized product changes
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src-tauri/src .github/workflows/check.yml
           git diff --cached --check
-          git commit -m 'style(rust): format outline routing rework'
+          git commit -m 'perf(ai): finalize bounded concurrent document routing'
           git push origin HEAD:agent/pre-public-platform-hardening
