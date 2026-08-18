@@ -1,17 +1,16 @@
 //! Bounded concurrency policy for independent document-provider windows.
 //!
-//! Remote API windows can execute concurrently because each request owns a
-//! disjoint bounded source window and final ordering/checkpoint commits remain
-//! deterministic. Local llama.cpp remains serial so multiple requests do not
-//! contend for the same local inference engine.
+//! Concurrency follows the execution topology, not a list of provider brands.
+//! Cloud requests can overlap because every request owns a disjoint bounded
+//! source window and durable commits remain source-ordered. Local and LAN model
+//! servers remain serial so ostudy does not assume that one user-managed
+//! inference process was started with multiple decoding slots.
 
-pub(crate) const OPENROUTER_DOCUMENT_PARALLELISM: usize = 4;
-pub(crate) const DEEPSEEK_DOCUMENT_PARALLELISM: usize = 2;
+pub(crate) const CLOUD_DOCUMENT_PARALLELISM: usize = 4;
 
-pub(crate) fn document_request_parallelism(provider_kind: &str) -> usize {
-    match provider_kind {
-        "openrouter" => OPENROUTER_DOCUMENT_PARALLELISM,
-        "deepseek" => DEEPSEEK_DOCUMENT_PARALLELISM,
+pub(crate) fn document_request_parallelism(network_scope: &str) -> usize {
+    match network_scope {
+        "cloud" => CLOUD_DOCUMENT_PARALLELISM,
         _ => 1,
     }
 }
@@ -21,9 +20,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn remote_windows_are_bounded_and_local_inference_stays_serial() {
-        assert_eq!(document_request_parallelism("openrouter"), 4);
-        assert_eq!(document_request_parallelism("deepseek"), 2);
-        assert_eq!(document_request_parallelism("llama_cpp"), 1);
+    fn cloud_windows_overlap_while_user_managed_servers_stay_serial() {
+        assert_eq!(document_request_parallelism("cloud"), 4);
+        assert_eq!(document_request_parallelism("local"), 1);
+        assert_eq!(document_request_parallelism("lan"), 1);
     }
 }

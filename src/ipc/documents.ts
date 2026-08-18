@@ -25,6 +25,9 @@ export interface DocumentGenerationProgress {
   cacheWriteTokens: number;
   usageReportedRequests: number;
   usageUnreportedRequests: number;
+  providerActivity: "preparing" | "connecting" | "responsive" | "streaming";
+  lastProviderActivityAt: number | null;
+  lastModelActivityAt: number | null;
 }
 
 export interface DocumentSummary {

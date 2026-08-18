@@ -88,6 +88,9 @@ pub(crate) struct DocumentTaskProgress {
     pub cache_write_tokens: u64,
     pub usage_reported_requests: u64,
     pub usage_unreported_requests: u64,
+    pub provider_activity: String,
+    pub last_provider_activity_at: Option<i64>,
+    pub last_model_activity_at: Option<i64>,
 }
 
 impl DocumentTaskProgress {
@@ -113,6 +116,9 @@ impl DocumentTaskProgress {
             cache_write_tokens: 0,
             usage_reported_requests: 0,
             usage_unreported_requests: 0,
+            provider_activity: "preparing".to_string(),
+            last_provider_activity_at: None,
+            last_model_activity_at: None,
         }
     }
 }
@@ -129,15 +135,13 @@ pub(crate) struct DocumentTaskUsageDelta {
 
 #[derive(Clone, Debug)]
 struct ActiveDocumentTask {
-    document_id: String,
     signal: CancellationSignal,
     progress: Arc<Mutex<DocumentTaskProgress>>,
 }
 
 impl ActiveDocumentTask {
-    fn new(document_id: &str, started_at: i64) -> Self {
+    fn new(started_at: i64) -> Self {
         Self {
-            document_id: document_id.to_string(),
             signal: CancellationSignal::new(),
             progress: Arc::new(Mutex::new(DocumentTaskProgress::new(started_at))),
         }
@@ -158,7 +162,7 @@ impl ActiveDocumentTasks {
                 "Flashcard generation is already running for this PDF.",
             ));
         }
-        let task = ActiveDocumentTask::new(document_id, unix_time_millis()?);
+        let task = ActiveDocumentTask::new(unix_time_millis()?);
         tasks.insert(document_id.to_string(), task.clone());
         Ok(task)
     }
@@ -239,12 +243,6 @@ pub(crate) fn current_signal() -> Option<CancellationSignal> {
         .ok()
 }
 
-pub(crate) fn current_document_id() -> Option<String> {
-    CURRENT_DOCUMENT_TASK
-        .try_with(|task| task.document_id.clone())
-        .ok()
-}
-
 #[cfg(test)]
 pub(crate) fn current_reasoning_effort() -> Option<String> {
     CURRENT_DOCUMENT_TASK
@@ -281,8 +279,7 @@ pub(crate) fn set_current_task_phase(
 ) {
     set_current_task_phase_range(
         phase,
-        current_window,
-        current_window,
+        (current_window, current_window),
         completed_windows,
         total_windows,
         current_page_start,
@@ -293,14 +290,14 @@ pub(crate) fn set_current_task_phase(
 
 pub(crate) fn set_current_task_phase_range(
     phase: &str,
-    current_window: Option<usize>,
-    current_window_end: Option<usize>,
+    current_windows: (Option<usize>, Option<usize>),
     completed_windows: usize,
     total_windows: usize,
     current_page_start: Option<i64>,
     current_page_end: Option<i64>,
     current_partition: Option<usize>,
 ) {
+    let (current_window, current_window_end) = current_windows;
     let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
         if let Ok(mut progress) = task.progress.lock() {
             progress.phase = phase.chars().take(80).collect();
@@ -311,6 +308,26 @@ pub(crate) fn set_current_task_phase_range(
             progress.current_page_start = current_page_start;
             progress.current_page_end = current_page_end;
             progress.current_partition = current_partition;
+            if matches!(phase, "outline" | "generating" | "curating") {
+                progress.provider_activity = "connecting".to_string();
+                progress.last_provider_activity_at = None;
+                progress.last_model_activity_at = None;
+            }
+        }
+    });
+}
+
+pub(crate) fn record_current_provider_activity(model_progress: bool) {
+    let now = unix_time_millis().unwrap_or_default();
+    let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
+        if let Ok(mut progress) = task.progress.lock() {
+            progress.last_provider_activity_at = Some(now);
+            if model_progress {
+                progress.provider_activity = "streaming".to_string();
+                progress.last_model_activity_at = Some(now);
+            } else if progress.provider_activity != "streaming" {
+                progress.provider_activity = "responsive".to_string();
+            }
         }
     });
 }

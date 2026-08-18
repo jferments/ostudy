@@ -501,6 +501,10 @@ function GenerationProgressPanel({
           <dd>{progress ? progress.providerRequestCount.toLocaleString() : "—"}</dd>
         </div>
         <div>
+          <dt>Provider</dt>
+          <dd>{formatProviderActivity(progress, now)}</dd>
+        </div>
+        <div>
           <dt>Retries</dt>
           <dd className={progress && progress.retryCount > 0 ? progressStyles.warning : undefined}>
             {progress ? progress.retryCount.toLocaleString() : "—"}
@@ -533,6 +537,27 @@ function GenerationProgressPanel({
       </dl>
     </div>
   );
+}
+
+function formatProviderActivity(
+  progress: DocumentGenerationProgress | null,
+  now: number,
+): string {
+  if (!progress) return "Preparing";
+  const age = progress.lastProviderActivityAt === null
+    ? null
+    : Math.max(0, Math.floor((now - progress.lastProviderActivityAt) / 1_000));
+  const suffix = age === null ? "" : age < 2 ? " · now" : ` · ${age}s ago`;
+  switch (progress.providerActivity) {
+    case "streaming":
+      return `Receiving output${suffix}`;
+    case "responsive":
+      return `Responsive, waiting${suffix}`;
+    case "connecting":
+      return "Connecting";
+    default:
+      return "Preparing";
+  }
 }
 
 function generationStage(

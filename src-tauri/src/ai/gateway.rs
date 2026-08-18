@@ -7,8 +7,9 @@ use tokio::time::{sleep, timeout, Instant};
 use url::Url;
 
 use crate::task_cancellation::{
-    current_signal, record_current_provider_request, record_current_provider_retry,
-    record_current_usage, set_current_reasoning_effort, CancellationSignal, DocumentTaskUsageDelta,
+    current_signal, record_current_provider_activity, record_current_provider_request,
+    record_current_provider_retry, record_current_usage, set_current_reasoning_effort,
+    CancellationSignal, DocumentTaskUsageDelta,
 };
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 10;
@@ -16,8 +17,6 @@ const MAX_ERROR_BODY_BYTES: usize = 32 * 1024;
 const STREAM_WIRE_MULTIPLIER: usize = 16;
 const OPENROUTER_HOST: &str = "openrouter.ai";
 const DOCUMENT_RETRY_DELAY_MILLIS: u64 = 750;
-const OPENROUTER_STREAM_PROGRESS_TIMEOUT_SECONDS: u64 = 75;
-const DEFAULT_STREAM_PROGRESS_TIMEOUT_SECONDS: u64 = 600;
 const MAX_SAFE_PROVIDER_METADATA_CHARS: usize = 300;
 
 #[derive(Clone)]
@@ -49,8 +48,9 @@ impl AiGateway {
             .build()
             .map_err(|error| format!("Could not initialize the AI HTTP client: {error}"))?;
         // Long document-generation requests deliberately have no reqwest-wide
-        // wall-clock deadline. Connection/header waiting remains bounded, and an
-        // accepted stream is governed by useful-output progress plus user cancel.
+        // wall-clock deadline. Connection/header waiting and transport silence are
+        // bounded by the profile's inactivity setting; active streams may run as
+        // long as needed and remain exactly cancelable by the document task.
         let streaming_client = Client::builder()
             .redirect(Policy::none())
             .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECONDS))
@@ -199,33 +199,24 @@ impl AiGateway {
         url: Url,
         bearer: Option<&str>,
         body: &Value,
-        initial_response_timeout_ms: i64,
+        inactivity_timeout_ms: i64,
         maximum_content_bytes: usize,
         cancellation: &CancellationSignal,
     ) -> Result<Value, AiGatewayError> {
         if cancellation.is_canceled() {
             return Err(canceled_error());
         }
-        let initial_timeout = Duration::from_millis(initial_response_timeout_ms.max(1) as u64);
+        let inactivity_timeout = Duration::from_millis(inactivity_timeout_ms.max(1) as u64);
         let request_started = Instant::now();
-        let mut streaming_body = body.clone();
-        let object = streaming_body.as_object_mut().ok_or_else(|| {
-            error(
-                "ai_provider_protocol_error",
-                "The AI chat request was not a JSON object.",
-                false,
-                None,
-            )
-        })?;
-        object.insert("stream".to_string(), Value::Bool(true));
-
+        let streaming_body = prepare_streaming_body(body)?;
         let openrouter = is_openrouter_url(&url);
-        let progress_timeout_seconds = if openrouter {
-            OPENROUTER_STREAM_PROGRESS_TIMEOUT_SECONDS
-        } else {
-            DEFAULT_STREAM_PROGRESS_TIMEOUT_SECONDS
-        };
-        let progress_timeout = Duration::from_secs(progress_timeout_seconds);
+        let endpoint_host = url
+            .host_str()
+            .and_then(|value| safe_metadata_string(value, MAX_SAFE_PROVIDER_METADATA_CHARS));
+        let requested_model = body
+            .get("model")
+            .and_then(Value::as_str)
+            .and_then(|value| safe_metadata_string(value, MAX_SAFE_PROVIDER_METADATA_CHARS));
         let mut request = self
             .streaming_client
             .post(url)
@@ -242,12 +233,13 @@ impl AiGateway {
         }
 
         let mut response = wait_initial(
-            initial_timeout,
+            inactivity_timeout,
             cancellation,
             request.send(),
-            "The AI provider did not accept the request before the configured initial-response timeout.",
+            "The AI provider sent no response headers before the configured inactivity timeout.",
         )
         .await?;
+        record_current_provider_activity(false);
         let status = response.status();
         let retry_after_seconds = response
             .headers()
@@ -283,9 +275,9 @@ impl AiGateway {
 
         let first_chunk = tokio::select! {
             _ = cancellation.canceled() => return Err(canceled_error()),
-            result = timeout(progress_timeout, response.chunk()) => match result {
+            result = timeout(inactivity_timeout, response.chunk()) => match result {
                 Ok(result) => result.map_err(classify_reqwest_error)?,
-                Err(_) => return Err(stream_progress_timeout_error(progress_timeout_seconds)),
+                Err(_) => return Err(stream_inactivity_error(inactivity_timeout_ms)),
             },
         };
         let first_chunk = first_chunk.ok_or_else(|| {
@@ -315,34 +307,36 @@ impl AiGateway {
             generation_id,
             retry_after_seconds,
         );
+        record_current_provider_activity(false);
+        let before_first = stream.model_progress_bytes();
         stream.push_bytes(&first_chunk)?;
-        let mut useful_progress_bytes = stream.useful_progress_bytes();
-        let mut first_useful_output_ms = (useful_progress_bytes > 0)
-            .then(|| u64::try_from(request_started.elapsed().as_millis()).unwrap_or(u64::MAX));
-        let mut last_useful_progress = Instant::now();
+        let mut model_progress_bytes = stream.model_progress_bytes();
+        let mut first_model_output_ms = None;
+        if model_progress_bytes > before_first {
+            record_current_provider_activity(true);
+            first_model_output_ms =
+                Some(u64::try_from(request_started.elapsed().as_millis()).unwrap_or(u64::MAX));
+        }
 
         while !stream.done {
-            let remaining = progress_timeout.saturating_sub(last_useful_progress.elapsed());
-            if remaining.is_zero() {
-                return Err(stream_progress_timeout_error(progress_timeout_seconds));
-            }
             let next = tokio::select! {
                 _ = cancellation.canceled() => return Err(canceled_error()),
-                result = timeout(remaining, response.chunk()) => match result {
+                result = timeout(inactivity_timeout, response.chunk()) => match result {
                     Ok(result) => result.map_err(classify_reqwest_error)?,
-                    Err(_) => return Err(stream_progress_timeout_error(progress_timeout_seconds)),
+                    Err(_) => return Err(stream_inactivity_error(inactivity_timeout_ms)),
                 },
             };
             let Some(chunk) = next else {
                 break;
             };
+            record_current_provider_activity(false);
             stream.push_bytes(&chunk)?;
-            let next_progress_bytes = stream.useful_progress_bytes();
-            if next_progress_bytes > useful_progress_bytes {
-                useful_progress_bytes = next_progress_bytes;
-                last_useful_progress = Instant::now();
-                if first_useful_output_ms.is_none() {
-                    first_useful_output_ms = Some(
+            let next_progress_bytes = stream.model_progress_bytes();
+            if next_progress_bytes > model_progress_bytes {
+                model_progress_bytes = next_progress_bytes;
+                record_current_provider_activity(true);
+                if first_model_output_ms.is_none() {
+                    first_model_output_ms = Some(
                         u64::try_from(request_started.elapsed().as_millis()).unwrap_or(u64::MAX),
                     );
                 }
@@ -358,23 +352,25 @@ impl AiGateway {
         if let Some(usage) = usage.as_ref() {
             record_current_usage(usage_delta(usage));
         }
-        if openrouter {
-            crate::logging::debug_target(
-                "ai.gateway.openrouter",
-                "openrouter_stream_completed",
-                "An OpenRouter document request completed without logging provider content.",
-                json!({
-                    "generationId": stream.generation_id.as_deref(),
-                    "upstreamProvider": stream.upstream_provider.as_deref(),
-                    "model": stream.model.as_deref(),
-                    "finishReason": stream.finish_reason.as_deref(),
-                    "durationMs": u64::try_from(request_started.elapsed().as_millis()).unwrap_or(u64::MAX),
-                    "firstUsefulOutputMs": first_useful_output_ms,
-                    "contentBytes": stream.content.len(),
-                    "toolArgumentBytes": stream.tool_arguments.len(),
-                }),
-            );
-        }
+        crate::logging::debug_target(
+            "ai.gateway.streaming",
+            "provider_stream_completed",
+            "A document-provider stream completed without logging source, model output, or reasoning content.",
+            json!({
+                "endpointHost": endpoint_host.as_deref(),
+                "generationId": stream.generation_id.as_deref(),
+                "upstreamProvider": stream.upstream_provider.as_deref(),
+                "model": stream.model.as_deref().or(requested_model.as_deref()),
+                "finishReason": stream.finish_reason.as_deref(),
+                "durationMs": u64::try_from(request_started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                "firstModelOutputMs": first_model_output_ms,
+                "keepaliveEvents": stream.comment_events,
+                "contentBytes": stream.content.len(),
+                "toolArgumentBytes": stream.tool_arguments.len(),
+                "reasoningBytesObserved": stream.reasoning_bytes,
+                "usageReported": usage.is_some(),
+            }),
+        );
         let message = if stream.tool_arguments.trim().is_empty() {
             json!({ "content": stream.content })
         } else {
@@ -411,12 +407,6 @@ impl AiGateway {
         maximum_bytes: usize,
     ) -> Result<Value, AiGatewayError> {
         let openrouter = is_openrouter_url(&url);
-        let progress_timeout_seconds = if openrouter {
-            OPENROUTER_STREAM_PROGRESS_TIMEOUT_SECONDS
-        } else {
-            DEFAULT_STREAM_PROGRESS_TIMEOUT_SECONDS
-        };
-        let progress_timeout = Duration::from_secs(progress_timeout_seconds);
         let mut request = self
             .client
             .request(method, url)
@@ -570,6 +560,8 @@ struct SseChatAccumulator {
     tool_arguments: String,
     finish_reason: Option<String>,
     usage: Option<Value>,
+    reasoning_bytes: usize,
+    comment_events: u64,
     wire_bytes: usize,
     maximum_content_bytes: usize,
     maximum_wire_bytes: usize,
@@ -590,6 +582,8 @@ impl SseChatAccumulator {
             tool_arguments: String::new(),
             finish_reason: None,
             usage: None,
+            reasoning_bytes: 0,
+            comment_events: 0,
             wire_bytes: 0,
             maximum_content_bytes,
             maximum_wire_bytes,
@@ -650,7 +644,11 @@ impl SseChatAccumulator {
     }
 
     fn process_line(&mut self, line: &[u8]) -> Result<(), AiGatewayError> {
-        if line.is_empty() || line.starts_with(b":") {
+        if line.is_empty() {
+            return Ok(());
+        }
+        if line.starts_with(b":") {
+            self.comment_events = self.comment_events.saturating_add(1);
             return Ok(());
         }
         let Some(data) = line.strip_prefix(b"data:") else {
@@ -704,6 +702,12 @@ impl SseChatAccumulator {
             self.finish_reason = Some(reason.to_string());
         }
         let delta = choice.and_then(|choice| choice.get("delta"));
+        if let Some(reasoning) = delta
+            .and_then(|delta| delta.get("reasoning_content"))
+            .and_then(Value::as_str)
+        {
+            self.reasoning_bytes = self.reasoning_bytes.saturating_add(reasoning.len());
+        }
         if let Some(content) = delta
             .and_then(|delta| delta.get("content"))
             .and_then(Value::as_str)
@@ -775,8 +779,11 @@ impl SseChatAccumulator {
         Ok(())
     }
 
-    fn useful_progress_bytes(&self) -> usize {
-        self.content.len().saturating_add(self.tool_arguments.len())
+    fn model_progress_bytes(&self) -> usize {
+        self.content
+            .len()
+            .saturating_add(self.tool_arguments.len())
+            .saturating_add(self.reasoning_bytes)
     }
 
     fn append_compat_content(&mut self, content: &str) -> Result<(), AiGatewayError> {
@@ -799,6 +806,24 @@ impl SseChatAccumulator {
         self.content.push_str(content);
         Ok(())
     }
+}
+
+fn prepare_streaming_body(body: &Value) -> Result<Value, AiGatewayError> {
+    let mut streaming_body = body.clone();
+    let object = streaming_body.as_object_mut().ok_or_else(|| {
+        error(
+            "ai_provider_protocol_error",
+            "The AI chat request was not a JSON object.",
+            false,
+            None,
+        )
+    })?;
+    object.insert("stream".to_string(), Value::Bool(true));
+    object.insert(
+        "stream_options".to_string(),
+        json!({ "include_usage": true }),
+    );
+    Ok(streaming_body)
 }
 
 fn trim_ascii(mut bytes: &[u8]) -> &[u8] {
@@ -843,7 +868,6 @@ fn prepare_provider_body_for_document(
             "enabled": false
         }]),
     );
-    object.insert("usage".to_string(), json!({ "include": true }));
     // Document windows are independent batch work, not conversational turns.
     // A shared session_id pins every concurrent request to one provider endpoint,
     // concentrating a batch on the same slow/stalled route for little cache gain.
@@ -858,55 +882,96 @@ fn prepare_provider_body_for_document(
 }
 
 fn safe_usage_envelope(value: &Value) -> Option<Value> {
-    let usage = value.get("usage")?.as_object()?;
-    let prompt_tokens = nonnegative_integer(usage.get("prompt_tokens"));
-    let completion_tokens = nonnegative_integer(usage.get("completion_tokens"));
-    let total_tokens = nonnegative_integer(usage.get("total_tokens"));
-    let cached_tokens = nonnegative_integer(
-        usage
-            .get("prompt_tokens_details")
-            .and_then(Value::as_object)
-            .and_then(|details| details.get("cached_tokens")),
-    );
-    let cache_write_tokens = nonnegative_integer(
-        usage
-            .get("prompt_tokens_details")
-            .and_then(Value::as_object)
-            .and_then(|details| details.get("cache_write_tokens")),
-    );
-    let reasoning_tokens = nonnegative_integer(
-        usage
-            .get("completion_tokens_details")
-            .and_then(Value::as_object)
-            .and_then(|details| details.get("reasoning_tokens")),
-    );
-    let cost = usage
-        .get("cost")
+    let read = |pointers: &[&str]| {
+        pointers.iter().find_map(|pointer| {
+            value
+                .pointer(pointer)
+                .and_then(|item| nonnegative_integer(Some(item)))
+        })
+    };
+    let prompt_tokens = read(&["/usage/prompt_tokens", "/usage/input_tokens"]);
+    let completion_tokens = read(&["/usage/completion_tokens", "/usage/output_tokens"]);
+    let total_tokens = read(&["/usage/total_tokens"]).or_else(|| {
+        prompt_tokens
+            .zip(completion_tokens)
+            .map(|(prompt, completion)| prompt.saturating_add(completion))
+    });
+    let cached_tokens = read(&[
+        "/usage/prompt_tokens_details/cached_tokens",
+        "/usage/prompt_cache_hit_tokens",
+    ]);
+    let cache_write_tokens = read(&["/usage/prompt_tokens_details/cache_write_tokens"]);
+    let reasoning_tokens = read(&["/usage/completion_tokens_details/reasoning_tokens"]);
+    let cost = value
+        .pointer("/usage/cost")
         .and_then(Value::as_f64)
         .filter(|value| value.is_finite() && *value >= 0.0)
         .map(Value::from);
-    if prompt_tokens.is_none()
-        && completion_tokens.is_none()
-        && total_tokens.is_none()
-        && cached_tokens.is_none()
-        && cache_write_tokens.is_none()
-        && reasoning_tokens.is_none()
-        && cost.is_none()
+
+    if prompt_tokens.is_some()
+        || completion_tokens.is_some()
+        || total_tokens.is_some()
+        || cached_tokens.is_some()
+        || cache_write_tokens.is_some()
+        || reasoning_tokens.is_some()
+        || cost.is_some()
     {
+        return Some(json!({
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "prompt_tokens_details": {
+                "cached_tokens": cached_tokens,
+                "cache_write_tokens": cache_write_tokens,
+            },
+            "completion_tokens_details": {
+                "reasoning_tokens": reasoning_tokens,
+            },
+            "cost": cost,
+        }));
+    }
+
+    // llama.cpp versions differ on whether their final stream event includes a
+    // standard usage object, native timings, or both. Normalize timings into the
+    // same usage envelope rather than making document processing provider-aware.
+    let prompt_processed = read(&[
+        "/timings/prompt_n",
+        "/__verbose/timings/prompt_n",
+        "/tokens_evaluated",
+        "/__verbose/tokens_evaluated",
+    ]);
+    let cached = read(&[
+        "/timings/cache_n",
+        "/__verbose/timings/cache_n",
+        "/tokens_cached",
+        "/__verbose/tokens_cached",
+    ])
+    .unwrap_or(0);
+    let completion = read(&[
+        "/timings/predicted_n",
+        "/__verbose/timings/predicted_n",
+        "/tokens_predicted",
+        "/__verbose/tokens_predicted",
+    ]);
+    let prompt = prompt_processed.map(|value| value.saturating_add(cached));
+    let total = prompt
+        .zip(completion)
+        .map(|(prompt, completion)| prompt.saturating_add(completion));
+    if prompt.is_none() && completion.is_none() && total.is_none() {
         return None;
     }
     Some(json!({
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "total_tokens": total_tokens,
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "total_tokens": total,
         "prompt_tokens_details": {
-            "cached_tokens": cached_tokens,
-            "cache_write_tokens": cache_write_tokens,
+            "cached_tokens": cached,
+            "cache_write_tokens": Value::Null,
         },
         "completion_tokens_details": {
-            "reasoning_tokens": reasoning_tokens,
+            "reasoning_tokens": Value::Null,
         },
-        "cost": cost,
+        "cost": Value::Null,
     }))
 }
 
@@ -1289,11 +1354,12 @@ fn classify_provider_error_value(
     error(safe_code, &message, retryable, retry_after_seconds)
 }
 
-fn stream_progress_timeout_error(timeout_seconds: u64) -> AiGatewayError {
+fn stream_inactivity_error(timeout_ms: i64) -> AiGatewayError {
+    let timeout_seconds = (timeout_ms.max(1) as f64 / 1_000.0).max(0.001);
     error(
-        "ai_stream_progress_timeout",
+        "ai_stream_inactive",
         &format!(
-            "The AI provider produced no usable streamed output for {timeout_seconds} seconds. ostudy canceled this stalled request so the document can retry or resume without waiting indefinitely."
+            "The AI provider sent no response data for {timeout_seconds:.1} seconds. ostudy canceled this inactive connection; active generation is never stopped by a total wall-clock deadline."
         ),
         true,
         None,
@@ -1328,6 +1394,7 @@ fn should_retry_document_stream_error(error_value: &AiGatewayError) -> bool {
             | "ai_connection_failed"
             | "ai_request_timeout"
             | "ai_initial_response_timeout"
+            | "ai_stream_inactive"
             | "ai_rate_limited"
             | "ai_http_rate_limited"
     )
@@ -1521,23 +1588,36 @@ mod tests {
     }
 
     #[test]
-    fn keepalive_comments_do_not_count_as_useful_model_progress() {
+    fn keepalive_comments_are_transport_activity_but_not_model_output() {
         let mut stream = SseChatAccumulator::new(1_024, 16_384);
         stream
             .push_bytes(b": OPENROUTER PROCESSING\n")
             .expect("SSE keepalive should be accepted");
-        assert_eq!(stream.useful_progress_bytes(), 0);
+        assert_eq!(stream.comment_events, 1);
+        assert_eq!(stream.model_progress_bytes(), 0);
         stream
             .push_bytes(b"data: {\"choices\":[{\"delta\":{\"content\":\"{\"}}]}\n")
             .expect("model content should be accepted");
-        assert!(stream.useful_progress_bytes() > 0);
+        assert!(stream.model_progress_bytes() > 0);
     }
 
     #[test]
-    fn progress_timeout_is_not_retried_identically_by_the_gateway() {
-        let failure = stream_progress_timeout_error(OPENROUTER_STREAM_PROGRESS_TIMEOUT_SECONDS);
-        assert_eq!(failure.safe.code, "ai_stream_progress_timeout");
-        assert!(!should_retry_document_stream_error(&failure));
+    fn reasoning_deltas_count_as_model_progress_without_being_retained() {
+        let mut stream = SseChatAccumulator::new(1_024, 16_384);
+        stream
+            .push_bytes(b"data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"working\"}}]}\n")
+            .unwrap();
+        assert_eq!(stream.content, "");
+        assert_eq!(stream.reasoning_bytes, 7);
+        assert_eq!(stream.model_progress_bytes(), 7);
+    }
+
+    #[test]
+    fn stream_inactivity_is_a_transient_transport_failure() {
+        let failure = stream_inactivity_error(60_000);
+        assert_eq!(failure.safe.code, "ai_stream_inactive");
+        assert!(should_retry_document_stream_error(&failure));
+        assert!(failure.safe.message.contains("total wall-clock deadline"));
     }
 
     #[test]
@@ -1592,7 +1672,7 @@ mod tests {
         .expect("OpenRouter requests should be normalized");
         assert_eq!(prepared["plugins"][0]["id"], "context-compression");
         assert_eq!(prepared["plugins"][0]["enabled"], false);
-        assert_eq!(prepared["usage"]["include"], true);
+        assert!(prepared.get("usage").is_none());
         assert!(prepared.get("session_id").is_none());
         assert_eq!(prepared["reasoning"]["effort"], "low");
         assert_eq!(prepared["reasoning"]["exclude"], true);
@@ -1609,6 +1689,29 @@ mod tests {
             &json!({})
         )
         .is_none());
+    }
+
+    #[test]
+    fn every_document_stream_requests_a_final_usage_chunk() {
+        let prepared = prepare_streaming_body(&json!({
+            "model": "example/model",
+            "stream": false
+        }))
+        .unwrap();
+        assert_eq!(prepared["stream"], true);
+        assert_eq!(prepared["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn llama_timings_are_normalized_into_standard_stream_usage() {
+        let usage = safe_usage_envelope(&json!({
+            "timings": {"cache_n": 180, "prompt_n": 40, "predicted_n": 45}
+        }))
+        .expect("llama timings should be usable");
+        assert_eq!(usage["prompt_tokens"], 220);
+        assert_eq!(usage["completion_tokens"], 45);
+        assert_eq!(usage["total_tokens"], 265);
+        assert_eq!(usage["prompt_tokens_details"]["cached_tokens"], 180);
     }
 
     #[test]

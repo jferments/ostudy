@@ -26,7 +26,7 @@ A provider profile records nonsecret configuration such as:
 - the normalized endpoint URL;
 - the model identifier;
 - whether authentication is required;
-- request timeout and enabled state;
+- provider inactivity timeout and enabled state;
 - an optional OpenRouter-only zero-data-retention requirement;
 - capability evidence from the most recent successful verification;
 - whether the profile is the default for a supported task.
@@ -80,7 +80,7 @@ ostudy never changes providers because a request failed, a model was slow, or a 
 
 The original PDF is stored locally and is not uploaded as an opaque file. ostudy performs local extraction, semantic organization, rendering, and OCR, then sends bounded text context and selected rendered pages when the verified provider/model supports image input. The exact amount depends on document structure, task windows, and provider capability.
 
-The application records safe progress and usage measurements needed to resume or diagnose a job, not raw provider messages or document text in diagnostic exports.
+The application records safe progress and usage measurements needed to resume or diagnose a job, not raw provider messages or document text in diagnostic exports. During streamed document work the profile timeout is an inactivity limit: received SSE heartbeats, reasoning deltas, output deltas, and final usage events prove that the connection is responsive and reset the timer. It is not a maximum duration for a complete generation request.
 
 ## Troubleshooting
 

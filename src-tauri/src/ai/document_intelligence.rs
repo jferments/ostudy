@@ -474,10 +474,7 @@ where
 pub(super) fn recoverable_outline_window_error(error: &CommandError) -> bool {
     matches!(
         error.code.as_str(),
-        "ai_document_output_truncated"
-            | "ai_document_output_invalid"
-            | "ai_empty_response"
-            | "ai_stream_progress_timeout"
+        "ai_document_output_truncated" | "ai_document_output_invalid" | "ai_empty_response"
     )
 }
 
@@ -570,51 +567,118 @@ pub(crate) async fn curate_document_cards(
     }
 
     let outline_json = outline_context_for_curation(outline)?;
+    let batches = into_curation_batches(cards);
+    let parallelism = super::concurrency::document_request_parallelism(&task.network_scope)
+        .clamp(1, batches.len().max(1));
+    crate::logging::debug_target(
+        "ai.document.curation",
+        "document_curation_execution_plan",
+        "Prepared bounded card-curation batches without logging generated card content.",
+        json!({
+            "provider": task.provider_kind.as_str(),
+            "model": task.model_id.as_str(),
+            "batches": batches.len(),
+            "parallelism": parallelism,
+            "candidates": batches.iter().map(Vec::len).sum::<usize>(),
+        }),
+    );
+
     let mut retained = Vec::new();
-    for batch in cards.chunks(MAX_CURATE_CARDS_PER_BATCH) {
-        let summaries = batch
-            .iter()
-            .enumerate()
-            .map(|(index, card)| compact_card_summary(index, card))
-            .collect::<Vec<_>>();
-        let user = format!(
-            "Global document outline:
-<ostudy-global-outline>
-{outline_json}
-</ostudy-global-outline>
-
-             Candidate flashcards:
-<ostudy-candidates>
-{}
-</ostudy-candidates>
-
-             Return the zero-based indices of candidates that should remain. Keep strong coverage of major learning objectives and a useful mix of recall and application.              QUALITY GATE: reject a candidate unless its answer directly and completely answers its question and is supported by the document context. Reject question/answer mismatches, incomplete answers to multi-part questions, answers that are only headings/topic labels, unsupported numerical claims, reversed question/answer direction, vague prompts whose answer is not uniquely determined, and cards that require seeing the PDF to make sense. For definitions, keep only genuine term/definition pairs.              Also remove globally minor or hyperspecific trivia, bibliography/citation artifacts, near-duplicates, and redundant cards that test the same knowledge in essentially the same way. When uncertain whether a candidate is semantically correct, drop it. Do not rewrite cards and do not invent replacements.",
-            summaries.join("
-")
+    let mut cursor = 0_usize;
+    while cursor < batches.len() {
+        let end = (cursor + parallelism).min(batches.len());
+        let indices = (cursor..end).collect::<Vec<_>>();
+        let p0 = indices.first().copied();
+        let p1 = indices.get(1).copied();
+        let p2 = indices.get(2).copied();
+        let p3 = indices.get(3).copied();
+        let (r0, r1, r2, r3) = tokio::join!(
+            curation_slot(runtime, task, &outline_json, &batches, p0),
+            curation_slot(runtime, task, &outline_json, &batches, p1),
+            curation_slot(runtime, task, &outline_json, &batches, p2),
+            curation_slot(runtime, task, &outline_json, &batches, p3),
         );
-        match request_curation_with_retry(runtime, task, &user, batch.len()).await {
-            Ok(keep) => retained.extend(
-                keep.into_iter()
-                    .filter_map(|index| batch.get(index).cloned()),
-            ),
-            Err(error) => {
-                crate::logging::info(
-                    "document_curation_batch_skipped",
-                    format!(
-                        "candidates={} code={} detail={}",
-                        batch.len(),
-                        error.code,
-                        bounded_diagnostic(&error.message, 400),
-                    ),
-                );
-                retained.extend(batch.iter().cloned());
+
+        for (batch_index, result) in [r0, r1, r2, r3].into_iter().flatten() {
+            let batch = &batches[batch_index];
+            match result {
+                Ok(keep) => retained.extend(
+                    keep.into_iter()
+                        .filter_map(|index| batch.get(index).cloned()),
+                ),
+                Err(error) => {
+                    crate::logging::warn_target(
+                        "ai.document.curation",
+                        "document_curation_batch_skipped",
+                        "A bounded curation batch failed; validated candidates from that batch were retained rather than discarded.",
+                        json!({
+                            "batch": batch_index + 1,
+                            "candidates": batch.len(),
+                            "code": error.code.as_str(),
+                            "detail": bounded_diagnostic(&error.message, 400),
+                        }),
+                    );
+                    retained.extend(batch.iter().cloned());
+                }
             }
         }
+        cursor = end;
     }
 
     let mut seen = HashSet::new();
     retained.retain(|card| seen.insert(card_identity(card)));
     Ok(retained)
+}
+
+fn into_curation_batches(cards: Vec<Value>) -> Vec<Vec<Value>> {
+    let mut cards = cards.into_iter();
+    let mut batches = Vec::new();
+    loop {
+        let batch = cards
+            .by_ref()
+            .take(MAX_CURATE_CARDS_PER_BATCH)
+            .collect::<Vec<_>>();
+        if batch.is_empty() {
+            break;
+        }
+        batches.push(batch);
+    }
+    batches
+}
+
+async fn curation_slot(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    outline_json: &str,
+    batches: &[Vec<Value>],
+    batch_index: Option<usize>,
+) -> Option<(usize, Result<Vec<usize>, CommandError>)> {
+    let batch_index = batch_index?;
+    let batch = batches.get(batch_index)?;
+    let summaries = batch
+        .iter()
+        .enumerate()
+        .map(|(index, card)| compact_card_summary(index, card))
+        .collect::<Vec<_>>();
+    let user = format!(
+        "Global document outline:
+<ostudy-global-outline>
+{outline_json}
+</ostudy-global-outline>
+
+         Candidate flashcards:
+<ostudy-candidates>
+{}
+</ostudy-candidates>
+
+         Return the zero-based indices of candidates that should remain. Keep strong coverage of major learning objectives and a useful mix of recall and application.          QUALITY GATE: reject a candidate unless its answer directly and completely answers its question and is supported by the document context. Reject question/answer mismatches, incomplete answers to multi-part questions, answers that are only headings/topic labels, unsupported numerical claims, reversed question/answer direction, vague prompts whose answer is not uniquely determined, and cards that require seeing the PDF to make sense. For definitions, keep only genuine term/definition pairs.          Also remove globally minor or hyperspecific trivia, bibliography/citation artifacts, near-duplicates, and redundant cards that test the same knowledge in essentially the same way. When uncertain whether a candidate is semantically correct, drop it. Do not rewrite cards and do not invent replacements.",
+        summaries.join("
+")
+    );
+    Some((
+        batch_index,
+        request_curation_with_retry(runtime, task, &user, batch.len()).await,
+    ))
 }
 
 pub(super) async fn request_outline_fragment(
@@ -1061,17 +1125,18 @@ fn record_document_usage(task: &DocumentTaskContext, response: &Value) {
             usage.unreported_requests = usage.unreported_requests.saturating_add(1);
         }
     }
-    crate::logging::info(
+    crate::logging::debug_target(
+        "ai.document.usage",
         "document_ai_usage",
-        format!(
-            "provider={} model={} reported={} prompt_tokens={} completion_tokens={} total_tokens={}",
-            task.provider_kind,
-            task.model_id,
-            reported,
-            prompt_tokens.map_or_else(|| "unknown".to_string(), |value| value.to_string()),
-            completion_tokens.map_or_else(|| "unknown".to_string(), |value| value.to_string()),
-            total_tokens.map_or_else(|| "unknown".to_string(), |value| value.to_string()),
-        ),
+        "Recorded provider token usage without logging prompt or model content.",
+        json!({
+            "provider": task.provider_kind.as_str(),
+            "model": task.model_id.as_str(),
+            "reported": reported,
+            "promptTokens": prompt_tokens,
+            "completionTokens": completion_tokens,
+            "totalTokens": total_tokens,
+        }),
     );
 }
 
@@ -2282,6 +2347,18 @@ mod tests {
             marked,
             "Cardiac output equals {{c1::heart rate}} multiplied by {{c2::stroke volume}}."
         );
+    }
+
+    #[test]
+    fn curation_batches_preserve_order_and_never_exceed_the_contract() {
+        let cards = (0..97).map(|index| json!({ "index": index })).collect();
+        let batches = into_curation_batches(cards);
+        assert_eq!(
+            batches.iter().map(Vec::len).collect::<Vec<_>>(),
+            vec![32, 32, 32, 1]
+        );
+        assert_eq!(batches[0][0]["index"], 0);
+        assert_eq!(batches[3][0]["index"], 96);
     }
 
     #[test]

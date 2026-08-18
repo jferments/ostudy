@@ -1,9 +1,8 @@
 use std::time::Instant;
 
 use crate::{
-    document_semantics::SemanticWindow,
-    error::CommandError,
-    task_cancellation::{record_current_provider_retry, set_current_task_phase_range},
+    document_semantics::SemanticWindow, error::CommandError,
+    task_cancellation::set_current_task_phase_range,
 };
 
 use super::{catalog, endpoint_policy, gateway, profiles, secrets, AiRuntimeState};
@@ -78,7 +77,7 @@ where
         .enumerate()
         .filter_map(|(index, fragment)| fragment.is_none().then_some(index))
         .collect::<Vec<_>>();
-    let parallelism = super::concurrency::document_request_parallelism(&task.provider_kind)
+    let parallelism = super::concurrency::document_request_parallelism(&task.network_scope)
         .clamp(1, windows.len());
     crate::logging::debug_target(
         "ai.document.outline",
@@ -104,8 +103,7 @@ where
         let last = &windows[*batch.last().unwrap_or(&batch[0])];
         set_current_task_phase_range(
             "outline",
-            Some(batch[0] + 1),
-            batch.last().map(|index| *index + 1),
+            (Some(batch[0] + 1), batch.last().map(|index| *index + 1)),
             completed,
             windows.len(),
             Some(first.page_start),
@@ -187,12 +185,13 @@ async fn outline_slot(
         }),
     );
     let started = Instant::now();
-    let result = match request_outline_with_resilience(
+    let result = match implementation::request_outline_fragment(
         runtime,
         task,
         document_title,
         page_count,
         window,
+        &[],
     )
     .await
     {
@@ -270,51 +269,6 @@ async fn outline_slot(
         );
     }
     Some((index, result))
-}
-
-async fn request_outline_with_resilience(
-    runtime: &AiRuntimeState,
-    task: &DocumentTaskContext,
-    document_title: &str,
-    page_count: i64,
-    window: &SemanticWindow,
-) -> Result<DocumentOutline, CommandError> {
-    let first = implementation::request_outline_fragment(
-        runtime,
-        task,
-        document_title,
-        page_count,
-        window,
-        &[],
-    )
-    .await;
-    match first {
-        Err(error) if error.code == "ai_stream_progress_timeout" => {
-            record_current_provider_retry();
-            crate::logging::warn_target(
-                "ai.document.outline",
-                "document_outline_window_progress_retry",
-                "One outline route stopped producing useful output; ostudy is retrying this concise source window once on a fresh route.",
-                serde_json::json!({
-                    "provider": task.provider_kind.as_str(),
-                    "model": task.model_id.as_str(),
-                    "window": window.window_index + 1,
-                    "pageStart": window.page_start,
-                    "pageEnd": window.page_end,
-                }),
-            );
-            implementation::request_outline_fragment(
-                runtime,
-                task,
-                document_title,
-                page_count,
-                window,
-                &[],
-            )
-            .await
-        }
-        other => other,
-    }
 }
 
 #[cfg(test)]

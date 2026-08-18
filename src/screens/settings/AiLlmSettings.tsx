@@ -271,7 +271,7 @@ function ProfileEditor({
           </label>
         ) : null}
         <label className={styles.stackedField}>
-          <span>Request timeout</span>
+          <span>Provider inactivity timeout</span>
           <select
             value={draft.requestTimeoutMs}
             onChange={(event) =>
@@ -283,6 +283,9 @@ function ProfileEditor({
             <option value={120_000}>2 minutes</option>
             <option value={300_000}>5 minutes</option>
           </select>
+          <small className={styles.fieldHelp}>
+            During streamed document work this limits silence between provider events, not total generation time. Heartbeats, reasoning progress, output tokens, and final usage all keep an active request alive.
+          </small>
         </label>
         <label className={styles.switchRow}>
           <span>

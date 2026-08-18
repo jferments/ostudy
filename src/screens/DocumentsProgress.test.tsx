@@ -82,6 +82,9 @@ const progress: DocumentGenerationProgress = {
   cacheWriteTokens: 500,
   usageReportedRequests: 6,
   usageUnreportedRequests: 1,
+  providerActivity: "streaming",
+  lastProviderActivityAt: Date.now() - 1_000,
+  lastModelActivityAt: Date.now() - 1_000,
 };
 
 describe("DocumentsScreen live generation progress", () => {
@@ -139,6 +142,7 @@ describe("DocumentsScreen live generation progress", () => {
     expect(screen.getAllByText("1m 30s").length).toBeGreaterThan(0);
     expect(screen.getByText("15k")).toBeTruthy();
     expect(screen.getByText("7")).toBeTruthy();
+    expect(screen.getByText(/Receiving output/u)).toBeTruthy();
     expect(screen.getByText("1")).toBeTruthy();
     expect(screen.getByText("12k / 3.0k")).toBeTruthy();
     expect(screen.getByText("6.0k (50.0%)")).toBeTruthy();

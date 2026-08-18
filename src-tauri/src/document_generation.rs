@@ -71,7 +71,7 @@ pub(crate) async fn execute_generation_windows(
     }
 
     let parallelism =
-        crate::ai::concurrency::document_request_parallelism(&input.task.provider_kind)
+        crate::ai::concurrency::document_request_parallelism(&input.task.network_scope)
             .clamp(1, input.windows.len().max(1));
     crate::logging::debug_target(
         "ai.document.generation",
@@ -128,8 +128,10 @@ pub(crate) async fn execute_generation_windows(
         let last = &input.windows[*batch.last().unwrap_or(&batch[0])];
         set_current_task_phase_range(
             "generating",
-            Some(batch[0] + 1),
-            batch.last().map(|position| *position + 1),
+            (
+                Some(batch[0] + 1),
+                batch.last().map(|position| *position + 1),
+            ),
             completed,
             input.windows.len(),
             Some(first.page_start),
@@ -338,16 +340,7 @@ async fn generate_window_with_recovery(
     )
     .await;
     match first {
-        Err(error)
-            if input.maximum_cards > 2
-                && (matches!(
-                    error.code.as_str(),
-                    "ai_document_output_truncated"
-                        | "ai_stream_progress_timeout"
-                        | "ai_empty_response"
-                ) || (error.code == "ai_document_output_invalid"
-                    && error.message.contains("more than"))) =>
-        {
+        Err(error) if should_retry_with_smaller_output(&error, input.maximum_cards) => {
             let reduced_budget = (input.maximum_cards / 2).max(2);
             record_current_provider_retry();
             crate::logging::info_target(
@@ -379,6 +372,15 @@ async fn generate_window_with_recovery(
     }
 }
 
+fn should_retry_with_smaller_output(error: &CommandError, maximum_cards: usize) -> bool {
+    maximum_cards > 2
+        && (matches!(
+            error.code.as_str(),
+            "ai_document_output_truncated" | "ai_empty_response"
+        ) || (error.code == "ai_document_output_invalid"
+            && error.message.contains("more than")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -391,18 +393,27 @@ mod tests {
     }
 
     #[test]
-    fn provider_parallelism_is_bounded_before_window_execution() {
+    fn provider_parallelism_is_bounded_by_execution_topology() {
         assert_eq!(
-            crate::ai::concurrency::document_request_parallelism("openrouter"),
+            crate::ai::concurrency::document_request_parallelism("cloud"),
             4
         );
         assert_eq!(
-            crate::ai::concurrency::document_request_parallelism("deepseek"),
-            2
-        );
-        assert_eq!(
-            crate::ai::concurrency::document_request_parallelism("llama_cpp"),
+            crate::ai::concurrency::document_request_parallelism("local"),
             1
         );
+        assert_eq!(
+            crate::ai::concurrency::document_request_parallelism("lan"),
+            1
+        );
+    }
+
+    #[test]
+    fn transport_inactivity_never_changes_the_card_budget() {
+        let inactivity = CommandError::new("ai_stream_inactive", "silent transport");
+        assert!(!should_retry_with_smaller_output(&inactivity, 10));
+
+        let truncation = CommandError::new("ai_document_output_truncated", "length");
+        assert!(should_retry_with_smaller_output(&truncation, 10));
     }
 }
