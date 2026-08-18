@@ -508,11 +508,6 @@ function ModelSelectionPanel({
       .toLocaleLowerCase()
       .includes(normalizedSearch);
   });
-  const visibleModels = matchingModels.slice(0, 250);
-  const selectedModel = controller.models.find((model) => model.id === modelValue);
-  if (selectedModel && !visibleModels.some((model) => model.id === selectedModel.id)) {
-    visibleModels.unshift(selectedModel);
-  }
 
   return (
     <section className={styles.settingsCard} aria-busy={controller.refreshingModels}>
@@ -572,7 +567,7 @@ function ModelSelectionPanel({
               onChange={(event) => controller.updateDraft({ modelId: event.currentTarget.value })}
             >
               <option value="">Select an available model</option>
-              {visibleModels.map((model) => (
+              {matchingModels.map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.displayName || model.id}
                   {model.displayName && model.displayName !== model.id ? ` — ${model.id}` : ""}
@@ -582,7 +577,7 @@ function ModelSelectionPanel({
           </label>
           <p className={styles.note}>
             {normalizedSearch
-              ? `${matchingModels.length} of ${controller.models.length} models match this search. At most 250 matching models are rendered at once.`
+              ? `${matchingModels.length} of ${controller.models.length} models match this search.`
               : `${controller.models.length} model${controller.models.length === 1 ? "" : "s"} returned by the provider.`}
           </p>
           <div className={styles.actionRow}>
@@ -938,7 +933,6 @@ function canUseProviderCredential(profile: AiProviderProfileDetail): boolean {
     profile.credentialStatus.status === "session_only"
   );
 }
-
 
 function cloudProviderNotice(providerKind: AiProviderKind): string {
   if (providerKind === "openrouter") {
