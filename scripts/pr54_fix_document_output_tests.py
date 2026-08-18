@@ -28,4 +28,20 @@ if new not in text:
         raise SystemExit("length-finish regression anchor not found")
     text = text.replace(old, new, 1)
 path.write_text(text)
-print("Updated PR #54 length-finish regressions.")
+
+path = Path("src-tauri/src/document_checkpoints.rs")
+text = path.read_text()
+old = '''            extraction_backend: "extractor-v1".to_string(),
+            provider_capability_fingerprint: "caps".to_string(),
+        };'''
+new = '''            extraction_backend: "extractor-v1".to_string(),
+            provider_capability_fingerprint: "caps".to_string(),
+            reasoning_effort: "none".to_string(),
+        };'''
+if new not in text:
+    if text.count(old) != 1:
+        raise SystemExit("checkpoint identity regression anchor not found")
+    text = text.replace(old, new, 1)
+path.write_text(text)
+
+print("Updated PR #54 length-finish and checkpoint regressions.")
