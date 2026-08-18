@@ -28,11 +28,13 @@ The original SQL remains permanently recoverable from Git history at cutoff comm
 
 The exact final development lineage remains valuable because it contains the developer's real decks, cards, review history, analytics attribution, documents, settings, and managed files. It is therefore a narrow, one-time adoption input rather than an unsupported database to discard.
 
-The immutable contract is stored in `src-tauri/src/startup/pre_public_v26_ledger.json` and contains all 26 migration identities/checksums and all 3 data-repair identities/checksums. Rust startup, the archived-data recovery helper, and the built-binary test fixture consume that same file.
+The immutable contract is stored in `src-tauri/src/startup/pre_public_v26_ledger.json` and contains all 26 migration identities/checksums, all 3 data-repair identities/checksums, and the accepted historical SQLite markers. Rust startup, the archived-data recovery helper, and the built-binary test fixture consume that same file.
+
+The pre-public runner tracked schema progress only in `schema_migrations`; it never assigned `PRAGMA user_version`. A real final-v26 development database therefore normally reports `user_version = 0`, despite having all 26 migration records. An explicitly stamped `user_version = 26` copy is also accepted when its ledgers and terminal schema match exactly. The migration and repair ledgers—not the SQLite marker alone—are the authoritative lineage evidence.
 
 When startup sees a database without `ostudy-public-v1`, it first inspects lineage before enabling write-capable SQLite durability settings. An exact final-v26 database is handled as follows:
 
-1. verify the embedded migration and repair ledgers, expected terminal schema, `user_version`, foreign keys, and SQLite integrity;
+1. verify the embedded migration and repair ledgers, expected terminal schema, accepted historical SQLite marker, foreign keys, and SQLite integrity;
 2. create a consistent SQLite backup named like `library.sqlite3.pre-public-v26-<timestamp>.backup`;
 3. transactionally rebuild only the AI provider-profile table required for the public OpenRouter shape, add `schema_metadata`, replace the development ledgers with public baseline migration 1, and set `user_version` to 1;
 4. compare all application-table row counts plus the identities of decks, notes, cards, review events, review attributions, and AI profiles;
@@ -44,7 +46,7 @@ If any precondition or preservation check fails, the transaction rolls back and 
 
 `scripts/reset-pre-public-data.sh` is retained only for intentionally starting a blank library. It requires the explicit flag `--confirm-empty-library`; the former ambiguous `--confirm` option is rejected.
 
-The full Linux qualification gate launches the exact built binary against a seeded final-v26 database. The application must create the consistent backup, preserve deck/card/review/analytics rows, adopt the public lineage, emit `pre_public_database_adoption_completed` and `application_started`, remain usable, and avoid both `application_startup_blocked` and panic paths.
+The full Linux qualification gate launches the exact built binary against a seeded final-v26 database using the actual historical `user_version = 0` state. The application must create the consistent backup, preserve deck/card/review/analytics rows, adopt the public lineage, emit `pre_public_database_adoption_completed` and `application_started`, remain usable, and avoid both `application_startup_blocked` and panic paths.
 
 ## Policy after public release
 
