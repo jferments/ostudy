@@ -67,9 +67,9 @@ jobs:
           python3 ./scripts/pr54_fix_document_output_tests.py
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
 
-          # Restore the canonical workflow itself and remove all one-shot
-          # delivery scaffolding before qualification and publication.
-          git show HEAD^:.github/workflows/check.yml > .github/workflows/check.yml
+          # Restore the exact pre-one-shot Check workflow; later helper-only
+          # commits mean HEAD^ is not necessarily the canonical workflow commit.
+          git show 38f0970e9655d43c73b338235193ced9eb998607:.github/workflows/check.yml > .github/workflows/check.yml
           rm -f \
             .github/workflows/pr54-fix-document-output-capacity.yml \
             .github/pr54-fix-document-output-capacity-trigger.txt \
