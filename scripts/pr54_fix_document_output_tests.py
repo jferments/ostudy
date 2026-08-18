@@ -57,8 +57,16 @@ text = text.replace(
     "assert_eq!(generation_visible_completion_tokens(8), 5_120);",
 )
 text = text.replace(
-    "assert_eq!(outline_completion_tokens_for_provider(provider), 1_536);",
-    "assert_eq!(outline_completion_tokens_for_provider(provider), 2_048);",
+    '''outline_completion_tokens_for_provider(ProviderKind::Deepseek),
+            1_536''',
+    '''outline_completion_tokens_for_provider(ProviderKind::Deepseek),
+            2_048''',
+)
+text = text.replace(
+    '''outline_completion_tokens_for_provider(ProviderKind::LlamaCpp),
+            1_536''',
+    '''outline_completion_tokens_for_provider(ProviderKind::LlamaCpp),
+            2_048''',
 )
 path.write_text(text)
 
