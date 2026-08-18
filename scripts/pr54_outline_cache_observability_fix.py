@@ -66,6 +66,8 @@ old = '''    let outline_contract = document_checkpoints::outline_contract_key(&
         &checkpoint_identity,
     );'''
 new = '''    let outline_contract = document_checkpoints::outline_contract_key(&checkpoint_identity, plan);
+    // Load and source-hash-validate the fragment set for the CURRENT plan before
+    // considering the persisted whole-document outline reusable.
     let cached_outline = document_checkpoints::load_outline_fragments_best_effort(
         database.inner(),
         document_id,
@@ -92,9 +94,13 @@ new = '''    let outline_contract = document_checkpoints::outline_contract_key(&
     };'''
 replace_once(path, old, new, "current-plan final-outline cache gate")
 
-p = Path(path)
-value = p.read_text()
-duplicate = '''        let cached_outline = document_checkpoints::load_outline_fragments_best_effort(
+# The old cache-miss branch loaded the same fragment set a second time. Once the
+# validated current-plan set is loaded above, the branch must consume that exact
+# vector rather than re-reading/recounting it.
+replace_once(
+    path,
+    '''    } else {
+        let cached_outline = document_checkpoints::load_outline_fragments_best_effort(
             database.inner(),
             document_id,
             &outline_contract,
@@ -104,12 +110,11 @@ duplicate = '''        let cached_outline = document_checkpoints::load_outline_f
             .iter()
             .filter(|value| value.is_some())
             .count();
-'''
-# The same load used to live inside the cache-miss branch. After the gate above
-# it must occur exactly once, before deciding whether the final outline is valid.
-if value.count(duplicate) > 0:
-    value = value.replace(duplicate, "", 1)
-p.write_text(value)
+        document_store::initialize_ai_plan(''',
+    '''    } else {
+        document_store::initialize_ai_plan(''',
+    "remove duplicate outline checkpoint load",
+)
 
 replace_once(
     path,
