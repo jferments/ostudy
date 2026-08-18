@@ -16,6 +16,7 @@ use crate::{
     document_store,
     error::CommandError,
     paths::AppPaths,
+    task_cancellation::set_current_task_phase,
 };
 
 const MAX_GENERATED_CARDS: usize = 10_000;
@@ -62,6 +63,15 @@ pub(crate) async fn execute_generation_windows(
 
     let mut generated = Vec::new();
     for (position, window) in input.windows.iter().enumerate() {
+        set_current_task_phase(
+            "generating",
+            Some(position + 1),
+            position,
+            input.windows.len(),
+            Some(window.page_start),
+            Some(window.page_end),
+            Some(window.partition_index + 1),
+        );
         let cards = if let Some(cards) = cached.get_mut(position).and_then(Option::take) {
             crate::logging::info(
                 "document_generation_window_reused",
@@ -140,7 +150,31 @@ pub(crate) async fn execute_generation_windows(
             position + 1,
         )?;
         generated.extend(cards);
+        set_current_task_phase(
+            "generating",
+            input.windows.get(position + 1).map(|_| position + 2),
+            position + 1,
+            input.windows.len(),
+            input
+                .windows
+                .get(position + 1)
+                .map(|next| next.page_start),
+            input.windows.get(position + 1).map(|next| next.page_end),
+            input
+                .windows
+                .get(position + 1)
+                .map(|next| next.partition_index + 1),
+        );
     }
+    set_current_task_phase(
+        "curating",
+        None,
+        input.windows.len(),
+        input.windows.len(),
+        None,
+        None,
+        None,
+    );
     Ok(generated)
 }
 
