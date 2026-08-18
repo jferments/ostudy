@@ -49,9 +49,8 @@ impl AiGateway {
             .build()
             .map_err(|error| format!("Could not initialize the AI HTTP client: {error}"))?;
         // Long document-generation requests deliberately have no reqwest-wide
-        // timeout. Their configured timeout covers connection establishment and
-        // waiting for provider response headers only. Once the provider accepts
-        // the request, inference may continue until completion or user cancel.
+        // wall-clock deadline. Connection/header waiting remains bounded, and an
+        // accepted stream is governed by useful-output progress plus user cancel.
         let streaming_client = Client::builder()
             .redirect(Policy::none())
             .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECONDS))
@@ -325,7 +324,7 @@ impl AiGateway {
         while !stream.done {
             let remaining = progress_timeout.saturating_sub(last_useful_progress.elapsed());
             if remaining.is_zero() {
-                return Err(stream_progress_timeout_error());
+                return Err(stream_progress_timeout_error(progress_timeout_seconds));
             }
             let next = tokio::select! {
                 _ = cancellation.canceled() => return Err(canceled_error()),
