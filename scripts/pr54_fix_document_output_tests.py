@@ -13,6 +13,10 @@ old = '''    #[test]
         assert_eq!(error.code, "ai_document_output_truncated");
         assert!(error.message.contains("completion limit"));
     }'''
+intermediate = old.replace(
+    "ensure_document_response_complete",
+    "ensure_document_response_not_blocked",
+)
 new = '''    #[test]
     fn length_is_truncation_only_when_the_structured_result_is_incomplete() {
         ensure_document_response_not_blocked(&json!({
@@ -24,9 +28,14 @@ new = '''    #[test]
         assert!(error.message.contains("completion limit"));
     }'''
 if new not in text:
-    if text.count(old) != 1:
-        raise SystemExit("length-finish regression anchor not found")
-    text = text.replace(old, new, 1)
+    if text.count(intermediate) == 1:
+        text = text.replace(intermediate, new, 1)
+    elif text.count(old) == 1:
+        text = text.replace(old, new, 1)
+    else:
+        raise SystemExit(
+            f"length-finish regression anchor counts old={text.count(old)} intermediate={text.count(intermediate)}"
+        )
 path.write_text(text)
 
 path = Path("src-tauri/src/document_checkpoints.rs")
