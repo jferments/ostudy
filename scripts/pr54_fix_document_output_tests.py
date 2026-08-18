@@ -185,26 +185,18 @@ replace_exact(
     "probe capability regression model metadata argument",
 )
 
-# ---------------------------------------------------------------------------
-# Warning-clean architecture. Reasoning is now loaded directly from SQLite at
-# task creation, so the old process-global settings mirror is no longer needed by
-# provider execution. Remove its obsolete reader. Also remove the pre-refactor
-# completion reserve helpers that the new visible-output policy supersedes.
-# ---------------------------------------------------------------------------
-path = Path("src-tauri/src/settings.rs")
-text = path.read_text()
-old = '''pub(crate) fn current_ai_reasoning_effort() -> String {
-    ACTIVE_AI_REASONING_EFFORT
-        .read()
-        .map(|value| value.clone())
-        .unwrap_or_else(|_| DEFAULT_AI_REASONING_EFFORT.to_string())
-}
+# The existing settings subsystem already keeps an active reasoning preference
+# synchronized on load/save. Snapshot that value at task creation rather than
+# introducing another settings lifetime or leaving the existing reader unused.
+replace_exact(
+    "src-tauri/src/ai/document_intelligence.rs",
+    "let requested_reasoning_effort = crate::settings::load_ai_reasoning_effort(connection)?;",
+    "let requested_reasoning_effort = crate::settings::current_ai_reasoning_effort();",
+    "task reasoning preference snapshot",
+)
 
-'''
-if old in text:
-    text = text.replace(old, "", 1)
-path.write_text(text)
-
+# Remove the pre-refactor completion reserve helpers that the new visible-output
+# policy supersedes.
 path = Path("src-tauri/src/document_scale.rs")
 text = path.read_text()
 obsolete = '''fn outline_completion_reserve(_provider_kind: &str) -> usize {
