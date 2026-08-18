@@ -105,8 +105,9 @@ export interface AiProviderModel {
   id: string;
   displayName: string;
   ownedBy: string | null;
-  contextWindowTokens: number | null;
-  reasoning: AiProviderModelReasoning | null;
+  /** Native OpenRouter catalogs return these; optional keeps older test fixtures source-compatible. */
+  contextWindowTokens?: number | null;
+  reasoning?: AiProviderModelReasoning | null;
 }
 
 export interface AiProviderModels {
