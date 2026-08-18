@@ -1,6 +1,5 @@
 use crate::{
-    ai::document_provider::DocumentProviderCapabilities,
-    document_cost::DocumentCostCalibration,
+    ai::document_provider::DocumentProviderCapabilities, document_cost::DocumentCostCalibration,
     error::CommandError,
 };
 
@@ -226,7 +225,8 @@ pub(crate) fn validate_automatic_job_calibrated(
         .scale_text_tokens(outline_input)
         .saturating_add(calibration.scale_text_tokens(generation_input));
     let outline_output = outline_windows.saturating_mul(capabilities.outline_completion_tokens);
-    let generation_output = generation_windows.saturating_mul(capabilities.generation_completion_tokens);
+    let generation_output =
+        generation_windows.saturating_mul(capabilities.generation_completion_tokens);
     let image_tokens = generation_windows
         .saturating_mul(plan.max_images_per_window)
         .saturating_mul(calibration.image_prompt_tokens);
