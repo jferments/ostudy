@@ -262,6 +262,73 @@ replace_once(
     "persist failed initial-generation usage",
 )
 
+# Additional generation reports failure while the task-local context is still
+# alive so its provider usage is available. After run_document_task returns the
+# task-local is intentionally gone.
+replace_once(
+    "src-tauri/src/document_more.rs",
+    '''    let result = run_document_task(
+        &document_id,
+        generate_more_impl(database, paths, runtime, input),
+    )
+    .await;
+
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) if error.code == "ai_request_canceled" => {
+            record_additional_failure(
+                database_after.inner(),
+                &document_id,
+                "document_generation_canceled",
+                CANCELED_MESSAGE,
+            );
+            Err(CommandError::new(
+                "document_generation_canceled",
+                CANCELED_MESSAGE,
+            ))
+        }
+        Err(error) => {
+            record_additional_failure(
+                database_after.inner(),
+                &document_id,
+                &error.code,
+                &error.message,
+            );
+            Err(error)
+        }
+    }''',
+    '''    let result = run_document_task(&document_id, async {
+        let result = generate_more_impl(database, paths, runtime, input).await;
+        if let Err(error) = &result {
+            if error.code == "ai_request_canceled" {
+                record_additional_failure(
+                    database_after.inner(),
+                    &document_id,
+                    "document_generation_canceled",
+                    CANCELED_MESSAGE,
+                );
+            } else {
+                record_additional_failure(
+                    database_after.inner(),
+                    &document_id,
+                    &error.code,
+                    &error.message,
+                );
+            }
+        }
+        result
+    })
+    .await;
+
+    match result {
+        Err(error) if error.code == "ai_request_canceled" => Err(CommandError::new(
+            "document_generation_canceled",
+            CANCELED_MESSAGE,
+        )),
+        other => other,
+    }''',
+    "persist additional failure while task scope is active",
+)
 replace_once(
     "src-tauri/src/document_more.rs",
     '''fn record_additional_failure(database: &Database, document_id: &str, code: &str, message: &str) {
