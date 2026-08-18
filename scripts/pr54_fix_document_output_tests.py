@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-shot PR #54 regression updates for length-finished structured output."""
+"""One-shot PR #54 regression/finalization updates for structured output."""
 from pathlib import Path
 
 path = Path("src-tauri/src/ai/document_intelligence.rs")
@@ -44,4 +44,22 @@ if new not in text:
     text = text.replace(old, new, 1)
 path.write_text(text)
 
-print("Updated PR #54 length-finish and checkpoint regressions.")
+path = Path("src-tauri/src/document_scale.rs")
+text = path.read_text()
+old = '''pub(crate) fn generation_visible_completion_tokens(maximum_cards: usize) -> usize {
+    1_536_usize
+        .saturating_add(maximum_cards.saturating_mul(512))
+        .clamp(2_048, 10_240)
+}'''
+new = '''pub(crate) fn generation_visible_completion_tokens(maximum_cards: usize) -> usize {
+    2_048_usize
+        .saturating_add(maximum_cards.saturating_mul(384))
+        .clamp(2_048, 8_192)
+}'''
+if new not in text:
+    if text.count(old) != 1:
+        raise SystemExit("generation visible-output budget anchor not found")
+    text = text.replace(old, new, 1)
+path.write_text(text)
+
+print("Updated PR #54 length-finish, checkpoint, and visible-output regressions.")
