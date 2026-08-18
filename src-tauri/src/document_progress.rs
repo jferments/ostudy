@@ -46,24 +46,7 @@ mod tests {
 
     #[test]
     fn inactive_document_has_no_process_local_progress() {
-        let database = Database::open_in_memory().expect("database should open");
         let document_id = "0123456789abcdef0123456789abcdef";
-        database
-            .with_connection(|connection| {
-                connection
-                    .execute(
-                        "INSERT INTO documents (
-                            id, title, original_filename, source_relative_path,
-                            byte_size, sha256, lifecycle_state, created_at,
-                            updated_at, revision
-                         ) VALUES (?1, 'Progress test', 'test.pdf',
-                                   'documents/test/source.pdf', 1, ?2, 'failed', 1, 1, 1)",
-                        [document_id, &"a".repeat(64)],
-                    )
-                    .map_err(CommandError::database)?;
-                Ok(())
-            })
-            .expect("document should seed");
         assert!(task_cancellation::document_task_progress(document_id).is_none());
     }
 }
