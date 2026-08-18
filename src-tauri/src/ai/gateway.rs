@@ -6,7 +6,10 @@ use serde_json::{json, Value};
 use tokio::time::{sleep, timeout};
 use url::Url;
 
-use crate::task_cancellation::{current_signal, CancellationSignal};
+use crate::task_cancellation::{
+    current_document_id, current_signal, record_current_provider_request,
+    record_current_provider_retry, CancellationSignal,
+};
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 10;
 const MAX_ERROR_BODY_BYTES: usize = 32 * 1024;
@@ -85,6 +88,7 @@ impl AiGateway {
         // long-running calls are transparently upgraded to SSE; provider probes
         // and model discovery retain their ordinary bounded request behavior.
         if let Some(cancellation) = current_signal() {
+            record_current_provider_request();
             let first = self
                 .post_sse_chat_json(
                     url.clone(),
@@ -102,6 +106,7 @@ impl AiGateway {
                     let model = body.get("model").and_then(Value::as_str).and_then(|value| {
                         safe_metadata_string(value, MAX_SAFE_PROVIDER_METADATA_CHARS)
                     });
+                    record_current_provider_retry();
                     crate::logging::warn_target(
                         "ai.gateway.retry",
                         "provider_request_retry",
@@ -117,6 +122,7 @@ impl AiGateway {
                         _ = cancellation.canceled() => return Err(canceled_error()),
                         _ = sleep(delay) => {}
                     }
+                    record_current_provider_request();
                     match self
                         .post_sse_chat_json(
                             url.clone(),
@@ -321,6 +327,7 @@ impl AiGateway {
                 None,
             ));
         }
+        let usage = stream.usage.clone();
         let message = if stream.tool_arguments.trim().is_empty() {
             json!({ "content": stream.content })
         } else {
@@ -335,12 +342,16 @@ impl AiGateway {
                 }]
             })
         };
-        Ok(json!({
+        let mut result = json!({
             "choices": [{
                 "message": message,
                 "finish_reason": stream.finish_reason
             }]
-        }))
+        });
+        if let Some(usage) = usage {
+            result["usage"] = usage;
+        }
+        Ok(result)
     }
 
     async fn request_json(
@@ -505,6 +516,7 @@ struct SseChatAccumulator {
     tool_name: Option<String>,
     tool_arguments: String,
     finish_reason: Option<String>,
+    usage: Option<Value>,
     wire_bytes: usize,
     maximum_content_bytes: usize,
     maximum_wire_bytes: usize,
@@ -522,6 +534,7 @@ impl SseChatAccumulator {
             tool_name: None,
             tool_arguments: String::new(),
             finish_reason: None,
+            usage: None,
             wire_bytes: 0,
             maximum_content_bytes,
             maximum_wire_bytes,
@@ -602,6 +615,9 @@ impl SseChatAccumulator {
                 None,
             )
         })?;
+        if let Some(usage) = safe_usage_envelope(&value) {
+            self.usage = Some(usage);
+        }
         if value.get("error").is_some_and(|value| !value.is_null()) {
             return Err(classify_stream_event_error(
                 &value,
@@ -732,6 +748,15 @@ fn is_openrouter_url(url: &Url) -> bool {
 }
 
 fn prepare_provider_body(url: &Url, body: &Value) -> Option<Value> {
+    let session = current_document_id();
+    prepare_provider_body_for_document(url, body, session.as_deref())
+}
+
+fn prepare_provider_body_for_document(
+    url: &Url,
+    body: &Value,
+    document_id: Option<&str>,
+) -> Option<Value> {
     if !is_openrouter_url(url) {
         return None;
     }
@@ -744,7 +769,78 @@ fn prepare_provider_body(url: &Url, body: &Value) -> Option<Value> {
             "enabled": false
         }]),
     );
+    if let Some(document_id) = document_id.filter(|value| !value.is_empty()) {
+        object.insert(
+            "session_id".to_string(),
+            Value::String(format!("ostudy-document-{document_id}")),
+        );
+    }
     Some(prepared)
+}
+
+fn safe_usage_envelope(value: &Value) -> Option<Value> {
+    let usage = value.get("usage")?.as_object()?;
+    let prompt_tokens = nonnegative_integer_value(usage.get("prompt_tokens"));
+    let completion_tokens = nonnegative_integer_value(usage.get("completion_tokens"));
+    let total_tokens = nonnegative_integer_value(usage.get("total_tokens"));
+    let cached_tokens = nonnegative_integer_value(
+        usage
+            .get("prompt_tokens_details")
+            .and_then(Value::as_object)
+            .and_then(|details| details.get("cached_tokens")),
+    );
+    let cache_write_tokens = nonnegative_integer_value(
+        usage
+            .get("prompt_tokens_details")
+            .and_then(Value::as_object)
+            .and_then(|details| details.get("cache_write_tokens")),
+    );
+    let reasoning_tokens = nonnegative_integer_value(
+        usage
+            .get("completion_tokens_details")
+            .and_then(Value::as_object)
+            .and_then(|details| details.get("reasoning_tokens")),
+    );
+    let cost = usage
+        .get("cost")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .map(Value::from);
+    if prompt_tokens.is_none()
+        && completion_tokens.is_none()
+        && total_tokens.is_none()
+        && cached_tokens.is_none()
+        && cache_write_tokens.is_none()
+        && reasoning_tokens.is_none()
+        && cost.is_none()
+    {
+        return None;
+    }
+    Some(json!({
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "prompt_tokens_details": {
+            "cached_tokens": cached_tokens,
+            "cache_write_tokens": cache_write_tokens,
+        },
+        "completion_tokens_details": {
+            "reasoning_tokens": reasoning_tokens,
+        },
+        "cost": cost,
+    }))
+}
+
+fn nonnegative_integer_value(value: Option<&Value>) -> Option<Value> {
+    value
+        .and_then(|value| {
+            value.as_u64().or_else(|| {
+                value
+                    .as_i64()
+                    .and_then(|value| u64::try_from(value).ok())
+            })
+        })
+        .map(Value::from)
 }
 
 fn provider_error_object(value: &Value) -> Option<&Value> {
@@ -1335,17 +1431,44 @@ mod tests {
     }
 
     #[test]
-    fn openrouter_posts_disable_provider_side_context_compression() {
+    fn openrouter_posts_disable_provider_side_context_compression_and_use_sticky_document_sessions() {
         let url = Url::parse("https://openrouter.ai/api/v1/chat/completions").unwrap();
-        let prepared = prepare_provider_body(&url, &json!({ "model": "example/model" }))
-            .expect("OpenRouter requests should be normalized");
+        let prepared = prepare_provider_body_for_document(
+            &url,
+            &json!({ "model": "example/model" }),
+            Some("0123456789abcdef0123456789abcdef"),
+        )
+        .expect("OpenRouter requests should be normalized");
         assert_eq!(prepared["plugins"][0]["id"], "context-compression");
         assert_eq!(prepared["plugins"][0]["enabled"], false);
+        assert_eq!(
+            prepared["session_id"],
+            "ostudy-document-0123456789abcdef0123456789abcdef"
+        );
         assert!(prepare_provider_body(
             &Url::parse("https://api.deepseek.com/chat/completions").unwrap(),
             &json!({})
         )
         .is_none());
+    }
+
+    #[test]
+    fn streaming_usage_preserves_reasoning_and_cache_counters_without_content() {
+        let mut stream = SseChatAccumulator::new(2_048, 8_192);
+        stream
+            .push_bytes(
+                br#"data: {"choices":[{"delta":{"content":"{}"},"finish_reason":"stop"}]}
+data: {"usage":{"prompt_tokens":1000,"completion_tokens":250,"total_tokens":1250,"prompt_tokens_details":{"cached_tokens":700,"cache_write_tokens":120},"completion_tokens_details":{"reasoning_tokens":80},"cost":0.0003}}
+data: [DONE]
+"#,
+            )
+            .unwrap();
+        stream.finish().unwrap();
+        let usage = stream.usage.expect("usage should be retained");
+        assert_eq!(usage["prompt_tokens"], 1_000);
+        assert_eq!(usage["completion_tokens_details"]["reasoning_tokens"], 80);
+        assert_eq!(usage["prompt_tokens_details"]["cached_tokens"], 700);
+        assert_eq!(usage["prompt_tokens_details"]["cache_write_tokens"], 120);
     }
 
     #[test]
