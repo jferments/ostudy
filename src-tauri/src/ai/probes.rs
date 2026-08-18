@@ -945,6 +945,8 @@ mod tests {
             id: "/models/Qwen3.6-27B-Q4_K_M.gguf".to_string(),
             display_name: "Qwen3.6".to_string(),
             owned_by: Some("llamacpp".to_string()),
+            context_window_tokens: None,
+            reasoning: None,
         }];
         assert_eq!(
             classify_model_match(&profile, &models),
@@ -959,6 +961,8 @@ mod tests {
             id: "deepseek-v4-pro".to_string(),
             display_name: "deepseek-v4-pro".to_string(),
             owned_by: Some("deepseek".to_string()),
+            context_window_tokens: None,
+            reasoning: None,
         }];
         assert_eq!(classify_model_match(&profile, &models), ModelMatch::Missing);
     }
