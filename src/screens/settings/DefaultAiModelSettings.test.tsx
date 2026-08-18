@@ -91,9 +91,10 @@ describe("DefaultAiModelSettings", () => {
     expect(screen.getByRole("heading", { name: "Default AI model" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "Local nursing model — Qwen-medical" })).toBeTruthy();
     expect(screen.getByText(/initial-response timeout/u)).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Document reasoning effort" })).toHaveValue(
-      "low",
-    );
+    const reasoning = screen.getByRole("combobox", {
+      name: "Document reasoning effort",
+    }) as HTMLSelectElement;
+    expect(reasoning.value).toBe("low");
   });
 
   it("updates the flashcard generation default without provider fallback", () => {
