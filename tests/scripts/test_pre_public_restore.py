@@ -97,8 +97,6 @@ class PrePublicRestoreTests(unittest.TestCase):
             active.mkdir()
             (active / "new-public-attempt.txt").write_text("preserve this too")
 
-            validated = restore.validate_final_pre_public_backup(backup)
-            self.assertEqual(validated, database)
             archived_active, restored = restore.restore_backup(backup, active)
 
             self.assertEqual(restored, active)
@@ -115,21 +113,34 @@ class PrePublicRestoreTests(unittest.TestCase):
 
     def test_explicitly_stamped_v26_marker_is_also_accepted(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ostudy-pre-public-stamped-") as root_value:
-            backup = Path(root_value) / "legacy"
+            root = Path(root_value)
+            backup = root / "legacy"
             database = create_final_pre_public_backup(
                 backup, restore.FINAL_PRE_PUBLIC_VERSION
             )
-            self.assertEqual(
-                restore.validate_final_pre_public_backup(backup),
-                database,
-            )
+            backup_hash = file_sha256(database)
+            active = root / "active"
 
-    def test_unknown_sqlite_marker_is_rejected(self) -> None:
+            archived_active, restored = restore.restore_backup(backup, active)
+
+            self.assertIsNone(archived_active)
+            self.assertEqual(restored, active)
+            self.assertEqual(file_sha256(active / "library.sqlite3"), backup_hash)
+            self.assertEqual(file_sha256(database), backup_hash)
+
+    def test_unknown_sqlite_marker_is_rejected_without_moving_active_data(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ostudy-pre-public-marker-") as root_value:
-            backup = Path(root_value) / "legacy"
+            root = Path(root_value)
+            backup = root / "legacy"
             create_final_pre_public_backup(backup, 7)
+            active = root / "active"
+            active.mkdir()
+            marker = active / "marker.txt"
+            marker.write_text("active")
+
             with self.assertRaisesRegex(ValueError, "user_version"):
-                restore.validate_final_pre_public_backup(backup)
+                restore.restore_backup(backup, active)
+            self.assertEqual(marker.read_text(), "active")
 
     def test_wrong_migration_ledger_is_rejected_without_moving_active_data(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ostudy-pre-public-invalid-") as root_value:
@@ -147,12 +158,13 @@ class PrePublicRestoreTests(unittest.TestCase):
             marker.write_text("active")
 
             with self.assertRaisesRegex(ValueError, "migration ledger"):
-                restore.validate_final_pre_public_backup(backup)
+                restore.restore_backup(backup, active)
             self.assertEqual(marker.read_text(), "active")
 
     def test_public_database_is_not_misclassified_as_pre_public(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ostudy-public-restore-") as root_value:
-            backup = Path(root_value) / "public"
+            root = Path(root_value)
+            backup = root / "public"
             database = create_final_pre_public_backup(backup)
             with sqlite3.connect(database) as connection:
                 connection.execute(
@@ -161,9 +173,14 @@ class PrePublicRestoreTests(unittest.TestCase):
                 connection.execute(
                     "INSERT INTO schema_metadata VALUES ('schema_lineage', 'ostudy-public-v1')"
                 )
+            active = root / "active"
+            active.mkdir()
+            marker = active / "marker.txt"
+            marker.write_text("active")
 
             with self.assertRaisesRegex(ValueError, "public schema lineage"):
-                restore.validate_final_pre_public_backup(backup)
+                restore.restore_backup(backup, active)
+            self.assertEqual(marker.read_text(), "active")
 
 
 if __name__ == "__main__":
