@@ -1,6 +1,9 @@
+use std::time::Duration;
+
+use tokio::time::timeout;
+
 use crate::{
-    document_semantics::SemanticWindow,
-    error::CommandError,
+    document_semantics::SemanticWindow, error::CommandError,
     task_cancellation::set_current_task_phase,
 };
 
@@ -16,6 +19,7 @@ pub(crate) use implementation::{
 };
 
 const VISUAL_ONLY_MARKER: &str = "has no extractable structured text";
+const OUTLINE_PROVIDER_ATTEMPT_SECONDS: u64 = 120;
 
 /// Build the reusable global outline used by all later generation windows.
 ///
@@ -146,10 +150,6 @@ where
         cursor = end;
     }
 
-    // All local fragments are now durable and ordered by source-window index.
-    // Feed them through the existing deterministic assembler as cache hits; it
-    // performs no local-fragment provider requests and retains the bounded global
-    // synthesis/fallback behavior.
     let images = vec![Vec::<SourcePageImage>::new(); windows.len()];
     implementation::build_document_outline(
         runtime,
@@ -190,13 +190,12 @@ async fn outline_slot(
             window.token_estimate,
         ),
     );
-    let result = match implementation::request_outline_fragment(
+    let result = match request_outline_with_deadline(
         runtime,
         task,
         document_title,
         page_count,
         window,
-        &[],
     )
     .await
     {
@@ -255,6 +254,57 @@ async fn outline_slot(
         }
     };
     Some((index, result))
+}
+
+async fn request_outline_with_deadline(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    document_title: &str,
+    page_count: i64,
+    window: &SemanticWindow,
+) -> Result<DocumentOutline, CommandError> {
+    for attempt in 1..=2 {
+        let request = implementation::request_outline_fragment(
+            runtime,
+            task,
+            document_title,
+            page_count,
+            window,
+            &[],
+        );
+        match timeout(
+            Duration::from_secs(OUTLINE_PROVIDER_ATTEMPT_SECONDS),
+            request,
+        )
+        .await
+        {
+            Ok(result) => return result,
+            Err(_) if attempt == 1 => {
+                crate::logging::warn_target(
+                    "ai.document.outline",
+                    "document_outline_window_deadline_retry",
+                    "A provider took too long on one bounded outline fragment; ostudy canceled that request and is retrying the source window once.",
+                    serde_json::json!({
+                        "provider": task.provider_kind.as_str(),
+                        "model": task.model_id.as_str(),
+                        "window": window.window_index + 1,
+                        "pageStart": window.page_start,
+                        "pageEnd": window.page_end,
+                        "attemptSeconds": OUTLINE_PROVIDER_ATTEMPT_SECONDS,
+                    }),
+                );
+            }
+            Err(_) => {
+                return Err(CommandError::new(
+                    "ai_provider_deadline",
+                    format!(
+                        "The AI provider exceeded the {OUTLINE_PROVIDER_ATTEMPT_SECONDS}-second outline-window deadline twice. ostudy canceled both incomplete requests instead of allowing this document window to stall indefinitely."
+                    ),
+                ));
+            }
+        }
+    }
+    unreachable!("the bounded two-attempt loop always returns")
 }
 
 #[cfg(test)]
