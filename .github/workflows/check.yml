@@ -28,44 +28,76 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
 
-      - name: Classify output-length exhaustion correctly
+      - name: Finalize document provider contracts
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('src-tauri/src/ai/gateway.rs')
-          value = path.read_text()
-          old = '''        if stream.content.trim().is_empty() && stream.tool_arguments.trim().is_empty() {
+
+          gateway = Path('src-tauri/src/ai/gateway.rs')
+          value = gateway.read_text()
+          start_marker = '        if stream.content.trim().is_empty() && stream.tool_arguments.trim().is_empty() {'
+          end_marker = '        let usage = stream.usage.clone();'
+          start = value.index(start_marker)
+          end = value.index(end_marker, start)
+          replacement = '''        if stream.content.trim().is_empty() && stream.tool_arguments.trim().is_empty() {
               let finish = stream.finish_reason.as_deref().unwrap_or("not provided");
-              return Err(error(
-                  "ai_empty_response",
-                  &format!(
-                      "The provider ended the streamed document request with finish_reason={finish}, but returned no final content or structured tool arguments."
-                  ),
-                  true,
-                  None,
-              ));
+              return Err(empty_stream_failure(finish));
           }
           '''
-          new = '''        if stream.content.trim().is_empty() && stream.tool_arguments.trim().is_empty() {
-              let finish = stream.finish_reason.as_deref().unwrap_or("not provided");
-              let code = if finish == "length" {
+          value = value[:start] + replacement + value[end:]
+
+          helper_anchor = 'fn should_retry_document_stream_error(error_value: &AiGatewayError) -> bool {'
+          helper = '''fn empty_stream_failure(finish_reason: &str) -> AiGatewayError {
+              let code = if finish_reason == "length" {
                   "ai_document_output_truncated"
               } else {
                   "ai_empty_response"
               };
-              return Err(error(
+              error(
                   code,
                   &format!(
-                      "The provider ended the streamed document request with finish_reason={finish}, but returned no final content or structured tool arguments."
+                      "The provider ended the streamed document request with finish_reason={finish_reason}, but returned no final content or structured tool arguments."
                   ),
                   true,
                   None,
-              ));
+              )
           }
+
           '''
-          if old not in value:
-              raise SystemExit('gateway empty-stream classification anchor not found')
-          path.write_text(value.replace(old, new, 1))
+          if helper_anchor not in value:
+              raise SystemExit('gateway retry helper anchor not found')
+          value = value.replace(helper_anchor, helper + helper_anchor, 1)
+
+          test_anchor = '    #[test]\n    fn document_stream_retry_is_limited_to_transient_transport_failures() {'
+          test = '''    #[test]
+              fn empty_length_finished_stream_is_output_truncation() {
+                  let failure = empty_stream_failure("length");
+                  assert_eq!(failure.safe.code, "ai_document_output_truncated");
+                  assert!(!should_retry_document_stream_error(&failure));
+
+                  let ordinary_empty = empty_stream_failure("stop");
+                  assert_eq!(ordinary_empty.safe.code, "ai_empty_response");
+              }
+
+          '''
+          if test_anchor not in value:
+              raise SystemExit('gateway test anchor not found')
+          value = value.replace(test_anchor, test + test_anchor, 1)
+          gateway.write_text(value)
+
+          openrouter = Path('src-tauri/src/ai/providers/openrouter.rs')
+          value = openrouter.read_text()
+          value = value.replace(
+              'const HIGH_PRECISION_QUANTIZATIONS: [&str; 5] = ["int8", "fp8", "fp16", "bf16", "fp32"];',
+              'const HIGH_PRECISION_QUANTIZATIONS: [&str; 6] = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32"];',
+              1,
+          )
+          value = value.replace(
+              'Some(&json!(["int8", "fp8", "fp16", "bf16", "fp32"]))',
+              'Some(&json!(["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32"]))',
+              1,
+          )
+          openrouter.write_text(value)
           PY
 
       - name: Apply canonical rustfmt and restore canonical workflow
@@ -77,6 +109,7 @@ jobs:
       - name: Compile and run focused document AI tests
         run: |
           cargo check --manifest-path src-tauri/Cargo.toml --locked
+          cargo test --manifest-path src-tauri/Cargo.toml --lib ai::gateway
           cargo test --manifest-path src-tauri/Cargo.toml --lib document_semantics
           cargo test --manifest-path src-tauri/Cargo.toml --lib document_scale
           cargo test --manifest-path src-tauri/Cargo.toml --lib ai::providers::openrouter
