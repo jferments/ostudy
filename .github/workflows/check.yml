@@ -67,8 +67,8 @@ jobs:
           python3 ./scripts/pr54_fix_document_output_tests.py
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
 
-          # Restore the exact pre-one-shot Check workflow; later helper-only
-          # commits mean HEAD^ is not necessarily the canonical workflow commit.
+          # Restore the exact pre-one-shot Check workflow and remove all delivery
+          # scaffolding before creating the local candidate commit.
           git show 38f0970e9655d43c73b338235193ced9eb998607:.github/workflows/check.yml > .github/workflows/check.yml
           rm -f \
             .github/workflows/pr54-fix-document-output-capacity.yml \
@@ -80,10 +80,7 @@ jobs:
             scripts/pr54_fix_document_output_tests.py
           git diff --check
 
-      - name: Run canonical fast qualification before publication
-        run: bash ./scripts/check-fast.sh
-
-      - name: Commit qualified product changes
+      - name: Create unpushed candidate commit
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -112,7 +109,13 @@ jobs:
             scripts/pr54_fix_document_output_tests.py
           git diff --cached --check
           git commit -m 'fix(ai): recover structured document output safely'
-          git push origin HEAD:agent/pre-public-platform-hardening
+          test -z "$(git status --porcelain)"
+
+      - name: Run canonical fast qualification on candidate commit
+        run: bash ./scripts/check-fast.sh
+
+      - name: Publish qualified candidate
+        run: git push origin HEAD:agent/pre-public-platform-hardening
 
   check:
     if: github.event_name != 'workflow_dispatch' || inputs.apply_candidates != true
