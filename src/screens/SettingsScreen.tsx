@@ -40,6 +40,7 @@ const DEFAULTS: AppSettings = {
   desiredRetention: 0.9,
   dailyNewLimit: 20,
   dailyReviewLimit: 200,
+  aiReasoningEffort: "low",
 };
 
 export function SettingsScreen({
@@ -102,6 +103,7 @@ export function SettingsScreen({
       });
     }
     if (activeTab === "storage") update({ confirmDeletions: DEFAULTS.confirmDeletions });
+    if (activeTab === "ai") update({ aiReasoningEffort: DEFAULTS.aiReasoningEffort });
   }
 
   async function persist(): Promise<void> {
@@ -110,7 +112,10 @@ export function SettingsScreen({
     setIsSaving(true);
     setErrorMessage(null);
     try {
-      const saved = await saveSettings(draft);
+      const saved = await saveSettings({
+        ...draft,
+        aiReasoningEffort: draft.aiReasoningEffort ?? "low",
+      });
       onSavedSettings(saved);
       setDraft(saved);
       setSavedBaseline(saved);
@@ -140,6 +145,8 @@ export function SettingsScreen({
       panel: (
         <AiLlmSettings
           controller={aiController}
+          settings={draft}
+          updateSettings={update}
           sidebarTop={<DefaultAiModelSettings controller={aiController} />}
         />
       ),
@@ -161,9 +168,14 @@ export function SettingsScreen({
       ? "appearance"
       : activeTab === "review"
         ? "scheduling"
-        : "safety";
+        : activeTab === "ai"
+          ? "AI"
+          : "safety";
   const canRestoreDefaults =
-    activeTab === "appearance" || activeTab === "review" || activeTab === "storage";
+    activeTab === "appearance" ||
+    activeTab === "review" ||
+    activeTab === "storage" ||
+    activeTab === "ai";
 
   return (
     <div className="screen settings-screen" aria-busy={isSaving || aiController.mutating}>
