@@ -56,6 +56,10 @@ text = text.replace(
     "assert_eq!(flashcard_completion_tokens(8), 4_096);",
     "assert_eq!(generation_visible_completion_tokens(8), 5_120);",
 )
+text = text.replace(
+    "assert_eq!(outline_completion_tokens_for_provider(provider), 1_536);",
+    "assert_eq!(outline_completion_tokens_for_provider(provider), 2_048);",
+)
 path.write_text(text)
 
 path = Path("src-tauri/src/document_checkpoints.rs")
