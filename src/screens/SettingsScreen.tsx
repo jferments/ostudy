@@ -145,9 +145,9 @@ export function SettingsScreen({
       panel: (
         <AiLlmSettings
           controller={aiController}
-          settings={draft}
-          updateSettings={update}
-          sidebarTop={<DefaultAiModelSettings controller={aiController} />}
+          sidebarTop={
+            <DefaultAiModelSettings controller={aiController} settings={draft} update={update} />
+          }
         />
       ),
     },
