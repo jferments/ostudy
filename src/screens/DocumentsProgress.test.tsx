@@ -128,6 +128,24 @@ describe("DocumentsScreen live generation progress", () => {
     expect(screen.queryByText(/Current window 2\/9/u)).toBeNull();
   });
 
+  it("distinguishes a responsive heartbeat from recent model output", async () => {
+    documentIpcMocks.getDocumentGenerationProgress.mockResolvedValue({
+      ...progress,
+      providerActivity: "streaming",
+      lastProviderActivityAt: Date.now() - 1_000,
+      lastModelActivityAt: Date.now() - 125_000,
+    });
+
+    render(
+      <DocumentsScreen
+        refreshDecks={vi.fn().mockResolvedValue(undefined)}
+        showToast={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Responsive · output 2m ago")).toBeTruthy();
+  });
+
   it("shows stage, window progress, elapsed runtime, requests, retries, reasoning and cache usage", async () => {
     render(
       <DocumentsScreen

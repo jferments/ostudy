@@ -544,20 +544,39 @@ function formatProviderActivity(
   now: number,
 ): string {
   if (!progress) return "Preparing";
-  const age = progress.lastProviderActivityAt === null
-    ? null
-    : Math.max(0, Math.floor((now - progress.lastProviderActivityAt) / 1_000));
-  const suffix = age === null ? "" : age < 2 ? " · now" : ` · ${age}s ago`;
+  const providerAge = activityAgeSeconds(progress.lastProviderActivityAt, now);
+  const modelAge = activityAgeSeconds(progress.lastModelActivityAt, now);
   switch (progress.providerActivity) {
     case "streaming":
-      return `Receiving output${suffix}`;
+      if (modelAge === null) return `Responsive, waiting${activityAgeSuffix(providerAge)}`;
+      if (modelAge < 2) return "Receiving output · now";
+      if (providerAge !== null && providerAge < modelAge) {
+        return `Responsive · output ${formatActivityAge(modelAge)}`;
+      }
+      return `Receiving output · ${formatActivityAge(modelAge)}`;
     case "responsive":
-      return `Responsive, waiting${suffix}`;
+      return `Responsive, waiting${activityAgeSuffix(providerAge)}`;
     case "connecting":
       return "Connecting";
     default:
       return "Preparing";
   }
+}
+
+function activityAgeSeconds(timestamp: number | null, now: number): number | null {
+  return timestamp === null ? null : Math.max(0, Math.floor((now - timestamp) / 1_000));
+}
+
+function activityAgeSuffix(ageSeconds: number | null): string {
+  return ageSeconds === null ? "" : ` · ${formatActivityAge(ageSeconds)}`;
+}
+
+function formatActivityAge(ageSeconds: number): string {
+  if (ageSeconds < 2) return "now";
+  if (ageSeconds < 60) return `${ageSeconds}s ago`;
+  const minutes = Math.floor(ageSeconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
 }
 
 function generationStage(
