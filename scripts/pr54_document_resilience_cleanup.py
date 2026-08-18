@@ -157,8 +157,15 @@ value = p.read_text().replace(
 )
 p.write_text(value)
 
-# Update the pre-existing live-progress regression to the new non-duplicative
-# stage copy and assert the single-window detail separately.
+# Update live-progress regressions to the new non-duplicative stage copy. The
+# progress IPC arrives asynchronously after the persisted document summary, so
+# assertions about the active window range must wait for that second render.
+replace_once(
+    "src/screens/DocumentsProgress.test.tsx",
+    '    expect(screen.getByText("Active windows 2–5 of 9 · pages 9–35.")).toBeTruthy();',
+    '    expect(await screen.findByText("Active windows 2–5 of 9 · pages 9–35.")).toBeTruthy();',
+    "concurrent progress async regression",
+)
 replace_once(
     "src/screens/DocumentsProgress.test.tsx",
     '    expect(screen.getAllByText("Building outline 3/10").length).toBeGreaterThan(0);',
