@@ -155,10 +155,7 @@ pub(crate) async fn execute_generation_windows(
             input.windows.get(position + 1).map(|_| position + 2),
             position + 1,
             input.windows.len(),
-            input
-                .windows
-                .get(position + 1)
-                .map(|next| next.page_start),
+            input.windows.get(position + 1).map(|next| next.page_start),
             input.windows.get(position + 1).map(|next| next.page_end),
             input
                 .windows
