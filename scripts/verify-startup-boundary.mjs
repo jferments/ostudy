@@ -57,8 +57,12 @@ const contracts = [
     lineageIndex >= 0 && configureIndex >= 0 && lineageIndex < configureIndex,
   ],
   [
-    "the immutable final pre-public contract contains all 26 migrations and 3 repairs",
-    ledger.userVersion === 26 &&
+    "the immutable final pre-public contract matches the historical migration runner",
+    ledger.schemaVersion === 26 &&
+      Array.isArray(ledger.acceptedSqliteUserVersions) &&
+      ledger.acceptedSqliteUserVersions.length === 2 &&
+      ledger.acceptedSqliteUserVersions[0] === 0 &&
+      ledger.acceptedSqliteUserVersions[1] === 26 &&
       Array.isArray(ledger.migrations) &&
       ledger.migrations.length === 26 &&
       ledger.migrations.at(-1)?.name === "deck_folders" &&
@@ -69,9 +73,10 @@ const contracts = [
   [
     "Rust and recovery tooling consume the same immutable lineage contract",
     source.transition.includes('include_str!("pre_public_v26_ledger.json")') &&
-      source.transition.includes("pre_public_contract()") &&
+      source.transition.includes("accepted_sqlite_user_versions") &&
       source.restore.includes("pre_public_v26_ledger.json") &&
-      source.restore.includes("CONTRACT_PATH"),
+      source.restore.includes("ACCEPTED_SQLITE_USER_VERSIONS") &&
+      source.restore.includes("HISTORICAL_SQLITE_USER_VERSION = 0"),
   ],
   [
     "final pre-public adoption is exact-ledger, backed up, transactional, and data preserving",
@@ -82,19 +87,25 @@ const contracts = [
       source.transition.includes("pre_public_database_adoption_completed"),
   ],
   [
+    "startup diagnostics are flushed after durable initialization",
+    source.startup.includes("logging::flush(Duration::from_millis(500))") &&
+      source.startup.indexOf('"application_started"') <
+        source.startup.indexOf("logging::flush(Duration::from_millis(500))"),
+  ],
+  [
     "the built-binary adoption smoke is part of full qualification",
     source.fullCheck.includes('step "Native startup compatibility smoke"') &&
       source.fullCheck.includes('bash "$SCRIPT_DIR/smoke-startup-compatibility.sh"'),
   ],
   [
-    "startup smoke verifies preserved decks and analytics through a usable built application",
-    source.smoke.includes("pre_public_database_adoption_completed") &&
+    "startup smoke verifies the historical marker, preserved decks, and analytics",
+    source.smoke.includes("HISTORICAL_SQLITE_USER_VERSION") &&
+      source.smoke.includes("pre_public_database_adoption_completed") &&
       source.smoke.includes("application_started") &&
       source.smoke.includes("before_decks") &&
       source.smoke.includes("before_reviews") &&
       source.smoke.includes("after_attributions") &&
-      source.smoke.includes("library.sqlite3.pre-public-v26-") &&
-      !source.smoke.includes('"event":"application_startup_blocked"'),
+      source.smoke.includes("library.sqlite3.pre-public-v26-"),
   ],
   [
     "archived pre-public data has a non-destructive verified restore path",
@@ -127,5 +138,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Startup preserves exact final pre-public v26 libraries through a shared verified lineage contract, consistent SQLite backup/adoption, manual recovery for unsupported data, and built-binary data-preservation qualification.",
+  "OK   Startup preserves the actual historical final-v26 library through a shared lineage contract, consistent SQLite backup/adoption, durable startup diagnostics, manual recovery for unsupported data, and built-binary preservation qualification.",
 );
