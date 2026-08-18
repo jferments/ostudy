@@ -10,6 +10,8 @@ use crate::{
     pdf_render_backend::PdfRenderRuntime, platform,
 };
 
+mod pre_public_transition;
+
 const STARTUP_CONFIGURATION_EXIT_CODE: i32 = 78;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -48,7 +50,7 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     logging::initialize(paths.app_data_dir());
     let pending_restore =
         library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
-    let database = database::Database::open(paths.database_path()).map_err(io::Error::other)?;
+    let database = open_database_with_pre_public_adoption(&paths)?;
     let platform_runtime = platform::PlatformRuntime::for_app(app.handle().clone());
     platform::install_global(platform_runtime.clone()).map_err(io::Error::other)?;
     let ai_runtime =
@@ -115,6 +117,41 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn open_database_with_pre_public_adoption(paths: &AppPaths) -> Result<database::Database, io::Error> {
+    match database::Database::open(paths.database_path()) {
+        Ok(database) => Ok(database),
+        Err(error) if error.starts_with(database::PRE_PUBLIC_RESET_PREFIX) => {
+            match pre_public_transition::adopt_final_pre_public_database(paths.database_path()) {
+                Ok(Some(report)) => {
+                    logging::debug_target(
+                        "database.migration",
+                        "pre_public_database_adoption_verified",
+                        "The adopted pre-public database is being reopened through the public migration verifier.",
+                        serde_json::json!({
+                            "backupFile": report.backup_path.file_name().and_then(|value| value.to_str()).unwrap_or("pre-public.backup"),
+                            "deckCount": report.deck_count,
+                            "cardCount": report.card_count,
+                            "reviewCount": report.review_count,
+                        }),
+                    );
+                    database::Database::open(paths.database_path()).map_err(|retry_error| {
+                        io::Error::other(format!(
+                            "{}: The pre-public data was adopted and backed up, but the public database verifier rejected the result: {retry_error}",
+                            database::PRE_PUBLIC_RESET_PREFIX
+                        ))
+                    })
+                }
+                Ok(None) => Err(io::Error::other(error)),
+                Err(adoption_error) => Err(io::Error::other(format!(
+                    "{}: {adoption_error}",
+                    database::PRE_PUBLIC_RESET_PREFIX
+                ))),
+            }
+        }
+        Err(error) => Err(io::Error::other(error)),
+    }
+}
+
 fn present_startup_failure(app: &mut tauri::App, error: &str) {
     let app_data_directory = app.path().app_data_dir().ok();
     let presentation = startup_failure_presentation(error, app_data_directory.as_deref());
@@ -127,7 +164,7 @@ fn present_startup_failure(app: &mut tauri::App, error: &str) {
         StartupFailureKind::PrePublicDatabase => logging::warn_target(
             "app.startup",
             presentation.event,
-            "ostudy startup is blocked until the pre-public development data is reset.",
+            "ostudy startup is blocked because the pre-public database could not be adopted automatically.",
             serde_json::json!({ "reasonCode": presentation.reason_code }),
         ),
         StartupFailureKind::Internal => logging::error_target(
@@ -139,7 +176,12 @@ fn present_startup_failure(app: &mut tauri::App, error: &str) {
     }
     let _ = logging::flush(Duration::from_millis(500));
 
-    eprintln!("ostudy startup blocked: {error}");
+    match presentation.kind {
+        StartupFailureKind::PrePublicDatabase => {
+            eprintln!("ostudy startup blocked: pre-public data requires manual recovery; the database was left unchanged.");
+        }
+        StartupFailureKind::Internal => eprintln!("ostudy startup blocked: {error}"),
+    }
     let handle = app.handle().clone();
     let kind = match presentation.kind {
         StartupFailureKind::PrePublicDatabase => MessageDialogKind::Warning,
@@ -162,20 +204,20 @@ fn startup_failure_presentation(
             .map(|path| path.display().to_string())
             .unwrap_or_else(|| "<application data directory>".to_string());
         #[cfg(not(mobile))]
-        let reset_instructions = format!(
-            "Close ostudy, then run:\n\n./scripts/reset-pre-public-data.sh --data-dir \"{location}\" --confirm\n\nThe reset tool moves the existing app-data directory to a timestamped backup instead of deleting it."
+        let recovery_instructions = format!(
+            "The exact final pre-public schema is normally adopted automatically with a consistent SQLite backup. This database did not match that verified transition contract.\n\nIf you previously ran the old reset command, restore its timestamped backup with:\n\npython3 ./scripts/restore_pre_public_backup.py --backup-dir \"<timestamped pre-public backup directory>\" --data-dir \"{location}\" --confirm\n\nTo intentionally archive this library and start empty instead, run:\n\n./scripts/reset-pre-public-data.sh --data-dir \"{location}\" --confirm-empty-library"
         );
         #[cfg(mobile)]
-        let reset_instructions = format!(
-            "Clear the pre-release ostudy application's storage (or reinstall the development build) before starting this public-baseline build again.\n\nApplication data directory: {location}"
+        let recovery_instructions = format!(
+            "This pre-release database does not match the verified final pre-public transition contract. Preserve the application storage before clearing or reinstalling the development build.\n\nApplication data directory: {location}"
         );
         return StartupFailurePresentation {
             kind: StartupFailureKind::PrePublicDatabase,
             event: "application_startup_blocked",
-            reason_code: "pre_public_database_requires_reset",
-            title: "One-time data reset required",
+            reason_code: "pre_public_database_requires_manual_recovery",
+            title: "Pre-public data needs manual recovery",
             message: format!(
-                "This build uses ostudy's public database baseline. The existing database is from the pre-public development schema and was left unchanged.\n\n{reset_instructions}"
+                "This build uses ostudy's public database baseline. The existing pre-public database could not be adopted automatically and was left unchanged.\n\n{recovery_instructions}"
             ),
         };
     }
@@ -194,7 +236,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pre_public_database_is_a_startup_block_not_an_internal_failure() {
+    fn unsupported_pre_public_database_is_a_manual_recovery_block() {
         let presentation = startup_failure_presentation(
             &format!("{}: legacy database", database::PRE_PUBLIC_RESET_PREFIX),
             Some(Path::new("/tmp/ostudy-public-baseline-test")),
@@ -203,9 +245,12 @@ mod tests {
         assert_eq!(presentation.event, "application_startup_blocked");
         assert_eq!(
             presentation.reason_code,
-            "pre_public_database_requires_reset"
+            "pre_public_database_requires_manual_recovery"
         );
-        assert!(presentation.message.contains("reset-pre-public-data.sh"));
+        assert!(presentation
+            .message
+            .contains("restore_pre_public_backup.py"));
+        assert!(presentation.message.contains("confirm-empty-library"));
         assert!(presentation
             .message
             .contains("/tmp/ostudy-public-baseline-test"));
