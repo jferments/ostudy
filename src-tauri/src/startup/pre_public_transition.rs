@@ -184,9 +184,10 @@ pub(super) fn adopt_final_pre_public_database(
 fn pre_public_contract() -> Result<PrePublicContract, String> {
     let contract: PrePublicContract = serde_json::from_str(PRE_PUBLIC_CONTRACT_JSON)
         .map_err(|error| format!("The embedded pre-public lineage contract is invalid: {error}"))?;
+    let expected_migration_count =
+        usize::try_from(contract.user_version).unwrap_or(usize::MAX);
     if contract.user_version <= 0
-        || contract.migrations.len()
-            != usize::try_from(contract.user_version).unwrap_or(usize::MAX)
+        || contract.migrations.len() != expected_migration_count
         || contract
             .migrations
             .iter()
