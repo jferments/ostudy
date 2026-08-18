@@ -7,7 +7,9 @@ use super::ProviderModelReasoning;
 pub(super) const MAX_MODEL_LIST_BYTES: usize = 4 * 1024 * 1024;
 pub(super) const MAX_MODELS: usize = 2_000;
 
-const REASONING_EFFORTS: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+const REASONING_EFFORTS: [&str; 7] = [
+    "none", "minimal", "low", "medium", "high", "xhigh", "max",
+];
 
 pub(super) fn text_probe_body(
     model_id: &str,
@@ -142,7 +144,10 @@ pub(super) fn embedded_error(value: &Value) -> Option<AiGatewayError> {
     let code_text = code
         .and_then(Value::as_str)
         .map(ToString::to_string)
-        .or_else(|| code.and_then(Value::as_i64).map(|value| value.to_string()))
+        .or_else(|| {
+            code.and_then(Value::as_i64)
+                .map(|value| value.to_string())
+        })
         .unwrap_or_else(|| "unknown".to_string());
     let normalized = code_text.to_ascii_lowercase();
     let (safe_code, message, retryable) = match normalized.as_str() {
@@ -202,8 +207,12 @@ mod tests {
 
     #[test]
     fn structured_probe_requires_parameter_compatible_private_routing() {
-        let body =
-            structured_probe_body("openai/example", "echo", json!({ "type": "object" }), true);
+        let body = structured_probe_body(
+            "openai/example",
+            "echo",
+            json!({ "type": "object" }),
+            true,
+        );
         assert_eq!(
             body.pointer("/provider/require_parameters"),
             Some(&json!(true))
@@ -246,7 +255,10 @@ mod tests {
         });
         assert_eq!(model_context_window_tokens(&model), Some(1_310_720));
         let reasoning = model_reasoning(&model).expect("reasoning metadata should parse");
-        assert_eq!(reasoning.supported_efforts.unwrap(), vec!["max", "high", "low"]);
+        assert_eq!(
+            reasoning.supported_efforts.unwrap(),
+            vec!["max", "high", "low"]
+        );
         assert_eq!(reasoning.default_effort.as_deref(), Some("high"));
         assert_eq!(reasoning.default_enabled, Some(true));
         assert!(!reasoning.mandatory);
