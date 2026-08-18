@@ -707,7 +707,9 @@ mod tests {
         assert!(windows.iter().any(|window| {
             window.source_locator().first() <= 4 && window.source_locator().last() >= 5
         }));
-        assert!(windows.iter().any(|window| window.source_text.contains("Chapter B")));
+        assert!(windows
+            .iter()
+            .any(|window| window.source_text.contains("Chapter B")));
         assert!(windows
             .iter()
             .any(|window| window.visual_page_numbers.contains(&6)));
