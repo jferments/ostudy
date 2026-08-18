@@ -4,12 +4,17 @@ from pathlib import Path
 
 path = Path("src-tauri/src/document_scale.rs")
 value = path.read_text()
+new_standard = "            max_cards_per_window: 12,"
+new_large = "        max_cards_per_window: 16,"
+if new_standard in value and new_large in value:
+    print("Standard/large document card budgets are already 12/16.")
+    raise SystemExit(0)
 old_standard = "            max_cards_per_window: 10,"
 old_large = "        max_cards_per_window: 10,"
 if old_standard not in value or old_large not in value:
     raise SystemExit("document card-capacity anchors were not found")
-value = value.replace(old_standard, "            max_cards_per_window: 12,", 1)
-value = value.replace(old_large, "        max_cards_per_window: 16,", 1)
+value = value.replace(old_standard, new_standard, 1)
+value = value.replace(old_large, new_large, 1)
 value = value.replace(
     "            assert_eq!(plan.max_cards_per_window, 10);",
     "            assert_eq!(plan.max_cards_per_window, 16);",
