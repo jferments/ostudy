@@ -1,0 +1,43 @@
+name: PR54 document AI finalizer
+
+on:
+  push:
+    branches: [agent/pre-public-platform-hardening]
+
+concurrency:
+  group: pr54-document-ai-finalizer
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/pre-public-platform-hardening
+          fetch-depth: 0
+          persist-credentials: true
+      - run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+      - run: python3 ./scripts/pr54_finalize_document_ai.py
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+      - run: bash ./scripts/install-native-deps.sh --pdfium-only
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings
+      - run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --lib ai::gateway
+          cargo test --manifest-path src-tauri/Cargo.toml --lib document_semantics
+          cargo test --manifest-path src-tauri/Cargo.toml --lib ai::providers::openrouter
+          cargo test --manifest-path src-tauri/Cargo.toml --lib document_generation
+      - run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src-tauri/src docs/architecture/ai-and-document-processing.md
+          git diff --cached --check
+          git commit -m 'fix(ai): finish document routing cleanup'
+          git push origin HEAD:agent/pre-public-platform-hardening
