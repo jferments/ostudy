@@ -243,6 +243,7 @@ pub(crate) fn current_document_id() -> Option<String> {
         .ok()
 }
 
+#[cfg(test)]
 pub(crate) fn current_reasoning_effort() -> Option<String> {
     CURRENT_DOCUMENT_TASK
         .try_with(|task| {
