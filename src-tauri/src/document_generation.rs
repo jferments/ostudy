@@ -48,31 +48,45 @@ struct WindowGenerationRequest<'a> {
     diagnostic_prefix: &'a str,
 }
 
+/// Execute independent generation windows with bounded provider concurrency.
+///
+/// Provider calls are concurrent, but all SQLite/checkpoint writes happen after
+/// a batch resolves and in source-window order. This keeps durable progress and
+/// generated-card ordering deterministic regardless of network completion order.
 pub(crate) async fn execute_generation_windows(
-    input: GenerationExecution<'_>,
+    mut input: GenerationExecution<'_>,
 ) -> Result<Vec<Value>, CommandError> {
     let renders = if input.task.include_page_images {
         document_store::load_source_renders(input.database, input.document_id)?
     } else {
         Vec::new()
     };
-    let mut cached = input.cached_cards;
+    let mut cached = std::mem::take(&mut input.cached_cards);
     if cached.len() < input.windows.len() {
         cached.resize_with(input.windows.len(), || None);
     }
 
-    let mut generated = Vec::new();
-    for (position, window) in input.windows.iter().enumerate() {
-        set_current_task_phase(
-            "generating",
-            Some(position + 1),
-            position,
+    let parallelism =
+        crate::ai::concurrency::document_request_parallelism(&input.task.provider_kind)
+            .clamp(1, input.windows.len().max(1));
+    crate::logging::info(
+        "document_generation_execution_plan",
+        format!(
+            "document={} provider={} model={} windows={} parallelism={} sticky_warmup={}",
+            input.document_id,
+            input.task.provider_kind,
+            input.task.model_id,
             input.windows.len(),
-            Some(window.page_start),
-            Some(window.page_end),
-            Some(window.partition_index + 1),
-        );
-        let cards = if let Some(cards) = cached.get_mut(position).and_then(Option::take) {
+            parallelism,
+            input.task.provider_kind == "openrouter",
+        ),
+    );
+
+    let mut by_window = vec![None; input.windows.len()];
+    let mut missing = Vec::new();
+    let mut completed = 0_usize;
+    for (position, window) in input.windows.iter().enumerate() {
+        if let Some(cards) = cached.get_mut(position).and_then(Option::take) {
             crate::logging::info(
                 "document_generation_window_reused",
                 format!(
@@ -85,15 +99,53 @@ pub(crate) async fn execute_generation_windows(
                     cards.len(),
                 ),
             );
-            cards
+            document_store::mark_window_complete(
+                input.database,
+                input.document_id,
+                input.job_id,
+                window,
+                cards.len(),
+            )?;
+            by_window[position] = Some(cards);
+            completed = completed.saturating_add(1);
         } else {
+            missing.push(position);
+        }
+    }
+    document_store::update_generation_progress(input.database, input.document_id, completed)?;
+
+    let warm_first = input.task.provider_kind == "openrouter" && missing.len() > 1;
+    let mut cursor = 0_usize;
+    while cursor < missing.len() {
+        let batch_size = if warm_first && cursor == 0 {
+            1
+        } else {
+            parallelism
+        };
+        let end = (cursor + batch_size).min(missing.len());
+        let batch = &missing[cursor..end];
+        let first = &input.windows[batch[0]];
+        let last = &input.windows[*batch.last().unwrap_or(&batch[0])];
+        set_current_task_phase(
+            "generating",
+            Some(batch[0] + 1),
+            completed,
+            input.windows.len(),
+            Some(first.page_start),
+            Some(last.page_end),
+            Some(first.partition_index + 1),
+        );
+
+        let mut images = Vec::with_capacity(batch.len());
+        for position in batch.iter().copied() {
+            let window = &input.windows[position];
             document_store::mark_window_running(
                 input.database,
                 input.document_id,
                 input.job_id,
                 window.window_index,
             )?;
-            let images = if input.task.include_page_images {
+            images.push(if input.task.include_page_images {
                 document_store::load_window_images(
                     input.paths,
                     &renders,
@@ -102,33 +154,72 @@ pub(crate) async fn execute_generation_windows(
                 )?
             } else {
                 Vec::new()
-            };
-            let cards = generate_window_with_recovery(WindowGenerationRequest {
-                runtime: input.runtime,
-                task: input.task,
-                document_title: input.document_title,
-                outline: input.outline,
-                window,
-                images: &images,
-                maximum_cards: input.plan.max_cards_per_window,
-                diagnostic_prefix: input.diagnostic_prefix,
-            })
-            .await?;
-            if let Some(contract) = input.checkpoint_contract {
-                // Empty output is also a completed result. Caching it avoids
-                // repeatedly paying for a source window whose correct answer is
-                // no cards.
-                document_checkpoints::persist_generation_cards_best_effort(
-                    input.database,
-                    input.document_id,
-                    contract,
-                    window,
-                    &cards,
-                );
-            }
-            cards
-        };
+            });
+        }
 
+        let p0 = batch.first().copied();
+        let p1 = batch.get(1).copied();
+        let p2 = batch.get(2).copied();
+        let p3 = batch.get(3).copied();
+        let empty: &[document_intelligence::SourcePageImage] = &[];
+        let i0 = images.first().map(Vec::as_slice).unwrap_or(empty);
+        let i1 = images.get(1).map(Vec::as_slice).unwrap_or(empty);
+        let i2 = images.get(2).map(Vec::as_slice).unwrap_or(empty);
+        let i3 = images.get(3).map(Vec::as_slice).unwrap_or(empty);
+        let (r0, r1, r2, r3) = tokio::join!(
+            generation_slot(&input, p0, i0),
+            generation_slot(&input, p1, i1),
+            generation_slot(&input, p2, i2),
+            generation_slot(&input, p3, i3),
+        );
+
+        let mut first_error = None;
+        for (position, result) in [r0, r1, r2, r3].into_iter().flatten() {
+            match result {
+                Ok(cards) => {
+                    let window = &input.windows[position];
+                    if let Some(contract) = input.checkpoint_contract {
+                        // Empty output is also a completed result. Caching it
+                        // avoids paying again for a window whose correct answer
+                        // is no cards.
+                        document_checkpoints::persist_generation_cards_best_effort(
+                            input.database,
+                            input.document_id,
+                            contract,
+                            window,
+                            &cards,
+                        );
+                    }
+                    document_store::mark_window_complete(
+                        input.database,
+                        input.document_id,
+                        input.job_id,
+                        window,
+                        cards.len(),
+                    )?;
+                    by_window[position] = Some(cards);
+                    completed = completed.saturating_add(1);
+                    document_store::update_generation_progress(
+                        input.database,
+                        input.document_id,
+                        completed,
+                    )?;
+                }
+                Err(error) => {
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
+                }
+            }
+        }
+        if let Some(error) = first_error {
+            return Err(error);
+        }
+        cursor = end;
+    }
+
+    let mut generated = Vec::new();
+    for cards in by_window.into_iter().flatten() {
         if generated.len().saturating_add(cards.len()) > MAX_GENERATED_CARDS {
             return Err(CommandError::new(
                 "too_many_generated_cards",
@@ -137,31 +228,7 @@ pub(crate) async fn execute_generation_windows(
                 ),
             ));
         }
-        document_store::mark_window_complete(
-            input.database,
-            input.document_id,
-            input.job_id,
-            window,
-            cards.len(),
-        )?;
-        document_store::update_generation_progress(
-            input.database,
-            input.document_id,
-            position + 1,
-        )?;
         generated.extend(cards);
-        set_current_task_phase(
-            "generating",
-            input.windows.get(position + 1).map(|_| position + 2),
-            position + 1,
-            input.windows.len(),
-            input.windows.get(position + 1).map(|next| next.page_start),
-            input.windows.get(position + 1).map(|next| next.page_end),
-            input
-                .windows
-                .get(position + 1)
-                .map(|next| next.partition_index + 1),
-        );
     }
     set_current_task_phase(
         "curating",
@@ -173,6 +240,29 @@ pub(crate) async fn execute_generation_windows(
         None,
     );
     Ok(generated)
+}
+
+async fn generation_slot(
+    input: &GenerationExecution<'_>,
+    position: Option<usize>,
+    images: &[document_intelligence::SourcePageImage],
+) -> Option<(usize, Result<Vec<Value>, CommandError>)> {
+    let position = position?;
+    let window = &input.windows[position];
+    Some((
+        position,
+        generate_window_with_recovery(WindowGenerationRequest {
+            runtime: input.runtime,
+            task: input.task,
+            document_title: input.document_title,
+            outline: input.outline,
+            window,
+            images,
+            maximum_cards: input.plan.max_cards_per_window,
+            diagnostic_prefix: input.diagnostic_prefix,
+        })
+        .await,
+    ))
 }
 
 async fn generate_window_with_recovery(
@@ -233,5 +323,21 @@ mod tests {
         let cached = [Some(Vec::<Value>::new()), None];
         assert!(cached[0].as_ref().is_some_and(Vec::is_empty));
         assert!(cached[1].is_none());
+    }
+
+    #[test]
+    fn provider_parallelism_is_bounded_before_window_execution() {
+        assert_eq!(
+            crate::ai::concurrency::document_request_parallelism("openrouter"),
+            4
+        );
+        assert_eq!(
+            crate::ai::concurrency::document_request_parallelism("deepseek"),
+            2
+        );
+        assert_eq!(
+            crate::ai::concurrency::document_request_parallelism("llama_cpp"),
+            1
+        );
     }
 }
