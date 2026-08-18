@@ -100,20 +100,6 @@ jobs:
               value = value.replace(test_anchor, test + test_anchor, 1)
           gateway.write_text(value)
 
-          openrouter = Path('src-tauri/src/ai/providers/openrouter.rs')
-          value = openrouter.read_text()
-          value = value.replace(
-              'const HIGH_PRECISION_QUANTIZATIONS: [&str; 5] = ["int8", "fp8", "fp16", "bf16", "fp32"];',
-              'const HIGH_PRECISION_QUANTIZATIONS: [&str; 6] = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32"];',
-              1,
-          )
-          value = value.replace(
-              'Some(&json!(["int8", "fp8", "fp16", "bf16", "fp32"]))',
-              'Some(&json!(["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32"]))',
-              1,
-          )
-          openrouter.write_text(value)
-
           semantics = Path('src-tauri/src/document_semantics.rs')
           value = semantics.read_text()
           anchor = '    #[test]\n    fn partitioned_windows_receive_unique_global_indices_within_one_partition() {'
@@ -154,6 +140,9 @@ jobs:
         run: |
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           git diff --check
+
+      - name: Provision pinned native PDFium
+        run: bash ./scripts/install-native-deps.sh --pdfium-only
 
       - name: Focused compile and tests
         run: |
