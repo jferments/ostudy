@@ -25,6 +25,7 @@ export type AiProbeOverallStatus = "verified" | "partial" | "failed";
 export type AiProbePhaseStatus = "passed" | "failed" | "skipped";
 export type AiCapabilityStatus = "supported" | "unsupported" | "unknown";
 export type AiCapabilitySource = "declared" | "probed";
+export type AiReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface AiProviderCatalogEntry {
   providerKind: AiProviderKind;
@@ -92,10 +93,20 @@ export interface AiTaskDefaults {
   flashcardGenerationProfileId: string | null;
 }
 
+export interface AiProviderModelReasoning {
+  supportedEfforts: AiReasoningEffort[] | null;
+  defaultEffort: AiReasoningEffort | null;
+  defaultEnabled: boolean | null;
+  supportsMaxTokens: boolean;
+  mandatory: boolean;
+}
+
 export interface AiProviderModel {
   id: string;
   displayName: string;
   ownedBy: string | null;
+  contextWindowTokens: number | null;
+  reasoning: AiProviderModelReasoning | null;
 }
 
 export interface AiProviderModels {
