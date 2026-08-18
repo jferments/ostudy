@@ -184,13 +184,12 @@ impl AiGateway {
 
     /// POST one Chat Completions request as an SSE stream.
     ///
-    /// `initial_response_timeout_ms` is intentionally *not* a job deadline. It
-    /// covers connection establishment and receipt of provider response headers.
-    /// Successful headers are the provider acknowledgment boundary. After that,
-    /// ostudy does not impose a blunt total inference deadline: actively producing
-    /// streams may run as needed, while a provider that stops producing usable
-    /// model output is canceled by a provider-aware progress timeout. Response-size
-    /// bounds and exact-task cancellation remain authoritative.
+    /// `inactivity_timeout_ms` is intentionally *not* a job deadline. It
+    /// bounds silence while waiting for response headers and between received SSE
+    /// chunks. Heartbeats, reasoning deltas, output deltas, tool arguments, and
+    /// final usage events all prove transport activity and reset the timer. There
+    /// is no total inference wall clock; response-size bounds and exact-task
+    /// cancellation remain authoritative.
     /// This deliberately avoids optional llama.cpp progress/ping request fields
     /// so older compatible llama-server/Unsloth builds are not rejected merely
     /// because they do not recognize newer transport extensions.
@@ -349,9 +348,7 @@ impl AiGateway {
             return Err(empty_stream_failure(finish));
         }
         let usage = stream.usage.clone();
-        if let Some(usage) = usage.as_ref() {
-            record_current_usage(usage_delta(usage));
-        }
+        record_current_usage(usage.as_ref().map(usage_delta).unwrap_or_default());
         crate::logging::debug_target(
             "ai.gateway.streaming",
             "provider_stream_completed",

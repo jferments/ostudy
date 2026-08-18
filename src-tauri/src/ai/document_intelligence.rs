@@ -568,7 +568,7 @@ pub(crate) async fn curate_document_cards(
 
     let outline_json = outline_context_for_curation(outline)?;
     let batches = into_curation_batches(cards);
-    let parallelism = super::concurrency::document_request_parallelism(&task.network_scope)
+    let parallelism = crate::ai::concurrency::document_request_parallelism(&task.network_scope)
         .clamp(1, batches.len().max(1));
     crate::logging::debug_target(
         "ai.document.curation",
