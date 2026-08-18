@@ -11,6 +11,7 @@ const files = {
   fullCheck: "scripts/check.sh",
   smoke: "scripts/smoke-startup-compatibility.sh",
   reset: "scripts/reset-pre-public-data.sh",
+  recoveryEntrypoint: "scripts/transition-pre-public-data.sh",
   restore: "scripts/restore_pre_public_backup.py",
   checkState: "scripts/check-state.sh",
 };
@@ -109,11 +110,20 @@ const contracts = [
   ],
   [
     "archived pre-public data has a non-destructive verified restore path",
-    source.restore.includes("validate_final_pre_public_backup") &&
+    source.restore.includes("validate_final_pre_public_copy") &&
       source.restore.includes("EXPECTED_MIGRATIONS") &&
       source.restore.includes("EXPECTED_REPAIRS") &&
       source.restore.includes("Archived the previous active directory") &&
-      source.restore.includes("original timestamped pre-public backup was retained unchanged"),
+      source.restore.includes("original timestamped pre-public archive") &&
+      source.restore.includes("remains untouched"),
+  ],
+  [
+    "the documented recovery transition entrypoint delegates to the verified restore helper",
+    source.recoveryEntrypoint.includes("--source-backup") &&
+      source.recoveryEntrypoint.includes("--data-dir") &&
+      source.recoveryEntrypoint.includes("--confirm") &&
+      source.recoveryEntrypoint.includes("restore_pre_public_backup.py") &&
+      source.recoveryEntrypoint.includes('exec python3 "$SCRIPT_DIR/restore_pre_public_backup.py"'),
   ],
   [
     "empty-library reset requires explicit destructive intent",
@@ -138,5 +148,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Startup preserves the actual historical final-v26 library through a shared lineage contract, consistent SQLite backup/adoption, durable startup diagnostics, manual recovery for unsupported data, and built-binary preservation qualification.",
+  "OK   Startup preserves the actual historical final-v26 library through a shared lineage contract, consistent SQLite backup/adoption, a verified recovery entrypoint, durable startup diagnostics, manual recovery for unsupported data, and built-binary preservation qualification.",
 );
