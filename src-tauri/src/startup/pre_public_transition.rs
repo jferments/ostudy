@@ -81,7 +81,8 @@ DELETE FROM data_repairs;
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct PrePublicContract {
-    user_version: i64,
+    schema_version: i64,
+    accepted_sqlite_user_versions: Vec<i64>,
     migrations: Vec<LedgerEntry>,
     repairs: Vec<LedgerEntry>,
 }
@@ -129,15 +130,17 @@ pub(super) fn adopt_final_pre_public_database(
     }
 
     verify_integrity(&connection)?;
+    let sqlite_user_version = read_sqlite_user_version(&connection)?;
     let before = preserved_data_snapshot(&connection)?;
-    let backup_path = create_database_backup(&connection, database_path, contract.user_version)?;
+    let backup_path = create_database_backup(&connection, database_path, contract.schema_version)?;
 
     crate::logging::info_target(
         "database.migration",
         "pre_public_database_adoption_started",
         "The final pre-public database is being adopted into the public schema lineage.",
         json!({
-            "legacyVersion": contract.user_version,
+            "legacyVersion": contract.schema_version,
+            "legacySqliteUserVersion": sqlite_user_version,
             "backupFile": backup_path
                 .file_name()
                 .and_then(|value| value.to_str())
@@ -160,7 +163,8 @@ pub(super) fn adopt_final_pre_public_database(
         "pre_public_database_adoption_completed",
         "The final pre-public database was adopted without replacing learner data.",
         json!({
-            "legacyVersion": contract.user_version,
+            "legacyVersion": contract.schema_version,
+            "legacySqliteUserVersion": sqlite_user_version,
             "schemaLineage": PUBLIC_SCHEMA_LINEAGE,
             "schemaVersion": PUBLIC_BASELINE_VERSION,
             "backupFile": backup_path
@@ -184,8 +188,11 @@ pub(super) fn adopt_final_pre_public_database(
 fn pre_public_contract() -> Result<PrePublicContract, String> {
     let contract: PrePublicContract = serde_json::from_str(PRE_PUBLIC_CONTRACT_JSON)
         .map_err(|error| format!("The embedded pre-public lineage contract is invalid: {error}"))?;
-    let expected_migration_count = usize::try_from(contract.user_version).unwrap_or(usize::MAX);
-    if contract.user_version <= 0
+    let expected_migration_count = usize::try_from(contract.schema_version).unwrap_or(usize::MAX);
+    if contract.schema_version <= 0
+        || contract.accepted_sqlite_user_versions.len() != 2
+        || contract.accepted_sqlite_user_versions[0] != 0
+        || contract.accepted_sqlite_user_versions[1] != contract.schema_version
         || contract.migrations.len() != expected_migration_count
         || contract
             .migrations
@@ -233,16 +240,23 @@ fn is_exact_final_pre_public_database(
         return Ok(false);
     }
 
-    let user_version: i64 = connection
-        .query_row("PRAGMA user_version", [], |row| row.get(0))
-        .map_err(|error| format!("Could not read the pre-public SQLite user_version: {error}"))?;
-    if user_version != contract.user_version {
+    let sqlite_user_version = read_sqlite_user_version(connection)?;
+    if !contract
+        .accepted_sqlite_user_versions
+        .contains(&sqlite_user_version)
+    {
         return Ok(false);
     }
 
     let migrations = read_ledger(connection, "schema_migrations")?;
     let repairs = read_ledger(connection, "data_repairs")?;
     Ok(migrations == contract.migrations && repairs == contract.repairs)
+}
+
+fn read_sqlite_user_version(connection: &Connection) -> Result<i64, String> {
+    connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|error| format!("Could not read the pre-public SQLite user_version: {error}"))
 }
 
 fn read_ledger(connection: &Connection, table: &str) -> Result<Vec<LedgerEntry>, String> {
