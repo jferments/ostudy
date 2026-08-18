@@ -34,7 +34,8 @@ export interface AppSettings {
   desiredRetention: number;
   dailyNewLimit: number;
   dailyReviewLimit: number;
-  aiReasoningEffort: AiReasoningEffort;
+  /** Native settings always return this; optional keeps older fixture/build callers source-compatible. */
+  aiReasoningEffort?: AiReasoningEffort;
 }
 
 export interface AppInfo {
