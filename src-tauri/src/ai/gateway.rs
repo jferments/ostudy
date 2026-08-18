@@ -329,6 +329,9 @@ impl AiGateway {
             ));
         }
         let usage = stream.usage.clone();
+        if let Some(usage) = usage.as_ref() {
+            record_current_usage(usage_delta(usage));
+        }
         let message = if stream.tool_arguments.trim().is_empty() {
             json!({ "content": stream.content })
         } else {
@@ -782,6 +785,7 @@ fn prepare_provider_body_for_document(
             "enabled": false
         }]),
     );
+    object.insert("usage".to_string(), json!({ "include": true }));
     if let Some(document_id) = document_id.filter(|value| !value.is_empty()) {
         object.insert(
             "session_id".to_string(),
@@ -791,10 +795,7 @@ fn prepare_provider_body_for_document(
     if let Some(reasoning_effort) = reasoning_effort.filter(|value| *value != "automatic") {
         object.insert(
             "reasoning".to_string(),
-            json!({
-                "effort": reasoning_effort,
-                "exclude": true
-            }),
+            json!({ "effort": reasoning_effort, "exclude": true }),
         );
     }
     Some(prepared)
@@ -838,14 +839,6 @@ fn safe_usage_envelope(value: &Value) -> Option<Value> {
     {
         return None;
     }
-    record_current_usage(DocumentTaskUsageDelta {
-        prompt_tokens,
-        completion_tokens,
-        reasoning_tokens,
-        total_tokens,
-        cached_prompt_tokens: cached_tokens,
-        cache_write_tokens,
-    });
     Some(json!({
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
@@ -859,6 +852,17 @@ fn safe_usage_envelope(value: &Value) -> Option<Value> {
         },
         "cost": cost,
     }))
+}
+
+fn usage_delta(usage: &Value) -> DocumentTaskUsageDelta {
+    DocumentTaskUsageDelta {
+        prompt_tokens: nonnegative_integer(usage.get("prompt_tokens")),
+        completion_tokens: nonnegative_integer(usage.get("completion_tokens")),
+        reasoning_tokens: nonnegative_integer(usage.pointer("/completion_tokens_details/reasoning_tokens")),
+        total_tokens: nonnegative_integer(usage.get("total_tokens")),
+        cached_prompt_tokens: nonnegative_integer(usage.pointer("/prompt_tokens_details/cached_tokens")),
+        cache_write_tokens: nonnegative_integer(usage.pointer("/prompt_tokens_details/cache_write_tokens")),
+    }
 }
 
 fn nonnegative_integer(value: Option<&Value>) -> Option<u64> {
@@ -1470,6 +1474,7 @@ mod tests {
         .expect("OpenRouter requests should be normalized");
         assert_eq!(prepared["plugins"][0]["id"], "context-compression");
         assert_eq!(prepared["plugins"][0]["enabled"], false);
+        assert_eq!(prepared["usage"]["include"], true);
         assert_eq!(
             prepared["session_id"],
             "ostudy-document-0123456789abcdef0123456789abcdef"
