@@ -114,6 +114,10 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             "pdfRenderer": crate::pdf_render_backend::active_backend_id(),
         }),
     );
+    // Startup and one-time migration/adoption events must reach the persistent
+    // JSONL log before the application begins normal event-loop work. This
+    // keeps early diagnostic evidence available even after abrupt termination.
+    let _ = logging::flush(Duration::from_millis(500));
     Ok(())
 }
 
