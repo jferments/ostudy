@@ -159,38 +159,25 @@ fn baseline_plan(source_unit_count: usize, provider_kind: &str) -> DocumentScale
         };
     }
 
-    if provider_kind == "deepseek" {
-        DocumentScalePlan {
-            class: DocumentScaleClass::Large,
-            partition_target_tokens: 32_000,
-            partition_max_tokens: 48_000,
-            partition_target_units: 48,
-            partition_max_units: 60,
-            outline_window_max_tokens: 10_000,
-            outline_window_max_units: 20,
-            outline_window_overlap_tokens: 500,
-            generation_window_max_tokens: 6_000,
-            generation_window_max_units: 8,
-            generation_window_overlap_tokens: 400,
-            max_images_per_window: 0,
-            max_cards_per_window: 16,
-        }
-    } else {
-        DocumentScalePlan {
-            class: DocumentScaleClass::Large,
-            partition_target_tokens: 18_000,
-            partition_max_tokens: 28_000,
-            partition_target_units: 20,
-            partition_max_units: 30,
-            outline_window_max_tokens: 3_200,
-            outline_window_max_units: 8,
-            outline_window_overlap_tokens: 300,
-            generation_window_max_tokens: 5_000,
-            generation_window_max_units: 10,
-            generation_window_overlap_tokens: 500,
-            max_images_per_window: 3,
-            max_cards_per_window: 16,
-        }
+    // Large-document request sizing is provider-neutral. The source is divided
+    // into substantially fewer chapter-scale requests than the old 3.2k-token
+    // cloud outline policy, while any provider-declared context window can only
+    // shrink these targets below. The only provider-specific difference here is
+    // whether the current adapter can attach rendered page images.
+    DocumentScalePlan {
+        class: DocumentScaleClass::Large,
+        partition_target_tokens: 32_000,
+        partition_max_tokens: 48_000,
+        partition_target_units: 40,
+        partition_max_units: 60,
+        outline_window_max_tokens: 10_000,
+        outline_window_max_units: 18,
+        outline_window_overlap_tokens: 500,
+        generation_window_max_tokens: 7_000,
+        generation_window_max_units: 12,
+        generation_window_overlap_tokens: 600,
+        max_images_per_window: if provider_kind == "deepseek" { 0 } else { 3 },
+        max_cards_per_window: 16,
     }
 }
 
@@ -341,20 +328,20 @@ mod tests {
     }
 
     #[test]
-    fn reported_context_can_only_shrink_the_conservative_source_window() {
+    fn reported_context_can_only_shrink_the_source_window() {
         let calibration = DocumentCostCalibration {
             prompt_multiplier_milli: 1_500,
             image_prompt_tokens: 0,
             sample_count: 5,
         };
         let plan = DocumentScalePlan::for_capabilities(
-            20,
-            &capabilities("llama_cpp", Some(8_192)),
+            55,
+            &capabilities("openrouter", Some(12_000)),
             calibration,
         )
         .unwrap();
-        assert!(plan.outline_window_max_tokens <= 3_200);
-        assert!(plan.generation_window_max_tokens < 5_000);
+        assert!(plan.outline_window_max_tokens < 10_000);
+        assert!(plan.generation_window_max_tokens < 7_000);
     }
 
     #[test]
@@ -369,32 +356,38 @@ mod tests {
     }
 
     #[test]
-    fn deepseek_large_documents_use_chapter_scale_partitions_and_many_card_slots() {
-        let plan = DocumentScalePlan::for_provider(138, "deepseek");
-        assert_eq!(plan.class, DocumentScaleClass::Large);
-        assert_eq!(plan.partition_target_units, 48);
-        assert_eq!(plan.partition_max_units, 60);
-        assert_eq!(plan.generation_window_max_units, 8);
-        assert_eq!(plan.max_cards_per_window, 16);
-        let budget = validate_automatic_job(138, 100_000, plan, 8, 18, "deepseek").unwrap();
-        assert_eq!(budget.generation_card_capacity, 288);
-        assert_eq!(budget.ceiling_tokens, AggregateTokenCeiling::Windowed);
+    fn large_document_request_sizes_are_provider_neutral() {
+        let llama = DocumentScalePlan::for_provider(138, "llama_cpp");
+        let deepseek = DocumentScalePlan::for_provider(138, "deepseek");
+        let openrouter = DocumentScalePlan::for_provider(138, "openrouter");
+        for plan in [llama, deepseek, openrouter] {
+            assert_eq!(plan.class, DocumentScaleClass::Large);
+            assert_eq!(plan.partition_target_units, 40);
+            assert_eq!(plan.partition_max_units, 60);
+            assert_eq!(plan.outline_window_max_tokens, 10_000);
+            assert_eq!(plan.outline_window_max_units, 18);
+            assert_eq!(plan.generation_window_max_tokens, 7_000);
+            assert_eq!(plan.generation_window_max_units, 12);
+            assert_eq!(plan.max_cards_per_window, 16);
+        }
+        assert_eq!(deepseek.max_images_per_window, 0);
+        assert_eq!(llama.max_images_per_window, 3);
+        assert_eq!(openrouter.max_images_per_window, 3);
     }
 
     #[test]
-    fn local_large_documents_keep_conservative_request_windows() {
-        let plan = DocumentScalePlan::for_provider(138, "llama_cpp");
-        assert_eq!(plan.class, DocumentScaleClass::Large);
-        assert_eq!(plan.outline_window_max_tokens, 3_200);
-        assert_eq!(plan.generation_window_max_units, 10);
-        assert_eq!(plan.max_cards_per_window, 16);
+    fn openrouter_55_page_plan_uses_fewer_larger_windows_than_old_cloud_policy() {
+        let plan = DocumentScalePlan::for_provider(55, "openrouter");
+        assert_eq!(plan.outline_window_max_tokens, 10_000);
+        assert!(plan.outline_window_max_units > 8);
+        assert_eq!(plan.generation_window_max_tokens, 7_000);
     }
 
     #[test]
     fn all_providers_continue_through_windows_past_old_aggregate_ceilings() {
         for provider in ["llama_cpp", "deepseek", "openrouter"] {
             let plan = DocumentScalePlan::for_provider(138, provider);
-            let budget = validate_automatic_job(138, 220_000, plan, 50, 80, provider)
+            let budget = validate_automatic_job(138, 220_000, plan, 20, 35, provider)
                 .expect("large jobs should be window-bounded, not whole-job-bounded");
             assert!(budget.estimated_tokens > 650_000);
             assert_eq!(budget.ceiling_tokens, AggregateTokenCeiling::Windowed);
@@ -404,7 +397,7 @@ mod tests {
     #[test]
     fn openrouter_55_page_job_above_old_650k_guard_is_allowed() {
         let plan = DocumentScalePlan::for_provider(55, "openrouter");
-        let budget = validate_automatic_job(55, 180_000, plan, 40, 60, "openrouter")
+        let budget = validate_automatic_job(55, 180_000, plan, 18, 28, "openrouter")
             .expect("OpenRouter should process large sources through bounded windows");
         assert!(budget.estimated_tokens > 650_000);
         assert_eq!(budget.ceiling_tokens, AggregateTokenCeiling::Windowed);
@@ -414,7 +407,7 @@ mod tests {
     fn aggregate_source_tokens_do_not_create_provider_specific_rejections() {
         for provider in ["llama_cpp", "deepseek", "openrouter"] {
             let plan = DocumentScalePlan::for_provider(100, provider);
-            let budget = validate_automatic_job(100, 350_000, plan, 80, 100, provider)
+            let budget = validate_automatic_job(100, 350_000, plan, 50, 60, provider)
                 .expect("large source totals should scale by adding bounded windows");
             assert_eq!(budget.ceiling_tokens, AggregateTokenCeiling::Windowed);
         }
