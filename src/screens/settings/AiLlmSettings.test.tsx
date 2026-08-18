@@ -123,6 +123,7 @@ describe("AiLlmSettings", () => {
 
     expect(screen.getByText("412 models returned by the provider.")).toBeTruthy();
     expect(screen.getByRole("option", { name: "Zeta Final Model — zeta/final-model" })).toBeTruthy();
-    expect(screen.getAllByRole("option")).toHaveLength(413);
+    const modelSelect = screen.getByRole("combobox", { name: "Model" });
+    expect(modelSelect.querySelectorAll("option")).toHaveLength(413);
   });
 });
