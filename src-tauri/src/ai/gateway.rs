@@ -3,7 +3,7 @@ use std::time::Duration;
 use reqwest::{redirect::Policy, Client, Method, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::time::timeout;
+use tokio::time::{sleep, timeout};
 use url::Url;
 
 use crate::task_cancellation::{current_signal, CancellationSignal};
@@ -12,6 +12,8 @@ const CONNECT_TIMEOUT_SECONDS: u64 = 10;
 const MAX_ERROR_BODY_BYTES: usize = 32 * 1024;
 const STREAM_WIRE_MULTIPLIER: usize = 16;
 const OPENROUTER_HOST: &str = "openrouter.ai";
+const DOCUMENT_RETRY_DELAY_MILLIS: u64 = 750;
+const MAX_SAFE_PROVIDER_METADATA_CHARS: usize = 300;
 
 #[derive(Clone)]
 pub struct AiGateway {
@@ -83,9 +85,87 @@ impl AiGateway {
         // long-running calls are transparently upgraded to SSE; provider probes
         // and model discovery retain their ordinary bounded request behavior.
         if let Some(cancellation) = current_signal() {
-            return self
-                .post_sse_chat_json(url, bearer, body, timeout_ms, maximum_bytes, &cancellation)
+            let first = self
+                .post_sse_chat_json(
+                    url.clone(),
+                    bearer,
+                    body,
+                    timeout_ms,
+                    maximum_bytes,
+                    &cancellation,
+                )
                 .await;
+            return match first {
+                Err(first_error) if should_retry_document_stream_error(&first_error) => {
+                    let delay = document_retry_delay(&first_error);
+                    let delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
+                    let model = body
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .and_then(|value| {
+                            safe_metadata_string(value, MAX_SAFE_PROVIDER_METADATA_CHARS)
+                        });
+                    crate::logging::warn_target(
+                        "ai.gateway.retry",
+                        "provider_request_retry",
+                        "A transient AI provider failure caused one bounded document request to be retried from scratch.",
+                        json!({
+                            "endpointHost": url.host_str(),
+                            "model": model.as_deref(),
+                            "firstErrorCode": first_error.safe.code.as_str(),
+                            "retryDelayMs": delay_ms,
+                        }),
+                    );
+                    tokio::select! {
+                        _ = cancellation.canceled() => return Err(canceled_error()),
+                        _ = sleep(delay) => {}
+                    }
+                    match self
+                        .post_sse_chat_json(
+                            url.clone(),
+                            bearer,
+                            body,
+                            timeout_ms,
+                            maximum_bytes,
+                            &cancellation,
+                        )
+                        .await
+                    {
+                        Ok(value) => {
+                            crate::logging::info_target(
+                                "ai.gateway.retry",
+                                "provider_request_retry_succeeded",
+                                "The bounded document request succeeded on its one transient retry.",
+                                json!({
+                                    "endpointHost": url.host_str(),
+                                    "model": model.as_deref(),
+                                    "firstErrorCode": first_error.safe.code.as_str(),
+                                }),
+                            );
+                            Ok(value)
+                        }
+                        Err(mut second_error) => {
+                            crate::logging::warn_target(
+                                "ai.gateway.retry",
+                                "provider_request_retry_exhausted",
+                                "The bounded document request failed again after its one transient retry.",
+                                json!({
+                                    "endpointHost": url.host_str(),
+                                    "model": model.as_deref(),
+                                    "firstErrorCode": first_error.safe.code.as_str(),
+                                    "secondErrorCode": second_error.safe.code.as_str(),
+                                }),
+                            );
+                            second_error.safe.message = format!(
+                                "{} ostudy retried this bounded source-window request once from scratch, but the retry also failed.",
+                                second_error.safe.message
+                            );
+                            Err(second_error)
+                        }
+                    }
+                }
+                other => other,
+            };
         }
         self.request_json(
             Method::POST,
@@ -140,7 +220,9 @@ impl AiGateway {
             .header(reqwest::header::CACHE_CONTROL, "no-cache")
             .json(&streaming_body);
         if openrouter {
-            request = request.header("X-OpenRouter-Title", "ostudy");
+            request = request
+                .header("X-OpenRouter-Title", "ostudy")
+                .header("X-OpenRouter-Metadata", "enabled");
         }
         if let Some(secret) = bearer {
             request = request.bearer_auth(secret);
@@ -159,6 +241,11 @@ impl AiGateway {
             .get(reqwest::header::RETRY_AFTER)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.parse::<u64>().ok());
+        let generation_id = response
+            .headers()
+            .get("x-generation-id")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| safe_metadata_string(value, 200));
 
         if status.is_redirection() {
             return Err(error(
@@ -169,8 +256,15 @@ impl AiGateway {
             ));
         }
         if !status.is_success() {
-            let _ = read_bounded_body(&mut response, MAX_ERROR_BODY_BYTES, cancellation).await?;
-            return Err(classify_http_status(status.as_u16(), retry_after_seconds));
+            let bytes = read_bounded_body(&mut response, MAX_ERROR_BODY_BYTES, cancellation).await?;
+            return Err(classify_provider_error_response(
+                status.as_u16(),
+                retry_after_seconds,
+                &bytes,
+                openrouter,
+                generation_id.as_deref(),
+                true,
+            ));
         }
 
         let first_chunk = tokio::select! {
@@ -197,7 +291,13 @@ impl AiGateway {
         let maximum_wire_bytes = maximum_content_bytes
             .saturating_mul(STREAM_WIRE_MULTIPLIER)
             .max(maximum_content_bytes);
-        let mut stream = SseChatAccumulator::new(maximum_content_bytes, maximum_wire_bytes);
+        let mut stream = SseChatAccumulator::for_request(
+            maximum_content_bytes,
+            maximum_wire_bytes,
+            openrouter,
+            generation_id,
+            retry_after_seconds,
+        );
         stream.push_bytes(&first_chunk)?;
 
         while !stream.done {
@@ -261,7 +361,9 @@ impl AiGateway {
             .timeout(Duration::from_millis(timeout_ms as u64))
             .header(reqwest::header::ACCEPT, "application/json");
         if openrouter {
-            request = request.header("X-OpenRouter-Title", "ostudy");
+            request = request
+                .header("X-OpenRouter-Title", "ostudy")
+                .header("X-OpenRouter-Metadata", "enabled");
         }
         if let Some(secret) = bearer {
             request = request.bearer_auth(secret);
@@ -277,6 +379,11 @@ impl AiGateway {
             .get(reqwest::header::RETRY_AFTER)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.parse::<u64>().ok());
+        let generation_id = response
+            .headers()
+            .get("x-generation-id")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| safe_metadata_string(value, 200));
 
         let body_limit = if status.is_success() {
             maximum_bytes
@@ -317,17 +424,35 @@ impl AiGateway {
             ));
         }
         if !status.is_success() {
-            return Err(classify_http_status(status.as_u16(), retry_after_seconds));
+            return Err(classify_provider_error_response(
+                status.as_u16(),
+                retry_after_seconds,
+                &bytes,
+                openrouter,
+                generation_id.as_deref(),
+                false,
+            ));
         }
 
-        serde_json::from_slice(&bytes).map_err(|_| {
+        let value: Value = serde_json::from_slice(&bytes).map_err(|_| {
             error(
                 "ai_provider_protocol_error",
                 "The AI provider returned a response that was not valid JSON.",
                 false,
                 None,
             )
-        })
+        })?;
+        if openrouter && provider_error_object(&value).is_some() {
+            return Err(classify_provider_error_value(
+                &value,
+                None,
+                retry_after_seconds,
+                true,
+                generation_id.as_deref(),
+                false,
+            ));
+        }
+        Ok(value)
     }
 }
 
@@ -386,6 +511,9 @@ struct SseChatAccumulator {
     maximum_content_bytes: usize,
     maximum_wire_bytes: usize,
     done: bool,
+    openrouter: bool,
+    generation_id: Option<String>,
+    retry_after_seconds: Option<u64>,
 }
 
 impl SseChatAccumulator {
@@ -400,7 +528,24 @@ impl SseChatAccumulator {
             maximum_content_bytes,
             maximum_wire_bytes,
             done: false,
+            openrouter: false,
+            generation_id: None,
+            retry_after_seconds: None,
         }
+    }
+
+    fn for_request(
+        maximum_content_bytes: usize,
+        maximum_wire_bytes: usize,
+        openrouter: bool,
+        generation_id: Option<String>,
+        retry_after_seconds: Option<u64>,
+    ) -> Self {
+        let mut stream = Self::new(maximum_content_bytes, maximum_wire_bytes);
+        stream.openrouter = openrouter;
+        stream.generation_id = generation_id;
+        stream.retry_after_seconds = retry_after_seconds;
+        stream
     }
 
     fn push_bytes(&mut self, bytes: &[u8]) -> Result<(), AiGatewayError> {
@@ -459,8 +604,13 @@ impl SseChatAccumulator {
                 None,
             )
         })?;
-        if value.get("error").is_some() {
-            return Err(classify_stream_event_error(&value));
+        if value.get("error").is_some_and(|value| !value.is_null()) {
+            return Err(classify_stream_event_error(
+                &value,
+                self.openrouter,
+                self.generation_id.as_deref(),
+                self.retry_after_seconds,
+            ));
         }
         let choice = value
             .get("choices")
@@ -599,58 +749,377 @@ fn prepare_provider_body(url: &Url, body: &Value) -> Option<Value> {
     Some(prepared)
 }
 
-fn classify_stream_event_error(value: &Value) -> AiGatewayError {
-    let code = value
-        .pointer("/error/code")
-        .and_then(Value::as_str)
-        .map(ToString::to_string)
+fn provider_error_object(value: &Value) -> Option<&Value> {
+    value
+        .get("error")
+        .filter(|error| !error.is_null())
         .or_else(|| {
             value
-                .pointer("/error/code")
+                .pointer("/choices/0/error")
+                .filter(|error| !error.is_null())
+        })
+}
+
+fn provider_error_code(error_value: &Value) -> String {
+    error_value
+        .get("code")
+        .and_then(Value::as_str)
+        .and_then(|value| safe_metadata_string(value, 120))
+        .or_else(|| {
+            error_value
+                .get("code")
                 .and_then(Value::as_i64)
                 .map(|value| value.to_string())
         })
-        .unwrap_or_else(|| "unknown".to_string());
-    let normalized = code.to_ascii_lowercase();
-    let (safe_code, message, retryable) = match normalized.as_str() {
-        "401" | "unauthorized" => (
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn provider_error_status(error_value: &Value) -> Option<u16> {
+    error_value
+        .get("code")
+        .and_then(Value::as_u64)
+        .and_then(|value| u16::try_from(value).ok())
+        .or_else(|| {
+            error_value
+                .get("code")
+                .and_then(Value::as_i64)
+                .and_then(|value| u16::try_from(value).ok())
+        })
+        .or_else(|| {
+            error_value
+                .get("code")
+                .and_then(Value::as_str)
+                .and_then(|value| value.parse::<u16>().ok())
+        })
+}
+
+fn safe_json_string(value: Option<&Value>, maximum_chars: usize) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .and_then(|value| safe_metadata_string(value, maximum_chars))
+}
+
+fn safe_metadata_string(value: &str, maximum_chars: usize) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.chars().any(char::is_control) {
+        return None;
+    }
+    Some(trimmed.chars().take(maximum_chars).collect())
+}
+
+fn selected_openrouter_provider(value: &Value) -> Option<String> {
+    safe_json_string(value.get("provider"), MAX_SAFE_PROVIDER_METADATA_CHARS).or_else(|| {
+        value
+            .pointer("/openrouter_metadata/endpoints/available")
+            .and_then(Value::as_array)
+            .and_then(|endpoints| {
+                endpoints
+                    .iter()
+                    .find(|endpoint| endpoint.get("selected").and_then(Value::as_bool) == Some(true))
+            })
+            .and_then(|endpoint| {
+                safe_json_string(endpoint.get("provider"), MAX_SAFE_PROVIDER_METADATA_CHARS)
+            })
+    })
+}
+
+fn safe_openrouter_attempts(value: &Value) -> Value {
+    let attempts = value
+        .pointer("/openrouter_metadata/attempts")
+        .and_then(Value::as_array)
+        .map(|attempts| {
+            attempts
+                .iter()
+                .take(8)
+                .map(|attempt| {
+                    json!({
+                        "provider": safe_json_string(
+                            attempt.get("provider"),
+                            MAX_SAFE_PROVIDER_METADATA_CHARS,
+                        ),
+                        "model": safe_json_string(
+                            attempt.get("model"),
+                            MAX_SAFE_PROVIDER_METADATA_CHARS,
+                        ),
+                        "status": attempt.get("status").and_then(Value::as_u64),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Value::Array(attempts)
+}
+
+fn classify_provider_error_response(
+    status: u16,
+    retry_after_seconds: Option<u64>,
+    body: &[u8],
+    openrouter: bool,
+    generation_id: Option<&str>,
+    streaming: bool,
+) -> AiGatewayError {
+    if openrouter {
+        if let Ok(value) = serde_json::from_slice::<Value>(body) {
+            if provider_error_object(&value).is_some() {
+                return classify_provider_error_value(
+                    &value,
+                    Some(status),
+                    retry_after_seconds,
+                    true,
+                    generation_id,
+                    streaming,
+                );
+            }
+        }
+    }
+    classify_http_status(status, retry_after_seconds)
+}
+
+fn classify_stream_event_error(
+    value: &Value,
+    openrouter: bool,
+    generation_id: Option<&str>,
+    retry_after_seconds: Option<u64>,
+) -> AiGatewayError {
+    if provider_error_object(value).is_some() {
+        return classify_provider_error_value(
+            value,
+            None,
+            retry_after_seconds,
+            openrouter,
+            generation_id,
+            true,
+        );
+    }
+    error(
+        "ai_stream_interrupted",
+        "The AI provider ended the streaming response with an unrecognized error event. Partial output was discarded.",
+        true,
+        retry_after_seconds,
+    )
+}
+
+fn classify_provider_error_value(
+    value: &Value,
+    http_status: Option<u16>,
+    retry_after_seconds: Option<u64>,
+    openrouter: bool,
+    generation_id: Option<&str>,
+    streaming: bool,
+) -> AiGatewayError {
+    let error_value = provider_error_object(value).unwrap_or(&Value::Null);
+    let code = provider_error_code(error_value);
+    let provider_status = provider_error_status(error_value)
+        .or_else(|| http_status.filter(|status| *status >= 400));
+    let error_type = safe_json_string(
+        error_value.pointer("/metadata/error_type").or_else(|| error_value.get("error_type")),
+        120,
+    );
+    let provider_code = safe_json_string(
+        error_value.pointer("/metadata/provider_code"),
+        MAX_SAFE_PROVIDER_METADATA_CHARS,
+    );
+    let upstream_provider = selected_openrouter_provider(value);
+    let model = safe_json_string(value.get("model"), MAX_SAFE_PROVIDER_METADATA_CHARS).or_else(|| {
+        safe_json_string(
+            value.pointer("/openrouter_metadata/requested"),
+            MAX_SAFE_PROVIDER_METADATA_CHARS,
+        )
+    });
+    let finish_reason = safe_json_string(value.pointer("/choices/0/finish_reason"), 120);
+    let native_finish_reason =
+        safe_json_string(value.pointer("/choices/0/native_finish_reason"), 120);
+    let routing_strategy =
+        safe_json_string(value.pointer("/openrouter_metadata/strategy"), 120);
+    let routing_summary = safe_json_string(
+        value.pointer("/openrouter_metadata/summary"),
+        MAX_SAFE_PROVIDER_METADATA_CHARS,
+    );
+    let routing_attempt = value
+        .pointer("/openrouter_metadata/attempt")
+        .and_then(Value::as_u64);
+    let normalized_code = code.to_ascii_lowercase();
+    let normalized_type = error_type
+        .as_deref()
+        .unwrap_or(normalized_code.as_str())
+        .to_ascii_lowercase();
+    let status_label = provider_status
+        .map(|status| format!(" (HTTP {status})"))
+        .unwrap_or_default();
+    let route_label = upstream_provider
+        .as_deref()
+        .map(|provider| format!(" through {provider}"))
+        .unwrap_or_default();
+    let partial_label = if streaming {
+        " Partial output was discarded."
+    } else {
+        ""
+    };
+    let (safe_code, message, retryable) = match normalized_type.as_str() {
+        "authentication" | "unauthorized" | "401" => (
             "ai_authentication_failed",
-            "The AI provider rejected the saved credential.",
+            format!("The AI provider rejected the saved credential{status_label}."),
             false,
         ),
-        "402" | "insufficient_credits" => (
+        "insufficient_credits" | "402" => (
             "ai_insufficient_credits",
-            "The AI provider account does not have enough credits for this request.",
+            format!("The AI provider account does not have enough credits for this request{status_label}."),
             false,
         ),
-        "429" | "rate_limit_exceeded" => (
+        "rate_limit_exceeded" | "429" => (
             "ai_rate_limited",
-            "The AI provider rate-limited the request.",
+            format!("The AI provider rate-limited the request{status_label}."),
             true,
         ),
-        "503" | "no_available_providers" => (
+        "provider_unavailable" | "502" => (
+            "ai_provider_unavailable",
+            if openrouter {
+                format!(
+                    "OpenRouter reported provider_unavailable{status_label}{route_label}: the upstream model endpoint became unavailable or returned an invalid or empty response.{partial_label}"
+                )
+            } else {
+                format!(
+                    "The upstream model endpoint became unavailable or returned an invalid response{status_label}.{partial_label}"
+                )
+            },
+            true,
+        ),
+        "provider_overloaded" | "529" => (
+            "ai_provider_overloaded",
+            if openrouter {
+                format!(
+                    "OpenRouter reported provider_overloaded{status_label}{route_label}: the upstream model endpoint is temporarily overloaded.{partial_label}"
+                )
+            } else {
+                format!("The AI provider is temporarily overloaded{status_label}.{partial_label}")
+            },
+            true,
+        ),
+        "no_available_providers" => (
             "ai_no_compatible_endpoint",
-            "No compatible model endpoint was available for the requested parameters and privacy policy.",
+            format!(
+                "No compatible model endpoint was available for the requested parameters and privacy policy{status_label}."
+            ),
+            true,
+        ),
+        "timeout" | "504" | "408" => (
+            "ai_provider_timeout",
+            if openrouter {
+                format!(
+                    "OpenRouter reported a provider timeout{status_label}{route_label}.{partial_label}"
+                )
+            } else {
+                format!("The AI provider timed out{status_label}.{partial_label}")
+            },
             true,
         ),
         "context_length_exceeded" => (
             "ai_context_length_exceeded",
-            "The provider rejected the request because it exceeded the model context window.",
+            format!(
+                "The provider rejected the request because it exceeded the model context window{status_label}."
+            ),
             false,
         ),
+        "max_tokens_exceeded" | "token_limit_exceeded" | "string_too_long" => (
+            "ai_output_limit_reached",
+            format!(
+                "The provider reached a model/output token limit before the structured result completed{status_label}.{partial_label}"
+            ),
+            false,
+        ),
+        "content_policy_violation" | "refusal" => (
+            "ai_content_policy_rejected",
+            format!("The provider stopped this request because of its content policy{status_label}."),
+            false,
+        ),
+        "invalid_request" | "invalid_prompt" | "unprocessable" | "400" | "422" => (
+            "ai_http_bad_request",
+            format!(
+                "The AI provider rejected this request as unsupported or invalid{status_label}. Verify the selected model and provider capabilities, then retry."
+            ),
+            false,
+        ),
+        "server" | "server_error" | "500" => (
+            "ai_server_unavailable",
+            format!("The AI provider reported an internal server error{status_label}.{partial_label}"),
+            true,
+        ),
+        "503" => (
+            "ai_server_unavailable",
+            format!(
+                "The AI provider reported HTTP 503: routing capacity or a compatible upstream endpoint was unavailable.{partial_label}"
+            ),
+            true,
+        ),
         _ => (
-            "ai_stream_interrupted",
-            "The AI provider reported an error after streaming began. Partial output was discarded.",
+            if streaming {
+                "ai_stream_interrupted"
+            } else {
+                "ai_provider_error"
+            },
+            if openrouter {
+                format!(
+                    "OpenRouter reported provider error type {}{status_label}{route_label}.{partial_label}",
+                    error_type.as_deref().unwrap_or(code.as_str())
+                )
+            } else {
+                format!("The AI provider reported an error{status_label}.{partial_label}")
+            },
             true,
         ),
     };
+
     crate::logging::warn_target(
-        "ai.gateway.streaming",
-        "provider_stream_error",
-        message,
-        json!({ "providerCode": code }),
+        if openrouter {
+            "ai.gateway.openrouter"
+        } else {
+            "ai.gateway.streaming"
+        },
+        if streaming {
+            "provider_stream_error"
+        } else {
+            "provider_response_error"
+        },
+        &message,
+        json!({
+            "transport": if streaming { "sse" } else { "json" },
+            "providerStatus": provider_status,
+            "errorType": error_type.as_deref(),
+            "providerCode": provider_code.as_deref(),
+            "upstreamProvider": upstream_provider.as_deref(),
+            "model": model.as_deref(),
+            "finishReason": finish_reason.as_deref(),
+            "nativeFinishReason": native_finish_reason.as_deref(),
+            "routingStrategy": routing_strategy.as_deref(),
+            "routingAttempt": routing_attempt,
+            "routingSummary": routing_summary.as_deref(),
+            "routingAttempts": safe_openrouter_attempts(value),
+            "generationId": generation_id,
+        }),
     );
-    error(safe_code, message, retryable, None)
+    error(safe_code, &message, retryable, retry_after_seconds)
+}
+
+fn should_retry_document_stream_error(error_value: &AiGatewayError) -> bool {
+    matches!(
+        error_value.safe.code.as_str(),
+        "ai_provider_unavailable"
+            | "ai_provider_overloaded"
+            | "ai_provider_timeout"
+            | "ai_stream_interrupted"
+            | "ai_server_unavailable"
+            | "ai_network_error"
+            | "ai_connection_failed"
+            | "ai_request_timeout"
+            | "ai_initial_response_timeout"
+    )
+}
+
+fn document_retry_delay(error_value: &AiGatewayError) -> Duration {
+    match error_value.safe.retry_after_seconds {
+        Some(seconds @ 1..=5) => Duration::from_secs(seconds),
+        _ => Duration::from_millis(DOCUMENT_RETRY_DELAY_MILLIS),
+    }
 }
 
 fn initial_timeout_error(message: &'static str) -> AiGatewayError {
@@ -773,8 +1242,79 @@ mod tests {
         let failure = stream
             .push_bytes(b"data: {\"error\":{\"code\":\"server_error\",\"message\":\"private upstream detail\"}}\n")
             .expect_err("embedded stream error should abort the response");
-        assert_eq!(failure.safe.code, "ai_stream_interrupted");
+        assert_eq!(failure.safe.code, "ai_server_unavailable");
         assert!(!failure.safe.message.contains("private upstream detail"));
+    }
+
+    #[test]
+    fn openrouter_midstream_502_preserves_typed_safe_failure_context() {
+        let mut stream = SseChatAccumulator::for_request(
+            1_024,
+            16_384,
+            true,
+            Some("gen-test-123".to_string()),
+            None,
+        );
+        stream
+            .push_bytes(b"data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n")
+            .expect("first delta should parse");
+        let failure = stream
+            .push_bytes(
+                br#"data: {"model":"deepseek/deepseek-v4-flash-0731","provider":"DeepSeek","error":{"code":502,"message":"private upstream detail","metadata":{"error_type":"provider_unavailable","provider_code":"upstream_bad_gateway"}},"choices":[{"delta":{"content":""},"finish_reason":"error","native_finish_reason":"provider_error"}],"openrouter_metadata":{"strategy":"fallback","attempt":2,"summary":"available=3, selected=DeepSeek","attempts":[{"provider":"ExampleOne","model":"deepseek/deepseek-v4-flash-0731","status":502},{"provider":"DeepSeek","model":"deepseek/deepseek-v4-flash-0731","status":502}]}}
+"#,
+            )
+            .expect_err("OpenRouter 502 should abort the partial response");
+        assert_eq!(failure.safe.code, "ai_provider_unavailable");
+        assert!(failure.safe.retryable);
+        assert!(failure.safe.message.contains("provider_unavailable"));
+        assert!(failure.safe.message.contains("HTTP 502"));
+        assert!(failure.safe.message.contains("DeepSeek"));
+        assert!(failure.safe.message.contains("Partial output was discarded"));
+        assert!(!failure.safe.message.contains("private upstream detail"));
+    }
+
+    #[test]
+    fn openrouter_http_errors_use_typed_envelope_without_raw_provider_message() {
+        let failure = classify_provider_error_response(
+            503,
+            Some(2),
+            br#"{"error":{"code":503,"message":"private capacity detail","metadata":{"error_type":"provider_overloaded","provider_code":"capacity"}},"openrouter_metadata":{"strategy":"fallback","attempt":3,"summary":"available=2"}}"#,
+            true,
+            Some("gen-http-test"),
+            false,
+        );
+        assert_eq!(failure.safe.code, "ai_provider_overloaded");
+        assert_eq!(failure.safe.retry_after_seconds, Some(2));
+        assert!(failure.safe.message.contains("provider_overloaded"));
+        assert!(!failure.safe.message.contains("private capacity detail"));
+    }
+
+    #[test]
+    fn document_stream_retry_is_limited_to_transient_transport_failures() {
+        assert!(should_retry_document_stream_error(&error(
+            "ai_provider_unavailable",
+            "unavailable",
+            true,
+            None,
+        )));
+        assert!(should_retry_document_stream_error(&error(
+            "ai_network_error",
+            "network",
+            true,
+            None,
+        )));
+        assert!(!should_retry_document_stream_error(&error(
+            "ai_authentication_failed",
+            "credential",
+            false,
+            None,
+        )));
+        assert!(!should_retry_document_stream_error(&error(
+            "ai_context_length_exceeded",
+            "context",
+            false,
+            None,
+        )));
     }
 
     #[test]
