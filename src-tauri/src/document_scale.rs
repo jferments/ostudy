@@ -101,12 +101,17 @@ impl DocumentScalePlan {
             MIN_OUTLINE_SOURCE_TOKENS,
         )?;
         let generation_output = generation_completion_reserve(plan.max_cards_per_window);
+        let generation_image_count = if capabilities.image_input {
+            plan.max_images_per_window
+        } else {
+            0
+        };
         plan.generation_window_max_tokens = context_bounded_source_tokens(
             plan.generation_window_max_tokens,
             context_window,
             generation_output,
             GENERATION_FIXED_PROMPT_RESERVE,
-            plan.max_images_per_window,
+            generation_image_count,
             calibration,
             MIN_GENERATION_SOURCE_TOKENS,
         )?;
@@ -148,34 +153,33 @@ fn baseline_plan(source_unit_count: usize, provider_kind: &str) -> DocumentScale
             partition_max_tokens: 24_000,
             partition_target_units: 24,
             partition_max_units: 32,
-            outline_window_max_tokens: 3_200,
-            outline_window_max_units: 8,
-            outline_window_overlap_tokens: 350,
-            generation_window_max_tokens: 5_000,
-            generation_window_max_units: 10,
-            generation_window_overlap_tokens: 700,
+            outline_window_max_tokens: 6_000,
+            outline_window_max_units: 12,
+            outline_window_overlap_tokens: 300,
+            generation_window_max_tokens: 6_500,
+            generation_window_max_units: 14,
+            generation_window_overlap_tokens: 500,
             max_images_per_window: if provider_kind == "deepseek" { 0 } else { 4 },
             max_cards_per_window: 12,
         };
     }
 
-    // Large-document request sizing is provider-neutral. The source is divided
-    // into substantially fewer chapter-scale requests than the old 3.2k-token
-    // cloud outline policy, while any provider-declared context window can only
-    // shrink these targets below. The only provider-specific difference here is
-    // whether the current adapter can attach rendered page images.
+    // Large-document request sizing is provider-neutral. Hierarchy metadata is
+    // retained inside each semantic chunk, while network request packing uses
+    // useful multi-page batches. A provider-declared context window can only
+    // shrink these targets below; it can never make an unsafe request larger.
     DocumentScalePlan {
         class: DocumentScaleClass::Large,
         partition_target_tokens: 32_000,
         partition_max_tokens: 48_000,
         partition_target_units: 40,
         partition_max_units: 60,
-        outline_window_max_tokens: 10_000,
-        outline_window_max_units: 18,
-        outline_window_overlap_tokens: 500,
-        generation_window_max_tokens: 7_000,
-        generation_window_max_units: 12,
-        generation_window_overlap_tokens: 600,
+        outline_window_max_tokens: 14_000,
+        outline_window_max_units: 24,
+        outline_window_overlap_tokens: 400,
+        generation_window_max_tokens: 10_000,
+        generation_window_max_units: 18,
+        generation_window_overlap_tokens: 500,
         max_images_per_window: if provider_kind == "deepseek" { 0 } else { 3 },
         max_cards_per_window: 16,
     }
@@ -209,12 +213,11 @@ fn context_bounded_source_tokens(
     Ok(bounded)
 }
 
-fn outline_completion_reserve(provider_kind: &str) -> usize {
-    if matches!(provider_kind, "deepseek" | "openrouter") {
-        3_072
-    } else {
-        2_048
-    }
+fn outline_completion_reserve(_provider_kind: &str) -> usize {
+    // Local outline fragments are deliberately concise. A 1.5k-token reserve
+    // leaves ample room for the strict fragment schema without encouraging a
+    // multi-thousand-token restatement of source prose.
+    1_536
 }
 
 fn generation_completion_reserve(maximum_cards: usize) -> usize {
@@ -324,7 +327,7 @@ mod tests {
     fn fifty_units_keep_the_standard_plan() {
         let plan = DocumentScalePlan::for_provider(50, "deepseek");
         assert_eq!(plan.class, DocumentScaleClass::Standard);
-        assert_eq!(plan.generation_window_max_tokens, 5_000);
+        assert_eq!(plan.generation_window_max_tokens, 6_500);
     }
 
     #[test]
@@ -340,8 +343,8 @@ mod tests {
             calibration,
         )
         .unwrap();
-        assert!(plan.outline_window_max_tokens < 10_000);
-        assert!(plan.generation_window_max_tokens < 7_000);
+        assert!(plan.outline_window_max_tokens < 14_000);
+        assert!(plan.generation_window_max_tokens < 10_000);
     }
 
     #[test]
@@ -364,10 +367,10 @@ mod tests {
             assert_eq!(plan.class, DocumentScaleClass::Large);
             assert_eq!(plan.partition_target_units, 40);
             assert_eq!(plan.partition_max_units, 60);
-            assert_eq!(plan.outline_window_max_tokens, 10_000);
-            assert_eq!(plan.outline_window_max_units, 18);
-            assert_eq!(plan.generation_window_max_tokens, 7_000);
-            assert_eq!(plan.generation_window_max_units, 12);
+            assert_eq!(plan.outline_window_max_tokens, 14_000);
+            assert_eq!(plan.outline_window_max_units, 24);
+            assert_eq!(plan.generation_window_max_tokens, 10_000);
+            assert_eq!(plan.generation_window_max_units, 18);
             assert_eq!(plan.max_cards_per_window, 16);
         }
         assert_eq!(deepseek.max_images_per_window, 0);
@@ -378,9 +381,10 @@ mod tests {
     #[test]
     fn openrouter_55_page_plan_uses_fewer_larger_windows_than_old_cloud_policy() {
         let plan = DocumentScalePlan::for_provider(55, "openrouter");
-        assert_eq!(plan.outline_window_max_tokens, 10_000);
-        assert!(plan.outline_window_max_units > 8);
-        assert_eq!(plan.generation_window_max_tokens, 7_000);
+        assert_eq!(plan.outline_window_max_tokens, 14_000);
+        assert_eq!(plan.outline_window_max_units, 24);
+        assert_eq!(plan.generation_window_max_tokens, 10_000);
+        assert_eq!(plan.generation_window_max_units, 18);
     }
 
     #[test]
