@@ -76,6 +76,7 @@ pub(crate) struct DocumentTaskProgress {
     pub current_page_start: Option<i64>,
     pub current_page_end: Option<i64>,
     pub current_partition: Option<usize>,
+    pub reasoning_effort: String,
     pub provider_request_count: u64,
     pub retry_count: u64,
     pub prompt_tokens: u64,
@@ -99,6 +100,7 @@ impl DocumentTaskProgress {
             current_page_start: None,
             current_page_end: None,
             current_partition: None,
+            reasoning_effort: "low".to_string(),
             provider_request_count: 0,
             retry_count: 0,
             prompt_tokens: 0,
@@ -241,8 +243,28 @@ pub(crate) fn current_document_id() -> Option<String> {
         .ok()
 }
 
+pub(crate) fn current_reasoning_effort() -> Option<String> {
+    CURRENT_DOCUMENT_TASK
+        .try_with(|task| {
+            task.progress
+                .lock()
+                .ok()
+                .map(|progress| progress.reasoning_effort.clone())
+        })
+        .ok()
+        .flatten()
+}
+
 pub(crate) fn document_task_progress(document_id: &str) -> Option<DocumentTaskProgress> {
     ACTIVE_DOCUMENT_TASKS.progress(document_id)
+}
+
+pub(crate) fn set_current_reasoning_effort(effort: &str) {
+    let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
+        if let Ok(mut progress) = task.progress.lock() {
+            progress.reasoning_effort = effort.chars().take(16).collect();
+        }
+    });
 }
 
 pub(crate) fn set_current_task_phase(
@@ -444,13 +466,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn task_local_progress_accumulates_usage_and_retries() {
+    async fn task_local_progress_accumulates_usage_retries_and_reasoning_policy() {
         let document_id = "task-progress";
         let task = ACTIVE_DOCUMENT_TASKS
             .begin(document_id)
             .expect("task should register");
         CURRENT_DOCUMENT_TASK
             .scope(task, async {
+                set_current_reasoning_effort("minimal");
                 set_current_task_phase("outline", Some(3), 2, 10, Some(5), Some(7), Some(1));
                 record_current_provider_request();
                 record_current_provider_retry();
@@ -462,12 +485,14 @@ mod tests {
                     cached_prompt_tokens: Some(600),
                     cache_write_tokens: Some(100),
                 });
+                assert_eq!(current_reasoning_effort().as_deref(), Some("minimal"));
             })
             .await;
         let progress = document_task_progress(document_id).expect("progress should be visible");
         assert_eq!(progress.phase, "outline");
         assert_eq!(progress.current_window, Some(3));
         assert_eq!(progress.current_page_start, Some(5));
+        assert_eq!(progress.reasoning_effort, "minimal");
         assert_eq!(progress.provider_request_count, 1);
         assert_eq!(progress.retry_count, 1);
         assert_eq!(progress.total_tokens, 1_200);
