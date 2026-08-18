@@ -1,5 +1,6 @@
 {
-  "userVersion": 26,
+  "schemaVersion": 26,
+  "acceptedSqliteUserVersions": [0, 26],
   "migrations": [
     {"version": 1, "name": "create_decks", "checksum": "771e157d6f7eb5e1c024862966718e46ef744298f49287636c75167065904fd6"},
     {"version": 2, "name": "cards_assets_settings_practice", "checksum": "af64ceea1bfb3f1c04fed33f4558fae051174b50b15873d9ddf5ab4b36e55c8b"},
