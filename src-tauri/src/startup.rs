@@ -251,7 +251,9 @@ mod tests {
             presentation.reason_code,
             "pre_public_database_requires_manual_recovery"
         );
-        assert!(presentation.message.contains("restore_pre_public_backup.py"));
+        assert!(presentation
+            .message
+            .contains("restore_pre_public_backup.py"));
         assert!(presentation.message.contains("confirm-empty-library"));
         assert!(presentation
             .message
