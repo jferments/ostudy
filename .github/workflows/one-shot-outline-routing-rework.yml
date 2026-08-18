@@ -31,8 +31,7 @@ jobs:
           path = Path('scripts/apply-outline-routing-rework.py')
           value = path.read_text()
 
-          # Avoid a replacement collision introduced when the standard plan's
-          # 7k/12 values would become identical to the old large-plan values.
+          # Avoid replacement collisions after mutating the standard plan.
           value = value.replace(
               '("generation_window_max_tokens: 5_000,", "generation_window_max_tokens: 7_000,"),',
               '("generation_window_max_tokens: 5_000,", "generation_window_max_tokens: 6_500,"),',
@@ -49,40 +48,40 @@ jobs:
 
           bad_start = value.index('replace_region(\n    semantics,\n    "    #[test]\\n    fn partitioned_windows_do_not_overlap_across_chapters() {"')
           bad_end = value.index('\n# OpenRouter routing:', bad_start)
-          corrected = r'''value = read(semantics)
-          stale_test = "    #[test]\n    fn partitioned_windows_do_not_overlap_across_chapters() {"
-          stale_start = value.find(stale_test)
-          module_end = value.rfind("\n}")
-          if stale_start < 0 or module_end < stale_start:
-              raise SystemExit("document_semantics.rs: stale chapter-boundary test not found")
-          new_test = '''    #[test]
-              fn packed_windows_can_cross_heading_boundaries_without_losing_provenance() {
-                  let mut chunks = Vec::new();
-                  for index in 0..8 {
-                      let mut value = chunk(index, &[index + 1], 700);
-                      value.heading_context = Some(if index < 4 {
-                          "Chapter A".to_string()
-                      } else {
-                          "Chapter B".to_string()
-                      });
-                      if index == 5 {
-                          value.element_types = vec!["image".to_string()];
-                      }
-                      chunks.push(value);
-                  }
-                  let plan = DocumentScalePlan::for_unit_count(138);
-                  let windows = build_partitioned_semantic_windows(&chunks, plan, 2_100, 3, 0);
-                  assert!(windows.iter().any(|window| {
-                      window.source_locator().first() <= 4 && window.source_locator().last() >= 5
-                  }));
-                  assert!(windows.iter().any(|window| window.source_text.contains("Chapter B")));
-                  assert!(windows
-                      .iter()
-                      .any(|window| window.visual_page_numbers.contains(&6)));
-              }
-          '''
-          write(semantics, value[:stale_start] + new_test + value[module_end:])
-          '''
+          corrected = r"""value = read(semantics)
+stale_test = "    #[test]\n    fn partitioned_windows_do_not_overlap_across_chapters() {"
+stale_start = value.find(stale_test)
+module_end = value.rfind("\n}")
+if stale_start < 0 or module_end < stale_start:
+    raise SystemExit("document_semantics.rs: stale chapter-boundary test not found")
+new_test = r'''    #[test]
+    fn packed_windows_can_cross_heading_boundaries_without_losing_provenance() {
+        let mut chunks = Vec::new();
+        for index in 0..8 {
+            let mut value = chunk(index, &[index + 1], 700);
+            value.heading_context = Some(if index < 4 {
+                "Chapter A".to_string()
+            } else {
+                "Chapter B".to_string()
+            });
+            if index == 5 {
+                value.element_types = vec!["image".to_string()];
+            }
+            chunks.push(value);
+        }
+        let plan = DocumentScalePlan::for_unit_count(138);
+        let windows = build_partitioned_semantic_windows(&chunks, plan, 2_100, 3, 0);
+        assert!(windows.iter().any(|window| {
+            window.source_locator().first() <= 4 && window.source_locator().last() >= 5
+        }));
+        assert!(windows.iter().any(|window| window.source_text.contains("Chapter B")));
+        assert!(windows
+            .iter()
+            .any(|window| window.visual_page_numbers.contains(&6)));
+    }
+'''
+write(semantics, value[:stale_start] + new_test + value[module_end:])
+"""
           value = value[:bad_start] + corrected + value[bad_end:]
           path.write_text(value)
           PY
