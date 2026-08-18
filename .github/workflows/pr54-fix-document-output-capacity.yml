@@ -33,13 +33,15 @@ jobs:
           python3 ./scripts/pr54_fix_document_telemetry.py
           python3 ./scripts/pr54_fix_document_output_capacity.py
           python3 ./scripts/pr54_fix_model_capability_probe.py
+          python3 ./scripts/pr54_fix_document_output_tests.py
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           rm -f \
             .github/workflows/pr54-fix-document-output-capacity.yml \
             .github/pr54-fix-document-output-capacity-trigger.txt \
             scripts/pr54_fix_document_telemetry.py \
             scripts/pr54_fix_document_output_capacity.py \
-            scripts/pr54_fix_model_capability_probe.py
+            scripts/pr54_fix_model_capability_probe.py \
+            scripts/pr54_fix_document_output_tests.py
           git diff --check
 
       - name: Run canonical fast qualification
