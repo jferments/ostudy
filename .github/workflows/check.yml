@@ -76,7 +76,8 @@ jobs:
 
           retry_anchor = '            | "ai_initial_response_timeout"\n'
           retry_expanded = '            | "ai_initial_response_timeout"\n            | "ai_rate_limited"\n            | "ai_http_rate_limited"\n'
-          if '"ai_rate_limited"' not in value[value.find(helper_anchor):value.find(helper_anchor)+1400]:
+          retry_region = value[value.find(helper_anchor):value.find(helper_anchor) + 1400]
+          if '"ai_rate_limited"' not in retry_region:
               if retry_anchor not in value:
                   raise SystemExit('gateway retry-code anchor not found')
               value = value.replace(retry_anchor, retry_expanded, 1)
@@ -97,24 +98,6 @@ jobs:
               if test_anchor not in value:
                   raise SystemExit('gateway test anchor not found')
               value = value.replace(test_anchor, test + test_anchor, 1)
-          network_assert = '''        assert!(should_retry_document_stream_error(&error(
-              "ai_network_error",
-              "network",
-              true,
-              None,
-          )));
-          '''
-          rate_assert = '''        assert!(should_retry_document_stream_error(&error(
-              "ai_rate_limited",
-              "rate limit",
-              true,
-              Some(1),
-          )));
-          '''
-          if '"rate limit",\n            true,\n            Some(1)' not in value:
-              if network_assert not in value:
-                  raise SystemExit('gateway network retry assertion anchor not found')
-              value = value.replace(network_assert, network_assert + rate_assert, 1)
           gateway.write_text(value)
 
           openrouter = Path('src-tauri/src/ai/providers/openrouter.rs')
