@@ -1,2 +1,0 @@
-Trigger the one-shot PR #54 document resilience applicator after its workflow exists.
-Run the cleanup pass after the latest regression fixes.
