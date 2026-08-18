@@ -13,8 +13,7 @@ static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(1);
 
 fn temp_database_path(name: &str) -> PathBuf {
     let id = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
-    let directory =
-        std::env::temp_dir().join(format!("ostudy-{name}-{}-{id}", std::process::id()));
+    let directory = std::env::temp_dir().join(format!("ostudy-{name}-{}-{id}", std::process::id()));
     fs::create_dir_all(&directory).expect("temporary database directory should exist");
     directory.join("library.sqlite3")
 }
