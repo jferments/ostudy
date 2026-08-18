@@ -201,17 +201,15 @@ for version, name, checksum in module.EXPECTED_MIGRATIONS:
         "VALUES (?, ?, ?, 0)",
         (version, name, checksum),
     )
-for version, name, checksum in [
-    (1, "duplicate_fingerprints", "fb2f07be41d479048759ac7d754a59022f2c63c3f60082eaf9a40fd28bab7993"),
-    (2, "template_and_generated_card_canonicalization", "ec486bad97c8c5495755bae160bf019d61c084444cc09d88ba8e1f0135b3e663"),
-    (3, "review_event_historical_attribution", "97014e9b56c2608f9d83d3ba449d6f4308a1fcb3292cfef5c2640ed2cc5e7700"),
-]:
+for version, name, checksum in module.EXPECTED_REPAIRS:
     connection.execute(
         "INSERT INTO data_repairs(version, name, checksum, applied_at, changed_rows) "
         "VALUES (?, ?, ?, 0, 0)",
         (version, name, checksum),
     )
-connection.execute("PRAGMA user_version = 26")
+connection.execute(
+    f"PRAGMA user_version = {module.HISTORICAL_SQLITE_USER_VERSION}"
+)
 connection.commit()
 connection.execute("PRAGMA foreign_keys = ON")
 if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
@@ -301,4 +299,4 @@ backup_count="$(find "$APP_DATA" -maxdepth 1 -type f -name 'library.sqlite3.pre-
   exit 1
 }
 
-printf 'Native startup compatibility smoke passed: the built application backed up and adopted the exact final pre-public database, preserved decks/cards/reviews/analytics, completed startup, and did not enter a reset or panic path.\n'
+printf 'Native startup compatibility smoke passed: the built application backed up and adopted the actual historical final-v26 database, preserved decks/cards/reviews/analytics, completed startup, and did not enter a reset or panic path.\n'
