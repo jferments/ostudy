@@ -17,7 +17,7 @@ EXPECTED_MIGRATIONS = [
     (1, "create_decks", "771e157d6f7eb5e1c024862966718e46ef744298f49287636c75167065904fd6"),
     (2, "cards_assets_settings_practice", "af64ceea1bfb3f1c04fed33f4558fae051174b50b15873d9ddf5ab4b36e55c8b"),
     (3, "fsrs_reviews", "49dd1e24e463c9a08a59e243d90143e2874459dd2a4a8d5f61613d5df7ebcae3"),
-    (4, "card_organization", "0e0e25b3de24c04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d"),
+    (4, "card_organization", "0e0e25b3de24f04614aa949fce883fb6cc5bf12d1aab6e08dcaab12c548a768d"),
     (5, "remove_legacy_duplicate_trigger", "e275254085414039a7cf5f3a5e08ae35a61ea8f7d3d1b8e016a8d1f087c03029"),
     (6, "card_types_and_templates", "c07b900b2119f6eae6a4de58aeb3af9ab5882ee21d5c29ac7a5c7fcee6b86be8"),
     (7, "rich_templates_single_cloze", "91d120cb0b72c72c40d499a2c8be9b090be96ca760b2bb5a71072e2b71ed45e1"),
@@ -41,6 +41,22 @@ EXPECTED_MIGRATIONS = [
     (25, "durable_editor_drafts", "842ab270202dd3e936216e57878cc2b3f503059d78fc1476b4fdeb9a05fbb54e"),
     (26, "deck_folders", "4361a6ea23c1fe910b078b5edfb98c1a44a5dd6e3c307df1f0436db6076bcc58"),
 ]
+EXPECTED_REPAIRS = [
+    (1, "duplicate_fingerprints", "fb2f07be41d479048759ac7d754a59022f2c63c3f60082eaf9a40fd28bab7993"),
+    (2, "template_and_generated_card_canonicalization", "ec486bad97c8c5495755bae160bf019d61c084444cc09d88ba8e1f0135b3e663"),
+    (3, "review_event_historical_attribution", "97014e9b56c2608f9d83d3ba449d6f4308a1fcb3292cfef5c2640ed2cc5e7700"),
+]
+REQUIRED_FINAL_TABLES = {
+    "ai_provider_profiles",
+    "cards",
+    "data_repairs",
+    "deck_folders",
+    "decks",
+    "notes",
+    "review_event_attributions",
+    "review_events",
+    "schema_migrations",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -77,6 +93,19 @@ def ensure_ostudy_stopped() -> None:
         raise RuntimeError("ostudy is still running. Close it before restoring data.")
 
 
+def table_names(connection: sqlite3.Connection) -> set[str]:
+    return {
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_schema WHERE type = 'table'"
+        )
+    }
+
+
+def column_names(connection: sqlite3.Connection, table: str) -> set[str]:
+    return {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+
+
 def validate_final_pre_public_backup(backup_dir: Path) -> Path:
     if not backup_dir.is_dir():
         raise ValueError(f"Backup directory does not exist: {backup_dir}")
@@ -86,15 +115,25 @@ def validate_final_pre_public_backup(backup_dir: Path) -> Path:
 
     uri = f"file:{database.as_posix()}?mode=ro"
     with sqlite3.connect(uri, uri=True) as connection:
-        metadata_exists = connection.execute(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_schema "
-            "WHERE type = 'table' AND name = 'schema_metadata')"
-        ).fetchone()[0]
-        if metadata_exists:
+        tables = table_names(connection)
+        if "schema_metadata" in tables:
             raise ValueError(
                 "The supplied backup already belongs to a public schema lineage; "
                 "refusing to treat it as pre-public data."
             )
+        missing_tables = sorted(REQUIRED_FINAL_TABLES - tables)
+        if missing_tables:
+            raise ValueError(
+                "The backup is not the final pre-public schema; missing tables: "
+                + ", ".join(missing_tables)
+            )
+        if "require_zero_data_retention" in column_names(
+            connection, "ai_provider_profiles"
+        ):
+            raise ValueError(
+                "The supplied backup already has the public OpenRouter profile shape."
+            )
+
         user_version = connection.execute("PRAGMA user_version").fetchone()[0]
         if user_version != FINAL_PRE_PUBLIC_VERSION:
             raise ValueError(
@@ -107,6 +146,14 @@ def validate_final_pre_public_backup(backup_dir: Path) -> Path:
         if migrations != EXPECTED_MIGRATIONS:
             raise ValueError(
                 "The backup does not have the exact final pre-public migration ledger. "
+                "It was left unchanged."
+            )
+        repairs = connection.execute(
+            "SELECT version, name, checksum FROM data_repairs ORDER BY version"
+        ).fetchall()
+        if repairs != EXPECTED_REPAIRS:
+            raise ValueError(
+                "The backup does not have the exact final pre-public repair ledger. "
                 "It was left unchanged."
             )
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
