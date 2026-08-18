@@ -33,6 +33,7 @@ mod document_generation;
 mod document_ingestion;
 mod document_more;
 mod document_operations;
+mod document_progress;
 mod document_scale;
 mod document_semantics;
 mod document_store;
@@ -245,6 +246,7 @@ pub fn run() {
             document_operations::run_pdf_flashcard_generation,
             document_more::generate_more_pdf_flashcards,
             document_operations::cancel_pdf_flashcard_generation,
+            document_progress::get_document_generation_progress,
             document_operations::open_document_source,
             document_operations::delete_pdf_document,
             documents::set_document_archived,
