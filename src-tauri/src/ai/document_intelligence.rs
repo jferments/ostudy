@@ -474,7 +474,10 @@ where
 pub(super) fn recoverable_outline_window_error(error: &CommandError) -> bool {
     matches!(
         error.code.as_str(),
-        "ai_document_output_truncated" | "ai_document_output_invalid" | "ai_empty_response"
+        "ai_document_output_truncated"
+            | "ai_document_output_invalid"
+            | "ai_empty_response"
+            | "ai_stream_progress_timeout"
     )
 }
 
@@ -2359,7 +2362,11 @@ mod tests {
             body.pointer("/provider/data_collection"),
             Some(&json!("deny"))
         );
-        assert_eq!(body.pointer("/provider/sort"), Some(&json!("price")));
+        assert!(body.pointer("/provider/sort").is_none());
+        assert_eq!(
+            body.pointer("/provider/preferred_min_throughput/p90"),
+            Some(&json!(50))
+        );
         assert_eq!(
             body.pointer("/response_format/type"),
             Some(&json!("json_schema"))

@@ -91,6 +91,40 @@ describe("DocumentsScreen live generation progress", () => {
     documentIpcMocks.getDocumentGenerationProgress.mockResolvedValue(progress);
   });
 
+  it("describes concurrent generation as an active window range without duplicating completed counts", async () => {
+    documentIpcMocks.listDocuments.mockResolvedValue([
+      {
+        ...document,
+        outlineWindowCount: 4,
+        outlineCompletedWindowCount: 4,
+        generationWindowCount: 9,
+        generationCompletedWindowCount: 1,
+      },
+    ]);
+    documentIpcMocks.getDocumentGenerationProgress.mockResolvedValue({
+      ...progress,
+      phase: "generating",
+      currentWindow: 2,
+      currentWindowEnd: 5,
+      completedWindows: 1,
+      totalWindows: 9,
+      currentPageStart: 9,
+      currentPageEnd: 35,
+    });
+
+    render(
+      <DocumentsScreen
+        refreshDecks={vi.fn().mockResolvedValue(undefined)}
+        showToast={vi.fn()}
+      />,
+    );
+
+    expect((await screen.findAllByText("Generating cards")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Active windows 2–5 of 9 · pages 9–35.")).toBeTruthy();
+    expect(screen.queryByText("Generating cards 1/9")).toBeNull();
+    expect(screen.queryByText(/Current window 2\/9/u)).toBeNull();
+  });
+
   it("shows stage, window progress, elapsed runtime, requests, retries, reasoning and cache usage", async () => {
     render(
       <DocumentsScreen

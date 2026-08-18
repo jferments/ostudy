@@ -558,27 +558,22 @@ function generationStage(
     };
   }
   if (document.outlineWindowCount > 0 && document.outlineCompletedWindowCount < document.outlineWindowCount) {
-    const approximatePages = Math.min(
-      document.pageCount,
-      Math.round((document.outlineCompletedWindowCount / document.outlineWindowCount) * document.pageCount),
-    );
     return {
-      title: `Building outline ${document.outlineCompletedWindowCount}/${document.outlineWindowCount}`,
-      detail: `About ${approximatePages}/${document.pageCount} pages covered by completed outline windows.`,
+      title: "Building outline",
+      detail:
+        activeWindowDetail(progress, document.outlineWindowCount) ??
+        "Analyzing bounded source windows for document structure.",
     };
   }
   if (
     document.generationWindowCount > 0 &&
     document.generationCompletedWindowCount < document.generationWindowCount
   ) {
-    const pageRange =
-      progress?.currentPageStart !== null && progress?.currentPageStart !== undefined
-        ? ` · pages ${progress.currentPageStart}–${progress.currentPageEnd ?? progress.currentPageStart}`
-        : "";
-    const window = progress?.currentWindow ?? document.generationCompletedWindowCount + 1;
     return {
-      title: `Generating cards ${document.generationCompletedWindowCount}/${document.generationWindowCount}`,
-      detail: `Current window ${window}/${document.generationWindowCount}${pageRange}.`,
+      title: "Generating cards",
+      detail:
+        activeWindowDetail(progress, document.generationWindowCount) ??
+        "Generating study cards from the current bounded source window.",
     };
   }
   if (progress?.phase === "curating") {
@@ -591,6 +586,23 @@ function generationStage(
     title: "Finalizing document generation",
     detail: "Completing the current bounded task and preparing durable study content.",
   };
+}
+
+function activeWindowDetail(
+  progress: DocumentGenerationProgress | null,
+  totalWindows: number,
+): string | null {
+  const start = progress?.currentWindow;
+  if (start === null || start === undefined) return null;
+  const end = progress?.currentWindowEnd ?? start;
+  const pages =
+    progress?.currentPageStart !== null && progress?.currentPageStart !== undefined
+      ? ` · pages ${progress.currentPageStart}–${progress.currentPageEnd ?? progress.currentPageStart}`
+      : "";
+  if (end > start) {
+    return `Active windows ${start}–${end} of ${totalWindows}${pages}.`;
+  }
+  return `Window ${start} of ${totalWindows}${pages}.`;
 }
 
 function generationPercent(

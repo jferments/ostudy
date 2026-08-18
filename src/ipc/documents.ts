@@ -8,6 +8,7 @@ export interface DocumentGenerationProgress {
   startedAt: number;
   phase: string;
   currentWindow: number | null;
+  currentWindowEnd?: number | null;
   completedWindows: number;
   totalWindows: number;
   currentPageStart: number | null;

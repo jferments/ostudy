@@ -3,13 +3,12 @@ use std::time::Duration;
 use reqwest::{redirect::Policy, Client, Method, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::time::{sleep, timeout};
+use tokio::time::{sleep, timeout, Instant};
 use url::Url;
 
 use crate::task_cancellation::{
-    current_document_id, current_signal, record_current_provider_request,
-    record_current_provider_retry, record_current_usage, set_current_reasoning_effort,
-    CancellationSignal, DocumentTaskUsageDelta,
+    current_signal, record_current_provider_request, record_current_provider_retry,
+    record_current_usage, set_current_reasoning_effort, CancellationSignal, DocumentTaskUsageDelta,
 };
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 10;
@@ -17,6 +16,7 @@ const MAX_ERROR_BODY_BYTES: usize = 32 * 1024;
 const STREAM_WIRE_MULTIPLIER: usize = 16;
 const OPENROUTER_HOST: &str = "openrouter.ai";
 const DOCUMENT_RETRY_DELAY_MILLIS: u64 = 750;
+const DOCUMENT_STREAM_PROGRESS_TIMEOUT_SECONDS: u64 = 75;
 const MAX_SAFE_PROVIDER_METADATA_CHARS: usize = 300;
 
 #[derive(Clone)]
@@ -205,6 +205,8 @@ impl AiGateway {
             return Err(canceled_error());
         }
         let initial_timeout = Duration::from_millis(initial_response_timeout_ms.max(1) as u64);
+        let progress_timeout = Duration::from_secs(DOCUMENT_STREAM_PROGRESS_TIMEOUT_SECONDS);
+        let request_started = Instant::now();
         let mut streaming_body = body.clone();
         let object = streaming_body.as_object_mut().ok_or_else(|| {
             error(
@@ -274,7 +276,10 @@ impl AiGateway {
 
         let first_chunk = tokio::select! {
             _ = cancellation.canceled() => return Err(canceled_error()),
-            result = response.chunk() => result.map_err(classify_reqwest_error)?,
+            result = timeout(progress_timeout, response.chunk()) => match result {
+                Ok(result) => result.map_err(classify_reqwest_error)?,
+                Err(_) => return Err(stream_progress_timeout_error()),
+            },
         };
         let first_chunk = first_chunk.ok_or_else(|| {
             error(
@@ -304,16 +309,37 @@ impl AiGateway {
             retry_after_seconds,
         );
         stream.push_bytes(&first_chunk)?;
+        let mut useful_progress_bytes = stream.useful_progress_bytes();
+        let mut first_useful_output_ms = (useful_progress_bytes > 0)
+            .then(|| u64::try_from(request_started.elapsed().as_millis()).unwrap_or(u64::MAX));
+        let mut last_useful_progress = Instant::now();
 
         while !stream.done {
+            let remaining = progress_timeout.saturating_sub(last_useful_progress.elapsed());
+            if remaining.is_zero() {
+                return Err(stream_progress_timeout_error());
+            }
             let next = tokio::select! {
                 _ = cancellation.canceled() => return Err(canceled_error()),
-                result = response.chunk() => result.map_err(classify_reqwest_error)?,
+                result = timeout(remaining, response.chunk()) => match result {
+                    Ok(result) => result.map_err(classify_reqwest_error)?,
+                    Err(_) => return Err(stream_progress_timeout_error()),
+                },
             };
             let Some(chunk) = next else {
                 break;
             };
             stream.push_bytes(&chunk)?;
+            let next_progress_bytes = stream.useful_progress_bytes();
+            if next_progress_bytes > useful_progress_bytes {
+                useful_progress_bytes = next_progress_bytes;
+                last_useful_progress = Instant::now();
+                if first_useful_output_ms.is_none() {
+                    first_useful_output_ms = Some(
+                        u64::try_from(request_started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    );
+                }
+            }
         }
         stream.finish()?;
 
@@ -324,6 +350,23 @@ impl AiGateway {
         let usage = stream.usage.clone();
         if let Some(usage) = usage.as_ref() {
             record_current_usage(usage_delta(usage));
+        }
+        if openrouter {
+            crate::logging::debug_target(
+                "ai.gateway.openrouter",
+                "openrouter_stream_completed",
+                "An OpenRouter document request completed without logging provider content.",
+                json!({
+                    "generationId": stream.generation_id.as_deref(),
+                    "upstreamProvider": stream.upstream_provider.as_deref(),
+                    "model": stream.model.as_deref(),
+                    "finishReason": stream.finish_reason.as_deref(),
+                    "durationMs": u64::try_from(request_started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    "firstUsefulOutputMs": first_useful_output_ms,
+                    "contentBytes": stream.content.len(),
+                    "toolArgumentBytes": stream.tool_arguments.len(),
+                }),
+            );
         }
         let message = if stream.tool_arguments.trim().is_empty() {
             json!({ "content": stream.content })
@@ -521,6 +564,8 @@ struct SseChatAccumulator {
     openrouter: bool,
     generation_id: Option<String>,
     retry_after_seconds: Option<u64>,
+    upstream_provider: Option<String>,
+    model: Option<String>,
 }
 
 impl SseChatAccumulator {
@@ -539,6 +584,8 @@ impl SseChatAccumulator {
             openrouter: false,
             generation_id: None,
             retry_after_seconds: None,
+            upstream_provider: None,
+            model: None,
         }
     }
 
@@ -614,6 +661,15 @@ impl SseChatAccumulator {
         })?;
         if let Some(usage) = safe_usage_envelope(&value) {
             self.usage = Some(usage);
+        }
+        if self.openrouter {
+            if self.upstream_provider.is_none() {
+                self.upstream_provider =
+                    safe_json_string(value.get("provider"), MAX_SAFE_PROVIDER_METADATA_CHARS);
+            }
+            if self.model.is_none() {
+                self.model = safe_json_string(value.get("model"), MAX_SAFE_PROVIDER_METADATA_CHARS);
+            }
         }
         if value.get("error").is_some_and(|value| !value.is_null()) {
             return Err(classify_stream_event_error(
@@ -706,6 +762,10 @@ impl SseChatAccumulator {
         Ok(())
     }
 
+    fn useful_progress_bytes(&self) -> usize {
+        self.content.len().saturating_add(self.tool_arguments.len())
+    }
+
     fn append_compat_content(&mut self, content: &str) -> Result<(), AiGatewayError> {
         if content.is_empty() {
             return Ok(());
@@ -745,20 +805,17 @@ fn is_openrouter_url(url: &Url) -> bool {
 }
 
 fn prepare_provider_body(url: &Url, body: &Value) -> Option<Value> {
-    let session = current_document_id();
-    let reasoning_effort = session
-        .as_ref()
-        .map(|_| crate::settings::current_ai_reasoning_effort());
+    let document_task = current_signal().is_some();
+    let reasoning_effort = document_task.then(crate::settings::current_ai_reasoning_effort);
     if let Some(reasoning_effort) = reasoning_effort.as_deref() {
         set_current_reasoning_effort(reasoning_effort);
     }
-    prepare_provider_body_for_document(url, body, session.as_deref(), reasoning_effort.as_deref())
+    prepare_provider_body_for_document(url, body, reasoning_effort.as_deref())
 }
 
 fn prepare_provider_body_for_document(
     url: &Url,
     body: &Value,
-    document_id: Option<&str>,
     reasoning_effort: Option<&str>,
 ) -> Option<Value> {
     if !is_openrouter_url(url) {
@@ -774,12 +831,10 @@ fn prepare_provider_body_for_document(
         }]),
     );
     object.insert("usage".to_string(), json!({ "include": true }));
-    if let Some(document_id) = document_id.filter(|value| !value.is_empty()) {
-        object.insert(
-            "session_id".to_string(),
-            Value::String(format!("ostudy-document-{document_id}")),
-        );
-    }
+    // Document windows are independent batch work, not conversational turns.
+    // A shared session_id pins every concurrent request to one provider endpoint,
+    // concentrating a batch on the same slow/stalled route for little cache gain.
+    // Leave session stickiness unset so OpenRouter can spread independent windows.
     if let Some(reasoning_effort) = reasoning_effort.filter(|value| *value != "automatic") {
         object.insert(
             "reasoning".to_string(),
@@ -1221,6 +1276,17 @@ fn classify_provider_error_value(
     error(safe_code, &message, retryable, retry_after_seconds)
 }
 
+fn stream_progress_timeout_error() -> AiGatewayError {
+    error(
+        "ai_stream_progress_timeout",
+        &format!(
+            "The AI provider produced no usable streamed output for {DOCUMENT_STREAM_PROGRESS_TIMEOUT_SECONDS} seconds. ostudy canceled this stalled request so the document can retry or resume without waiting indefinitely."
+        ),
+        true,
+        None,
+    )
+}
+
 fn empty_stream_failure(finish_reason: &str) -> AiGatewayError {
     let code = if finish_reason == "length" {
         "ai_document_output_truncated"
@@ -1442,6 +1508,26 @@ mod tests {
     }
 
     #[test]
+    fn keepalive_comments_do_not_count_as_useful_model_progress() {
+        let mut stream = SseChatAccumulator::new(1_024, 16_384);
+        stream
+            .push_bytes(b": OPENROUTER PROCESSING\n")
+            .expect("SSE keepalive should be accepted");
+        assert_eq!(stream.useful_progress_bytes(), 0);
+        stream
+            .push_bytes(b"data: {\"choices\":[{\"delta\":{\"content\":\"{\"}}]}\n")
+            .expect("model content should be accepted");
+        assert!(stream.useful_progress_bytes() > 0);
+    }
+
+    #[test]
+    fn progress_timeout_is_not_retried_identically_by_the_gateway() {
+        let failure = stream_progress_timeout_error();
+        assert_eq!(failure.safe.code, "ai_stream_progress_timeout");
+        assert!(!should_retry_document_stream_error(&failure));
+    }
+
+    #[test]
     fn document_stream_retry_is_limited_to_transient_transport_failures() {
         assert!(should_retry_document_stream_error(&error(
             "ai_provider_unavailable",
@@ -1488,24 +1574,19 @@ mod tests {
         let prepared = prepare_provider_body_for_document(
             &url,
             &json!({ "model": "example/model" }),
-            Some("0123456789abcdef0123456789abcdef"),
             Some("low"),
         )
         .expect("OpenRouter requests should be normalized");
         assert_eq!(prepared["plugins"][0]["id"], "context-compression");
         assert_eq!(prepared["plugins"][0]["enabled"], false);
         assert_eq!(prepared["usage"]["include"], true);
-        assert_eq!(
-            prepared["session_id"],
-            "ostudy-document-0123456789abcdef0123456789abcdef"
-        );
+        assert!(prepared.get("session_id").is_none());
         assert_eq!(prepared["reasoning"]["effort"], "low");
         assert_eq!(prepared["reasoning"]["exclude"], true);
 
         let automatic = prepare_provider_body_for_document(
             &url,
             &json!({ "model": "example/model" }),
-            Some("document"),
             Some("automatic"),
         )
         .unwrap();

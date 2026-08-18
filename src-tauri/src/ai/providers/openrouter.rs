@@ -9,7 +9,7 @@ pub(super) const MAX_MODELS: usize = 2_000;
 
 const REASONING_EFFORTS: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 const HIGH_PRECISION_QUANTIZATIONS: [&str; 6] = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32"];
-const PREFERRED_MIN_THROUGHPUT_TPS: u64 = 40;
+const PREFERRED_MIN_P90_THROUGHPUT_TPS: u64 = 50;
 const PREFERRED_MAX_P90_LATENCY_SECONDS: u64 = 20;
 
 pub(super) fn text_probe_body(
@@ -66,8 +66,11 @@ pub(super) fn structured_probe_body(
 ///
 /// Endpoint precision is a hard quality boundary: INT4/FP4/FP6 and endpoints
 /// whose quantization is unknown are never selected. Within the eligible set,
-/// price is the primary sort while throughput/latency are soft preferences so
-/// an outage can still fall back to another high-precision endpoint.
+/// ostudy leaves OpenRouter's price/uptime load balancing enabled so concurrent
+/// independent windows can spread across healthy endpoints. A p90 throughput
+/// preference keeps consistently slow endpoints behind cheaper fast candidates;
+/// performance preferences remain soft so healthy high-precision fallbacks are
+/// still available during constrained capacity.
 pub(super) fn provider_preferences(
     require_parameters: bool,
     require_zero_data_retention: bool,
@@ -78,9 +81,8 @@ pub(super) fn provider_preferences(
         "zdr": require_zero_data_retention,
         "allow_fallbacks": true,
         "quantizations": HIGH_PRECISION_QUANTIZATIONS,
-        "sort": "price",
         "preferred_min_throughput": {
-            "p50": PREFERRED_MIN_THROUGHPUT_TPS
+            "p90": PREFERRED_MIN_P90_THROUGHPUT_TPS
         },
         "preferred_max_latency": {
             "p90": PREFERRED_MAX_P90_LATENCY_SECONDS
@@ -247,10 +249,10 @@ mod tests {
         assert_eq!(strict.pointer("/data_collection"), Some(&json!("deny")));
         assert_eq!(strict.pointer("/zdr"), Some(&json!(true)));
         assert_eq!(strict.pointer("/require_parameters"), Some(&json!(true)));
-        assert_eq!(strict.pointer("/sort"), Some(&json!("price")));
+        assert!(strict.pointer("/sort").is_none());
         assert_eq!(
-            strict.pointer("/preferred_min_throughput/p50"),
-            Some(&json!(40))
+            strict.pointer("/preferred_min_throughput/p90"),
+            Some(&json!(50))
         );
         assert_eq!(
             strict.pointer("/preferred_max_latency/p90"),

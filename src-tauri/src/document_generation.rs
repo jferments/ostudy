@@ -5,7 +5,7 @@
 //! exactly the same image loading, bounded retry, job transitions, progress,
 //! and total-card safety rules.
 
-use std::time::Duration;
+use std::time::Instant;
 
 use serde_json::Value;
 use tokio::time::timeout;
@@ -19,7 +19,9 @@ use crate::{
     document_store,
     error::CommandError,
     paths::AppPaths,
-    task_cancellation::set_current_task_phase,
+    task_cancellation::{
+        record_current_provider_retry, set_current_task_phase, set_current_task_phase_range,
+    },
 };
 
 const MAX_GENERATED_CARDS: usize = 10_000;
@@ -73,17 +75,18 @@ pub(crate) async fn execute_generation_windows(
     let parallelism =
         crate::ai::concurrency::document_request_parallelism(&input.task.provider_kind)
             .clamp(1, input.windows.len().max(1));
-    crate::logging::info(
+    crate::logging::debug_target(
+        "ai.document.generation",
         "document_generation_execution_plan",
-        format!(
-            "document={} provider={} model={} windows={} parallelism={} sticky_warmup={}",
-            input.document_id,
-            input.task.provider_kind,
-            input.task.model_id,
-            input.windows.len(),
-            parallelism,
-            input.task.provider_kind == "openrouter",
-        ),
+        "Prepared independent bounded card-generation windows without logging document content.",
+        serde_json::json!({
+            "document": input.document_id,
+            "provider": input.task.provider_kind.as_str(),
+            "model": input.task.model_id.as_str(),
+            "windows": input.windows.len(),
+            "parallelism": parallelism,
+            "maxCardsPerWindow": input.plan.max_cards_per_window,
+        }),
     );
 
     let mut by_window = vec![None; input.windows.len()];
@@ -118,21 +121,17 @@ pub(crate) async fn execute_generation_windows(
     }
     document_store::update_generation_progress(input.database, input.document_id, completed)?;
 
-    let warm_first = input.task.provider_kind == "openrouter" && missing.len() > 1;
     let mut cursor = 0_usize;
     while cursor < missing.len() {
-        let batch_size = if warm_first && cursor == 0 {
-            1
-        } else {
-            parallelism
-        };
+        let batch_size = parallelism;
         let end = (cursor + batch_size).min(missing.len());
         let batch = &missing[cursor..end];
         let first = &input.windows[batch[0]];
         let last = &input.windows[*batch.last().unwrap_or(&batch[0])];
-        set_current_task_phase(
+        set_current_task_phase_range(
             "generating",
             Some(batch[0] + 1),
+            batch.last().map(|position| position + 1),
             completed,
             input.windows.len(),
             Some(first.page_start),
@@ -250,99 +249,133 @@ async fn generation_slot(
 ) -> Option<(usize, Result<Vec<Value>, CommandError>)> {
     let position = position?;
     let window = &input.windows[position];
+    let started = Instant::now();
+    crate::logging::debug_target(
+        "ai.document.generation",
+        "document_generation_window_started",
+        "A bounded card-generation window started without logging document content.",
+        serde_json::json!({
+            "provider": input.task.provider_kind.as_str(),
+            "model": input.task.model_id.as_str(),
+            "window": position + 1,
+            "pageStart": window.page_start,
+            "pageEnd": window.page_end,
+            "sourceTokens": window.token_estimate,
+            "cardBudget": input.plan.max_cards_per_window,
+        }),
+    );
+    let result = generate_window_with_recovery(WindowGenerationRequest {
+        runtime: input.runtime,
+        task: input.task,
+        document_title: input.document_title,
+        outline: input.outline,
+        window,
+        images,
+        maximum_cards: input.plan.max_cards_per_window,
+        diagnostic_prefix: input.diagnostic_prefix,
+    })
+    .await;
+
+    match &result {
+        Ok(cards) => crate::logging::debug_target(
+            "ai.document.generation",
+            "document_generation_window_completed",
+            "A bounded card-generation window completed without logging generated content.",
+            serde_json::json!({
+                "provider": input.task.provider_kind.as_str(),
+                "model": input.task.model_id.as_str(),
+                "window": position + 1,
+                "pageStart": window.page_start,
+                "pageEnd": window.page_end,
+                "cards": cards.len(),
+                "durationMs": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            }),
+        ),
+        Err(error) => crate::logging::warn_target(
+            "ai.document.generation",
+            "document_generation_window_failed",
+            "A bounded card-generation window exhausted its safe recovery path.",
+            serde_json::json!({
+                "provider": input.task.provider_kind.as_str(),
+                "model": input.task.model_id.as_str(),
+                "window": position + 1,
+                "pageStart": window.page_start,
+                "pageEnd": window.page_end,
+                "code": error.code.as_str(),
+                "durationMs": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            }),
+        ),
+    }
+
     Some((
         position,
-        generate_window_with_recovery(WindowGenerationRequest {
-            runtime: input.runtime,
-            task: input.task,
-            document_title: input.document_title,
-            outline: input.outline,
-            window,
-            images,
-            maximum_cards: input.plan.max_cards_per_window,
-            diagnostic_prefix: input.diagnostic_prefix,
-        })
-        .await,
+        result.map_err(|error| {
+            CommandError::new(
+                error.code,
+                format!(
+                    "Card generation failed for source window {}/{} (PDF pages {}–{}): {} Completed windows are checkpointed; Retry generation resumes the remaining source windows instead of starting over.",
+                    position + 1,
+                    input.windows.len(),
+                    window.page_start,
+                    window.page_end,
+                    error.message,
+                ),
+            )
+        }),
     ))
-}
-
-async fn generate_provider_call_with_deadline(
-    input: &WindowGenerationRequest<'_>,
-    maximum_cards: usize,
-) -> Result<Vec<Value>, CommandError> {
-    for attempt in 1..=2 {
-        let request = document_intelligence::generate_window_flashcards(
-            input.runtime,
-            input.task,
-            input.document_title,
-            input.outline,
-            input.window,
-            input.images,
-            maximum_cards.max(1),
-        );
-        match timeout(
-            Duration::from_secs(GENERATION_PROVIDER_ATTEMPT_SECONDS),
-            request,
-        )
-        .await
-        {
-            Ok(result) => return result,
-            Err(_) if attempt == 1 => {
-                crate::logging::warn_target(
-                    "ai.document.generation",
-                    "document_generation_window_deadline_retry",
-                    "A provider took too long on one bounded card-generation request; ostudy canceled that request and is retrying the same bounded request once.",
-                    serde_json::json!({
-                        "provider": input.task.provider_kind.as_str(),
-                        "model": input.task.model_id.as_str(),
-                        "window": input.window.window_index + 1,
-                        "pageStart": input.window.page_start,
-                        "pageEnd": input.window.page_end,
-                        "cardBudget": maximum_cards,
-                        "attemptSeconds": GENERATION_PROVIDER_ATTEMPT_SECONDS,
-                    }),
-                );
-            }
-            Err(_) => {
-                return Err(CommandError::new(
-                    "ai_provider_deadline",
-                    format!(
-                        "The AI provider exceeded the {GENERATION_PROVIDER_ATTEMPT_SECONDS}-second card-generation request deadline twice. ostudy canceled both incomplete requests instead of allowing this document window to stall indefinitely."
-                    ),
-                ));
-            }
-        }
-    }
-    unreachable!("the bounded two-attempt loop always returns")
 }
 
 async fn generate_window_with_recovery(
     input: WindowGenerationRequest<'_>,
 ) -> Result<Vec<Value>, CommandError> {
     let first_budget = input.maximum_cards.max(1);
-    let first = generate_provider_call_with_deadline(&input, first_budget).await;
+    let first = document_intelligence::generate_window_flashcards(
+        input.runtime,
+        input.task,
+        input.document_title,
+        input.outline,
+        input.window,
+        input.images,
+        first_budget,
+    )
+    .await;
     match first {
         Err(error)
             if input.maximum_cards > 2
-                && (error.code == "ai_document_output_truncated"
-                    || (error.code == "ai_document_output_invalid"
-                        && error.message.contains("more than"))) =>
+                && (matches!(
+                    error.code.as_str(),
+                    "ai_document_output_truncated"
+                        | "ai_stream_progress_timeout"
+                        | "ai_empty_response"
+                ) || (error.code == "ai_document_output_invalid"
+                    && error.message.contains("more than"))) =>
         {
             let reduced_budget = (input.maximum_cards / 2).max(2);
-            crate::logging::info(
+            record_current_provider_retry();
+            crate::logging::info_target(
+                "ai.document.generation",
                 "document_generation_window_compact_retry",
-                format!(
-                    "path={} window={} partition={} locator={} old_budget={} new_budget={} code={}",
-                    input.diagnostic_prefix,
-                    input.window.window_index + 1,
-                    input.window.partition_index + 1,
-                    input.window.source_locator().stable_identity(),
-                    input.maximum_cards,
-                    reduced_budget,
-                    error.code,
-                ),
+                "The source window is being retried once with a smaller structured-output budget.",
+                serde_json::json!({
+                    "path": input.diagnostic_prefix,
+                    "window": input.window.window_index + 1,
+                    "partition": input.window.partition_index + 1,
+                    "locator": input.window.source_locator().stable_identity(),
+                    "oldBudget": input.maximum_cards,
+                    "newBudget": reduced_budget,
+                    "code": error.code.as_str(),
+                }),
             );
-            generate_provider_call_with_deadline(&input, reduced_budget).await
+            document_intelligence::generate_window_flashcards(
+                input.runtime,
+                input.task,
+                input.document_title,
+                input.outline,
+                input.window,
+                input.images,
+                reduced_budget,
+            )
+            .await
         }
         other => other,
     }

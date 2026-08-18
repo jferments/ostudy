@@ -1,10 +1,9 @@
-use std::time::Duration;
-
-use tokio::time::timeout;
+use std::time::Instant;
 
 use crate::{
-    document_semantics::SemanticWindow, error::CommandError,
-    task_cancellation::set_current_task_phase,
+    document_semantics::SemanticWindow,
+    error::CommandError,
+    task_cancellation::{record_current_provider_retry, set_current_task_phase_range},
 };
 
 use super::{catalog, endpoint_policy, gateway, profiles, secrets, AiRuntimeState};
@@ -24,10 +23,10 @@ const OUTLINE_PROVIDER_ATTEMPT_SECONDS: u64 = 120;
 /// Build the reusable global outline used by all later generation windows.
 ///
 /// Text-bearing PDFs request independent local outline fragments with bounded
-/// provider concurrency. The first OpenRouter request is deliberately warmed on
-/// its own so the stable document `session_id` can establish sticky routing
-/// before later windows fan out. Completed fragments are persisted serially,
-/// then the existing deterministic Rust assembly/global-synthesis path consumes
+/// provider concurrency. Remote windows fan out immediately; they deliberately
+/// do not share an OpenRouter sticky session because these are independent batch
+/// requests with different source text. Completed fragments are persisted
+/// serially, then the deterministic Rust assembly/global-synthesis path consumes
 /// them as cached fragments so request completion order cannot change hierarchy.
 pub(crate) async fn build_document_outline<F>(
     runtime: &AiRuntimeState,
@@ -82,35 +81,32 @@ where
         .collect::<Vec<_>>();
     let parallelism = super::concurrency::document_request_parallelism(&task.provider_kind)
         .clamp(1, windows.len());
-    crate::logging::info(
+    crate::logging::debug_target(
+        "ai.document.outline",
         "document_outline_execution_plan",
-        format!(
-            "provider={} model={} windows={} cached={} parallelism={} sticky_warmup={}",
-            task.provider_kind,
-            task.model_id,
-            windows.len(),
-            windows.len().saturating_sub(missing.len()),
-            parallelism,
-            task.provider_kind == "openrouter" && missing.len() > 1,
-        ),
+        "Prepared bounded outline-provider work without logging document content.",
+        serde_json::json!({
+            "provider": task.provider_kind.as_str(),
+            "model": task.model_id.as_str(),
+            "windows": windows.len(),
+            "cachedWindows": windows.len().saturating_sub(missing.len()),
+            "providerWindows": missing.len(),
+            "parallelism": parallelism,
+        }),
     );
 
     let mut completed = windows.len().saturating_sub(missing.len());
     let mut cursor = 0_usize;
-    let warm_first = task.provider_kind == "openrouter" && missing.len() > 1;
     while cursor < missing.len() {
-        let batch_size = if warm_first && cursor == 0 {
-            1
-        } else {
-            parallelism
-        };
+        let batch_size = parallelism;
         let end = (cursor + batch_size).min(missing.len());
         let batch = &missing[cursor..end];
         let first = &windows[batch[0]];
         let last = &windows[*batch.last().unwrap_or(&batch[0])];
-        set_current_task_phase(
+        set_current_task_phase_range(
             "outline",
             Some(batch[0] + 1),
+            batch.last().map(|index| index + 1),
             completed,
             windows.len(),
             Some(first.page_start),
@@ -190,7 +186,8 @@ async fn outline_slot(
             window.token_estimate,
         ),
     );
-    let result = match request_outline_with_deadline(
+    let started = Instant::now();
+    let result = match request_outline_with_resilience(
         runtime,
         task,
         document_title,
@@ -253,58 +250,71 @@ async fn outline_slot(
             ))
         }
     };
+    if let Ok(fragment) = &result {
+        crate::logging::debug_target(
+            "ai.document.outline",
+            "document_outline_window_completed",
+            "A bounded outline fragment completed without logging source or model output.",
+            serde_json::json!({
+                "provider": task.provider_kind.as_str(),
+                "model": task.model_id.as_str(),
+                "window": index + 1,
+                "pageStart": window.page_start,
+                "pageEnd": window.page_end,
+                "sourceTokens": window.token_estimate,
+                "sections": fragment.sections.len(),
+                "objectives": fragment.learning_objectives.len(),
+                "concepts": fragment.key_concepts.len(),
+                "durationMs": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            }),
+        );
+    }
     Some((index, result))
 }
 
-async fn request_outline_with_deadline(
+async fn request_outline_with_resilience(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
     document_title: &str,
     page_count: i64,
     window: &SemanticWindow,
 ) -> Result<DocumentOutline, CommandError> {
-    for attempt in 1..=2 {
-        let request = implementation::request_outline_fragment(
-            runtime,
-            task,
-            document_title,
-            page_count,
-            window,
-            &[],
-        );
-        match timeout(
-            Duration::from_secs(OUTLINE_PROVIDER_ATTEMPT_SECONDS),
-            request,
-        )
-        .await
-        {
-            Ok(result) => return result,
-            Err(_) if attempt == 1 => {
-                crate::logging::warn_target(
-                    "ai.document.outline",
-                    "document_outline_window_deadline_retry",
-                    "A provider took too long on one bounded outline fragment; ostudy canceled that request and is retrying the source window once.",
-                    serde_json::json!({
-                        "provider": task.provider_kind.as_str(),
-                        "model": task.model_id.as_str(),
-                        "window": window.window_index + 1,
-                        "pageStart": window.page_start,
-                        "pageEnd": window.page_end,
-                        "attemptSeconds": OUTLINE_PROVIDER_ATTEMPT_SECONDS,
-                    }),
-                );
-            }
-            Err(_) => {
-                return Err(CommandError::new(
-                    "ai_provider_deadline",
-                    format!(
-                        "The AI provider exceeded the {OUTLINE_PROVIDER_ATTEMPT_SECONDS}-second outline-window deadline twice. ostudy canceled both incomplete requests instead of allowing this document window to stall indefinitely."
-                    ),
-                ));
-            }
+    let first = implementation::request_outline_fragment(
+        runtime,
+        task,
+        document_title,
+        page_count,
+        window,
+        &[],
+    )
+    .await;
+    match first {
+        Err(error) if error.code == "ai_stream_progress_timeout" => {
+            record_current_provider_retry();
+            crate::logging::warn_target(
+                "ai.document.outline",
+                "document_outline_window_progress_retry",
+                "One outline route stopped producing useful output; ostudy is retrying this concise source window once on a fresh route.",
+                serde_json::json!({
+                    "provider": task.provider_kind.as_str(),
+                    "model": task.model_id.as_str(),
+                    "window": window.window_index + 1,
+                    "pageStart": window.page_start,
+                    "pageEnd": window.page_end,
+                }),
+            );
+            implementation::request_outline_fragment(
+                runtime,
+                task,
+                document_title,
+                page_count,
+                window,
+                &[],
+            )
+            .await
         }
+        other => other,
     }
-    unreachable!("the bounded two-attempt loop always returns")
 }
 
 #[cfg(test)]

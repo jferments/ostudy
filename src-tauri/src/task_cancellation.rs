@@ -71,6 +71,7 @@ pub(crate) struct DocumentTaskProgress {
     pub started_at: i64,
     pub phase: String,
     pub current_window: Option<usize>,
+    pub current_window_end: Option<usize>,
     pub completed_windows: usize,
     pub total_windows: usize,
     pub current_page_start: Option<i64>,
@@ -95,6 +96,7 @@ impl DocumentTaskProgress {
             started_at,
             phase: "preparing".to_string(),
             current_window: None,
+            current_window_end: None,
             completed_windows: 0,
             total_windows: 0,
             current_page_start: None,
@@ -277,10 +279,33 @@ pub(crate) fn set_current_task_phase(
     current_page_end: Option<i64>,
     current_partition: Option<usize>,
 ) {
+    set_current_task_phase_range(
+        phase,
+        current_window,
+        current_window,
+        completed_windows,
+        total_windows,
+        current_page_start,
+        current_page_end,
+        current_partition,
+    );
+}
+
+pub(crate) fn set_current_task_phase_range(
+    phase: &str,
+    current_window: Option<usize>,
+    current_window_end: Option<usize>,
+    completed_windows: usize,
+    total_windows: usize,
+    current_page_start: Option<i64>,
+    current_page_end: Option<i64>,
+    current_partition: Option<usize>,
+) {
     let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
         if let Ok(mut progress) = task.progress.lock() {
             progress.phase = phase.chars().take(80).collect();
             progress.current_window = current_window;
+            progress.current_window_end = current_window_end;
             progress.completed_windows = completed_windows;
             progress.total_windows = total_windows;
             progress.current_page_start = current_page_start;
