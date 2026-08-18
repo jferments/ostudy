@@ -20,6 +20,7 @@ mod extended_tests {
             desired_retention: 0.90,
             daily_new_limit: 20,
             daily_review_limit: 200,
+            ai_reasoning_effort: "low".to_string(),
         }
     }
 
@@ -43,6 +44,7 @@ mod extended_tests {
             desired_retention: 0.96,
             daily_new_limit: 12,
             daily_review_limit: 80,
+            ai_reasoning_effort: "minimal".to_string(),
         };
         validate_settings(&expected).expect("fixture should validate");
         database
@@ -68,6 +70,7 @@ mod extended_tests {
         assert_eq!(loaded.desired_retention, expected.desired_retention);
         assert_eq!(loaded.daily_new_limit, expected.daily_new_limit);
         assert_eq!(loaded.daily_review_limit, expected.daily_review_limit);
+        assert_eq!(loaded.ai_reasoning_effort, expected.ai_reasoning_effort);
     }
 
     #[test]
@@ -99,6 +102,13 @@ mod extended_tests {
         assert_eq!(
             validate_settings(&value).unwrap_err().code,
             "invalid_deck_view_density"
+        );
+
+        let mut value = settings();
+        value.ai_reasoning_effort = "unbounded".to_string();
+        assert_eq!(
+            validate_settings(&value).unwrap_err().code,
+            "invalid_ai_reasoning_effort"
         );
 
         let mut value = settings();
@@ -140,6 +150,7 @@ mod extended_tests {
             "desiredRetention": 0.9,
             "dailyNewLimit": 20,
             "dailyReviewLimit": 200,
+            "aiReasoningEffort": "low",
             "shuffleDecks": true
         }))
         .expect_err("obsolete settings must not be ignored");
