@@ -72,6 +72,10 @@ value = value.replace(
     "return Err(stream_progress_timeout_error(progress_timeout_seconds)),",
 )
 value = value.replace(
+    "return Err(stream_progress_timeout_error());",
+    "return Err(stream_progress_timeout_error(progress_timeout_seconds));",
+)
+value = value.replace(
     "let failure = stream_progress_timeout_error();",
     "let failure = stream_progress_timeout_error(OPENROUTER_STREAM_PROGRESS_TIMEOUT_SECONDS);",
 )
@@ -101,6 +105,12 @@ elif new not in value:
     raise SystemExit("stream progress error helper anchor not found")
 p.write_text(value)
 
+replace_once(
+    "src-tauri/src/ai/gateway.rs",
+    "        // Long document-generation requests deliberately have no reqwest-wide\n        // timeout. Their configured timeout covers connection establishment and\n        // waiting for provider response headers only. Once the provider accepts\n        // the request, inference may continue until completion or user cancel.",
+    "        // Long document-generation requests deliberately have no reqwest-wide\n        // wall-clock deadline. Connection/header waiting remains bounded, and an\n        // accepted stream is governed by useful-output progress plus user cancel.",
+    "gateway client timeout comment",
+)
 replace_once(
     "src-tauri/src/ai/gateway.rs",
     "    /// Successful headers are the provider acknowledgment boundary. After that,\n    /// ostudy waits for streamed completion content without a wall-clock limit,\n    /// while still enforcing response-size bounds and exact-task cancellation.",
