@@ -51,8 +51,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Copy a timestamped pre-public app-data backup back into the active "
-            "location. The current active directory is archived first; nothing "
-            "is deleted. The next ostudy start performs the verified v26-to-public adoption."
+            "location. The archive is copied into staging and only that copy is "
+            "opened for validation. The current active directory is archived "
+            "before the verified copy is installed; nothing is deleted."
         )
     )
     parser.add_argument("--backup-dir", required=True, type=Path)
@@ -94,32 +95,31 @@ def column_names(connection: sqlite3.Connection, table: str) -> set[str]:
     return {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
 
 
-def validate_final_pre_public_backup(backup_dir: Path) -> Path:
-    if not backup_dir.is_dir():
-        raise ValueError(f"Backup directory does not exist: {backup_dir}")
-    database = backup_dir / "library.sqlite3"
+def validate_final_pre_public_copy(staged_dir: Path) -> Path:
+    if not staged_dir.is_dir():
+        raise ValueError(f"Staged directory does not exist: {staged_dir}")
+    database = staged_dir / "library.sqlite3"
     if not database.is_file():
-        raise ValueError(f"Backup has no library.sqlite3: {backup_dir}")
+        raise ValueError(f"Staged copy has no library.sqlite3: {staged_dir}")
 
-    uri = f"file:{database.as_posix()}?mode=ro"
-    with sqlite3.connect(uri, uri=True) as connection:
+    with sqlite3.connect(database) as connection:
         tables = table_names(connection)
         if "schema_metadata" in tables:
             raise ValueError(
-                "The supplied backup already belongs to a public schema lineage; "
+                "The supplied archive already belongs to a public schema lineage; "
                 "refusing to treat it as pre-public data."
             )
         missing_tables = sorted(REQUIRED_FINAL_TABLES - tables)
         if missing_tables:
             raise ValueError(
-                "The backup is not the final pre-public schema; missing tables: "
+                "The archive is not the final pre-public schema; missing tables: "
                 + ", ".join(missing_tables)
             )
         if "require_zero_data_retention" in column_names(
             connection, "ai_provider_profiles"
         ):
             raise ValueError(
-                "The supplied backup already has the public OpenRouter profile shape."
+                "The supplied archive already has the public OpenRouter profile shape."
             )
 
         sqlite_user_version = connection.execute("PRAGMA user_version").fetchone()[0]
@@ -134,7 +134,7 @@ def validate_final_pre_public_backup(backup_dir: Path) -> Path:
         ).fetchall()
         if migrations != EXPECTED_MIGRATIONS:
             raise ValueError(
-                "The backup does not have the exact final pre-public migration ledger. "
+                "The archive does not have the exact final pre-public migration ledger. "
                 "It was left unchanged."
             )
         repairs = connection.execute(
@@ -142,19 +142,19 @@ def validate_final_pre_public_backup(backup_dir: Path) -> Path:
         ).fetchall()
         if repairs != EXPECTED_REPAIRS:
             raise ValueError(
-                "The backup does not have the exact final pre-public repair ledger. "
+                "The archive does not have the exact final pre-public repair ledger. "
                 "It was left unchanged."
             )
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
         if integrity != "ok":
-            raise ValueError(f"Backup SQLite integrity_check failed: {integrity}")
+            raise ValueError(f"Staged SQLite integrity_check failed: {integrity}")
         foreign_key_violation = connection.execute(
             "PRAGMA foreign_key_check"
         ).fetchone()
         if foreign_key_violation is not None:
             raise ValueError(
-                "Backup contains a foreign-key violation and cannot be restored safely: "
-                f"{foreign_key_violation}"
+                "The staged copy contains a foreign-key violation and cannot be "
+                f"restored safely: {foreign_key_violation}"
             )
     return database
 
@@ -169,6 +169,9 @@ def unique_sibling(parent: Path, name: str) -> Path:
 
 
 def restore_backup(backup_dir: Path, data_dir: Path) -> tuple[Path | None, Path]:
+    if not backup_dir.is_dir():
+        raise ValueError(f"Backup directory does not exist: {backup_dir}")
+
     timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     parent = data_dir.parent
     parent.mkdir(parents=True, exist_ok=True)
@@ -182,6 +185,10 @@ def restore_backup(backup_dir: Path, data_dir: Path) -> tuple[Path | None, Path]
     shutil.copytree(backup_dir, staging, symlinks=True, copy_function=shutil.copy2)
     restored_previous: Path | None = None
     try:
+        # SQLite opens only the disposable staged copy. The original timestamped
+        # archive is never passed to SQLite, so WAL recovery or sidecar handling
+        # cannot modify the user's last untouched pre-public directory.
+        validate_final_pre_public_copy(staging)
         if data_dir.exists():
             os.replace(data_dir, previous_active)
             restored_previous = previous_active
@@ -208,18 +215,23 @@ def main() -> int:
         if backup_dir == data_dir:
             raise ValueError("--backup-dir and --data-dir must be different directories.")
         ensure_ostudy_stopped()
-        validate_final_pre_public_backup(backup_dir)
         previous_active, restored = restore_backup(backup_dir, data_dir)
     except (OSError, RuntimeError, sqlite3.Error, ValueError) as error:
         print(f"Pre-public restore failed: {error}", file=sys.stderr)
         return 1
 
-    print(f"Copied verified final pre-public data from: {backup_dir}")
-    print(f"Restored active ostudy data directory: {restored}")
+    print(f"Copied archived pre-public data from: {backup_dir}")
+    print(f"Installed the verified copy as the active ostudy data directory: {restored}")
     if previous_active is not None:
         print(f"Archived the previous active directory at: {previous_active}")
-    print("The original timestamped pre-public backup was retained unchanged.")
-    print("Start ostudy normally; it will create a SQLite backup and adopt the v26 data in place.")
+    print(
+        "The original timestamped pre-public archive was never opened by SQLite "
+        "and remains untouched."
+    )
+    print(
+        "Start ostudy normally; it will create a consistent SQLite backup and "
+        "adopt the v26 data in place."
+    )
     return 0
 
 
