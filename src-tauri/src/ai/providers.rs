@@ -485,9 +485,7 @@ fn parse_model_list(
                     id.to_string(),
                     item.get("owned_by")
                         .and_then(Value::as_str)
-                        .filter(|value| {
-                            value.len() <= 200 && !value.chars().any(char::is_control)
-                        })
+                        .filter(|value| value.len() <= 200 && !value.chars().any(char::is_control))
                         .map(ToString::to_string),
                     None,
                     None,

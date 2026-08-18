@@ -759,12 +759,7 @@ fn prepare_provider_body(url: &Url, body: &Value) -> Option<Value> {
     if let Some(reasoning_effort) = reasoning_effort.as_deref() {
         set_current_reasoning_effort(reasoning_effort);
     }
-    prepare_provider_body_for_document(
-        url,
-        body,
-        session.as_deref(),
-        reasoning_effort.as_deref(),
-    )
+    prepare_provider_body_for_document(url, body, session.as_deref(), reasoning_effort.as_deref())
 }
 
 fn prepare_provider_body_for_document(
@@ -858,20 +853,24 @@ fn usage_delta(usage: &Value) -> DocumentTaskUsageDelta {
     DocumentTaskUsageDelta {
         prompt_tokens: nonnegative_integer(usage.get("prompt_tokens")),
         completion_tokens: nonnegative_integer(usage.get("completion_tokens")),
-        reasoning_tokens: nonnegative_integer(usage.pointer("/completion_tokens_details/reasoning_tokens")),
+        reasoning_tokens: nonnegative_integer(
+            usage.pointer("/completion_tokens_details/reasoning_tokens"),
+        ),
         total_tokens: nonnegative_integer(usage.get("total_tokens")),
-        cached_prompt_tokens: nonnegative_integer(usage.pointer("/prompt_tokens_details/cached_tokens")),
-        cache_write_tokens: nonnegative_integer(usage.pointer("/prompt_tokens_details/cache_write_tokens")),
+        cached_prompt_tokens: nonnegative_integer(
+            usage.pointer("/prompt_tokens_details/cached_tokens"),
+        ),
+        cache_write_tokens: nonnegative_integer(
+            usage.pointer("/prompt_tokens_details/cache_write_tokens"),
+        ),
     }
 }
 
 fn nonnegative_integer(value: Option<&Value>) -> Option<u64> {
     value.and_then(|value| {
-        value.as_u64().or_else(|| {
-            value
-                .as_i64()
-                .and_then(|value| u64::try_from(value).ok())
-        })
+        value
+            .as_u64()
+            .or_else(|| value.as_i64().and_then(|value| u64::try_from(value).ok()))
     })
 }
 

@@ -207,10 +207,7 @@ impl ActiveDocumentTasks {
     fn progress(&self, document_id: &str) -> Option<DocumentTaskProgress> {
         let tasks = self.tasks.lock().ok()?;
         let task = tasks.get(document_id)?;
-        task.progress
-            .lock()
-            .ok()
-            .map(|progress| progress.clone())
+        task.progress.lock().ok().map(|progress| progress.clone())
     }
 }
 
@@ -477,15 +474,7 @@ mod tests {
         CURRENT_DOCUMENT_TASK
             .scope(task, async {
                 set_current_reasoning_effort("minimal");
-                set_current_task_phase(
-                    "outline",
-                    Some(3),
-                    2,
-                    10,
-                    Some(5),
-                    Some(7),
-                    Some(1),
-                );
+                set_current_task_phase("outline", Some(3), 2, 10, Some(5), Some(7), Some(1));
                 record_current_provider_request();
                 record_current_provider_retry();
                 record_current_usage(DocumentTaskUsageDelta {
@@ -496,10 +485,7 @@ mod tests {
                     cached_prompt_tokens: Some(600),
                     cache_write_tokens: Some(100),
                 });
-                assert_eq!(
-                    current_reasoning_effort().as_deref(),
-                    Some("minimal")
-                );
+                assert_eq!(current_reasoning_effort().as_deref(), Some("minimal"));
             })
             .await;
         let progress = document_task_progress(document_id).expect("progress should be visible");
