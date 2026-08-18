@@ -412,6 +412,12 @@ impl AiGateway {
         maximum_bytes: usize,
     ) -> Result<Value, AiGatewayError> {
         let openrouter = is_openrouter_url(&url);
+        let progress_timeout_seconds = if openrouter {
+            OPENROUTER_STREAM_PROGRESS_TIMEOUT_SECONDS
+        } else {
+            DEFAULT_STREAM_PROGRESS_TIMEOUT_SECONDS
+        };
+        let progress_timeout = Duration::from_secs(progress_timeout_seconds);
         let mut request = self
             .client
             .request(method, url)
