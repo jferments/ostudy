@@ -34,9 +34,18 @@ Use the repository tiers in increasing order:
 
 `check-fast.sh` adds the complete frontend test suite, locked Rust compilation, warning-free Rust linting, and high-return document/platform contracts.
 
-`check.sh` is the authoritative Linux/shared merge gate. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, a **built-binary startup compatibility smoke**, and the native WebDriver persistence/UI smoke tests.
+`check.sh` is the authoritative Linux/shared merge gate. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, a **built-binary pre-public adoption smoke**, and the native WebDriver persistence/UI smoke tests.
 
-The startup compatibility smoke is intentionally different from the ordinary WebDriver tests. WebDriver scenarios use fresh isolated app-data so they can verify normal first-run and persistence behavior. The compatibility smoke instead creates a real on-disk pre-public SQLite database, launches the exact built binary against it, and requires ostudy to remain alive behind the one-time reset dialog without a Tauri setup panic. It also requires a structured `application_startup_blocked` event, byte-for-byte preservation of the legacy database, and no WAL/shared-memory sidecars. This catches failures that clean-state application tests cannot exercise.
+The adoption smoke is intentionally different from the ordinary WebDriver tests. WebDriver scenarios use fresh isolated app-data so they can verify normal first-run and persistence behavior. The adoption smoke instead creates a real on-disk database with the exact final development lineage: SQLite `user_version` 26, all 26 immutable migration identities/checksums, all 3 repair identities/checksums, and representative deck/card/review/analytics rows. It launches the exact built binary and requires ostudy to:
+
+1. create a consistent SQLite backup;
+2. adopt `ostudy-public-v1` transactionally;
+3. preserve every application-table row count and the seeded deck/card/review/attribution rows;
+4. emit `pre_public_database_adoption_completed` and `application_started`;
+5. remain alive as a usable application;
+6. avoid `application_startup_blocked`, `panic_captured`, and Tauri setup failure.
+
+This directly covers the state that fresh WebDriver homes cannot exercise. Separate unit tests verify that unsupported pre-public databases are not modified or backed up automatically.
 
 Native WebDriver element lookup is a read-only polling operation and tolerates a transient driver HTTP disconnect within its existing deadline. Mutating commands such as session creation, clicks, form submission, and actions are never automatically retried because the operation may already have been applied before its response was lost. Multi-stage smoke scenarios should assert already-established navigation state instead of issuing redundant clicks between adjacent layout checks. Responsive deck-toolbar checks therefore re-resolve the selected Flashcards route and Decks workspace after each resize rather than retaining element IDs across React layout replacement.
 
@@ -93,7 +102,7 @@ check-static.sh
 → locked Rust dependency-graph validation
 → check.sh
    → fast qualification (reusing the static stamp)
-   → built-binary legacy-data startup compatibility smoke
+   → built-binary final-v26 data-preserving adoption smoke
    → native WebDriver persistence/UI smoke
 → android-test.sh
 → android-emulator-smoke.sh
@@ -131,7 +140,7 @@ During a confirmed or suspected GitHub incident:
 7. keep the PR draft and describe the exact head as unqualified;
 8. after GitHub reports recovery, run the normal workflow on that exact head without incident-specific shims.
 
-The [August 17, 2026 GitHub outage audit](../history/github-outage-audit-2026-08-17.md) records the incident that established this policy and distinguishes legitimate oStudy fixes from outage-driven workflow changes that were removed.
+The [August 17, 2026 GitHub outage audit](../history/github-outage-audit-2026-08-17.md) records the incident that established this policy and distinguishes legitimate ostudy fixes from outage-driven workflow changes that were removed.
 
 Every scripted CI gate automatically starts with the low-noise diagnostic filter:
 
@@ -180,7 +189,7 @@ Nested qualification wrappers share one failure-capture token, so the innermost 
 
 Native WebDriver smoke tests use temporary XDG homes. Their application logs are copied before cleanup. A retryable transport disconnect is retained as **transient WebDriver** evidence even when the one clean-state retry succeeds, so a green check does not erase the existence of a recovered flake.
 
-The built-binary startup compatibility smoke also uses isolated XDG state, but deliberately seeds a legacy database rather than a clean library. A failure captures its command/application logs before cleanup so startup panics and compatibility regressions are visible in the same diagnostic workflow.
+The built-binary adoption smoke also uses isolated XDG state, but deliberately seeds an exact final-v26 database rather than a clean library. A failure captures its command/application logs before cleanup so backup, adoption, preservation, startup, and panic regressions are visible in the same diagnostic workflow.
 
 The Actions summary parses application JSONL and structured Android Logcat records, showing the final warning/error timeline next to the ordinary test/compiler excerpt. Vitest failures are narrowed to the identified test file; Rust failures are narrowed to the exact failed test when possible.
 
@@ -202,7 +211,18 @@ The VM keeps a powered-off `pre-github-runner` snapshot from before runner regis
 
 Automation protects known contracts, not visual or experiential quality. For user-visible work, manually exercise the affected workflow on the relevant platform after automated qualification, including error/cancellation/restart behavior when applicable.
 
-For the public-baseline cutover, one manual acceptance should also start the built desktop application against retained pre-public development data. The expected result is the reset-required dialog, not a Rust panic or a partially initialized application. After the operator deliberately runs `reset-pre-public-data.sh`, a second launch should create the public baseline and proceed normally.
+For the public-baseline cutover, retain or restore an exact final-v26 development library and start the built desktop application with database diagnostics. The expected result is automatic backup/adoption followed by normal startup—not a blank library, reset dialog, Rust panic, or partially initialized application. Verify existing decks and Analytics, close the app, reopen it, and verify them again.
+
+If the earlier reset helper has already archived the old app-data directory, use:
+
+```bash
+python3 ./scripts/restore_pre_public_backup.py \
+  --backup-dir "/absolute/path/to/io.github.jferments.ostudy.pre-public-<timestamp>" \
+  --data-dir "/absolute/path/to/io.github.jferments.ostudy" \
+  --confirm
+```
+
+The recovery helper validates the exact v26 lineage, copies the archive back, archives the currently active directory, and leaves the original timestamped archive untouched. The next startup performs the verified adoption. `reset-pre-public-data.sh --confirm-empty-library` is only for an intentional blank-library test.
 
 A real Google Code Scanner camera scan on a Google Play services-enabled Android device and a live OpenRouter request remain manual acceptance boundaries because deterministic CI has neither a physical camera workflow nor a provider credential.
 
