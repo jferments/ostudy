@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DocumentGenerationProgress, DocumentSummary } from "../ipc/documents";
@@ -99,13 +99,11 @@ describe("DocumentsScreen live generation progress", () => {
       />,
     );
 
-    await waitFor(() =>
-      expect(screen.getAllByText("Building outline 3/10").length).toBeGreaterThan(0),
-    );
+    expect(await screen.findByText("low · 2k")).toBeTruthy();
+    expect(screen.getAllByText("Building outline 3/10").length).toBeGreaterThan(0);
     expect(screen.getByText("15k")).toBeTruthy();
     expect(screen.getByText("7")).toBeTruthy();
     expect(screen.getByText("1")).toBeTruthy();
-    expect(screen.getByText("low · 2k")).toBeTruthy();
     expect(screen.getByText("12k / 3k")).toBeTruthy();
     expect(screen.getByText("6k (50.0%)")).toBeTruthy();
     expect(documentIpcMocks.getDocumentGenerationProgress).toHaveBeenCalledWith(document.id);
