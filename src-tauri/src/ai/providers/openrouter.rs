@@ -2,8 +2,12 @@ use serde_json::{json, Value};
 
 use crate::ai::gateway::{error, AiGatewayError};
 
+use super::ProviderModelReasoning;
+
 pub(super) const MAX_MODEL_LIST_BYTES: usize = 4 * 1024 * 1024;
 pub(super) const MAX_MODELS: usize = 2_000;
+
+const REASONING_EFFORTS: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 pub(super) fn text_probe_body(
     model_id: &str,
@@ -89,6 +93,47 @@ pub(super) fn model_owner(item: &Value, id: &str) -> Option<String> {
                 .filter(|owner| !owner.is_empty() && owner.len() <= 200)
                 .map(ToString::to_string)
         })
+}
+
+pub(super) fn model_context_window_tokens(item: &Value) -> Option<i64> {
+    item.get("context_length")
+        .and_then(Value::as_i64)
+        .filter(|value| (2_048..=16_777_216).contains(value))
+}
+
+pub(super) fn model_reasoning(item: &Value) -> Option<ProviderModelReasoning> {
+    let reasoning = item.get("reasoning")?.as_object()?;
+    let supported_efforts = match reasoning.get("supported_efforts") {
+        Some(Value::Array(values)) => {
+            let efforts = values
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|value| REASONING_EFFORTS.contains(value))
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            Some(efforts)
+        }
+        Some(Value::Null) => None,
+        _ => None,
+    };
+    let default_effort = reasoning
+        .get("default_effort")
+        .and_then(Value::as_str)
+        .filter(|value| REASONING_EFFORTS.contains(value))
+        .map(ToString::to_string);
+    Some(ProviderModelReasoning {
+        supported_efforts,
+        default_effort,
+        default_enabled: reasoning.get("default_enabled").and_then(Value::as_bool),
+        supports_max_tokens: reasoning
+            .get("supports_max_tokens")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        mandatory: reasoning
+            .get("mandatory")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    })
 }
 
 pub(super) fn embedded_error(value: &Value) -> Option<AiGatewayError> {
@@ -186,6 +231,30 @@ mod tests {
         assert_eq!(strict.pointer("/data_collection"), Some(&json!("deny")));
         assert_eq!(strict.pointer("/zdr"), Some(&json!(true)));
         assert_eq!(strict.pointer("/require_parameters"), Some(&json!(true)));
+    }
+
+    #[test]
+    fn model_metadata_retains_context_and_reasoning_controls() {
+        let model = json!({
+            "context_length": 1_310_720,
+            "reasoning": {
+                "mandatory": false,
+                "default_enabled": true,
+                "supported_efforts": ["max", "high", "low"],
+                "default_effort": "high"
+            }
+        });
+        assert_eq!(model_context_window_tokens(&model), Some(1_310_720));
+        let reasoning = model_reasoning(&model).expect("reasoning metadata should parse");
+        assert_eq!(reasoning.supported_efforts.unwrap(), vec!["max", "high", "low"]);
+        assert_eq!(reasoning.default_effort.as_deref(), Some("high"));
+        assert_eq!(reasoning.default_enabled, Some(true));
+        assert!(!reasoning.mandatory);
+    }
+
+    #[test]
+    fn non_reasoning_models_omit_reasoning_metadata() {
+        assert!(model_reasoning(&json!({ "context_length": 16_384 })).is_none());
     }
 
     #[test]
