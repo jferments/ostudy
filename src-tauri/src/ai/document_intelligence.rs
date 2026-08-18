@@ -747,6 +747,7 @@ fn outline_completion_tokens(_task: &DocumentTaskContext) -> usize {
     1_536
 }
 
+#[cfg(test)]
 fn outline_completion_tokens_for_provider(_provider_kind: ProviderKind) -> usize {
     1_536
 }

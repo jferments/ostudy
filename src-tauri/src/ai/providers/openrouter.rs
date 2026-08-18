@@ -8,7 +8,7 @@ pub(super) const MAX_MODEL_LIST_BYTES: usize = 4 * 1024 * 1024;
 pub(super) const MAX_MODELS: usize = 2_000;
 
 const REASONING_EFFORTS: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
-const HIGH_PRECISION_QUANTIZATIONS: [&str; 5] = ["int8", "fp8", "fp16", "bf16", "fp32"];
+const HIGH_PRECISION_QUANTIZATIONS: [&str; 6] = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32"];
 const PREFERRED_MIN_THROUGHPUT_TPS: u64 = 40;
 const PREFERRED_MAX_P90_LATENCY_SECONDS: u64 = 20;
 
@@ -258,7 +258,7 @@ mod tests {
         );
         assert_eq!(
             strict.pointer("/quantizations"),
-            Some(&json!(["int8", "fp8", "fp16", "bf16", "fp32"]))
+            Some(&json!(["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32"]))
         );
         let serialized = strict["quantizations"].to_string();
         for rejected in ["int4", "fp4", "fp6", "unknown"] {
