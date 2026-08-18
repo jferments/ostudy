@@ -249,20 +249,10 @@ async fn generation_slot(
     images: &[document_intelligence::SourcePageImage],
 ) -> Option<(usize, Result<Vec<Value>, CommandError>)> {
     let position = position?;
+    let window = &input.windows[position];
     Some((
         position,
-        generate_with_deadline(input, position, images).await,
-    ))
-}
-
-async fn generate_with_deadline(
-    input: &GenerationExecution<'_>,
-    position: usize,
-    images: &[document_intelligence::SourcePageImage],
-) -> Result<Vec<Value>, CommandError> {
-    let window = &input.windows[position];
-    for attempt in 1..=2 {
-        let request = generate_window_with_recovery(WindowGenerationRequest {
+        generate_window_with_recovery(WindowGenerationRequest {
             runtime: input.runtime,
             task: input.task,
             document_title: input.document_title,
@@ -271,7 +261,25 @@ async fn generate_with_deadline(
             images,
             maximum_cards: input.plan.max_cards_per_window,
             diagnostic_prefix: input.diagnostic_prefix,
-        });
+        })
+        .await,
+    ))
+}
+
+async fn generate_provider_call_with_deadline(
+    input: &WindowGenerationRequest<'_>,
+    maximum_cards: usize,
+) -> Result<Vec<Value>, CommandError> {
+    for attempt in 1..=2 {
+        let request = document_intelligence::generate_window_flashcards(
+            input.runtime,
+            input.task,
+            input.document_title,
+            input.outline,
+            input.window,
+            input.images,
+            maximum_cards.max(1),
+        );
         match timeout(
             Duration::from_secs(GENERATION_PROVIDER_ATTEMPT_SECONDS),
             request,
@@ -283,13 +291,14 @@ async fn generate_with_deadline(
                 crate::logging::warn_target(
                     "ai.document.generation",
                     "document_generation_window_deadline_retry",
-                    "A provider took too long on one bounded card-generation window; ostudy canceled that request and is retrying the source window once.",
+                    "A provider took too long on one bounded card-generation request; ostudy canceled that request and is retrying the same bounded request once.",
                     serde_json::json!({
                         "provider": input.task.provider_kind.as_str(),
                         "model": input.task.model_id.as_str(),
-                        "window": window.window_index + 1,
-                        "pageStart": window.page_start,
-                        "pageEnd": window.page_end,
+                        "window": input.window.window_index + 1,
+                        "pageStart": input.window.page_start,
+                        "pageEnd": input.window.page_end,
+                        "cardBudget": maximum_cards,
                         "attemptSeconds": GENERATION_PROVIDER_ATTEMPT_SECONDS,
                     }),
                 );
@@ -298,7 +307,7 @@ async fn generate_with_deadline(
                 return Err(CommandError::new(
                     "ai_provider_deadline",
                     format!(
-                        "The AI provider exceeded the {GENERATION_PROVIDER_ATTEMPT_SECONDS}-second card-generation deadline twice. ostudy canceled both incomplete requests instead of allowing this document window to stall indefinitely."
+                        "The AI provider exceeded the {GENERATION_PROVIDER_ATTEMPT_SECONDS}-second card-generation request deadline twice. ostudy canceled both incomplete requests instead of allowing this document window to stall indefinitely."
                     ),
                 ));
             }
@@ -310,16 +319,8 @@ async fn generate_with_deadline(
 async fn generate_window_with_recovery(
     input: WindowGenerationRequest<'_>,
 ) -> Result<Vec<Value>, CommandError> {
-    let first = document_intelligence::generate_window_flashcards(
-        input.runtime,
-        input.task,
-        input.document_title,
-        input.outline,
-        input.window,
-        input.images,
-        input.maximum_cards.max(1),
-    )
-    .await;
+    let first_budget = input.maximum_cards.max(1);
+    let first = generate_provider_call_with_deadline(&input, first_budget).await;
     match first {
         Err(error)
             if input.maximum_cards > 2
@@ -341,16 +342,7 @@ async fn generate_window_with_recovery(
                     error.code,
                 ),
             );
-            document_intelligence::generate_window_flashcards(
-                input.runtime,
-                input.task,
-                input.document_title,
-                input.outline,
-                input.window,
-                input.images,
-                reduced_budget,
-            )
-            .await
+            generate_provider_call_with_deadline(&input, reduced_budget).await
         }
         other => other,
     }
