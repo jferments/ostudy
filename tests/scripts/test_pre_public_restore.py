@@ -25,7 +25,10 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def create_final_pre_public_backup(directory: Path) -> Path:
+def create_final_pre_public_backup(
+    directory: Path,
+    sqlite_user_version: int = restore.HISTORICAL_SQLITE_USER_VERSION,
+) -> Path:
     directory.mkdir(parents=True)
     database = directory / "library.sqlite3"
     with sqlite3.connect(database) as connection:
@@ -74,9 +77,7 @@ def create_final_pre_public_backup(directory: Path) -> Path:
             "VALUES (?, ?, ?, 0, 0)",
             restore.EXPECTED_REPAIRS,
         )
-        connection.execute(
-            f"PRAGMA user_version = {restore.FINAL_PRE_PUBLIC_VERSION}"
-        )
+        connection.execute(f"PRAGMA user_version = {sqlite_user_version}")
 
     image = directory / "assets" / "images" / "preserved.png"
     image.parent.mkdir(parents=True)
@@ -85,7 +86,7 @@ def create_final_pre_public_backup(directory: Path) -> Path:
 
 
 class PrePublicRestoreTests(unittest.TestCase):
-    def test_verified_backup_is_copied_and_active_directory_is_archived(self) -> None:
+    def test_historical_zero_marker_is_copied_and_active_directory_is_archived(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ostudy-pre-public-restore-") as root_value:
             root = Path(root_value)
             backup = root / "io.github.jferments.ostudy.pre-public-20260817T172808Z"
@@ -111,6 +112,24 @@ class PrePublicRestoreTests(unittest.TestCase):
             self.assertEqual(file_sha256(active / "library.sqlite3"), backup_hash)
             self.assertEqual(file_sha256(database), backup_hash)
             self.assertTrue(backup.is_dir(), "the original backup must remain intact")
+
+    def test_explicitly_stamped_v26_marker_is_also_accepted(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ostudy-pre-public-stamped-") as root_value:
+            backup = Path(root_value) / "legacy"
+            database = create_final_pre_public_backup(
+                backup, restore.FINAL_PRE_PUBLIC_VERSION
+            )
+            self.assertEqual(
+                restore.validate_final_pre_public_backup(backup),
+                database,
+            )
+
+    def test_unknown_sqlite_marker_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ostudy-pre-public-marker-") as root_value:
+            backup = Path(root_value) / "legacy"
+            create_final_pre_public_backup(backup, 7)
+            with self.assertRaisesRegex(ValueError, "user_version"):
+                restore.validate_final_pre_public_backup(backup)
 
     def test_wrong_migration_ledger_is_rejected_without_moving_active_data(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ostudy-pre-public-invalid-") as root_value:
