@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# One-shot PR #54 cleanup; removed after the finalizer commits the product changes.
 from pathlib import Path
 
 intelligence = Path('src-tauri/src/ai/document_intelligence.rs')
