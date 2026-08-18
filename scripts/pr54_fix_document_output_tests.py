@@ -52,8 +52,6 @@ if new not in text:
         raise SystemExit(
             f"length-finish regression anchor counts old={text.count(old)} intermediate={text.count(intermediate)}"
         )
-# The old helper name was removed by the main applicator. Assert the new pure
-# visible-output budget directly; the reasoning headroom is tested separately.
 text = text.replace(
     "assert_eq!(flashcard_completion_tokens(8), 4_096);",
     "assert_eq!(generation_visible_completion_tokens(8), 5_120);",
@@ -96,7 +94,7 @@ path.write_text(text)
 # ---------------------------------------------------------------------------
 # Compile integration. The earlier generic applicators deliberately use simple
 # exact replacements. Finish the places where replacement text was itself a
-# substring of an old form or where the same broad anchor existed elsewhere.
+# substring of an old form or where a broad anchor existed in several callers.
 # ---------------------------------------------------------------------------
 replace_exact(
     "src-tauri/src/task_cancellation.rs",
@@ -117,8 +115,6 @@ replace_exact(
     "completion ceiling adapter re-export",
 )
 
-# Reasoning is resolved once from the selected model's normalized declarations
-# before either window planning or aggregate budgeting.
 for file_name, window_argument in [
     ("src-tauri/src/documents.rs", "generation_windows.len()"),
     ("src-tauri/src/document_more.rs", "windows.len()"),
@@ -189,4 +185,219 @@ replace_exact(
     "probe capability regression model metadata argument",
 )
 
-print("Updated PR #54 length-finish, checkpoint, visible-output, and compile integration regressions.")
+# ---------------------------------------------------------------------------
+# Warning-clean architecture. Reasoning is now loaded directly from SQLite at
+# task creation, so the old process-global settings mirror is no longer needed by
+# provider execution. Remove its obsolete reader. Also remove the pre-refactor
+# completion reserve helpers that the new visible-output policy supersedes.
+# ---------------------------------------------------------------------------
+path = Path("src-tauri/src/settings.rs")
+text = path.read_text()
+old = '''pub(crate) fn current_ai_reasoning_effort() -> String {
+    ACTIVE_AI_REASONING_EFFORT
+        .read()
+        .map(|value| value.clone())
+        .unwrap_or_else(|_| DEFAULT_AI_REASONING_EFFORT.to_string())
+}
+
+'''
+if old in text:
+    text = text.replace(old, "", 1)
+path.write_text(text)
+
+path = Path("src-tauri/src/document_scale.rs")
+text = path.read_text()
+obsolete = '''fn outline_completion_reserve(_provider_kind: &str) -> usize {
+    // Local outline fragments are deliberately concise. A 1.5k-token reserve
+    // leaves ample room for the strict fragment schema without encouraging a
+    // multi-thousand-token restatement of source prose.
+    1_536
+}
+
+fn generation_completion_reserve(maximum_cards: usize) -> usize {
+    1_024_usize
+        .saturating_add(maximum_cards.saturating_mul(384))
+        .clamp(1_536, 5_120)
+}
+
+'''
+if obsolete in text:
+    text = text.replace(obsolete, "", 1)
+path.write_text(text)
+
+# ---------------------------------------------------------------------------
+# Keep function signatures below the repository's strict Clippy boundary by
+# grouping related output limits and aggregate-budget calibration.
+# ---------------------------------------------------------------------------
+path = Path("src-tauri/src/ai/document_intelligence.rs")
+text = path.read_text()
+old_signature = '''pub(crate) async fn generate_window_flashcards(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    document_title: &str,
+    outline: &DocumentOutline,
+    window: &SemanticWindow,
+    images: &[SourcePageImage],
+    maximum_cards: usize,
+    completion_token_floor: usize,
+) -> Result<Vec<Value>, CommandError> {
+    let maximum_cards = maximum_cards.clamp(1, MAX_WINDOW_CARDS);'''
+new_signature = '''pub(crate) struct FlashcardGenerationLimits {
+    pub maximum_cards: usize,
+    pub completion_token_floor: usize,
+}
+
+pub(crate) async fn generate_window_flashcards(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    document_title: &str,
+    outline: &DocumentOutline,
+    window: &SemanticWindow,
+    images: &[SourcePageImage],
+    limits: FlashcardGenerationLimits,
+) -> Result<Vec<Value>, CommandError> {
+    let maximum_cards = limits.maximum_cards.clamp(1, MAX_WINDOW_CARDS);'''
+if old_signature not in text:
+    if new_signature not in text:
+        raise SystemExit("flashcard generation limits signature anchor not found")
+else:
+    text = text.replace(old_signature, new_signature, 1)
+text = text.replace(
+    '''        maximum_cards,
+        completion_token_floor,
+    )''',
+    '''        maximum_cards,
+        limits.completion_token_floor,
+    )''',
+    1,
+)
+path.write_text(text)
+
+path = Path("src-tauri/src/ai/document_intelligence_adapter.rs")
+text = path.read_text()
+old = '''curate_document_cards, flashcard_completion_token_ceiling, generate_window_flashcards,
+    load_document_task_context, DocumentOutline,'''
+new = '''curate_document_cards, flashcard_completion_token_ceiling, generate_window_flashcards,
+    load_document_task_context, DocumentOutline, FlashcardGenerationLimits,'''
+if old in text:
+    text = text.replace(old, new, 1)
+elif new not in text:
+    raise SystemExit("flashcard limits adapter export anchor not found")
+path.write_text(text)
+
+path = Path("src-tauri/src/document_generation.rs")
+text = path.read_text()
+old = '''        input.images,
+        first_budget,
+        0,
+    )'''
+new = '''        input.images,
+        document_intelligence::FlashcardGenerationLimits {
+            maximum_cards: first_budget,
+            completion_token_floor: 0,
+        },
+    )'''
+if old in text:
+    text = text.replace(old, new, 1)
+elif new not in text:
+    raise SystemExit("initial flashcard limits call anchor not found")
+old = '''                input.images,
+                reduced_budget,
+                completion_token_floor,
+            )'''
+new = '''                input.images,
+                document_intelligence::FlashcardGenerationLimits {
+                    maximum_cards: reduced_budget,
+                    completion_token_floor,
+                },
+            )'''
+if old in text:
+    text = text.replace(old, new, 1)
+elif new not in text:
+    raise SystemExit("retry flashcard limits call anchor not found")
+path.write_text(text)
+
+path = Path("src-tauri/src/document_scale.rs")
+text = path.read_text()
+context_struct = '''pub(crate) struct DocumentBudgetContext<'a> {
+    pub capabilities: &'a DocumentProviderCapabilities,
+    pub reasoning_effort: &'a str,
+    pub calibration: DocumentCostCalibration,
+}
+
+'''
+anchor = "#[cfg(test)]\npub(crate) fn validate_automatic_job("
+if context_struct not in text:
+    if anchor not in text:
+        raise SystemExit("document budget context insertion anchor not found")
+    text = text.replace(anchor, context_struct + anchor, 1)
+old = '''        &DocumentProviderCapabilities::conservative(provider_kind, "unknown"),
+        "none",
+        DocumentCostCalibration::default(),
+    )'''
+new = '''        DocumentBudgetContext {
+            capabilities: &DocumentProviderCapabilities::conservative(provider_kind, "unknown"),
+            reasoning_effort: "none",
+            calibration: DocumentCostCalibration::default(),
+        },
+    )'''
+if old in text:
+    text = text.replace(old, new, 1)
+elif new not in text:
+    raise SystemExit("test document budget context call anchor not found")
+old = '''pub(crate) fn validate_automatic_job_calibrated(
+    source_unit_count: usize,
+    source_tokens: usize,
+    plan: DocumentScalePlan,
+    outline_window_count: usize,
+    generation_window_count: usize,
+    capabilities: &DocumentProviderCapabilities,
+    effective_reasoning_effort: &str,
+    calibration: DocumentCostCalibration,
+) -> Result<DocumentJobBudget, CommandError> {
+    if source_unit_count > MAX_SUPPORTED_SOURCE_UNITS {'''
+new = '''pub(crate) fn validate_automatic_job_calibrated(
+    source_unit_count: usize,
+    source_tokens: usize,
+    plan: DocumentScalePlan,
+    outline_window_count: usize,
+    generation_window_count: usize,
+    context: DocumentBudgetContext<'_>,
+) -> Result<DocumentJobBudget, CommandError> {
+    let DocumentBudgetContext {
+        capabilities,
+        reasoning_effort: effective_reasoning_effort,
+        calibration,
+    } = context;
+    if source_unit_count > MAX_SUPPORTED_SOURCE_UNITS {'''
+if old in text:
+    text = text.replace(old, new, 1)
+elif new not in text:
+    raise SystemExit("document budget function signature anchor not found")
+path.write_text(text)
+
+for file_name, window_argument in [
+    ("src-tauri/src/documents.rs", "generation_windows.len()"),
+    ("src-tauri/src/document_more.rs", "windows.len()"),
+]:
+    path = Path(file_name)
+    text = path.read_text()
+    old = f'''        {window_argument},
+        &capabilities,
+        &task.reasoning_effort,
+        calibration,
+    )?;'''
+    new = f'''        {window_argument},
+        document_scale::DocumentBudgetContext {{
+            capabilities: &capabilities,
+            reasoning_effort: &task.reasoning_effort,
+            calibration,
+        }},
+    )?;'''
+    if old in text:
+        text = text.replace(old, new, 1)
+    elif new not in text:
+        raise SystemExit(f"document budget context call anchor not found in {file_name}")
+    path.write_text(text)
+
+print("Updated PR #54 output recovery regressions and warning-clean integration.")
