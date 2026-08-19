@@ -74,3 +74,11 @@ replace_once(
     '''        environment = os.environ.copy()\n        environment["OSTUDY_ROOT_DIR"] = str(repo)\n''',
     '''        environment = os.environ.copy()\n        environment["OSTUDY_ROOT_DIR"] = str(repo)\n        environment.pop("OSTUDY_WORKTREE_BASELINE_REPORTED", None)\n''',
 )
+
+# This test is compiled by the browser-only frontend tsconfig. Source-text policy
+# belongs in scripts/verify-ui-ai-overhaul.mjs; keep the Vitest companion focused
+# on normal exported application contracts so it requires no Node ambient types.
+write(
+    "src/ui/uiAiOverhaulPolicy.test.ts",
+    '''import { describe, expect, it } from "vitest";\n\nimport { flashcardsWorkspaceNames, isFlashcardsWorkspaceName } from "../navigation/flashcardsRoutes";\nimport { makeSettings } from "../test/factories";\n\ndescribe("responsive AI-assisted workflow policy", () => {\n  it("keeps card creation out of top-level Flashcards routes", () => {\n    expect(flashcardsWorkspaceNames).toEqual(["decks", "templates", "search", "transfer"]);\n    expect(isFlashcardsWorkspaceName("create")).toBe(false);\n  });\n\n  it("defaults interactive tutorials off for new settings fixtures", () => {\n    expect(makeSettings().tutorialsEnabled).toBe(false);\n  });\n});\n''',
+)
