@@ -134,13 +134,27 @@ requireText(/aria-hidden="true"[^>]*>\\s*A:/s.test(decks), "Compact answer previ
 )
 file.write_text(text)
 
-# The native setup applicator extends the existing IPC test suite. Keep its
-# insertion anchor aligned with the repository's actual suite title before that
-# applicator runs.
+# Repair the native setup applicator before it runs: align with the existing IPC
+# suite title and insert setup helpers into the ./aiProfiles import block rather
+# than accidentally rewriting @tauri-apps/api/core.
 file = ROOT / "scripts/agent-pr55-native-ai-setup.py"
 text = file.read_text()
 text = text.replace(
     'anchor = "describe(\\\"aiProfiles IPC\\\", () => {\\n"',
     'anchor = "describe(\\\"AI provider IPC\\\", () => {\\n"',
 )
+old_import_patch = '''    text = text.replace(
+        'import {',
+        'import {\\n  beginAiProviderSetup,\\n  cancelAiProviderSetup,\\n  commitAiProviderSetup,',
+        1,
+    )'''
+new_import_patch = '''    text = text.replace(
+        'import {\\n  clearAiProviderCredential,',
+        'import {\\n  beginAiProviderSetup,\\n  cancelAiProviderSetup,\\n  commitAiProviderSetup,\\n  clearAiProviderCredential,',
+        1,
+    )'''
+if old_import_patch in text:
+    text = text.replace(old_import_patch, new_import_patch, 1)
+elif new_import_patch not in text:
+    raise RuntimeError("native AI setup IPC import repair target not found")
 file.write_text(text)
