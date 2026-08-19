@@ -1,4 +1,5 @@
 name: Apply and fully qualify PR 55
+# verifier-bootstrap-trigger: 1
 
 on:
   push:
