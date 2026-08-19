@@ -4,8 +4,11 @@ on:
   push:
     branches: [agent/pre-public-platform-hardening]
 
+# The unified self-hosted runner uses one persistent workspace. Share the PR's
+# qualification concurrency key so this temporary branch applicator cannot edit
+# that workspace while the read-only Check workflow is cleaning/checking it.
 concurrency:
-  group: pr54-device-sync-resilience-fix
+  group: Check-54
   cancel-in-progress: true
 
 permissions:
