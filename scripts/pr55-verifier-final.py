@@ -21,5 +21,23 @@ if import_line not in source:
         source = source[:boundary] + "\n" + import_line + "\n" + source[boundary:]
     else:
         source = import_line + "\n\n" + source
+
+# The permanent verifier already defines requireText(condition, message); reuse
+# that error-reporting contract instead of injecting a second undefined assert.
+for message in [
+    "AI setup must remain ephemeral until model commit",
+    "AI task policy and prompt presets require dedicated native tables",
+    "semantic target coverage must be durable",
+    "AI task policy must not be persisted as generic app_settings rows",
+    "Generate More must use durable semantic coverage",
+]:
+    marker = f', "{message}");'
+    index = source.find(marker)
+    if index < 0:
+        continue
+    line_start = source.rfind("\n", 0, index) + 1
+    if source.startswith("assert(", line_start):
+        source = source[:line_start] + "requireText(" + source[line_start + len("assert("):]
+
 verifier.write_text(source)
 SELF.unlink()
