@@ -24,24 +24,21 @@ source = source.replace(
 settings.write_text(source)
 
 # Production OpenRouter document requests use the policy-aware routing helper.
-# The old automatic-only wrapper is now unused even in tests, so remove it
-# rather than suppressing dead-code warnings.
+# Remove the legacy automatic-only wrapper by its stable function boundaries;
+# formatter/type-alias changes must not make this cleanup brittle.
 providers = ROOT / "src-tauri/src/ai/providers.rs"
 source = providers.read_text()
-source, count = re.subn(
-    r'''\n#\[cfg\(test\)\]\npub\(crate\) fn openrouter_provider_preferences\(\n\s*require_parameters: bool,\n\s*require_zero_data_retention: bool,\n\) -> serde_json::Value \{\n\s*openrouter::provider_preferences\(require_parameters, require_zero_data_retention\)\n\}\n''',
-    "\n",
-    source,
-    count=1,
-)
-if count == 0:
-    source, count = re.subn(
-        r'''\npub\(crate\) fn openrouter_provider_preferences\(\n\s*require_parameters: bool,\n\s*require_zero_data_retention: bool,\n\) -> serde_json::Value \{\n\s*openrouter::provider_preferences\(require_parameters, require_zero_data_retention\)\n\}\n''',
-        "\n",
-        source,
-        count=1,
-    )
-if count == 0 and "openrouter_provider_preferences(" in source:
+legacy = "pub(crate) fn openrouter_provider_preferences("
+routed = "pub(crate) fn openrouter_provider_preferences_with_routing("
+start = source.find(legacy)
+if start >= 0:
+    cfg_start = source.rfind("#[cfg(test)]\n", 0, start)
+    remove_start = cfg_start if cfg_start >= 0 and source[cfg_start:start].strip() == "#[cfg(test)]" else start
+    routed_start = source.find(routed, start)
+    if routed_start < 0:
+        raise RuntimeError("src-tauri/src/ai/providers.rs: routed OpenRouter helper missing")
+    source = source[:remove_start] + source[routed_start:]
+if legacy in source:
     raise RuntimeError("src-tauri/src/ai/providers.rs: legacy OpenRouter preference wrapper still present")
 providers.write_text(source)
 
