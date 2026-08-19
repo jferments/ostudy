@@ -102,6 +102,7 @@ jobs:
           command -v pnpm
           pnpm --version
           pnpm install --frozen-lockfile
+          bash ./scripts/install-native-deps.sh
           OSTUDY_REGENERATE_PUBLIC_SCHEMA_MANIFEST=1 \
             cargo test --manifest-path src-tauri/Cargo.toml regenerate_public_baseline_schema_manifest -- --nocapture
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
