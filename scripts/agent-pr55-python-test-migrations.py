@@ -25,6 +25,27 @@ def replace_once(path: str, old: str, new: str) -> None:
     write(path, text.replace(old, new, 1))
 
 
+# Give the deck-local primary Bulk add control a stable automation hook. The
+# empty-state secondary action intentionally has no duplicate test id.
+path = "src/screens/DecksScreen.tsx"
+text = read(path)
+old_bulk = '''                <button type="button" className="secondary-button" onClick={() => setBulkEntryOpen(true)}>
+                  Bulk add
+                </button>'''
+new_bulk = '''                <button
+                  type="button"
+                  className="secondary-button"
+                  data-testid="bulk-add-cards"
+                  onClick={() => setBulkEntryOpen(true)}
+                >
+                  Bulk add
+                </button>'''
+if 'data-testid="bulk-add-cards"' not in text:
+    if old_bulk not in text:
+        raise RuntimeError(f"{path}: deck-local Bulk add toolbar button not found")
+    text = text.replace(old_bulk, new_bulk, 1)
+write(path, text)
+
 # Create Cards no longer exists as a workspace. The stable automation boundary is
 # now the current deck's card browser, which exposes Bulk add and fixes the modal
 # destination to that deck.
@@ -37,7 +58,7 @@ text = text.replace(
 )
 text = text.replace(
     '''    def test_create_cards_exposes_stable_bulk_add_automation_hook(self) -> None:\n        source = CREATE_CARDS_PATH.read_text(encoding="utf-8")\n        self.assertIn('data-testid="bulk-add-cards"', source)\n''',
-    '''    def test_deck_browser_exposes_stable_bulk_add_automation_hook(self) -> None:\n        decks = DECKS_SCREEN_PATH.read_text(encoding="utf-8")\n        bulk = BULK_ENTRY_PATH.read_text(encoding="utf-8")\n        self.assertIn('data-testid="bulk-add-cards"', decks)\n        self.assertIn('destinationMode="fixed"', decks)\n        self.assertIn('destinationMode?: "fixed" | "selectable"', bulk)\n''',
+    '''    def test_deck_browser_exposes_stable_bulk_add_automation_hook(self) -> None:\n        decks = DECKS_SCREEN_PATH.read_text(encoding="utf-8")\n        bulk = BULK_ENTRY_PATH.read_text(encoding="utf-8")\n        self.assertIn('data-testid="bulk-add-cards"', decks)\n        self.assertIn('destinationMode="fixed"', decks)\n        self.assertIn('destinationMode?: "selectable" | "fixed"', bulk)\n''',
 )
 text = text.replace(
     '''    def test_android_smoke_build_cannot_auto_start_contextual_tutorials(self) -> None:\n        source = TOUR_PROVIDER_PATH.read_text(encoding="utf-8")\n        self.assertIn("VITE_OSTUDY_ANDROID_TEST_BRIDGE", source)\n        self.assertIn("CONTEXTUAL_AUTO_START_ENABLED", source)\n''',
