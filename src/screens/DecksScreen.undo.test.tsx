@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ToastAction } from "../components/Toast";
 import * as cardsIpc from "../ipc/cards";
 import * as decksIpc from "../ipc/decks";
 import * as settingsIpc from "../ipc/settings";
+import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DecksScreen } from "./DecksScreen";
 
 vi.mock("../controllers/useDurableDraft", () => ({
@@ -104,21 +105,28 @@ describe("DecksScreen deletion undo", () => {
     });
   });
 
-  it("publishes an Undo action that restores and refreshes the deck library", async () => {
+  it("confirms deletion, then publishes an Undo action that restores and refreshes the deck library", async () => {
     const refreshDecks = vi.fn().mockResolvedValue([deck]);
     const showToast = vi.fn();
     render(
-      <DecksScreen
-        decks={[deck]}
-        settings={settings}
-        refreshDecks={refreshDecks}
-        onPracticeDeck={vi.fn()}
-        onDirtyChange={vi.fn()}
-        showToast={showToast}
-      />,
+      <OverlayProvider>
+        <DecksScreen
+          decks={[deck]}
+          settings={settings}
+          refreshDecks={refreshDecks}
+          onPracticeDeck={vi.fn()}
+          onDirtyChange={vi.fn()}
+          showToast={showToast}
+        />
+      </OverlayProvider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const confirmDialog = await screen.findByRole("alertdialog", {
+      name: "Delete “Temporary deck”?",
+    });
+    expect(decksIpc.deleteDeck).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "Delete deck" }));
 
     await waitFor(() => {
       expect(decksIpc.deleteDeck).toHaveBeenCalledWith(deck.id);
