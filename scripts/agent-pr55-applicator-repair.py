@@ -133,3 +133,14 @@ requireText(decks.includes('aria-hidden="true">A:'), "Compact answer preview is 
 requireText(/aria-hidden="true"[^>]*>\\s*A:/s.test(decks), "Compact answer preview is missing");''',
 )
 file.write_text(text)
+
+# The native setup applicator extends the existing IPC test suite. Keep its
+# insertion anchor aligned with the repository's actual suite title before that
+# applicator runs.
+file = ROOT / "scripts/agent-pr55-native-ai-setup.py"
+text = file.read_text()
+text = text.replace(
+    'anchor = "describe(\\\"aiProfiles IPC\\\", () => {\\n"',
+    'anchor = "describe(\\\"AI provider IPC\\\", () => {\\n"',
+)
+file.write_text(text)
