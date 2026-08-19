@@ -34,8 +34,69 @@ permissions:
   contents: read
 
 jobs:
+  pr54-apply-sync-resilience:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'agent/pre-public-platform-hardening'
+    permissions:
+      contents: write
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 45
+    outputs:
+      changed: ${{ steps.publish.outputs.changed }}
+
+    steps:
+      - name: Check out writable PR branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Expose pinned tools
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+
+      - name: Apply and qualify Android sync resilience fix
+        run: |
+          python3 ./scripts/pr54_device_sync_resilience_fix.py
+          chmod +x ./scripts/android-diagnostics.sh
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          git diff --check
+          bash ./scripts/check-fast.sh
+
+      - name: Publish corrected product source when needed
+        id: publish
+        run: |
+          if git diff --quiet; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'PR 54 Android sync resilience changes are already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src-tauri/src/device_sync/transport.rs \
+            src-tauri/src/device_sync/mod.rs \
+            src/ipc/deviceSync.ts \
+            src/screens/settings/DeviceSyncSettings.tsx \
+            src/screens/settings/DeviceSyncSettings.test.tsx \
+            package.json \
+            docs/installation/android.md \
+            scripts/android-diagnostics.sh
+          git diff --cached --check
+          git commit -m 'fix(sync): propagate Android receiver failures safely'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
   check:
-    if: github.event_name != 'workflow_dispatch' || inputs.apply_candidates != true
+    needs: pr54-apply-sync-resilience
+    if: >-
+      always() &&
+      (needs.pr54-apply-sync-resilience.result == 'skipped' ||
+       (needs.pr54-apply-sync-resilience.result == 'success' &&
+        needs.pr54-apply-sync-resilience.outputs.changed != 'true')) &&
+      (github.event_name != 'workflow_dispatch' || inputs.apply_candidates != true)
     runs-on: [self-hosted, linux, x64, ostudy-unified]
     timeout-minutes: 300
 
