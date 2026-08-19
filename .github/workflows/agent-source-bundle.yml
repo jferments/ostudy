@@ -1,0 +1,40 @@
+name: Agent source bundle
+
+on:
+  push:
+    branches: [agent/ui-ai-semantic-generation-overhaul]
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build bounded source archive
+        run: |
+          tar \
+            --exclude=.git \
+            --exclude=node_modules \
+            --exclude=src-tauri/target \
+            --exclude=src-tauri/gen/android/.gradle \
+            --exclude=src-tauri/gen/android/app/build \
+            --exclude=.native-deps \
+            -czf "$RUNNER_TEMP/ostudy-source-${GITHUB_SHA}.tar.gz" .
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ostudy-source-${{ github.sha }}
+          path: ${{ runner.temp }}/ostudy-source-${{ github.sha }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
