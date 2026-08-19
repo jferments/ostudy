@@ -223,18 +223,22 @@ for key in [
         count=1,
     )
 
-commit_anchor = '''    transaction
-        .execute(
-            "DELETE FROM app_settings WHERE key IN ('animationsEnabled', 'reduceMotion')",
-            [],
-        )'''
+# Persist AI task policy immediately before the settings transaction commits.
+# This is deliberately anchored to the save_settings_in_connection commit rather
+# than the legacy app_settings cleanup SQL, because earlier UI migrations may
+# legitimately rewrite that cleanup list (for example removing deck density).
 if "save_ai_policy_in_transaction(&transaction, settings, now)?;" not in text:
-    if commit_anchor not in text:
-        raise RuntimeError(f"{path}: settings transaction cleanup anchor missing")
-    text = text.replace(
-        commit_anchor,
-        "    save_ai_policy_in_transaction(&transaction, settings, now)?;\n" + commit_anchor,
-        1,
+    function_start = text.find("fn save_settings_in_connection(")
+    if function_start < 0:
+        raise RuntimeError(f"{path}: save_settings_in_connection not found")
+    commit_marker = "    transaction.commit().map_err(CommandError::database)"
+    commit_index = text.find(commit_marker, function_start)
+    if commit_index < 0:
+        raise RuntimeError(f"{path}: settings transaction commit boundary missing")
+    text = (
+        text[:commit_index]
+        + "    save_ai_policy_in_transaction(&transaction, settings, now)?;\n"
+        + text[commit_index:]
     )
 
 # Add native storage helpers before the generic validation functions.
