@@ -28,30 +28,25 @@ registry.write_text(source)
 
 # The authoritative workflow generates/migrates frontend and native tests after
 # the product applicators. Run final compatibility, portability, compile,
-# structural warning cleanup, and self-contained verifier cleanup last while
-# every one-shot helper still exists.
+# structural warning cleanup, verifier cleanup, and schema-contract alignment
+# last while every one-shot helper still exists.
 test_migration = ROOT / "scripts/agent-pr55-python-test-migrations.py"
 test_source = test_migration.read_text()
-hook = '''\n\n# Final native contract/test alignment runs after all generated test rewrites.\nimport runpy\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-final-compat.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-preset-sync.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-native-compile-final.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-warning-final.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-verifier-final.py"), run_name="__main__")\n'''
+hook = '''\n\n# Final native contract/test alignment runs after all generated test rewrites.\nimport runpy\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-final-compat.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-preset-sync.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-native-compile-final.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-warning-final.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-verifier-final.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-schema-contract-final.py"), run_name="__main__")\n'''
 if "agent-pr55-native-final-compat.py" not in test_source:
     test_migration.write_text(test_source.rstrip() + hook)
 else:
     additions = []
-    if "agent-pr55-native-preset-sync.py" not in test_source:
-        additions.append(
-            'runpy.run_path(str(ROOT / "scripts/agent-pr55-native-preset-sync.py"), run_name="__main__")'
-        )
-    if "pr55-native-compile-final.py" not in test_source:
-        additions.append(
-            'runpy.run_path(str(ROOT / "scripts/pr55-native-compile-final.py"), run_name="__main__")'
-        )
-    if "pr55-warning-final.py" not in test_source:
-        additions.append(
-            'runpy.run_path(str(ROOT / "scripts/pr55-warning-final.py"), run_name="__main__")'
-        )
-    if "pr55-verifier-final.py" not in test_source:
-        additions.append(
-            'runpy.run_path(str(ROOT / "scripts/pr55-verifier-final.py"), run_name="__main__")'
-        )
+    for script in [
+        "agent-pr55-native-preset-sync.py",
+        "pr55-native-compile-final.py",
+        "pr55-warning-final.py",
+        "pr55-verifier-final.py",
+        "pr55-schema-contract-final.py",
+    ]:
+        if script not in test_source:
+            additions.append(
+                f'runpy.run_path(str(ROOT / "scripts/{script}"), run_name="__main__")'
+            )
     if additions:
         test_migration.write_text(test_source.rstrip() + "\n" + "\n".join(additions) + "\n")
