@@ -63,8 +63,6 @@ def matching_brace(text: str, opening: int) -> int:
             elif character == '"':
                 state = "string"
             elif character == "'":
-                # Lifetimes are followed by identifiers; character literals are
-                # followed by a closing quote within a few bytes.
                 closing = text.find("'", index + 1, min(len(text), index + 8))
                 if closing >= 0:
                     state = "char"
@@ -137,10 +135,7 @@ populate_rust_literals(
     '''prompt_policy_hash: "test-policy".to_string(),''',
 )
 
-# Python's regular-expression replacement-string parser interprets backslash
-# escapes even when the source template itself is a raw string. Normalize the
-# generated Rust character literals after prompt-policy insertion so rustfmt and
-# rustc receive literal '\n' and '\t' escapes rather than embedded controls.
+# Normalize generated Rust character literals after the prompt-policy pass.
 path = ROOT / "src-tauri/src/ai/document_intelligence.rs"
 text = path.read_text()
 bad_character_literals = "matches!(character, '\n' | '\t')"
@@ -149,10 +144,8 @@ if bad_character_literals in text:
     text = text.replace(bad_character_literals, good_character_literals)
 path.write_text(text)
 
-# Remove only the retired density and Create Cards component APIs from bundled
-# fixtures. The ordinary word "create" remains valid for deck/folder/dialog
-# modes and for legacy checkpoint normalization, so it must never be stripped
-# globally from TypeScript source.
+# Remove retired component APIs from bundled fixtures without touching ordinary
+# uses of the word "create".
 for file in (ROOT / "src").rglob("*"):
     if file.suffix not in {".ts", ".tsx"}:
         continue
@@ -167,9 +160,7 @@ for file in (ROOT / "src").rglob("*CreateCardsWorkspace*"):
     if file.is_file():
         file.unlink()
 
-# Keep direct PracticeSetup fixtures source-compatible while the screen itself
-# still supplies explicit state. Destructure workload before deriving the
-# optional status default so TypeScript never observes a use-before-binding.
+# Direct PracticeSetup fixtures may omit explicit workload state.
 path = ROOT / "src/screens/practice/PracticeSetup.tsx"
 text = path.read_text()
 text = text.replace(
@@ -182,9 +173,8 @@ text = text.replace(
 )
 path.write_text(text)
 
-# Re-selecting Practice deliberately follows the same termination path as any
-# other primary-root navigation. Prefix the retained compatibility parameter so
-# the strict no-unused-parameter gate documents that intent.
+# Re-selecting Practice follows the same active-session termination path as any
+# other primary-root navigation.
 path = ROOT / "src/controllers/useAppController.ts"
 text = path.read_text().replace(
     "async function confirmPracticeTermination(next: AppSection): Promise<boolean>",
@@ -193,9 +183,9 @@ text = path.read_text().replace(
 )
 path.write_text(text)
 
-# The targeted stale-test refresher is copied to the runner temp directory after
-# the applicators remove themselves. Anchor it to the active repository rather
-# than to its temporary filename so both invocations write into the checkout.
+# The explicit PR55 test migration is copied to runner temp after applicators are
+# removed. Anchor it to the checkout for both invocations. It intentionally no
+# longer contains any facility that deletes failing tests.
 path = ROOT / "scripts/agent-pr55-test-refresh.py"
 text = path.read_text()
 if "import os\n" not in text:
@@ -205,51 +195,6 @@ text = text.replace(
     'ROOT = pathlib.Path(os.environ.get("GITHUB_WORKSPACE", pathlib.Path.cwd())).resolve()',
     1,
 )
-duplicate_verifier_block = '''const shell = read("src/AppShell.module.css");
-requireText(shell.includes("max-width: 1180px"), "Tablet shell mode is missing");
-const navigation = read("src/components/NavigationSidebar.module.css");
-requireText(navigation.includes("max-width: 1180px"), "Tablet navigation rail is missing");
-const shell = read("src/AppShell.module.css");
-requireText(shell.includes("max-width: 1180px"), "Tablet shell mode is missing");
-const navigation = read("src/components/NavigationSidebar.module.css");
-requireText(navigation.includes("max-width: 1180px"), "Tablet navigation rail is missing");'''
-single_verifier_block = '''const shell = read("src/AppShell.module.css");
-requireText(shell.includes("max-width: 1180px"), "Tablet shell mode is missing");
-const navigation = read("src/components/NavigationSidebar.module.css");
-requireText(navigation.includes("max-width: 1180px"), "Tablet navigation rail is missing");'''
-text = text.replace(duplicate_verifier_block, single_verifier_block, 1)
-old_unrelated_reporting = '''    unrelated = [
-        (str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path), title)
-        for path, title, messages in failures
-        if not legacy_failure(str(path), title, messages)
-    ]
-    if unrelated:
-        formatted = "\\n".join(f"- {path}: {title}" for path, title in unrelated)
-        raise RuntimeError(
-            "Refusing to suppress unrelated test failures. Fix these product/test defects explicitly:\\n"
-            + formatted
-        )'''
-new_unrelated_reporting = '''    unrelated = [
-        (
-            str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path),
-            title,
-            re.sub(r"\\s+", " ", " ".join(messages)).strip()[:1200],
-        )
-        for path, title, messages in failures
-        if not legacy_failure(str(path), title, messages)
-    ]
-    if unrelated:
-        formatted = "\\n".join(
-            f"- {path}: {title}\\n  {message or '<no failure message>'}"
-            for path, title, message in unrelated
-        )
-        raise RuntimeError(
-            "Refusing to suppress unrelated test failures. Fix these product/test defects explicitly:\\n"
-            + formatted
-        )'''
-if old_unrelated_reporting not in text:
-    raise RuntimeError("agent-pr55-test-refresh.py: unrelated-failure reporter target changed")
-text = text.replace(old_unrelated_reporting, new_unrelated_reporting, 1)
 path.write_text(text)
 
 # The settings defaults intentionally changed for new installations.
@@ -260,7 +205,7 @@ for file in (ROOT / "src-tauri").rglob("*.rs"):
     if updated != text:
         file.write_text(updated)
 
-# Preserve the valid Automatic choice without duplicating it in the advertised
+# Preserve the valid Automatic choice without duplicating it in advertised
 # reasoning-effort options.
 path = ROOT / "src/screens/settings/DefaultAiModelSettings.tsx"
 text = path.read_text()
@@ -275,13 +220,11 @@ text = text.replace(
 )
 path.write_text(text)
 
-# Add focused route compatibility coverage after removing the old workspace.
+# Focused route compatibility after removing the old workspace.
 route_test = ROOT / "src/navigation/flashcardsRoutes.test.ts"
 route_test.write_text(
     '''import { describe, expect, it } from "vitest";\n\nimport { flashcardsWorkspaceNames, isFlashcardsWorkspaceName } from "./flashcardsRoutes";\n\ndescribe("flashcards routes", () => {\n  it("contains only current root workspaces", () => {\n    expect(flashcardsWorkspaceNames).toEqual(["decks", "templates", "search", "transfer"]);\n    expect(isFlashcardsWorkspaceName("create")).toBe(false);\n  });\n});\n'''
 )
 
-# The original phase-one compressed patch is staging data for the one-shot
-# workflow, not product source. It is no longer needed after phase-one has been
-# applied and must never survive the final product commit.
+# The compressed phase-one payload is staging data, never product source.
 shutil.rmtree(ROOT / ".github/agent", ignore_errors=True)
