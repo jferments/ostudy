@@ -28,11 +28,11 @@ registry.write_text(source)
 
 # The authoritative workflow generates/migrates frontend and native tests after
 # the product applicators. Run final compatibility, portability, compile,
-# verifier, and single-source policy cleanup last while every one-shot helper
-# still exists.
+# warning, verifier, and single-source policy cleanup last while every one-shot
+# helper still exists.
 test_migration = ROOT / "scripts/agent-pr55-python-test-migrations.py"
 test_source = test_migration.read_text()
-hook = '''\n\n# Final native contract/test alignment runs after all generated test rewrites.\nimport runpy\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-final-compat.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-preset-sync.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-native-compile-final.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-verifier-final.py"), run_name="__main__")\n'''
+hook = '''\n\n# Final native contract/test alignment runs after all generated test rewrites.\nimport runpy\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-final-compat.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-preset-sync.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-native-compile-final.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-warning-final.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-verifier-final.py"), run_name="__main__")\n'''
 if "agent-pr55-native-final-compat.py" not in test_source:
     test_migration.write_text(test_source.rstrip() + hook)
 else:
@@ -44,6 +44,10 @@ else:
     if "pr55-native-compile-final.py" not in test_source:
         additions.append(
             'runpy.run_path(str(ROOT / "scripts/pr55-native-compile-final.py"), run_name="__main__")'
+        )
+    if "pr55-warning-final.py" not in test_source:
+        additions.append(
+            'runpy.run_path(str(ROOT / "scripts/pr55-warning-final.py"), run_name="__main__")'
         )
     if "pr55-verifier-final.py" not in test_source:
         additions.append(
