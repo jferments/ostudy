@@ -80,6 +80,7 @@ export interface DeviceSyncResult {
   changedRowCount: number;
   conflictCount: number;
   transferredCredentialCount: number;
+  credentialWarning: string | null;
   sentPackageBytes: number;
   receivedPackageBytes: number;
 }

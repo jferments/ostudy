@@ -35,6 +35,16 @@ struct FileHeader {
     sha256: String,
 }
 
+const MAX_REMOTE_ERROR_CODE_CHARS: usize = 120;
+const MAX_REMOTE_ERROR_MESSAGE_CHARS: usize = 1_500;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RemoteErrorFrame {
+    code: String,
+    message: String,
+}
+
 pub(crate) struct SecureChannel {
     stream: TcpStream,
     send_key: aead::LessSafeKey,
@@ -88,11 +98,7 @@ impl SecureChannel {
     ) -> Result<T, CommandError> {
         let (frame_type, bytes) = self.receive_frame()?;
         if frame_type == FRAME_ERROR {
-            let detail = String::from_utf8_lossy(&bytes);
-            return Err(CommandError::new(
-                "device_sync_remote_error",
-                format!("The paired device rejected synchronization: {detail}"),
-            ));
+            return Err(decode_remote_error(&bytes));
         }
         if frame_type != expected_type || bytes.len() > MAX_JSON_FRAME_BYTES {
             return Err(protocol_error(
@@ -102,6 +108,22 @@ impl SecureChannel {
         serde_json::from_slice(&bytes).map_err(|error| {
             protocol_error(format!("The paired device sent invalid JSON: {error}"))
         })
+    }
+
+    pub(crate) fn send_error(&mut self, error: &CommandError) -> Result<(), CommandError> {
+        let code = error
+            .code
+            .chars()
+            .take(MAX_REMOTE_ERROR_CODE_CHARS)
+            .collect::<String>();
+        let message = error
+            .message
+            .chars()
+            .take(MAX_REMOTE_ERROR_MESSAGE_CHARS)
+            .collect::<String>();
+        let payload = serde_json::to_vec(&RemoteErrorFrame { code, message })
+            .map_err(CommandError::serialization)?;
+        self.send_frame(FRAME_ERROR, &payload)
     }
 
     pub(crate) fn send_file(&mut self, source: &Path) -> Result<(), CommandError> {
@@ -178,10 +200,7 @@ impl SecureChannel {
                 FRAME_FILE_END => break,
                 FRAME_ERROR => {
                     let _ = fs::remove_file(destination);
-                    return Err(CommandError::new(
-                        "device_sync_remote_error",
-                        String::from_utf8_lossy(&bytes).into_owned(),
-                    ));
+                    return Err(decode_remote_error(&bytes));
                 }
                 _ => {
                     let _ = fs::remove_file(destination);
@@ -370,10 +389,70 @@ fn transport_io_error(operation: &str, error: std::io::Error) -> CommandError {
     )
 }
 
+fn decode_remote_error(bytes: &[u8]) -> CommandError {
+    if let Ok(remote) = serde_json::from_slice::<RemoteErrorFrame>(bytes) {
+        let code = remote.code.trim();
+        let message = remote.message.trim();
+        if !code.is_empty()
+            && code.chars().count() <= MAX_REMOTE_ERROR_CODE_CHARS
+            && !message.is_empty()
+            && message.chars().count() <= MAX_REMOTE_ERROR_MESSAGE_CHARS
+        {
+            return CommandError::new(
+                "device_sync_remote_error",
+                format!("The paired device could not complete synchronization ({code}): {message}"),
+            );
+        }
+    }
+    let legacy = String::from_utf8_lossy(bytes);
+    let detail = legacy.trim();
+    CommandError::new(
+        "device_sync_remote_error",
+        if detail.is_empty() {
+            "The paired device reported an unspecified synchronization failure.".to_string()
+        } else {
+            format!("The paired device rejected synchronization: {detail}")
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::{net::TcpListener, thread};
+
+    #[test]
+    fn encrypted_channel_propagates_typed_remote_failure_before_eof() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
+        let address = listener.local_addr().expect("address should resolve");
+        let client_keys = SessionKeys {
+            send_key: [11_u8; 32],
+            receive_key: [13_u8; 32],
+        };
+        let server_keys = SessionKeys {
+            send_key: client_keys.receive_key,
+            receive_key: client_keys.send_key,
+        };
+        let handle = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("connection should accept");
+            let mut channel = SecureChannel::new(stream, server_keys).expect("channel should open");
+            channel
+                .send_error(&CommandError::new(
+                    "device_sync_integrity_failed",
+                    "The synchronized library would violate relational integrity.",
+                ))
+                .expect("typed error should send");
+        });
+        let stream = TcpStream::connect(address).expect("client should connect");
+        let mut channel = SecureChannel::new(stream, client_keys).expect("channel should open");
+        let error = channel
+            .receive_json::<String>(FRAME_COMPLETE)
+            .expect_err("remote failure should be surfaced before EOF");
+        assert_eq!(error.code, "device_sync_remote_error");
+        assert!(error.message.contains("device_sync_integrity_failed"));
+        assert!(error.message.contains("relational integrity"));
+        handle.join().expect("server should finish");
+    }
 
     #[test]
     fn encrypted_channel_round_trip_preserves_json_and_file_bytes() {

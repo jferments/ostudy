@@ -298,6 +298,24 @@ Run any repository Android script once. It writes `src-tauri/gen/android/local.p
 - LAN HTTP still requires ostudy's explicit insecure-local-network acknowledgement;
 - cloud providers remain HTTPS-only.
 
+### Device synchronization fails after QR detection
+
+Android system Logcat is useful for native camera/Activity crashes, but ostudy's Rust synchronization diagnostics are written to the debug app's private structured JSONL log. With the phone connected, retrieve the current log with:
+
+```bash
+pnpm android:diagnostics
+```
+
+To select one phone when several ADB devices are connected:
+
+```bash
+bash ./scripts/android-diagnostics.sh --serial <adb-serial>
+```
+
+The command uses Android `run-as` and therefore targets the debuggable package `io.github.jferments.ostudy.dev`. It prints the private `diagnostics/ostudy.jsonl` without copying credentials, document text, prompts, or other data excluded by the diagnostic redaction boundary.
+
+After the encrypted pairing handshake, a receiver-side synchronization failure is returned to the sender as a typed encrypted error rather than appearing only as an EOF/`failed to fill whole buffer`. Optional API-credential storage failure does not invalidate an already committed study-library merge; the receiver completes library synchronization and reports that credentials need to be entered again.
+
 ### A document provider import fails
 
 Retry with a local Downloads copy and inspect Logcat. ostudy deliberately rejects empty, oversized, changing, malformed, or unsupported content even when the provider supplied a plausible filename or MIME type.

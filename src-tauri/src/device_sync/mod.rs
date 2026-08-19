@@ -130,6 +130,7 @@ pub struct DeviceSyncResultDto {
     pub changed_row_count: usize,
     pub conflict_count: usize,
     pub transferred_credential_count: usize,
+    pub credential_warning: Option<String>,
     pub sent_package_bytes: u64,
     pub received_package_bytes: u64,
 }
@@ -893,135 +894,177 @@ fn run_join_session(
         SessionRole::Joiner,
     )?;
     let mut channel = SecureChannel::new(stream, keys)?;
-    let server: ServerHello = channel.receive_json(FRAME_METADATA)?;
-    cancel_signal.check()?;
-    validate_server_hello(
-        &invitation,
-        &server,
-        &transcript,
-        secure_credentials_available,
-    )?;
-    store.upsert_peer(
-        &server.device_id,
-        &server.display_name,
-        &server.identity_public_key,
-        &server.identity_fingerprint,
-        &invitation.endpoint,
-    )?;
-    let sender = store.peer(&server.device_id)?.ok_or_else(|| {
-        CommandError::new(
-            "device_sync_store_error",
-            "The sending device was not persisted after authentication.",
-        )
-    })?;
-    cancellation::claim_peer(paths.inner(), &invitation.session_id, &sender.id)?;
-    store.update_session(
-        &invitation.session_id,
-        Some(&sender.id),
-        "transferring",
-        None,
-    )?;
-    crate::logging::info(
-        "device_sync_receive_authenticated",
-        format!("session={} sender={}", invitation.session_id, sender.id),
-    );
-
-    cancel_signal.check()?;
-    let metadata: TransferMetadata = channel.receive_json(FRAME_METADATA)?;
-    validate_transfer_metadata(&invitation, &server, &metadata)?;
-    let workspace = SyncWorkspace::new(paths.inner(), &invitation.session_id, "receive")?;
-    let incoming_package = workspace.path.join("incoming.syncpkg");
-    channel.receive_file(&incoming_package)?;
-    cancel_signal.check()?;
-    store.update_session(&invitation.session_id, Some(&sender.id), "merging", None)?;
-    crate::logging::info(
-        "device_sync_package_received",
-        format!(
-            "session={} sender={} bytes={}",
-            invitation.session_id, sender.id, metadata.package.package_bytes
-        ),
-    );
-
-    let extracted = package::extract_package(&incoming_package, &workspace.path.join("incoming"))?;
-    if extracted.include_api_settings != invitation.include_api_settings {
-        return Err(CommandError::new(
-            "device_sync_protocol_error",
-            "The synchronization package scope did not match the accepted invitation.",
-        ));
-    }
-    log_staged_assets("receive", &extracted.assets);
-    package::install_assets(paths.inner(), &extracted.assets)?;
-    cancel_signal.check()?;
-
-    let remote_database =
-        Connection::open(&extracted.database_path).map_err(CommandError::database)?;
-    remote_database
-        .execute_batch("PRAGMA foreign_keys = OFF; DROP TABLE IF EXISTS app_settings;")
-        .map_err(CommandError::database)?;
-    if !invitation.include_api_settings {
-        remote_database
-            .execute_batch(
-                "DROP TABLE IF EXISTS ai_task_defaults;
-                 DROP TABLE IF EXISTS ai_provider_profiles;",
+    let receiver_session_id = invitation.session_id.clone();
+    let transfer_result = (|| -> Result<DeviceSyncResultDto, CommandError> {
+        let server: ServerHello = channel.receive_json(FRAME_METADATA)?;
+        cancel_signal.check()?;
+        validate_server_hello(
+            &invitation,
+            &server,
+            &transcript,
+            secure_credentials_available,
+        )?;
+        store.upsert_peer(
+            &server.device_id,
+            &server.display_name,
+            &server.identity_public_key,
+            &server.identity_fingerprint,
+            &invitation.endpoint,
+        )?;
+        let sender = store.peer(&server.device_id)?.ok_or_else(|| {
+            CommandError::new(
+                "device_sync_store_error",
+                "The sending device was not persisted after authentication.",
             )
-            .map_err(CommandError::database)?;
-    }
-    remote_database
-        .execute_batch("PRAGMA foreign_keys = ON;")
-        .map_err(CommandError::database)?;
+        })?;
+        cancellation::claim_peer(paths.inner(), &invitation.session_id, &sender.id)?;
+        store.update_session(
+            &invitation.session_id,
+            Some(&sender.id),
+            "transferring",
+            None,
+        )?;
+        crate::logging::info(
+            "device_sync_receive_authenticated",
+            format!("session={} sender={}", invitation.session_id, sender.id),
+        );
 
-    cancel_signal.check()?;
-    crate::logging::info(
-        "device_sync_merge_started",
-        format!("session={} sender={}", invitation.session_id, sender.id),
-    );
-    let merge = database.with_connection(|local| {
-        merge::merge_remote_database(
-            local,
-            &remote_database,
-            &store,
-            &identity.device_id,
-            &sender.id,
-        )
-    })?;
-    crate::logging::info(
-        "device_sync_merge_completed",
-        format!(
-            "session={} sender={} changed_rows={} conflicts={}",
-            invitation.session_id, sender.id, merge.changed_row_count, merge.conflict_count
-        ),
-    );
-    cancel_signal.check()?;
-    let transferred_credential_count = if server.credentials_included {
-        credentials::apply_credentials(
-            database.inner(),
-            runtime.secure_secret_store(),
-            &metadata.credentials,
-        )?
-    } else {
-        0
-    };
-    cancel_signal.check()?;
-    channel.send_json(
-        FRAME_COMPLETE,
-        &ReceiverAcknowledgement {
-            protocol_version: PROTOCOL_VERSION,
-            session_id: invitation.session_id.clone(),
+        cancel_signal.check()?;
+        let metadata: TransferMetadata = channel.receive_json(FRAME_METADATA)?;
+        validate_transfer_metadata(&invitation, &server, &metadata)?;
+        let workspace = SyncWorkspace::new(paths.inner(), &invitation.session_id, "receive")?;
+        let incoming_package = workspace.path.join("incoming.syncpkg");
+        channel.receive_file(&incoming_package)?;
+        cancel_signal.check()?;
+        store.update_session(&invitation.session_id, Some(&sender.id), "merging", None)?;
+        crate::logging::info(
+            "device_sync_package_received",
+            format!(
+                "session={} sender={} bytes={}",
+                invitation.session_id, sender.id, metadata.package.package_bytes
+            ),
+        );
+
+        let extracted =
+            package::extract_package(&incoming_package, &workspace.path.join("incoming"))?;
+        if extracted.include_api_settings != invitation.include_api_settings {
+            return Err(CommandError::new(
+                "device_sync_protocol_error",
+                "The synchronization package scope did not match the accepted invitation.",
+            ));
+        }
+        log_staged_assets("receive", &extracted.assets);
+        package::install_assets(paths.inner(), &extracted.assets)?;
+        cancel_signal.check()?;
+
+        let remote_database =
+            Connection::open(&extracted.database_path).map_err(CommandError::database)?;
+        remote_database
+            .execute_batch("PRAGMA foreign_keys = OFF; DROP TABLE IF EXISTS app_settings;")
+            .map_err(CommandError::database)?;
+        if !invitation.include_api_settings {
+            remote_database
+                .execute_batch(
+                    "DROP TABLE IF EXISTS ai_task_defaults;
+                 DROP TABLE IF EXISTS ai_provider_profiles;",
+                )
+                .map_err(CommandError::database)?;
+        }
+        remote_database
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .map_err(CommandError::database)?;
+
+        cancel_signal.check()?;
+        crate::logging::info(
+            "device_sync_merge_started",
+            format!("session={} sender={}", invitation.session_id, sender.id),
+        );
+        let merge = database.with_connection(|local| {
+            merge::merge_remote_database(
+                local,
+                &remote_database,
+                &store,
+                &identity.device_id,
+                &sender.id,
+            )
+        })?;
+        crate::logging::info(
+            "device_sync_merge_completed",
+            format!(
+                "session={} sender={} changed_rows={} conflicts={}",
+                invitation.session_id, sender.id, merge.changed_row_count, merge.conflict_count
+            ),
+        );
+        cancel_signal.check()?;
+        let (transferred_credential_count, credential_warning) = if server.credentials_included {
+            match credentials::apply_credentials(
+                database.inner(),
+                runtime.secure_secret_store(),
+                &metadata.credentials,
+            ) {
+                Ok(count) => (count, None),
+                Err(error) => {
+                    crate::logging::warn_target(
+                    "device_sync.credentials",
+                    "device_sync_credentials_not_applied",
+                    "Study-library synchronization completed, but optional saved API credentials could not be stored on the receiving device.",
+                    serde_json::json!({
+                        "session": invitation.session_id.as_str(),
+                        "sender": sender.id.as_str(),
+                        "code": error.code.as_str(),
+                    }),
+                );
+                    (
+                    0,
+                    Some(
+                        "Study data synchronized, but saved API credentials could not be stored securely on this device. Re-enter them in Settings → AI if needed."
+                            .to_string(),
+                    ),
+                )
+                }
+            }
+        } else {
+            (0, None)
+        };
+        cancel_signal.check()?;
+        store.mark_peer_synced(&sender.id, &invitation.endpoint)?;
+        channel.send_json(
+            FRAME_COMPLETE,
+            &ReceiverAcknowledgement {
+                protocol_version: PROTOCOL_VERSION,
+                session_id: invitation.session_id.clone(),
+                changed_row_count: merge.changed_row_count,
+                conflict_count: merge.conflict_count,
+                transferred_credential_count,
+            },
+        )?;
+        Ok(DeviceSyncResultDto {
+            session_id: invitation.session_id,
+            peer: sender,
             changed_row_count: merge.changed_row_count,
             conflict_count: merge.conflict_count,
             transferred_credential_count,
-        },
-    )?;
-    store.mark_peer_synced(&sender.id, &invitation.endpoint)?;
-    Ok(DeviceSyncResultDto {
-        session_id: invitation.session_id,
-        peer: sender,
-        changed_row_count: merge.changed_row_count,
-        conflict_count: merge.conflict_count,
-        transferred_credential_count,
-        sent_package_bytes: 0,
-        received_package_bytes: metadata.package.package_bytes,
-    })
+            credential_warning,
+            sent_package_bytes: 0,
+            received_package_bytes: metadata.package.package_bytes,
+        })
+    })();
+    if let Err(error) = &transfer_result {
+        crate::logging::error_target(
+            "device_sync.receive",
+            "device_sync_receiver_transfer_failed",
+            "The receiving device could not complete an authenticated synchronization transfer.",
+            serde_json::json!({
+                "session": receiver_session_id,
+                "code": error.code.as_str(),
+            }),
+        );
+        // Once authentication has established the encrypted channel, send the
+        // peer the safe typed failure before closing. A broken socket may make
+        // this best-effort notification fail; the original local error wins.
+        let _ = channel.send_error(error);
+    }
+    transfer_result
 }
 
 fn ensure_identity(
