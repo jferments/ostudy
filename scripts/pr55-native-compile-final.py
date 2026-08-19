@@ -78,6 +78,14 @@ path = "src-tauri/src/ai/document_intelligence.rs"
 text = read(path)
 text = text.replace("outline_system_prompt()", 'outline_system_prompt("")')
 text = text.replace("flashcard_system_prompt()", 'flashcard_system_prompt("")')
+# Metadata extraction supersedes the old production strip helper. Keep the old
+# helper available only to its focused regression test so normal/clippy builds
+# do not carry an unused pub(crate) item.
+text = text.replace(
+    "pub(crate) fn strip_internal_generation_metadata(cards: &mut [Value]) {",
+    "#[cfg(test)]\npub(crate) fn strip_internal_generation_metadata(cards: &mut [Value]) {",
+    1,
+)
 
 # Avoid holding a rusqlite mapped-row temporary across statement destruction.
 old = '''        statement
