@@ -153,8 +153,9 @@ text = text.replace(
 write(path, text)
 
 # Apply the same statement-lifetime pattern to native prompt-preset loading and
-# remove obsolete global-reasoning bridge functions. Document jobs now read the
-# versioned task policy directly through load_settings/load_ai_task_policy.
+# remove the obsolete process-global reasoning mirror. The versioned SQLite task
+# policy is the only source of truth; the existing settings regression already
+# verifies the loaded/saved ai_reasoning_effort values directly.
 path = "src-tauri/src/settings.rs"
 text = read(path)
 old = '''    statement
@@ -193,15 +194,51 @@ if old in text:
     text = text.replace(old, new, 1)
 elif "let presets = rows" not in text:
     raise RuntimeError(f"{path}: prompt-preset query lifetime anchor missing")
-text, removed = re.subn(
-    r'''\npub\(crate\) fn load_ai_reasoning_effort\(.*?\n\}\n\npub\(crate\) fn current_ai_reasoning_effort\(\) -> String \{.*?\n\}\n\n(?=fn publish_ai_reasoning_effort)''',
+
+# Delete duplicate assertions against the retired process-global mirror before
+# removing that mirror. Persistence is still asserted via AppSettingsDto below.
+text = re.sub(
+    r'''\n\s*assert_eq!\(current_ai_reasoning_effort\(\),\s*"(?:low|none)"\);''',
+    "",
+    text,
+)
+text = re.sub(
+    r'''\n\s*publish_ai_reasoning_effort\(&settings\.ai_reasoning_effort\);''',
+    "",
+    text,
+)
+text = text.replace(
+    "use std::sync::{LazyLock, RwLock};\n\n",
+    "",
+    1,
+)
+text = re.sub(
+    r'''\nconst DEFAULT_AI_REASONING_EFFORT: &str = "low";\n''',
+    "\n",
+    text,
+    count=1,
+)
+text = re.sub(
+    r'''\nstatic ACTIVE_AI_REASONING_EFFORT:.*?;\n''',
     "\n",
     text,
     count=1,
     flags=re.S,
 )
-if removed != 1 and "pub(crate) fn load_ai_reasoning_effort" in text:
-    raise RuntimeError(f"{path}: obsolete reasoning bridge removal failed")
+text = re.sub(
+    r'''\n\s*publish_ai_reasoning_effort\(&(?:input|ai_reasoning_effort)[^;]*;''',
+    "",
+    text,
+)
+text, removed = re.subn(
+    r'''\npub\(crate\) fn load_ai_reasoning_effort\(.*?\n\}\n\npub\(crate\) fn current_ai_reasoning_effort\(\) -> String \{.*?\n\}\n\nfn publish_ai_reasoning_effort\(value: &str\) \{.*?\n\}\n''',
+    "\n",
+    text,
+    count=1,
+    flags=re.S,
+)
+if removed != 1 and "current_ai_reasoning_effort" in text:
+    raise RuntimeError(f"{path}: obsolete reasoning mirror removal failed")
 write(path, text)
 
 # This is one-shot scaffolding. Remove it before the qualified product tree is
