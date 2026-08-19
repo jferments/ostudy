@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
+  issues: write
 
 concurrency:
   group: agent-apply-pr55-full-qualification
@@ -45,6 +47,27 @@ jobs:
       - name: Syntax-check and apply the complete implementation
         run: |
           set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/agent-pr55-phase1-3.py")
+          text = path.read_text()
+          old = '''text = replace_once(
+              text,
+              "                          showToast={controller.showToast}\\n                        />",
+              "                          showToast={controller.showToast}\\n                          rootRevision={controller.sectionRootRevision}\\n                        />",
+              path,
+          )'''
+          new = '''text = replace_once(
+              text,
+              "                          onTemplateDirtyChange={controller.setHasUnsavedTemplate}\\n                          showToast={controller.showToast}\\n                        />",
+              "                          onTemplateDirtyChange={controller.setHasUnsavedTemplate}\\n                          showToast={controller.showToast}\\n                          rootRevision={controller.sectionRootRevision}\\n                        />",
+              path,
+          )'''
+          if old not in text:
+              raise SystemExit("PR55 phase-one App target no longer matches the source applicator")
+          path.write_text(text.replace(old, new, 1))
+          PY
           python3 -m py_compile \
             scripts/agent-pr55-path-safety.py \
             scripts/agent-pr55-pretarget-normalize.py \
@@ -137,6 +160,7 @@ jobs:
           commit_sha="$(printf '%s\n' 'feat: overhaul responsive AI-assisted study workflows' | git commit-tree "$tree_sha" -p "$parent_sha")"
           git reset --hard "$commit_sha"
           git push origin HEAD:agent/ui-ai-semantic-generation-overhaul
+          echo "PUBLISHED_SHA=$commit_sha" >> "$GITHUB_ENV"
 
       - name: Summarize failure
         if: failure()
@@ -163,3 +187,67 @@ jobs:
             src-tauri/gen/android/app/build/reports/**
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Report exact PR 55 qualification outcome
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          PR_NUMBER: "55"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          node <<'NODE'
+          const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+          const pullNumber = Number(process.env.PR_NUMBER);
+          const passed = process.env.JOB_STATUS === 'success';
+          const published = process.env.PUBLISHED_SHA || '<not published>';
+          const headers = {
+            accept: 'application/vnd.github+json',
+            authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+            'content-type': 'application/json',
+            'x-github-api-version': '2022-11-28',
+          };
+          async function request(url, options = {}) {
+            const response = await fetch(url, { ...options, headers: { ...headers, ...(options.headers || {}) } });
+            if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+            return response.status === 204 ? null : response.json();
+          }
+          const body = passed
+            ? [
+                '## PR #55 complete qualification passed',
+                '',
+                `- Applicator source: \`${process.env.SOURCE_SHA}\``,
+                `- Published clean product head: \`${published}\``,
+                '- Frontend, TypeScript, formatting, and static policy: passed',
+                '- Rust compile, Clippy, and native contracts: passed',
+                '- Linux/Tauri full qualification: passed',
+                '- Android compile/package qualification: passed',
+                '- API-36 Android emulator smoke: passed',
+                `- Evidence: ${process.env.RUN_URL}`,
+              ].join('\n')
+            : [
+                '## PR #55 complete qualification failed',
+                '',
+                `- Applicator source: \`${process.env.SOURCE_SHA}\``,
+                '- The clean product tree was not published.',
+                '- The PR remains draft.',
+                `- Logs and bounded artifacts: ${process.env.RUN_URL}`,
+              ].join('\n');
+          await request(`https://api.github.com/repos/${owner}/${repo}/issues/${pullNumber}/comments`, {
+            method: 'POST',
+            body: JSON.stringify({ body }),
+          });
+          if (passed) {
+            const pr = await request(`https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`);
+            if (pr.draft) {
+              await request('https://api.github.com/graphql', {
+                method: 'POST',
+                body: JSON.stringify({
+                  query: 'mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { id isDraft } } }',
+                  variables: { id: pr.node_id },
+                }),
+              });
+            }
+          }
+          NODE
