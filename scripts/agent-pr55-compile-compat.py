@@ -218,6 +218,38 @@ requireText(shell.includes("max-width: 1180px"), "Tablet shell mode is missing")
 const navigation = read("src/components/NavigationSidebar.module.css");
 requireText(navigation.includes("max-width: 1180px"), "Tablet navigation rail is missing");'''
 text = text.replace(duplicate_verifier_block, single_verifier_block, 1)
+old_unrelated_reporting = '''    unrelated = [
+        (str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path), title)
+        for path, title, messages in failures
+        if not legacy_failure(str(path), title, messages)
+    ]
+    if unrelated:
+        formatted = "\\n".join(f"- {path}: {title}" for path, title in unrelated)
+        raise RuntimeError(
+            "Refusing to suppress unrelated test failures. Fix these product/test defects explicitly:\\n"
+            + formatted
+        )'''
+new_unrelated_reporting = '''    unrelated = [
+        (
+            str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path),
+            title,
+            re.sub(r"\\s+", " ", " ".join(messages)).strip()[:1200],
+        )
+        for path, title, messages in failures
+        if not legacy_failure(str(path), title, messages)
+    ]
+    if unrelated:
+        formatted = "\\n".join(
+            f"- {path}: {title}\\n  {message or '<no failure message>'}"
+            for path, title, message in unrelated
+        )
+        raise RuntimeError(
+            "Refusing to suppress unrelated test failures. Fix these product/test defects explicitly:\\n"
+            + formatted
+        )'''
+if old_unrelated_reporting not in text:
+    raise RuntimeError("agent-pr55-test-refresh.py: unrelated-failure reporter target changed")
+text = text.replace(old_unrelated_reporting, new_unrelated_reporting, 1)
 path.write_text(text)
 
 # The settings defaults intentionally changed for new installations.
