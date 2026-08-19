@@ -157,4 +157,35 @@ if old_import_patch in text:
     text = text.replace(old_import_patch, new_import_patch, 1)
 elif new_import_patch not in text:
     raise RuntimeError("native AI setup IPC import repair target not found")
+
+# First-model default assignment must tolerate a restored database whose seeded
+# task-default row is absent. Use insert-or-update semantics but preserve an
+# existing explicit default.
+old_default_sql = '''        transaction
+            .execute(
+                "UPDATE ai_task_defaults
+                 SET profile_id = CASE WHEN profile_id IS NULL THEN ?1 ELSE profile_id END,
+                     updated_at = CASE WHEN profile_id IS NULL THEN ?2 ELSE updated_at END
+                 WHERE task_kind = 'flashcard_generation'",
+                params![input.profile_id, now],
+            )'''
+new_default_sql = '''        transaction
+            .execute(
+                "INSERT INTO ai_task_defaults (task_kind, profile_id, updated_at)
+                 VALUES ('flashcard_generation', ?1, ?2)
+                 ON CONFLICT(task_kind) DO UPDATE SET
+                     profile_id = CASE
+                         WHEN ai_task_defaults.profile_id IS NULL THEN excluded.profile_id
+                         ELSE ai_task_defaults.profile_id
+                     END,
+                     updated_at = CASE
+                         WHEN ai_task_defaults.profile_id IS NULL THEN excluded.updated_at
+                         ELSE ai_task_defaults.updated_at
+                     END",
+                params![input.profile_id, now],
+            )'''
+if old_default_sql in text:
+    text = text.replace(old_default_sql, new_default_sql, 1)
+elif new_default_sql not in text:
+    raise RuntimeError("native AI setup default-assignment repair target not found")
 file.write_text(text)
