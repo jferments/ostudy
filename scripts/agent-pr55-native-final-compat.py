@@ -175,6 +175,8 @@ if controller_test.exists():
 verifier = ROOT / "scripts/verify-ui-ai-overhaul.mjs"
 if verifier.exists():
     source = verifier.read_text()
+    if 'from "node:fs"' not in source and "from 'node:fs'" not in source:
+        source = 'import fs from "node:fs";\n\n' + source
     marker = "console.log("
     checks = r'''
 const nativeSetup = fs.readFileSync("src-tauri/src/ai/setup.rs", "utf8");
