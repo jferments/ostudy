@@ -78,12 +78,24 @@ path = "src-tauri/src/ai/document_intelligence.rs"
 text = read(path)
 text = text.replace("outline_system_prompt()", 'outline_system_prompt("")')
 text = text.replace("flashcard_system_prompt()", 'flashcard_system_prompt("")')
+# Page-image policy is applied while the task is loaded by bounding the existing
+# include_page_images field. Do not retain a second unused copy on the task DTO.
+text = text.replace("    pub image_input_policy: String,\n", "", 1)
+text = text.replace(
+    "            context_limit_tokens,\n            image_input_policy,\n            coverage_mode,",
+    "            context_limit_tokens,\n            coverage_mode,",
+    1,
+)
 # Metadata extraction supersedes the old production strip helper. Keep the old
-# helper available only to its focused regression test so normal/clippy builds
-# do not carry an unused pub(crate) item.
+# helper and legacy OpenRouter body builder only for focused compatibility tests.
 text = text.replace(
     "pub(crate) fn strip_internal_generation_metadata(cards: &mut [Value]) {",
     "#[cfg(test)]\npub(crate) fn strip_internal_generation_metadata(cards: &mut [Value]) {",
+    1,
+)
+text = text.replace(
+    "fn openrouter_document_body(\n    profile: &ProfileSnapshot,",
+    "#[cfg(test)]\nfn openrouter_document_body(\n    profile: &ProfileSnapshot,",
     1,
 )
 
@@ -104,6 +116,17 @@ if old in text:
     text = text.replace(old, new, 1)
 elif "let covered = rows" not in text:
     raise RuntimeError(f"{path}: covered-target query lifetime anchor missing")
+write(path, text)
+
+# The legacy automatic OpenRouter preference helper is now used only by the
+# compatibility body-builder test. Production requests use the routed helper.
+path = "src-tauri/src/ai/providers.rs"
+text = read(path)
+text = text.replace(
+    "pub(crate) fn openrouter_provider_preferences(\n",
+    "#[cfg(test)]\npub(crate) fn openrouter_provider_preferences(\n",
+    1,
+)
 write(path, text)
 
 # Generate More needs both the legacy second-pass summary and the original
@@ -129,7 +152,9 @@ text = text.replace(
 )
 write(path, text)
 
-# Apply the same statement-lifetime pattern to native prompt-preset loading.
+# Apply the same statement-lifetime pattern to native prompt-preset loading and
+# remove obsolete global-reasoning bridge functions. Document jobs now read the
+# versioned task policy directly through load_settings/load_ai_task_policy.
 path = "src-tauri/src/settings.rs"
 text = read(path)
 old = '''    statement
@@ -168,6 +193,15 @@ if old in text:
     text = text.replace(old, new, 1)
 elif "let presets = rows" not in text:
     raise RuntimeError(f"{path}: prompt-preset query lifetime anchor missing")
+text, removed = re.subn(
+    r'''\npub\(crate\) fn load_ai_reasoning_effort\(.*?\n\}\n\npub\(crate\) fn current_ai_reasoning_effort\(\) -> String \{.*?\n\}\n\n(?=fn publish_ai_reasoning_effort)''',
+    "\n",
+    text,
+    count=1,
+    flags=re.S,
+)
+if removed != 1 and "pub(crate) fn load_ai_reasoning_effort" in text:
+    raise RuntimeError(f"{path}: obsolete reasoning bridge removal failed")
 write(path, text)
 
 # This is one-shot scaffolding. Remove it before the qualified product tree is
