@@ -1,11 +1,13 @@
 name: Apply and fully qualify PR 55
-# verifier-bootstrap-trigger: 2
+# verifier-bootstrap-trigger: 3
 
 on:
   push:
     branches: [agent/ui-ai-semantic-generation-overhaul]
     paths:
       - .github/workflows/agent-apply-pr55-full-qualification.yml
+      - scripts/agent-pr55-*.py
+      - scripts/verify-ui-ai-overhaul.mjs
 
 permissions:
   contents: write
