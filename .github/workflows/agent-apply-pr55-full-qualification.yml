@@ -1,5 +1,4 @@
 name: Apply and fully qualify PR 55
-# verifier-bootstrap-trigger: 3
 
 on:
   push:
@@ -49,12 +48,11 @@ jobs:
           echo "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT=$RUNNER_TEMP/ostudy-diagnostics" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.cache/ostudy/gradle" "$HOME/.cache/ostudy/cargo-target"
 
-      - name: Syntax-check and apply the complete implementation
+      - name: Apply complete PR 55 implementation
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
           from pathlib import Path
-
           path = Path("scripts/agent-pr55-phase1-3.py")
           text = path.read_text()
           old = '''text = replace_once(
@@ -73,19 +71,7 @@ jobs:
               raise SystemExit("PR55 phase-one App target no longer matches the source applicator")
           path.write_text(text.replace(old, new, 1))
           PY
-          python3 -m py_compile \
-            scripts/agent-pr55-path-safety.py \
-            scripts/agent-pr55-pretarget-normalize.py \
-            scripts/agent-pr55-applicator-repair.py \
-            scripts/agent-pr55-responsive-repair-v2.py \
-            scripts/agent-pr55-phase1-3.py \
-            scripts/agent-pr55-ai-settings.py \
-            scripts/agent-pr55-document-policy.py \
-            scripts/agent-pr55-semantic-targets.py \
-            scripts/agent-pr55-compile-compat.py \
-            scripts/agent-pr55-responsive-completion.py \
-            scripts/agent-pr55-postapply-repair-v2.py \
-            scripts/agent-pr55-test-refresh.py
+          python3 -m py_compile scripts/agent-pr55-*.py
           python3 scripts/agent-pr55-path-safety.py
           python3 scripts/agent-pr55-pretarget-normalize.py
           python3 scripts/agent-pr55-applicator-repair.py
@@ -102,10 +88,10 @@ jobs:
             python3 "$script"
           done
           python3 scripts/agent-pr55-test-refresh.py
-          cp scripts/agent-pr55-test-refresh.py "$RUNNER_TEMP/pr55-test-refresh.py"
+          python3 scripts/agent-pr55-finalize-tests.py
           rm -f scripts/agent-pr55-*.py .github/workflows/agent-*.yml
 
-      - name: Install dependencies and normalize Rust formatting
+      - name: Install dependencies and verify frontend contracts
         run: |
           set -Eeuo pipefail
           command -v pnpm
@@ -113,18 +99,6 @@ jobs:
           pnpm install --frozen-lockfile
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           node ./scripts/verify-ui-ai-overhaul.mjs
-
-      - name: Refresh only removed-UI expectations
-        id: initial_frontend
-        continue-on-error: true
-        run: pnpm exec vitest run --reporter=json --outputFile=/tmp/pr55-vitest.json
-
-      - name: Replace obsolete expectations and rerun the full frontend suite
-        if: steps.initial_frontend.outcome == 'failure'
-        run: |
-          set -Eeuo pipefail
-          test -s /tmp/pr55-vitest.json
-          python3 "$RUNNER_TEMP/pr55-test-refresh.py" --vitest-json /tmp/pr55-vitest.json
           pnpm exec vitest run
 
       - name: Run full Linux and native Tauri qualification
@@ -150,8 +124,10 @@ jobs:
           bash ./scripts/check-static.sh
           cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
           git diff --check
+          test -z "$(find scripts -maxdepth 1 -name 'agent-pr55-*.py' -print -quit)"
+          test -z "$(find .github/workflows -maxdepth 1 -name 'agent-*.yml' -print -quit)"
 
-      - name: Publish the fully qualified implementation
+      - name: Publish fully qualified product tree
         run: |
           set -Eeuo pipefail
           git config user.name "ostudy automation"
@@ -175,7 +151,7 @@ jobs:
             "$RUNNER_TEMP/pr55-linux-full.log" \
             "$RUNNER_TEMP/pr55-android-test.log" \
             "$RUNNER_TEMP/pr55-android-smoke.log" \
-            >> "$GITHUB_STEP_SUMMARY"
+            >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Upload bounded failure evidence
         if: failure()
@@ -192,7 +168,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Report exact PR 55 qualification outcome
+      - name: Report PR 55 qualification outcome
         if: always()
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -219,8 +195,7 @@ jobs:
           }
           const body = passed
             ? [
-                '## PR #55 complete qualification passed',
-                '',
+                '## PR #55 complete qualification passed', '',
                 `- Applicator source: \`${process.env.SOURCE_SHA}\``,
                 `- Published clean product head: \`${published}\``,
                 '- Frontend, TypeScript, formatting, and static policy: passed',
@@ -231,16 +206,14 @@ jobs:
                 `- Evidence: ${process.env.RUN_URL}`,
               ].join('\n')
             : [
-                '## PR #55 complete qualification failed',
-                '',
+                '## PR #55 complete qualification failed', '',
                 `- Applicator source: \`${process.env.SOURCE_SHA}\``,
                 '- The clean product tree was not published.',
                 '- The PR remains draft.',
                 `- Logs and bounded artifacts: ${process.env.RUN_URL}`,
               ].join('\n');
           await request(`https://api.github.com/repos/${owner}/${repo}/issues/${pullNumber}/comments`, {
-            method: 'POST',
-            body: JSON.stringify({ body }),
+            method: 'POST', body: JSON.stringify({ body }),
           });
           if (passed) {
             const pr = await request(`https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`);
