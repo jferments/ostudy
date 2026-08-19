@@ -89,6 +89,7 @@ jobs:
           done
           python3 scripts/agent-pr55-test-refresh.py
           python3 scripts/agent-pr55-finalize-tests.py
+          python3 scripts/agent-pr55-python-test-migrations.py
           rm -f scripts/agent-pr55-*.py .github/workflows/agent-*.yml
 
       - name: Install dependencies and verify frontend contracts
