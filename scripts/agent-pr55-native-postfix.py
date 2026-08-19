@@ -6,6 +6,7 @@ import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+# qualification-trigger: anti-heading-flashcard-prompt-contract
 
 migration = ROOT / "src-tauri/migrations/0002_ai_task_policy_learning_coverage.sql"
 text = migration.read_text()
