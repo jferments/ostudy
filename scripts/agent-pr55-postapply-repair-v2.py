@@ -269,3 +269,167 @@ if anchor in text and "helpRegistry" not in text:
         1,
     )
 write(path, text)
+
+# Layout diagnostics must remain safe in jsdom, older WebViews, and restricted
+# embedded browsers where matchMedia is absent.
+path = "src/screens/settings/LayoutDiagnosticsCard.tsx"
+text = read(path)
+text = text.replace(
+    '  const media = (query: string) => window.matchMedia(query).matches;',
+    '''  const media = (query: string) =>
+    typeof window.matchMedia === "function" ? window.matchMedia(query).matches : false;''',
+    1,
+)
+write(path, text)
+
+# Practice now starts with all active decks containing cards selected. Update
+# the behavior tests to verify that approved default instead of clicking the
+# checkbox and accidentally clearing the scope.
+path = "src/screens/PracticeScreen.test.tsx"
+text = read(path)
+text = text.replace(
+    '''async function startAndReveal(): Promise<void> {
+  fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+  await screen.findByText("1 cards in the scheduled session");''',
+    '''async function startAndReveal(): Promise<void> {
+  await screen.findByRole("checkbox", { name: /Dog facts/u, checked: true });
+  await screen.findByText("1 cards in the scheduled session");''',
+    1,
+)
+text = text.replace(
+    '''    renderPractice();
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+    expect(await screen.findByText("1 cards in the scheduled session")).toBeTruthy();''',
+    '''    renderPractice();
+    expect(await screen.findByRole("checkbox", { name: /Dog facts/u, checked: true })).toBeTruthy();
+    expect(await screen.findByText("1 cards in the scheduled session")).toBeTruthy();''',
+    1,
+)
+text = text.replace(
+    '''    renderPractice({ decks: [deck, secondDeck] });
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+    await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Cat facts/u }));
+    await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledTimes(2));''',
+    '''    renderPractice({ decks: [deck, secondDeck] });
+
+    await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("checkbox", { name: /Dog facts/u })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Cat facts/u })).toBeChecked();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Cat facts/u }));
+    await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledTimes(2));''',
+    1,
+)
+text = text.replace(
+    '''    renderPractice({ decks: [noDueDeck] });
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Reviewed dog facts/u }));
+    fireEvent.click(await screen.findByRole("button", { name: "Study this selection anyway" }));''',
+    '''    renderPractice({ decks: [noDueDeck] });
+    expect(await screen.findByRole("checkbox", { name: /Reviewed dog facts/u, checked: true })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Study this selection anyway" }));''',
+    1,
+)
+text = text.replace(
+    '''    renderPractice();
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+    await screen.findByText("1 cards in the scheduled session");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));''',
+    '''    renderPractice();
+    await screen.findByRole("checkbox", { name: /Dog facts/u, checked: true });
+    await screen.findByText("1 cards in the scheduled session");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));''',
+    1,
+)
+write(path, text)
+
+# Tutorials are explicitly initiated. Cover both the no-popup default and the
+# manual Start/Android Back lifecycle rather than preserving contextual timers.
+path = "src/ui/tutorials/TourProvider.test.tsx"
+write(
+    path,
+    '''import { act, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  dispatchPlatformBack,
+  platformBackHandlerCountForTests,
+} from "../../platform/backNavigation";
+import { startTutorial, TourProvider } from "./TourProvider";
+
+function Anchors() {
+  return (
+    <div>
+      <nav data-tour-anchor="app.navigation">Navigation</nav>
+      <div data-tour-anchor="flashcards.workspaces">Workspaces</div>
+    </div>
+  );
+}
+
+describe("TourProvider", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    expect(platformBackHandlerCountForTests()).toBe(0);
+  });
+
+  it("does not open an unfinished tutorial merely because its anchor exists", async () => {
+    render(
+      <TourProvider enabled>
+        <Anchors />
+      </TourProvider>,
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("lets Android Back dismiss a manually started tutorial and records the dismissal", async () => {
+    const view = render(
+      <TourProvider enabled>
+        <Anchors />
+      </TourProvider>,
+    );
+
+    await act(async () => {
+      startTutorial("orientation");
+    });
+    expect(
+      screen.getByRole("dialog", {
+        name: "Everything for flashcards lives together",
+      }),
+    ).toBeTruthy();
+    expect(platformBackHandlerCountForTests()).toBe(1);
+
+    await act(async () => {
+      expect(dispatchPlatformBack()).toBe(true);
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(window.localStorage.getItem("ostudy.tutorials.v1")).toContain("orientation");
+    view.unmount();
+  });
+
+  it("ignores an explicit tutorial start while tutorials are disabled", async () => {
+    render(
+      <TourProvider enabled={false}>
+        <Anchors />
+      </TourProvider>,
+    );
+    await act(async () => {
+      startTutorial("orientation");
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+''',
+)
