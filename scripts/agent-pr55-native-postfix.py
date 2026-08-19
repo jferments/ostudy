@@ -31,11 +31,18 @@ registry.write_text(source)
 # passes to run last, while all temporary scripts still exist.
 test_migration = ROOT / "scripts/agent-pr55-python-test-migrations.py"
 test_source = test_migration.read_text()
-hook = '''\n\n# Final native contract/test alignment runs after all generated test rewrites.\nimport runpy\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-final-compat.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-preset-sync.py"), run_name="__main__")\n'''
+hook = '''\n\n# Final native contract/test alignment runs after all generated test rewrites.\nimport runpy\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-final-compat.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-preset-sync.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-native-compile-final.py"), run_name="__main__")\n'''
 if "agent-pr55-native-final-compat.py" not in test_source:
     test_migration.write_text(test_source.rstrip() + hook)
-elif "agent-pr55-native-preset-sync.py" not in test_source:
-    test_migration.write_text(
-        test_source.rstrip()
-        + '\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-preset-sync.py"), run_name="__main__")\n'
-    )
+else:
+    additions = []
+    if "agent-pr55-native-preset-sync.py" not in test_source:
+        additions.append(
+            'runpy.run_path(str(ROOT / "scripts/agent-pr55-native-preset-sync.py"), run_name="__main__")'
+        )
+    if "pr55-native-compile-final.py" not in test_source:
+        additions.append(
+            'runpy.run_path(str(ROOT / "scripts/pr55-native-compile-final.py"), run_name="__main__")'
+        )
+    if additions:
+        test_migration.write_text(test_source.rstrip() + "\n" + "\n".join(additions) + "\n")
