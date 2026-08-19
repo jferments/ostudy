@@ -30,8 +30,8 @@ text = re.sub(
 write(path, text)
 
 # document_intelligence_adapter is the public native facade used by document
-# executors. Re-export the durable semantic-coverage helpers added to the
-# implementation module.
+# executors. Re-export only the durable semantic-coverage helpers that callers
+# actually use; the strip helper remains private to the implementation/tests.
 path = "src-tauri/src/ai/document_intelligence_adapter.rs"
 text = read(path)
 old = '''pub(crate) use implementation::{
@@ -43,15 +43,16 @@ new = '''pub(crate) use implementation::{
     curate_document_cards, extract_internal_generation_metadata,
     flashcard_completion_token_ceiling, generate_window_flashcards,
     load_covered_learning_target_ids, load_document_task_context,
-    persist_document_learning_targets, persist_learning_target_coverage,
-    strip_internal_generation_metadata, DocumentOutline, DocumentTaskContext,
-    FlashcardGenerationLimits, OutlineBuildSources, SourcePageImage,
+    persist_document_learning_targets, persist_learning_target_coverage, DocumentOutline,
+    DocumentTaskContext, FlashcardGenerationLimits, OutlineBuildSources, SourcePageImage,
     OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
 };'''
 if old in text:
     text = text.replace(old, new, 1)
 elif "persist_document_learning_targets" not in text:
     raise RuntimeError(f"{path}: document-intelligence facade export anchor missing")
+else:
+    text = text.replace("    strip_internal_generation_metadata, DocumentOutline, DocumentTaskContext,\n", "    DocumentOutline, DocumentTaskContext,\n")
 write(path, text)
 
 # The final durable-coverage pass adds the exclusion field to test literals.
@@ -95,6 +96,18 @@ if old in text:
     text = text.replace(old, new, 1)
 elif "let covered = rows" not in text:
     raise RuntimeError(f"{path}: covered-target query lifetime anchor missing")
+write(path, text)
+
+# Generate More needs both the legacy second-pass summary and the original
+# outline for the durable learning-target ledger. Clone the small outline value
+# before augmenting it rather than moving it away from the coverage planner.
+path = "src-tauri/src/document_more.rs"
+text = read(path)
+text = text.replace(
+    "let second_pass_outline = second_pass_outline(outline, &existing_coverage);",
+    "let second_pass_outline = second_pass_outline(outline.clone(), &existing_coverage);",
+    1,
+)
 write(path, text)
 
 # Apply the same statement-lifetime pattern to native prompt-preset loading.
