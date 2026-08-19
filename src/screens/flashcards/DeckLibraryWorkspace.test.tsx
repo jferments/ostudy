@@ -10,6 +10,8 @@ import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
 
 const deckControllerMocks = vi.hoisted(() => ({
   create: vi.fn(),
+  deleteDeck: vi.fn(),
+  undo: vi.fn(),
   invalidate: vi.fn(),
 }));
 
@@ -17,6 +19,8 @@ vi.mock("../../controllers/decksController", () => ({
   DecksController: class {
     invalidate = deckControllerMocks.invalidate;
     create = deckControllerMocks.create;
+    deleteDeck = deckControllerMocks.deleteDeck;
+    undo = deckControllerMocks.undo;
   },
 }));
 vi.mock("../../ipc/deckFolders", () => ({
@@ -115,6 +119,13 @@ describe("DeckLibraryWorkspace", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     deckControllerMocks.create.mockResolvedValue(deck("c", "Created deck", 0, 0));
+    deckControllerMocks.deleteDeck.mockResolvedValue({
+      affectedCount: 1,
+      undoToken: "u".repeat(32),
+      undoExpiresAt: Date.now() + 10_000,
+      subjectLabel: "Deck",
+    });
+    deckControllerMocks.undo.mockResolvedValue({ restoredCount: 1 });
     vi.mocked(folderIpc.getDeckLibraryOrganization).mockResolvedValue(organization);
     vi.mocked(settingsIpc.saveSettings).mockImplementation(async (input) => input);
   });
@@ -136,10 +147,48 @@ describe("DeckLibraryWorkspace", () => {
     expect(screen.getByText("Pharmacology")).toBeTruthy();
     expect(screen.getByText("Anatomy")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Practice" })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Delete Pharmacology" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete Anatomy" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
     expect(screen.queryByText("↑")).toBeNull();
     expect(screen.queryByText("↓")).toBeNull();
     expect(screen.queryByText("Organize what you study")).toBeNull();
+  });
+
+  it("requires confirmation before deleting a deck from the organized library", async () => {
+    const remainingOrganization = {
+      revision: 5,
+      folders: [folder],
+      placements: [{ deckId: anatomy.id, folderId: null, sortOrder: 1000 }],
+    };
+    vi.mocked(folderIpc.getDeckLibraryOrganization)
+      .mockResolvedValueOnce(organization)
+      .mockResolvedValue(remainingOrganization);
+    const refreshDecks = vi.fn(async () => [anatomy]);
+    renderLibrary({ refreshDecks });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Pharmacology" }));
+    const firstDialog = await screen.findByRole("alertdialog", {
+      name: "Delete “Pharmacology”?",
+    });
+    expect(deckControllerMocks.deleteDeck).not.toHaveBeenCalled();
+    fireEvent.click(within(firstDialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("alertdialog", { name: "Delete “Pharmacology”?" })).toBeNull(),
+    );
+    expect(deckControllerMocks.deleteDeck).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete Pharmacology" }));
+    const secondDialog = await screen.findByRole("alertdialog", {
+      name: "Delete “Pharmacology”?",
+    });
+    fireEvent.click(within(secondDialog).getByRole("button", { name: "Delete deck" }));
+
+    await waitFor(() =>
+      expect(deckControllerMocks.deleteDeck).toHaveBeenCalledWith(pharmacology.id),
+    );
+    await waitFor(() => expect(refreshDecks).toHaveBeenCalled());
+    await waitFor(() => expect(folderIpc.getDeckLibraryOrganization).toHaveBeenCalledTimes(2));
   });
 
   it("collapses individual folders and exposes a collapse-all control", async () => {
