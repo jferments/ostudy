@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import shutil
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -192,6 +193,20 @@ text = path.read_text().replace(
 )
 path.write_text(text)
 
+# The targeted stale-test refresher is copied to the runner temp directory after
+# the applicators remove themselves. Anchor it to the active repository rather
+# than to its temporary filename so both invocations write into the checkout.
+path = ROOT / "scripts/agent-pr55-test-refresh.py"
+text = path.read_text()
+if "import os\n" not in text:
+    text = text.replace("import json\n", "import json\nimport os\n", 1)
+text = text.replace(
+    "ROOT = pathlib.Path(__file__).resolve().parents[1]",
+    'ROOT = pathlib.Path(os.environ.get("GITHUB_WORKSPACE", pathlib.Path.cwd())).resolve()',
+    1,
+)
+path.write_text(text)
+
 # The settings defaults intentionally changed for new installations.
 for file in (ROOT / "src-tauri").rglob("*.rs"):
     text = file.read_text()
@@ -220,3 +235,8 @@ route_test = ROOT / "src/navigation/flashcardsRoutes.test.ts"
 route_test.write_text(
     '''import { describe, expect, it } from "vitest";\n\nimport { flashcardsWorkspaceNames, isFlashcardsWorkspaceName } from "./flashcardsRoutes";\n\ndescribe("flashcards routes", () => {\n  it("contains only current root workspaces", () => {\n    expect(flashcardsWorkspaceNames).toEqual(["decks", "templates", "search", "transfer"]);\n    expect(isFlashcardsWorkspaceName("create")).toBe(false);\n  });\n});\n'''
 )
+
+# The original phase-one compressed patch is staging data for the one-shot
+# workflow, not product source. It is no longer needed after phase-one has been
+# applied and must never survive the final product commit.
+shutil.rmtree(ROOT / ".github/agent", ignore_errors=True)
