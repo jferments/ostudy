@@ -26,9 +26,9 @@ if count != 1:
     raise RuntimeError("database.rs: migration-2 checksum entry not found")
 registry.write_text(source)
 
-# The authoritative workflow generates/migrates frontend tests after the native
-# product applicators. Arrange for final native compatibility and portability
-# passes to run last, while all temporary scripts still exist.
+# The authoritative workflow generates/migrates frontend and native tests after
+# the product applicators. Run final compatibility, portability, and compile
+# repairs last while every one-shot helper still exists.
 test_migration = ROOT / "scripts/agent-pr55-python-test-migrations.py"
 test_source = test_migration.read_text()
 hook = '''\n\n# Final native contract/test alignment runs after all generated test rewrites.\nimport runpy\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-final-compat.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/agent-pr55-native-preset-sync.py"), run_name="__main__")\nrunpy.run_path(str(ROOT / "scripts/pr55-native-compile-final.py"), run_name="__main__")\n'''
