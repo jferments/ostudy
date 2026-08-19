@@ -1,0 +1,64 @@
+name: Apply PR 55 UI tranche
+
+on:
+  push:
+    branches: [agent/ui-ai-semantic-generation-overhaul]
+    paths:
+      - scripts/agent-pr55-phase1-3.py
+      - .github/workflows/agent-apply-pr55-phase1-3.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-apply-pr55-phase1-3
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply route, responsive, practice, and tutorial changes
+        run: python3 scripts/agent-pr55-phase1-3.py
+
+      - name: Remove one-shot applicator
+        run: git rm scripts/agent-pr55-phase1-3.py .github/workflows/agent-apply-pr55-phase1-3.yml
+
+      - name: Format changed sources
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --write \
+            src/App.tsx \
+            src/controllers/useAppController.ts \
+            src/ipc/settings.ts \
+            src/navigation/flashcardsRoutes.ts \
+            src/screens/DecksScreen.tsx \
+            src/screens/PracticeScreen.tsx \
+            src/screens/cards/BulkEntryModal.tsx \
+            src/screens/flashcards/DeckLibraryWorkspace.tsx \
+            src/screens/flashcards/FlashcardsWorkspace.tsx \
+            src/screens/flashcards/TransferWorkspace.tsx \
+            src/screens/practice/PracticeSetup.tsx \
+            src/screens/settings/AppearanceSettings.tsx \
+            src/screens/SettingsScreen.tsx \
+            src/ui/tutorials/TourProvider.tsx
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Commit implementation
+        run: |
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: simplify flashcard workflows and guidance"
+          git push origin HEAD:agent/ui-ai-semantic-generation-overhaul
