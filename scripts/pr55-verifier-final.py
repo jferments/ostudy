@@ -22,8 +22,14 @@ if import_line not in source:
     else:
         source = import_line + "\n\n" + source
 
-# The permanent verifier already defines requireText(condition, message); reuse
-# that error-reporting contract instead of injecting a second undefined assert.
+# Keep the added architecture checks self-contained. Reuse requireText when the
+# generated verifier already supplies it; otherwise define the same minimal
+# boolean contract immediately after imports.
+if "function requireText(" not in source and "const requireText =" not in source:
+    anchor = import_line + "\n"
+    helper = '''\nfunction requireText(condition, message) {\n  if (!condition) throw new Error(message);\n}\n'''
+    source = source.replace(anchor, anchor + helper, 1)
+
 for message in [
     "AI setup must remain ephemeral until model commit",
     "AI task policy and prompt presets require dedicated native tables",
