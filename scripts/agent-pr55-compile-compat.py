@@ -136,8 +136,10 @@ populate_rust_literals(
     '''prompt_policy_hash: "test-policy".to_string(),''',
 )
 
-# Remove references to the intentionally deleted density and Create Cards APIs
-# from bundled fixtures rather than retaining no-op compatibility fields.
+# Remove only the retired density and Create Cards component APIs from bundled
+# fixtures. The ordinary word "create" remains valid for deck/folder/dialog
+# modes and for legacy checkpoint normalization, so it must never be stripped
+# globally from TypeScript source.
 for file in (ROOT / "src").rglob("*"):
     if file.suffix not in {".ts", ".tsx"}:
         continue
@@ -145,9 +147,6 @@ for file in (ROOT / "src").rglob("*"):
     updated = re.sub(r'^\s*deckViewDensity:\s*"(?:comfortable|compact)",?\n', "", text, flags=re.M)
     updated = re.sub(r'^\s*onCreateCards=\{[^\n]*\}\n', "", updated, flags=re.M)
     updated = re.sub(r'^\s*onBulkAdd=\{[^\n]*\}\n', "", updated, flags=re.M)
-    updated = updated.replace('"create",\n', "")
-    updated = updated.replace(', "create"', "")
-    updated = updated.replace('"create", ', "")
     if updated != text:
         file.write_text(updated)
 
