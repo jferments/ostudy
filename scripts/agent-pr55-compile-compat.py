@@ -205,6 +205,19 @@ text = text.replace(
     'ROOT = pathlib.Path(os.environ.get("GITHUB_WORKSPACE", pathlib.Path.cwd())).resolve()',
     1,
 )
+duplicate_verifier_block = '''const shell = read("src/AppShell.module.css");
+requireText(shell.includes("max-width: 1180px"), "Tablet shell mode is missing");
+const navigation = read("src/components/NavigationSidebar.module.css");
+requireText(navigation.includes("max-width: 1180px"), "Tablet navigation rail is missing");
+const shell = read("src/AppShell.module.css");
+requireText(shell.includes("max-width: 1180px"), "Tablet shell mode is missing");
+const navigation = read("src/components/NavigationSidebar.module.css");
+requireText(navigation.includes("max-width: 1180px"), "Tablet navigation rail is missing");'''
+single_verifier_block = '''const shell = read("src/AppShell.module.css");
+requireText(shell.includes("max-width: 1180px"), "Tablet shell mode is missing");
+const navigation = read("src/components/NavigationSidebar.module.css");
+requireText(navigation.includes("max-width: 1180px"), "Tablet navigation rail is missing");'''
+text = text.replace(duplicate_verifier_block, single_verifier_block, 1)
 path.write_text(text)
 
 # The settings defaults intentionally changed for new installations.
