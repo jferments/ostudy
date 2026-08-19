@@ -87,6 +87,10 @@ jobs:
           do
             python3 "$script"
           done
+          python3 scripts/agent-pr55-native-ai-setup.py
+          python3 scripts/agent-pr55-native-policy-storage.py
+          python3 scripts/agent-pr55-native-learning-coverage.py
+          python3 scripts/agent-pr55-native-postfix.py
           python3 scripts/agent-pr55-test-refresh.py
           python3 scripts/agent-pr55-finalize-tests.py
           python3 scripts/agent-pr55-python-test-migrations.py
@@ -98,6 +102,8 @@ jobs:
           command -v pnpm
           pnpm --version
           pnpm install --frozen-lockfile
+          OSTUDY_REGENERATE_PUBLIC_SCHEMA_MANIFEST=1 \
+            cargo test --manifest-path src-tauri/Cargo.toml regenerate_public_baseline_schema_manifest -- --nocapture
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           node ./scripts/verify-ui-ai-overhaul.mjs
           pnpm exec vitest run
