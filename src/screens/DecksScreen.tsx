@@ -306,17 +306,15 @@ export function DecksScreen({
   }
 
   async function handleDeleteDeck(deck: DeckSummary): Promise<void> {
-    if (settings.confirmDeletions) {
-      const accepted = await confirm({
-        title: `Delete “${deck.name}”?`,
-        description: `This will delete ${deck.generatedCardCount} ${
-          deck.generatedCardCount === 1 ? "card" : "cards"
-        } and their review history after the Undo period.`,
-        confirmLabel: "Delete deck",
-        destructive: true,
-      });
-      if (!accepted) return;
-    }
+    const accepted = await confirm({
+      title: `Delete “${deck.name}”?`,
+      description: `This will delete ${deck.generatedCardCount} ${
+        deck.generatedCardCount === 1 ? "card" : "cards"
+      } and their review history after the Undo period.`,
+      confirmLabel: "Delete deck",
+      destructive: true,
+    });
+    if (!accepted) return;
     try {
       const deletion = await controller.deleteDeck(deck.id);
       if (selectedDeck?.id === deck.id) {
@@ -416,7 +414,6 @@ export function DecksScreen({
       setSelectedDeck(committedDeck);
       setView("detail");
     }
-
     try {
       const deck = committedDeck ?? (await controller.deck(deckId));
       if (!deck) return;
@@ -804,6 +801,14 @@ export function DecksScreen({
                 onClick={() => void handleArchiveDeck(selectedDeck, true)}
               >
                 Archive
+              </button>
+              <button
+                type="button"
+                className="secondary-button danger-text"
+                aria-label={`Delete ${selectedDeck.name}`}
+                onClick={() => void handleDeleteDeck(selectedDeck)}
+              >
+                Delete deck
               </button>
               <button
                 type="button"
