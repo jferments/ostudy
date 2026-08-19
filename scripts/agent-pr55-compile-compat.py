@@ -136,6 +136,18 @@ populate_rust_literals(
     '''prompt_policy_hash: "test-policy".to_string(),''',
 )
 
+# Python's regular-expression replacement-string parser interprets backslash
+# escapes even when the source template itself is a raw string. Normalize the
+# generated Rust character literals after prompt-policy insertion so rustfmt and
+# rustc receive literal '\n' and '\t' escapes rather than embedded controls.
+path = ROOT / "src-tauri/src/ai/document_intelligence.rs"
+text = path.read_text()
+bad_character_literals = "matches!(character, '\n' | '\t')"
+good_character_literals = r"matches!(character, '\n' | '\t')"
+if bad_character_literals in text:
+    text = text.replace(bad_character_literals, good_character_literals)
+path.write_text(text)
+
 # Remove only the retired density and Create Cards component APIs from bundled
 # fixtures. The ordinary word "create" remains valid for deck/folder/dialog
 # modes and for legacy checkpoint normalization, so it must never be stripped
