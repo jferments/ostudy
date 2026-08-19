@@ -1,0 +1,165 @@
+name: Finalize PR 55 clean product tree
+
+on:
+  push:
+    branches: [agent/ui-ai-semantic-generation-overhaul]
+    paths:
+      - .github/workflows/agent-finalize-pr55-v2.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: agent-finalize-pr55-clean-tree
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 360
+    env:
+      CI: "true"
+      CARGO_TERM_COLOR: always
+      OSTUDY_DIAGNOSTICS_ACTIVE: "1"
+      OSTUDY_DIAGNOSTICS_AUTOMATIC: "1"
+      OSTUDY_KEEP_FAILURE_ARTIFACTS: "1"
+      OSTUDY_FORCE_CHECK: "1"
+      BRANCH_NAME: agent/ui-ai-semantic-generation-overhaul
+      PR_NUMBER: "55"
+    steps:
+      - name: Check out latest branch state
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Resolve latest remote clean product tree
+        id: source
+        continue-on-error: true
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin "$BRANCH_NAME"
+          git reset --hard FETCH_HEAD
+          rm -f .github/workflows/agent-finalize-pr55-v2.yml
+          if find scripts .github/workflows -maxdepth 1 -type f \
+            \( -name 'agent-pr55-*' -o -name 'agent-apply-pr55-*' -o -name 'agent-source-bundle.yml' \) \
+            | grep -q .; then
+            echo "Temporary implementation automation remains." >&2
+            exit 1
+          fi
+          test -f scripts/verify-ui-ai-overhaul.mjs
+          node scripts/verify-ui-ai-overhaul.mjs
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          echo "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT=$RUNNER_TEMP/ostudy-diagnostics" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/.cache/ostudy/gradle" "$HOME/.cache/ostudy/cargo-target"
+
+      - name: Expose runner toolchains
+        if: steps.source.outcome == 'success'
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Qualify Linux/Tauri and Android
+        id: qualification
+        if: steps.source.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -Eeuo pipefail
+          set -o pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          bash ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/pr55-linux-full.log"
+          bash ./scripts/android-test.sh 2>&1 | tee "$RUNNER_TEMP/pr55-android-test.log"
+          bash ./scripts/android-emulator-smoke.sh \
+            --artifacts "$RUNNER_TEMP/pr55-android-smoke" \
+            2>&1 | tee "$RUNNER_TEMP/pr55-android-smoke.log"
+          bash ./scripts/check-static.sh
+          pnpm exec prettier --check 'src/**/*.{ts,tsx,css}' 'docs/**/*.md' 'scripts/*.mjs'
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          git diff --check
+
+      - name: Remove this finalizer from the latest remote tree
+        if: always()
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin "$BRANCH_NAME"
+          git reset --hard FETCH_HEAD
+          rm -f .github/workflows/agent-finalize-pr55-v2.yml
+          git add -A
+          if git diff --cached --quiet; then
+            echo "FINAL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          git config user.name "ostudy automation"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "chore: remove PR 55 clean-tree finalizer"
+          git push origin HEAD:"$BRANCH_NAME"
+          echo "FINAL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Upload bounded failure evidence
+        if: steps.source.outcome != 'success' || steps.qualification.outcome != 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pr55-clean-tree-finalization-${{ env.SOURCE_SHA || github.sha }}
+          path: |
+            ${{ runner.temp }}/pr55-linux-full.log
+            ${{ runner.temp }}/pr55-android-test.log
+            ${{ runner.temp }}/pr55-android-smoke.log
+            ${{ runner.temp }}/pr55-android-smoke/**
+            ${{ runner.temp }}/ostudy-diagnostics/**
+            src-tauri/gen/android/app/build/reports/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Post exact outcome and mark ready only on complete success
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          QUALIFICATION_OUTCOME: ${{ steps.qualification.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node <<'NODE'
+          const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+          const pullNumber = Number(process.env.PR_NUMBER);
+          const passed = process.env.SOURCE_OUTCOME === 'success' && process.env.QUALIFICATION_OUTCOME === 'success';
+          const sourceSha = process.env.SOURCE_SHA || process.env.GITHUB_SHA;
+          const finalSha = process.env.FINAL_SHA || sourceSha;
+          const headers = {
+            accept: 'application/vnd.github+json',
+            authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+            'content-type': 'application/json',
+            'x-github-api-version': '2022-11-28',
+          };
+          async function request(url, options = {}) {
+            const response = await fetch(url, { ...options, headers: { ...headers, ...(options.headers || {}) } });
+            if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+            return response.status === 204 ? null : response.json();
+          }
+          const body = passed
+            ? `## PR #55 clean-tree qualification passed\n\n- Product source: \`${sourceSha}\`\n- Published head: \`${finalSha}\`\n- Linux/Tauri full gate: passed\n- Android compile/package: passed\n- Android emulator smoke: passed\n- Static/formatting contracts: passed\n- Evidence: ${process.env.RUN_URL}`
+            : `## PR #55 clean-tree qualification did not pass\n\n- Source examined: \`${sourceSha}\`\n- Source gate: ${process.env.SOURCE_OUTCOME}\n- Full qualification: ${process.env.QUALIFICATION_OUTCOME || 'not run'}\n- The PR remains draft.\n- Evidence: ${process.env.RUN_URL}`;
+          await request(`https://api.github.com/repos/${owner}/${repo}/issues/${pullNumber}/comments`, {
+            method: 'POST', body: JSON.stringify({ body }),
+          });
+          if (passed) {
+            const pr = await request(`https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`);
+            if (pr.draft) {
+              await request('https://api.github.com/graphql', {
+                method: 'POST',
+                body: JSON.stringify({
+                  query: 'mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { id isDraft } } }',
+                  variables: { id: pr.node_id },
+                }),
+              });
+            }
+          }
+          NODE
+
+      - name: Preserve failure conclusion
+        if: steps.source.outcome != 'success' || steps.qualification.outcome != 'success'
+        run: exit 1
