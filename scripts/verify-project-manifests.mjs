@@ -182,7 +182,9 @@ const migrationFiles = (await readdir(migrationDirectory))
   .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
   .sort();
 const registry = new Map();
-for (const match of database.matchAll(/Migration\s*\{([\s\S]*?)\},/gu)) {
+const migrationRegistrySource =
+  database.split("const MIGRATIONS:")[1]?.split("pub(crate) const LATEST_SCHEMA_VERSION")[0] ?? "";
+for (const match of migrationRegistrySource.matchAll(/Migration\s*\{([\s\S]*?)\}/gu)) {
   const body = match[1];
   const version = Number(body.match(/version:\s*(\d+)/u)?.[1]);
   const checksum = body.match(/checksum:\s*"([0-9a-f]{64})"/u)?.[1];
@@ -213,12 +215,16 @@ const latest = Number(database.match(/LATEST_SCHEMA_VERSION:\s*i64\s*=\s*(\d+)/u
 const maximumMigration = Math.max(...migrationFiles.map((file) => Number(file.slice(0, 4))));
 equal("latest schema version", latest, maximumMigration);
 
-const releaseFixture = await read("src-tauri", "tests", "fixtures", "v0.1.0.sql");
-requireText("0.1.0 release fixture", releaseFixture, [
-  "Immutable database fixture captured for the ostudy 0.1.0 release",
-  "CREATE TABLE schema_migrations",
-  "PRAGMA user_version = 3",
-]);
+const publicBaselineManifest = JSON.parse(
+  await read("src-tauri", "tests", "fixtures", "public-baseline-schema.json"),
+);
+equal("public schema lineage", publicBaselineManifest.schemaLineage, "ostudy-public-v1");
+equal("public schema fixture version", publicBaselineManifest.schemaVersion, 1);
+equal(
+  "public baseline fixture checksum",
+  publicBaselineManifest.baselineSha256,
+  registry.get(1)?.checksum,
+);
 
 requireText("check-static.sh", checkStatic, [
   "verify-project-manifests.mjs",
@@ -281,7 +287,8 @@ for (const requiredPath of [
   "src-tauri/src/system_resources.rs",
   "src-tauri/src/document_backup.rs",
   "src-tauri/src/ai/document_intelligence.rs",
-  "src-tauri/tests/fixtures/v0.1.0.sql",
+  "src-tauri/tests/fixtures/public-baseline-schema.json",
+  "scripts/reset-pre-public-data.sh",
   "src-tauri/tests/fixtures/document-generation/simple-text.pdf",
   "docs/decisions/0017-managed-pdf-flashcard-generation.md",
   "docs/decisions/0018-structured-document-intelligence.md",

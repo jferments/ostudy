@@ -1,3 +1,5 @@
+use std::sync::{LazyLock, RwLock};
+
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tauri::State;
@@ -28,7 +30,21 @@ const FONT_PRESETS: &[&str] = &[
 const MOTION_PREFERENCES: &[&str] = &["system", "full", "reduced", "none"];
 const MATERIAL_PREFERENCES: &[&str] = &["automatic", "rich", "simple"];
 const DECK_VIEW_DENSITIES: &[&str] = &["comfortable", "compact"];
+const AI_REASONING_EFFORTS: &[&str] = &[
+    "automatic",
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+];
+const DEFAULT_AI_REASONING_EFFORT: &str = "low";
 const MAX_DAILY_LIMIT: i64 = 10_000;
+
+static ACTIVE_AI_REASONING_EFFORT: LazyLock<RwLock<String>> =
+    LazyLock::new(|| RwLock::new(DEFAULT_AI_REASONING_EFFORT.to_string()));
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -49,6 +65,7 @@ pub struct AppSettingsDto {
     pub desired_retention: f64,
     pub daily_new_limit: i64,
     pub daily_review_limit: i64,
+    pub ai_reasoning_effort: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -74,6 +91,7 @@ pub fn save_settings(
 ) -> Result<AppSettingsDto, CommandError> {
     validate_settings(&input)?;
     database.with_connection(|connection| save_settings_in_connection(connection, &input))?;
+    publish_ai_reasoning_effort(&input.ai_reasoning_effort);
     Ok(input)
 }
 
@@ -105,6 +123,8 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         Some(value) => value,
         None => legacy_motion_preference(connection)?,
     };
+    let ai_reasoning_effort = load_ai_reasoning_effort(connection)?;
+    publish_ai_reasoning_effort(&ai_reasoning_effort);
     Ok(AppSettingsDto {
         theme: get_setting(connection, "theme", "dark".to_string())?,
         ui_font: get_font_setting(connection, "uiFont")?,
@@ -126,7 +146,36 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         desired_retention: get_setting(connection, "desiredRetention", 0.90_f64)?,
         daily_new_limit: get_setting(connection, "dailyNewLimit", 20_i64)?,
         daily_review_limit: get_setting(connection, "dailyReviewLimit", 200_i64)?,
+        ai_reasoning_effort,
     })
+}
+
+pub(crate) fn load_ai_reasoning_effort(connection: &Connection) -> Result<String, CommandError> {
+    let value = get_setting(
+        connection,
+        "aiReasoningEffort",
+        DEFAULT_AI_REASONING_EFFORT.to_string(),
+    )?;
+    validate_choice(
+        &value,
+        AI_REASONING_EFFORTS,
+        "invalid_ai_reasoning_effort",
+        "Select an available document AI reasoning level.",
+    )?;
+    Ok(value)
+}
+
+pub(crate) fn current_ai_reasoning_effort() -> String {
+    ACTIVE_AI_REASONING_EFFORT
+        .read()
+        .map(|value| value.clone())
+        .unwrap_or_else(|_| DEFAULT_AI_REASONING_EFFORT.to_string())
+}
+
+fn publish_ai_reasoning_effort(value: &str) {
+    if let Ok(mut active) = ACTIVE_AI_REASONING_EFFORT.write() {
+        *active = value.to_string();
+    }
 }
 
 fn legacy_motion_preference(connection: &Connection) -> Result<String, CommandError> {
@@ -248,6 +297,10 @@ fn save_settings_in_connection(
             "dailyReviewLimit",
             serde_json::to_string(&settings.daily_review_limit),
         ),
+        (
+            "aiReasoningEffort",
+            serde_json::to_string(&settings.ai_reasoning_effort),
+        ),
     ];
     for (key, serialized) in entries {
         let serialized = serialized.map_err(CommandError::serialization)?;
@@ -297,6 +350,12 @@ fn validate_settings(settings: &AppSettingsDto) -> Result<(), CommandError> {
         DECK_VIEW_DENSITIES,
         "invalid_deck_view_density",
         "Select an available deck-list density.",
+    )?;
+    validate_choice(
+        &settings.ai_reasoning_effort,
+        AI_REASONING_EFFORTS,
+        "invalid_ai_reasoning_effort",
+        "Select an available document AI reasoning level.",
     )?;
     if !(80..=140).contains(&settings.ui_scale) {
         return Err(CommandError::new(
@@ -369,16 +428,22 @@ mod tests {
         assert_eq!(settings.card_font, "plex");
         assert_eq!(settings.daily_new_limit, 20);
         assert_eq!(settings.daily_review_limit, 200);
+        assert_eq!(settings.ai_reasoning_effort, "low");
+        assert_eq!(current_ai_reasoning_effort(), "low");
         settings.daily_new_limit = 12;
         settings.daily_review_limit = 80;
+        settings.ai_reasoning_effort = "none".to_string();
         database
             .with_connection(|connection| save_settings_in_connection(connection, &settings))
             .expect("settings should save");
+        publish_ai_reasoning_effort(&settings.ai_reasoning_effort);
         let loaded = database
             .with_connection(load_settings)
             .expect("settings should reload");
         assert_eq!(loaded.daily_new_limit, 12);
         assert_eq!(loaded.daily_review_limit, 80);
+        assert_eq!(loaded.ai_reasoning_effort, "none");
+        assert_eq!(current_ai_reasoning_effort(), "none");
     }
 
     #[test]

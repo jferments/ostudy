@@ -6,6 +6,7 @@ import type { EditorDraftCommitRef } from "./drafts";
 export type AiProviderKind =
   | "llama_cpp"
   | "deepseek"
+  | "openrouter"
   | "ollama"
   | "openai"
   | "gemini"
@@ -24,6 +25,7 @@ export type AiProbeOverallStatus = "verified" | "partial" | "failed";
 export type AiProbePhaseStatus = "passed" | "failed" | "skipped";
 export type AiCapabilityStatus = "supported" | "unsupported" | "unknown";
 export type AiCapabilitySource = "declared" | "probed";
+export type AiReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface AiProviderCatalogEntry {
   providerKind: AiProviderKind;
@@ -65,6 +67,7 @@ export interface AiProviderProfileDetail extends AiProviderProfileSummary {
   baseUrlEditable: boolean;
   authMode: AiAuthMode;
   allowInsecureHttp: boolean;
+  requireZeroDataRetention?: boolean;
   requestTimeoutMs: number;
   credentialEpoch: number;
   createdAt: number;
@@ -78,6 +81,7 @@ export interface AiProfileDraft {
   authMode: AiAuthMode;
   enabled: boolean;
   allowInsecureHttp: boolean;
+  requireZeroDataRetention?: boolean;
   requestTimeoutMs: number;
 }
 
@@ -89,10 +93,21 @@ export interface AiTaskDefaults {
   flashcardGenerationProfileId: string | null;
 }
 
+export interface AiProviderModelReasoning {
+  supportedEfforts: AiReasoningEffort[] | null;
+  defaultEffort: AiReasoningEffort | null;
+  defaultEnabled: boolean | null;
+  supportsMaxTokens: boolean;
+  mandatory: boolean;
+}
+
 export interface AiProviderModel {
   id: string;
   displayName: string;
   ownedBy: string | null;
+  /** Native OpenRouter catalogs return these; optional keeps older test fixtures source-compatible. */
+  contextWindowTokens?: number | null;
+  reasoning?: AiProviderModelReasoning | null;
 }
 
 export interface AiProviderModels {
@@ -184,6 +199,7 @@ export async function updateAiProviderProfile(
       authMode: input.authMode,
       enabled: input.enabled,
       allowInsecureHttp: input.allowInsecureHttp,
+      requireZeroDataRetention: input.requireZeroDataRetention ?? false,
       requestTimeoutMs: input.requestTimeoutMs,
       editorDraft: input.editorDraft,
     },

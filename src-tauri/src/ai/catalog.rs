@@ -6,12 +6,14 @@ pub const DEFAULT_TIMEOUT_MS: i64 = 60_000;
 pub const MIN_TIMEOUT_MS: i64 = 1_000;
 pub const MAX_TIMEOUT_MS: i64 = 300_000;
 pub const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/";
+pub const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1/";
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     LlamaCpp,
     Deepseek,
+    Openrouter,
     Ollama,
     Openai,
     Gemini,
@@ -23,6 +25,7 @@ impl ProviderKind {
         match self {
             Self::LlamaCpp => "llama_cpp",
             Self::Deepseek => "deepseek",
+            Self::Openrouter => "openrouter",
             Self::Ollama => "ollama",
             Self::Openai => "openai",
             Self::Gemini => "gemini",
@@ -34,6 +37,7 @@ impl ProviderKind {
         match value {
             "llama_cpp" => Ok(Self::LlamaCpp),
             "deepseek" => Ok(Self::Deepseek),
+            "openrouter" => Ok(Self::Openrouter),
             "ollama" => Ok(Self::Ollama),
             "openai" => Ok(Self::Openai),
             "gemini" => Ok(Self::Gemini),
@@ -46,17 +50,22 @@ impl ProviderKind {
     }
 
     pub fn implemented(self) -> bool {
-        matches!(self, Self::LlamaCpp | Self::Deepseek)
+        matches!(self, Self::LlamaCpp | Self::Deepseek | Self::Openrouter)
     }
 
     pub fn fixed_base_url(self) -> Option<&'static str> {
-        matches!(self, Self::Deepseek).then_some(DEEPSEEK_BASE_URL)
+        match self {
+            Self::Deepseek => Some(DEEPSEEK_BASE_URL),
+            Self::Openrouter => Some(OPENROUTER_BASE_URL),
+            _ => None,
+        }
     }
 
     pub fn default_base_url(self) -> &'static str {
         match self {
             Self::LlamaCpp => "http://127.0.0.1:8080/",
             Self::Deepseek => DEEPSEEK_BASE_URL,
+            Self::Openrouter => OPENROUTER_BASE_URL,
             Self::Ollama => "http://127.0.0.1:11434/",
             Self::Openai => "https://api.openai.com/",
             Self::Gemini => "https://generativelanguage.googleapis.com/",
@@ -67,7 +76,9 @@ impl ProviderKind {
     pub fn default_auth_mode(self) -> AuthMode {
         match self {
             Self::LlamaCpp | Self::Ollama => AuthMode::None,
-            Self::Deepseek | Self::Openai | Self::Gemini | Self::Claude => AuthMode::Bearer,
+            Self::Deepseek | Self::Openrouter | Self::Openai | Self::Gemini | Self::Claude => {
+                AuthMode::Bearer
+            }
         }
     }
 
@@ -75,6 +86,7 @@ impl ProviderKind {
         match self {
             Self::LlamaCpp => "llama.cpp / Unsloth GGUF",
             Self::Deepseek => "DeepSeek",
+            Self::Openrouter => "OpenRouter",
             Self::Ollama => "Ollama",
             Self::Openai => "OpenAI",
             Self::Gemini => "Gemini",
@@ -148,6 +160,7 @@ pub fn provider_catalog() -> Vec<ProviderCatalogEntryDto> {
     [
         ProviderKind::LlamaCpp,
         ProviderKind::Deepseek,
+        ProviderKind::Openrouter,
         ProviderKind::Ollama,
         ProviderKind::Openai,
         ProviderKind::Gemini,
@@ -162,6 +175,9 @@ pub fn provider_catalog() -> Vec<ProviderCatalogEntryDto> {
                 "Connect to an existing llama.cpp server, including GGUF models exported by Unsloth."
             }
             ProviderKind::Deepseek => "Connect to DeepSeek's official cloud API.",
+            ProviderKind::Openrouter => {
+                "Use one OpenRouter API key to select from its account-visible model catalog."
+            }
             ProviderKind::Ollama => "Native Ollama support is planned for a later AI stage.",
             ProviderKind::Openai => "OpenAI Responses support is planned for a later AI stage.",
             ProviderKind::Gemini => "Gemini support is planned for a later AI stage.",

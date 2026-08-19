@@ -278,15 +278,23 @@ expectContains(
   'generated_settings="$ROOT_DIR/src-tauri/gen/android/tauri.settings.gradle"',
   "transient Tauri Gradle settings guard",
 );
-expectContains(
+expectOrdered(
   androidTest,
-  "bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge\nverify_gradle_contracts",
-  "Tauri build before direct Gradle qualification",
+  [
+    "bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge",
+    'ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Tauri Android build materialization"',
+    "verify_gradle_contracts",
+  ],
+  "guarded Tauri build before direct Gradle qualification",
 );
-expectContains(
+expectOrdered(
   androidTest,
-  "bash ./scripts/android-emulator-smoke.sh\n  verify_gradle_contracts",
-  "emulator Tauri build before direct Gradle qualification",
+  [
+    "bash ./scripts/android-emulator-smoke.sh",
+    'ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android Emulator smoke qualification"',
+    "verify_gradle_contracts",
+  ],
+  "guarded emulator build before direct Gradle qualification",
 );
 if (androidTest.includes(":app:rustBuild")) {
   failures.push("android-test.sh must not invoke generated Tauri rustBuild tasks directly");
@@ -431,6 +439,18 @@ console.log(
 
 function expectContains(text, value, label) {
   if (!text.includes(value)) failures.push(`Missing ${label}`);
+}
+
+function expectOrdered(text, values, label) {
+  let previous = -1;
+  for (const value of values) {
+    const index = text.indexOf(value, previous + 1);
+    if (index < 0) {
+      failures.push(`Missing ${label}: ${value}`);
+      return;
+    }
+    previous = index;
+  }
 }
 
 async function read(path) {

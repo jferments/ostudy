@@ -16,6 +16,7 @@ plugins/ostudy-platform/permissions/schemas/
 plugins/ostudy-platform/android/.tauri/
 plugins/ostudy-platform/android/build/
 artifacts/
+.artifacts/
 .android-cargo-target/
 .android-emulator.pid
 *.log

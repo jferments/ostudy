@@ -9,6 +9,7 @@ import { Tabs, type TabDefinition } from "../ui/primitives/Tabs";
 import { AiLlmSettings } from "./settings/AiLlmSettings";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { DefaultAiModelSettings } from "./settings/DefaultAiModelSettings";
+import { DiagnosticsSettings } from "./settings/DiagnosticsSettings";
 import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
 import { StorageBackupSettings } from "./settings/StorageBackupSettings";
 
@@ -20,7 +21,7 @@ interface SettingsScreenProps {
   showToast: ShowToast;
 }
 
-type SettingsTab = "storage" | "appearance" | "ai" | "review";
+type SettingsTab = "storage" | "appearance" | "ai" | "review" | "diagnostics";
 
 const DEFAULTS: AppSettings = {
   theme: "dark",
@@ -39,6 +40,7 @@ const DEFAULTS: AppSettings = {
   desiredRetention: 0.9,
   dailyNewLimit: 20,
   dailyReviewLimit: 200,
+  aiReasoningEffort: "low",
 };
 
 export function SettingsScreen({
@@ -101,6 +103,7 @@ export function SettingsScreen({
       });
     }
     if (activeTab === "storage") update({ confirmDeletions: DEFAULTS.confirmDeletions });
+    if (activeTab === "ai") update({ aiReasoningEffort: DEFAULTS.aiReasoningEffort });
   }
 
   async function persist(): Promise<void> {
@@ -109,7 +112,10 @@ export function SettingsScreen({
     setIsSaving(true);
     setErrorMessage(null);
     try {
-      const saved = await saveSettings(draft);
+      const saved = await saveSettings({
+        ...draft,
+        aiReasoningEffort: draft.aiReasoningEffort ?? "low",
+      });
       onSavedSettings(saved);
       setDraft(saved);
       setSavedBaseline(saved);
@@ -139,7 +145,9 @@ export function SettingsScreen({
       panel: (
         <AiLlmSettings
           controller={aiController}
-          sidebarTop={<DefaultAiModelSettings controller={aiController} />}
+          sidebarTop={
+            <DefaultAiModelSettings controller={aiController} settings={draft} update={update} />
+          }
         />
       ),
     },
@@ -148,6 +156,11 @@ export function SettingsScreen({
       label: "Review/Scheduling",
       panel: <ReviewSchedulingSettings draft={draft} update={update} />,
     },
+    {
+      value: "diagnostics",
+      label: "Diagnostics",
+      panel: <DiagnosticsSettings showToast={showToast} />,
+    },
   ];
 
   const defaultsLabel =
@@ -155,7 +168,14 @@ export function SettingsScreen({
       ? "appearance"
       : activeTab === "review"
         ? "scheduling"
-        : "safety";
+        : activeTab === "ai"
+          ? "AI"
+          : "safety";
+  const canRestoreDefaults =
+    activeTab === "appearance" ||
+    activeTab === "review" ||
+    activeTab === "storage" ||
+    activeTab === "ai";
 
   return (
     <div className="screen settings-screen" aria-busy={isSaving || aiController.mutating}>
@@ -165,7 +185,7 @@ export function SettingsScreen({
         compact
         actions={
           <div className="header-actions">
-            {activeTab !== "ai" ? (
+            {canRestoreDefaults ? (
               <button
                 type="button"
                 className="secondary-button"

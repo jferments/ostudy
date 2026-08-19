@@ -1,3 +1,5 @@
+mod openrouter;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -10,9 +12,26 @@ use super::{
     profiles::ProfileSnapshot,
 };
 
-const MAX_MODEL_LIST_BYTES: usize = 512 * 1024;
+pub(crate) fn openrouter_provider_preferences(
+    require_parameters: bool,
+    require_zero_data_retention: bool,
+) -> Value {
+    openrouter::provider_preferences(require_parameters, require_zero_data_retention)
+}
+
+const DEFAULT_MAX_MODEL_LIST_BYTES: usize = 512 * 1024;
+const DEFAULT_MAX_MODELS: usize = 500;
 const MAX_COMPLETION_BYTES: usize = 256 * 1024;
-const MAX_MODELS: usize = 500;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderModelReasoning {
+    pub supported_efforts: Option<Vec<String>>,
+    pub default_effort: Option<String>,
+    pub default_enabled: Option<bool>,
+    pub supports_max_tokens: bool,
+    pub mandatory: bool,
+}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +39,8 @@ pub struct ProviderModel {
     pub id: String,
     pub display_name: String,
     pub owned_by: Option<String>,
+    pub context_window_tokens: Option<i64>,
+    pub reasoning: Option<ProviderModelReasoning>,
 }
 
 #[derive(Clone, Debug)]
@@ -45,34 +66,201 @@ struct StructuredProbePayload {
     echo: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProviderAdapter {
+    LlamaCpp,
+    Deepseek,
+    Openrouter,
+}
+
+impl ProviderAdapter {
+    fn for_kind(kind: ProviderKind) -> Result<Self, AiGatewayError> {
+        match kind {
+            ProviderKind::LlamaCpp => Ok(Self::LlamaCpp),
+            ProviderKind::Deepseek => Ok(Self::Deepseek),
+            ProviderKind::Openrouter => Ok(Self::Openrouter),
+            _ => Err(error(
+                "ai_provider_not_implemented",
+                "This AI provider adapter is not implemented.",
+                false,
+                None,
+            )),
+        }
+    }
+
+    fn model_endpoint(self, profile: &ProfileSnapshot) -> Result<Url, AiGatewayError> {
+        match self {
+            Self::LlamaCpp => llama_openai_endpoint(&profile.base_url, "models"),
+            Self::Deepseek => {
+                join_endpoint(&profile.base_url, "models").map_err(command_to_gateway)
+            }
+            Self::Openrouter => {
+                join_endpoint(&profile.base_url, "models/user").map_err(command_to_gateway)
+            }
+        }
+    }
+
+    fn completion_endpoint(self, profile: &ProfileSnapshot) -> Result<Url, AiGatewayError> {
+        match self {
+            Self::LlamaCpp => llama_openai_endpoint(&profile.base_url, "chat/completions"),
+            Self::Deepseek | Self::Openrouter => {
+                join_endpoint(&profile.base_url, "chat/completions").map_err(command_to_gateway)
+            }
+        }
+    }
+
+    fn model_limits(self) -> (usize, usize) {
+        match self {
+            Self::Openrouter => (openrouter::MAX_MODEL_LIST_BYTES, openrouter::MAX_MODELS),
+            Self::LlamaCpp | Self::Deepseek => (DEFAULT_MAX_MODEL_LIST_BYTES, DEFAULT_MAX_MODELS),
+        }
+    }
+
+    fn text_probe_body(self, profile: &ProfileSnapshot, messages: Value) -> Value {
+        match self {
+            Self::LlamaCpp => json!({
+                "model": profile.model_id,
+                "messages": messages,
+                "temperature": 0,
+                "max_tokens": 64,
+                "stream": false,
+                "reasoning_effort": "none",
+                "chat_template_kwargs": { "enable_thinking": false }
+            }),
+            Self::Deepseek => json!({
+                "model": profile.model_id,
+                "messages": messages,
+                "temperature": 0,
+                "max_tokens": 64,
+                "stream": false,
+                "thinking": { "type": "disabled" }
+            }),
+            Self::Openrouter => openrouter::text_probe_body(
+                &profile.model_id,
+                messages,
+                profile.require_zero_data_retention,
+            ),
+        }
+    }
+
+    fn structured_probe_body(self, profile: &ProfileSnapshot, echo: &str, schema: Value) -> Value {
+        match self {
+            Self::LlamaCpp => json!({
+                "model": profile.model_id,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "Return only the JSON object required by the response schema."
+                    },
+                    {
+                        "role": "user",
+                        "content": format!("Return ok=true and echo exactly {echo}.")
+                    }
+                ],
+                "temperature": 0,
+                "max_tokens": 128,
+                "stream": false,
+                "reasoning_effort": "none",
+                "chat_template_kwargs": { "enable_thinking": false },
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "ostudy_connection_probe",
+                        "strict": true,
+                        "schema": schema
+                    }
+                }
+            }),
+            Self::Deepseek => json!({
+                "model": profile.model_id,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": concat!(
+                            "Return only valid JSON. The object must contain exactly two fields: ",
+                            "ok (the boolean true) and echo (the exact string requested by the user)."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": format!(
+                            "Return this JSON object with no Markdown: {{\"ok\":true,\"echo\":\"{echo}\"}}"
+                        )
+                    }
+                ],
+                "temperature": 0,
+                "max_tokens": 128,
+                "stream": false,
+                "thinking": { "type": "disabled" },
+                "response_format": { "type": "json_object" }
+            }),
+            Self::Openrouter => openrouter::structured_probe_body(
+                &profile.model_id,
+                echo,
+                schema,
+                profile.require_zero_data_retention,
+            ),
+        }
+    }
+}
+
 pub async fn list_models(
     gateway: &AiGateway,
     profile: &ProfileSnapshot,
     bearer: Option<&str>,
 ) -> Result<Vec<ProviderModel>, AiGatewayError> {
-    let url = match profile.provider_kind {
-        ProviderKind::LlamaCpp => llama_openai_endpoint(&profile.base_url, "models")?,
-        ProviderKind::Deepseek => {
-            join_endpoint(&profile.base_url, "models").map_err(command_to_gateway)?
+    let adapter = ProviderAdapter::for_kind(profile.provider_kind)?;
+    let url = adapter.model_endpoint(profile)?;
+    let (maximum_bytes, maximum_models) = adapter.model_limits();
+    crate::logging::debug_target(
+        "ai.provider",
+        "provider_model_discovery_started",
+        "The provider model catalog request started.",
+        json!({
+            "providerKind": profile.provider_kind.as_str(),
+            "maximumBytes": maximum_bytes,
+            "maximumModels": maximum_models,
+        }),
+    );
+    let value = match gateway
+        .get_json(url, bearer, profile.request_timeout_ms, maximum_bytes)
+        .await
+    {
+        Ok(value) => value,
+        Err(error_value)
+            if adapter == ProviderAdapter::Openrouter
+                && error_value.safe.code == "ai_http_not_found" =>
+        {
+            crate::logging::warn_target(
+                "ai.provider.openrouter",
+                "openrouter_user_model_catalog_unavailable",
+                "The account-filtered OpenRouter model catalog was unavailable; ostudy is using the public catalog for this refresh.",
+                json!({}),
+            );
+            let public_url =
+                join_endpoint(&profile.base_url, "models").map_err(command_to_gateway)?;
+            gateway
+                .get_json(
+                    public_url,
+                    bearer,
+                    profile.request_timeout_ms,
+                    maximum_bytes,
+                )
+                .await?
         }
-        _ => {
-            return Err(error(
-                "ai_provider_not_implemented",
-                "This AI provider adapter is not implemented.",
-                false,
-                None,
-            ));
-        }
+        Err(error_value) => return Err(error_value),
     };
-    let value = gateway
-        .get_json(
-            url,
-            bearer,
-            profile.request_timeout_ms,
-            MAX_MODEL_LIST_BYTES,
-        )
-        .await?;
-    parse_model_list(&value)
+    let models = parse_model_list(&value, adapter, maximum_models)?;
+    crate::logging::debug_target(
+        "ai.provider",
+        "provider_model_discovery_completed",
+        "The provider model catalog request completed.",
+        json!({
+            "providerKind": profile.provider_kind.as_str(),
+            "modelCount": models.len(),
+        }),
+    );
+    Ok(models)
 }
 
 pub async fn load_properties(
@@ -91,7 +279,7 @@ pub async fn load_properties(
             url,
             bearer,
             profile.request_timeout_ms,
-            MAX_MODEL_LIST_BYTES,
+            DEFAULT_MAX_MODEL_LIST_BYTES,
         )
         .await
     {
@@ -113,6 +301,7 @@ pub async fn run_text_probe(
     profile: &ProfileSnapshot,
     bearer: Option<&str>,
 ) -> Result<CompletionOutcome, AiGatewayError> {
+    let adapter = ProviderAdapter::for_kind(profile.provider_kind)?;
     let messages = json!([
         {
             "role": "system",
@@ -123,34 +312,8 @@ pub async fn run_text_probe(
             "content": "Reply with exactly OSTUDY_OK and no other text."
         }
     ]);
-    let body = match profile.provider_kind {
-        ProviderKind::LlamaCpp => json!({
-            "model": profile.model_id,
-            "messages": messages,
-            "temperature": 0,
-            "max_tokens": 64,
-            "stream": false,
-            "reasoning_effort": "none",
-            "chat_template_kwargs": { "enable_thinking": false }
-        }),
-        ProviderKind::Deepseek => json!({
-            "model": profile.model_id,
-            "messages": messages,
-            "temperature": 0,
-            "max_tokens": 64,
-            "stream": false,
-            "thinking": { "type": "disabled" }
-        }),
-        _ => {
-            return Err(error(
-                "ai_provider_not_implemented",
-                "This AI provider adapter is not implemented.",
-                false,
-                None,
-            ));
-        }
-    };
-    let outcome = send_completion(gateway, profile, bearer, body).await?;
+    let body = adapter.text_probe_body(profile, messages);
+    let outcome = send_completion(gateway, profile, bearer, adapter, body).await?;
     if outcome.content.trim() != "OSTUDY_OK" {
         let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
         let message = format!(
@@ -167,6 +330,7 @@ pub async fn run_structured_probe(
     bearer: Option<&str>,
     echo: &str,
 ) -> Result<CompletionOutcome, AiGatewayError> {
+    let adapter = ProviderAdapter::for_kind(profile.provider_kind)?;
     let schema = json!({
         "type": "object",
         "additionalProperties": false,
@@ -176,67 +340,8 @@ pub async fn run_structured_probe(
             "echo": { "const": echo }
         }
     });
-    let body = match profile.provider_kind {
-        ProviderKind::LlamaCpp => json!({
-            "model": profile.model_id,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "Return only the JSON object required by the response schema."
-                },
-                {
-                    "role": "user",
-                    "content": format!("Return ok=true and echo exactly {echo}.")
-                }
-            ],
-            "temperature": 0,
-            "max_tokens": 128,
-            "stream": false,
-            "reasoning_effort": "none",
-            "chat_template_kwargs": { "enable_thinking": false },
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "ostudy_connection_probe",
-                    "strict": true,
-                    "schema": schema
-                }
-            }
-        }),
-        ProviderKind::Deepseek => json!({
-            "model": profile.model_id,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": concat!(
-                        "Return only valid JSON. The object must contain exactly two fields: ",
-                        "ok (the boolean true) and echo (the exact string requested by the user)."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": format!(
-                        "Return this JSON object with no Markdown: {{\"ok\":true,\"echo\":\"{echo}\"}}"
-                    )
-                }
-            ],
-            "temperature": 0,
-            "max_tokens": 128,
-            "stream": false,
-            "thinking": { "type": "disabled" },
-            "response_format": { "type": "json_object" }
-        }),
-        _ => {
-            return Err(error(
-                "ai_provider_not_implemented",
-                "This AI provider adapter is not implemented.",
-                false,
-                None,
-            ));
-        }
-    };
-
-    let outcome = send_completion(gateway, profile, bearer, body).await?;
+    let body = adapter.structured_probe_body(profile, echo, schema);
+    let outcome = send_completion(gateway, profile, bearer, adapter, body).await?;
     let parsed: StructuredProbePayload =
         serde_json::from_str(outcome.content.trim()).map_err(|_| {
             error(
@@ -261,22 +366,19 @@ async fn send_completion(
     gateway: &AiGateway,
     profile: &ProfileSnapshot,
     bearer: Option<&str>,
+    adapter: ProviderAdapter,
     body: Value,
 ) -> Result<CompletionOutcome, AiGatewayError> {
-    let url = match profile.provider_kind {
-        ProviderKind::LlamaCpp => llama_openai_endpoint(&profile.base_url, "chat/completions")?,
-        ProviderKind::Deepseek => {
-            join_endpoint(&profile.base_url, "chat/completions").map_err(command_to_gateway)?
-        }
-        _ => {
-            return Err(error(
-                "ai_provider_not_implemented",
-                "This AI provider adapter is not implemented.",
-                false,
-                None,
-            ));
-        }
-    };
+    let url = adapter.completion_endpoint(profile)?;
+    crate::logging::debug_target(
+        "ai.provider",
+        "provider_probe_request_started",
+        "A bounded provider capability probe started.",
+        json!({
+            "providerKind": profile.provider_kind.as_str(),
+            "modelId": profile.model_id.as_str(),
+        }),
+    );
     let value = gateway
         .post_json(
             url,
@@ -286,7 +388,19 @@ async fn send_completion(
             MAX_COMPLETION_BYTES,
         )
         .await?;
-    parse_completion(&value)
+    let outcome = parse_completion(&value, adapter)?;
+    crate::logging::debug_target(
+        "ai.provider",
+        "provider_probe_request_completed",
+        "The bounded provider capability probe completed.",
+        json!({
+            "providerKind": profile.provider_kind.as_str(),
+            "finishReason": outcome.finish_reason.as_deref(),
+            "promptTokens": outcome.prompt_tokens,
+            "completionTokens": outcome.completion_tokens,
+        }),
+    );
+    Ok(outcome)
 }
 
 fn llama_openai_endpoint(base_url: &str, suffix: &str) -> Result<Url, AiGatewayError> {
@@ -313,7 +427,16 @@ fn llama_base_includes_v1(base_url: &str) -> bool {
         .is_some_and(|url| url.path().trim_end_matches('/').ends_with("/v1"))
 }
 
-fn parse_model_list(value: &Value) -> Result<Vec<ProviderModel>, AiGatewayError> {
+fn parse_model_list(
+    value: &Value,
+    adapter: ProviderAdapter,
+    maximum_models: usize,
+) -> Result<Vec<ProviderModel>, AiGatewayError> {
+    if adapter == ProviderAdapter::Openrouter {
+        if let Some(error_value) = openrouter::embedded_error(value) {
+            return Err(error_value);
+        }
+    }
     let data = value.get("data").and_then(Value::as_array).ok_or_else(|| {
         error(
             "ai_provider_protocol_error",
@@ -322,7 +445,7 @@ fn parse_model_list(value: &Value) -> Result<Vec<ProviderModel>, AiGatewayError>
             None,
         )
     })?;
-    if data.len() > MAX_MODELS {
+    if data.len() > maximum_models {
         return Err(error(
             "ai_model_list_too_large",
             "The provider returned more models than ostudy accepts in one response.",
@@ -349,23 +472,52 @@ fn parse_model_list(value: &Value) -> Result<Vec<ProviderModel>, AiGatewayError>
                 None,
             ));
         }
-        let owned_by = item
-            .get("owned_by")
-            .and_then(Value::as_str)
-            .filter(|value| value.len() <= 200 && !value.chars().any(char::is_control))
-            .map(ToString::to_string);
+        let (display_name, owned_by, context_window_tokens, reasoning) =
+            if adapter == ProviderAdapter::Openrouter {
+                (
+                    openrouter::model_display_name(item, id),
+                    openrouter::model_owner(item, id),
+                    openrouter::model_context_window_tokens(item),
+                    openrouter::model_reasoning(item),
+                )
+            } else {
+                (
+                    id.to_string(),
+                    item.get("owned_by")
+                        .and_then(Value::as_str)
+                        .filter(|value| value.len() <= 200 && !value.chars().any(char::is_control))
+                        .map(ToString::to_string),
+                    None,
+                    None,
+                )
+            };
         models.push(ProviderModel {
             id: id.to_string(),
-            display_name: id.to_string(),
+            display_name,
             owned_by,
+            context_window_tokens,
+            reasoning,
         });
     }
-    models.sort_by(|left, right| left.id.cmp(&right.id));
+    models.sort_by(|left, right| {
+        left.display_name
+            .to_ascii_lowercase()
+            .cmp(&right.display_name.to_ascii_lowercase())
+            .then_with(|| left.id.cmp(&right.id))
+    });
     models.dedup_by(|left, right| left.id == right.id);
     Ok(models)
 }
 
-fn parse_completion(value: &Value) -> Result<CompletionOutcome, AiGatewayError> {
+fn parse_completion(
+    value: &Value,
+    adapter: ProviderAdapter,
+) -> Result<CompletionOutcome, AiGatewayError> {
+    if adapter == ProviderAdapter::Openrouter {
+        if let Some(error_value) = openrouter::embedded_error(value) {
+            return Err(error_value);
+        }
+    }
     let choice = value
         .get("choices")
         .and_then(Value::as_array)
@@ -457,13 +609,17 @@ mod tests {
 
     #[test]
     fn parses_and_deduplicates_bounded_model_lists() {
-        let models = parse_model_list(&json!({
-            "data": [
-                { "id": "model-b", "owned_by": "local" },
-                { "id": "model-a" },
-                { "id": "model-a" }
-            ]
-        }))
+        let models = parse_model_list(
+            &json!({
+                "data": [
+                    { "id": "model-b", "owned_by": "local" },
+                    { "id": "model-a" },
+                    { "id": "model-a" }
+                ]
+            }),
+            ProviderAdapter::LlamaCpp,
+            DEFAULT_MAX_MODELS,
+        )
         .expect("model list should parse");
         assert_eq!(
             models
@@ -472,6 +628,42 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["model-a", "model-b"]
         );
+        assert!(models.iter().all(|model| model.reasoning.is_none()));
+    }
+
+    #[test]
+    fn openrouter_models_keep_names_context_and_reasoning_metadata() {
+        let models = parse_model_list(
+            &json!({
+                "data": [{
+                    "id": "deepseek/example",
+                    "name": "DeepSeek Example",
+                    "context_length": 1_310_720,
+                    "reasoning": {
+                        "mandatory": false,
+                        "default_enabled": true,
+                        "supported_efforts": ["max", "high", "low"],
+                        "default_effort": "high"
+                    }
+                }]
+            }),
+            ProviderAdapter::Openrouter,
+            openrouter::MAX_MODELS,
+        )
+        .expect("OpenRouter model list should parse");
+        assert_eq!(models[0].display_name, "DeepSeek Example");
+        assert_eq!(models[0].owned_by.as_deref(), Some("deepseek"));
+        assert_eq!(models[0].context_window_tokens, Some(1_310_720));
+        let reasoning = models[0]
+            .reasoning
+            .as_ref()
+            .expect("reasoning metadata should be retained");
+        assert_eq!(
+            reasoning.supported_efforts.as_deref(),
+            Some(&["max".to_string(), "high".to_string(), "low".to_string()][..])
+        );
+        assert_eq!(reasoning.default_effort.as_deref(), Some("high"));
+        assert!(!reasoning.mandatory);
     }
 
     #[test]
@@ -498,17 +690,20 @@ mod tests {
 
     #[test]
     fn rejects_structurally_empty_completion_responses() {
-        assert!(parse_completion(&json!({ "choices": [] })).is_err());
+        assert!(parse_completion(&json!({ "choices": [] }), ProviderAdapter::LlamaCpp).is_err());
     }
 
     #[test]
     fn accepts_valid_probe_content_even_when_provider_reports_length_finish() {
-        let outcome = parse_completion(&json!({
-            "choices": [{
-                "message": { "content": "OSTUDY_OK" },
-                "finish_reason": "length"
-            }]
-        }))
+        let outcome = parse_completion(
+            &json!({
+                "choices": [{
+                    "message": { "content": "OSTUDY_OK" },
+                    "finish_reason": "length"
+                }]
+            }),
+            ProviderAdapter::LlamaCpp,
+        )
         .expect("valid final content should remain available to semantic validation");
         assert_eq!(outcome.content, "OSTUDY_OK");
         assert_eq!(outcome.finish_reason.as_deref(), Some("length"));

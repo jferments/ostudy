@@ -9,6 +9,7 @@ import { DocumentsScreen } from "./DocumentsScreen";
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
+  getDocumentGenerationProgress: vi.fn(),
   importPdfAndGenerateFlashcards: vi.fn(),
   retryPdfFlashcardGeneration: vi.fn(),
   generateMorePdfFlashcards: vi.fn(),
@@ -85,6 +86,7 @@ describe("DocumentsScreen", () => {
     vi.clearAllMocks();
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([]);
+    vi.mocked(documentIpc.getDocumentGenerationProgress).mockResolvedValue(null);
     vi.mocked(documentIpc.openDocumentSource).mockResolvedValue(undefined);
     vi.mocked(documentIpc.cancelPdfFlashcardGeneration).mockResolvedValue(undefined);
   });
@@ -97,7 +99,7 @@ describe("DocumentsScreen", () => {
     expect(screen.queryByText(/JSON/u)).toBeNull();
   });
 
-  it("uploads one PDF, gives the short long-document toast, and creates a normal deck", async () => {
+  it("uploads one PDF, announces live progress, and creates a normal deck", async () => {
     const completed = makeDocument();
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "pdf_document", detectedKind: "pdf", displayName: "cardiac-physiology.pdf", mediaType: "application/pdf", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
     vi.mocked(documentIpc.importPdfAndGenerateFlashcards).mockResolvedValue({
@@ -116,7 +118,10 @@ describe("DocumentsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Upload PDF" }));
 
     await waitFor(() => {
-      expect(showToast).toHaveBeenCalledWith("info", "Large documents can take several minutes.");
+      expect(showToast).toHaveBeenCalledWith(
+        "info",
+        "Document processing started. Live stage, page, request, and token progress will appear here.",
+      );
       expect(documentIpc.importPdfAndGenerateFlashcards).toHaveBeenCalledWith("1".repeat(32));
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
@@ -160,7 +165,7 @@ describe("DocumentsScreen", () => {
     ]);
     renderDocuments();
 
-    expect(await screen.findByText("Recovering text with OCR (5/12 pages)")).toBeTruthy();
+    expect((await screen.findAllByText("Recovering OCR 5/12")).length).toBeGreaterThan(0);
   });
 
   it("keeps a failed PDF in the library and offers a direct retry", async () => {
@@ -207,7 +212,7 @@ describe("DocumentsScreen", () => {
     renderDocuments();
 
     expect((await screen.findAllByText("Processing")).length).toBeGreaterThan(0);
-    expect(screen.getByText("Extracting text")).toBeTruthy();
+    expect(screen.getAllByText("Extracting document text").length).toBeGreaterThan(0);
   });
 
   it("shows live rendered-page progress once the total page count is known", async () => {
@@ -225,7 +230,7 @@ describe("DocumentsScreen", () => {
     renderDocuments();
 
     expect(await screen.findByText("4/11 rendered")).toBeTruthy();
-    expect(screen.getByText("Rendering pages")).toBeTruthy();
+    expect(screen.getAllByText("Rendering pages 4/11").length).toBeGreaterThan(0);
   });
 
   it("offers an exact stop action while a document generation task is processing", async () => {

@@ -268,6 +268,40 @@ export function DeckLibraryWorkspace({
     }
   }
 
+  async function removeDeck(deck: DeckSummary): Promise<void> {
+    if (isMutating) return;
+    const accepted = await confirm({
+      title: `Delete “${deck.name}”?`,
+      description: `This will delete ${deck.generatedCardCount} ${
+        deck.generatedCardCount === 1 ? "card" : "cards"
+      } and their review history after the Undo period.`,
+      confirmLabel: "Delete deck",
+      destructive: true,
+    });
+    if (!accepted || !beginOrganizationMutation()) return;
+    try {
+      const deletion = await controller.deleteDeck(deck.id);
+      showToast("success", `Deleted “${deck.name}”.`, {
+        label: "Undo",
+        expiresAt: deletion.undoExpiresAt,
+        run: async () => {
+          try {
+            await controller.undo(deletion.undoToken);
+            await refreshLibraryAfterDetail();
+          } catch (error: unknown) {
+            showToast("error", getErrorMessage(error));
+            throw error;
+          }
+        },
+      });
+      await refreshLibraryAfterDetail();
+    } catch (error: unknown) {
+      showToast("error", getErrorMessage(error));
+    } finally {
+      finishOrganizationMutation();
+    }
+  }
+
   async function saveFolder(name: string): Promise<void> {
     const previous = organizationRef.current;
     if (!previous || !folderDraft || isMutating || !beginOrganizationMutation()) return;
@@ -682,6 +716,7 @@ export function DeckLibraryWorkspace({
                       onToggleCollapsed={() => toggleFolder(folder.id)}
                       onOpenDeck={openDeck}
                       onPracticeDeck={onPracticeDeck}
+                      onDeleteDeck={(deck) => void removeDeck(deck)}
                       onRename={() => setFolderDraft({ mode: "rename", folder, name: folder.name })}
                       onDelete={() => void removeFolder(folder)}
                       onMoveDeckPosition={(deck, target) => void moveDeck(deck, folder.id, target)}
@@ -757,6 +792,7 @@ export function DeckLibraryWorkspace({
                     disabled={isMutating}
                     onOpen={() => openDeck(deck.id)}
                     onPractice={() => void onPracticeDeck(deck.id, "library")}
+                    onDelete={() => void removeDeck(deck)}
                     onMovePosition={(target) => void moveDeck(deck, null, target)}
                     onKeyboardMove={(event) =>
                       handleDeckKeyboardMove(event, deck, null, index, unsortedDecks.length)
@@ -805,6 +841,7 @@ export function DeckLibraryWorkspace({
                       archived
                       onOpen={() => openDeck(deck.id)}
                       onPractice={() => undefined}
+                      onDelete={() => void removeDeck(deck)}
                       onMovePosition={() => undefined}
                       onKeyboardMove={() => undefined}
                       onDragStart={() => undefined}
@@ -852,6 +889,7 @@ function FolderSection({
   onToggleCollapsed,
   onOpenDeck,
   onPracticeDeck,
+  onDeleteDeck,
   onRename,
   onDelete,
   onMoveDeckPosition,
@@ -876,6 +914,7 @@ function FolderSection({
   onToggleCollapsed: () => void;
   onOpenDeck: (deckId: string) => void;
   onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
+  onDeleteDeck: (deck: DeckSummary) => void;
   onRename: () => void;
   onDelete: () => void;
   onMoveDeckPosition: (deck: DeckSummary, target: number) => void;
@@ -971,6 +1010,7 @@ function FolderSection({
                 disabled={disabled}
                 onOpen={() => onOpenDeck(deck.id)}
                 onPractice={() => void onPracticeDeck(deck.id, "library")}
+                onDelete={() => onDeleteDeck(deck)}
                 onMovePosition={(target) => onMoveDeckPosition(deck, target)}
                 onKeyboardMove={(event) => onDeckKeyboardMove(event, deck, index, decks.length)}
                 onDragStart={(event) => onDeckDragStart(event, deck)}
@@ -1001,6 +1041,7 @@ function DeckItem({
   archived = false,
   onOpen,
   onPractice,
+  onDelete,
   onMovePosition,
   onKeyboardMove,
   onDragStart,
@@ -1019,6 +1060,7 @@ function DeckItem({
   archived?: boolean;
   onOpen: () => void;
   onPractice: () => void;
+  onDelete: () => void;
   onMovePosition: (target: number) => void;
   onKeyboardMove: (event: KeyboardEvent<HTMLElement>) => void;
   onDragStart: (event: DragEvent<HTMLElement>) => void;
@@ -1077,8 +1119,8 @@ function DeckItem({
           />
         ) : null}
       </button>
-      {!archived ? (
-        <div className={styles.deckActions}>
+      <div className={styles.deckActions}>
+        {!archived ? (
           <Button
             size="small"
             className={styles.practiceButton}
@@ -1087,8 +1129,18 @@ function DeckItem({
           >
             Practice
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+        <button
+          type="button"
+          className={styles.deleteDeckButton}
+          aria-label={`Delete ${deck.name}`}
+          title={`Delete ${deck.name}`}
+          disabled={disabled}
+          onClick={onDelete}
+        >
+          <Icon name="delete" size={18} />
+        </button>
+      </div>
       <span className="sr-only">
         Deck {index + 1} of {count}.
         <button type="button" onClick={() => onMovePosition(Math.max(0, index - 1))}>Move earlier</button>

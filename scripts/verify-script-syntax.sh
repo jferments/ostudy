@@ -10,6 +10,7 @@ while IFS= read -r -d '' script; do
 done < <(
   find "$ROOT_DIR" \
     -path "$ROOT_DIR/.git" -prune -o \
+    -path "$ROOT_DIR/.artifacts" -prune -o \
     -path "$ROOT_DIR/node_modules" -prune -o \
     -path "$ROOT_DIR/src-tauri/target" -prune -o \
     -type f -name '*.sh' -print0
@@ -20,6 +21,7 @@ while IFS= read -r -d '' script; do
 done < <(
   find "$ROOT_DIR" \
     -path "$ROOT_DIR/.git" -prune -o \
+    -path "$ROOT_DIR/.artifacts" -prune -o \
     -path "$ROOT_DIR/node_modules" -prune -o \
     -path "$ROOT_DIR/src-tauri/target" -prune -o \
     -type f \( -name '*.mjs' -o -name '*.cjs' \) -print0
@@ -33,7 +35,7 @@ import pathlib
 import sys
 
 root = pathlib.Path(sys.argv[1])
-excluded = {".git", "node_modules", "target", "gen", "dist"}
+excluded = {".artifacts", ".git", "node_modules", "target", "gen", "dist"}
 checked = 0
 for path in root.rglob("*.py"):
     if any(part in excluded for part in path.parts):

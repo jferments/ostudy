@@ -122,11 +122,12 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             result.transferredCredentialCount === 1 ? " was" : "s were"
           } transferred.`
         : "";
+    const credentialWarning = result.credentialWarning ? ` ${result.credentialWarning}` : "";
     showToast(
-      result.conflictCount > 0 ? "info" : "success",
+      result.conflictCount > 0 || result.credentialWarning ? "info" : "success",
       `Received from ${result.peer.displayName}: ${result.changedRowCount} rows changed${
         result.conflictCount > 0 ? ` and ${result.conflictCount} conflicts need review` : ""
-      }.${credentialCopy}`,
+      }.${credentialCopy}${credentialWarning}`,
     );
   }
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import importlib.util
 from pathlib import Path
 import unittest
@@ -71,6 +72,28 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertEqual(state["schemaVersion"], 1)
         self.assertEqual(state["completed"], smoke.tutorial_versions())
         self.assertEqual(state["dismissed"], {})
+
+    def test_element_polling_retries_one_transient_remote_disconnect(self) -> None:
+        with (
+            mock.patch.object(
+                smoke,
+                "request",
+                side_effect=[
+                    http.client.RemoteDisconnected("connection closed without response"),
+                    {smoke.ELEMENT_KEY: "element-1"},
+                ],
+            ) as request,
+            mock.patch.object(smoke.time, "sleep"),
+        ):
+            element = smoke.find_element(
+                "session-1",
+                "css selector",
+                "main",
+                smoke.deadline_after(1),
+            )
+
+        self.assertEqual(element, "element-1")
+        self.assertEqual(request.call_count, 2)
 
     def test_click_requires_two_stable_hit_tests_before_w3c_click(self) -> None:
         hit = {

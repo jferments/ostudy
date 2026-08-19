@@ -72,17 +72,34 @@ def verify_compact_tabs(session_id: str, width: int) -> None:
 
 def verify_toolbar(session_id: str, width: int, height: int, deadline: float) -> None:
     ui.set_window_rect(session_id, width, height)
-    flashcards = webdriver.find_element(
+    webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-decks']",
+        "button[data-testid='nav-decks'][aria-current='page']",
         deadline,
     )
-    webdriver.click(session_id, flashcards)
     webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
+
+    # The native smoke scripts intentionally share one temporary application
+    # profile so they also exercise durable UI checkpoint restoration. A prior
+    # smoke can therefore leave Flashcards on any workspace tab. Select Decks
+    # explicitly for every viewport instead of relying on test order or a fresh
+    # profile, then wait for React to commit the requested workspace.
+    decks_tab = webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//*[@role='tab' and normalize-space(.)='Decks']",
+        deadline,
+    )
+    webdriver.click(session_id, decks_tab)
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//*[@role='tab' and @aria-selected='true' and normalize-space(.)='Decks']",
+        deadline,
+    )
     verify_compact_tabs(session_id, width)
-    decks = ui.find_workspace_tab(session_id, "Decks", deadline)
-    webdriver.click(session_id, decks)
+
     folders_heading = webdriver.find_element(
         session_id,
         "xpath",

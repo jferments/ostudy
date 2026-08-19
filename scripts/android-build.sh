@@ -57,15 +57,31 @@ bash ./scripts/android-doctor.sh
 node ./scripts/verify-external-file-streaming.mjs
 android_write_local_properties
 
-# The Tauri CLI rewrites parts of the committed generated Android project while
-# materializing a build. Preserve the reviewed manifest template verbatim so a
-# build does not leave the source checkout dirty, including when the build fails.
-manifest="$ROOT_DIR/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
-manifest_backup="$(mktemp)"
-cp -- "$manifest" "$manifest_backup"
+# Tauri's Android build materializer rewrites a small set of committed generated
+# project sources. Preserve the reviewed versions verbatim so a build cannot
+# leave source-control changes behind, including when the Tauri build fails.
+generated_sources=(
+  "src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+  "src-tauri/gen/android/buildSrc/src/main/java/io/github/jferments/ostudy/kotlin/BuildTask.kt"
+)
+generated_backup_root="$(mktemp -d -t ostudy-android-source-backup.XXXXXXXX)"
+for relative in "${generated_sources[@]}"; do
+  [[ -f "$ROOT_DIR/$relative" ]] || {
+    printf 'Expected committed Android source is missing: %s\n' "$relative" >&2
+    rm -rf -- "$generated_backup_root"
+    exit 1
+  }
+  mkdir -p "$generated_backup_root/$(dirname -- "$relative")"
+  cp -- "$ROOT_DIR/$relative" "$generated_backup_root/$relative"
+done
 restore_generated_sources() {
-  cp -- "$manifest_backup" "$manifest"
-  rm -f -- "$manifest_backup"
+  local relative
+  for relative in "${generated_sources[@]}"; do
+    if [[ -f "$generated_backup_root/$relative" ]]; then
+      cp -- "$generated_backup_root/$relative" "$ROOT_DIR/$relative"
+    fi
+  done
+  rm -rf -- "$generated_backup_root"
 }
 trap restore_generated_sources EXIT
 

@@ -207,6 +207,13 @@ def find_element(session_id: str, using: str, value: str, deadline: float) -> st
             if error.error not in RETRYABLE_FIND_ERRORS:
                 raise
             last_error = error
+        except (OSError, json.JSONDecodeError) as error:
+            # Element lookup is a read-only W3C operation. A transient HTTP
+            # disconnect can be retried safely inside the existing deadline;
+            # mutating commands such as clicks and session creation are never
+            # retried here because their response could have been lost after
+            # the operation was already applied.
+            last_error = error
         time.sleep(0.2)
     raise TimeoutError(f"Element was not found: {using}={value}; last error: {last_error}")
 
@@ -239,6 +246,8 @@ def find_elements(
         except WebDriverProtocolError as error:
             if error.error not in RETRYABLE_FIND_ERRORS:
                 raise
+            last_error = error
+        except (OSError, json.JSONDecodeError) as error:
             last_error = error
         time.sleep(0.2)
     raise TimeoutError(

@@ -10,6 +10,7 @@ ostudy is a client of an existing model service. It does not install llama.cpp, 
 | --- | --- | --- |
 | llama.cpp / Unsloth GGUF | Available | Connects to an existing llama.cpp-compatible server and uses the server/model chat template. |
 | DeepSeek | Available | Connects to DeepSeek's official cloud API using the configured credential. |
+| OpenRouter | Available | Uses OpenRouter's fixed official API, account-visible model discovery, strict structured output, and privacy-preserving routing defaults. |
 | Ollama | Planned | Listed in the catalog, but the native adapter is not implemented. |
 | OpenAI | Planned | Listed in the catalog, but the native adapter is not implemented. |
 | Gemini | Planned | Listed in the catalog, but the native adapter is not implemented. |
@@ -25,7 +26,8 @@ A provider profile records nonsecret configuration such as:
 - the normalized endpoint URL;
 - the model identifier;
 - whether authentication is required;
-- request timeout and enabled state;
+- provider inactivity timeout and enabled state;
+- an optional OpenRouter-only zero-data-retention requirement;
 - capability evidence from the most recent successful verification;
 - whether the profile is the default for a supported task.
 
@@ -78,7 +80,7 @@ ostudy never changes providers because a request failed, a model was slow, or a 
 
 The original PDF is stored locally and is not uploaded as an opaque file. ostudy performs local extraction, semantic organization, rendering, and OCR, then sends bounded text context and selected rendered pages when the verified provider/model supports image input. The exact amount depends on document structure, task windows, and provider capability.
 
-The application records safe progress and usage measurements needed to resume or diagnose a job, not raw provider messages or document text in diagnostic exports.
+The application records safe progress and usage measurements needed to resume or diagnose a job, not raw provider messages or document text in diagnostic exports. During streamed document work the profile timeout is an inactivity limit: received SSE heartbeats, reasoning deltas, output deltas, and final usage events prove that the connection is responsive and reset the timer. It is not a maximum duration for a complete generation request.
 
 ## Troubleshooting
 
@@ -95,3 +97,9 @@ When verification fails, check these in order:
 Use profile verification before starting a long document job. A failed profile test should be fixed at the provider boundary rather than retried repeatedly through document generation.
 
 For implementation details, see [AI and document processing](../architecture/ai-and-document-processing.md).
+
+## OpenRouter
+
+Create an **OpenRouter** profile in Settings → AI/LLM, save the API key in the operating-system credential store, retrieve the account-visible model catalog, select a model, and run the connection/capability test. ostudy uses OpenRouter's fixed official API endpoint.
+
+For document generation, ostudy requests strict JSON Schema output only from parameter-compatible endpoints and sets OpenRouter's provider-data-collection policy to `deny`. It explicitly disables provider-side context compression so document windows are not silently changed, and it never enables prompt/body debugging. Enable **Require zero data retention** on a profile to send `provider.zdr=true`; this stronger restriction can reduce endpoint availability, and the connection test reports that as a routing/capability failure rather than silently weakening the request.

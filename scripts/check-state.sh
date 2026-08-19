@@ -8,6 +8,51 @@ ostudy_check_state_key() {
 
 OSTUDY_CHECK_STATE_DIR="${OSTUDY_CHECK_STATE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/ostudy/check-state/$(ostudy_check_state_key)}"
 
+ostudy_capture_worktree_state() {
+  local destination="$1"
+  (
+    cd "$OSTUDY_ROOT_DIR"
+    git status --porcelain=v1 --untracked-files=all --ignore-submodules=none
+  ) > "$destination"
+}
+
+ostudy_report_worktree_baseline() {
+  local baseline="$1"
+  if [[ "${OSTUDY_WORKTREE_BASELINE_REPORTED:-0}" == 1 || ! -s "$baseline" ]]; then
+    return 0
+  fi
+  printf 'NOTE: qualification starts with pre-existing Git-visible worktree state:\n' >&2
+  sed 's/^/  /' "$baseline" >&2
+  printf 'The mutation guard will preserve this exact baseline and fail on additional changes.\n' >&2
+  export OSTUDY_WORKTREE_BASELINE_REPORTED=1
+}
+
+ostudy_assert_worktree_unchanged() {
+  local baseline="$1"
+  local boundary="${2:-qualification boundary}"
+  local current
+  current="$(mktemp -t ostudy-worktree-current.XXXXXXXX)"
+  ostudy_capture_worktree_state "$current"
+  if cmp -s -- "$baseline" "$current"; then
+    rm -f -- "$current"
+    return 0
+  fi
+
+  printf 'ERROR: %s changed Git-visible repository state.\n' "$boundary" >&2
+  printf 'Qualification must not leave tracked changes or new untracked files behind.\n' >&2
+  printf '%s\n' '--- worktree state before boundary' >&2
+  printf '%s\n' '+++ worktree state after boundary' >&2
+  diff -u --label before --label after "$baseline" "$current" >&2 || true
+  rm -f -- "$current"
+  return 1
+}
+
+ostudy_reset_worktree_baseline() {
+  local baseline="$1"
+  ostudy_capture_worktree_state "$baseline"
+  ostudy_report_worktree_baseline "$baseline"
+}
+
 ostudy_check_fingerprint() {
   (
     cd "$OSTUDY_ROOT_DIR"

@@ -157,6 +157,7 @@ describe("SettingsScreen", () => {
       "Backup/Sync",
       "AI/LLM",
       "Review/Scheduling",
+      "Diagnostics",
     ]);
     expect(tabs[0].getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tabpanel").textContent).toContain("Typography");

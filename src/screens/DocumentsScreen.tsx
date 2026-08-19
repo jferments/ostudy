@@ -6,16 +6,19 @@ import {
   cancelPdfFlashcardGeneration,
   deletePdfDocument,
   generateMorePdfFlashcards,
+  getDocumentGenerationProgress,
   importPdfAndGenerateFlashcards,
   listDocuments,
   openDocumentSource,
   retryPdfFlashcardGeneration,
   setDocumentArchived,
+  type DocumentGenerationProgress,
   type DocumentSummary,
 } from "../ipc/documents";
 import { selectExternalImport } from "../platform/files";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { PageHeader } from "../ui/patterns/WorkspacePatterns";
+import progressStyles from "./DocumentGenerationProgress.module.css";
 import styles from "./DocumentsScreen.module.css";
 
 interface DocumentsScreenProps {
@@ -30,6 +33,10 @@ export function DocumentsScreen({
   headerSupplement,
 }: DocumentsScreenProps) {
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
+  const [generationProgress, setGenerationProgress] = useState<
+    Record<string, DocumentGenerationProgress | null>
+  >({});
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const [includeArchived, setIncludeArchived] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -39,10 +46,11 @@ export function DocumentsScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const confirm = useConfirm();
 
-  const hasProcessingDocument = useMemo(
-    () => documents.some((document) => document.lifecycleState === "processing"),
+  const processingDocuments = useMemo(
+    () => documents.filter((document) => document.lifecycleState === "processing"),
     [documents],
   );
+  const hasProcessingDocument = processingDocuments.length > 0;
 
   const refreshDocuments = useCallback(async () => {
     const loaded = await listDocuments(includeArchived);
@@ -50,6 +58,21 @@ export function DocumentsScreen({
     setErrorMessage(null);
     return loaded;
   }, [includeArchived]);
+
+  const refreshLiveProgress = useCallback(async () => {
+    if (processingDocuments.length === 0) {
+      setGenerationProgress({});
+      return;
+    }
+    const entries = await Promise.all(
+      processingDocuments.map(async (document) => {
+        const progress = await getDocumentGenerationProgress(document.id).catch(() => null);
+        return [document.id, progress] as const;
+      }),
+    );
+    setGenerationProgress(Object.fromEntries(entries));
+    setClockNow(Date.now());
+  }, [processingDocuments]);
 
   useEffect(() => {
     let active = true;
@@ -68,11 +91,13 @@ export function DocumentsScreen({
 
   useEffect(() => {
     if (!isUploading && !busyDocumentId && !hasProcessingDocument) return;
-    const timer = window.setInterval(() => {
-      void refreshDocuments().catch(() => undefined);
-    }, 1000);
+    const refresh = () => {
+      void Promise.all([refreshDocuments(), refreshLiveProgress()]).catch(() => undefined);
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 1000);
     return () => window.clearInterval(timer);
-  }, [busyDocumentId, hasProcessingDocument, isUploading, refreshDocuments]);
+  }, [busyDocumentId, hasProcessingDocument, isUploading, refreshDocuments, refreshLiveProgress]);
 
   useEffect(() => {
     if (!cancelingDocumentId) return;
@@ -87,7 +112,7 @@ export function DocumentsScreen({
     const selected = await selectExternalImport("pdf_document");
     if (!selected) return;
 
-    showToast("info", "Large documents can take several minutes.");
+    showToast("info", "Document processing started. Live stage, page, request, and token progress will appear here.");
     setIsUploading(true);
     setErrorMessage(null);
     try {
@@ -297,6 +322,7 @@ export function DocumentsScreen({
           {documents.map((document) => {
             const busy = busyDocumentId === document.id || deletingDocumentId === document.id;
             const canceling = cancelingDocumentId === document.id;
+            const live = generationProgress[document.id] ?? null;
             const canRetry =
               document.generatedDeckId === null &&
               document.lifecycleState !== "processing" &&
@@ -315,7 +341,7 @@ export function DocumentsScreen({
                     </span>
                     {document.lifecycleState === "processing" ? (
                       <span className={styles.processingPhase} aria-live="polite">
-                        {processingPhaseLabel(document, canceling)}
+                        {processingPhaseLabel(document, canceling, live)}
                       </span>
                     ) : null}
                   </div>
@@ -334,22 +360,25 @@ export function DocumentsScreen({
                       <dd>{document.generatedCardCount}</dd>
                     </div>
                     <div>
-                      <dt>Processing</dt>
+                      <dt>{document.lifecycleState === "processing" ? "Running" : "Processing"}</dt>
                       <dd>
                         {document.lifecycleState === "processing"
-                          ? "In progress"
+                          ? formatLiveDuration(live?.startedAt ?? null, clockNow)
                           : formatProcessingDuration(document.processingDurationMs)}
                       </dd>
                     </div>
                     <div>
                       <dt>API tokens</dt>
-                      <dd>{formatApiTokens(document)}</dd>
+                      <dd>{formatApiTokens(document, live)}</dd>
                     </div>
                     <div>
                       <dt>Updated</dt>
                       <dd>{formatDate(document.updatedAt)}</dd>
                     </div>
                   </dl>
+                  {document.lifecycleState === "processing" ? (
+                    <GenerationProgressPanel document={document} progress={live} now={clockNow} />
+                  ) : null}
                   {document.safeErrorMessage ? (
                     <p className={styles.documentError}>{document.safeErrorMessage}</p>
                   ) : null}
@@ -429,6 +458,213 @@ export function DocumentsScreen({
   );
 }
 
+function GenerationProgressPanel({
+  document,
+  progress,
+  now,
+}: {
+  document: DocumentSummary;
+  progress: DocumentGenerationProgress | null;
+  now: number;
+}) {
+  const stage = generationStage(document, progress);
+  const percent = generationPercent(document, progress);
+  const promptTokens = progress?.promptTokens ?? 0;
+  const cacheRatio =
+    promptTokens > 0 && progress
+      ? Math.min(100, (progress.cachedPromptTokens / promptTokens) * 100)
+      : null;
+  return (
+    <div className={progressStyles.panel} aria-live="polite">
+      <div className={progressStyles.heading}>
+        <span>{stage.title}</span>
+        <span>{percent === null ? "Working…" : `${percent}%`}</span>
+      </div>
+      <div
+        className={progressStyles.track}
+        role="progressbar"
+        aria-label="Document generation progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent ?? undefined}
+      >
+        <div className={progressStyles.fill} style={{ width: `${percent ?? 3}%` }} />
+      </div>
+      <div className={progressStyles.detail}>{stage.detail}</div>
+      <dl className={progressStyles.stats}>
+        <div>
+          <dt>Elapsed</dt>
+          <dd>{formatLiveDuration(progress?.startedAt ?? null, now)}</dd>
+        </div>
+        <div>
+          <dt>Requests</dt>
+          <dd>{progress ? progress.providerRequestCount.toLocaleString() : "—"}</dd>
+        </div>
+        <div>
+          <dt>Provider</dt>
+          <dd>{formatProviderActivity(progress, now)}</dd>
+        </div>
+        <div>
+          <dt>Retries</dt>
+          <dd className={progress && progress.retryCount > 0 ? progressStyles.warning : undefined}>
+            {progress ? progress.retryCount.toLocaleString() : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt>Reasoning</dt>
+          <dd>
+            {progress
+              ? `${progress.reasoningEffort} · ${formatTokenCount(progress.reasoningTokens)}`
+              : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt>Prompt / output</dt>
+          <dd>
+            {progress
+              ? `${formatTokenCount(progress.promptTokens)} / ${formatTokenCount(progress.completionTokens)}`
+              : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt>Prompt cache</dt>
+          <dd>
+            {progress && cacheRatio !== null
+              ? `${formatTokenCount(progress.cachedPromptTokens)} (${cacheRatio.toFixed(1)}%)`
+              : "Awaiting usage"}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function formatProviderActivity(
+  progress: DocumentGenerationProgress | null,
+  now: number,
+): string {
+  if (!progress) return "Preparing";
+  const providerAge = activityAgeSeconds(progress.lastProviderActivityAt, now);
+  const modelAge = activityAgeSeconds(progress.lastModelActivityAt, now);
+  switch (progress.providerActivity) {
+    case "streaming":
+      if (modelAge === null) return `Responsive, waiting${activityAgeSuffix(providerAge)}`;
+      if (modelAge < 2) return "Receiving output · now";
+      if (providerAge !== null && providerAge < modelAge) {
+        return `Responsive · output ${formatActivityAge(modelAge)}`;
+      }
+      return `Receiving output · ${formatActivityAge(modelAge)}`;
+    case "responsive":
+      return `Responsive, waiting${activityAgeSuffix(providerAge)}`;
+    case "connecting":
+      return "Connecting";
+    default:
+      return "Preparing";
+  }
+}
+
+function activityAgeSeconds(timestamp: number | null, now: number): number | null {
+  return timestamp === null ? null : Math.max(0, Math.floor((now - timestamp) / 1_000));
+}
+
+function activityAgeSuffix(ageSeconds: number | null): string {
+  return ageSeconds === null ? "" : ` · ${formatActivityAge(ageSeconds)}`;
+}
+
+function formatActivityAge(ageSeconds: number): string {
+  if (ageSeconds < 2) return "now";
+  if (ageSeconds < 60) return `${ageSeconds}s ago`;
+  const minutes = Math.floor(ageSeconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
+}
+
+function generationStage(
+  document: DocumentSummary,
+  progress: DocumentGenerationProgress | null,
+): { title: string; detail: string } {
+  if (document.pageCount === 0) {
+    return { title: "Extracting document text", detail: "Reading the PDF and building semantic source chunks." };
+  }
+  if (document.renderedPageCount < document.pageCount) {
+    return {
+      title: `Rendering pages ${document.renderedPageCount}/${document.pageCount}`,
+      detail: "Preparing local page derivatives for document analysis.",
+    };
+  }
+  if (
+    document.extractionMode === "ocr_fallback" &&
+    document.ocrPageCount > document.ocrCompletedPageCount
+  ) {
+    return {
+      title: `Recovering OCR ${document.ocrCompletedPageCount}/${document.ocrPageCount}`,
+      detail: "Recovering text from pages whose native PDF text layer was unreliable.",
+    };
+  }
+  if (document.outlineWindowCount > 0 && document.outlineCompletedWindowCount < document.outlineWindowCount) {
+    return {
+      title: "Building outline",
+      detail:
+        activeWindowDetail(progress, document.outlineWindowCount) ??
+        "Analyzing bounded source windows for document structure.",
+    };
+  }
+  if (
+    document.generationWindowCount > 0 &&
+    document.generationCompletedWindowCount < document.generationWindowCount
+  ) {
+    return {
+      title: "Generating cards",
+      detail:
+        activeWindowDetail(progress, document.generationWindowCount) ??
+        "Generating study cards from the current bounded source window.",
+    };
+  }
+  if (progress?.phase === "curating") {
+    return {
+      title: "Curating generated cards",
+      detail: "Removing duplicates and low-value candidates before committing the deck.",
+    };
+  }
+  return {
+    title: "Finalizing document generation",
+    detail: "Completing the current bounded task and preparing durable study content.",
+  };
+}
+
+function activeWindowDetail(
+  progress: DocumentGenerationProgress | null,
+  totalWindows: number,
+): string | null {
+  const start = progress?.currentWindow;
+  if (start === null || start === undefined) return null;
+  const end = progress?.currentWindowEnd ?? start;
+  const pages =
+    progress?.currentPageStart !== null && progress?.currentPageStart !== undefined
+      ? ` · pages ${progress.currentPageStart}–${progress.currentPageEnd ?? progress.currentPageStart}`
+      : "";
+  if (end > start) {
+    return `Active windows ${start}–${end} of ${totalWindows}${pages}.`;
+  }
+  return `Window ${start} of ${totalWindows}${pages}.`;
+}
+
+function generationPercent(
+  document: DocumentSummary,
+  progress: DocumentGenerationProgress | null,
+): number | null {
+  if (document.pageCount > 0 && document.renderedPageCount < document.pageCount) {
+    return Math.round((document.renderedPageCount / document.pageCount) * 20);
+  }
+  const totalWindows = document.outlineWindowCount + document.generationWindowCount;
+  if (totalWindows > 0) {
+    const completed = document.outlineCompletedWindowCount + document.generationCompletedWindowCount;
+    return Math.min(98, Math.round(20 + (completed / totalWindows) * 75));
+  }
+  if (progress?.phase === "curating") return 97;
+  return null;
+}
+
 function hasCompletedOcrRecovery(document: DocumentSummary): boolean {
   return (
     document.extractionMode === "ocr_fallback" &&
@@ -474,18 +710,15 @@ function statusLabel(document: DocumentSummary): string {
   }
 }
 
-function processingPhaseLabel(document: DocumentSummary, canceling: boolean): string {
+function processingPhaseLabel(
+  document: DocumentSummary,
+  canceling: boolean,
+  progress: DocumentGenerationProgress | null,
+): string {
   if (canceling) return "Stopping";
   if (document.generatedDeckId !== null) return "Generating additional cards";
-  if (document.pageCount === 0) return "Extracting text";
-  if (document.renderedPageCount < document.pageCount) return "Rendering pages";
-  if (
-    document.extractionMode === "ocr_fallback" &&
-    document.ocrPageCount > document.ocrCompletedPageCount
-  ) {
-    return `Recovering text with OCR (${document.ocrCompletedPageCount}/${document.ocrPageCount} pages)`;
-  }
-  return "Building outline / generating cards";
+  const stage = generationStage(document, progress);
+  return stage.title;
 }
 
 function formatBytes(bytes: number): string {
@@ -508,11 +741,33 @@ function formatProcessingDuration(value: number | null): string {
   return (value / 3_600_000).toFixed(1) + " hr";
 }
 
-function formatApiTokens(document: DocumentSummary): string {
-  if (document.lifecycleState === "processing") return "In progress";
+function formatLiveDuration(startedAt: number | null, now: number): string {
+  if (startedAt === null) return "Starting…";
+  const elapsed = Math.max(0, now - startedAt);
+  if (elapsed < 60_000) return `${Math.max(1, Math.floor(elapsed / 1_000))} sec`;
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 60) return `${minutes}m ${Math.floor((elapsed % 60_000) / 1_000)}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
+function formatApiTokens(
+  document: DocumentSummary,
+  progress: DocumentGenerationProgress | null,
+): string {
+  if (document.lifecycleState === "processing") {
+    if (progress && progress.totalTokens > 0) return formatTokenCount(progress.totalTokens);
+    return "Awaiting provider usage";
+  }
   if (document.apiTokenCount === null) return "Not reported by provider";
   const formatted = document.apiTokenCount.toLocaleString();
   return document.apiTokenUsageComplete ? formatted : formatted + "+ reported";
+}
+
+function formatTokenCount(value: number): string {
+  if (value < 1_000) return value.toLocaleString();
+  if (value < 1_000_000) return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)}k`;
+  return `${(value / 1_000_000).toFixed(1)}m`;
 }
 
 function formatDate(timestamp: number): string {

@@ -8,6 +8,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const failures = [];
 
 const lib = await read("src-tauri/src/lib.rs");
+const startup = await read("src-tauri/src/startup.rs");
 const ledger = await read("src-tauri/src/external_files.rs");
 const transfer = await read("src-tauri/src/external_file_streaming.rs");
 const recovery = await read("src-tauri/src/external_file_recovery.rs");
@@ -36,6 +37,7 @@ expectContains(
   "external_file_streaming::stream_publish_prepared_export",
   "canonical streaming export command registration",
 );
+expectContains(lib, ".setup(startup::setup)", "startup composition boundary registration");
 for (const legacy of [
   "external_files::select_and_stage_external_import",
   "external_files::publish_prepared_export",
@@ -55,8 +57,8 @@ for (const legacy of [
   }
 }
 
-const recoveryIndex = lib.indexOf("external_file_recovery::reconcile_interrupted_staging");
-const generalReconcileIndex = lib.indexOf("external_files::reconcile_startup");
+const recoveryIndex = startup.indexOf("external_file_recovery::reconcile_interrupted_staging");
+const generalReconcileIndex = startup.indexOf("external_files::reconcile_startup");
 if (recoveryIndex < 0) {
   failures.push("External-file crash recovery is not registered at startup");
 } else if (generalReconcileIndex < 0 || recoveryIndex > generalReconcileIndex) {

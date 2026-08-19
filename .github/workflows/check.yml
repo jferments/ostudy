@@ -43,6 +43,11 @@ jobs:
       CI: "true"
       CARGO_TERM_COLOR: always
       QUALIFIED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      OSTUDY_CI_LOG_FILTER: warn,ostudy=info
+      OSTUDY_LOG: warn,ostudy=info
+      OSTUDY_DIAGNOSTICS_ACTIVE: "1"
+      OSTUDY_DIAGNOSTICS_AUTOMATIC: "1"
+      OSTUDY_KEEP_FAILURE_ARTIFACTS: "1"
 
     steps:
       - name: Check out exact source head
@@ -59,23 +64,13 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          echo "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT=$RUNNER_TEMP/ostudy-diagnostics" >> "$GITHUB_ENV"
           mkdir -p \
             "$HOME/.cache/ostudy/gradle" \
             "$HOME/.cache/ostudy/cargo-target"
 
       - name: Verify exact checkout
         run: test "$(git rev-parse HEAD)" = "$QUALIFIED_SHA"
-
-      - name: Verify unified runner resources and nested KVM
-        run: bash ./scripts/runner/guest-preflight.sh
-
-      - name: Require committed Rust dependency graph
-        run: |
-          cargo metadata \
-            --manifest-path src-tauri/Cargo.toml \
-            --format-version 1 \
-            --locked \
-            > /dev/null
 
       - name: Select qualification gate
         id: gate
@@ -94,11 +89,24 @@ jobs:
           echo "gate=$gate" >> "$GITHUB_OUTPUT"
           echo "Selected qualification gate: $gate"
 
-      - name: Run static qualification
-        if: steps.gate.outputs.gate == 'static'
+      - name: Run static qualification first
+        if: steps.gate.outputs.gate != 'preflight'
         run: |
           set -o pipefail
           bash ./scripts/check-static.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"
+
+      - name: Verify unified runner resources and nested KVM
+        if: steps.gate.outputs.gate != 'static'
+        run: bash ./scripts/runner/guest-preflight.sh
+
+      - name: Require committed Rust dependency graph
+        if: steps.gate.outputs.gate != 'static'
+        run: |
+          cargo metadata \
+            --manifest-path src-tauri/Cargo.toml \
+            --format-version 1 \
+            --locked \
+            > /dev/null
 
       - name: Run fast qualification
         if: steps.gate.outputs.gate == 'fast'
@@ -130,6 +138,8 @@ jobs:
         if: failure()
         run: |
           node ./scripts/summarize-check-failure.mjs \
+            --diagnostics "$RUNNER_TEMP/ostudy-diagnostics" \
+            --diagnostics "$RUNNER_TEMP/android-smoke" \
             "$RUNNER_TEMP/ostudy-static-check.log" \
             "$RUNNER_TEMP/ostudy-fast-check.log" \
             "$RUNNER_TEMP/ostudy-full-check.log" \
@@ -140,6 +150,15 @@ jobs:
       - name: Export diagnostics after failure
         if: failure()
         run: bash ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-unified-diagnostics.tar.gz"
+
+      - name: Upload bounded diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ostudy-diagnostics-${{ env.QUALIFIED_SHA }}
+          path: ${{ runner.temp }}/ostudy-diagnostics/**
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload bounded failure evidence
         if: failure()
@@ -170,6 +189,7 @@ jobs:
             echo "- Head: \`$QUALIFIED_SHA\`"
             echo "- Runner: \`$RUNNER_NAME\`"
             echo "- Gate: \`$GATE\`"
+            echo "- Diagnostic baseline: \`$OSTUDY_CI_LOG_FILTER\`"
             echo "- Status: **$JOB_STATUS**"
           } >> "$GITHUB_STEP_SUMMARY"
 

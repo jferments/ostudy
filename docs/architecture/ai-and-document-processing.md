@@ -126,13 +126,13 @@ iOS remains planned. A future native Tauri/Swift adapter can use Apple Vision be
 
 A physical PDF page is provenance/layout, not necessarily a semantic reasoning boundary. Document-aware AI consumes overlapping semantic windows derived from structure-aware chunks.
 
-Provider source windows are deliberately conservative. Large documents scale through **more bounded requests**, not larger individual prompts. A pathological semantic chunk larger than the provider boundary is split into bounded continuation units while retaining original source/page provenance.
+Provider source windows are deliberately conservative and provider-neutral. Heading changes remain semantic hierarchy metadata but do **not** force request boundaries. Large-context models can pack more adjacent source units into each bounded request; smaller-context models automatically receive smaller windows and therefore more requests. A pathological semantic chunk larger than the provider boundary is split into bounded continuation units while retaining original source/page provenance.
 
-Local llama.cpp/Unsloth jobs are **window-bounded, not aggregate-job-bounded**. The former whole-job 1.2M-token ceiling and cloud-only source-token guard do not apply to local execution. Individual requests remain constrained by the configured/reported model context. Metered/cloud providers retain conservative aggregate runaway-cost protection.
+All providers are **window-bounded, not aggregate-job-bounded**. Whole-document token estimates are diagnostic/cost information rather than a provider-specific rejection rule. Every individual request must still fit the configured/reported model context after prompt, schema, response, image, and calibrated safety reserves.
 
 ## Hierarchical first pass and whole-document view
 
-Before card generation, ostudy requests one concise schema-constrained outline fragment per bounded source window. Fragments contain a summary, learning objectives, concepts, and section/chapter-like source spans.
+Before card generation, ostudy requests one concise schema-constrained outline fragment per bounded source window. Request packing is capacity-driven rather than heading-driven, so a heading-dense textbook does not degenerate into one provider call per section or page. Fragments still carry the headings, summary, learning objectives, concepts, and source spans needed to reconstruct the hierarchy.
 
 The hierarchy is assembled deterministically in Rust. Native assembly bounds/sanitizes content, clamps source ranges, repairs reversed ranges, deduplicates objectives/concepts, orders sections by physical position, stitches compatible adjacent sections, and creates a bounded fallback when a fragment omits sections.
 
@@ -148,7 +148,7 @@ The task prompt favors durable concepts, mechanisms, comparisons, applications, 
 
 Generated forms include Basic conceptual questions, definitions, four-option multiple choice with explanation, critical-thinking/application/scenario questions, and Cloze. Definition/MCQ/critical-thinking forms normalize into existing safe Basic cards; Rust constructs Cloze markers from validated exact substrings.
 
-After source windows complete, a bounded curation task selects which cards remain. It cannot rewrite cards. Curation is also a semantic pair-quality gate: an answer must directly and completely answer its question, multi-part questions require all requested parts, headings/topic labels are not accepted as factual answers, and unsupported or ambiguous cards are dropped. Even a single generated candidate passes through this gate. Selected cards then pass through canonical generated-card authoring for restricted Markdown/content validation, Cloze syntax, tags, duplicate fingerprints, fresh schedules, and transactional deck/card creation. There is no generated-card review queue.
+After source windows complete, bounded curation batches select which cards remain. Cloud batches may overlap under the same four-request ceiling, but their results are consumed in original batch/index order; local/LAN curation remains serial. It cannot rewrite cards. Curation is also a semantic pair-quality gate: an answer must directly and completely answer its question, multi-part questions require all requested parts, headings/topic labels are not accepted as factual answers, and unsupported or ambiguous cards are dropped. Even a single generated candidate passes through this gate. Selected cards then pass through canonical generated-card authoring for restricted Markdown/content validation, Cloze syntax, tags, duplicate fingerprints, fresh schedules, and transactional deck/card creation. There is no generated-card review queue.
 
 `Generate more cards` reuses retained extraction/OCR derivatives, outline, and current deck coverage. It should not rerender or OCR an unchanged source.
 
@@ -162,7 +162,7 @@ llama-server receives task JSON Schema through schema-constrained JSON output. C
 
 ### DeepSeek
 
-DeepSeek document tasks use strict Function Calling. The native adapter converts internal schemas to DeepSeek's supported strict subset and Rust enforces tighter length/count/semantic rules afterward. Metered-provider aggregate protection remains active.
+DeepSeek document tasks use strict Function Calling. The native adapter converts internal schemas to DeepSeek's supported strict subset and Rust enforces tighter length/count/semantic rules afterward. Large jobs use the same per-request context/window bounds as other providers.
 
 ### Native validation remains authoritative
 
@@ -172,7 +172,7 @@ A structurally valid response can contain one semantically unusable card; that c
 
 ## Long-running tasks, close protection, and cancellation
 
-A running document task owns one process-local cancellation signal keyed by document ID. The same registry spans extraction, platform rendering, OCR, and provider execution.
+A running document task owns one process-local cancellation signal keyed by document ID. The same registry spans extraction, platform rendering, OCR, and provider execution. Independent cloud outline/generation/curation batches execute with bounded concurrency of up to four; local and LAN model servers remain serial unless a future verified capacity capability says otherwise. Network work may finish out of order, but checkpoints, final card ordering, and SQLite writes remain deterministic. Provider resilience uses one shared inactivity contract rather than provider-name deadlines or total request timers: the profile timeout bounds silence between response headers/SSE events, while heartbeats, reasoning deltas, output deltas, tool arguments, and final usage keep an active request alive indefinitely.
 
 **Stop generation** cancels only that document task and drops its exact provider stream/active OCR result. Durable completed checkpoints remain reusable; canceled documents remain retryable.
 

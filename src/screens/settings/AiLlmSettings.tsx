@@ -196,6 +196,7 @@ function ProfileEditor({
   const provider = controller.catalog.find((entry) => entry.providerKind === draft.providerKind);
   const saved = controller.selectedProfile;
   const isLlama = draft.providerKind === "llama_cpp";
+  const isOpenRouter = draft.providerKind === "openrouter";
 
   return (
     <section className={styles.settingsCard} aria-busy={controller.mutating}>
@@ -270,7 +271,7 @@ function ProfileEditor({
           </label>
         ) : null}
         <label className={styles.stackedField}>
-          <span>Request timeout</span>
+          <span>Provider inactivity timeout</span>
           <select
             value={draft.requestTimeoutMs}
             onChange={(event) =>
@@ -282,6 +283,9 @@ function ProfileEditor({
             <option value={120_000}>2 minutes</option>
             <option value={300_000}>5 minutes</option>
           </select>
+          <small className={styles.fieldHelp}>
+            During streamed document work this limits silence between provider events, not total generation time. Heartbeats, reasoning progress, output tokens, and final usage all keep an active request alive.
+          </small>
         </label>
         <label className={styles.switchRow}>
           <span>
@@ -309,12 +313,30 @@ function ProfileEditor({
             />
           </label>
         ) : null}
+        {isOpenRouter ? (
+          <label className={`${styles.switchRow} ${styles.fullWidth}`}>
+            <span>
+              <strong>Require zero data retention</strong>
+              <small>
+                Restrict OpenRouter routing to endpoints that declare zero data retention.
+                This can reduce endpoint availability.
+              </small>
+            </span>
+            <input
+              type="checkbox"
+              checked={draft.requireZeroDataRetention ?? false}
+              onChange={(event) =>
+                controller.updateDraft({
+                  requireZeroDataRetention: event.currentTarget.checked,
+                })
+              }
+            />
+          </label>
+        ) : null}
       </div>
 
       {!isLlama ? (
-        <p className={styles.cloudNotice}>
-          DeepSeek is a cloud provider. ostudy uses DeepSeek's fixed official API endpoint.
-        </p>
+        <p className={styles.cloudNotice}>{cloudProviderNotice(draft.providerKind)}</p>
       ) : null}
 
       <div className={styles.actionRow}>
@@ -467,6 +489,7 @@ function ModelSelectionPanel({
   controller: AiProfilesController;
   providerSettingsDirty: boolean;
 }) {
+  const [modelSearch, setModelSearch] = useState("");
   const profile = controller.selectedProfile;
   const draft = controller.draft;
   if (!profile || !draft) return null;
@@ -481,6 +504,13 @@ function ModelSelectionPanel({
     controller.modelsLoaded &&
     profile.modelId !== "" &&
     !controller.models.some((model) => model.id === profile.modelId);
+  const normalizedSearch = modelSearch.trim().toLocaleLowerCase();
+  const matchingModels = controller.models.filter((model) => {
+    if (!normalizedSearch) return true;
+    return `${model.displayName} ${model.id} ${model.ownedBy ?? ""}`
+      .toLocaleLowerCase()
+      .includes(normalizedSearch);
+  });
 
   return (
     <section className={styles.settingsCard} aria-busy={controller.refreshingModels}>
@@ -520,6 +550,17 @@ function ModelSelectionPanel({
               The previously saved model <strong>{profile.modelId}</strong> is not in the provider's current model list. Choose a model returned by the API.
             </div>
           ) : null}
+          {controller.models.length > 50 ? (
+            <label className={styles.stackedField}>
+              <span>Search models</span>
+              <input
+                type="search"
+                value={modelSearch}
+                placeholder="Search model name, slug, or provider"
+                onChange={(event) => setModelSearch(event.currentTarget.value)}
+              />
+            </label>
+          ) : null}
           <label className={styles.stackedField}>
             <span>Model</span>
             <select
@@ -529,15 +570,18 @@ function ModelSelectionPanel({
               onChange={(event) => controller.updateDraft({ modelId: event.currentTarget.value })}
             >
               <option value="">Select an available model</option>
-              {controller.models.map((model) => (
+              {matchingModels.map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.displayName || model.id}
+                  {model.displayName && model.displayName !== model.id ? ` — ${model.id}` : ""}
                 </option>
               ))}
             </select>
           </label>
           <p className={styles.note}>
-            {controller.models.length} model{controller.models.length === 1 ? "" : "s"} returned by the provider.
+            {normalizedSearch
+              ? `${matchingModels.length} of ${controller.models.length} models match this search.`
+              : `${controller.models.length} model${controller.models.length === 1 ? "" : "s"} returned by the provider.`}
           </p>
           <div className={styles.actionRow}>
             <button
@@ -689,6 +733,11 @@ function ProbeResultView({
           />
         ))}
       </div>
+      {profile.providerKind === "openrouter" ? (
+        <p className={aiStyles.capabilityNote}>
+          OpenRouter profiles use strict JSON Schema requests with parameter-compatible routing. ostudy also requests endpoints that deny provider data collection and never enables OpenRouter's upstream-body debug echo.
+        </p>
+      ) : null}
       {profile.providerKind === "deepseek" ? (
         <p className={aiStyles.capabilityNote}>
           DeepSeek currently documents JSON Object output rather than provider-enforced JSON Schema. ostudy therefore validates DeepSeek structured output against its own schema locally; “Provider JSON Schema: not offered” is expected, not a connection failure.
@@ -742,7 +791,10 @@ function buildConnectionDiagnosticLog(
   const modelEndpoint =
     profile.providerKind === "llama_cpp"
       ? joinLlamaOpenAiDiagnosticEndpoint(profile.baseUrl, "models")
-      : joinDiagnosticEndpoint(profile.baseUrl, "models");
+      : joinDiagnosticEndpoint(
+          profile.baseUrl,
+          profile.providerKind === "openrouter" ? "models/user" : "models",
+        );
   const completionEndpoint =
     profile.providerKind === "llama_cpp"
       ? joinLlamaOpenAiDiagnosticEndpoint(profile.baseUrl, "chat/completions")
@@ -750,7 +802,9 @@ function buildConnectionDiagnosticLog(
   const structuredFormat =
     profile.providerKind === "llama_cpp"
       ? "json_schema"
-      : "json_object + local_schema_validation";
+      : profile.providerKind === "openrouter"
+        ? "json_schema + require_parameters + data_collection=deny"
+        : "json_object + local_schema_validation";
   const modelPreview = models.slice(0, 20).map((model) => `  - ${model.id}`);
   if (models.length > 20) {
     modelPreview.push(`  - ... ${models.length - 20} more model(s) omitted`);
@@ -855,6 +909,8 @@ function hasProviderSettingsChanges(
     draft.authMode !== selected.authMode ||
     draft.enabled !== selected.enabled ||
     draft.allowInsecureHttp !== selected.allowInsecureHttp ||
+    (draft.requireZeroDataRetention ?? false) !==
+      (selected.requireZeroDataRetention ?? false) ||
     draft.requestTimeoutMs !== selected.requestTimeoutMs
   );
 }
@@ -868,6 +924,7 @@ function draftFromSelected(selected: AiProviderProfileDetail): AiProfileDraft {
     authMode: selected.authMode,
     enabled: selected.enabled,
     allowInsecureHttp: selected.allowInsecureHttp,
+    requireZeroDataRetention: selected.requireZeroDataRetention ?? false,
     requestTimeoutMs: selected.requestTimeoutMs,
   };
 }
@@ -878,6 +935,16 @@ function canUseProviderCredential(profile: AiProviderProfileDetail): boolean {
     profile.credentialStatus.status === "saved_securely" ||
     profile.credentialStatus.status === "session_only"
   );
+}
+
+function cloudProviderNotice(providerKind: AiProviderKind): string {
+  if (providerKind === "openrouter") {
+    return "OpenRouter is a cloud routing provider. ostudy uses its fixed official API endpoint, requests only parameter-compatible endpoints for structured generation, denies data-collecting endpoints by default, and can require zero-data-retention routing per profile.";
+  }
+  if (providerKind === "deepseek") {
+    return "DeepSeek is a cloud provider. ostudy uses DeepSeek's fixed official API endpoint.";
+  }
+  return "This cloud provider uses its fixed official API endpoint.";
 }
 
 function scopeLabel(scope: "local" | "lan" | "cloud"): string {

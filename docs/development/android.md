@@ -190,3 +190,7 @@ When the pinned Tauri CLI requires regeneration:
 8. verify `pnpm check` remains green.
 
 The generated directory is committed because reproducibility and review are more important than minimizing generated files.
+
+## QR scanner verification
+
+`node scripts/verify-android-qr-scanner.mjs` enforces the Google Code Scanner dependency, install-time `barcode_ui` metadata, QR-only/auto-zoom configuration, concurrent-scan guard, and absence of ZXing Embedded. APK verification rejects any merged `android.permission.CAMERA` permission. `./scripts/android-test.sh --debug=qr --keep-artifacts` retains bounded ostudy QR Logcat evidence on failure without recording decoded payloads.

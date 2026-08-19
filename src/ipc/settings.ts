@@ -3,6 +3,15 @@ import { invoke } from "@tauri-apps/api/core";
 export type MotionPreference = "system" | "full" | "reduced" | "none";
 export type MaterialPreference = "automatic" | "rich" | "simple";
 export type DeckViewDensity = "comfortable" | "compact";
+export type AiReasoningEffort =
+  | "automatic"
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
 
 export interface AppSettings {
   theme: "light" | "dark" | "console" | "synthwave";
@@ -25,6 +34,8 @@ export interface AppSettings {
   desiredRetention: number;
   dailyNewLimit: number;
   dailyReviewLimit: number;
+  /** Native settings always return this; optional keeps older fixture/build callers source-compatible. */
+  aiReasoningEffort?: AiReasoningEffort;
 }
 
 export interface AppInfo {

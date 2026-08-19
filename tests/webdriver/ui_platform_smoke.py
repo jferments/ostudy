@@ -305,13 +305,16 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
 def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     """Regress medium-desktop overflow with the full sidebar consuming workspace width."""
     set_window_rect(session_id, 1174, 760)
-    flashcards = webdriver.find_element(
+    # The preceding compact-navigation scenario already returns to the
+    # Flashcards route. Assert that invariant with read-only lookups instead of
+    # sending a redundant navigation click whose response could be lost after
+    # the route was already active.
+    webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-decks']",
+        "button[data-testid='nav-decks'][aria-current='page']",
         deadline,
     )
-    webdriver.click(session_id, flashcards)
     webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
 
     create_cards = find_workspace_tab(session_id, "Create Cards", deadline)

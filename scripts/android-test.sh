@@ -5,19 +5,33 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/android-env.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/diagnostics.bash"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/check-state.sh"
+export OSTUDY_ROOT_DIR="$ROOT_DIR"
+ostudy_parse_diagnostic_args "$@"
 
 RUN_EMULATOR=0
-case "${1:-}" in
-  "") ;;
-  --emulator) RUN_EMULATOR=1 ;;
-  -h|--help)
-    printf 'Usage: ./scripts/android-test.sh [--emulator]\n'
-    exit 0
-    ;;
-  *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
-esac
+for argument in "${OSTUDY_DIAGNOSTIC_REMAINDER[@]}"; do
+  case "$argument" in
+    --emulator) RUN_EMULATOR=1 ;;
+    -h|--help)
+      printf 'Usage: ./scripts/android-test.sh [--emulator] [diagnostic options]\n'
+      ostudy_diagnostic_usage
+      exit 0
+      ;;
+    *) printf 'Unknown option: %s\n' "$argument" >&2; exit 2 ;;
+  esac
+done
 
 cd "$ROOT_DIR"
+WORKTREE_BASELINE="$(mktemp -t ostudy-android-worktree.XXXXXXXX)"
+cleanup_worktree_baseline() { rm -f -- "$WORKTREE_BASELINE"; }
+trap cleanup_worktree_baseline EXIT
+ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
+trap 'status=$?; ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android qualification" || true; exit "$status"' ERR
+
 printf 'Android parallelism: %s logical workers (Cargo=%s, Vitest=%s, Gradle=%s).\n' \
   "$OSTUDY_ANDROID_JOBS" "$CARGO_BUILD_JOBS" "$VITEST_MAX_WORKERS" "$OSTUDY_GRADLE_WORKERS"
 
@@ -29,6 +43,7 @@ fi
 android_write_local_properties
 node ./scripts/verify-android-project.mjs
 node ./scripts/verify-android-plugin-routing.mjs
+node ./scripts/verify-android-qr-scanner.mjs
 node ./scripts/verify-local-fonts.mjs
 pnpm install --frozen-lockfile
 pnpm run verify:fonts
@@ -95,7 +110,15 @@ verify_gradle_contracts() (
     printf 'Android dependency resolution did not select the pinned Kotlin stdlib 1.9.25 line.\n' >&2
     exit 1
   fi
-  printf 'OK   Android Kotlin metadata dependency graph resolves to Kotlin 1.9.25 and coroutines 1.8.1.\n'
+  if ! grep -Eq 'play-services-code-scanner:16\.1\.0' "$dependency_report"; then
+    printf 'Android dependency resolution did not include Google Code Scanner 16.1.0.\n' >&2
+    exit 1
+  fi
+  if grep -Eqi 'journeyapps|zxing-android-embedded' "$dependency_report"; then
+    printf 'The removed ZXing Embedded scanner remains in the Android dependency graph.\n' >&2
+    exit 1
+  fi
+  printf 'OK   Android Kotlin, coroutines, and Google Code Scanner dependency contracts passed.\n'
 
   printf '\nCompile-checking the private Android platform plugin...\n'
   (
@@ -110,7 +133,10 @@ verify_gradle_contracts() (
 
 if ((RUN_EMULATOR == 1)); then
   bash ./scripts/android-emulator-smoke.sh
+  ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android Emulator smoke qualification"
   verify_gradle_contracts
+  ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android Gradle contract verification"
+  trap - ERR
   printf 'OK   Android shared checks, emulator instrumentation, and Gradle contracts passed.\n'
   exit 0
 fi
@@ -120,11 +146,17 @@ fi
 # by the direct Gradle checks and postbuild tasks below.
 export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
 bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
+# android-build.sh owns restoration of the tracked generated sources that Tauri
+# rewrites. Assert immediately so any newly introduced generator mutation is
+# attributed to materialization rather than a later Gradle test.
+ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Tauri Android build materialization"
 verify_gradle_contracts
+ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android Gradle contract verification"
 
 # Direct Gradle work that follows must reuse the Tauri build output instead of
 # re-entering `android-studio-script` after Tauri's temporary CLI socket closes.
 bash ./scripts/android-gradle-postbuild.sh test-packages
+ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android Gradle postbuild"
 
 app_apk="$ROOT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
 test_apk="$({
@@ -140,4 +172,6 @@ if [[ -z "$test_apk" || ! -f "$test_apk" ]]; then
   exit 1
 fi
 bash ./scripts/verify-android-package.sh "$app_apk" debug
+ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android compile/package qualification"
+trap - ERR
 printf 'OK   Android compile, parallel unit-test, Gradle-contract, instrumentation-package, and APK checks passed.\n'

@@ -419,19 +419,25 @@ async fn process_and_generate(
         ));
     }
 
-    let task = document_intelligence::load_document_task_context(database.inner())?;
+    let mut task = document_intelligence::load_document_task_context(database.inner())?;
     let capabilities = document_provider::load_document_provider_capabilities(
         database.inner(),
         &task.profile_id,
         &task.provider_kind,
         &task.model_id,
     )?;
+    task.apply_provider_capabilities(&capabilities);
     let calibration = document_cost::load_cost_calibration(
         database.inner(),
         &task.provider_kind,
         &task.model_id,
     )?;
-    let plan = DocumentScalePlan::for_capabilities(source.unit_count, &capabilities, calibration)?;
+    let plan = DocumentScalePlan::for_capabilities(
+        source.unit_count,
+        &capabilities,
+        &task.reasoning_effort,
+        calibration,
+    )?;
     let estimated_source_tokens = chunks.iter().fold(0_usize, |total, chunk| {
         total.saturating_add(
             chunk
@@ -462,39 +468,63 @@ async fn process_and_generate(
         plan,
         outline_windows.len(),
         generation_windows.len(),
-        &capabilities,
-        calibration,
+        document_scale::DocumentBudgetContext {
+            capabilities: &capabilities,
+            reasoning_effort: &task.reasoning_effort,
+            calibration,
+        },
     )?;
-    crate::logging::info(
+    crate::logging::debug_target(
+        "ai.document.plan",
         "document_ai_scale_plan",
-        format!(
-            "document={} format={} provider={} model={} scale={} units={} source_tokens={} outline_windows={} generation_windows={} card_capacity={} estimated_job_tokens={} ceiling={} context={} calibration_samples={}",
-            document_id,
-            source.format.as_str(),
-            task.provider_kind,
-            task.model_id,
-            plan.label(),
-            source.unit_count,
-            estimated_source_tokens,
-            outline_windows.len(),
-            generation_windows.len(),
-            budget.generation_card_capacity,
-            budget.estimated_tokens,
-            budget.ceiling_tokens,
-            budget.context_window_tokens.map_or_else(|| "unknown".to_string(), |value| value.to_string()),
-            budget.calibration_sample_count,
-        ),
+        "Planned bounded document-AI work without logging source content.",
+        serde_json::json!({
+            "document": document_id,
+            "format": source.format.as_str(),
+            "provider": task.provider_kind.as_str(),
+            "model": task.model_id.as_str(),
+            "scale": plan.label(),
+            "sourceUnits": source.unit_count,
+            "sourceTokens": estimated_source_tokens,
+            "outlineWindows": outline_windows.len(),
+            "generationWindows": generation_windows.len(),
+            "cardCapacity": budget.generation_card_capacity,
+            "estimatedJobTokens": budget.estimated_tokens,
+            "contextWindowTokens": budget.context_window_tokens,
+            "calibrationSamples": budget.calibration_sample_count,
+        }),
     );
 
     let capability_fingerprint = capabilities.planning_fingerprint();
     let checkpoint_identity =
         CheckpointIdentity::from_task(&task, &stored.extraction_backend, &capability_fingerprint);
     let outline_contract = document_checkpoints::outline_contract_key(&checkpoint_identity, plan);
-    let reusable_final_outline = document_checkpoints::load_final_outline_best_effort(
+    // Load and source-hash-validate the fragment set for the CURRENT plan before
+    // considering the persisted whole-document outline reusable.
+    let cached_outline = document_checkpoints::load_outline_fragments_best_effort(
         database.inner(),
         document_id,
-        &checkpoint_identity,
+        &outline_contract,
+        &outline_windows,
     );
+    let cached_count = cached_outline
+        .iter()
+        .filter(|value| value.is_some())
+        .count();
+    // A persisted whole-document outline is reusable only when every fragment
+    // required by the CURRENT semantic-window plan is also present and validates
+    // against the current source hashes. This prevents a final outline assembled
+    // under an older partition/window plan from silently surviving a planner
+    // change merely because provider/model/prompt versions stayed the same.
+    let reusable_final_outline = if cached_count == outline_windows.len() {
+        document_checkpoints::load_final_outline_best_effort(
+            database.inner(),
+            document_id,
+            &checkpoint_identity,
+        )
+    } else {
+        None
+    };
     let outline = if let Some(outline) = reusable_final_outline {
         document_store::initialize_ai_plan(
             database.inner(),
@@ -508,28 +538,21 @@ async fn process_and_generate(
                 generation_completed_window_count: 0,
             },
         )?;
-        crate::logging::info(
+        crate::logging::debug_target(
+            "ai.document.outline",
             "document_final_outline_reused",
-            format!(
-                "document={} provider={} model={} sections={}",
-                document_id,
-                task.provider_kind,
-                task.model_id,
-                outline.sections.len(),
-            ),
+            "Reused a whole-document outline only after validating the complete current-plan fragment checkpoint set.",
+            serde_json::json!({
+                "document": document_id,
+                "provider": task.provider_kind.as_str(),
+                "model": task.model_id.as_str(),
+                "outlineWindows": outline_windows.len(),
+                "cachedWindows": cached_count,
+                "sections": outline.sections.len(),
+            }),
         );
         outline
     } else {
-        let cached_outline = document_checkpoints::load_outline_fragments_best_effort(
-            database.inner(),
-            document_id,
-            &outline_contract,
-            &outline_windows,
-        );
-        let cached_count = cached_outline
-            .iter()
-            .filter(|value| value.is_some())
-            .count();
         document_store::initialize_ai_plan(
             database.inner(),
             document_id,
@@ -866,6 +889,8 @@ fn persist_outline(
 
 fn record_document_failure(database: &Database, document_id: &str, error: &CommandError) {
     let now = unix_time_millis().unwrap_or_default();
+    let usage = crate::task_cancellation::current_usage_summary();
+    let (api_token_count, api_token_usage_complete) = usage.unwrap_or((None, false));
     let _ = database.with_connection(|connection| {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -880,12 +905,16 @@ fn record_document_failure(database: &Database, document_id: &str, error: &Comma
                          WHEN processing_started_at IS NULL THEN processing_duration_ms
                          ELSE MAX(0, ?3 - processing_started_at)
                      END,
+                     api_token_count = CASE WHEN ?4 IS NULL THEN api_token_count ELSE ?4 END,
+                     api_token_usage_complete = CASE WHEN ?4 IS NULL THEN api_token_usage_complete ELSE ?5 END,
                      updated_at = ?3, revision = revision + 1
-                 WHERE id = ?4",
+                 WHERE id = ?6",
                 params![
                     bounded_error(&error.code, 80),
                     bounded_error(&error.message, 1000),
                     now,
+                    api_token_count,
+                    if api_token_usage_complete { 1_i64 } else { 0_i64 },
                     document_id,
                 ],
             )

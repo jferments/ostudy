@@ -106,6 +106,7 @@ describe("DeviceSyncSettings", () => {
       changedRowCount: 12,
       conflictCount: 1,
       transferredCredentialCount: 0,
+      credentialWarning: null,
       sentPackageBytes: 0,
       receivedPackageBytes: 20,
     });
@@ -198,6 +199,32 @@ describe("DeviceSyncSettings", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry connection" }));
     await waitFor(() => expect(syncIpc.joinDevicePairing).toHaveBeenCalledTimes(2));
+  });
+
+  it("reports optional credential-store failure without failing the received library", async () => {
+    vi.mocked(syncIpc.joinDevicePairing).mockResolvedValueOnce({
+      sessionId: "5".repeat(32),
+      peer: state().peers[0],
+      changedRowCount: 12,
+      conflictCount: 0,
+      transferredCredentialCount: 0,
+      credentialWarning:
+        "Study data synchronized, but saved API credentials could not be stored securely on this device. Re-enter them in Settings → AI if needed.",
+      sentPackageBytes: 0,
+      receivedPackageBytes: 20,
+    });
+    const showToast = renderSync();
+    await screen.findByText("Android phone");
+    fireEvent.change(screen.getByLabelText("Synchronization invitation"), {
+      target: { value: "ostudy-sync://pair/credential-warning" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Accept sync offer" }));
+
+    await waitFor(() => expect(syncIpc.joinDevicePairing).toHaveBeenCalledTimes(1));
+    expect(showToast).toHaveBeenCalledWith(
+      "info",
+      expect.stringContaining("Study data synchronized, but saved API credentials could not be stored securely"),
+    );
   });
 
   it("accepts pasted invitation text without a receiver-side API toggle", async () => {

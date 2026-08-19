@@ -20,7 +20,7 @@ use super::{
     AiRuntimeState,
 };
 
-const ADAPTER_REVISION: i64 = 2;
+const ADAPTER_REVISION: i64 = 5;
 const RESULT_SCHEMA_VERSION: i64 = 1;
 const MAX_PERSISTED_RESULT_BYTES: usize = 32 * 1024;
 
@@ -184,12 +184,14 @@ pub async fn list_ai_provider_models(
     let models = providers::list_models(&runtime.gateway, &profile, bearer)
         .await
         .map_err(gateway_to_command)?;
+    let retrieved_at = unix_time_millis()?;
+    persist_selected_model_declarations(database.inner(), &profile, &models, retrieved_at)?;
     Ok(AiProviderModelsDto {
         profile_id: profile.id.clone(),
         profile_revision: profile.revision,
         provider_kind: profile.provider_kind,
         models,
-        retrieved_at: unix_time_millis()?,
+        retrieved_at,
     })
 }
 
@@ -401,8 +403,15 @@ pub async fn test_ai_provider_profile(
                 Some(elapsed_ms(text_start)),
                 error_value.safe,
             ));
-            let capabilities =
-                build_capabilities(&profile, models.is_some(), false, false, false, &properties);
+            let capabilities = build_capabilities(
+                &profile,
+                models.as_deref(),
+                models.is_some(),
+                false,
+                false,
+                false,
+                &properties,
+            );
             return finish_and_persist(
                 database.inner(),
                 &profile,
@@ -456,6 +465,7 @@ pub async fn test_ai_provider_profile(
         });
     let capabilities = build_capabilities(
         &profile,
+        models.as_deref(),
         models.is_some(),
         true,
         structured_outcome.is_some(),
@@ -535,6 +545,49 @@ fn load_credential_storage(
             )
         })?;
     CredentialStorage::from_db(&storage)
+}
+
+fn persist_selected_model_declarations(
+    database: &Database,
+    profile: &ProfileSnapshot,
+    models: &[ProviderModel],
+    checked_at: i64,
+) -> Result<(), CommandError> {
+    let selected = models.iter().find(|model| model.id == profile.model_id);
+    database.with_connection(|connection| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        transaction
+            .execute(
+                "DELETE FROM ai_provider_capabilities
+                 WHERE profile_id = ?1 AND capability_key IN ('context_window_tokens', 'reasoning_control')",
+                [profile.id.as_str()],
+            )
+            .map_err(CommandError::database)?;
+        if let Some(context) = selected.and_then(|model| model.context_window_tokens) {
+            transaction
+                .execute(
+                    "INSERT INTO ai_provider_capabilities (
+                         profile_id, capability_key, status, source_kind, value_json, checked_at
+                     ) VALUES (?1, 'context_window_tokens', 'supported', 'declared', ?2, ?3)",
+                    params![profile.id, context.to_string(), checked_at],
+                )
+                .map_err(CommandError::database)?;
+        }
+        if let Some(reasoning) = selected.and_then(|model| model.reasoning.as_ref()) {
+            let value = serde_json::to_string(&Some(reasoning)).map_err(CommandError::serialization)?;
+            transaction
+                .execute(
+                    "INSERT INTO ai_provider_capabilities (
+                         profile_id, capability_key, status, source_kind, value_json, checked_at
+                     ) VALUES (?1, 'reasoning_control', 'supported', 'declared', ?2, ?3)",
+                    params![profile.id, value, checked_at],
+                )
+                .map_err(CommandError::database)?;
+        }
+        transaction.commit().map_err(CommandError::database)
+    })
 }
 
 fn finish_and_persist(
@@ -652,6 +705,7 @@ fn snapshot_matches_result(profile: &ProfileSnapshot, result: &AiProviderProbeRe
 
 fn build_capabilities(
     profile: &ProfileSnapshot,
+    models: Option<&[ProviderModel]>,
     model_listing: bool,
     text_completion: bool,
     structured_output: bool,
@@ -696,8 +750,10 @@ fn build_capabilities(
         &mut capabilities,
         "json_schema_output",
         match profile.provider_kind {
-            ProviderKind::LlamaCpp if structured_output => CapabilityStatus::Supported,
-            ProviderKind::LlamaCpp => CapabilityStatus::Unknown,
+            ProviderKind::LlamaCpp | ProviderKind::Openrouter if structured_output => {
+                CapabilityStatus::Supported
+            }
+            ProviderKind::LlamaCpp | ProviderKind::Openrouter => CapabilityStatus::Unknown,
             ProviderKind::Deepseek => CapabilityStatus::Unsupported,
             _ => CapabilityStatus::Unknown,
         },
@@ -726,6 +782,29 @@ fn build_capabilities(
         CapabilitySource::Probed,
         None,
     );
+
+    if let Some(model) =
+        models.and_then(|models| models.iter().find(|model| model.id == profile.model_id))
+    {
+        if let Some(context_window_tokens) = model.context_window_tokens {
+            set_capability(
+                &mut capabilities,
+                "context_window_tokens",
+                CapabilityStatus::Supported,
+                CapabilitySource::Declared,
+                Some(json!(context_window_tokens)),
+            );
+        }
+        if let Some(reasoning) = model.reasoning.as_ref() {
+            set_capability(
+                &mut capabilities,
+                "reasoning_control",
+                CapabilityStatus::Supported,
+                CapabilitySource::Declared,
+                serde_json::to_value(reasoning).ok(),
+            );
+        }
+    }
 
     if let Some(present) = properties.server_chat_template_present {
         set_capability(
@@ -885,19 +964,23 @@ mod tests {
         ProfileSnapshot {
             id: "0123456789abcdef0123456789abcdef".to_string(),
             provider_kind,
-            base_url: if provider_kind == ProviderKind::LlamaCpp {
-                "http://127.0.0.1:8080/".to_string()
-            } else {
-                "https://api.deepseek.com/".to_string()
+            base_url: match provider_kind {
+                ProviderKind::LlamaCpp => "http://127.0.0.1:8080/".to_string(),
+                ProviderKind::Openrouter => "https://openrouter.ai/api/v1/".to_string(),
+                _ => "https://api.deepseek.com/".to_string(),
             },
             model_id: model_id.to_string(),
-            auth_mode: if provider_kind == ProviderKind::Deepseek {
+            auth_mode: if matches!(
+                provider_kind,
+                ProviderKind::Deepseek | ProviderKind::Openrouter
+            ) {
                 AuthMode::Bearer
             } else {
                 AuthMode::None
             },
             enabled: true,
             allow_insecure_http: false,
+            require_zero_data_retention: false,
             request_timeout_ms: 60_000,
             credential_epoch: 2,
             revision: 3,
@@ -915,12 +998,33 @@ mod tests {
     }
 
     #[test]
+    fn openrouter_probes_can_report_provider_enforced_json_schema() {
+        let profile = profile(ProviderKind::Openrouter, "openai/example");
+        let capabilities = build_capabilities(
+            &profile,
+            None,
+            true,
+            true,
+            true,
+            true,
+            &ProviderProperties::default(),
+        );
+        let schema = capabilities
+            .iter()
+            .find(|capability| capability.key == "json_schema_output")
+            .expect("schema capability should exist");
+        assert_eq!(schema.status, CapabilityStatus::Supported);
+    }
+
+    #[test]
     fn sole_llama_model_mismatch_uses_server_reported_id_for_probe() {
         let profile = profile(ProviderKind::LlamaCpp, "unsloth/repository-name");
         let models = vec![ProviderModel {
             id: "/models/Qwen3.6-27B-Q4_K_M.gguf".to_string(),
             display_name: "Qwen3.6".to_string(),
             owned_by: Some("llamacpp".to_string()),
+            context_window_tokens: None,
+            reasoning: None,
         }];
         assert_eq!(
             classify_model_match(&profile, &models),
@@ -935,6 +1039,8 @@ mod tests {
             id: "deepseek-v4-pro".to_string(),
             display_name: "deepseek-v4-pro".to_string(),
             owned_by: Some("deepseek".to_string()),
+            context_window_tokens: None,
+            reasoning: None,
         }];
         assert_eq!(classify_model_match(&profile, &models), ModelMatch::Missing);
     }

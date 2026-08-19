@@ -28,6 +28,7 @@ mkdir -p "$TEMP_ROOT/project"
     --exclude='./dist' \
     --exclude='./src-tauri/target' \
     --exclude='./artifacts' \
+    --exclude='./.artifacts' \
     --exclude='./.ostudy-build-stamp' \
     --exclude='./*.tar.gz' \
     -cf - .

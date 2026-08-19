@@ -1,11 +1,12 @@
-//! Task-scoped cancellation for long-running document AI work.
+//! Task-scoped cancellation and live progress for long-running document AI work.
 //!
-//! Cancellation is intentionally process-local. Durable document/job state
-//! remains in SQLite; this module binds one running document task to an in-memory
-//! signal. Async provider traffic uses the Tokio task-local signal, while
-//! blocking extraction/render/OCR workers can query the same registry by exact
-//! document id. The application close guard also reads this registry so it can
-//! warn before an in-flight document task is interrupted.
+//! Cancellation and high-frequency progress are intentionally process-local.
+//! Durable document/job state remains in SQLite; this module binds one running
+//! document task to an in-memory signal plus a bounded progress snapshot. Async
+//! provider traffic uses the Tokio task-local context, while blocking
+//! extraction/render/OCR workers can query the same registry by exact document
+//! id. The application close guard also reads this registry so it can warn
+//! before an in-flight document task is interrupted.
 
 use std::{
     collections::HashMap,
@@ -16,9 +17,10 @@ use std::{
     },
 };
 
+use serde::Serialize;
 use tokio::sync::Notify;
 
-use crate::error::CommandError;
+use crate::{error::CommandError, util::unix_time_millis};
 
 #[cfg(mobile)]
 use tauri::AppHandle;
@@ -63,13 +65,96 @@ impl CancellationSignal {
     }
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DocumentTaskProgress {
+    pub started_at: i64,
+    pub phase: String,
+    pub current_window: Option<usize>,
+    pub current_window_end: Option<usize>,
+    pub completed_windows: usize,
+    pub total_windows: usize,
+    pub current_page_start: Option<i64>,
+    pub current_page_end: Option<i64>,
+    pub current_partition: Option<usize>,
+    pub reasoning_effort: String,
+    pub provider_request_count: u64,
+    pub retry_count: u64,
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub reasoning_tokens: u64,
+    pub total_tokens: u64,
+    pub cached_prompt_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub usage_reported_requests: u64,
+    pub usage_unreported_requests: u64,
+    pub provider_activity: String,
+    pub last_provider_activity_at: Option<i64>,
+    pub last_model_activity_at: Option<i64>,
+}
+
+impl DocumentTaskProgress {
+    fn new(started_at: i64) -> Self {
+        Self {
+            started_at,
+            phase: "preparing".to_string(),
+            current_window: None,
+            current_window_end: None,
+            completed_windows: 0,
+            total_windows: 0,
+            current_page_start: None,
+            current_page_end: None,
+            current_partition: None,
+            reasoning_effort: "low".to_string(),
+            provider_request_count: 0,
+            retry_count: 0,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            reasoning_tokens: 0,
+            total_tokens: 0,
+            cached_prompt_tokens: 0,
+            cache_write_tokens: 0,
+            usage_reported_requests: 0,
+            usage_unreported_requests: 0,
+            provider_activity: "preparing".to_string(),
+            last_provider_activity_at: None,
+            last_model_activity_at: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct DocumentTaskUsageDelta {
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub reasoning_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
+    pub cached_prompt_tokens: Option<u64>,
+    pub cache_write_tokens: Option<u64>,
+}
+
+#[derive(Clone, Debug)]
+struct ActiveDocumentTask {
+    signal: CancellationSignal,
+    progress: Arc<Mutex<DocumentTaskProgress>>,
+}
+
+impl ActiveDocumentTask {
+    fn new(started_at: i64) -> Self {
+        Self {
+            signal: CancellationSignal::new(),
+            progress: Arc::new(Mutex::new(DocumentTaskProgress::new(started_at))),
+        }
+    }
+}
+
 #[derive(Default)]
 struct ActiveDocumentTasks {
-    tasks: Mutex<HashMap<String, CancellationSignal>>,
+    tasks: Mutex<HashMap<String, ActiveDocumentTask>>,
 }
 
 impl ActiveDocumentTasks {
-    fn begin(&self, document_id: &str) -> Result<CancellationSignal, CommandError> {
+    fn begin(&self, document_id: &str) -> Result<ActiveDocumentTask, CommandError> {
         let mut tasks = self.tasks.lock().map_err(|_| registry_error())?;
         if tasks.contains_key(document_id) {
             return Err(CommandError::new(
@@ -77,9 +162,9 @@ impl ActiveDocumentTasks {
                 "Flashcard generation is already running for this PDF.",
             ));
         }
-        let signal = CancellationSignal::new();
-        tasks.insert(document_id.to_string(), signal.clone());
-        Ok(signal)
+        let task = ActiveDocumentTask::new(unix_time_millis()?);
+        tasks.insert(document_id.to_string(), task.clone());
+        Ok(task)
     }
 
     fn finish(&self, document_id: &str) {
@@ -90,13 +175,13 @@ impl ActiveDocumentTasks {
 
     fn cancel(&self, document_id: &str) -> Result<(), CommandError> {
         let tasks = self.tasks.lock().map_err(|_| registry_error())?;
-        let signal = tasks.get(document_id).ok_or_else(|| {
+        let task = tasks.get(document_id).ok_or_else(|| {
             CommandError::new(
                 "document_generation_not_running",
                 "There is no active flashcard-generation request for this PDF.",
             )
         })?;
-        signal.cancel();
+        task.signal.cancel();
         Ok(())
     }
 
@@ -120,9 +205,15 @@ impl ActiveDocumentTasks {
             .map(|tasks| {
                 tasks
                     .get(document_id)
-                    .is_some_and(CancellationSignal::is_canceled)
+                    .is_some_and(|task| task.signal.is_canceled())
             })
             .unwrap_or(false)
+    }
+
+    fn progress(&self, document_id: &str) -> Option<DocumentTaskProgress> {
+        let tasks = self.tasks.lock().ok()?;
+        let task = tasks.get(document_id)?;
+        task.progress.lock().ok().map(|progress| progress.clone())
     }
 }
 
@@ -130,24 +221,188 @@ static ACTIVE_DOCUMENT_TASKS: LazyLock<ActiveDocumentTasks> =
     LazyLock::new(ActiveDocumentTasks::default);
 
 tokio::task_local! {
-    static CURRENT_DOCUMENT_SIGNAL: CancellationSignal;
+    static CURRENT_DOCUMENT_TASK: ActiveDocumentTask;
 }
 
 pub(crate) async fn run_document_task<T, F>(document_id: &str, future: F) -> Result<T, CommandError>
 where
     F: Future<Output = Result<T, CommandError>>,
 {
-    let signal = ACTIVE_DOCUMENT_TASKS.begin(document_id)?;
+    let task = ACTIVE_DOCUMENT_TASKS.begin(document_id)?;
     let result = {
         let _foreground_execution = MobileForegroundExecution::begin(document_id)?;
-        CURRENT_DOCUMENT_SIGNAL.scope(signal, future).await
+        CURRENT_DOCUMENT_TASK.scope(task, future).await
     };
     ACTIVE_DOCUMENT_TASKS.finish(document_id);
     result
 }
 
 pub(crate) fn current_signal() -> Option<CancellationSignal> {
-    CURRENT_DOCUMENT_SIGNAL.try_with(Clone::clone).ok()
+    CURRENT_DOCUMENT_TASK
+        .try_with(|task| task.signal.clone())
+        .ok()
+}
+
+pub(crate) fn current_reasoning_effort() -> Option<String> {
+    CURRENT_DOCUMENT_TASK
+        .try_with(|task| {
+            task.progress
+                .lock()
+                .ok()
+                .map(|progress| progress.reasoning_effort.clone())
+        })
+        .ok()
+        .flatten()
+}
+
+pub(crate) fn document_task_progress(document_id: &str) -> Option<DocumentTaskProgress> {
+    ACTIVE_DOCUMENT_TASKS.progress(document_id)
+}
+
+pub(crate) fn set_current_reasoning_effort(effort: &str) {
+    let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
+        if let Ok(mut progress) = task.progress.lock() {
+            progress.reasoning_effort = effort.chars().take(16).collect();
+        }
+    });
+}
+
+pub(crate) fn set_current_task_phase(
+    phase: &str,
+    current_window: Option<usize>,
+    completed_windows: usize,
+    total_windows: usize,
+    current_page_start: Option<i64>,
+    current_page_end: Option<i64>,
+    current_partition: Option<usize>,
+) {
+    set_current_task_phase_range(
+        phase,
+        (current_window, current_window),
+        completed_windows,
+        total_windows,
+        current_page_start,
+        current_page_end,
+        current_partition,
+    );
+}
+
+pub(crate) fn set_current_task_phase_range(
+    phase: &str,
+    current_windows: (Option<usize>, Option<usize>),
+    completed_windows: usize,
+    total_windows: usize,
+    current_page_start: Option<i64>,
+    current_page_end: Option<i64>,
+    current_partition: Option<usize>,
+) {
+    let (current_window, current_window_end) = current_windows;
+    let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
+        if let Ok(mut progress) = task.progress.lock() {
+            progress.phase = phase.chars().take(80).collect();
+            progress.current_window = current_window;
+            progress.current_window_end = current_window_end;
+            progress.completed_windows = completed_windows;
+            progress.total_windows = total_windows;
+            progress.current_page_start = current_page_start;
+            progress.current_page_end = current_page_end;
+            progress.current_partition = current_partition;
+            if matches!(phase, "outline" | "generating" | "curating") {
+                progress.provider_activity = "connecting".to_string();
+                progress.last_provider_activity_at = None;
+                progress.last_model_activity_at = None;
+            }
+        }
+    });
+}
+
+pub(crate) fn record_current_provider_activity(model_progress: bool) {
+    let now = unix_time_millis().unwrap_or_default();
+    let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
+        if let Ok(mut progress) = task.progress.lock() {
+            progress.last_provider_activity_at = Some(now);
+            if model_progress {
+                progress.provider_activity = "streaming".to_string();
+                progress.last_model_activity_at = Some(now);
+            } else if progress.provider_activity != "streaming" {
+                progress.provider_activity = "responsive".to_string();
+            }
+        }
+    });
+}
+
+pub(crate) fn record_current_provider_request() {
+    let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
+        if let Ok(mut progress) = task.progress.lock() {
+            progress.provider_request_count = progress.provider_request_count.saturating_add(1);
+        }
+    });
+}
+
+pub(crate) fn record_current_provider_retry() {
+    let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
+        if let Ok(mut progress) = task.progress.lock() {
+            progress.retry_count = progress.retry_count.saturating_add(1);
+        }
+    });
+}
+
+pub(crate) fn record_current_usage(delta: DocumentTaskUsageDelta) {
+    let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
+        if let Ok(mut progress) = task.progress.lock() {
+            let reported = delta.prompt_tokens.is_some()
+                || delta.completion_tokens.is_some()
+                || delta.reasoning_tokens.is_some()
+                || delta.total_tokens.is_some()
+                || delta.cached_prompt_tokens.is_some()
+                || delta.cache_write_tokens.is_some();
+            if reported {
+                progress.usage_reported_requests =
+                    progress.usage_reported_requests.saturating_add(1);
+            } else {
+                progress.usage_unreported_requests =
+                    progress.usage_unreported_requests.saturating_add(1);
+                return;
+            }
+            progress.prompt_tokens = progress
+                .prompt_tokens
+                .saturating_add(delta.prompt_tokens.unwrap_or(0));
+            progress.completion_tokens = progress
+                .completion_tokens
+                .saturating_add(delta.completion_tokens.unwrap_or(0));
+            progress.reasoning_tokens = progress
+                .reasoning_tokens
+                .saturating_add(delta.reasoning_tokens.unwrap_or(0));
+            progress.cached_prompt_tokens = progress
+                .cached_prompt_tokens
+                .saturating_add(delta.cached_prompt_tokens.unwrap_or(0));
+            progress.cache_write_tokens = progress
+                .cache_write_tokens
+                .saturating_add(delta.cache_write_tokens.unwrap_or(0));
+            let total = delta.total_tokens.unwrap_or_else(|| {
+                delta
+                    .prompt_tokens
+                    .unwrap_or(0)
+                    .saturating_add(delta.completion_tokens.unwrap_or(0))
+            });
+            progress.total_tokens = progress.total_tokens.saturating_add(total);
+        }
+    });
+}
+
+pub(crate) fn current_usage_summary() -> Option<(Option<i64>, bool)> {
+    CURRENT_DOCUMENT_TASK
+        .try_with(|task| {
+            task.progress.lock().ok().map(|progress| {
+                let total = (progress.usage_reported_requests > 0)
+                    .then_some(i64::try_from(progress.total_tokens).unwrap_or(i64::MAX));
+                let complete =
+                    progress.usage_reported_requests > 0 && progress.usage_unreported_requests == 0;
+                (total, complete)
+            })
+        })
+        .ok()
+        .flatten()
 }
 
 pub(crate) fn cancel_document_task(document_id: &str) -> Result<(), CommandError> {
@@ -244,10 +499,10 @@ mod tests {
             .expect("second task should register");
 
         cancel_document_task(first_id).expect("first task should cancel");
-        first.canceled().await;
-        assert!(first.is_canceled());
+        first.signal.canceled().await;
+        assert!(first.signal.is_canceled());
         assert!(is_document_task_canceled(first_id));
-        assert!(!second.is_canceled());
+        assert!(!second.signal.is_canceled());
         assert!(!is_document_task_canceled(second_id));
 
         ACTIVE_DOCUMENT_TASKS.finish(first_id);
@@ -265,5 +520,41 @@ mod tests {
         assert!(registry.has_any());
         registry.finish(document_id);
         assert!(!registry.has_any());
+    }
+
+    #[tokio::test]
+    async fn task_local_progress_accumulates_usage_retries_and_reasoning_policy() {
+        let document_id = "task-progress";
+        let task = ACTIVE_DOCUMENT_TASKS
+            .begin(document_id)
+            .expect("task should register");
+        CURRENT_DOCUMENT_TASK
+            .scope(task, async {
+                set_current_reasoning_effort("minimal");
+                set_current_task_phase("outline", Some(3), 2, 10, Some(5), Some(7), Some(1));
+                record_current_provider_request();
+                record_current_provider_retry();
+                record_current_usage(DocumentTaskUsageDelta {
+                    prompt_tokens: Some(1_000),
+                    completion_tokens: Some(200),
+                    reasoning_tokens: Some(80),
+                    total_tokens: Some(1_200),
+                    cached_prompt_tokens: Some(600),
+                    cache_write_tokens: Some(100),
+                });
+                assert_eq!(current_reasoning_effort().as_deref(), Some("minimal"));
+            })
+            .await;
+        let progress = document_task_progress(document_id).expect("progress should be visible");
+        assert_eq!(progress.phase, "outline");
+        assert_eq!(progress.current_window, Some(3));
+        assert_eq!(progress.current_page_start, Some(5));
+        assert_eq!(progress.reasoning_effort, "minimal");
+        assert_eq!(progress.provider_request_count, 1);
+        assert_eq!(progress.retry_count, 1);
+        assert_eq!(progress.total_tokens, 1_200);
+        assert_eq!(progress.reasoning_tokens, 80);
+        assert_eq!(progress.cached_prompt_tokens, 600);
+        ACTIVE_DOCUMENT_TASKS.finish(document_id);
     }
 }

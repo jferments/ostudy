@@ -4,6 +4,32 @@ export type DocumentLifecycleState = "processing" | "ready" | "failed" | "archiv
 export type DocumentScaleMode = "standard" | "large";
 export type DocumentExtractionMode = "native" | "page_text_fallback" | "ocr_fallback";
 
+export interface DocumentGenerationProgress {
+  startedAt: number;
+  phase: string;
+  currentWindow: number | null;
+  currentWindowEnd?: number | null;
+  completedWindows: number;
+  totalWindows: number;
+  currentPageStart: number | null;
+  currentPageEnd: number | null;
+  currentPartition: number | null;
+  reasoningEffort: string;
+  providerRequestCount: number;
+  retryCount: number;
+  promptTokens: number;
+  completionTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+  cachedPromptTokens: number;
+  cacheWriteTokens: number;
+  usageReportedRequests: number;
+  usageUnreportedRequests: number;
+  providerActivity: "preparing" | "connecting" | "responsive" | "streaming";
+  lastProviderActivityAt: number | null;
+  lastModelActivityAt: number | null;
+}
+
 export interface DocumentSummary {
   id: string;
   title: string;
@@ -67,6 +93,14 @@ interface ImportedPdfDocument {
 
 export async function listDocuments(includeArchived = false): Promise<DocumentSummary[]> {
   return invoke<DocumentSummary[]>("list_documents", { includeArchived });
+}
+
+export async function getDocumentGenerationProgress(
+  documentId: string,
+): Promise<DocumentGenerationProgress | null> {
+  return invoke<DocumentGenerationProgress | null>("get_document_generation_progress", {
+    documentId,
+  });
 }
 
 export async function importPdfAndGenerateFlashcards(

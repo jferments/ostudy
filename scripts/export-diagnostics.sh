@@ -3,6 +3,8 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/diagnostics.bash"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -45,12 +47,13 @@ if command -v git >/dev/null 2>&1 && git -C "$ROOT_DIR" rev-parse --is-inside-wo
 fi
 
 cp "$ROOT_DIR/package.json" "$ROOT_DIR/versions.env" "$TEMP_DIR/"
-LOG_PATH="${XDG_STATE_HOME:-$HOME/.local/state}/ostudy/ostudy.jsonl"
+LOG_PATH="$(ostudy_resolve_application_diagnostic_log)"
+PREVIOUS_LOG_PATH="$(dirname -- "$LOG_PATH")/ostudy.previous.jsonl"
 if [[ -f "$LOG_PATH" ]]; then
-  tail -n 1000 "$LOG_PATH" > "$TEMP_DIR/logs/ostudy.jsonl"
+  tail -n 1000 -- "$LOG_PATH" > "$TEMP_DIR/logs/ostudy.jsonl"
 fi
-if [[ -f "$LOG_PATH.1" ]]; then
-  tail -n 1000 "$LOG_PATH.1" > "$TEMP_DIR/logs/ostudy.jsonl.1"
+if [[ -f "$PREVIOUS_LOG_PATH" ]]; then
+  tail -n 1000 -- "$PREVIOUS_LOG_PATH" > "$TEMP_DIR/logs/ostudy.previous.jsonl"
 fi
 
 mkdir -p "$(dirname -- "$OUTPUT")"

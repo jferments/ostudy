@@ -3,7 +3,9 @@
 //! Provider context windows are hard per-request constraints. Empirical usage
 //! samples refine conservative prompt-overhead estimates, but never increase a
 //! provider-declared hard limit. Large sources scale through more bounded
-//! semantic windows rather than ever-growing requests.
+//! semantic windows rather than ever-growing requests. Aggregate job estimates
+//! are diagnostic/cost information only and never reject an otherwise
+//! context-safe sequence of resumable windows based on provider type.
 
 use std::fmt;
 
@@ -14,16 +16,19 @@ use crate::{
 
 pub(crate) const LARGE_DOCUMENT_UNIT_THRESHOLD: usize = 50;
 pub(crate) const MAX_SUPPORTED_SOURCE_UNITS: usize = 300;
-/// Aggregate source-token guard for metered/remote providers. Local llama.cpp
-/// jobs deliberately do not use a whole-document token cap because each actual
-/// provider request is already bounded by semantic-window and context limits.
-pub(crate) const MAX_AUTOMATIC_SOURCE_TOKENS: usize = 250_000;
-const DEEPSEEK_JOB_TOKEN_CEILING: usize = 650_000;
-const DEFAULT_CLOUD_JOB_TOKEN_CEILING: usize = 650_000;
 const OUTLINE_FIXED_PROMPT_RESERVE: usize = 1_200;
 const GENERATION_FIXED_PROMPT_RESERVE: usize = 1_800;
 const MIN_OUTLINE_SOURCE_TOKENS: usize = 600;
 const MIN_GENERATION_SOURCE_TOKENS: usize = 800;
+pub(crate) const OUTLINE_VISIBLE_COMPLETION_TOKENS: usize = 2_048;
+pub(crate) const GLOBAL_OUTLINE_VISIBLE_COMPLETION_TOKENS: usize = 3_072;
+pub(crate) const CURATION_VISIBLE_COMPLETION_TOKENS: usize = 2_048;
+
+pub(crate) fn generation_visible_completion_tokens(maximum_cards: usize) -> usize {
+    2_048_usize
+        .saturating_add(maximum_cards.saturating_mul(384))
+        .clamp(2_048, 8_192)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DocumentScaleClass {
@@ -33,29 +38,15 @@ pub(crate) enum DocumentScaleClass {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AggregateTokenCeiling {
-    /// Local/unmetered execution: the document may require any number of
-    /// sequential bounded provider windows. Only per-request context is hard.
+    /// Every supported provider executes large jobs as a sequence of bounded,
+    /// checkpointed requests. Only per-request model/context constraints are
+    /// hard; whole-document token totals are informational.
     Windowed,
-    /// Metered/remote execution: reject a conservatively excessive whole job
-    /// before spending provider tokens.
-    Capped(usize),
-}
-
-impl AggregateTokenCeiling {
-    fn enforced_tokens(self) -> Option<usize> {
-        match self {
-            Self::Windowed => None,
-            Self::Capped(tokens) => Some(tokens),
-        }
-    }
 }
 
 impl fmt::Display for AggregateTokenCeiling {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Windowed => formatter.write_str("windowed"),
-            Self::Capped(tokens) => write!(formatter, "{tokens}"),
-        }
+        formatter.write_str("windowed")
     }
 }
 
@@ -101,6 +92,7 @@ impl DocumentScalePlan {
     pub(crate) fn for_capabilities(
         source_unit_count: usize,
         capabilities: &DocumentProviderCapabilities,
+        effective_reasoning_effort: &str,
         calibration: DocumentCostCalibration,
     ) -> Result<Self, CommandError> {
         let mut plan = baseline_plan(source_unit_count, &capabilities.provider_kind);
@@ -108,7 +100,10 @@ impl DocumentScalePlan {
             return Ok(plan);
         };
 
-        let outline_output = outline_completion_reserve(&capabilities.provider_kind);
+        let outline_output = capabilities.completion_token_ceiling(
+            effective_reasoning_effort,
+            OUTLINE_VISIBLE_COMPLETION_TOKENS,
+        );
         plan.outline_window_max_tokens = context_bounded_source_tokens(
             plan.outline_window_max_tokens,
             context_window,
@@ -118,13 +113,21 @@ impl DocumentScalePlan {
             calibration,
             MIN_OUTLINE_SOURCE_TOKENS,
         )?;
-        let generation_output = generation_completion_reserve(plan.max_cards_per_window);
+        let generation_output = capabilities.completion_token_ceiling(
+            effective_reasoning_effort,
+            generation_visible_completion_tokens(plan.max_cards_per_window),
+        );
+        let generation_image_count = if capabilities.image_input {
+            plan.max_images_per_window
+        } else {
+            0
+        };
         plan.generation_window_max_tokens = context_bounded_source_tokens(
             plan.generation_window_max_tokens,
             context_window,
             generation_output,
             GENERATION_FIXED_PROMPT_RESERVE,
-            plan.max_images_per_window,
+            generation_image_count,
             calibration,
             MIN_GENERATION_SOURCE_TOKENS,
         )?;
@@ -166,49 +169,35 @@ fn baseline_plan(source_unit_count: usize, provider_kind: &str) -> DocumentScale
             partition_max_tokens: 24_000,
             partition_target_units: 24,
             partition_max_units: 32,
-            outline_window_max_tokens: 3_200,
-            outline_window_max_units: 8,
-            outline_window_overlap_tokens: 350,
-            generation_window_max_tokens: 5_000,
-            generation_window_max_units: 10,
-            generation_window_overlap_tokens: 700,
+            outline_window_max_tokens: 6_000,
+            outline_window_max_units: 12,
+            outline_window_overlap_tokens: 300,
+            generation_window_max_tokens: 6_500,
+            generation_window_max_units: 14,
+            generation_window_overlap_tokens: 500,
             max_images_per_window: if provider_kind == "deepseek" { 0 } else { 4 },
             max_cards_per_window: 12,
         };
     }
 
-    if provider_kind == "deepseek" {
-        DocumentScalePlan {
-            class: DocumentScaleClass::Large,
-            partition_target_tokens: 32_000,
-            partition_max_tokens: 48_000,
-            partition_target_units: 48,
-            partition_max_units: 60,
-            outline_window_max_tokens: 10_000,
-            outline_window_max_units: 20,
-            outline_window_overlap_tokens: 500,
-            generation_window_max_tokens: 6_000,
-            generation_window_max_units: 8,
-            generation_window_overlap_tokens: 400,
-            max_images_per_window: 0,
-            max_cards_per_window: 16,
-        }
-    } else {
-        DocumentScalePlan {
-            class: DocumentScaleClass::Large,
-            partition_target_tokens: 18_000,
-            partition_max_tokens: 28_000,
-            partition_target_units: 20,
-            partition_max_units: 30,
-            outline_window_max_tokens: 3_200,
-            outline_window_max_units: 8,
-            outline_window_overlap_tokens: 300,
-            generation_window_max_tokens: 5_000,
-            generation_window_max_units: 10,
-            generation_window_overlap_tokens: 500,
-            max_images_per_window: 3,
-            max_cards_per_window: 16,
-        }
+    // Large-document request sizing is provider-neutral. Hierarchy metadata is
+    // retained inside each semantic chunk, while network request packing uses
+    // useful multi-page batches. A provider-declared context window can only
+    // shrink these targets below; it can never make an unsafe request larger.
+    DocumentScalePlan {
+        class: DocumentScaleClass::Large,
+        partition_target_tokens: 32_000,
+        partition_max_tokens: 48_000,
+        partition_target_units: 40,
+        partition_max_units: 60,
+        outline_window_max_tokens: 14_000,
+        outline_window_max_units: 24,
+        outline_window_overlap_tokens: 400,
+        generation_window_max_tokens: 10_000,
+        generation_window_max_units: 18,
+        generation_window_overlap_tokens: 500,
+        max_images_per_window: if provider_kind == "deepseek" { 0 } else { 3 },
+        max_cards_per_window: 16,
     }
 }
 
@@ -240,30 +229,10 @@ fn context_bounded_source_tokens(
     Ok(bounded)
 }
 
-fn outline_completion_reserve(provider_kind: &str) -> usize {
-    if provider_kind == "deepseek" {
-        3_072
-    } else {
-        2_048
-    }
-}
-
-fn generation_completion_reserve(maximum_cards: usize) -> usize {
-    1_024_usize
-        .saturating_add(maximum_cards.saturating_mul(384))
-        .clamp(1_536, 5_120)
-}
-
-fn aggregate_token_ceiling(provider_kind: &str) -> AggregateTokenCeiling {
-    match provider_kind {
-        // llama.cpp/Unsloth is local and unmetered from ostudy's perspective.
-        // Large sources are already decomposed into context-bounded outline and
-        // generation windows, so a whole-job ceiling would only reject work that
-        // can safely continue sequentially.
-        "llama_cpp" => AggregateTokenCeiling::Windowed,
-        "deepseek" => AggregateTokenCeiling::Capped(DEEPSEEK_JOB_TOKEN_CEILING),
-        _ => AggregateTokenCeiling::Capped(DEFAULT_CLOUD_JOB_TOKEN_CEILING),
-    }
+pub(crate) struct DocumentBudgetContext<'a> {
+    pub capabilities: &'a DocumentProviderCapabilities,
+    pub reasoning_effort: &'a str,
+    pub calibration: DocumentCostCalibration,
 }
 
 #[cfg(test)]
@@ -281,8 +250,11 @@ pub(crate) fn validate_automatic_job(
         plan,
         outline_window_count,
         generation_window_count,
-        &DocumentProviderCapabilities::conservative(provider_kind, "unknown"),
-        DocumentCostCalibration::default(),
+        DocumentBudgetContext {
+            capabilities: &DocumentProviderCapabilities::conservative(provider_kind, "unknown"),
+            reasoning_effort: "none",
+            calibration: DocumentCostCalibration::default(),
+        },
     )
 }
 
@@ -292,24 +264,18 @@ pub(crate) fn validate_automatic_job_calibrated(
     plan: DocumentScalePlan,
     outline_window_count: usize,
     generation_window_count: usize,
-    capabilities: &DocumentProviderCapabilities,
-    calibration: DocumentCostCalibration,
+    context: DocumentBudgetContext<'_>,
 ) -> Result<DocumentJobBudget, CommandError> {
+    let DocumentBudgetContext {
+        capabilities,
+        reasoning_effort: effective_reasoning_effort,
+        calibration,
+    } = context;
     if source_unit_count > MAX_SUPPORTED_SOURCE_UNITS {
         return Err(CommandError::new(
             "document_generation_unit_limit",
             format!(
                 "Automatic generation supports up to {MAX_SUPPORTED_SOURCE_UNITS} source units at a time. Split this source at chapter or section boundaries and import the parts separately."
-            ),
-        ));
-    }
-
-    let ceiling_tokens = aggregate_token_ceiling(&capabilities.provider_kind);
-    if ceiling_tokens.enforced_tokens().is_some() && source_tokens > MAX_AUTOMATIC_SOURCE_TOKENS {
-        return Err(CommandError::new(
-            "document_generation_source_limit",
-            format!(
-                "This document contains too much extracted source material for one metered provider job. Split it at chapter or section boundaries so each part stays below about {MAX_AUTOMATIC_SOURCE_TOKENS} estimated source tokens, or use a local llama.cpp profile to process it through bounded windows."
             ),
         ));
     }
@@ -321,9 +287,12 @@ pub(crate) fn validate_automatic_job_calibrated(
     let outline_source_estimate = source_tokens
         .saturating_add(outline_window_count.saturating_mul(plan.outline_window_overlap_tokens));
     let outline_prompt = calibration.calibrated_prompt_tokens(outline_source_estimate, 0);
-    let outline_fixed = outline_window_count.saturating_mul(
-        1_500_usize.saturating_add(outline_completion_reserve(&capabilities.provider_kind)),
+    let outline_completion = capabilities.completion_token_ceiling(
+        effective_reasoning_effort,
+        OUTLINE_VISIBLE_COMPLETION_TOKENS,
     );
+    let outline_fixed =
+        outline_window_count.saturating_mul(1_500_usize.saturating_add(outline_completion));
 
     let generation_source_estimate = source_tokens.saturating_add(
         generation_window_count.saturating_mul(plan.generation_window_overlap_tokens),
@@ -331,9 +300,12 @@ pub(crate) fn validate_automatic_job_calibrated(
     let maximum_images = generation_window_count.saturating_mul(plan.max_images_per_window);
     let generation_prompt =
         calibration.calibrated_prompt_tokens(generation_source_estimate, maximum_images);
-    let generation_fixed = generation_window_count.saturating_mul(
-        1_800_usize.saturating_add(generation_completion_reserve(plan.max_cards_per_window)),
+    let generation_completion = capabilities.completion_token_ceiling(
+        effective_reasoning_effort,
+        generation_visible_completion_tokens(plan.max_cards_per_window),
     );
+    let generation_fixed =
+        generation_window_count.saturating_mul(1_800_usize.saturating_add(generation_completion));
     let compact_repair_reserve = outline_window_count
         .saturating_mul(900)
         .saturating_add(generation_window_count.saturating_mul(1_200));
@@ -348,20 +320,9 @@ pub(crate) fn validate_automatic_job_calibrated(
         .saturating_add(curation_reserve)
         .saturating_add(global_synthesis_reserve);
 
-    if let Some(enforced_ceiling) = ceiling_tokens.enforced_tokens() {
-        if estimated_tokens > enforced_ceiling {
-            return Err(CommandError::new(
-                "document_ai_budget_exceeded",
-                format!(
-                    "This document's conservative AI-job estimate is about {estimated_tokens} tokens, above the automatic {enforced_ceiling}-token safety ceiling for the selected metered provider. Split the source at chapter or section boundaries or use a local llama.cpp profile, which processes large sources through bounded windows."
-                ),
-            ));
-        }
-    }
-
     Ok(DocumentJobBudget {
         estimated_tokens,
-        ceiling_tokens,
+        ceiling_tokens: AggregateTokenCeiling::Windowed,
         generation_card_capacity,
         context_window_tokens: capabilities.context_window_tokens,
         calibration_sample_count: calibration.sample_count,
@@ -381,6 +342,7 @@ mod tests {
             image_input: false,
             usage_reporting: true,
             structured_output: StructuredOutputStrategy::JsonSchema,
+            reasoning: None,
         }
     }
 
@@ -388,24 +350,25 @@ mod tests {
     fn fifty_units_keep_the_standard_plan() {
         let plan = DocumentScalePlan::for_provider(50, "deepseek");
         assert_eq!(plan.class, DocumentScaleClass::Standard);
-        assert_eq!(plan.generation_window_max_tokens, 5_000);
+        assert_eq!(plan.generation_window_max_tokens, 6_500);
     }
 
     #[test]
-    fn reported_context_can_only_shrink_the_conservative_source_window() {
+    fn reported_context_can_only_shrink_the_source_window() {
         let calibration = DocumentCostCalibration {
             prompt_multiplier_milli: 1_500,
             image_prompt_tokens: 0,
             sample_count: 5,
         };
         let plan = DocumentScalePlan::for_capabilities(
-            20,
-            &capabilities("llama_cpp", Some(8_192)),
+            55,
+            &capabilities("openrouter", Some(12_000)),
+            "none",
             calibration,
         )
         .unwrap();
-        assert!(plan.outline_window_max_tokens <= 3_200);
-        assert!(plan.generation_window_max_tokens < 5_000);
+        assert!(plan.outline_window_max_tokens < 14_000);
+        assert!(plan.generation_window_max_tokens < 10_000);
     }
 
     #[test]
@@ -413,6 +376,7 @@ mod tests {
         let error = DocumentScalePlan::for_capabilities(
             10,
             &capabilities("llama_cpp", Some(2_048)),
+            "none",
             DocumentCostCalibration::default(),
         )
         .unwrap_err();
@@ -420,77 +384,74 @@ mod tests {
     }
 
     #[test]
-    fn deepseek_large_documents_use_chapter_scale_partitions_and_many_card_slots() {
-        let plan = DocumentScalePlan::for_provider(138, "deepseek");
-        assert_eq!(plan.class, DocumentScaleClass::Large);
-        assert_eq!(plan.partition_target_units, 48);
-        assert_eq!(plan.partition_max_units, 60);
-        assert_eq!(plan.generation_window_max_units, 8);
-        assert_eq!(plan.max_cards_per_window, 16);
-        let budget = validate_automatic_job(138, 100_000, plan, 8, 18, "deepseek").unwrap();
-        assert_eq!(budget.generation_card_capacity, 288);
-        let ceiling = budget
-            .ceiling_tokens
-            .enforced_tokens()
-            .expect("DeepSeek should retain an aggregate ceiling");
-        assert!(budget.estimated_tokens < ceiling);
+    fn large_document_request_sizes_are_provider_neutral() {
+        let llama = DocumentScalePlan::for_provider(138, "llama_cpp");
+        let deepseek = DocumentScalePlan::for_provider(138, "deepseek");
+        let openrouter = DocumentScalePlan::for_provider(138, "openrouter");
+        for plan in [llama, deepseek, openrouter] {
+            assert_eq!(plan.class, DocumentScaleClass::Large);
+            assert_eq!(plan.partition_target_units, 40);
+            assert_eq!(plan.partition_max_units, 60);
+            assert_eq!(plan.outline_window_max_tokens, 14_000);
+            assert_eq!(plan.outline_window_max_units, 24);
+            assert_eq!(plan.generation_window_max_tokens, 10_000);
+            assert_eq!(plan.generation_window_max_units, 18);
+            assert_eq!(plan.max_cards_per_window, 16);
+        }
+        assert_eq!(deepseek.max_images_per_window, 0);
+        assert_eq!(llama.max_images_per_window, 3);
+        assert_eq!(openrouter.max_images_per_window, 3);
     }
 
     #[test]
-    fn local_large_documents_keep_conservative_request_windows() {
-        let plan = DocumentScalePlan::for_provider(138, "llama_cpp");
-        assert_eq!(plan.class, DocumentScaleClass::Large);
-        assert_eq!(plan.outline_window_max_tokens, 3_200);
-        assert_eq!(plan.generation_window_max_units, 10);
-        assert_eq!(plan.max_cards_per_window, 16);
+    fn openrouter_55_page_plan_uses_fewer_larger_windows_than_old_cloud_policy() {
+        let plan = DocumentScalePlan::for_provider(55, "openrouter");
+        assert_eq!(plan.outline_window_max_tokens, 14_000);
+        assert_eq!(plan.outline_window_max_units, 24);
+        assert_eq!(plan.generation_window_max_tokens, 10_000);
+        assert_eq!(plan.generation_window_max_units, 18);
     }
 
     #[test]
-    fn local_138_page_job_continues_through_windows_past_the_old_aggregate_ceiling() {
-        let plan = DocumentScalePlan::for_provider(138, "llama_cpp");
-        let budget = validate_automatic_job(138, 220_000, plan, 50, 80, "llama_cpp")
-            .expect("large local jobs should be window-bounded, not job-bounded");
-        assert!(budget.estimated_tokens > 1_200_000);
+    fn all_providers_continue_through_windows_past_old_aggregate_ceilings() {
+        for provider in ["llama_cpp", "deepseek", "openrouter"] {
+            let plan = DocumentScalePlan::for_provider(138, provider);
+            let budget = validate_automatic_job(138, 220_000, plan, 20, 35, provider)
+                .expect("large jobs should be window-bounded, not whole-job-bounded");
+            assert!(budget.estimated_tokens > 650_000);
+            assert_eq!(budget.ceiling_tokens, AggregateTokenCeiling::Windowed);
+        }
+    }
+
+    #[test]
+    fn openrouter_55_page_job_above_old_650k_guard_is_allowed() {
+        let plan = DocumentScalePlan::for_provider(55, "openrouter");
+        let budget = validate_automatic_job(55, 180_000, plan, 18, 28, "openrouter")
+            .expect("OpenRouter should process large sources through bounded windows");
+        assert!(budget.estimated_tokens > 650_000);
         assert_eq!(budget.ceiling_tokens, AggregateTokenCeiling::Windowed);
     }
 
     #[test]
-    fn local_source_above_cloud_token_guard_scales_through_more_windows() {
-        let plan = DocumentScalePlan::for_provider(300, "llama_cpp");
-        let budget = validate_automatic_job(
-            300,
-            MAX_AUTOMATIC_SOURCE_TOKENS + 100_000,
-            plan,
-            80,
-            100,
-            "llama_cpp",
-        )
-        .expect("local source totals should not be rejected when requests remain window-bounded");
-        assert_eq!(budget.ceiling_tokens, AggregateTokenCeiling::Windowed);
+    fn aggregate_source_tokens_do_not_create_provider_specific_rejections() {
+        for provider in ["llama_cpp", "deepseek", "openrouter"] {
+            let plan = DocumentScalePlan::for_provider(100, provider);
+            let budget = validate_automatic_job(100, 350_000, plan, 50, 60, provider)
+                .expect("large source totals should scale by adding bounded windows");
+            assert_eq!(budget.ceiling_tokens, AggregateTokenCeiling::Windowed);
+        }
     }
 
     #[test]
-    fn whole_job_budget_fails_before_an_excessive_cloud_run() {
-        let plan = DocumentScalePlan::for_provider(250, "deepseek");
-        let error = validate_automatic_job(250, 220_000, plan, 20, 40, "deepseek").unwrap_err();
-        assert_eq!(error.code, "document_ai_budget_exceeded");
-    }
-
-    #[test]
-    fn source_unit_limit_is_global_but_source_token_limit_is_metered_only() {
-        let plan = DocumentScalePlan::for_provider(301, "llama_cpp");
-        assert_eq!(
-            validate_automatic_job(301, 10_000, plan, 1, 1, "llama_cpp")
-                .unwrap_err()
-                .code,
-            "document_generation_unit_limit"
-        );
-        let plan = DocumentScalePlan::for_provider(100, "deepseek");
-        assert_eq!(
-            validate_automatic_job(100, MAX_AUTOMATIC_SOURCE_TOKENS + 1, plan, 1, 1, "deepseek")
-                .unwrap_err()
-                .code,
-            "document_generation_source_limit"
-        );
+    fn source_unit_limit_remains_a_provider_neutral_ingestion_bound() {
+        for provider in ["llama_cpp", "deepseek", "openrouter"] {
+            let plan = DocumentScalePlan::for_provider(301, provider);
+            assert_eq!(
+                validate_automatic_job(301, 10_000, plan, 1, 1, provider)
+                    .unwrap_err()
+                    .code,
+                "document_generation_unit_limit"
+            );
+        }
     }
 }

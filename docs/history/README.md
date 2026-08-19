@@ -24,3 +24,5 @@ Use a historical document to answer questions such as:
 Do not use it as the installation guide, current roadmap, current architecture, or required validation checklist. Start from [`../README.md`](../README.md), [`../roadmap.md`](../roadmap.md), [`../architecture/`](../architecture/), and [`../development/`](../development/) instead.
 
 When a maintained document becomes historical, move it here with a descriptive filename and add a short note explaining its scope. Do not leave a stale document at the repository root where a new reader may reasonably mistake it for current guidance.
+
+- [Pre-public schema evolution](pre-public-schema-evolution.md) — architectural history retained after establishing the public schema baseline.

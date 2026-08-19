@@ -4,9 +4,19 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
+export OSTUDY_QUALIFICATION_COMMAND="./scripts/smoke-native.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/build-state.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/diagnostics.bash"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+ostudy_parse_diagnostic_args "$@"
+if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
+  printf 'Usage: ./scripts/smoke-native.sh [diagnostic options]\n' >&2
+  ostudy_diagnostic_usage >&2
+  exit 2
+fi
 
 ostudy_require_current_build
 command -v tauri-driver >/dev/null 2>&1 || {
@@ -33,19 +43,61 @@ fi
 TEMP_HOME="$(mktemp -d -t ostudy-smoke.XXXXXXXX)"
 cleanup() { rm -rf -- "$TEMP_HOME"; }
 trap cleanup EXIT
-export XDG_DATA_HOME="$TEMP_HOME/data"
-export XDG_CONFIG_HOME="$TEMP_HOME/config"
-export XDG_CACHE_HOME="$TEMP_HOME/cache"
-export XDG_STATE_HOME="$TEMP_HOME/state"
-mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_STATE_HOME"
+
+is_retryable_driver_failure() {
+  local log_file="$1"
+  grep -Eq \
+    'RemoteDisconnected|ConnectionResetError|Connection refused|remote end closed connection|tauri-driver.*(closed|terminated)' \
+    "$log_file"
+}
 
 run_smoke() {
   local label="$1"
   local script="$2"
-  printf '\n==> %s\n' "$label"
-  # SIGINT lets Python unwind through finally blocks and terminate tauri-driver.
-  timeout --signal=INT 300s \
-    python3 -u "$script" --application "$OSTUDY_BINARY"
+  local slug attempt attempt_home log_file application_log status
+  slug="$(printf '%s' "$label" | tr '[:upper:] /' '[:lower:]--' | tr -cd '[:alnum:]_-')"
+
+  for attempt in 1 2; do
+    attempt_home="$TEMP_HOME/$slug/attempt-$attempt"
+    log_file="$TEMP_HOME/$slug/attempt-$attempt.log"
+    application_log="$attempt_home/data/io.github.jferments.ostudy/diagnostics/ostudy.jsonl"
+    rm -rf -- "$attempt_home"
+    mkdir -p \
+      "$attempt_home/data" \
+      "$attempt_home/config" \
+      "$attempt_home/cache" \
+      "$attempt_home/state"
+
+    printf '\n==> %s%s\n' \
+      "$label" \
+      "$([[ "$attempt" -eq 1 ]] && printf '' || printf ' (driver retry)')"
+
+    set +e
+    # SIGINT lets Python unwind through finally blocks and terminate tauri-driver.
+    XDG_DATA_HOME="$attempt_home/data" \
+    XDG_CONFIG_HOME="$attempt_home/config" \
+    XDG_CACHE_HOME="$attempt_home/cache" \
+    XDG_STATE_HOME="$attempt_home/state" \
+      timeout --signal=INT 300s \
+        python3 -u "$script" --application "$OSTUDY_BINARY" 2>&1 | tee "$log_file"
+    status="${PIPESTATUS[0]}"
+    set -e
+
+    if [[ "$status" -eq 0 ]]; then
+      return 0
+    fi
+    if [[ "$attempt" -eq 1 ]] && is_retryable_driver_failure "$log_file"; then
+      ostudy_capture_transient_artifacts \
+        "$label (recovered WebDriver transport failure)" \
+        "$status" \
+        "$log_file" \
+        "$application_log"
+      printf 'WARN: WebDriver transport disconnected; retrying once with isolated application state.\n' >&2
+      continue
+    fi
+    ostudy_capture_failure_artifacts "$label" "$status" "$log_file" "$application_log"
+    return "$status"
+  done
 }
 
 run_smoke "Native durable-library WebDriver smoke" \
