@@ -108,6 +108,17 @@ text = text.replace(
     "let second_pass_outline = second_pass_outline(outline.clone(), &existing_coverage);",
     1,
 )
+# The durable target ledger deliberately removed the synthetic second-pass
+# learning objective. Keep regression coverage on the duplicate-avoidance summary
+# while asserting that the source-derived learning objectives are unchanged.
+text = text.replace(
+    '''        assert!(augmented.learning_objectives[0].contains("coverage gaps"));''',
+    '''        assert_eq!(
+            augmented.learning_objectives,
+            vec!["Understand pulmonary perfusion".to_string()]
+        );''',
+    1,
+)
 write(path, text)
 
 # Apply the same statement-lifetime pattern to native prompt-preset loading.
