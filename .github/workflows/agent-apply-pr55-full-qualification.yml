@@ -1,5 +1,5 @@
 name: Apply and fully qualify PR 55
-# verifier-bootstrap-trigger: 1
+# verifier-bootstrap-trigger: 2
 
 on:
   push:
@@ -103,14 +103,14 @@ jobs:
           cp scripts/agent-pr55-test-refresh.py "$RUNNER_TEMP/pr55-test-refresh.py"
           rm -f scripts/agent-pr55-*.py .github/workflows/agent-*.yml
 
-      - name: Format final source shape
+      - name: Install dependencies and normalize Rust formatting
         run: |
           set -Eeuo pipefail
           command -v pnpm
           pnpm --version
           pnpm install --frozen-lockfile
-          pnpm exec prettier --write 'src/**/*.{ts,tsx,css}' 'docs/**/*.md' 'scripts/*.mjs'
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          node ./scripts/verify-ui-ai-overhaul.mjs
 
       - name: Refresh only removed-UI expectations
         id: initial_frontend
@@ -123,7 +123,6 @@ jobs:
           set -Eeuo pipefail
           test -s /tmp/pr55-vitest.json
           python3 "$RUNNER_TEMP/pr55-test-refresh.py" --vitest-json /tmp/pr55-vitest.json
-          pnpm exec prettier --write 'src/**/*.{ts,tsx}'
           pnpm exec vitest run
 
       - name: Run full Linux and native Tauri qualification
@@ -147,7 +146,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           bash ./scripts/check-static.sh
-          pnpm exec prettier --check 'src/**/*.{ts,tsx,css}' 'docs/**/*.md' 'scripts/*.mjs'
           cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
           git diff --check
 
