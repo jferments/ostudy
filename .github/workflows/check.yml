@@ -61,6 +61,7 @@ jobs:
         run: |
           python3 ./scripts/pr54_device_sync_resilience_fix.py
           chmod +x ./scripts/android-diagnostics.sh
+          git add --chmod=+x ./scripts/android-diagnostics.sh
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           git diff --check
           bash ./scripts/check-fast.sh
@@ -68,7 +69,7 @@ jobs:
       - name: Publish corrected product source when needed
         id: publish
         run: |
-          if git diff --quiet; then
+          if git diff --quiet && git diff --cached --quiet; then
             echo 'changed=false' >> "$GITHUB_OUTPUT"
             echo 'PR 54 Android sync resilience changes are already applied.'
             exit 0
