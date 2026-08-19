@@ -1,8 +1,9 @@
 name: Agent apply phase one
 
 on:
-  push:
-    branches: [agent/ui-ai-semantic-generation-overhaul]
+  pull_request:
+    branches: [main]
+    types: [synchronize, reopened]
 
 permissions:
   contents: write
