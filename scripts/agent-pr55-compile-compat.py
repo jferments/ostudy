@@ -155,7 +155,8 @@ for file in (ROOT / "src").rglob("*CreateCardsWorkspace*"):
         file.unlink()
 
 # Keep direct PracticeSetup fixtures source-compatible while the screen itself
-# still supplies explicit state.
+# still supplies explicit state. Destructure workload before deriving the
+# optional status default so TypeScript never observes a use-before-binding.
 path = ROOT / "src/screens/practice/PracticeSetup.tsx"
 text = path.read_text()
 text = text.replace(
@@ -164,7 +165,18 @@ text = text.replace(
 )
 text = text.replace(
     "  workloadStatus,\n  workload,",
-    '  workloadStatus = workload ? "loaded" : isLoadingWorkload ? "loading" : "idle",\n  workload,',
+    '  workload,\n  workloadStatus = workload ? "loaded" : isLoadingWorkload ? "loading" : "idle",',
+)
+path.write_text(text)
+
+# Re-selecting Practice deliberately follows the same termination path as any
+# other primary-root navigation. Prefix the retained compatibility parameter so
+# the strict no-unused-parameter gate documents that intent.
+path = ROOT / "src/controllers/useAppController.ts"
+text = path.read_text().replace(
+    "async function confirmPracticeTermination(next: AppSection): Promise<boolean>",
+    "async function confirmPracticeTermination(_next: AppSection): Promise<boolean>",
+    1,
 )
 path.write_text(text)
 
