@@ -332,13 +332,55 @@ def _hit_signature(hit: dict[str, Any]) -> tuple[float, float, float, float] | N
         return None
 
 
+def _arm_click_ack(session_id: str, element_id: str, token: str) -> None:
+    """Install a one-shot capture listener that proves the DOM received the click."""
+    armed = request(
+        "POST",
+        f"/session/{session_id}/execute/sync",
+        {
+            "script": """
+                const element = arguments[0];
+                const token = arguments[1];
+                if (!(element instanceof Element)) return false;
+                element.addEventListener(
+                  'click',
+                  () => { window.__OSTUDY_WEBDRIVER_CLICK_ACK__ = token; },
+                  { once: true, capture: true }
+                );
+                return true;
+            """,
+            "args": [{ELEMENT_KEY: element_id}, token],
+        },
+    )
+    if armed is not True:
+        raise RuntimeError("Could not arm DOM acknowledgement for WebDriver click")
+
+
+def _wait_for_click_ack(session_id: str, token: str, deadline: float) -> bool:
+    """Wait briefly for the target's capture listener to observe a real click event."""
+    while time.monotonic() < deadline:
+        acknowledged = request(
+            "POST",
+            f"/session/{session_id}/execute/sync",
+            {
+                "script": "return window.__OSTUDY_WEBDRIVER_CLICK_ACK__ === arguments[0];",
+                "args": [token],
+            },
+        )
+        if acknowledged is True:
+            return True
+        time.sleep(0.05)
+    return False
+
+
 def click(session_id: str, element_id: str) -> None:
-    """Click only after WebKit reports a stable, unobstructed hit target."""
+    """Click a stable target and require proof that WebKit dispatched the DOM event."""
     deadline = time.monotonic() + 5
     last_error: WebDriverProtocolError | None = None
     last_hit: dict[str, Any] | None = None
     stable_signature: tuple[float, float, float, float] | None = None
     stable_samples = 0
+    unacknowledged_clicks = 0
 
     while time.monotonic() < deadline:
         hit = _element_hit_test(session_id, element_id)
@@ -364,15 +406,32 @@ def click(session_id: str, element_id: str) -> None:
             time.sleep(0.1)
             continue
 
+        token = f"ostudy-click-{time.monotonic_ns()}-{unacknowledged_clicks}"
+        _arm_click_ack(session_id, element_id, token)
         try:
             request("POST", f"/session/{session_id}/element/{element_id}/click", {})
-            return
         except WebDriverProtocolError as error:
             if error.error not in TRANSIENT_CLICK_ERRORS:
                 raise
             last_error = error
+            stable_signature = None
             stable_samples = 0
             time.sleep(0.1)
+            continue
+
+        ack_deadline = min(deadline, time.monotonic() + 0.5)
+        if _wait_for_click_ack(session_id, token, ack_deadline):
+            return
+
+        unacknowledged_clicks += 1
+        if unacknowledged_clicks >= 2:
+            raise RuntimeError(
+                "WebDriver reported two successful clicks without DOM acknowledgement. "
+                f"Last hit test: {json.dumps(last_hit, sort_keys=True)}"
+            )
+        stable_signature = None
+        stable_samples = 0
+        time.sleep(0.1)
 
     if last_hit is not None and last_hit.get("ready") is not True:
         raise RuntimeError(
