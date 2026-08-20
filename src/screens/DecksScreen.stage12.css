@@ -83,8 +83,8 @@
   .card-row-preview {
     display: grid;
     min-width: 0;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--ostudy-space-4);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
   }
 
   .card-preview-line {
@@ -179,11 +179,6 @@
       grid-template-columns: 28px minmax(0, 1fr);
       gap: var(--ostudy-space-2);
       padding: 10px var(--ostudy-space-3);
-    }
-
-    .card-row-preview {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 2px;
     }
 
     .card-row-actions {
