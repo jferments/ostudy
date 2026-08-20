@@ -70,6 +70,7 @@ function controller(): AiProfilesController {
     setCredentialDraft: vi.fn(),
     setCredentialPersistence: vi.fn(),
     saveProfile: vi.fn(),
+    connectSetup: vi.fn(),
     deleteProfile: vi.fn(),
     saveCredential: vi.fn(),
     clearCredential: vi.fn(),
