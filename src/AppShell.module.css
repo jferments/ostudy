@@ -26,7 +26,10 @@
   }
 
   :global(:root[data-layout-mode="medium"]) .shell {
-    grid-template-columns: var(--ostudy-navigation-medium-width) minmax(0, 1fr);
+    /* The semantic layout mode owns this width. A legacy <=960px rule still
+       targets .app-shell with the retired 82px icon rail; keep that rule from
+       reintroducing a clipped hybrid sidebar on tablet-sized viewports. */
+    grid-template-columns: var(--ostudy-navigation-medium-width) minmax(0, 1fr) !important;
   }
 
   :global(:root[data-layout-mode="compact"]) .shell {
