@@ -23,7 +23,9 @@ const CHECKPOINT_SCHEMA_VERSION: i64 = 1;
 const MAX_CHECKPOINT_BYTES: usize = 64 * 1024;
 const DEVICE_STATE_DIRECTORY: &str = "device-state";
 const CHECKPOINT_FILENAME: &str = "ui-checkpoint-v1.json";
-const FLASHCARDS_WORKSPACES: &[&str] = &["decks", "templates", "search", "transfer", "create"];
+const FLASHCARDS_WORKSPACES: &[&str] = &["decks", "templates", "search", "transfer"];
+const FLASHCARDS_VIEWS: &[&str] = &["root", "deck"];
+const LEGACY_CREATE_WORKSPACE: &str = "create";
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -60,6 +62,7 @@ pub struct UiCheckpointDto {
     pub updated_at: i64,
     pub section: CheckpointSection,
     pub flashcards_workspace: Option<String>,
+    pub flashcards_view: Option<String>,
     pub deck_id: Option<String>,
     pub editor_draft_id: Option<String>,
     pub practice: Option<PracticeCheckpoint>,
@@ -71,6 +74,7 @@ pub struct UiCheckpointDto {
 pub struct SaveUiCheckpointInput {
     pub section: CheckpointSection,
     pub flashcards_workspace: Option<String>,
+    pub flashcards_view: Option<String>,
     pub deck_id: Option<String>,
     pub editor_draft_id: Option<String>,
     pub practice: Option<PracticeCheckpoint>,
@@ -91,13 +95,14 @@ pub fn get_ui_checkpoint(
         quarantine_invalid_checkpoint(paths.inner(), &path)?;
         return Ok(None);
     }
-    let checkpoint: UiCheckpointDto = match serde_json::from_slice(&bytes) {
+    let mut checkpoint: UiCheckpointDto = match serde_json::from_slice(&bytes) {
         Ok(checkpoint) => checkpoint,
         Err(_) => {
             quarantine_invalid_checkpoint(paths.inner(), &path)?;
             return Ok(None);
         }
     };
+    normalize_legacy_checkpoint(&mut checkpoint);
     if validate_checkpoint(&checkpoint).is_err() {
         quarantine_invalid_checkpoint(paths.inner(), &path)?;
         return Ok(None);
@@ -115,6 +120,7 @@ pub fn save_ui_checkpoint(
         updated_at: unix_time_millis()?,
         section: input.section,
         flashcards_workspace: input.flashcards_workspace,
+        flashcards_view: input.flashcards_view,
         deck_id: input.deck_id,
         editor_draft_id: input.editor_draft_id,
         practice: input.practice,
@@ -158,6 +164,28 @@ pub fn clear_ui_checkpoint(paths: State<'_, AppPaths>) -> Result<(), CommandErro
     remove_file_if_exists(&checkpoint_path(paths.inner()))
 }
 
+fn normalize_legacy_checkpoint(checkpoint: &mut UiCheckpointDto) {
+    if checkpoint.flashcards_workspace.as_deref() == Some(LEGACY_CREATE_WORKSPACE) {
+        checkpoint.flashcards_workspace = Some("decks".to_string());
+        checkpoint.flashcards_view = Some("root".to_string());
+        checkpoint.deck_id = None;
+        return;
+    }
+
+    if checkpoint.flashcards_view.is_none() {
+        checkpoint.flashcards_view = Some(
+            if checkpoint.flashcards_workspace.as_deref() == Some("decks")
+                && checkpoint.deck_id.is_some()
+            {
+                "deck"
+            } else {
+                "root"
+            }
+            .to_string(),
+        );
+    }
+}
+
 fn validate_checkpoint(checkpoint: &UiCheckpointDto) -> Result<(), CommandError> {
     if checkpoint.schema_version != CHECKPOINT_SCHEMA_VERSION {
         return Err(CommandError::new(
@@ -173,6 +201,31 @@ fn validate_checkpoint(checkpoint: &UiCheckpointDto) -> Result<(), CommandError>
         return Err(CommandError::new(
             "invalid_ui_checkpoint",
             "The restored Flashcards workspace is invalid.",
+        ));
+    }
+    if checkpoint
+        .flashcards_view
+        .as_deref()
+        .is_some_and(|view| !FLASHCARDS_VIEWS.contains(&view))
+    {
+        return Err(CommandError::new(
+            "invalid_ui_checkpoint",
+            "The restored Flashcards view is invalid.",
+        ));
+    }
+    if checkpoint.flashcards_view.as_deref() == Some("deck") {
+        if checkpoint.flashcards_workspace.as_deref() != Some("decks") || checkpoint.deck_id.is_none()
+        {
+            return Err(CommandError::new(
+                "invalid_ui_checkpoint",
+                "A restored deck view requires a deck destination.",
+            ));
+        }
+    }
+    if checkpoint.flashcards_view.as_deref() == Some("root") && checkpoint.deck_id.is_some() {
+        return Err(CommandError::new(
+            "invalid_ui_checkpoint",
+            "A restored Flashcards root cannot include a deck destination.",
         ));
     }
     validate_optional_id(checkpoint.deck_id.as_deref(), "deck")?;
@@ -266,6 +319,7 @@ mod tests {
           "updatedAt":1,
           "section":"decks",
           "flashcardsWorkspace":"decks",
+          "flashcardsView":"root",
           "deckId":null,
           "editorDraftId":null,
           "practice":null,
@@ -282,6 +336,7 @@ mod tests {
             updated_at: 1,
             section: CheckpointSection::Practice,
             flashcards_workspace: Some("decks".to_string()),
+            flashcards_view: Some("root".to_string()),
             deck_id: None,
             editor_draft_id: None,
             practice: Some(PracticeCheckpoint {
@@ -301,6 +356,7 @@ mod tests {
             updated_at: 1,
             section: CheckpointSection::Decks,
             flashcards_workspace: Some("hidden-admin".to_string()),
+            flashcards_view: Some("root".to_string()),
             deck_id: None,
             editor_draft_id: None,
             practice: None,
@@ -310,5 +366,43 @@ mod tests {
             validate_checkpoint(&checkpoint).unwrap_err().code,
             "invalid_ui_checkpoint"
         );
+    }
+
+    #[test]
+    fn legacy_create_workspace_returns_to_decks_root() {
+        let mut checkpoint = UiCheckpointDto {
+            schema_version: 1,
+            updated_at: 1,
+            section: CheckpointSection::Decks,
+            flashcards_workspace: Some("create".to_string()),
+            flashcards_view: None,
+            deck_id: Some("a".repeat(32)),
+            editor_draft_id: None,
+            practice: None,
+            analytics: None,
+        };
+        normalize_legacy_checkpoint(&mut checkpoint);
+        assert_eq!(checkpoint.flashcards_workspace.as_deref(), Some("decks"));
+        assert_eq!(checkpoint.flashcards_view.as_deref(), Some("root"));
+        assert!(checkpoint.deck_id.is_none());
+        validate_checkpoint(&checkpoint).expect("normalized checkpoint should be valid");
+    }
+
+    #[test]
+    fn legacy_deck_id_becomes_an_explicit_deck_view() {
+        let mut checkpoint = UiCheckpointDto {
+            schema_version: 1,
+            updated_at: 1,
+            section: CheckpointSection::Decks,
+            flashcards_workspace: Some("decks".to_string()),
+            flashcards_view: None,
+            deck_id: Some("b".repeat(32)),
+            editor_draft_id: None,
+            practice: None,
+            analytics: None,
+        };
+        normalize_legacy_checkpoint(&mut checkpoint);
+        assert_eq!(checkpoint.flashcards_view.as_deref(), Some("deck"));
+        validate_checkpoint(&checkpoint).expect("legacy deck checkpoint should remain valid");
     }
 }
