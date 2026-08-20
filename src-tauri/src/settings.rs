@@ -137,7 +137,7 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         )?,
         decorative_artwork: get_setting(connection, "decorativeArtwork", true)?,
         celebrations_enabled: get_setting(connection, "celebrationsEnabled", true)?,
-        tutorials_enabled: get_setting(connection, "tutorialsEnabled", true)?,
+        tutorials_enabled: get_setting(connection, "tutorialsEnabled", false)?,
         confirm_deletions: get_setting(connection, "confirmDeletions", true)?,
         practice_shuffle: get_setting(connection, "practiceShuffle", true)?,
         desired_retention: get_setting(connection, "desiredRetention", 0.90_f64)?,
@@ -417,9 +417,11 @@ mod tests {
         assert_eq!(settings.daily_new_limit, 20);
         assert_eq!(settings.daily_review_limit, 200);
         assert_eq!(settings.ai_reasoning_effort, "low");
+        assert!(!settings.tutorials_enabled);
         settings.daily_new_limit = 12;
         settings.daily_review_limit = 80;
         settings.ai_reasoning_effort = "none".to_string();
+        settings.tutorials_enabled = true;
         database
             .with_connection(|connection| save_settings_in_connection(connection, &settings))
             .expect("settings should save");
@@ -429,6 +431,7 @@ mod tests {
         assert_eq!(loaded.daily_new_limit, 12);
         assert_eq!(loaded.daily_review_limit, 80);
         assert_eq!(loaded.ai_reasoning_effort, "none");
+        assert!(loaded.tutorials_enabled);
     }
 
     #[test]
