@@ -2,12 +2,26 @@
 
 These files provide operational instructions for automated maintainers of **ostudy**. [`AGENTS.md`](../../AGENTS.md) is the repository-wide entry point and remains authoritative when this directory is read in isolation.
 
+## Start here
+
+For a substantial task, read these in order:
+
+1. [`EXECUTION-STATE.md`](EXECUTION-STATE.md) — the acceptance ledger, completion predicate, exact-head evidence vocabulary, progress checkpoints, and session-resumption protocol.
+2. [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md) — failure classification, stable fingerprints, focused reproduction, retry budget, and stopping rules.
+3. [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md) — how to scope, publish, implement, test, review, and hand off a change.
+4. [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) — repository access, concrete write authorization, remote verification, and connector/service failure diagnosis.
+5. The architecture and code standards relevant to the requested subsystem.
+
+When resuming existing work, do not begin from conversational memory. Read the open pull request's state ledger, verify its actual remote head, inspect exact-head qualification evidence, and enumerate incomplete acceptance criteria first.
+
 ## Documents
 
+- [`EXECUTION-STATE.md`](EXECUTION-STATE.md) prevents planning, implementation, publication, validation, manual acceptance, and completion from being collapsed into one vague state.
+- [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md) defines the evidence required before another repair or broad CI run.
 - [`ARCHITECTURE-GUARDRAILS.md`](ARCHITECTURE-GUARDRAILS.md) explains the boundaries and invariants that a change must preserve.
 - [`CODE-STANDARDS.md`](CODE-STANDARDS.md) defines TypeScript/React, Rust, SQL, shell, documentation, and dependency expectations.
-- [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md) defines how to scope, publish, implement, test, review, and hand off a change.
-- [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) defines repository access, write authorization, remote verification, and failure diagnosis for agents operating through an authenticated GitHub Connector.
+- [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md) defines the reviewable contributor workflow.
+- [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) defines connector-backed repository operation without conflating read access, write authorization, publication, CI state, or service incidents.
 
 The maintained product and engineering references are:
 
@@ -24,6 +38,12 @@ The maintained product and engineering references are:
 
 Files under [`../history/`](../history/) are context about completed stages and superseded audits. They are not current implementation instructions.
 
-## Operating rule
+## Operating rules
 
-Do not treat these files as permission to redesign the application. Begin with the current behavior and the human's acceptance criteria, make the smallest coherent change, and preserve every unrelated invariant. A plan or local patch is not delivery: publish work to the task branch and draft pull request, keep the PR truthful, validate the exact head, and report what was actually tested.
+- Begin with the current human request, stable acceptance IDs, explicit non-goals, and the current published source.
+- Publish the actual implementation directly to one task branch and one draft pull request. A plan, local patch, task-specific applicator, or transient CI-generated tree is not delivery.
+- Keep automatic pull-request qualification read-only. It must not push source, author commits, persist write credentials, or change review readiness.
+- Consume the machine-readable exact-head qualification result before asking the human to reproduce a CI-capable failure.
+- Do not call a task complete until acceptance, publication, exact-head automated validation, manual boundaries, and known-failure state all agree.
+
+These files do not grant permission to redesign the application. Make the smallest coherent change and preserve every unrelated invariant.

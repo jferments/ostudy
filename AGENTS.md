@@ -15,12 +15,31 @@ When instructions conflict, follow this order:
 
 Do not silently reinterpret a requirement to make implementation easier. Report a genuine conflict before changing an accepted invariant.
 
+## Execution hot path
+
+For every substantial code task:
+
+1. Turn the human request into stable `AC-##` acceptance criteria and explicit non-goals.
+2. Select one execution mode: local checkout, authenticated GitHub Connector, or Connector with a separate execution workspace.
+3. Read and record the exact base SHA.
+4. Create one short-lived `agent/<description>` branch, publish a meaningful first commit, and open one draft pull request.
+5. Keep the PR's machine-readable state ledger current. Target scope is not implementation evidence.
+6. Publish the actual reviewed source directly. CI must not be the only place where product source exists and must not author the PR branch.
+7. Implement in coherent vertical commits; update acceptance evidence and tests as each criterion becomes real.
+8. Consume exact failure evidence and use focused reproduction before another broad qualification run.
+9. Escalate through `check-changed`, static, fast, full, platform, and manual acceptance. A green result qualifies only the exact SHA it tested.
+10. Report publication, automated validation, and manual acceptance as separate states. Never say complete until the completion predicate in [`docs/agents/EXECUTION-STATE.md`](docs/agents/EXECUTION-STATE.md) holds.
+
+When work resumes after interruption or in another conversation, first read the open PR state ledger, verify the actual remote head, inspect exact-head CI, enumerate incomplete criteria, and continue from that evidence. Do not reconstruct task state from conversational memory.
+
 ## Required reading
 
 Before editing code, read:
 
 - `docs/README.md`;
 - `docs/agents/README.md`;
+- `docs/agents/EXECUTION-STATE.md`;
+- `docs/agents/FAILURE-TRIAGE.md`;
 - `docs/agents/ARCHITECTURE-GUARDRAILS.md`;
 - `docs/agents/CODE-STANDARDS.md`;
 - `docs/agents/WORKFLOW-AND-VALIDATION.md`;
@@ -73,7 +92,11 @@ Documents under `docs/history/` are project archaeology, not current instruction
 - Never develop directly on `main`.
 - Start from a named current base commit and use one short-lived `agent/<description>` branch and one pull request for the task.
 - Publish a meaningful first commit and open a draft pull request before substantial implementation.
-- Write concrete acceptance criteria and non-goals.
+- Write stable acceptance IDs, concrete acceptance criteria, non-goals, expected tests, and manual boundaries.
+- Keep the PR's `currentState`, per-criterion status, known failures, and validation evidence truthful as the branch changes.
+- A planning ADR, scaffold, generated patch, or source-rewriting script is not the product implementation.
+- Product source must be committed directly to the task branch. Do not create task-specific applicators, finalizers, source-generating Actions workflows, or transient runner-only product trees.
+- Automatic PR qualification is read-only. It may not persist write credentials, push, create commits, stage a generated tree, or change PR draft/readiness state.
 - Do not mix feature work, dependency upgrades, broad refactors, documentation churn, and formatting churn unless the task explicitly requires that coherent combination.
 - Inspect existing implementations, callers, tests, migrations, transfer formats, and documentation before adding a new abstraction.
 - Prefer an existing UI primitive, controller pattern, domain service, or platform adapter before adding a parallel path.
@@ -86,19 +109,51 @@ Documents under `docs/history/` are project archaeology, not current instruction
 - Generated-import, backup, and document tests must use isolated temporary storage and must never point at the user's live ostudy data directory.
 - Do not describe planned providers, platforms, sync, tutoring, quizzes, or study guides as shipped.
 
+## Failure discipline
+
+Follow [`docs/agents/FAILURE-TRIAGE.md`](docs/agents/FAILURE-TRIAGE.md).
+
+- Classify product, test-contract, runner/environment, Connector, GitHub-incident, and external-manual failures separately.
+- Read the exact-head machine-readable qualification result and bounded logs before changing source.
+- Use the focused reproduction and repair all independent actionable failures exposed by the run in one coherent batch.
+- An unchanged head may be rerun once only when evidence supports a transient external cause.
+- The same failure fingerprint twice requires a strategy change before another broad run.
+- Do not create no-op commits, toggle PR state, expand permissions, increase timeouts, add sleeps, skip tests, or weaken assertions merely to obtain another run or a green result.
+
 ## GitHub Connector discipline
 
 When operating through an authenticated GitHub Connector on this private repository:
 
 - use Connector reads as the source of truth for the repository, intended base, branch, pull request, and remote head state;
 - do not use `gh`, anonymous HTTP, scraping, temporary transfer repositories, an unrelated local checkout, or CI runner availability to infer Connector access;
-- treat repository read access and authorization for a concrete write as separate concerns;
-- do not infer that writes are unavailable merely because an approval prompt has not appeared;
+- treat repository visibility, repository-level permission, exposure of a particular connector action, authorization for a concrete mutation, remote publication, and CI validation as separate states;
+- do not infer that writes are unavailable merely because an approval prompt has not appeared or a write action has not yet been invoked;
 - do not change the Connector to permanent or unrestricted write access merely to bypass per-change authorization;
 - at the first intended mutation, invoke the actual Connector write operation and let its authorization boundary handle any required approval;
 - only an actual rejected Connector mutation establishes a Connector write failure; report the exact operation and error;
 - after every meaningful publication step, verify the remote branch/head through GitHub before claiming that a commit or file change exists;
 - keep publication state separate from CI state: a missing or mismatched runner may block validation but does not establish that branch, commit, or PR writes are unavailable.
+
+Good status language:
+
+```text
+Authenticated repository reads succeed and GitHub reports push permission.
+No mutation has been attempted in this session, so concrete write authorization is untested.
+```
+
+Or, after a failure:
+
+```text
+create_file on agent/example was rejected with <exact connector error>.
+```
+
+Bad language:
+
+```text
+I do not have GitHub access.
+```
+
+unless the relevant operation was actually attempted and the exact failure supports that narrow statement.
 
 A local patch, generated diff, or proposed commit message is not remote publication. Follow `docs/agents/GITHUB-CONNECTOR.md` for the complete connector-mode workflow.
 
@@ -140,6 +195,8 @@ Use the repository's tiered model instead of repeatedly running the most expensi
 Draft pull requests run the fast tier; ready pull requests run the full tier on the self-hosted runner. A green result qualifies only the exact commit SHA it ran against. Use `OSTUDY_FORCE_CHECK=1` when an exact-tree cache must be bypassed. For release qualification, also run `./scripts/release-check.sh`.
 
 The full Rust tier includes generated `.ostudy.json` conformance, migrations, package/backup behavior, scheduling and analytics invariants, provider contracts, document-processing tests, and native WebDriver persistence. Manually exercise every affected user workflow. Static inspection or a successful frontend build must never be reported as a successful native Tauri test.
+
+The `Check` workflow validates the PR state ledger before qualification and always uploads a machine-readable exact-head result. Static, fast, and full must pass on the current head before a PR can truthfully record `readyForReview`; Android may be `notRequired` only when the change does not affect Android qualification surfaces.
 
 See `docs/development/testing-and-ci.md` for authoritative mechanics.
 
