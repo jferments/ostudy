@@ -33,6 +33,7 @@ CARD_BROWSER_WORKSPACE_PATH = (
 )
 CARDS_SCREEN_PATH = ROOT / "src" / "screens" / "CardsScreen.tsx"
 TOUR_PROVIDER_PATH = ROOT / "src" / "ui" / "tutorials" / "TourProvider.tsx"
+TUTORIAL_REGISTRY_PATH = ROOT / "src" / "ui" / "tutorials" / "tutorialRegistry.ts"
 SPEC = importlib.util.spec_from_file_location("ostudy_webdriver_smoke", SMOKE_PATH)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError(f"Could not load native WebDriver harness from {SMOKE_PATH}")
@@ -280,10 +281,17 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
             package_verifier,
         )
 
-    def test_android_smoke_build_cannot_auto_start_contextual_tutorials(self) -> None:
-        source = TOUR_PROVIDER_PATH.read_text(encoding="utf-8")
-        self.assertIn("VITE_OSTUDY_ANDROID_TEST_BRIDGE", source)
-        self.assertIn("CONTEXTUAL_AUTO_START_ENABLED", source)
+    def test_tutorials_cannot_auto_start_in_any_build(self) -> None:
+        provider = TOUR_PROVIDER_PATH.read_text(encoding="utf-8")
+        registry = TUTORIAL_REGISTRY_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('window.addEventListener("ostudy:start-tutorial", handleStart)', provider)
+        self.assertNotIn("CONTEXTUAL_AUTO_START_ENABLED", provider)
+        self.assertNotIn("autoStartTimer", provider)
+        self.assertNotIn("findContextualModule", provider)
+        self.assertNotIn("autoStartAnchor", provider)
+        self.assertNotIn("autoStartAnchor", registry)
+        self.assertNotIn("tutorialModuleOrder", registry)
 
 
 if __name__ == "__main__":
