@@ -28,20 +28,26 @@ Images that are part of a flashcard or imported study document are educational c
 
 Question-mark controls provide brief hover or keyboard-focus descriptions on pointer devices. Activating the control opens a responsive help sheet with the full explanation. The same topic registry supplies both presentations, so the short and detailed descriptions cannot drift apart.
 
-Help sheets may also offer a related guided tutorial. They reference the corresponding user-guide topic, but they do not open external pages or require a network connection.
+Help sheets may offer a related **Start guided tutorial** action. They reference the corresponding user-guide topic, but they do not open external pages or require a network connection.
 
-## Guided tutorials
+## Interactive tutorials
 
-Tutorials are short, contextual modules that begin only when their semantic target is present. Current modules cover:
+Interactive tutorials are optional, short guided modules. **They never start automatically.** New installations leave **Interactive tutorials** off by default. To use one, enable the setting under **Settings → Appearance**, open a related Help sheet, and explicitly choose **Start guided tutorial**.
+
+Current modules cover:
 
 - Flashcards workspace orientation;
 - Search filters and study-state scope;
 - practice card reveal and confidence rating;
 - document-to-flashcard generation.
 
-Tutorial progress is device-local presentation state. It is not library content, is not included in `.ostudybackup`, and can be dismissed or reset without affecting decks, cards, schedules, analytics, or credentials.
+Starting a tutorial is the only action that opens it. Merely navigating to a workspace, exposing a matching DOM target, upgrading to a newer tutorial version, or restarting the application does not launch guidance.
 
-Escape and Android Back close the current tutorial before ordinary route navigation occurs. Focus returns to the control that opened the tutorial. Tutorials never auto-start during automated tests, and disabling tutorials stops all automatic starts while preserving explicit help.
+Tutorial completion and dismissal state is device-local presentation state. Existing stored progress remains readable after upgrades. It is not library content, is not included in `.ostudybackup`, and can be dismissed or explicitly restarted without affecting decks, cards, schedules, analytics, or credentials.
+
+While an explicitly started tutorial is open, ostudy observes its current semantic target so the spotlight follows layout changes. That observation is presentation-only and cannot initiate another tutorial.
+
+Escape and Android Back close the current tutorial before ordinary route navigation occurs. Focus returns to the control that opened the tutorial. Disabling Interactive tutorials closes any active tutorial and prevents explicit starts until the setting is enabled again; ordinary Help remains available.
 
 ## Completion feedback
 
