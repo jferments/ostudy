@@ -6,6 +6,12 @@ on:
     paths:
       - scripts/restore-ai-phases-4-6.py
       - .github/workflows/restore-ai-phases-4-6.yml
+  pull_request:
+    branches: [main]
+    types: [synchronize, reopened]
+    paths:
+      - scripts/restore-ai-phases-4-6.py
+      - .github/workflows/restore-ai-phases-4-6.yml
   workflow_dispatch:
 
 concurrency:
