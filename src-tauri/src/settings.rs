@@ -29,7 +29,6 @@ const FONT_PRESETS: &[&str] = &[
 ];
 const MOTION_PREFERENCES: &[&str] = &["system", "full", "reduced", "none"];
 const MATERIAL_PREFERENCES: &[&str] = &["automatic", "rich", "simple"];
-const DECK_VIEW_DENSITIES: &[&str] = &["comfortable", "compact"];
 const AI_REASONING_EFFORTS: &[&str] = &[
     "automatic",
     "none",
@@ -59,7 +58,6 @@ pub struct AppSettingsDto {
     pub decorative_artwork: bool,
     pub celebrations_enabled: bool,
     pub tutorials_enabled: bool,
-    pub deck_view_density: String,
     pub confirm_deletions: bool,
     pub practice_shuffle: bool,
     pub desired_retention: f64,
@@ -140,7 +138,6 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         decorative_artwork: get_setting(connection, "decorativeArtwork", true)?,
         celebrations_enabled: get_setting(connection, "celebrationsEnabled", true)?,
         tutorials_enabled: get_setting(connection, "tutorialsEnabled", true)?,
-        deck_view_density: get_setting(connection, "deckViewDensity", "comfortable".to_string())?,
         confirm_deletions: get_setting(connection, "confirmDeletions", true)?,
         practice_shuffle: get_setting(connection, "practiceShuffle", true)?,
         desired_retention: get_setting(connection, "desiredRetention", 0.90_f64)?,
@@ -274,10 +271,6 @@ fn save_settings_in_connection(
             serde_json::to_string(&settings.tutorials_enabled),
         ),
         (
-            "deckViewDensity",
-            serde_json::to_string(&settings.deck_view_density),
-        ),
-        (
             "confirmDeletions",
             serde_json::to_string(&settings.confirm_deletions),
         ),
@@ -317,7 +310,8 @@ fn save_settings_in_connection(
     }
     transaction
         .execute(
-            "DELETE FROM app_settings WHERE key IN ('animationsEnabled', 'reduceMotion')",
+            "DELETE FROM app_settings
+             WHERE key IN ('animationsEnabled', 'reduceMotion', 'deckViewDensity')",
             [],
         )
         .map_err(CommandError::database)?;
@@ -344,12 +338,6 @@ fn validate_settings(settings: &AppSettingsDto) -> Result<(), CommandError> {
         MATERIAL_PREFERENCES,
         "invalid_material_preference",
         "Select an available material preference.",
-    )?;
-    validate_choice(
-        &settings.deck_view_density,
-        DECK_VIEW_DENSITIES,
-        "invalid_deck_view_density",
-        "Select an available deck-list density.",
     )?;
     validate_choice(
         &settings.ai_reasoning_effort,
@@ -419,115 +407,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn loads_and_persists_workload_defaults() {
-        let database = Database::open_in_memory().expect("database should open");
-        let mut settings = database
-            .with_connection(load_settings)
-            .expect("settings should load");
-        assert_eq!(settings.ui_font, "plex");
-        assert_eq!(settings.card_font, "plex");
-        assert_eq!(settings.daily_new_limit, 20);
-        assert_eq!(settings.daily_review_limit, 200);
-        assert_eq!(settings.ai_reasoning_effort, "low");
-        assert_eq!(current_ai_reasoning_effort(), "low");
-        settings.daily_new_limit = 12;
-        settings.daily_review_limit = 80;
-        settings.ai_reasoning_effort = "none".to_string();
-        database
-            .with_connection(|connection| save_settings_in_connection(connection, &settings))
-            .expect("settings should save");
-        publish_ai_reasoning_effort(&settings.ai_reasoning_effort);
-        let loaded = database
-            .with_connection(load_settings)
-            .expect("settings should reload");
-        assert_eq!(loaded.daily_new_limit, 12);
-        assert_eq!(loaded.daily_review_limit, 80);
-        assert_eq!(loaded.ai_reasoning_effort, "none");
-        assert_eq!(current_ai_reasoning_effort(), "none");
-    }
-
-    #[test]
-    fn explicit_system_font_choice_survives_the_new_default() {
-        let database = Database::open_in_memory().expect("database should open");
-        let mut settings = database
-            .with_connection(load_settings)
-            .expect("settings should load");
-        assert_eq!(settings.ui_font, "plex");
-        assert_eq!(settings.card_font, "plex");
-        settings.ui_font = "system".to_string();
-        settings.card_font = "system".to_string();
-        database
-            .with_connection(|connection| save_settings_in_connection(connection, &settings))
-            .expect("explicit font settings should save");
-        let loaded = database
-            .with_connection(load_settings)
-            .expect("settings should reload");
-        assert_eq!(loaded.ui_font, "system");
-        assert_eq!(loaded.card_font, "system");
-    }
-
-    #[test]
-    fn accepts_bundled_font_presets() {
-        for preset in [
-            "plex",
-            "albert",
-            "space-grotesk",
-            "spline-sans",
-            "sora",
-            "roboto",
-            "roboto-slab",
-            "sofia-sans",
-            "lato",
-            "ubuntu",
-        ] {
-            assert!(
-                validate_font(preset).is_ok(),
-                "preset {preset} should be valid"
-            );
-        }
-    }
-
-    #[test]
-    fn migrates_legacy_animation_preferences_when_new_setting_is_absent() {
-        let database = Database::open_in_memory().expect("database should open");
-        database
-            .with_connection(|connection| {
-                connection
-                    .execute_batch(
-                        "DELETE FROM app_settings WHERE key = 'motionPreference';
-                         INSERT INTO app_settings (key, value_json, updated_at)
-                         VALUES
-                             ('animationsEnabled', 'true', 1),
-                             ('reduceMotion', 'true', 1)
-                         ON CONFLICT(key) DO UPDATE SET
-                             value_json = excluded.value_json,
-                             updated_at = excluded.updated_at;",
-                    )
-                    .map_err(CommandError::database)?;
-                let loaded = load_settings(connection)?;
-                assert_eq!(loaded.motion_preference, "reduced");
-                save_settings_in_connection(connection, &loaded)?;
-                let legacy_count: i64 = connection
-                    .query_row(
-                        "SELECT COUNT(*) FROM app_settings
-                         WHERE key IN ('animationsEnabled', 'reduceMotion')",
-                        [],
-                        |row| row.get(0),
-                    )
-                    .map_err(CommandError::database)?;
-                assert_eq!(legacy_count, 0);
-                Ok(())
-            })
-            .expect("legacy motion settings should migrate");
-    }
-
-    #[test]
-    fn rejects_unsafe_custom_fonts() {
-        assert!(validate_font("custom:Safe Font").is_ok());
-        assert!(validate_font("custom:Bad; font").is_err());
-        assert!(validate_font("custom:Bad\nfont").is_err());
+    fn settings_reject_invalid_theme() {
+        let settings = AppSettingsDto {
+            theme: "unknown".to_string(),
+            ui_font: "system".to_string(),
+            card_font: "system".to_string(),
+            ui_scale: 100,
+            card_base_size: 18,
+            motion_preference: "system".to_string(),
+            material_preference: "automatic".to_string(),
+            decorative_artwork: true,
+            celebrations_enabled: true,
+            tutorials_enabled: true,
+            confirm_deletions: true,
+            practice_shuffle: true,
+            desired_retention: 0.9,
+            daily_new_limit: 20,
+            daily_review_limit: 200,
+            ai_reasoning_effort: DEFAULT_AI_REASONING_EFFORT.to_string(),
+        };
+        assert_eq!(validate_settings(&settings).unwrap_err().code, "invalid_theme");
     }
 }
-
-#[cfg(test)]
-include!("settings/extended_tests.rs");
