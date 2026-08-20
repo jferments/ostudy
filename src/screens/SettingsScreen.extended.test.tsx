@@ -278,7 +278,8 @@ describe("SettingsScreen AI/LLM behavior", () => {
 
     const provider = await screen.findByRole("combobox", { name: "Provider" });
     expect((provider as HTMLSelectElement).value).toBe("llama_cpp");
-    expect(screen.getByRole("textbox", { name: "Server URL" })).toBeTruthy();
+    const serverUrl = screen.getByRole("textbox", { name: "Server URL" });
+    expect(serverUrl).toBeTruthy();
     expect(screen.queryByLabelText("API key")).toBeNull();
     expect(screen.queryByText("Bearer token")).toBeNull();
     expect(screen.queryByText("Enable profile")).toBeNull();
@@ -287,6 +288,19 @@ describe("SettingsScreen AI/LLM behavior", () => {
     const advanced = advancedSummary.closest("details");
     expect(advanced?.hasAttribute("open")).toBe(false);
     expect(within(advanced as HTMLElement).getByText("Provider inactivity timeout")).toBeTruthy();
+
+    fireEvent.change(serverUrl, { target: { value: "http://[::1]:8080/" } });
+    expect(
+      within(advanced as HTMLElement).queryByText("Allow unencrypted LAN connection"),
+    ).toBeNull();
+    fireEvent.change(serverUrl, { target: { value: "http://192.168.1.50:8080/" } });
+    expect(
+      within(advanced as HTMLElement).getByText("Allow unencrypted LAN connection"),
+    ).toBeTruthy();
+    fireEvent.change(serverUrl, { target: { value: "http://127.0.0.1:8080/" } });
+    expect(
+      within(advanced as HTMLElement).queryByText("Allow unencrypted LAN connection"),
+    ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Connect and load models" }));
     await waitFor(() => {
