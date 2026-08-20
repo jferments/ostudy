@@ -107,7 +107,7 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
               providerKind: provider.providerKind,
               displayName: provider.displayName,
             }))}
-            onProviderChange={(providerKind) => void beginCreate(providerKind)}
+            onProviderChange={controller.beginCreate}
             onDelete={() => void deleteProfile()}
           />
         ) : (
