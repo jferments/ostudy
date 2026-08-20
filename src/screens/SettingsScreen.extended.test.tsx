@@ -231,7 +231,10 @@ describe("SettingsScreen AI/LLM behavior", () => {
     expect(screen.queryByText("Bearer token")).toBeNull();
     expect(screen.queryByText("Enable profile")).toBeNull();
     const apiKey = screen.getByRole("textbox", { name: "API key" });
-    expect(screen.getByRole("button", { name: "Connect and load models" })).toBeDisabled();
+    expect(
+      (screen.getByRole("button", { name: "Connect and load models" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
     fireEvent.change(apiKey, { target: { value: "sentinel-secret" } });
     fireEvent.click(screen.getByRole("button", { name: "Connect and load models" }));
 
@@ -319,12 +322,20 @@ describe("SettingsScreen AI/LLM behavior", () => {
 
     fireEvent.change(authentication, { target: { value: "bearer" } });
     expect(screen.getByRole("textbox", { name: "API key" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Connect and load models" })).toBeDisabled();
+    expect(
+      (screen.getByRole("button", { name: "Connect and load models" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 
   it("never reloads a stored API key and lets advanced metadata save without reconnecting", async () => {
     const detail = readyDeepseekProfile();
-    const saved = { ...detail, displayName: "Course model renamed", requestTimeoutMs: 120_000, revision: 2 };
+    const saved = {
+      ...detail,
+      displayName: "Course model renamed",
+      requestTimeoutMs: 120_000,
+      revision: 2,
+    };
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(detail)]);
     vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(detail);
     vi.mocked(aiIpc.updateAiProviderProfile).mockResolvedValue(saved);
@@ -345,7 +356,10 @@ describe("SettingsScreen AI/LLM behavior", () => {
       target: { value: "120000" },
     });
 
-    expect(screen.getByRole("button", { name: "Connect and load models" })).toBeDisabled();
+    expect(
+      (screen.getByRole("button", { name: "Connect and load models" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
     await waitFor(() => {
       expect(aiIpc.updateAiProviderProfile).toHaveBeenCalledWith(
