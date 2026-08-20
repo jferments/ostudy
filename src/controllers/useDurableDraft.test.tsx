@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as draftIpc from "../ipc/drafts";
 import * as platformIpc from "../ipc/platform";
-import { useDurableDraft } from "./useDurableDraft";
+import { discardActiveDurableDraft, useDurableDraft } from "./useDurableDraft";
 
 vi.mock("../ipc/drafts", () => ({
   openEditorDraft: vi.fn(),
@@ -82,6 +82,28 @@ describe("useDurableDraft", () => {
     await waitFor(() => expect(onRecovered).toHaveBeenCalledWith({ rows: ["recovered"] }));
     await act(async () => result.current.discard());
     expect(draftIpc.discardEditorDraft).toHaveBeenCalledWith(id, 1);
+  });
+
+  it("lets confirmed app navigation discard the mounted card editor draft", async () => {
+    const contextEntityId = "c".repeat(32);
+    vi.mocked(draftIpc.openEditorDraft).mockResolvedValueOnce({
+      ...baseDraft,
+      draftKind: "card",
+      contextEntityId,
+      payload: { front: "question" },
+    });
+    const { result, unmount } = renderHook(() =>
+      useDurableDraft({
+        kind: "card",
+        contextEntityId,
+        payload: { front: "question" },
+      }),
+    );
+    await waitFor(() => expect(result.current.status).toBe("clean"));
+
+    await act(async () => discardActiveDurableDraft("card"));
+    expect(draftIpc.discardEditorDraft).toHaveBeenCalledWith(id, 1);
+    unmount();
   });
 
   it("treats Rust-reordered object keys as the same fresh payload", async () => {
