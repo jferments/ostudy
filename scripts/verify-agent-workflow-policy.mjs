@@ -72,6 +72,14 @@ function validateWorkflow(name, text, output) {
       "automatic pull-request workflows must use read-only repository contents permission",
     ],
     [
+      /permissions\s*:\s*\{[^}]*\bcontents\s*:\s*write\b[^}]*\}/isu,
+      "automatic pull-request workflows must use read-only repository contents permission",
+    ],
+    [
+      /^\s*pull-requests\s*:\s*write\s*$/mu,
+      "automatic pull-request workflows may not mutate pull-request metadata",
+    ],
+    [
       /^\s*persist-credentials\s*:\s*true\s*$/mu,
       "automatic pull-request checkout may not persist write credentials",
     ],

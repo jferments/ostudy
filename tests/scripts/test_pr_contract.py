@@ -61,7 +61,7 @@ def event_for(contract: dict, *, draft: bool) -> dict:
 
 
 class PullRequestContractTests(unittest.TestCase):
-    def run_contract(self, contract: dict, *, draft: bool = True) -> subprocess.CompletedProcess[str]:
+    def run_contract(self, contract: dict, *, draft: bool = True) -> tuple[subprocess.CompletedProcess[str], dict]:
         with tempfile.TemporaryDirectory() as temporary:
             event_path = Path(temporary) / "event.json"
             output_path = Path(temporary) / "result.json"
@@ -82,26 +82,26 @@ class PullRequestContractTests(unittest.TestCase):
                 check=False,
             )
             self.assertTrue(output_path.exists())
-            completed.result = json.loads(output_path.read_text(encoding="utf-8"))
-            return completed
+            result = json.loads(output_path.read_text(encoding="utf-8"))
+            return completed, result
 
     def test_valid_draft_contract_passes(self) -> None:
-        completed = self.run_contract(base_contract())
+        completed, result = self.run_contract(base_contract())
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertTrue(completed.result["valid"])
+        self.assertTrue(result["valid"])
 
     def test_draft_identity_lag_warns_without_claiming_current_validation(self) -> None:
         contract = base_contract()
         contract["headSha"] = "3" * 40
-        completed = self.run_contract(contract)
+        completed, result = self.run_contract(contract)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("does not match GitHub", completed.stderr)
-        self.assertTrue(completed.result["warnings"])
+        self.assertTrue(result["warnings"])
 
     def test_terminal_acceptance_requires_evidence(self) -> None:
         contract = base_contract()
         contract["acceptance"]["AC-01"]["evidence"] = []
-        completed = self.run_contract(contract)
+        completed, _ = self.run_contract(contract)
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("terminal but has no", completed.stderr)
 
@@ -112,17 +112,34 @@ class PullRequestContractTests(unittest.TestCase):
             "sha": "4" * 40,
             "evidence": ["run-1"],
         }
-        completed = self.run_contract(contract)
+        completed, _ = self.run_contract(contract)
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("must match the ledger headSha", completed.stderr)
 
     def test_ready_pull_request_rejects_incomplete_state(self) -> None:
-        completed = self.run_contract(base_contract(), draft=False)
+        completed, _ = self.run_contract(base_contract(), draft=False)
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("readyForReview", completed.stderr)
         self.assertIn("AC-02 is not terminal", completed.stderr)
 
+    def test_ready_pull_request_rejects_not_run_full_gate(self) -> None:
+        contract = self.ready_contract()
+        contract["validation"]["full"] = {
+            "status": "notRun",
+            "evidence": ["Full qualification was not executed."],
+        }
+        completed, _ = self.run_contract(contract, draft=False)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("validation.full must pass", completed.stderr)
+        self.assertIn("validation.full is not terminal", completed.stderr)
+
     def test_ready_pull_request_accepts_exact_head_evidence(self) -> None:
+        completed, result = self.run_contract(self.ready_contract(), draft=False)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(result["valid"])
+
+    @staticmethod
+    def ready_contract() -> dict:
         contract = base_contract()
         contract["currentState"] = "readyForReview"
         contract["acceptance"]["AC-02"] = {
@@ -140,9 +157,7 @@ class PullRequestContractTests(unittest.TestCase):
             "status": "passed",
             "evidence": ["Inspected the rendered PR state and qualification record."],
         }
-        completed = self.run_contract(contract, draft=False)
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertTrue(completed.result["valid"])
+        return contract
 
 
 if __name__ == "__main__":

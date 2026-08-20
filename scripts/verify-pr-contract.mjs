@@ -29,10 +29,10 @@ const EVIDENCE_STATUSES = new Set([
 ]);
 const TERMINAL_EVIDENCE_STATUSES = new Set([
   "passed",
-  "notRun",
   "notRequired",
   "humanRequired",
 ]);
+const REQUIRED_READY_GATES = ["static", "fast", "full"];
 const CURRENT_STATES = new Set([
   "planning",
   "scaffolding",
@@ -347,6 +347,11 @@ function validateReadyState(contract, actual, errors) {
   for (const [identifier, entry] of Object.entries(contract.acceptance ?? {})) {
     if (!TERMINAL_ACCEPTANCE_STATUSES.has(entry.status)) {
       errors.push(`${identifier} is not terminal for review readiness.`);
+    }
+  }
+  for (const gate of REQUIRED_READY_GATES) {
+    if (contract.validation?.[gate]?.status !== "passed") {
+      errors.push(`validation.${gate} must pass on the exact current head before review readiness.`);
     }
   }
   for (const [name, entry] of Object.entries(contract.validation ?? {})) {

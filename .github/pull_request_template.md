@@ -34,6 +34,12 @@ Group the current changed files by purpose. This section describes the published
 
 Record exact commands and workflow runs that actually completed. A passed entry must identify the exact commit SHA. Record skipped or unavailable checks explicitly.
 
+Required merge qualification:
+
+- `./scripts/check-static.sh`
+- `./scripts/check-fast.sh`
+- `./scripts/check.sh`
+
 ## Manual acceptance
 
 List concrete workflows actually exercised, plus physical-device, live-provider, credential, visual, or other human-only boundaries that remain.

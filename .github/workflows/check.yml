@@ -28,6 +28,9 @@ concurrency:
 permissions:
   contents: read
 
+# Source-writing maintenance, including `git add src-tauri/Cargo.lock`, is deliberately
+# isolated in maintain-generated-candidates.yml and is never performed by Check.
+
 jobs:
   check:
     runs-on: [self-hosted, linux, x64, ostudy-unified]
@@ -196,7 +199,7 @@ jobs:
         if: failure()
         run: bash ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-unified-diagnostics.tar.gz"
 
-      - name: Upload exact-head qualification evidence
+      - name: Upload bounded diagnostic evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
