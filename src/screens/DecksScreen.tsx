@@ -14,13 +14,13 @@ import {
   CardBrowserWorkspace,
   type CardBrowserView,
 } from "./cards/CardBrowserWorkspace";
+import { useCardPracticeLauncher } from "./cards/CardPracticeContext";
 
 interface DecksScreenProps {
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
   onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
-  onPracticeCards: (cardIds: string[]) => void | Promise<void>;
   openDeckRequest?: DeckOpenRequest | null;
   onOpenDeckRequestConsumed?: () => void;
   onManageTemplates?: () => void | Promise<void>;
@@ -35,7 +35,6 @@ export function DecksScreen({
   decks,
   refreshDecks,
   onPracticeDeck,
-  onPracticeCards,
   openDeckRequest = null,
   onOpenDeckRequestConsumed,
   onManageTemplates,
@@ -58,6 +57,7 @@ export function DecksScreen({
   const controller = controllerRef.current;
   const handledOpenRequestRef = useRef<number | null>(null);
   const confirm = useConfirm();
+  const onPracticeCards = useCardPracticeLauncher();
 
   const selectedDeckId = selectedDeck?.id ?? null;
   const activeDecks = decks.filter((deck) => deck.archivedAt === null);
