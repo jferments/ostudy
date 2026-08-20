@@ -91,7 +91,7 @@ const card: cardsIpc.CardBrowserRow = {
   noteId: "c".repeat(32),
   deckId: deck.id,
   deckName: deck.name,
-  cardType: "basic_reverse",
+  cardType: "basic",
   cardLabel: "Reverse",
   frontText: "Do dogs have fur?",
   backText: "Yes",
