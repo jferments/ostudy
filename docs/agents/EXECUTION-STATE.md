@@ -1,6 +1,6 @@
 # Agent execution state and completion evidence
 
-This document defines the durable state model for automated contributors working on ostudy. It exists to prevent planning, local edits, publication, validation, and manual acceptance from being collapsed into one vague claim that a task is "done."
+This document defines the durable state model for automated contributors working on ostudy. It prevents planning, local edits, publication, validation, and manual acceptance from being collapsed into one vague claim that a task is "done."
 
 ## State is multidimensional
 
@@ -50,7 +50,7 @@ Where:
 - `AutomatedValidation(h)` means every required gate passed against exactly `h`.
 - `ManualAcceptance(h)` means every required manual workflow was exercised, or remains explicitly assigned to the human because the agent environment cannot perform it.
 
-When one term is missing, report the narrower state instead. Examples:
+When one term is missing, report the narrower state instead:
 
 - `Implementation is published; static validation is pending.`
 - `Fast qualification passed on abc123; full Linux and Android qualification are pending.`
@@ -61,85 +61,111 @@ When one term is missing, report the narrower state instead. Examples:
 
 Substantial pull requests keep one machine-readable ledger in the pull-request body between these markers:
 
-```text
+````markdown
 <!-- ostudy-agent-state:start -->
-```yaml
-schema_version: 1
-base_sha: 0123456789abcdef0123456789abcdef01234567
-head_sha: fedcba9876543210fedcba9876543210fedcba98
-branch: agent/example
-execution_mode: github-connector
-current_state: implementation
-acceptance:
-  AC-01:
-    status: implemented
-    evidence:
-      - src/example.ts
-    tests:
-      - src/example.test.ts
-  AC-02:
-    status: not_started
-    evidence: []
-    tests: []
-validation:
-  static:
-    status: passed
-    sha: fedcba9876543210fedcba9876543210fedcba98
-    evidence: workflow-run-123
-  fast:
-    status: pending
-  full:
-    status: pending
-  android:
-    status: not_required
-manual_acceptance:
-  affected_workflow:
-    status: pending
-known_failures: []
+```json
+{
+  "schemaVersion": 1,
+  "baseSha": "0123456789abcdef0123456789abcdef01234567",
+  "headSha": "fedcba9876543210fedcba9876543210fedcba98",
+  "branch": "agent/example",
+  "executionMode": "githubConnector",
+  "currentState": "implementation",
+  "acceptance": {
+    "AC-01": {
+      "status": "implemented",
+      "evidence": ["src/example.ts"],
+      "tests": ["src/example.test.ts"]
+    },
+    "AC-02": {
+      "status": "notStarted",
+      "evidence": [],
+      "tests": []
+    }
+  },
+  "validation": {
+    "static": {
+      "status": "passed",
+      "sha": "fedcba9876543210fedcba9876543210fedcba98",
+      "evidence": ["workflow-run-123"]
+    },
+    "fast": {"status": "pending"},
+    "full": {"status": "pending"},
+    "android": {"status": "notRequired"}
+  },
+  "manualAcceptance": {
+    "affectedWorkflow": {"status": "pending"}
+  },
+  "knownFailures": []
+}
 ```
 <!-- ostudy-agent-state:end -->
-```
+````
 
-The exact YAML keys are validated by `scripts/verify-pr-contract.mjs`. The surrounding prose remains the human-readable design and review record.
+`scripts/verify-pr-contract.mjs` validates the JSON shape and, for a non-draft pull request, requires exact agreement with the current GitHub base, head, and branch.
 
-Allowed acceptance statuses are:
+Draft synchronize events can race the human-readable ledger update. A draft may therefore temporarily record `unrecorded`, `unqualified`, or an older identity; the verifier reports that drift as a warning. Before review readiness, the ledger must be reconciled to the current exact head. A passed validation entry always records the exact SHA it tested.
+
+Acceptance statuses are:
 
 ```text
-not_started
-in_progress
+notStarted
+inProgress
 implemented
-human_required
-not_applicable
+humanRequired
+notApplicable
 ```
 
-Allowed validation and manual statuses are:
+Validation and manual statuses are:
 
 ```text
 pending
 passed
 failed
 blocked
-not_run
-not_required
-human_required
+notRun
+notRequired
+humanRequired
 ```
 
-`current_state` is one of:
+`currentState` is one of:
 
 ```text
 planning
 scaffolding
 implementation
 validation
-manual_acceptance
-ready_for_review
+manualAcceptance
+readyForReview
 ```
 
-A draft pull request may contain incomplete statuses. A pull request may be marked ready only when every acceptance criterion has a terminal state, every required automated gate passed on the recorded current head, `known_failures` is empty, and remaining manual-only boundaries are explicit.
+`executionMode` is one of:
+
+```text
+localCheckout
+githubConnector
+githubConnectorWithExecutionWorkspace
+```
+
+A draft pull request may contain incomplete statuses. A pull request may be marked ready only when every acceptance criterion has a terminal state, every required automated gate is terminal and any passed gate refers to the current exact head, `knownFailures` is empty, and remaining manual-only boundaries are explicit.
+
+A known failure is recorded as an object with:
+
+```json
+{
+  "fingerprint": "qf-0123456789abcdef",
+  "classification": "product",
+  "boundary": "React tests",
+  "reproduction": "pnpm exec vitest run src/example.test.tsx",
+  "attempts": 1
+}
+```
+
+The classification vocabulary is defined in [Failure triage](FAILURE-TRIAGE.md).
 
 ## Session resumption
 
-When work resumes in another conversation or after interruption, do not reconstruct task state from memory. Perform these steps first:
+When work resumes in another conversation or after interruption, do not reconstruct task state from memory:
 
 1. Read the repository and intended base through the active repository-access mode.
 2. Read the open task pull request and its state ledger.
@@ -163,13 +189,13 @@ Current blocker: one named regression
 Next action: focused repair and reproduction
 ```
 
-These checkpoints are not a substitute for the final handoff. They prevent silence, context loss, and unsupported global claims while implementation is still underway.
+These checkpoints are not a substitute for the final handoff. They prevent silence, context loss, and unsupported global claims while implementation is underway.
 
 ## Evidence rules
 
-- Every claimed remote mutation must be verified by a GitHub read.
+- Every claimed remote mutation is verified by a GitHub read.
 - Every validation claim names the command or workflow and exact SHA.
 - A newer push invalidates an older green result.
 - Manual acceptance records the concrete path exercised, not an intention to exercise it.
 - External service, credential, camera, hardware, and physical-device boundaries remain explicitly pending rather than being inferred from unit or emulator tests.
-- The target scope in a pull-request description is not evidence that the scope is implemented. `current_state` and per-criterion statuses describe present reality.
+- The target scope in a pull-request description is not evidence that the scope is implemented. `currentState` and per-criterion statuses describe present reality.

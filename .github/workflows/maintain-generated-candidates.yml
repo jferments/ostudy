@@ -1,0 +1,77 @@
+name: Maintain generated Rust candidates
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Confirm an explicit generated-candidate maintenance commit on the selected non-main branch
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  apply-generated-candidates:
+    if: inputs.confirm == true
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the explicitly selected branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Require a non-main branch target
+        run: |
+          if [[ "$GITHUB_REF_TYPE" != "branch" ]]; then
+            echo "Generated candidates may only be applied to an explicitly selected branch." >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_NAME" == "main" ]]; then
+            echo "Generated candidates may not be applied directly to main." >&2
+            exit 1
+          fi
+
+      - name: Expose user-local tools
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve and format canonical Rust sources
+        run: |
+          cargo metadata \
+            --manifest-path src-tauri/Cargo.toml \
+            --format-version 1 \
+            > /dev/null
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          git diff --check
+
+      - name: Validate generated scope
+        run: |
+          changed="$(git status --porcelain | sed -E 's/^.. //')"
+          if [[ -z "$changed" ]]; then
+            echo "No generated Rust changes were required."
+            exit 0
+          fi
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^src-tauri/(Cargo\.lock|.*\.rs)$' || true)"
+          if [[ -n "$unexpected" ]]; then
+            echo "Generated normalization changed unexpected files:" >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+
+      - name: Commit only canonical generated candidates
+        run: |
+          if git diff --quiet -- src-tauri; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- src-tauri/Cargo.lock src-tauri/src src-tauri/build.rs
+          git commit -m "chore: normalize Rust source and lockfile"
+          git push origin "HEAD:$GITHUB_REF_NAME"
