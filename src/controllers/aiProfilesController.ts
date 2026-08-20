@@ -180,7 +180,6 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       return;
     }
     const token = detailLane.begin();
-    setErrorMessage(null);
     void Promise.all([getAiProviderProfile(profileId), getAiProviderProbeResult(profileId)])
       .then(([profile, probe]) => {
         if (!detailLane.isCurrent(token)) return;
