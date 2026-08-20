@@ -104,5 +104,7 @@ run_smoke "Native durable-library WebDriver smoke" \
   "$ROOT_DIR/tests/webdriver/durable_library_smoke.py"
 run_smoke "Native responsive/overlay WebDriver smoke" \
   "$ROOT_DIR/tests/webdriver/ui_platform_smoke.py"
+run_smoke "Native card-listing follow-up WebDriver smoke" \
+  "$ROOT_DIR/tests/webdriver/card_listing_followup_smoke.py"
 run_smoke "Native deck-toolbar layout WebDriver smoke" \
   "$ROOT_DIR/tests/webdriver/deck_toolbar_layout_smoke.py"

@@ -11,7 +11,13 @@ import {
   saveUiCheckpoint,
   type PracticeCheckpoint,
 } from "../ipc/uiCheckpoint";
-import type { FlashcardsWorkspaceName } from "../navigation/flashcardsRoutes";
+import {
+  createFlashcardsDeckRoute,
+  createFlashcardsRootRoute,
+  normalizeFlashcardsWorkspace,
+  type FlashcardsRoute,
+  type FlashcardsWorkspaceName,
+} from "../navigation/flashcardsRoutes";
 import { registerPlatformBackHandler } from "../platform/backNavigation";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import {
@@ -69,7 +75,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   decorativeArtwork: true,
   celebrationsEnabled: true,
   tutorialsEnabled: true,
-  deckViewDensity: "comfortable",
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
@@ -84,8 +89,10 @@ interface NormalizedDestination {
 
 export function useAppController() {
   const [section, setSection] = useState<AppSection>("decks");
-  const [flashcardsWorkspace, setFlashcardsWorkspace] =
-    useState<FlashcardsWorkspaceName>("decks");
+  const [flashcardsRoute, setFlashcardsRoute] = useState<FlashcardsRoute>(() =>
+    createFlashcardsRootRoute("decks", 0),
+  );
+  const flashcardsRouteSequence = useRef(1);
   const [decks, setDecks] = useState<DeckSummary[]>([]);
   const [savedSettings, setSavedSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [activeSettings, setActiveSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -96,8 +103,6 @@ export function useAppController() {
   const [practiceLaunch, setPracticeLaunch] = useState<PracticeLaunchRequest | null>(null);
   const [practiceRestore, setPracticeRestore] = useState<PracticeCheckpoint | null>(null);
   const practiceRequestSequence = useRef(1);
-  const [deckOpenRequest, setDeckOpenRequest] = useState<DeckOpenRequest | null>(null);
-  const deckOpenRequestSequence = useRef(1);
   const [analyticsLaunch, setAnalyticsLaunch] = useState<AnalyticsLaunchRequest | null>(null);
   const analyticsRequestSequence = useRef(1);
   const [hasUnsavedCard, setHasUnsavedCard] = useState(false);
@@ -105,6 +110,18 @@ export function useAppController() {
   const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
   const deckRefreshLane = useRequestLane();
   const confirm = useConfirm();
+
+  const flashcardsWorkspace = flashcardsRoute.workspace;
+  const deckOpenRequest: DeckOpenRequest | null =
+    flashcardsRoute.view === "deck"
+      ? { requestId: flashcardsRoute.requestId, deckId: flashcardsRoute.deckId }
+      : null;
+
+  function nextFlashcardsRequestId(): number {
+    const requestId = flashcardsRouteSequence.current;
+    flashcardsRouteSequence.current += 1;
+    return requestId;
+  }
 
   const showToast = useCallback<ShowToast>((kind, text, action) => {
     const id = toastSequence.current;
@@ -121,7 +138,6 @@ export function useAppController() {
 
   const consumePracticeLaunch = useCallback(() => setPracticeLaunch(null), []);
   const consumePracticeRestore = useCallback(() => setPracticeRestore(null), []);
-  const consumeDeckOpenRequest = useCallback(() => setDeckOpenRequest(null), []);
   const consumeAnalyticsLaunch = useCallback(() => setAnalyticsLaunch(null), []);
 
   useEffect(() => {
@@ -148,23 +164,22 @@ export function useAppController() {
               : restored.section;
           const restoredWorkspace =
             restoredSection === "decks"
-              ? restoredCheckpoint.flashcardsWorkspace ??
-                restored.flashcardsWorkspace ??
-                "decks"
+              ? normalizeFlashcardsWorkspace(
+                  restoredCheckpoint.flashcardsWorkspace ?? restored.flashcardsWorkspace,
+                )
               : "decks";
-          setSection(restoredSection);
-          setFlashcardsWorkspace(restoredWorkspace);
+          const requestId = nextFlashcardsRequestId();
+          const restoredDeckId = restoredCheckpoint.deckId;
           if (
-            restoredCheckpoint.deckId &&
-            loadedDecks.some((deck) => deck.id === restoredCheckpoint.deckId)
+            restoredSection === "decks" &&
+            restoredDeckId &&
+            loadedDecks.some((deck) => deck.id === restoredDeckId)
           ) {
-            setFlashcardsWorkspace("decks");
-            setDeckOpenRequest({
-              requestId: deckOpenRequestSequence.current,
-              deckId: restoredCheckpoint.deckId,
-            });
-            deckOpenRequestSequence.current += 1;
+            setFlashcardsRoute(createFlashcardsDeckRoute(restoredDeckId, requestId));
+          } else {
+            setFlashcardsRoute(createFlashcardsRootRoute(restoredWorkspace, requestId));
           }
+          setSection(restoredSection);
           if (restoredCheckpoint.practice) setPracticeRestore(restoredCheckpoint.practice);
           if (restoredCheckpoint.analytics) {
             setAnalyticsLaunch({
@@ -199,14 +214,17 @@ export function useAppController() {
     void saveUiCheckpoint({
       section,
       flashcardsWorkspace: section === "decks" ? flashcardsWorkspace : undefined,
-      deckId: deckOpenRequest?.deckId,
+      deckId:
+        section === "decks" && flashcardsRoute.view === "deck"
+          ? flashcardsRoute.deckId
+          : undefined,
       analytics,
     }).catch((error: unknown) => {
       console.error("Unable to save the device navigation checkpoint:", getErrorMessage(error));
     });
   }, [
     analyticsLaunch,
-    deckOpenRequest?.deckId,
+    flashcardsRoute,
     flashcardsWorkspace,
     isLoading,
     section,
@@ -226,7 +244,10 @@ export function useAppController() {
         void saveUiCheckpoint({
           section,
           flashcardsWorkspace: section === "decks" ? flashcardsWorkspace : undefined,
-          deckId: deckOpenRequest?.deckId,
+          deckId:
+            section === "decks" && flashcardsRoute.view === "deck"
+              ? flashcardsRoute.deckId
+              : undefined,
         }).catch((error: unknown) => {
           console.error(
             "Unable to save the lifecycle navigation checkpoint:",
@@ -248,7 +269,7 @@ export function useAppController() {
       disposed = true;
       unlisten?.();
     };
-  }, [deckOpenRequest?.deckId, flashcardsWorkspace, isLoading, section]);
+  }, [flashcardsRoute, flashcardsWorkspace, isLoading, section]);
 
   useEffect(() => {
     if (section === "decks") return;
@@ -361,12 +382,9 @@ export function useAppController() {
 
   async function navigate(next: AppSection): Promise<void> {
     const destination = normalizeDestination(next);
-    const alreadyThere =
-      destination.section === section &&
-      (destination.section !== "decks" ||
-        destination.flashcardsWorkspace === undefined ||
-        destination.flashcardsWorkspace === flashcardsWorkspace);
-    if (alreadyThere && destination.section !== "practice") return;
+    const alreadyAtNonFlashcardsRoot =
+      destination.section === section && destination.section !== "decks";
+    if (alreadyAtNonFlashcardsRoot && destination.section !== "practice") return;
     if (!(await confirmPracticeTermination(destination.section))) return;
     if (!(await canLeaveCurrentSection())) return;
     if (destination.section === "practice") {
@@ -379,7 +397,12 @@ export function useAppController() {
       setAnalyticsLaunch({ requestId, range: "7d", deckIds: [], tagIds: [] });
     }
     if (destination.section === "decks") {
-      setFlashcardsWorkspace(destination.flashcardsWorkspace ?? "decks");
+      setFlashcardsRoute(
+        createFlashcardsRootRoute(
+          destination.flashcardsWorkspace ?? "decks",
+          nextFlashcardsRequestId(),
+        ),
+      );
       void refreshDecks().catch((error: unknown) =>
         showToast("error", getErrorMessage(error)),
       );
@@ -390,15 +413,26 @@ export function useAppController() {
   async function navigateFlashcardsWorkspace(
     next: FlashcardsWorkspaceName,
   ): Promise<void> {
-    if (section === "decks" && next === flashcardsWorkspace) return;
     if (!(await canLeaveCurrentSection())) return;
     setSection("decks");
-    setFlashcardsWorkspace(next);
-    if (next === "decks" || next === "search" || next === "create") {
+    setFlashcardsRoute(createFlashcardsRootRoute(next, nextFlashcardsRequestId()));
+    if (next === "decks" || next === "search") {
       void refreshDecks().catch((error: unknown) =>
         showToast("error", getErrorMessage(error)),
       );
     }
+  }
+
+  function openFlashcardsDeck(deckId: string): void {
+    setSection("decks");
+    setFlashcardsRoute(createFlashcardsDeckRoute(deckId, nextFlashcardsRequestId()));
+  }
+
+  function returnToFlashcardsLibrary(): void {
+    setFlashcardsRoute(createFlashcardsRootRoute("decks", nextFlashcardsRequestId()));
+    void refreshDecks().catch((error: unknown) =>
+      showToast("error", getErrorMessage(error)),
+    );
   }
 
   async function practiceDeck(
@@ -453,13 +487,12 @@ export function useAppController() {
     const destination = normalizeDestination(target.section);
     const workspace =
       target.flashcardsWorkspace ?? destination.flashcardsWorkspace ?? "decks";
-    if (destination.section === "decks" && target.deckId) {
-      const requestId = deckOpenRequestSequence.current;
-      deckOpenRequestSequence.current += 1;
-      setDeckOpenRequest({ requestId, deckId: target.deckId });
-    }
     if (destination.section === "decks") {
-      setFlashcardsWorkspace(target.deckId ? "decks" : workspace);
+      setFlashcardsRoute(
+        target.deckId
+          ? createFlashcardsDeckRoute(target.deckId, nextFlashcardsRequestId())
+          : createFlashcardsRootRoute(workspace, nextFlashcardsRequestId()),
+      );
       void refreshDecks().catch((error: unknown) =>
         showToast("error", getErrorMessage(error)),
       );
@@ -491,6 +524,7 @@ export function useAppController() {
 
   return {
     section,
+    flashcardsRoute,
     flashcardsWorkspace,
     decks,
     savedSettings,
@@ -507,10 +541,11 @@ export function useAppController() {
     refreshDecks,
     consumePracticeLaunch,
     consumePracticeRestore,
-    consumeDeckOpenRequest,
     consumeAnalyticsLaunch,
     navigate,
     navigateFlashcardsWorkspace,
+    openFlashcardsDeck,
+    returnToFlashcardsLibrary,
     practiceDeck,
     practiceScope,
     practiceCards,
@@ -551,11 +586,11 @@ function normalizeSettings(settings: AppSettings): AppSettings {
     decorativeArtwork: settings.decorativeArtwork ?? true,
     celebrationsEnabled: settings.celebrationsEnabled ?? true,
     tutorialsEnabled: settings.tutorialsEnabled ?? true,
-    deckViewDensity: settings.deckViewDensity ?? "comfortable",
     confirmDeletions: settings.confirmDeletions,
     practiceShuffle: settings.practiceShuffle,
     desiredRetention: settings.desiredRetention,
     dailyNewLimit: settings.dailyNewLimit,
     dailyReviewLimit: settings.dailyReviewLimit,
+    aiReasoningEffort: settings.aiReasoningEffort,
   };
 }

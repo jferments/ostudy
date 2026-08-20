@@ -6,7 +6,6 @@ import { DecksController } from "../../controllers/decksController";
 import { createOperationId, getErrorMessage } from "../../ipc/common";
 import type { DeckSummary } from "../../ipc/decks";
 import { publishExport, selectExternalImport, shareExport } from "../../platform/files";
-import { Artwork } from "../../ui/artwork/Artwork";
 import { Icon } from "../../ui/icons/Icon";
 import { ResponsiveGrid, Stack } from "../../ui/layout/Layout";
 import { Button } from "../../ui/primitives/Button";
@@ -38,11 +37,21 @@ export function TransferWorkspace({
       if (selected.detectedKind === "studydeck") {
         const result = await controller.importStudydeck(selected.id, createOperationId());
         await refreshDecks();
-        showToast("success", `Imported “${result.deck.name}” with ${result.cardCount} ${result.cardCount === 1 ? "card" : "cards"}.`);
+        showToast(
+          "success",
+          `Imported “${result.deck.name}” with ${result.cardCount} ${
+            result.cardCount === 1 ? "card" : "cards"
+          }.`,
+        );
       } else if (selected.detectedKind === "generated_json") {
         const result = await controller.importGenerated(selected.id);
         await refreshDecks();
-        showToast("success", `Imported ${result.createdCardCount} scheduled ${result.createdCardCount === 1 ? "card" : "cards"}.`);
+        showToast(
+          "success",
+          `Imported ${result.createdCardCount} scheduled ${
+            result.createdCardCount === 1 ? "card" : "cards"
+          }.`,
+        );
       } else {
         throw new Error("Select an ostudy deck or generated-card file.");
       }
@@ -76,26 +85,51 @@ export function TransferWorkspace({
     <Stack gap="var(--ostudy-space-5)">
       <ResponsiveGrid minItemWidth="280px">
         <Surface level={2} className={styles.taskCard}>
-          <span className={styles.taskIcon}><Icon name="import" size={24} /></span>
+          <span className={styles.taskIcon}>
+            <Icon name="import" size={24} />
+          </span>
           <h2>Import flashcards</h2>
           <p>Import an ostudy deck or generated-card JSON file into the local library.</p>
-          <Button variant="primary" loading={busy === "import"} onClick={() => void importContent()}>Import deck or cards</Button>
+          <Button
+            variant="primary"
+            loading={busy === "import"}
+            onClick={() => void importContent()}
+          >
+            Import deck or cards
+          </Button>
         </Surface>
 
         <Surface level={2} className={styles.taskCard}>
-          <span className={styles.taskIcon}><Icon name="export" size={24} /></span>
+          <span className={styles.taskIcon}>
+            <Icon name="export" size={24} />
+          </span>
           <h2>Export or share a deck</h2>
           {activeDecks.length > 0 ? (
             <>
               <label className={styles.deckSelect}>
                 <span>Deck</span>
-                <select value={selectedDeckId} onChange={(event) => setSelectedDeckId(event.currentTarget.value)}>
-                  {activeDecks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}
+                <select
+                  value={selectedDeckId}
+                  onChange={(event) => setSelectedDeckId(event.currentTarget.value)}
+                >
+                  {activeDecks.map((deck) => (
+                    <option key={deck.id} value={deck.id}>
+                      {deck.name}
+                    </option>
+                  ))}
                 </select>
               </label>
               <div className={styles.taskActions}>
-                <Button loading={busy === "export"} onClick={() => void transfer("export")}>Export file</Button>
-                <Button variant="primary" loading={busy === "share"} onClick={() => void transfer("share")}>Share</Button>
+                <Button loading={busy === "export"} onClick={() => void transfer("export")}>
+                  Export file
+                </Button>
+                <Button
+                  variant="primary"
+                  loading={busy === "share"}
+                  onClick={() => void transfer("share")}
+                >
+                  Share
+                </Button>
               </div>
             </>
           ) : (
@@ -104,10 +138,6 @@ export function TransferWorkspace({
         </Surface>
       </ResponsiveGrid>
       <AndroidDeckSharePanel decks={decks} showToast={showToast} />
-      <Surface level={1} material="soft" className={styles.transferHelp}>
-        <Artwork slot="tutorial.welcome" />
-        <div><h2>Local and portable</h2><p>Deck exports contain the study content needed to move a deck between ostudy installations. Full-library backup remains available in Settings.</p></div>
-      </Surface>
     </Stack>
   );
 }

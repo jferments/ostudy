@@ -1,0 +1,166 @@
+@import "./cards/CardListing.css";
+
+@layer components {
+  .decks-screen {
+    container-type: inline-size;
+    container-name: deck-detail;
+  }
+
+  .card-browser-panel {
+    container-type: inline-size;
+    container-name: card-browser;
+  }
+
+  .card-browser-heading {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ostudy-space-3);
+    border-bottom: 1px solid var(--ostudy-color-border-subtle);
+    padding: var(--ostudy-space-3) var(--ostudy-space-4);
+  }
+
+  .card-browser-heading > div:first-child {
+    min-width: 0;
+  }
+
+  .card-browser-heading h2,
+  .card-browser-heading .card-count-summary {
+    margin: 0;
+  }
+
+  .card-browser-heading h2 {
+    font-size: 1.05rem;
+  }
+
+  .card-browser-heading .card-count-summary {
+    display: block;
+    margin-top: 2px;
+    color: var(--ostudy-color-text-muted);
+    font-size: 0.76rem;
+  }
+
+  .card-browser-actions {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--ostudy-space-2);
+  }
+
+  .card-browser-toolbar {
+    align-items: end;
+    justify-content: flex-start;
+    gap: var(--ostudy-space-3);
+    padding: var(--ostudy-space-3) var(--ostudy-space-4);
+  }
+
+  .card-browser-toolbar .search-field {
+    flex: 1 1 360px;
+  }
+
+  .card-browser-toolbar > label:not(.search-field) {
+    display: grid;
+    flex: 0 1 240px;
+    gap: 6px;
+  }
+
+  .card-browser-toolbar > label > span {
+    color: var(--ostudy-color-text-secondary);
+    font-size: 0.77rem;
+    font-weight: 750;
+  }
+
+  .card-row {
+    min-width: 0;
+  }
+
+  .card-row-main {
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: var(--ostudy-space-3);
+    padding: 12px var(--ostudy-space-4);
+  }
+
+  .card-row-divider {
+    display: none !important;
+  }
+
+  .bulk-entry-destination {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+  }
+
+  .bulk-entry-destination > span {
+    color: var(--ostudy-color-text-secondary);
+    font-size: 0.77rem;
+    font-weight: 750;
+  }
+
+  .bulk-entry-destination > strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @container deck-detail (max-width: 920px) {
+    .deck-detail-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--ostudy-space-3);
+    }
+
+    .deck-detail-header .header-actions {
+      justify-content: flex-start;
+      margin-top: 0;
+    }
+  }
+
+  @container card-browser (max-width: 720px) {
+    .card-browser-heading {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .card-browser-actions {
+      width: 100%;
+      justify-content: stretch;
+    }
+
+    .card-browser-actions > button {
+      flex: 1 1 0;
+      min-height: var(--touch-target-min);
+    }
+
+    .card-browser-toolbar {
+      align-items: stretch;
+      flex-wrap: wrap;
+    }
+
+    .card-browser-toolbar > * {
+      flex: 1 1 180px;
+    }
+
+    .card-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .card-row-main {
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: var(--ostudy-space-2);
+      padding: 10px var(--ostudy-space-3);
+    }
+
+    .card-row-actions {
+      border-top: 1px solid var(--ostudy-color-border-subtle);
+      border-left: 0;
+      padding-block: 5px;
+    }
+  }
+
+  :root[data-input-mode="coarse"] .card-row-actions button,
+  :root[data-input-mode="coarse"] .card-browser-actions button {
+    min-height: var(--touch-target-min);
+  }
+}

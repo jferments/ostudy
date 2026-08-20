@@ -480,10 +480,19 @@ fn export_backup(
             .map_err(CommandError::database)?;
         Ok(())
     })?;
-    let snapshot = Connection::open_with_flags(&snapshot_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(CommandError::database)?;
+    let snapshot = Connection::open(&snapshot_path).map_err(CommandError::database)?;
     validate_snapshot_database(&snapshot)?;
     let summary = snapshot_summary(&snapshot)?;
+    // The SQLite backup API can leave the destination in WAL mode. Queries on
+    // the live connection see WAL-resident pages, but the backup package embeds
+    // only the main database file. Checkpoint and switch to DELETE mode before
+    // reading raw bytes so the embedded snapshot contains every committed page.
+    snapshot
+        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;")
+        .map_err(CommandError::database)?;
+    drop(snapshot);
+    let snapshot = Connection::open_with_flags(&snapshot_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(CommandError::database)?;
 
     let temporary = destination.with_extension(format!("ostudybackup.{}.tmp", std::process::id()));
     remove_file_if_exists(&temporary).map_err(CommandError::io)?;

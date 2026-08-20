@@ -11,26 +11,61 @@ const [css, tauriConfigText] = await Promise.all([
 ]);
 const failures = [];
 
-expectContains(css, ".toolbar { display: flex;", "deck toolbar");
-expectContains(css, "justify-content: flex-end;", "desktop toolbar alignment");
-expectContains(css, ".toolbarActions { display: flex;", "deck toolbar action group");
-expectContains(css, "flex-wrap: nowrap;", "non-wrapping desktop action row");
-expectContains(
+expectRule(
   css,
-  ".toolbarActions > button { flex: 0 0 auto; white-space: nowrap; }",
+  ".root",
+  ["container-type: inline-size", "container-name: deck-library"],
+  "deck-library container",
+);
+expectRule(css, ".toolbar", ["display: flex", "justify-content: flex-end"], "deck toolbar");
+expectRule(
+  css,
+  ".toolbarActions",
+  ["display: flex", "justify-content: flex-end"],
+  "deck toolbar action group",
+);
+expectRule(
+  css,
+  ".toolbarActions > button",
+  ["flex: 0 0 auto", "white-space: nowrap"],
   "stable action button sizing",
 );
-expectContains(css, ".sectionActions { display: flex;", "folder section action group");
-expectContains(css, "@media (max-width: 640px)", "compact breakpoint");
-expectContains(
+expectRule(
   css,
-  ".toolbarActions { width: 100%; flex-wrap: wrap; justify-content: stretch; }",
-  "compact toolbar wrapping",
+  ".sectionActions",
+  ["display: flex", "justify-content: flex-end"],
+  "folder section action group",
 );
 expectContains(
   css,
-  ".sectionActions { width: 100%; justify-content: stretch; }",
+  "@container deck-library (max-width: 620px)",
+  "content-width compact breakpoint",
+);
+expectNestedRule(
+  css,
+  "@container deck-library (max-width: 620px)",
+  ".toolbarActions",
+  ["width: 100%", "justify-content: stretch"],
+  "compact toolbar wrapping",
+);
+expectNestedRule(
+  css,
+  "@container deck-library (max-width: 620px)",
+  ".sectionActions",
+  ["width: 100%", "justify-content: stretch"],
   "compact folder controls",
+);
+expectContains(
+  css,
+  ':global(:root[data-input-mode="coarse"]) .dragHandle',
+  "coarse-pointer drag handle sizing",
+);
+expectAbsent(css, ".density", "removed deck-density selector");
+expectRuleAbsent(
+  css,
+  ".dragHandle",
+  "border-inline-end",
+  "removed move-handle divider",
 );
 
 const tauriConfig = JSON.parse(tauriConfigText);
@@ -45,9 +80,68 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Default desktop sizing and responsive deck-library controls preserve usable action groups.",
+  "OK   Default desktop sizing, container-responsive deck controls, compact density, and coarse-pointer targets are consistent.",
 );
 
 function expectContains(source, expected, label) {
   if (!source.includes(expected)) failures.push(`Missing ${label}: ${expected}`);
+}
+
+function expectAbsent(source, forbidden, label) {
+  if (source.includes(forbidden)) failures.push(`Unexpected ${label}: ${forbidden}`);
+}
+
+function expectRule(source, selector, declarations, label) {
+  const body = ruleBody(source, selector);
+  if (body === null) {
+    failures.push(`Missing ${label}: ${selector}`);
+    return;
+  }
+  for (const declaration of declarations) {
+    if (!body.includes(declaration)) {
+      failures.push(`Missing ${label} declaration in ${selector}: ${declaration}`);
+    }
+  }
+}
+
+function expectRuleAbsent(source, selector, declaration, label) {
+  const body = ruleBody(source, selector);
+  if (body?.includes(declaration)) {
+    failures.push(`Unexpected ${label} declaration in ${selector}: ${declaration}`);
+  }
+}
+
+function expectNestedRule(source, containerHeader, selector, declarations, label) {
+  const containerStart = source.indexOf(containerHeader);
+  if (containerStart < 0) {
+    failures.push(`Missing ${label} container: ${containerHeader}`);
+    return;
+  }
+  const containerBody = balancedBlock(source, source.indexOf("{", containerStart));
+  if (containerBody === null) {
+    failures.push(`Malformed ${label} container: ${containerHeader}`);
+    return;
+  }
+  expectRule(containerBody, selector, declarations, label);
+}
+
+function ruleBody(source, selector) {
+  const selectorStart = source.indexOf(selector);
+  if (selectorStart < 0) return null;
+  const openingBrace = source.indexOf("{", selectorStart + selector.length);
+  if (openingBrace < 0) return null;
+  return balancedBlock(source, openingBrace);
+}
+
+function balancedBlock(source, openingBrace) {
+  if (openingBrace < 0 || source[openingBrace] !== "{") return null;
+  let depth = 0;
+  for (let index = openingBrace; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(openingBrace + 1, index);
+    }
+  }
+  return null;
 }

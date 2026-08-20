@@ -74,7 +74,7 @@ describe("PracticeResultsModal", () => {
     render(
       <PracticeResultsModal
         cards={cards}
-        sourceLabel="the selected cards"
+        sourceLabel="Search/Filter"
         refreshDecks={refreshDecks}
         onPracticeCards={vi.fn()}
         onClose={onClose}
@@ -90,7 +90,7 @@ describe("PracticeResultsModal", () => {
     await waitFor(() => {
       expect(decksIpc.createDeck).toHaveBeenCalledWith({
         name: "Weak topics",
-        description: "Created from the selected cards in Search/Filter.",
+        description: "Created from a card selection in Search/Filter.",
       });
       expect(cardsIpc.transferCards).toHaveBeenCalledWith({
         noteIds: cards.map((card) => card.noteId),

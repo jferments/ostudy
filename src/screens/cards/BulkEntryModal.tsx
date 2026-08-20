@@ -1,5 +1,4 @@
-import { useRef, useState } from "react";
-import type { ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 
 import { Modal } from "../../components/Modal";
 import { useDurableDraft } from "../../controllers/useDurableDraft";
@@ -9,16 +8,13 @@ import {
   type BulkAnalyzeResult,
   type BulkCardRowInput,
 } from "../../ipc/cards";
-import {
-  getErrorMessage,
-} from "../../ipc/common";
-import {
-  type DeckSummary,
-} from "../../ipc/decks";
+import { getErrorMessage } from "../../ipc/common";
+import type { DeckSummary } from "../../ipc/decks";
 
 interface BulkEntryModalProps {
   decks: DeckSummary[];
   defaultDeckId?: string;
+  fixedDeckId?: string;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
@@ -36,17 +32,23 @@ interface DraftRow {
 export function BulkEntryModal({
   decks,
   defaultDeckId,
+  fixedDeckId,
   onClose,
   onSaved,
   showToast,
 }: BulkEntryModalProps) {
   const activeDecks = decks.filter((deck) => deck.archivedAt === null);
-  const sequence = useRef(4);
-  const [deckId, setDeckId] = useState(
-    defaultDeckId && activeDecks.some((deck) => deck.id === defaultDeckId)
+  const fixedDeck =
+    fixedDeckId === undefined
+      ? null
+      : activeDecks.find((deck) => deck.id === fixedDeckId) ?? null;
+  const initialDeckId =
+    fixedDeck?.id ??
+    (defaultDeckId && activeDecks.some((deck) => deck.id === defaultDeckId)
       ? defaultDeckId
-      : (activeDecks[0]?.id ?? ""),
-  );
+      : (activeDecks[0]?.id ?? ""));
+  const sequence = useRef(4);
+  const [deckId, setDeckId] = useState(initialDeckId);
   const [rows, setRows] = useState<DraftRow[]>([emptyRow(1), emptyRow(2), emptyRow(3)]);
   const [analysis, setAnalysis] = useState<BulkAnalyzeResult | null>(null);
   const [duplicateRowIds, setDuplicateRowIds] = useState<Set<number>>(new Set());
@@ -67,7 +69,7 @@ export function BulkEntryModal({
     contextEntityId: "b".repeat(32),
     payload: { deckId, rows },
     onRecovered: (payload: { deckId: string; rows: DraftRow[] }) => {
-      setDeckId(payload.deckId);
+      setDeckId(fixedDeck?.id ?? payload.deckId);
       setRows(payload.rows);
       sequence.current = Math.max(4, ...payload.rows.map((row) => row.id + 1));
     },
@@ -192,24 +194,31 @@ export function BulkEntryModal({
     >
       <div className="bulk-entry-layout" aria-busy={isSaving}>
         <div className="bulk-entry-controls">
-          <label>
-            <span>Destination deck</span>
-            <select
-              value={deckId}
-              disabled={isSaving}
-              onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                setDeckId(event.currentTarget.value);
-                setErrorMessage(null);
-                clearAnalysis();
-              }}
-            >
-              {activeDecks.map((deck) => (
-                <option key={deck.id} value={deck.id}>
-                  {deck.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {fixedDeck ? (
+            <div className="bulk-entry-destination">
+              <span>Destination deck</span>
+              <strong>{fixedDeck.name}</strong>
+            </div>
+          ) : (
+            <label>
+              <span>Destination deck</span>
+              <select
+                value={deckId}
+                disabled={isSaving}
+                onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                  setDeckId(event.currentTarget.value);
+                  setErrorMessage(null);
+                  clearAnalysis();
+                }}
+              >
+                {activeDecks.map((deck) => (
+                  <option key={deck.id} value={deck.id}>
+                    {deck.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <p>Exact duplicate question-and-answer pairs are detected before anything is saved.</p>
         </div>
 
@@ -301,8 +310,8 @@ export function BulkEntryModal({
                 {analysis.duplicateCount === 1 ? "" : "s"}?
               </h3>
               <p>
-                Duplicate rows are highlighted above. They will be omitted; the remaining {uniqueCount}
-                unique {uniqueCount === 1 ? "card" : "cards"} will be saved.
+                Duplicate rows are highlighted above. They will be omitted; the remaining{" "}
+                {uniqueCount} unique {uniqueCount === 1 ? "card" : "cards"} will be saved.
               </p>
             </div>
             <button
@@ -318,13 +327,21 @@ export function BulkEntryModal({
 
         {analysis && uniqueCount === 0 ? (
           <div className="inline-alert info-alert">
-            Every populated row is already present. Change or remove the highlighted rows before saving.
+            Every populated row is already present. Change or remove the highlighted rows before
+            saving.
           </div>
         ) : null}
         {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
 
         <div className="modal-actions bulk-entry-actions">
-          <button type="button" className="text-button danger-text" disabled={isSaving} onClick={() => void durableDraft.discard().then(onClose)}>Discard draft</button>
+          <button
+            type="button"
+            className="text-button danger-text"
+            disabled={isSaving}
+            onClick={() => void durableDraft.discard().then(onClose)}
+          >
+            Discard draft
+          </button>
           <button
             type="button"
             className="secondary-button"

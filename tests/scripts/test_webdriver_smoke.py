@@ -27,7 +27,11 @@ ANDROID_SMOKE_TEST_PATH = (
     / "AndroidSmokeTest.kt"
 )
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
-CREATE_CARDS_PATH = ROOT / "src" / "screens" / "flashcards" / "CreateCardsWorkspace.tsx"
+DECKS_SCREEN_PATH = ROOT / "src" / "screens" / "DecksScreen.tsx"
+CARD_BROWSER_WORKSPACE_PATH = (
+    ROOT / "src" / "screens" / "cards" / "CardBrowserWorkspace.tsx"
+)
+CARDS_SCREEN_PATH = ROOT / "src" / "screens" / "CardsScreen.tsx"
 TOUR_PROVIDER_PATH = ROOT / "src" / "ui" / "tutorials" / "TourProvider.tsx"
 SPEC = importlib.util.spec_from_file_location("ostudy_webdriver_smoke", SMOKE_PATH)
 if SPEC is None or SPEC.loader is None:
@@ -95,13 +99,15 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertEqual(element, "element-1")
         self.assertEqual(request.call_count, 2)
 
-    def test_click_requires_two_stable_hit_tests_before_w3c_click(self) -> None:
+    def test_click_requires_stable_hit_tests_and_dom_acknowledgement(self) -> None:
         hit = {
             "ready": True,
             "rect": {"left": 10, "top": 20, "width": 120, "height": 44},
         }
         with (
             mock.patch.object(smoke, "_element_hit_test", side_effect=[hit, hit]) as hit_test,
+            mock.patch.object(smoke, "_arm_click_ack") as arm_ack,
+            mock.patch.object(smoke, "_wait_for_click_ack", return_value=True) as wait_ack,
             mock.patch.object(smoke, "request", return_value=None) as request,
             mock.patch.object(smoke.time, "sleep"),
         ):
@@ -113,6 +119,73 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
             "/session/session-1/element/element-1/click",
             {},
         )
+        arm_ack.assert_called_once()
+        wait_ack.assert_called_once()
+        token = arm_ack.call_args.args[2]
+        self.assertEqual(arm_ack.call_args.args[:2], ("session-1", "element-1"))
+        self.assertEqual(wait_ack.call_args.args[0:2], ("session-1", token))
+
+    def test_click_retries_once_only_when_webkit_did_not_dispatch_dom_click(self) -> None:
+        hit = {
+            "ready": True,
+            "rect": {"left": 10, "top": 20, "width": 120, "height": 44},
+        }
+        with (
+            mock.patch.object(
+                smoke,
+                "_element_hit_test",
+                side_effect=[hit, hit, hit, hit],
+            ) as hit_test,
+            mock.patch.object(smoke, "_arm_click_ack") as arm_ack,
+            mock.patch.object(
+                smoke,
+                "_wait_for_click_ack",
+                side_effect=[False, True],
+            ) as wait_ack,
+            mock.patch.object(smoke, "request", return_value=None) as request,
+            mock.patch.object(smoke.time, "sleep"),
+        ):
+            smoke.click("session-1", "element-1")
+
+        self.assertEqual(hit_test.call_count, 4)
+        self.assertEqual(arm_ack.call_count, 2)
+        self.assertEqual(wait_ack.call_count, 2)
+        self.assertEqual(
+            request.call_args_list,
+            [
+                mock.call(
+                    "POST",
+                    "/session/session-1/element/element-1/click",
+                    {},
+                ),
+                mock.call(
+                    "POST",
+                    "/session/session-1/element/element-1/click",
+                    {},
+                ),
+            ],
+        )
+
+    def test_click_fails_after_two_success_responses_without_dom_delivery(self) -> None:
+        hit = {
+            "ready": True,
+            "rect": {"left": 10, "top": 20, "width": 120, "height": 44},
+        }
+        with (
+            mock.patch.object(
+                smoke,
+                "_element_hit_test",
+                side_effect=[hit, hit, hit, hit],
+            ),
+            mock.patch.object(smoke, "_arm_click_ack"),
+            mock.patch.object(smoke, "_wait_for_click_ack", return_value=False),
+            mock.patch.object(smoke, "request", return_value=None) as request,
+            mock.patch.object(smoke.time, "sleep"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "without DOM acknowledgement"):
+                smoke.click("session-1", "element-1")
+
+        self.assertEqual(request.call_count, 2)
 
     def test_native_smoke_uses_structural_practice_completion_contract(self) -> None:
         harness = SMOKE_PATH.read_text(encoding="utf-8")
@@ -121,9 +194,37 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn("PRACTICE_COMPLETE_SELECTOR", harness)
         self.assertNotIn('"Session complete"', harness)
 
-    def test_create_cards_exposes_stable_bulk_add_automation_hook(self) -> None:
-        source = CREATE_CARDS_PATH.read_text(encoding="utf-8")
-        self.assertIn('data-testid="bulk-add-cards"', source)
+    def test_deck_and_search_delegate_to_one_card_browser(self) -> None:
+        decks = DECKS_SCREEN_PATH.read_text(encoding="utf-8")
+        search = CARDS_SCREEN_PATH.read_text(encoding="utf-8")
+        browser = CARD_BROWSER_WORKSPACE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("<CardBrowserWorkspace", decks)
+        self.assertIn("fixedDeckId={selectedDeck.id}", decks)
+        self.assertIn("showFilters={false}", decks)
+        self.assertNotIn("controller.cards(", decks)
+        self.assertNotIn('className="card-row-preview"', decks)
+
+        self.assertIn("<CardBrowserWorkspace", search)
+        self.assertIn('controls="search"', search)
+        self.assertNotIn("Bulk add", search)
+        self.assertNotIn("Add flashcard", search)
+        self.assertNotIn("organized-card-row", search)
+
+        self.assertIn('export type CardBrowserControls = "deck" | "search"', browser)
+        self.assertIn('controlMode === "search"', browser)
+        self.assertIn('aria-label="Search this deck"', browser)
+        self.assertIn('controlMode === "deck"', browser)
+        self.assertIn('className="card-browser-actions"', browser)
+        self.assertIn("setBulkEntryOpen(true)", browser)
+        self.assertIn("Bulk add", browser)
+        self.assertIn("Add flashcard", browser)
+        self.assertIn("Practice selected", browser)
+        self.assertNotIn("Practice results", browser)
+        self.assertNotIn("Ready now", browser)
+        self.assertIn('className="organized-card-sides card-listing-sides"', browser)
+        self.assertIn("Q:", browser)
+        self.assertIn("A:", browser)
 
     def test_android_smoke_entry_point_installs_test_bridge_only_when_requested(self) -> None:
         source = MAIN_ENTRY_PATH.read_text(encoding="utf-8")

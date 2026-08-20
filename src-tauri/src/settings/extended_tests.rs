@@ -14,7 +14,6 @@ mod extended_tests {
             decorative_artwork: true,
             celebrations_enabled: true,
             tutorials_enabled: true,
-            deck_view_density: "comfortable".to_string(),
             confirm_deletions: true,
             practice_shuffle: true,
             desired_retention: 0.90,
@@ -38,7 +37,6 @@ mod extended_tests {
             decorative_artwork: false,
             celebrations_enabled: false,
             tutorials_enabled: false,
-            deck_view_density: "compact".to_string(),
             confirm_deletions: false,
             practice_shuffle: false,
             desired_retention: 0.96,
@@ -64,7 +62,6 @@ mod extended_tests {
         assert_eq!(loaded.decorative_artwork, expected.decorative_artwork);
         assert_eq!(loaded.celebrations_enabled, expected.celebrations_enabled);
         assert_eq!(loaded.tutorials_enabled, expected.tutorials_enabled);
-        assert_eq!(loaded.deck_view_density, expected.deck_view_density);
         assert_eq!(loaded.confirm_deletions, expected.confirm_deletions);
         assert_eq!(loaded.practice_shuffle, expected.practice_shuffle);
         assert_eq!(loaded.desired_retention, expected.desired_retention);
@@ -98,13 +95,6 @@ mod extended_tests {
         );
 
         let mut value = settings();
-        value.deck_view_density = "microscopic".to_string();
-        assert_eq!(
-            validate_settings(&value).unwrap_err().code,
-            "invalid_deck_view_density"
-        );
-
-        let mut value = settings();
         value.ai_reasoning_effort = "unbounded".to_string();
         assert_eq!(
             validate_settings(&value).unwrap_err().code,
@@ -133,7 +123,7 @@ mod extended_tests {
 
     #[test]
     fn strict_settings_input_rejects_removed_or_misspelled_fields() {
-        let error = serde_json::from_value::<AppSettingsDto>(json!({
+        let base = json!({
             "theme": "dark",
             "uiFont": "system",
             "cardFont": "system",
@@ -144,16 +134,24 @@ mod extended_tests {
             "decorativeArtwork": true,
             "celebrationsEnabled": true,
             "tutorialsEnabled": true,
-            "deckViewDensity": "comfortable",
             "confirmDeletions": true,
             "practiceShuffle": true,
             "desiredRetention": 0.9,
             "dailyNewLimit": 20,
             "dailyReviewLimit": 200,
-            "aiReasoningEffort": "low",
-            "shuffleDecks": true
-        }))
-        .expect_err("obsolete settings must not be ignored");
+            "aiReasoningEffort": "low"
+        });
+
+        let mut removed = base.clone();
+        removed["deckViewDensity"] = json!("comfortable");
+        let error = serde_json::from_value::<AppSettingsDto>(removed)
+            .expect_err("removed deck density must not be ignored");
+        assert!(error.to_string().contains("deckViewDensity"));
+
+        let mut misspelled = base;
+        misspelled["shuffleDecks"] = json!(true);
+        let error = serde_json::from_value::<AppSettingsDto>(misspelled)
+            .expect_err("misspelled settings must not be ignored");
         assert!(error.to_string().contains("shuffleDecks"));
     }
 

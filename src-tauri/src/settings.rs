@@ -29,7 +29,6 @@ const FONT_PRESETS: &[&str] = &[
 ];
 const MOTION_PREFERENCES: &[&str] = &["system", "full", "reduced", "none"];
 const MATERIAL_PREFERENCES: &[&str] = &["automatic", "rich", "simple"];
-const DECK_VIEW_DENSITIES: &[&str] = &["comfortable", "compact"];
 const AI_REASONING_EFFORTS: &[&str] = &[
     "automatic",
     "none",
@@ -59,7 +58,6 @@ pub struct AppSettingsDto {
     pub decorative_artwork: bool,
     pub celebrations_enabled: bool,
     pub tutorials_enabled: bool,
-    pub deck_view_density: String,
     pub confirm_deletions: bool,
     pub practice_shuffle: bool,
     pub desired_retention: f64,
@@ -140,7 +138,6 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         decorative_artwork: get_setting(connection, "decorativeArtwork", true)?,
         celebrations_enabled: get_setting(connection, "celebrationsEnabled", true)?,
         tutorials_enabled: get_setting(connection, "tutorialsEnabled", true)?,
-        deck_view_density: get_setting(connection, "deckViewDensity", "comfortable".to_string())?,
         confirm_deletions: get_setting(connection, "confirmDeletions", true)?,
         practice_shuffle: get_setting(connection, "practiceShuffle", true)?,
         desired_retention: get_setting(connection, "desiredRetention", 0.90_f64)?,
@@ -274,10 +271,6 @@ fn save_settings_in_connection(
             serde_json::to_string(&settings.tutorials_enabled),
         ),
         (
-            "deckViewDensity",
-            serde_json::to_string(&settings.deck_view_density),
-        ),
-        (
             "confirmDeletions",
             serde_json::to_string(&settings.confirm_deletions),
         ),
@@ -317,7 +310,8 @@ fn save_settings_in_connection(
     }
     transaction
         .execute(
-            "DELETE FROM app_settings WHERE key IN ('animationsEnabled', 'reduceMotion')",
+            "DELETE FROM app_settings
+             WHERE key IN ('animationsEnabled', 'reduceMotion', 'deckViewDensity')",
             [],
         )
         .map_err(CommandError::database)?;
@@ -344,12 +338,6 @@ fn validate_settings(settings: &AppSettingsDto) -> Result<(), CommandError> {
         MATERIAL_PREFERENCES,
         "invalid_material_preference",
         "Select an available material preference.",
-    )?;
-    validate_choice(
-        &settings.deck_view_density,
-        DECK_VIEW_DENSITIES,
-        "invalid_deck_view_density",
-        "Select an available deck-list density.",
     )?;
     validate_choice(
         &settings.ai_reasoning_effort,
@@ -429,21 +417,18 @@ mod tests {
         assert_eq!(settings.daily_new_limit, 20);
         assert_eq!(settings.daily_review_limit, 200);
         assert_eq!(settings.ai_reasoning_effort, "low");
-        assert_eq!(current_ai_reasoning_effort(), "low");
         settings.daily_new_limit = 12;
         settings.daily_review_limit = 80;
         settings.ai_reasoning_effort = "none".to_string();
         database
             .with_connection(|connection| save_settings_in_connection(connection, &settings))
             .expect("settings should save");
-        publish_ai_reasoning_effort(&settings.ai_reasoning_effort);
         let loaded = database
             .with_connection(load_settings)
             .expect("settings should reload");
         assert_eq!(loaded.daily_new_limit, 12);
         assert_eq!(loaded.daily_review_limit, 80);
         assert_eq!(loaded.ai_reasoning_effort, "none");
-        assert_eq!(current_ai_reasoning_effort(), "none");
     }
 
     #[test]
@@ -519,6 +504,33 @@ mod tests {
                 Ok(())
             })
             .expect("legacy motion settings should migrate");
+    }
+
+    #[test]
+    fn removes_obsolete_deck_density_when_settings_are_saved() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO app_settings (key, value_json, updated_at)
+                         VALUES ('deckViewDensity', '\"comfortable\"', 1)",
+                        [],
+                    )
+                    .map_err(CommandError::database)?;
+                let loaded = load_settings(connection)?;
+                save_settings_in_connection(connection, &loaded)?;
+                let count: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM app_settings WHERE key = 'deckViewDensity'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(count, 0);
+                Ok(())
+            })
+            .expect("obsolete deck density should be removed");
     }
 
     #[test]
