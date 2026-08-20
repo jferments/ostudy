@@ -32,6 +32,7 @@ function isActive(item: AppSection, current: AppSection): boolean {
 export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProps) {
   const { layoutMode } = useLayoutMode();
   const compact = layoutMode === "compact";
+  const medium = layoutMode === "medium";
   const [moreOpen, setMoreOpen] = useState(false);
 
   function navigate(next: AppSection): void {
@@ -101,7 +102,7 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
 
   return (
     <aside className={`sidebar ${styles.sidebar}`}>
-      <BrandLockup />
+      <BrandLockup compact={medium} />
       <nav
         className={`sidebar-nav ${styles.sidebarNav}`}
         aria-label="Main navigation"
