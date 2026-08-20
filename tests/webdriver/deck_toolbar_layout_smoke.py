@@ -26,7 +26,7 @@ def verify_compact_tabs(session_id: str, width: int) -> None:
         );
         if (!(list instanceof HTMLElement)) return null;
         const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
-        if (tabs.length !== 5 || tabs.some((tab) => !(tab instanceof HTMLElement))) {
+        if (tabs.length !== 4 || tabs.some((tab) => !(tab instanceof HTMLElement))) {
           return null;
         }
         const rects = tabs.map((tab) => tab.getBoundingClientRect());
@@ -35,10 +35,10 @@ def verify_compact_tabs(session_id: str, width: int) -> None:
           count: rects.length,
           firstRowTop: rects[0].top,
           firstRowTop2: rects[1].top,
-          firstRowTop3: rects[2].top,
-          secondRowTop: rects[3].top,
-          secondRowTop2: rects[4].top,
-          secondRowCenter: (rects[3].left + rects[4].right) / 2,
+          secondRowTop: rects[2].top,
+          secondRowTop2: rects[3].top,
+          firstRowCenter: (rects[0].left + rects[1].right) / 2,
+          secondRowCenter: (rects[2].left + rects[3].right) / 2,
           listCenter: (listRect.left + listRect.right) / 2,
           clientWidth: list.clientWidth,
           scrollWidth: list.scrollWidth,
@@ -48,22 +48,20 @@ def verify_compact_tabs(session_id: str, width: int) -> None:
     if not isinstance(measurements, dict):
         raise AssertionError(f"Could not measure compact Flashcards tabs at {width}px")
     first_top = float(measurements["firstRowTop"])
-    if any(
-        abs(float(measurements[key]) - first_top) > 2
-        for key in ("firstRowTop2", "firstRowTop3")
-    ):
+    if abs(float(measurements["firstRowTop2"]) - first_top) > 2:
         raise AssertionError(
-            f"The first three Flashcards tabs did not share one row at {width}px: {measurements!r}"
+            f"The first two Flashcards tabs did not share one row at {width}px: {measurements!r}"
         )
     second_top = float(measurements["secondRowTop"])
     if abs(float(measurements["secondRowTop2"]) - second_top) > 2 or second_top <= first_top + 2:
         raise AssertionError(
             f"The final two Flashcards tabs did not form a second row at {width}px: {measurements!r}"
         )
-    if abs(float(measurements["secondRowCenter"]) - float(measurements["listCenter"])) > 3:
-        raise AssertionError(
-            f"The second Flashcards tab row was not centered at {width}px: {measurements!r}"
-        )
+    for key in ("firstRowCenter", "secondRowCenter"):
+        if abs(float(measurements[key]) - float(measurements["listCenter"])) > 3:
+            raise AssertionError(
+                f"A Flashcards tab row was not centered at {width}px: {measurements!r}"
+            )
     if int(measurements["scrollWidth"]) > int(measurements["clientWidth"]) + 1:
         raise AssertionError(
             f"The Flashcards tabs still required horizontal scrolling at {width}px: {measurements!r}"
@@ -258,7 +256,7 @@ def main() -> int:
         verify_toolbar(session_id, 1174, 760, webdriver.deadline_after(45))
         verify_toolbar(session_id, 1280, 760, webdriver.deadline_after(45))
         print(
-            "Native Flashcards layout smoke passed: compact tabs wrap into a centered 3+2 "
+            "Native Flashcards layout smoke passed: compact tabs form a centered 2x2 "
             "layout without horizontal scrolling, New folder stays inside the Folders section, "
             "New deck remains in the top toolbar, and visible action controls stay contained "
             "without clipped labels."
