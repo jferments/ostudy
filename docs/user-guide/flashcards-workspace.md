@@ -2,21 +2,22 @@
 
 The **Flashcards** area is the main place to organize study material, create cards, find existing cards, and transfer study content.
 
-Its compact heading is followed immediately by five workspace tabs:
+Its compact heading is followed immediately by four workspace tabs:
 
 - **Decks**
 - **Templates**
 - **Search**
 - **Import/Export**
-- **Create Cards**
 
-On compact mobile layouts the tabs form a centered two-row arrangement: three tabs on the first row and two tabs on the second. They do not require horizontal scrolling.
+On compact mobile layouts the tabs form a two-by-two grid. They do not require horizontal scrolling. Tablet and compact-desktop layouts retain a labeled main navigation sidebar rather than reducing primary destinations to unexplained icons.
 
-Switching tabs changes presentation state only. The active tab is stored in the local presentation checkpoint so ostudy can restore the previous workspace after restart. Card content, review history, and credentials are not stored in that checkpoint.
+Selecting a workspace tab always opens that workspace's root. Selecting **Decks** while a deck is open therefore returns to the main deck listing. Selecting the primary **Flashcards** navigation destination has the same effect. Unsaved card or template changes still receive the normal discard confirmation before navigation proceeds.
+
+The active workspace and an explicitly open deck are stored in the local presentation checkpoint so ostudy can restore the destination after restart. Card content, review history, and credentials are not stored in that checkpoint. Older checkpoints that named the removed Create Cards workspace return safely to the Decks root.
 
 ## Decks
 
-Use **Decks** to create decks, open them, start practice, organize them into folders, archive them, and remove them.
+Use **Decks** to create decks, open them, add cards, start practice, organize them into folders, archive them, and remove them.
 
 ### Folders and Unsorted decks
 
@@ -53,13 +54,26 @@ Select a folder heading to collapse or expand it. Hovering the open-folder contr
 
 Collapse state is presentational only. It does not alter folder membership, deck order, practice availability, or backup contents.
 
+### Compact deck rows
+
+Deck rows use one compact presentation on desktop, tablet, and mobile. There is no Comfortable/Compact preference. The compact visual spacing does not reduce keyboard focus, drag handles, or coarse-pointer touch targets.
+
+The drag handle is identified by its grip icon, focus ring, pointer feedback, and accessible instructions; it does not use a permanent vertical separator.
+
 ### Practice buttons
 
 Every active deck with generated cards has a **Practice** button. Starting from a deck is an explicit request to study that deck, so the session follows the deck-practice workload rules rather than merely opening its editor.
 
-### Comfortable and Compact density
+### Adding cards inside a deck
 
-**Comfortable** density shows more description and progress detail. **Compact** density fits more deck rows on screen. Density is presentation state only and never changes card content or durable ordering.
+Open a deck to add study material. The card-table heading contains:
+
+- **Add flashcard**, which opens the full rich card editor for the current deck;
+- **Bulk add**, which opens the multi-row plain-text entry workflow with the current deck fixed as its destination.
+
+Bulk entry does not ask you to choose the destination again. It retains duplicate analysis, durable drafts, tags, and the same canonical card-creation commands used elsewhere.
+
+Card-list previews use compact question and answer lines. On narrow layouts each row displays one truncated `Q:` line and one truncated `A:` line, using the available horizontal width. The old arrow column and blank label rows are not used.
 
 ## Templates
 
@@ -90,7 +104,3 @@ Use **Import/Export** for deck-scoped content transfers and complete-library pro
 - `.ostudybackup` protects the complete local library, including folders, deck placement, templates, schedules, review events, analytics sources, settings, managed images, and retained documents. Provider credentials are excluded.
 
 A newly imported deck begins in **Unsorted decks** because folder membership is organization state belonging to the receiving library.
-
-## Create Cards
-
-Use **Create Cards** for focused single-card authoring or bulk entry. Both routes use the same validation, duplicate analysis, durable draft, template, and managed-asset boundaries as card creation from inside a deck.
