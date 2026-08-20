@@ -1,30 +1,26 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { NavigationSidebar } from "./NavigationSidebar";
 
-const originalMatchMedia = window.matchMedia;
+const appearanceMocks = vi.hoisted(() => ({
+  mode: "wide" as "compact" | "medium" | "wide",
+}));
 
-afterEach(() => {
-  window.matchMedia = originalMatchMedia;
+vi.mock("../ui/appearance/AppearanceProvider", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../ui/appearance/AppearanceProvider")>();
+  return {
+    ...actual,
+    useLayoutMode: () => appearanceMocks.mode,
+  };
 });
 
-function setCompact(compact: boolean): void {
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: compact && query.includes("max-width: 760px"),
-    media: query,
-    onchange: null,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  }));
-}
-
-function renderNavigation(compact: boolean, onNavigate = vi.fn()) {
-  setCompact(compact);
+function renderNavigation(
+  mode: "compact" | "medium" | "wide",
+  onNavigate = vi.fn(),
+) {
+  appearanceMocks.mode = mode;
   render(
     <OverlayProvider>
       <NavigationSidebar section="decks" onNavigate={onNavigate} />
@@ -35,7 +31,7 @@ function renderNavigation(compact: boolean, onNavigate = vi.fn()) {
 
 describe("NavigationSidebar", () => {
   it("renders every primary section directly in wide layouts", () => {
-    renderNavigation(false);
+    renderNavigation("wide");
 
     const navigation = screen.getByRole("navigation", { name: "Main navigation" });
     for (const label of ["Flashcards", "Documents", "Practice", "Analytics", "Settings"]) {
@@ -47,8 +43,19 @@ describe("NavigationSidebar", () => {
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
   });
 
+  it("keeps every primary destination labeled in medium tablet layouts", () => {
+    renderNavigation("medium");
+
+    const navigation = screen.getByRole("navigation", { name: "Main navigation" });
+    for (const label of ["Flashcards", "Documents", "Practice", "Analytics", "Settings"]) {
+      const button = withinNavigation(navigation, label);
+      expect(button.textContent).toContain(label);
+    }
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+  });
+
   it("preserves compact priorities and exposes Documents through More", async () => {
-    const onNavigate = renderNavigation(true);
+    const onNavigate = renderNavigation("compact");
 
     for (const label of ["Flashcards", "Practice", "Analytics", "More"]) {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
@@ -65,3 +72,11 @@ describe("NavigationSidebar", () => {
     expect(onNavigate).toHaveBeenCalledWith("documents");
   });
 });
+
+function withinNavigation(navigation: HTMLElement, label: string): HTMLButtonElement {
+  const button = [...navigation.querySelectorAll<HTMLButtonElement>("button")].find(
+    (candidate) => candidate.textContent?.trim() === label,
+  );
+  if (!button) throw new Error(`Missing ${label} navigation button.`);
+  return button;
+}
