@@ -1,11 +1,13 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as cardsIpc from "../ipc/cards";
 import * as generatedImport from "../ipc/generated-import";
 import * as commonIpc from "../ipc/common";
 import * as decksIpc from "../ipc/decks";
 import * as settingsIpc from "../ipc/settings";
 import * as platformFiles from "../platform/files";
+import { CardPracticeProvider } from "./cards/CardPracticeContext";
 import { DecksScreen } from "./DecksScreen";
 
 vi.mock("../controllers/useDurableDraft", () => ({
@@ -28,7 +30,6 @@ vi.mock("../platform/files", () => ({
   selectExternalImport: vi.fn(),
   publishExport: vi.fn(),
 }));
-
 vi.mock("../ipc/generated-import", () => ({
   importGeneratedFlashcards: vi.fn(),
 }));
@@ -36,11 +37,18 @@ vi.mock("../ipc/generated-import", () => ({
 const importOperationId = "9".repeat(32);
 
 vi.mock("../ipc/cards", () => ({
-  deleteCard: vi.fn(),
+  analyzeBulkCards: vi.fn(),
+  bulkCreateCards: vi.fn(),
+  bulkTagCards: vi.fn(),
+  deleteCards: vi.fn(),
   getCardNote: vi.fn(),
-  undoDeletion: vi.fn(),
+  listMatchingCards: vi.fn(),
+  listTags: vi.fn(),
+  searchCards: vi.fn(),
+  transferCards: vi.fn(),
 }));
 vi.mock("../ipc/common", () => ({
+  createMutationId: vi.fn(() => "f".repeat(32)),
   createOperationId: vi.fn(() => importOperationId),
   getErrorCode: (error: unknown) =>
     typeof error === "object" && error !== null && "code" in error
@@ -55,11 +63,12 @@ vi.mock("../ipc/decks", () => ({
   prepareDeckExport: vi.fn(),
   getDeck: vi.fn(),
   importDeck: vi.fn(),
-  listDeckCardSummaries: vi.fn(),
   setDeckArchived: vi.fn(),
   updateDeck: vi.fn(),
 }));
-
+vi.mock("../ipc/scheduling", () => ({
+  applyScheduleAction: vi.fn(),
+}));
 vi.mock("./CardEditorScreen", () => ({
   CardEditorScreen: () => <div>Card editor</div>,
 }));
@@ -77,14 +86,23 @@ const deck: decksIpc.DeckSummary = {
   revision: 1,
 };
 
-const card: decksIpc.DeckCardSummary = {
+const card: cardsIpc.CardBrowserRow = {
+  cardId: "b".repeat(32),
   noteId: "c".repeat(32),
-  primaryCardId: "b".repeat(32),
-  questionExcerpt: "Do dogs have fur?",
-  answerExcerpt: "Yes",
-  generatedCardCount: 1,
-  imageCount: 0,
-  reversible: true,
+  deckId: deck.id,
+  deckName: deck.name,
+  cardType: "basic_reverse",
+  cardLabel: "Reverse",
+  frontText: "Do dogs have fur?",
+  backText: "Yes",
+  tags: [],
+  dueAt: Date.now() + 60_000,
+  lastReviewedAt: null,
+  reviewCount: 0,
+  suspendedAt: null,
+  buriedUntil: null,
+  needsMorePractice: false,
+  createdAt: 1,
   updatedAt: 1,
 };
 
@@ -103,46 +121,39 @@ const settings: settingsIpc.AppSettings = {
   dailyReviewLimit: 200,
 };
 
-function renderDecks(showToast = vi.fn()) {
+function renderDecks(showToast = vi.fn(), onPracticeDeck = vi.fn()) {
   render(
-    <DecksScreen
-      decks={[deck]}
-      settings={settings}
-      refreshDecks={async () => [deck]}
-      onPracticeDeck={vi.fn()}
-      onDirtyChange={vi.fn()}
-      showToast={showToast}
-    />,
-  );
-  return showToast;
-}
-
-describe("DecksScreen", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
-    vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "export", destinationKind: "desktop_file", completedAt: Date.now() });
-    vi.mocked(decksIpc.getDeck).mockResolvedValue(deck);
-    vi.mocked(decksIpc.listDeckCardSummaries).mockResolvedValue({
-      cards: [card],
-      totalCount: 1,
-      offset: 0,
-      hasMore: false,
-    });
-  });
-
-  it("keeps Practice enabled for a non-empty deck with no cards due", async () => {
-    const onPracticeDeck = vi.fn();
-    render(
+    <CardPracticeProvider onPracticeCards={vi.fn()}>
       <DecksScreen
         decks={[deck]}
         settings={settings}
         refreshDecks={async () => [deck]}
         onPracticeDeck={onPracticeDeck}
         onDirtyChange={vi.fn()}
-        showToast={vi.fn()}
-      />,
-    );
+        showToast={showToast}
+      />
+    </CardPracticeProvider>,
+  );
+  return { showToast, onPracticeDeck };
+}
+
+describe("DecksScreen", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
+    vi.mocked(platformFiles.publishExport).mockResolvedValue({
+      preparedExportId: "2".repeat(32),
+      displayName: "export",
+      destinationKind: "desktop_file",
+      completedAt: Date.now(),
+    });
+    vi.mocked(decksIpc.getDeck).mockResolvedValue(deck);
+    vi.mocked(cardsIpc.listTags).mockResolvedValue([]);
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [card], totalCount: 1 });
+  });
+
+  it("keeps Practice enabled and renders the shared Q/A browser for a non-empty deck", async () => {
+    const { onPracticeDeck } = renderDecks();
 
     const libraryPractice = screen.getByRole("button", { name: "Practice" });
     expect(libraryPractice.hasAttribute("disabled")).toBe(false);
@@ -151,41 +162,46 @@ describe("DecksScreen", () => {
     expect(deckButton).not.toBeNull();
     fireEvent.click(deckButton as HTMLButtonElement);
 
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Dog facts" })).toBeTruthy();
-    });
-    expect(await screen.findByLabelText("Reversible")).toBeTruthy();
-    expect(screen.queryByText(/card variants/u)).toBeNull();
+    expect(await screen.findByRole("heading", { name: "Dog facts" })).toBeTruthy();
+    const table = await screen.findByRole("table", { name: "Matching cards" });
+    expect(within(table).getByText("Q:")).toBeTruthy();
+    expect(within(table).getByText("A:")).toBeTruthy();
+    expect(within(table).getByText("Reverse")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Card filters" })).toBeNull();
 
     const detailPractice = screen.getByRole("button", { name: "Practice" });
     expect(detailPractice.hasAttribute("disabled")).toBe(false);
     fireEvent.click(detailPractice);
-
     expect(onPracticeDeck).toHaveBeenCalledWith(deck.id, "detail");
   });
 
   it("imports generated JSON through the ordinary Import deck button", async () => {
-    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "study_content", detectedKind: "generated_json", displayName: "nclex.ostudy.json", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
+      id: "1".repeat(32),
+      purpose: "study_content",
+      detectedKind: "generated_json",
+      displayName: "nclex.ostudy.json",
+      mediaType: "application/octet-stream",
+      byteSize: 128,
+      sha256: "0".repeat(64),
+      expiresAt: Date.now() + 60_000,
+    });
     vi.mocked(generatedImport.importGeneratedFlashcards).mockResolvedValue({
       deckId: deck.id,
       createdNoteCount: 15,
       createdCardCount: 15,
       skippedDuplicateCount: 0,
     });
-    const showToast = renderDecks();
+    const { showToast } = renderDecks();
 
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
 
     await waitFor(() => {
-      expect(generatedImport.importGeneratedFlashcards).toHaveBeenCalledWith(
-        "1".repeat(32),
-      );
+      expect(generatedImport.importGeneratedFlashcards).toHaveBeenCalledWith("1".repeat(32));
     });
     expect(decksIpc.importDeck).not.toHaveBeenCalled();
     expect(platformFiles.selectExternalImport).toHaveBeenCalledWith("study_content");
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Dog facts" })).toBeTruthy();
-    });
+    expect(await screen.findByRole("heading", { name: "Dog facts" })).toBeTruthy();
     expect(showToast).toHaveBeenCalledWith(
       "success",
       "Imported 15 card entries as 15 scheduled cards.",
@@ -193,21 +209,23 @@ describe("DecksScreen", () => {
   });
 
   it("continues to import studydeck packages through the same button", async () => {
-    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "study_content", detectedKind: "studydeck", displayName: "dog-facts.studydeck", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
-    vi.mocked(decksIpc.importDeck).mockResolvedValue({
-      deck,
-      cardCount: 2,
-      assetCount: 0,
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
+      id: "1".repeat(32),
+      purpose: "study_content",
+      detectedKind: "studydeck",
+      displayName: "dog-facts.studydeck",
+      mediaType: "application/octet-stream",
+      byteSize: 128,
+      sha256: "0".repeat(64),
+      expiresAt: Date.now() + 60_000,
     });
+    vi.mocked(decksIpc.importDeck).mockResolvedValue({ deck, cardCount: 2, assetCount: 0 });
     renderDecks();
 
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
 
     await waitFor(() => {
-      expect(decksIpc.importDeck).toHaveBeenCalledWith(
-        "1".repeat(32),
-        importOperationId,
-      );
+      expect(decksIpc.importDeck).toHaveBeenCalledWith("1".repeat(32), importOperationId);
     });
     expect(commonIpc.createOperationId).toHaveBeenCalled();
     expect(generatedImport.importGeneratedFlashcards).not.toHaveBeenCalled();
