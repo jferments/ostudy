@@ -63,9 +63,9 @@
   .deck-card-search input[type="search"] {
     width: 100%;
     min-height: 40px;
-    border: 1px solid var(--ostudy-color-border-default);
-    border-radius: var(--ostudy-radius-md);
-    background: var(--ostudy-color-surface-1);
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-medium);
+    background: var(--ostudy-color-surface-base);
     color: var(--ostudy-color-text-primary);
     padding: 8px 11px;
   }
