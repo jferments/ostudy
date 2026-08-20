@@ -8,7 +8,7 @@ This guide follows a normal first-use path rather than the internal implementati
 
 The main navigation contains five areas:
 
-- **Flashcards** for decks, templates, Search, imports and exports, and card creation;
+- **Flashcards** for decks, templates, Search, imports and exports, and deck-scoped card creation;
 - **Documents** for retaining local source documents and generating flashcards from them;
 - **Practice** for scheduled and custom study sessions;
 - **Analytics** for current workload, practice history, and topic-level patterns;
@@ -16,7 +16,7 @@ The main navigation contains five areas:
 
 Each workspace begins with a compact icon and heading so the functional controls remain near the top of the screen. Use contextual help and this guide for explanations that do not need to remain permanently visible in the workspace.
 
-On a narrow mobile window, Flashcards, Practice, and Analytics remain directly available while Documents and Settings appear under **More**. Android Back closes the top overlay or nested editor before leaving the current area.
+On a narrow mobile window, Flashcards, Practice, and Analytics remain directly available while Documents and Settings appear under **More**. Intermediate tablet widths use a labeled medium navigation rail rather than an icon-only desktop/mobile hybrid. Android Back closes the top overlay or returns nested workspace state toward its root before leaving the current area.
 
 Short contextual tutorials can introduce an unfamiliar workspace the first time its relevant controls are available. They are dismissible, can be restarted from related help, and can be disabled under **Settings → Appearance**. Tutorial progress is device-local presentation state; it is not learner history and is not included in library backups.
 
@@ -32,20 +32,24 @@ Use a folder's collapse control to hide its deck rows without changing organizat
 
 Deleting a folder does not delete its decks. The decks return to Unsorted decks with their cards, schedules, and review history unchanged. Deleting a deck remains a separate, explicit action.
 
-Use **Comfortable** density when descriptions and progress are useful, or **Compact** density when you want to see more decks at once. Density changes presentation only.
+The deck library always uses the compact row presentation. It keeps deck name, card count, ready count, movement controls, and study actions visible while preserving full keyboard and touch targets; there is no separate density preference to manage.
 
 A deck remains the main unit for practice scope, import/export, archiving, and analytics. Renaming a deck changes its current display name without discarding retained review history.
 
 ## 3. Add cards
 
-Open a deck and choose **Add card**, or open **Flashcards → Create Cards**. Select the card type that matches the material:
+Open a deck. At the top-right of its card table, choose **Add flashcard** for one card or **Bulk add** for several question-and-answer pairs. Card creation is always attached to its destination deck; there is no separate Create Cards workspace.
+
+Select the card type that matches the material:
 
 - **Basic** for a question and answer;
 - **Reversible** when both directions are independently useful;
 - **Fill in the blank** when a sentence or statement contains one or more useful recall targets;
 - a **custom template** when you repeatedly study the same structured fields.
 
-Use the single-card editor for focused authoring and bulk entry for a prepared set of question-and-answer pairs. Both routes use the same validation, duplicate analysis, managed-image boundary, and durable draft behavior.
+Use the single-card editor for focused authoring and bulk entry for a prepared set of question-and-answer pairs. Bulk entry opened from a deck keeps that deck fixed as the destination. Both routes use the same validation, duplicate analysis, managed-image boundary, and durable draft behavior.
+
+Card previews inside a deck are compact on narrow screens: one **Q:** line and one **A:** line use the available horizontal width and then ellipsize. The preview does not reserve a separate arrow column between question and answer.
 
 Write one main retrieval task per card. A precise question with a focused answer is usually easier to study than a card containing an entire paragraph of unrelated facts.
 
@@ -154,7 +158,7 @@ A useful first test of the application is:
 
 1. Create two small decks and place one inside a folder.
 2. Reorder the folder and decks once with drag-and-drop and once with the keyboard handle shortcuts.
-3. Add five Basic cards, one Reversible note, and one Fill in the blank note.
+3. Open one deck and use **Add flashcard** and **Bulk add** to add five Basic cards, one Reversible note, and one Fill in the blank note.
 4. Add two tags and find the cards through **Flashcards → Search** using a folder scope and one study-state filter.
 5. Practice a deck and use more than one confidence response.
 6. Inspect the completion summary and then open Analytics.
