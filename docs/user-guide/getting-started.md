@@ -8,17 +8,17 @@ This guide follows a normal first-use path rather than the internal implementati
 
 The main navigation contains five areas:
 
-- **Flashcards** for decks, templates, Search, imports and exports, and card creation;
+- **Flashcards** for decks, templates, Search, imports and exports, and card authoring;
 - **Documents** for retaining local source documents and generating flashcards from them;
 - **Practice** for scheduled and custom study sessions;
 - **Analytics** for current workload, practice history, and topic-level patterns;
 - **Settings** for storage, appearance, AI providers, and review scheduling.
 
-Each workspace begins with a compact icon and heading so the functional controls remain near the top of the screen. Use contextual help and this guide for explanations that do not need to remain permanently visible in the workspace.
+Inside **Flashcards**, the four workspaces are **Decks**, **Templates**, **Search**, and **Import/Export**. Open a deck to add or bulk-add cards to that deck. Card creation is intentionally deck-scoped rather than a separate global workspace.
 
 On a narrow mobile window, Flashcards, Practice, and Analytics remain directly available while Documents and Settings appear under **More**. Android Back closes the top overlay or nested editor before leaving the current area.
 
-Short contextual tutorials can introduce an unfamiliar workspace the first time its relevant controls are available. They are dismissible, can be restarted from related help, and can be disabled under **Settings → Appearance**. Tutorial progress is device-local presentation state; it is not learner history and is not included in library backups.
+Interactive tutorials never open automatically. New installations leave them off by default. If you want one, enable **Interactive tutorials** under **Settings → Appearance**, then start the related tutorial explicitly from Help. Tutorial completion/dismissal state is device-local presentation state; it is not learner history and is not included in library backups.
 
 ## 2. Create and organize decks
 
@@ -32,20 +32,20 @@ Use a folder's collapse control to hide its deck rows without changing organizat
 
 Deleting a folder does not delete its decks. The decks return to Unsorted decks with their cards, schedules, and review history unchanged. Deleting a deck remains a separate, explicit action.
 
-Use **Comfortable** density when descriptions and progress are useful, or **Compact** density when you want to see more decks at once. Density changes presentation only.
+The deck library uses one compact row layout across supported widths. Responsive behavior changes how controls wrap and how navigation is presented; it does not expose a separate Comfortable/Compact density preference.
 
 A deck remains the main unit for practice scope, import/export, archiving, and analytics. Renaming a deck changes its current display name without discarding retained review history.
 
 ## 3. Add cards
 
-Open a deck and choose **Add card**, or open **Flashcards → Create Cards**. Select the card type that matches the material:
+Open **Flashcards → Decks**, open the destination deck, and choose **Add flashcard**. Select the card type that matches the material:
 
 - **Basic** for a question and answer;
 - **Reversible** when both directions are independently useful;
 - **Fill in the blank** when a sentence or statement contains one or more useful recall targets;
 - a **custom template** when you repeatedly study the same structured fields.
 
-Use the single-card editor for focused authoring and bulk entry for a prepared set of question-and-answer pairs. Both routes use the same validation, duplicate analysis, managed-image boundary, and durable draft behavior.
+Use **Bulk add** in the same deck when you have a prepared set of question-and-answer pairs. The single-card editor and bulk entry both use the same validation, duplicate analysis, managed-image boundary, and durable draft behavior. The destination deck is fixed by the deck you opened.
 
 Write one main retrieval task per card. A precise question with a focused answer is usually easier to study than a card containing an entire paragraph of unrelated facts.
 
@@ -57,18 +57,13 @@ Use a template when many cards share the same structure, such as medication name
 
 ## 5. Search, filter, and manage cards
 
-Open **Flashcards → Search**. The ordinary view keeps four frequent controls visible:
+Open **Flashcards → Search**. The Search workspace and an individual deck use the same underlying card-listing framework, so card previews and selection behavior remain consistent. An individual deck shows a simple search field plus deck-authoring actions; the Search workspace shows the advanced search/filter form and does not show **Add flashcard** or **Bulk add**.
 
-1. the search query;
-2. deck or folder scope;
-3. result sort order;
-4. **All filters**.
+The ordinary Search controls include the query, deck/folder scope, result sort, and **All filters**. Open **All filters** for due availability, scheduling status, last-studied date, individual decks, folders, and tags. Changes apply immediately. Active filters return above the results as removable chips so the current scope remains visible.
 
-Open **All filters** for due availability, scheduling status, last-studied date, individual decks, folders, and tags. Changes apply immediately. Active filters return above the results as removable chips so the current scope remains visible.
+Card rows present their primary content as separate **Q:** and **A:** lines. Each scheduled presentation appears as its own result, so a forward and reverse card can be selected independently even though note-level actions such as tagging or moving apply to their shared source.
 
-Each scheduled presentation appears as its own result, so a forward and reverse card can be selected independently even though note-level actions such as tagging or moving apply to their shared source.
-
-**Select visible** affects only loaded rows. **Select all matching** resolves the complete filtered result set before a bulk action. Exact duplicate detection prevents accidental repetition while allowing an explicit duplicate when the same wording is genuinely needed.
+**Select visible** affects only loaded rows. **Select all matching** resolves the complete filtered result set before a bulk action. **Practice selected** remains visible but disabled until at least one card is selected. Exact duplicate detection prevents accidental repetition while allowing an explicit duplicate when the same wording is genuinely needed.
 
 ## 6. Import, export, back up, and share
 
@@ -84,9 +79,15 @@ See [Backups, imports, and sharing](backups-imports-and-sharing.md) for the exac
 
 ## 7. Run a practice session
 
-Open **Practice** when you want the normal scheduled workload. Choose the decks under **Select decks to study** first. The workload statistics below the deck selection then show the scheduled reviews, new cards, currently ready cards, and priority material for that scope. Scheduled practice applies your daily new-card and review limits and prioritizes cards according to the current schedule.
+Open **Practice** when you want the normal scheduled workload. Practice restores your last manually chosen deck scope when those decks are still active and contain generated cards. If that saved scope is no longer usable, it selects all currently eligible active decks. This setup choice is device-local presentation state rather than learner history.
 
-You can also press **Practice** directly on a deck. A deck-launched session is an explicit request to practice that deck, so it includes all currently studyable cards in the deck rather than silently truncating the session to the remaining daily new-card allowance. Archived, suspended, or currently buried cards remain excluded. If you end a session early, ostudy returns to the screen that launched it; a session started from a deck detail page returns to that same deck.
+The workload panel is authoritative for the current selection. While it is loading, unavailable, or has no selected scope, ostudy shows that state explicitly instead of displaying made-up zeroes. A real loaded workload of zero remains a real zero. The exact same deck/tag scope used to calculate the workload is passed to **Start scheduled practice**.
+
+Change the deck checkboxes when you want a different scope. The workload statistics show the scheduled reviews, new cards, currently ready cards, and priority material for that scope. Scheduled practice applies your daily new-card and review limits and prioritizes cards according to the current schedule.
+
+You can also press **Practice** directly on a deck. A deck-launched session is an explicit request to practice that deck, so it includes all currently studyable cards in the deck rather than silently truncating the session to the remaining daily new-card allowance. Archived, suspended, or currently buried cards remain excluded. Contextual deck/tag/card launches do not silently replace the remembered manual Practice setup scope for next time.
+
+If you end a session early, ostudy returns to the screen that launched it; a session started from a deck detail page returns to that same deck.
 
 The active card is presented as the front of a restrained visual stack. The backing layers communicate that more cards remain without adding duplicate card content to the accessibility tree. A labeled progress indicator shows studied and remaining counts.
 
@@ -120,7 +121,8 @@ Open **Settings → Appearance** to preview and save:
 - interface scale and default card text size;
 - full, reduced, system-controlled, or disabled nonessential motion;
 - automatic, rich, or simple opaque materials;
-- decorative artwork, completion celebrations, and contextual tutorials.
+- decorative artwork and completion celebrations;
+- whether explicitly started interactive tutorials are available.
 
 Every theme implements the same semantic color and material contract. Changing a theme does not change information architecture, touch targets, accessibility semantics, or study behavior.
 
@@ -130,13 +132,19 @@ Turning off decorative artwork hides mascot and empty-state illustrations only. 
 
 ## 10. Configure AI only when needed
 
-Open **Settings → AI/LLM** to configure an AI provider profile. The settings page only exposes providers implemented by the current build; future provider work is tracked in the project roadmap rather than shown as inactive settings controls.
+Open **Settings → AI/LLM** and choose **Add model**. The normal setup is deliberately short:
 
-The current provider profile supplies the endpoint, model, and credential boundary used by AI tasks. **Default AI model** selects the default profile for flashcard generation. There is no separate second default-task-profile setting.
+1. choose the provider;
+2. enter the local **Server URL** or required cloud **API key**;
+3. select **Connect and load models**;
+4. choose the model returned by the provider;
+5. select **Save profile**, then **Test connection**.
 
-ostudy does not install or run a local model server. It connects to the endpoint you provide, tests the profile's capabilities, and uses only the provider selected for the task. There is no silent cloud fallback from a failed local provider.
+Provider-specific policy such as the inactivity timeout, credential persistence, optional llama.cpp server authentication, private-LAN HTTP acknowledgement, and OpenRouter zero-data-retention routing lives under **Advanced settings** rather than cluttering the basic path.
 
-See [AI providers](ai-providers.md) before entering a credential or exposing a LAN endpoint.
+The settings page only offers providers implemented by the current build. **Default AI model** selects the default profile for flashcard generation. ostudy does not install or run a local model server and never silently falls back from a failed local provider to a cloud service.
+
+See [AI providers](ai-providers.md) before entering an API key or exposing a LAN endpoint.
 
 ## 11. Generate flashcards from a PDF
 
@@ -154,9 +162,10 @@ A useful first test of the application is:
 
 1. Create two small decks and place one inside a folder.
 2. Reorder the folder and decks once with drag-and-drop and once with the keyboard handle shortcuts.
-3. Add five Basic cards, one Reversible note, and one Fill in the blank note.
+3. Open one deck; add five Basic cards with **Add flashcard**, then add prepared Q/A pairs with **Bulk add**.
 4. Add two tags and find the cards through **Flashcards → Search** using a folder scope and one study-state filter.
-5. Practice a deck and use more than one confidence response.
+5. Open Practice and confirm the eligible decks are selected automatically, then change the scope once and start a session.
 6. Inspect the completion summary and then open Analytics.
 7. Switch themes, enable reduced motion, and verify that the same workflow remains clear without card flips or particles.
-8. Export one deck, create a complete backup, restart ostudy, and confirm the folder, order, cards, and history remain available.
+8. If you want guided help, enable Interactive tutorials and start one explicitly from Help; verify it does not relaunch on its own.
+9. Export one deck, create a complete backup, restart ostudy, and confirm the folder, order, cards, and history remain available.
