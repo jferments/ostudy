@@ -379,7 +379,7 @@ pub(crate) fn apply_pending_restore(
             had_assets.then_some(&rollback_assets),
             had_documents.then_some(&rollback_documents),
         );
-        return Err(format!("Could not install restored documents: {error}"));
+        return Err(format!("Could not install the restored documents: {error}"));
     }
     sync_directory(paths.app_data_dir()).map_err(|error| error.message)?;
 
@@ -848,6 +848,7 @@ fn validate_backup_assets(
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
                 row.get::<_, i64>(3)?,
                 row.get::<_, Vec<u8>>(4)?,
             ))
