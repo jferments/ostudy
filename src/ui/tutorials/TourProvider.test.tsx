@@ -5,7 +5,7 @@ import {
   dispatchPlatformBack,
   platformBackHandlerCountForTests,
 } from "../../platform/backNavigation";
-import { TourProvider } from "./TourProvider";
+import { startTutorial, TourProvider } from "./TourProvider";
 
 function Anchors() {
   return (
@@ -28,16 +28,28 @@ describe("TourProvider", () => {
     expect(platformBackHandlerCountForTests()).toBe(0);
   });
 
-  it("starts a short first-run module only when its contextual anchor exists", async () => {
-    const view = render(
+  it("does not auto-start a tutorial when contextual anchors appear", async () => {
+    render(
       <TourProvider enabled>
         <Anchors />
       </TourProvider>,
     );
 
     await act(async () => {
-      vi.advanceTimersByTime(700);
+      vi.advanceTimersByTime(5_000);
     });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(platformBackHandlerCountForTests()).toBe(0);
+  });
+
+  it("starts a tutorial only after an explicit start action", async () => {
+    const view = render(
+      <TourProvider enabled>
+        <Anchors />
+      </TourProvider>,
+    );
+
+    act(() => startTutorial("orientation"));
     expect(
       screen.getByRole("dialog", {
         name: "Everything for flashcards lives together",
@@ -51,15 +63,13 @@ describe("TourProvider", () => {
     view.unmount();
   });
 
-  it("lets Android Back dismiss the active tutorial and records the dismissal", async () => {
+  it("lets Android Back dismiss an explicitly started tutorial and records the dismissal", async () => {
     const view = render(
       <TourProvider enabled>
         <Anchors />
       </TourProvider>,
     );
-    await act(async () => {
-      vi.advanceTimersByTime(700);
-    });
+    act(() => startTutorial("orientation"));
 
     await act(async () => {
       expect(dispatchPlatformBack()).toBe(true);
@@ -69,15 +79,13 @@ describe("TourProvider", () => {
     view.unmount();
   });
 
-  it("never starts contextual guidance when tutorials are disabled", async () => {
+  it("ignores explicit tutorial starts while tutorials are disabled", () => {
     render(
       <TourProvider enabled={false}>
         <Anchors />
       </TourProvider>,
     );
-    await act(async () => {
-      vi.advanceTimersByTime(2_000);
-    });
+    act(() => startTutorial("orientation"));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
