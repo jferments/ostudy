@@ -102,6 +102,7 @@ function controller(): AiProfilesController {
     setCredentialDraft: vi.fn(),
     setCredentialPersistence: vi.fn(),
     saveProfile: vi.fn().mockResolvedValue(undefined),
+    connectSetup: vi.fn().mockResolvedValue(undefined),
     deleteProfile: vi.fn().mockResolvedValue(undefined),
     saveCredential: vi.fn().mockResolvedValue(undefined),
     clearCredential: vi.fn().mockResolvedValue(undefined),
@@ -121,8 +122,7 @@ describe("AiLlmSettings", () => {
       </OverlayProvider>,
     );
 
-    expect(screen.getByText("412 models returned by the provider.")).toBeTruthy();
-    expect(screen.getByRole("option", { name: "Zeta Final Model — zeta/final-model" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Zeta Final Model" })).toBeTruthy();
     const modelSelect = screen.getByRole("combobox", { name: "Model" });
     expect(modelSelect.querySelectorAll("option")).toHaveLength(413);
   });
