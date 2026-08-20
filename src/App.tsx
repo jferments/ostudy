@@ -34,7 +34,6 @@ const SettingsScreen = lazy(() =>
 export type {
   AnalyticsLaunchRequest,
   AppSection,
-  DeckOpenRequest,
   PracticeLaunchRequest,
   PracticeReturnTarget,
 } from "./controllers/useAppController";
@@ -85,15 +84,14 @@ function App() {
                     <Suspense fallback={<LoadingState label="Opening section…" />}>
                       {controller.section === "decks" ? (
                         <FlashcardsWorkspace
-                          workspace={controller.flashcardsWorkspace}
+                          route={controller.flashcardsRoute}
                           onWorkspaceChange={controller.navigateFlashcardsWorkspace}
+                          onDeckViewChange={controller.syncFlashcardsDeckView}
                           decks={controller.decks}
                           settings={controller.activeSettings}
                           refreshDecks={controller.refreshDecks}
                           onPracticeDeck={controller.practiceDeck}
                           onPracticeCards={controller.practiceCards}
-                          openDeckRequest={controller.deckOpenRequest}
-                          onOpenDeckRequestConsumed={controller.consumeDeckOpenRequest}
                           onCardDirtyChange={controller.setHasUnsavedCard}
                           onTemplateDirtyChange={controller.setHasUnsavedTemplate}
                           showToast={controller.showToast}
