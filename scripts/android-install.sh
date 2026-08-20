@@ -95,8 +95,8 @@ fi
 apk="${candidates[0]}"
 
 bash ./scripts/verify-android-package.sh "$apk" "$MODE"
-printf 'Installing %s...\n' "$apk"
-adb "${adb_args[@]}" install -r "$apk"
+printf 'Installing %s with non-streaming ADB install...\n' "$apk"
+adb "${adb_args[@]}" install --no-streaming -r "$apk"
 
 package_name="io.github.jferments.ostudy"
 if [[ "$MODE" == debug ]]; then
