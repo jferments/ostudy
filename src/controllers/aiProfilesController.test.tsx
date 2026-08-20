@@ -111,6 +111,55 @@ describe("useAiProfilesController", () => {
     );
   });
 
+  it("creates a profile, stores the entered API key, then discovers models as one setup action", async () => {
+    const created = openRouterProfile({
+      credentialEpoch: 0,
+      credentialStatus: {
+        status: "missing",
+        authenticationRequired: true,
+        securePersistenceAvailable: true,
+        sessionOnlyAvailable: true,
+      },
+      revision: 1,
+      updatedAt: 3,
+    });
+    const connected = openRouterProfile({ revision: 2, updatedAt: 4 });
+    vi.mocked(aiIpc.createAiProviderProfile).mockResolvedValue(created);
+    vi.mocked(aiIpc.setAiProviderCredential).mockResolvedValue(connected);
+    vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(connected)]);
+
+    const showToast = vi.fn();
+    const { result } = renderHook(() => useAiProfilesController(showToast));
+    await waitFor(() => expect(result.current.catalog.length).toBe(1));
+
+    act(() => {
+      result.current.beginCreate("openrouter");
+      result.current.setCredentialDraft("secret-key");
+    });
+
+    await act(async () => {
+      await result.current.connectSetup();
+    });
+
+    expect(aiIpc.createAiProviderProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerKind: "openrouter",
+        authMode: "bearer",
+        enabled: true,
+      }),
+    );
+    expect(aiIpc.setAiProviderCredential).toHaveBeenCalledWith(
+      profileId,
+      1,
+      "secret-key",
+      "secure",
+    );
+    expect(aiIpc.listAiProviderModels).toHaveBeenCalledWith(profileId, 2);
+    expect(result.current.credentialDraft).toBe("");
+    expect(result.current.modelsLoaded).toBe(true);
+    expect(showToast).toHaveBeenCalledWith("success", "AI connection saved.");
+  });
+
   it("saves an API-selected model and immediately allows the connection probe", async () => {
     const saved = openRouterProfile({
       modelId: "openai/gpt-example",
