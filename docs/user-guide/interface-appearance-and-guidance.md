@@ -61,12 +61,16 @@ Help topics are registered by stable identifiers. A help topic can provide:
 - a short desktop tooltip;
 - a touch-friendly help sheet;
 - a related user-guide label;
-- a link into an applicable guided tutorial.
+- an explicit action to start an applicable guided tutorial.
 
 Help overlays close before ordinary navigation when Escape or Android Back is used.
 
-## Guided tutorials
+## Interactive tutorials
 
-Tutorials are short contextual modules rather than a long blocking onboarding sequence. A module starts only when its semantic target exists on the current screen. Tutorial progress is versioned, device-local presentation state and is not included in complete-library backups.
+Tutorials are optional guided modules rather than a long blocking onboarding sequence. New installations default them off. When **Interactive tutorials** is enabled, a module starts only after the user explicitly requests it, normally from the related Help sheet.
 
-Tutorials can be skipped, restarted from contextual help, or disabled. They never modify decks, cards, scheduling, analytics, providers, credentials, or managed files.
+No tutorial is launched by navigation, by a semantic target appearing in the DOM, by a version change, or by application startup. The tutorial system may observe the target of an already-active step so its spotlight follows responsive/layout changes; that observer is not an auto-start mechanism.
+
+Tutorial progress and dismissal state are versioned, device-local presentation state and are not included in complete-library backups. Existing stored progress remains readable. Tutorials can be skipped or explicitly restarted from Help without modifying decks, cards, scheduling, analytics, providers, credentials, or managed files.
+
+Escape and Android Back dismiss an active tutorial before ordinary route navigation. Turning Interactive tutorials off closes an active tutorial and prevents new tutorial starts until the setting is enabled again.
