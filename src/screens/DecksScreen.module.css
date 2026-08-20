@@ -1,0 +1,244 @@
+@layer components {
+  .cardBrowserPanel {
+    container-name: deck-cards;
+    container-type: inline-size;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-large);
+    background: var(--ostudy-color-surface-base);
+    box-shadow: var(--ostudy-shadow-level-1);
+  }
+
+  .cardBrowserToolbar {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: var(--ostudy-space-3);
+    border-bottom: 1px solid var(--ostudy-color-border-subtle);
+    padding: var(--ostudy-space-3) var(--ostudy-space-4);
+  }
+
+  .cardBrowserFilters {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--ostudy-space-3);
+  }
+
+  .sortControl {
+    display: grid;
+    flex: 0 1 220px;
+    gap: 6px;
+  }
+
+  .sortControl > span {
+    color: var(--ostudy-color-text-secondary);
+    font-size: .77rem;
+    font-weight: 750;
+  }
+
+  .cardCountSummary {
+    flex: 0 0 auto;
+    padding-block: 8px;
+    color: var(--ostudy-color-text-muted);
+    font-size: .8rem;
+    white-space: nowrap;
+  }
+
+  .cardAuthoringActions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ostudy-space-2);
+  }
+
+  .cardAuthoringActions > button {
+    min-height: var(--touch-target-min);
+    white-space: nowrap;
+  }
+
+  .cardList {
+    display: grid;
+    min-width: 0;
+  }
+
+  .cardRow {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    border-top: 1px solid var(--ostudy-color-border-subtle);
+  }
+
+  .cardRow:first-child {
+    border-top: 0;
+  }
+
+  .cardRowMain {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: 34px minmax(0, 1fr);
+    align-items: center;
+    gap: var(--ostudy-space-3);
+    border: 0;
+    padding: 10px var(--ostudy-space-4);
+    background: transparent;
+    color: var(--ostudy-color-text-primary);
+    text-align: start;
+  }
+
+  .cardRowMain:hover {
+    background: var(--ostudy-color-surface-selected);
+  }
+
+  .cardRowMain:focus-visible {
+    position: relative;
+    z-index: 1;
+  }
+
+  .cardNumber {
+    display: grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    border-radius: var(--ostudy-radius-small);
+    background: var(--ostudy-color-surface-soft);
+    color: var(--ostudy-color-text-muted);
+    font-size: .72rem;
+    font-weight: 760;
+  }
+
+  .cardPreview {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+  }
+
+  .cardPreviewLine {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: 22px minmax(0, 1fr);
+    align-items: baseline;
+    gap: 5px;
+  }
+
+  .cardPreviewLabel {
+    color: var(--ostudy-color-text-accent);
+    font-size: .78rem;
+    font-weight: 820;
+  }
+
+  .cardPreviewLine strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ostudy-color-text-secondary);
+    font-size: .86rem;
+    font-weight: 620;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cardRowActions {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    border-inline-start: 1px solid var(--ostudy-color-border-subtle);
+    padding: 7px 10px;
+    background: var(--ostudy-color-surface-raised);
+  }
+
+  .cardRowActions button {
+    min-height: 36px;
+    border: 0;
+    border-radius: var(--ostudy-radius-small);
+    padding: 6px 9px;
+    background: transparent;
+    color: var(--ostudy-color-text-secondary);
+    font-size: .77rem;
+    font-weight: 700;
+  }
+
+  .cardRowActions button:hover:not(:disabled) {
+    background: var(--ostudy-color-surface-soft);
+    color: var(--ostudy-color-text-primary);
+  }
+
+  .cardRowReversible {
+    width: 24px;
+    color: var(--ostudy-color-text-muted);
+    font-size: .72rem;
+    text-align: center;
+  }
+
+  @container deck-cards (max-width: 760px) {
+    .cardBrowserToolbar {
+      grid-template-columns: 1fr;
+      align-items: stretch;
+    }
+
+    .cardBrowserFilters {
+      display: grid;
+      grid-template-columns: auto minmax(150px, 1fr) auto;
+      align-items: end;
+    }
+
+    .cardAuthoringActions {
+      width: 100%;
+    }
+
+    .cardAuthoringActions > button {
+      flex: 1 1 0;
+    }
+  }
+
+  @container deck-cards (max-width: 560px) {
+    .cardBrowserToolbar {
+      padding-inline: var(--ostudy-space-3);
+    }
+
+    .cardBrowserFilters {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .cardCountSummary {
+      grid-column: 1 / -1;
+      padding-block: 0;
+    }
+
+    .cardRow {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cardRowMain {
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: var(--ostudy-space-2);
+      padding: 9px var(--ostudy-space-3);
+    }
+
+    .cardNumber {
+      width: 26px;
+      height: 26px;
+    }
+
+    .cardRowActions {
+      border-block-start: 1px solid var(--ostudy-color-border-subtle);
+      border-inline-start: 0;
+      padding: 4px var(--ostudy-space-3);
+    }
+
+    .cardRowActions button {
+      min-height: var(--touch-target-min);
+    }
+  }
+
+  @media (pointer: coarse) {
+    .cardRowActions button {
+      min-height: var(--touch-target-min);
+    }
+  }
+}
