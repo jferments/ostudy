@@ -1,6 +1,6 @@
 # UI modernization implementation and validation
 
-This document is the implementation ledger for phases U0–U9. It complements ADR 0034 and `docs/architecture/ui.md`.
+This document is the implementation ledger for phases U0–U9. It complements ADR 0034, its partial supersession by ADR 0039, and `docs/architecture/ui.md`.
 
 ## Invariants
 
@@ -12,6 +12,8 @@ This document is the implementation ledger for phases U0–U9. It complements AD
 - Simple materials and reduced transparency replace translucent surfaces with opaque equivalents.
 - Dragging is never the only way to move or reorder content.
 - Decorative artwork settings do not affect user-authored card images or educational document content.
+- The shell resolves compact, medium, and wide layout modes centrally; feature panels adapt to their own available width rather than inventing contradictory viewport breakpoints.
+- Flashcards nested navigation is explicit route state, never inferred from DOM selectors.
 
 ## Phase ledger
 
@@ -41,25 +43,30 @@ This document is the implementation ledger for phases U0–U9. It complements AD
 
 ### U4 — shell
 
-- Add ambient canvas, responsive brand components, compact app bar, icon navigation, and route-layer transitions.
+- Add ambient canvas, responsive brand components, compact app bar, labeled medium navigation, wide navigation, and route-layer transitions.
 - Preserve PR #45 mobile navigation, safe-area, input-method, and Back behavior.
+- Resolve compact, medium, and wide layout modes once at the shared appearance/shell boundary.
 
 ### U5 — Flashcards workspace
 
 - Rename the user-facing Decks section to Flashcards.
-- Add route-backed Decks, Templates, Search, Import/Export, and Create Cards destinations.
-- Extend device-local checkpoint restoration with stable workspace state.
+- Use route-backed Decks, Templates, Search, and Import/Export roots.
+- Keep card authoring deck-scoped instead of maintaining a duplicate Create Cards destination.
+- Extend device-local checkpoint restoration with stable workspace plus root/deck destination state.
+- Normalize legacy Create Cards checkpoints to the Decks root.
 
 ### U6 — folders and ordering
 
-- Add one-level deck folders, transactional membership and ordering, complete-library backup support, compact/comfortable views, drag enhancement, and menu/keyboard alternatives.
+- Add one-level deck folders, transactional membership and ordering, complete-library backup support, one compact deck presentation, drag enhancement, and menu/keyboard alternatives.
+- Keep compact visual rows compatible with full keyboard and coarse-pointer targets.
 
 ### U7 — workspace refinement
 
 - Simplify Search through progressive disclosure and active-filter chips.
 - Separate template library/editor presentation.
-- Make single and bulk card creation first-class workspace modes.
-- Group import, export, backup, restore, and platform sharing by task.
+- Put **Bulk add** and **Add flashcard** in the open deck's card-table toolbar.
+- Group import, export, backup, restore, and platform sharing by task without decorative filler surfaces.
+- Use compact `Q:`/`A:` previews in constrained card-list containers.
 
 ### U8 — practice and analytics
 
@@ -75,28 +82,25 @@ This document is the implementation ledger for phases U0–U9. It complements AD
 Run from the repository root:
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm check:static
-pnpm check:fast
-pnpm check
+./scripts/check-changed.sh
+./scripts/check-static.sh
+./scripts/check-fast.sh
+./scripts/check.sh
 ```
 
-When Android tooling is installed:
-
-```bash
-pnpm android:doctor:emulator
-pnpm android:test
-```
+When Android tooling is installed, the authoritative full gate also performs the Android compile/package and emulator qualification described in `testing-and-ci.md`.
 
 ## Manual matrix
 
 Validate Light, Dark, Console, and Synthwave at wide, medium, and compact widths. At minimum, exercise:
 
-- app shell and navigation;
-- Flashcards workspace tabs and Back behavior;
-- folder creation, movement, reordering, keyboard/menu alternatives, and persistence;
-- compact and comfortable deck density;
+- app shell and navigation, including visible labels in the medium layout;
+- the four Flashcards workspace roots, root reactivation, nested Decks state, and Back behavior;
+- folder creation, movement, reordering, keyboard alternatives, and persistence;
+- the single compact deck presentation with touch/coarse-pointer targets;
 - Search filters, selection mode, and mobile filter sheet;
+- deck-scoped **Add flashcard** and **Bulk add**, including durable-draft discard behavior;
+- two-line `Q:`/`A:` card previews at compact widths;
 - card and template durable drafts with the software keyboard visible;
 - document empty, processing, success, error, retry, archive, and delete states;
 - practice reveal, confidence commit, progress, card stack, completion, and restoration;
@@ -107,6 +111,8 @@ Validate Light, Dark, Console, and Synthwave at wide, medium, and compact widths
 - keyboard-only operation and visible focus;
 - Android safe areas, input-method displacement, overlay-first Back, process restoration, and incoming share flows.
 
+Representative responsive widths include 390 × 844 phone, 600 × 960 small tablet, 768 × 1024 tablet, 1024 × 768 tablet landscape, 1280 × 800 compact desktop/tablet landscape, and 1440 × 900 desktop. Device-specific e-ink verification remains a manual complement to these deterministic width checks.
+
 ## Evidence expectations
 
-Pull-request notes must distinguish commands actually run from manual checks still required. A screenshot or green CI state is not evidence that every theme, platform, input mode, or accessibility preference was exercised.
+Pull-request notes must distinguish commands actually run from manual checks still required. A screenshot or green CI state is not evidence that every theme, platform, input mode, accessibility preference, or physical tablet was exercised.
