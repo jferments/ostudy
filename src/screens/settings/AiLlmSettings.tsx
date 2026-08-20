@@ -138,21 +138,30 @@ function ProfileSetup({
 
   const profile = controller.selectedProfile;
   const provider = controller.catalog.find((entry) => entry.providerKind === draft.providerKind);
-  const isLocal = draft.providerKind === "llama_cpp";
+  const isLlama = draft.providerKind === "llama_cpp";
   const requiresCredential = draft.authMode !== "none";
   const hasCredential = profileHasCredential(profile);
-  const connectionNeedsSave =
+  const connectionDirty =
     profile === null ||
     controller.credentialDraft !== "" ||
     draft.baseUrl !== profile.baseUrl ||
     draft.authMode !== profile.authMode ||
     draft.allowInsecureHttp !== profile.allowInsecureHttp ||
     (draft.requireZeroDataRetention ?? false) !== (profile.requireZeroDataRetention ?? false);
-  const modelSaved = profile !== null && draft.modelId !== "" && draft.modelId === profile.modelId;
+  const metadataDirty =
+    profile !== null &&
+    (draft.displayName !== profile.displayName || draft.requestTimeoutMs !== profile.requestTimeoutMs);
+  const modelDirty = profile !== null && draft.modelId !== profile.modelId;
+  const modelSaved = profile !== null && draft.modelId !== "" && !modelDirty;
   const canConnect =
     !controller.mutating &&
     draft.baseUrl.trim() !== "" &&
     (!requiresCredential || hasCredential || controller.credentialDraft.trim() !== "");
+  const canSaveProfile =
+    profile !== null &&
+    !connectionDirty &&
+    !controller.mutating &&
+    (metadataDirty || modelDirty);
 
   return (
     <>
@@ -183,7 +192,7 @@ function ProfileSetup({
 
           {provider?.baseUrlEditable ? (
             <label className={styles.stackedField}>
-              <span>{isLocal ? "Server URL" : "API URL"}</span>
+              <span>{isLlama ? "Server URL" : "API URL"}</span>
               <input
                 type="url"
                 value={draft.baseUrl}
@@ -224,16 +233,16 @@ function ProfileSetup({
           <button
             type="button"
             className="secondary-button"
-            disabled={!canConnect || (!connectionNeedsSave && controller.modelsLoaded)}
+            disabled={!canConnect || (!connectionDirty && controller.modelsLoaded)}
             onClick={() => void controller.connectSetup()}
           >
             {controller.mutating
               ? "Connecting…"
-              : controller.modelsLoaded && !connectionNeedsSave
+              : controller.modelsLoaded && !connectionDirty
                 ? "Connected"
                 : "Connect and load models"}
           </button>
-          {profile && !connectionNeedsSave ? (
+          {profile && !connectionDirty ? (
             <button
               type="button"
               className="text-button"
@@ -261,7 +270,7 @@ function ProfileSetup({
             value={draft.modelId}
             disabled={
               controller.refreshingModels ||
-              connectionNeedsSave ||
+              connectionDirty ||
               !controller.modelsLoaded ||
               controller.models.length === 0
             }
@@ -270,7 +279,7 @@ function ProfileSetup({
             <option value="">
               {controller.refreshingModels
                 ? "Loading models…"
-                : !profile || connectionNeedsSave
+                : !profile || connectionDirty
                   ? "Connect first"
                   : controller.models.length === 0
                     ? "No models reported"
@@ -288,13 +297,7 @@ function ProfileSetup({
           <button
             type="button"
             className="primary-button"
-            disabled={
-              controller.mutating ||
-              profile === null ||
-              connectionNeedsSave ||
-              draft.modelId === "" ||
-              modelSaved
-            }
+            disabled={!canSaveProfile}
             onClick={() => void controller.saveProfile()}
           >
             {controller.mutating ? "Saving…" : "Save profile"}
@@ -345,6 +348,21 @@ function ProfileSetup({
             </select>
           </label>
 
+          {isLlama ? (
+            <label className={styles.stackedField}>
+              <span>Server authentication</span>
+              <select
+                value={draft.authMode}
+                onChange={(event) =>
+                  controller.updateDraft({ authMode: event.currentTarget.value as "none" | "bearer" })
+                }
+              >
+                <option value="none">None</option>
+                <option value="bearer">API key</option>
+              </select>
+            </label>
+          ) : null}
+
           {requiresCredential ? (
             <fieldset className={styles.persistenceOptions}>
               <legend>API key storage</legend>
@@ -373,7 +391,7 @@ function ProfileSetup({
             </fieldset>
           ) : null}
 
-          {isLocal && draft.baseUrl.startsWith("http://") && !isLoopbackUrl(draft.baseUrl) ? (
+          {isLlama && draft.baseUrl.startsWith("http://") && !isLoopbackUrl(draft.baseUrl) ? (
             <label className={styles.switchRow}>
               <span>
                 <strong>Allow unencrypted LAN connection</strong>
@@ -408,7 +426,7 @@ function ProfileSetup({
           ) : null}
 
           <div className={styles.actionRow}>
-            {profile && requiresCredential && hasCredential ? (
+            {profile && hasCredential ? (
               <button
                 type="button"
                 className="secondary-button"
