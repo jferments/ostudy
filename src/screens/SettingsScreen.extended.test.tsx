@@ -354,10 +354,9 @@ describe("SettingsScreen AI/LLM behavior", () => {
       target: { value: "120000" },
     });
 
-    expect(
-      (screen.getByRole("button", { name: "Connect and load models" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+    expect((screen.getByRole("button", { name: "Connected" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
     await waitFor(() => {
       expect(aiIpc.updateAiProviderProfile).toHaveBeenCalledWith(
@@ -371,6 +370,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
         }),
       );
     });
+    expect(aiIpc.setAiProviderCredential).not.toHaveBeenCalled();
   });
 
   it("shows a compact connection result and keeps phases behind Technical details", async () => {
