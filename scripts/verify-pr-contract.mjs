@@ -314,7 +314,7 @@ function validateEvidenceEntry(entry, label, recordedHead, errors, requireSha = 
       errors.push(`${label} passed without a command, run, or artifact reference.`);
     }
   }
-  if (["failed", "blocked", "notRun", "humanRequired"].includes(entry.status)) {
+  if (["failed", "blocked", "notRun", "notRequired", "humanRequired"].includes(entry.status)) {
     if (!Array.isArray(entry.evidence) || entry.evidence.length === 0) {
       errors.push(`${label}.${entry.status} requires explanatory evidence.`);
     }

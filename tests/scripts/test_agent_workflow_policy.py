@@ -71,7 +71,7 @@ jobs:
             }
         )
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("read-only", completed.stderr)
+        self.assertIn("write permissions", completed.stderr)
         self.assertIn("may not push", completed.stderr)
         self.assertIn("may not author commits", completed.stderr)
         self.assertIn("may not stage", completed.stderr)
@@ -92,7 +92,43 @@ jobs:
             }
         )
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("read-only", completed.stderr)
+        self.assertIn("write permissions", completed.stderr)
+
+    def test_inline_pull_request_metadata_write_is_rejected(self) -> None:
+        completed = self.run_policy(
+            {
+                "check.yml": """name: Check
+on:
+  pull_request:
+permissions: {contents: read, pull-requests: write}
+jobs:
+  check:
+    runs-on: [self-hosted]
+    steps:
+      - run: ./scripts/check.sh
+"""
+            }
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("write permissions", completed.stderr)
+
+    def test_write_all_is_rejected(self) -> None:
+        completed = self.run_policy(
+            {
+                "check.yml": """name: Check
+on:
+  pull_request:
+permissions: write-all
+jobs:
+  check:
+    runs-on: [self-hosted]
+    steps:
+      - run: ./scripts/check.sh
+"""
+            }
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("write permissions", completed.stderr)
 
     def test_pull_request_workflow_cannot_mutate_readiness(self) -> None:
         completed = self.run_policy(
@@ -133,7 +169,7 @@ jobs:
             }
         )
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("pull-request metadata", completed.stderr)
+        self.assertIn("write permissions", completed.stderr)
 
     def test_manual_maintenance_workflow_may_use_narrow_write_boundary(self) -> None:
         completed = self.run_policy(

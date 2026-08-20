@@ -48,7 +48,10 @@ if (failure) {
   console.log("Focused reproduction:");
   console.log();
   console.log("```bash");
-  console.log(`OSTUDY_FORCE_CHECK=1 \\\nOSTUDY_KEEP_FAILURE_ARTIFACTS=1 \\\nOSTUDY_LOG=${shellQuote(failure.logFilter)} \\\n${failure.reproduction}`);
+  console.log(`OSTUDY_FORCE_CHECK=1 \\
+OSTUDY_KEEP_FAILURE_ARTIFACTS=1 \\
+OSTUDY_LOG=${shellQuote(failure.logFilter)} \\
+${failure.reproduction}`);
   console.log("```");
 }
 
@@ -130,6 +133,7 @@ async function collectContextFiles(root, output, depth = 0) {
     if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return;
     throw error;
   }
+  entries.sort((left, right) => left.name.localeCompare(right.name));
   for (const entry of entries) {
     if (output.length >= 256) return;
     const path = join(root, entry.name);
@@ -230,7 +234,7 @@ function focusedReproduction(boundary, text, contexts) {
     };
   }
   const mappings = [
-    [/pull-request execution contract/u, "node ./scripts/verify-pr-contract.mjs --event \"$GITHUB_EVENT_PATH\" --strict"],
+    [/pr-contract|pull-request execution contract/u, "node ./scripts/verify-pr-contract.mjs --event \"$GITHUB_EVENT_PATH\" --strict"],
     [/rust compile/u, "cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features"],
     [/rust warnings|rust lint/u, "cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings"],
     [/external file/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib external_file_ -- --nocapture"],

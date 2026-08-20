@@ -66,19 +66,11 @@ function validateWorkflow(name, text, output) {
   }
   if (!pullRequestTriggered && !pullRequestTargetTriggered) return;
 
+  if (hasWritePermissions(text)) {
+    output.push(`${name}: automatic pull-request workflows may not request write permissions.`);
+  }
+
   const prohibited = [
-    [
-      /^\s*contents\s*:\s*write\s*$/mu,
-      "automatic pull-request workflows must use read-only repository contents permission",
-    ],
-    [
-      /permissions\s*:\s*\{[^}]*\bcontents\s*:\s*write\b[^}]*\}/isu,
-      "automatic pull-request workflows must use read-only repository contents permission",
-    ],
-    [
-      /^\s*pull-requests\s*:\s*write\s*$/mu,
-      "automatic pull-request workflows may not mutate pull-request metadata",
-    ],
     [
       /^\s*persist-credentials\s*:\s*true\s*$/mu,
       "automatic pull-request checkout may not persist write credentials",
@@ -108,6 +100,31 @@ function validateWorkflow(name, text, output) {
   for (const [pattern, message] of prohibited) {
     if (pattern.test(text)) output.push(`${name}: ${message}.`);
   }
+}
+
+function hasWritePermissions(text) {
+  const lines = text.split(/\r?\n/u);
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^(\s*)permissions\s*:\s*(.*?)(?:\s+#.*)?$/u);
+    if (!match) continue;
+
+    const indentation = match[1].length;
+    const value = match[2].trim();
+    if (value === "write-all") return true;
+    if (value.startsWith("{") && /(?:^|[{,]\s*)[a-z][a-z-]*\s*:\s*write(?:\s*[,}]|$)/iu.test(value)) {
+      return true;
+    }
+    if (value !== "") continue;
+
+    for (let nested = index + 1; nested < lines.length; nested += 1) {
+      const line = lines[nested];
+      if (/^\s*(?:#.*)?$/u.test(line)) continue;
+      const nestedIndentation = line.match(/^\s*/u)?.[0].length ?? 0;
+      if (nestedIndentation <= indentation) break;
+      if (/^\s*[a-z][a-z-]*\s*:\s*write(?:\s+#.*)?$/iu.test(line)) return true;
+    }
+  }
+  return false;
 }
 
 function isTaskSpecificArtifact(name) {

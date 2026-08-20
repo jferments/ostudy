@@ -41,7 +41,10 @@ def base_contract() -> dict:
             "static": {"status": "pending"},
             "fast": {"status": "pending"},
             "full": {"status": "pending"},
-            "android": {"status": "notRequired"},
+            "android": {
+                "status": "notRequired",
+                "evidence": ["The example task does not affect Android qualification surfaces."],
+            },
         },
         "manualAcceptance": {"review": {"status": "pending"}},
         "knownFailures": [],
@@ -105,6 +108,13 @@ class PullRequestContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("terminal but has no", completed.stderr)
 
+    def test_not_required_status_requires_explanatory_evidence(self) -> None:
+        contract = base_contract()
+        contract["validation"]["android"] = {"status": "notRequired"}
+        completed, _ = self.run_contract(contract)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("validation.android.notRequired requires explanatory evidence", completed.stderr)
+
     def test_passed_validation_must_match_ledger_head(self) -> None:
         contract = base_contract()
         contract["validation"]["static"] = {
@@ -144,7 +154,7 @@ class PullRequestContractTests(unittest.TestCase):
         contract["currentState"] = "readyForReview"
         contract["acceptance"]["AC-02"] = {
             "status": "notApplicable",
-            "evidence": ["No Android product behavior changed."],
+            "evidence": ["No additional product behavior is in scope."],
             "tests": [],
         }
         for gate in ["static", "fast", "full"]:

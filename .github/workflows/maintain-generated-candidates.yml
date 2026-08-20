@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: Confirm an explicit generated-candidate maintenance commit on the selected non-main branch
+        description: Confirm an explicit generated-candidate maintenance commit on the selected agent branch
         required: true
         default: false
         type: boolean
@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Require a non-main branch target
+      - name: Require a short-lived agent branch target
         run: |
           if [[ "$GITHUB_REF_TYPE" != "branch" ]]; then
             echo "Generated candidates may only be applied to an explicitly selected branch." >&2
@@ -34,6 +34,10 @@ jobs:
           fi
           if [[ "$GITHUB_REF_NAME" == "main" ]]; then
             echo "Generated candidates may not be applied directly to main." >&2
+            exit 1
+          fi
+          if [[ ! "$GITHUB_REF_NAME" =~ ^agent/[A-Za-z0-9._/-]+$ ]]; then
+            echo "Generated candidates may only be applied to a short-lived agent/* branch." >&2
             exit 1
           fi
 
@@ -58,7 +62,7 @@ jobs:
             echo "No generated Rust changes were required."
             exit 0
           fi
-          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^src-tauri/(Cargo\.lock|.*\.rs)$' || true)"
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^src-tauri/(Cargo\.lock|build\.rs|src/.*\.rs)$' || true)"
           if [[ -n "$unexpected" ]]; then
             echo "Generated normalization changed unexpected files:" >&2
             printf '%s\n' "$unexpected" >&2

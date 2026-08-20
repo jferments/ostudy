@@ -91,7 +91,10 @@ Substantial pull requests keep one machine-readable ledger in the pull-request b
     },
     "fast": {"status": "pending"},
     "full": {"status": "pending"},
-    "android": {"status": "notRequired"}
+    "android": {
+      "status": "notRequired",
+      "evidence": ["No Android qualification surface is changed by this documentation-only example."]
+    }
   },
   "manualAcceptance": {
     "affectedWorkflow": {"status": "pending"}
@@ -128,6 +131,8 @@ notRequired
 humanRequired
 ```
 
+A `passed` validation entry records the exact tested SHA and command/run/artifact evidence. `failed`, `blocked`, `notRun`, `notRequired`, and `humanRequired` entries require explanatory evidence; none may be used as an unexplained escape hatch.
+
 `currentState` is one of:
 
 ```text
@@ -147,7 +152,7 @@ githubConnector
 githubConnectorWithExecutionWorkspace
 ```
 
-A draft pull request may contain incomplete statuses. A pull request may be marked ready only when every acceptance criterion has a terminal state, every required automated gate is terminal and any passed gate refers to the current exact head, `knownFailures` is empty, and remaining manual-only boundaries are explicit.
+A draft pull request may contain incomplete statuses. A pull request may be marked ready only when every acceptance criterion has a terminal state, static/fast/full passed on the current exact head, every additional platform/manual entry is terminal and explained, `knownFailures` is empty, and remaining manual-only boundaries are explicit.
 
 A known failure is recorded as an object with:
 

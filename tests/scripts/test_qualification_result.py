@@ -16,6 +16,7 @@ class QualificationResultTests(unittest.TestCase):
         *,
         status: str = "failure",
         sha: str = "1" * 40,
+        step_name: str = "react-tests",
     ) -> tuple[subprocess.CompletedProcess[str], dict]:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
@@ -44,7 +45,7 @@ class QualificationResultTests(unittest.TestCase):
                     "--gate",
                     "fast",
                     "--step",
-                    f"react-tests={'failure' if status == 'failure' else 'success'}",
+                    f"{step_name}={'failure' if status == 'failure' else 'success'}",
                     str(log_path),
                 ],
                 cwd=ROOT,
@@ -80,6 +81,16 @@ FAST CHECK FAILED during: React tests (exit 1)
         self.assertEqual(first["failure"]["boundary"], "React tests")
         self.assertIn("DecksScreen.test.tsx", first["failure"]["reproduction"])
         self.assertEqual(first["failure"]["classificationHint"], "productOrTest")
+
+    def test_pr_contract_failure_has_contract_focused_reproduction(self) -> None:
+        completed, result = self.run_result(
+            "Pull-request execution contract verification failed:\n  - validation.full is pending\n",
+            step_name="pr-contract",
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(result["failure"]["boundary"], "pr-contract")
+        self.assertIn("verify-pr-contract.mjs", result["failure"]["reproduction"])
+        self.assertIn("GITHUB_EVENT_PATH", result["failure"]["reproduction"])
 
     def test_unrecognized_failure_still_produces_a_bounded_record(self) -> None:
         completed, result = self.run_result("command exited unexpectedly\n")
