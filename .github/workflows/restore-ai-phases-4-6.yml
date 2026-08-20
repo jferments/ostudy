@@ -43,7 +43,7 @@ jobs:
           ref: agent/ui-navigation-responsive-practice
           fetch-depth: 0
           clean: true
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Expose pinned toolchains and caches
         run: |
