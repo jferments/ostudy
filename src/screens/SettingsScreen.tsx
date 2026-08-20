@@ -34,7 +34,6 @@ const DEFAULTS: AppSettings = {
   decorativeArtwork: true,
   celebrationsEnabled: true,
   tutorialsEnabled: true,
-  deckViewDensity: "comfortable",
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
@@ -92,7 +91,6 @@ export function SettingsScreen({
         decorativeArtwork: DEFAULTS.decorativeArtwork,
         celebrationsEnabled: DEFAULTS.celebrationsEnabled,
         tutorialsEnabled: DEFAULTS.tutorialsEnabled,
-        deckViewDensity: DEFAULTS.deckViewDensity,
       });
     }
     if (activeTab === "review") {
