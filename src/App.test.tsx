@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AnalyticsLaunchRequest,
-  DeckOpenRequest,
   PracticeLaunchRequest,
   PracticeReturnTarget,
 } from "./App";
@@ -11,7 +10,11 @@ import App from "./App";
 import * as decksIpc from "./ipc/decks";
 import * as settingsIpc from "./ipc/settings";
 import * as checkpointIpc from "./ipc/uiCheckpoint";
-import type { FlashcardsWorkspaceName } from "./navigation/flashcardsRoutes";
+import type {
+  FlashcardsDeckView,
+  FlashcardsRoute,
+  FlashcardsWorkspaceName,
+} from "./navigation/flashcardsRoutes";
 import { makeDeck, makeSettings, resetTestEntityIds } from "./test/factories";
 import { OverlayProvider } from "./ui/overlays/OverlayProvider";
 
@@ -55,6 +58,7 @@ vi.mock("./ipc/uiCheckpoint", async (importOriginal) => {
         updatedAt: 0,
         section: input.section,
         flashcardsWorkspace: input.flashcardsWorkspace ?? null,
+        flashcardsView: input.flashcardsView ?? null,
         deckId: input.deckId ?? null,
         editorDraftId: input.editorDraftId ?? null,
         practice: input.practice ?? null,
@@ -66,30 +70,41 @@ vi.mock("./ipc/uiCheckpoint", async (importOriginal) => {
 
 vi.mock("./screens/flashcards/FlashcardsWorkspace", () => ({
   FlashcardsWorkspace: ({
-    workspace,
+    route,
     decks,
     onWorkspaceChange,
+    onDeckViewChange,
     onPracticeDeck,
-    openDeckRequest,
     onCardDirtyChange,
   }: {
-    workspace: FlashcardsWorkspaceName;
+    route: FlashcardsRoute;
     decks: decksIpc.DeckSummary[];
     onWorkspaceChange: (workspace: FlashcardsWorkspaceName) => void;
+    onDeckViewChange: (view: FlashcardsDeckView, deckId: string | null) => void;
     onPracticeDeck: (deckId: string, origin: "library" | "detail") => void;
-    openDeckRequest: DeckOpenRequest | null;
     onCardDirtyChange: (dirty: boolean) => void;
   }) => (
     <section>
       <h1>Decks mock</h1>
       <span>{decks.map((deck) => deck.name).join(",")}</span>
-      <output aria-label="Flashcards workspace">{workspace}</output>
-      <output aria-label="Deck open request">{openDeckRequest?.deckId ?? "none"}</output>
+      <output aria-label="Flashcards workspace">{route.workspace}</output>
+      <output aria-label="Flashcards deck view">
+        {route.workspace === "decks" ? route.view : "root"}
+      </output>
+      <output aria-label="Deck route">
+        {route.workspace === "decks" ? route.deckId ?? "none" : "none"}
+      </output>
       <button type="button" onClick={() => onCardDirtyChange(true)}>
         Mark card dirty
       </button>
       <button type="button" onClick={() => onWorkspaceChange("search")}>
         Open Search workspace
+      </button>
+      <button
+        type="button"
+        onClick={() => onDeckViewChange("detail", decks[0]?.id ?? null)}
+      >
+        Open deck route
       </button>
       <button type="button" onClick={() => onPracticeDeck(decks[0]?.id ?? "", "detail")}>
         Practice deck mock
@@ -234,6 +249,27 @@ describe("App shell", () => {
     );
   });
 
+  it("reactivating Flashcards returns an open deck to the Decks root", async () => {
+    const deck = makeDeck({ name: "Cardiology" });
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
+
+    renderApp();
+    await screen.findByRole("heading", { name: "Decks mock" });
+    fireEvent.click(screen.getByRole("button", { name: "Open deck route" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Flashcards deck view").textContent).toBe("detail"),
+    );
+    expect(screen.getByLabelText("Deck route").textContent).toBe(deck.id);
+
+    fireEvent.click(screen.getByRole("button", { name: "Flashcards" }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Flashcards deck view").textContent).toBe("library"),
+    );
+    expect(screen.getByLabelText("Deck route").textContent).toBe("none");
+  });
+
   it("normalizes a legacy Cards checkpoint into the Search workspace", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
@@ -242,6 +278,7 @@ describe("App shell", () => {
       updatedAt: 1,
       section: "cards",
       flashcardsWorkspace: null,
+      flashcardsView: null,
       deckId: null,
       editorDraftId: null,
       practice: null,
@@ -280,7 +317,8 @@ describe("App shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "End early mock" }));
 
     expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
-    expect(screen.getByLabelText("Deck open request").textContent).toBe(deck.id);
+    expect(screen.getByLabelText("Flashcards deck view").textContent).toBe("detail");
+    expect(screen.getByLabelText("Deck route").textContent).toBe(deck.id);
   });
 
   it("carries a completed practice session into week-scoped analytics", async () => {
