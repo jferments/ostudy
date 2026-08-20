@@ -56,7 +56,7 @@ for (const required of [
 }
 
 for (const required of [
-  "OSTUDY_DIAGNOSTIC_CAPTURED",
+  "failure-claim",
   "reproduce.sh",
   "replayFilter",
   "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT",
