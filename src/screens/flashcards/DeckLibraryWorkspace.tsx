@@ -9,7 +9,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
-import type { DeckOpenRequest } from "../../App";
 import type { ShowToast } from "../../components/Toast";
 import { DecksController } from "../../controllers/decksController";
 import { getErrorCode, getErrorMessage } from "../../ipc/common";
@@ -24,7 +23,12 @@ import {
   type DeckFolder,
   type DeckLibraryOrganization,
 } from "../../ipc/deckFolders";
-import { saveSettings, type AppSettings, type DeckViewDensity } from "../../ipc/settings";
+import type { AppSettings } from "../../ipc/settings";
+import type {
+  DeckOpenRequest,
+  FlashcardsDeckRoute,
+  FlashcardsDeckView,
+} from "../../navigation/flashcardsRoutes";
 import { Artwork } from "../../ui/artwork/Artwork";
 import { HelpTrigger } from "../../ui/help/HelpProvider";
 import { Icon } from "../../ui/icons/Icon";
@@ -32,20 +36,18 @@ import { Sheet } from "../../ui/overlays/Dialog";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
 import { LoadingState } from "../../ui/primitives/EmptyState";
-import { Progress } from "../../ui/primitives/Progress";
 import { Surface } from "../../ui/primitives/Surface";
 import { DecksScreen } from "../DecksScreen";
 import styles from "./DeckLibraryWorkspace.module.css";
 
 interface DeckLibraryWorkspaceProps {
+  route: FlashcardsDeckRoute;
+  onViewChange: (view: FlashcardsDeckView, deckId: string | null) => void;
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
   onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
-  openDeckRequest: DeckOpenRequest | null;
-  onOpenDeckRequestConsumed: () => void;
   onManageTemplates: () => void | Promise<void>;
-  onCreateCards: () => void | Promise<void>;
   onCardDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
 }
@@ -72,14 +74,13 @@ const FOLDER_DRAG_MIME = "application/x-ostudy-folder-id";
 const UNSORTED_DATA_VALUE = "__unsorted__";
 
 export function DeckLibraryWorkspace({
+  route,
+  onViewChange,
   decks,
   settings,
   refreshDecks,
   onPracticeDeck,
-  openDeckRequest,
-  onOpenDeckRequestConsumed,
   onManageTemplates,
-  onCreateCards,
   onCardDirtyChange,
   showToast,
 }: DeckLibraryWorkspaceProps) {
@@ -88,15 +89,17 @@ export function DeckLibraryWorkspace({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [folderDraft, setFolderDraft] = useState<FolderDraft | null>(null);
   const [isMutating, setIsMutating] = useState(false);
-  const [density, setDensity] = useState<DeckViewDensity>(
-    settings.deckViewDensity ?? "comfortable",
-  );
   const [announcement, setAnnouncement] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set());
-  const [detailRequest, setDetailRequest] = useState<DeckOpenRequest | null>(null);
-  const requestSequence = useRef(1);
-  const detailOpenedRef = useRef(false);
+  const [detailRequest, setDetailRequest] = useState<DeckOpenRequest | null>(() =>
+    route.view !== "library" && route.deckId
+      ? { requestId: route.requestId, deckId: route.deckId }
+      : null,
+  );
+  const [rootRequestId, setRootRequestId] = useState<number | null>(null);
+  const requestSequence = useRef(Math.max(1, route.requestId + 1));
+  const handledRouteRequestRef = useRef<number | null>(null);
   const organizationRef = useRef<DeckLibraryOrganization | null>(null);
   const organizationMutationRef = useRef(false);
   const lastDeckLifecycleSignatureRef = useRef<string | null>(null);
@@ -136,16 +139,18 @@ export function DeckLibraryWorkspace({
   }, [controller]);
 
   useEffect(() => {
-    if (!openDeckRequest) return;
-    detailOpenedRef.current = false;
+    if (handledRouteRequestRef.current === route.requestId) return;
+    handledRouteRequestRef.current = route.requestId;
+    requestSequence.current = Math.max(requestSequence.current, route.requestId + 1);
     setFolderDraft(null);
-    setDetailRequest(openDeckRequest);
-    onOpenDeckRequestConsumed();
-  }, [onOpenDeckRequestConsumed, openDeckRequest]);
-
-  useEffect(() => {
-    setDensity(settings.deckViewDensity ?? "comfortable");
-  }, [settings.deckViewDensity]);
+    if (route.view === "library") {
+      if (detailRequest) setRootRequestId(route.requestId);
+      return;
+    }
+    if (!route.deckId) return;
+    setRootRequestId(null);
+    setDetailRequest({ requestId: route.requestId, deckId: route.deckId });
+  }, [detailRequest, route.deckId, route.requestId, route.view]);
 
   const placementByDeck = useMemo(
     () => new Map((organization?.placements ?? []).map((placement) => [placement.deckId, placement])),
@@ -238,10 +243,12 @@ export function DeckLibraryWorkspace({
   }
 
   function openDeck(deckId: string): void {
-    detailOpenedRef.current = false;
-    setFolderDraft(null);
-    setDetailRequest({ requestId: requestSequence.current, deckId });
+    const requestId = requestSequence.current;
     requestSequence.current += 1;
+    setFolderDraft(null);
+    setRootRequestId(null);
+    setDetailRequest({ requestId, deckId });
+    onViewChange("detail", deckId);
   }
 
   async function createDeck(name: string, description: string): Promise<void> {
@@ -370,7 +377,11 @@ export function DeckLibraryWorkspace({
     const previous = organizationRef.current;
     if (!previous || isMutating || !beginOrganizationMutation()) return;
     const currentPlacement = previous.placements.find((placement) => placement.deckId === deck.id);
-    const currentGroup = orderedDecksForFolder(activeDecks, placementByDeck, currentPlacement?.folderId ?? null);
+    const currentGroup = orderedDecksForFolder(
+      activeDecks,
+      placementByDeck,
+      currentPlacement?.folderId ?? null,
+    );
     const currentIndex = currentGroup.findIndex((candidate) => candidate.id === deck.id);
     if (
       (currentPlacement?.folderId ?? null) === targetFolderId &&
@@ -424,19 +435,6 @@ export function DeckLibraryWorkspace({
       await recoverOrganizationAfterError(error, previous);
     } finally {
       finishOrganizationMutation();
-    }
-  }
-
-  async function changeDensity(next: DeckViewDensity): Promise<void> {
-    if (next === density) return;
-    const previous = density;
-    setDensity(next);
-    try {
-      await saveSettings({ ...settings, deckViewDensity: next });
-      setAnnouncement(`${next === "compact" ? "Compact" : "Comfortable"} deck view enabled.`);
-    } catch (error: unknown) {
-      setDensity(previous);
-      showToast("error", getErrorMessage(error));
     }
   }
 
@@ -553,9 +551,8 @@ export function DeckLibraryWorkspace({
     const candidate = document
       .elementFromPoint(event.clientX, event.clientY)
       ?.closest<HTMLElement>("[data-library-drop]");
-    const compatible = candidate && isCompatiblePointerTarget(state.payload, candidate)
-      ? candidate
-      : null;
+    const compatible =
+      candidate && isCompatiblePointerTarget(state.payload, candidate) ? candidate : null;
     setPointerDropTarget(compatible, state.payload.kind);
   }
 
@@ -616,15 +613,18 @@ export function DeckLibraryWorkspace({
         onPracticeDeck={onPracticeDeck}
         openDeckRequest={detailRequest}
         onOpenDeckRequestConsumed={() => undefined}
+        rootRequestId={rootRequestId}
+        onNavigationRejected={(view) => onViewChange(view, detailRequest.deckId)}
         onManageTemplates={onManageTemplates}
-        onBulkAdd={onCreateCards}
         onViewChange={(view) => {
-          if (view === "detail" || view === "editor") detailOpenedRef.current = true;
-          if (view === "library" && detailOpenedRef.current) {
-            detailOpenedRef.current = false;
+          if (view === "library") {
             setDetailRequest(null);
+            setRootRequestId(null);
+            onViewChange("library", null);
             void refreshLibraryAfterDetail();
+            return;
           }
+          onViewChange(view, detailRequest.deckId);
         }}
         onDirtyChange={onCardDirtyChange}
         showToast={showToast}
@@ -635,44 +635,29 @@ export function DeckLibraryWorkspace({
   return (
     <div className={styles.root} aria-busy={isLoading || isMutating}>
       <div className={styles.toolbar} aria-label="Deck library controls">
-        <div className={styles.toolbarActions}>
-          <div className={styles.density} role="group" aria-label="Deck list density">
-            <button
-              type="button"
-              aria-pressed={density === "comfortable"}
-              onClick={() => void changeDensity("comfortable")}
-            >
-              Comfortable
-            </button>
-            <button
-              type="button"
-              aria-pressed={density === "compact"}
-              onClick={() => void changeDensity("compact")}
-            >
-              Compact
-            </button>
-            <HelpTrigger topicId="flashcards.deckDensity" label="Help with deck density" />
-          </div>
-          <Button
-            variant="primary"
-            onClick={() => setFolderDraft({ mode: "create", folder: null, name: "__deck__" })}
-          >
-            <Icon name="plus" size={18} /> New deck
-          </Button>
-        </div>
+        <Button
+          variant="primary"
+          onClick={() => setFolderDraft({ mode: "create", folder: null, name: "__deck__" })}
+        >
+          <Icon name="plus" size={18} /> New deck
+        </Button>
       </div>
 
-      <div className="sr-only" aria-live="polite">{announcement}</div>
+      <div className="sr-only" aria-live="polite">
+        {announcement}
+      </div>
       {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
       {isLoading ? <LoadingState label="Loading deck organization…" /> : null}
 
       {!isLoading && organization ? (
-        <div className={styles.library} data-density={density}>
+        <div className={styles.library}>
           <section className={styles.folderArea} aria-labelledby="folders-heading">
             <div className={styles.sectionHeading}>
               <div>
                 <h2 id="folders-heading">Folders</h2>
-                <p>{orderedFolders.length} {orderedFolders.length === 1 ? "folder" : "folders"}</p>
+                <p>
+                  {orderedFolders.length} {orderedFolders.length === 1 ? "folder" : "folders"}
+                </p>
               </div>
               <div className={styles.sectionActions}>
                 <Button
@@ -708,7 +693,6 @@ export function DeckLibraryWorkspace({
                       key={folder.id}
                       folder={folder}
                       decks={folderDecks}
-                      density={density}
                       folderIndex={folderIndex}
                       folderCount={orderedFolders.length}
                       disabled={isMutating}
@@ -771,7 +755,9 @@ export function DeckLibraryWorkspace({
             <div className={styles.sectionHeading}>
               <div>
                 <h2 id="unsorted-heading">Unsorted decks</h2>
-                <p>{unsortedDecks.length} {unsortedDecks.length === 1 ? "deck" : "decks"}</p>
+                <p>
+                  {unsortedDecks.length} {unsortedDecks.length === 1 ? "deck" : "decks"}
+                </p>
               </div>
             </div>
             {unsortedDecks.length === 0 ? (
@@ -786,7 +772,6 @@ export function DeckLibraryWorkspace({
                     key={deck.id}
                     deck={deck}
                     folderId={null}
-                    density={density}
                     index={index}
                     count={unsortedDecks.length}
                     disabled={isMutating}
@@ -834,7 +819,6 @@ export function DeckLibraryWorkspace({
                       key={deck.id}
                       deck={deck}
                       folderId={null}
-                      density="compact"
                       index={index}
                       count={archivedDecks.length}
                       disabled={isMutating}
@@ -881,7 +865,6 @@ export function DeckLibraryWorkspace({
 function FolderSection({
   folder,
   decks,
-  density,
   folderIndex,
   folderCount,
   disabled,
@@ -906,7 +889,6 @@ function FolderSection({
 }: {
   folder: DeckFolder;
   decks: DeckSummary[];
-  density: DeckViewDensity;
   folderIndex: number;
   folderCount: number;
   disabled: boolean;
@@ -980,15 +962,26 @@ function FolderSection({
           </span>
           <span className={styles.folderTitle}>
             <h3>{folder.name}</h3>
-            <span>{decks.length} {decks.length === 1 ? "deck" : "decks"} · {due} ready</span>
+            <span>
+              {decks.length} {decks.length === 1 ? "deck" : "decks"} · {due} ready
+            </span>
           </span>
           <span className={styles.folderChevron} aria-hidden="true">
             <Icon name={collapsed ? "chevron-right" : "chevron-down"} size={18} />
           </span>
         </button>
         <div className={styles.folderActions}>
-          <button type="button" disabled={disabled} onClick={onRename}>Rename</button>
-          <button type="button" disabled={disabled} className={styles.dangerText} onClick={onDelete}>Delete</button>
+          <button type="button" disabled={disabled} onClick={onRename}>
+            Rename
+          </button>
+          <button
+            type="button"
+            disabled={disabled}
+            className={styles.dangerText}
+            onClick={onDelete}
+          >
+            Delete
+          </button>
         </div>
       </header>
       {!collapsed ? (
@@ -1004,7 +997,6 @@ function FolderSection({
                 key={deck.id}
                 deck={deck}
                 folderId={folder.id}
-                density={density}
                 index={index}
                 count={decks.length}
                 disabled={disabled}
@@ -1034,7 +1026,6 @@ function FolderSection({
 function DeckItem({
   deck,
   folderId,
-  density,
   index,
   count,
   disabled,
@@ -1053,7 +1044,6 @@ function DeckItem({
 }: {
   deck: DeckSummary;
   folderId: string | null;
-  density: DeckViewDensity;
   index: number;
   count: number;
   disabled: boolean;
@@ -1070,12 +1060,9 @@ function DeckItem({
   onPointerEnd: (event: ReactPointerEvent<HTMLElement>) => void;
   onPointerCancel: (event: ReactPointerEvent<HTMLElement>) => void;
 }) {
-  const progressMax = Math.max(1, deck.generatedCardCount);
-  const completed = Math.max(0, deck.generatedCardCount - deck.studyableDueCount);
   return (
     <article
       className={styles.deckItem}
-      data-density={density}
       data-archived={archived || undefined}
       data-library-drop={archived ? undefined : "deck"}
       data-folder-id={folderId ?? UNSORTED_DATA_VALUE}
@@ -1103,21 +1090,16 @@ function DeckItem({
         </span>
       ) : null}
       <button type="button" className={styles.deckMain} onClick={onOpen}>
-        <span className={styles.deckMark}><Icon name="cards" size={20} /></span>
+        <span className={styles.deckMark}>
+          <Icon name="cards" size={20} />
+        </span>
         <span className={styles.deckCopy}>
           <strong>{deck.name}</strong>
           {deck.description ? <span>{deck.description}</span> : null}
-          <small>{deck.generatedCardCount} cards · {deck.studyableDueCount} ready</small>
+          <small>
+            {deck.generatedCardCount} cards · {deck.studyableDueCount} ready
+          </small>
         </span>
-        {density === "comfortable" && !archived ? (
-          <Progress
-            className={styles.deckProgress}
-            value={completed}
-            max={progressMax}
-            label={`${deck.name} study progress`}
-            size="small"
-          />
-        ) : null}
       </button>
       <div className={styles.deckActions}>
         {!archived ? (
@@ -1143,8 +1125,12 @@ function DeckItem({
       </div>
       <span className="sr-only">
         Deck {index + 1} of {count}.
-        <button type="button" onClick={() => onMovePosition(Math.max(0, index - 1))}>Move earlier</button>
-        <button type="button" onClick={() => onMovePosition(Math.min(count - 1, index + 1))}>Move later</button>
+        <button type="button" onClick={() => onMovePosition(Math.max(0, index - 1))}>
+          Move earlier
+        </button>
+        <button type="button" onClick={() => onMovePosition(Math.min(count - 1, index + 1))}>
+          Move later
+        </button>
       </span>
     </article>
   );
@@ -1187,7 +1173,9 @@ function DeckCreateSheet({
           />
         </label>
         <label>
-          <span>Description <small>optional</small></span>
+          <span>
+            Description <small>optional</small>
+          </span>
           <textarea
             value={description}
             maxLength={2000}
@@ -1196,7 +1184,9 @@ function DeckCreateSheet({
           />
         </label>
         <div className={styles.sheetActions}>
-          <Button disabled={busy} onClick={onClose}>Cancel</Button>
+          <Button disabled={busy} onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="submit" variant="primary" loading={busy} disabled={name.trim() === ""}>
             Create deck
           </Button>
@@ -1243,7 +1233,9 @@ function FolderSheet({
           />
         </label>
         <div className={styles.sheetActions}>
-          <Button disabled={busy} onClick={onClose}>Cancel</Button>
+          <Button disabled={busy} onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="submit" variant="primary" loading={busy} disabled={name.trim() === ""}>
             {draft.mode === "create" ? "Create folder" : "Save name"}
           </Button>
