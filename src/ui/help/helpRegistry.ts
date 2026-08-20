@@ -2,7 +2,6 @@ import type { TutorialModuleId } from "../tutorials/tutorialRegistry";
 
 export type HelpTopicId =
   | "flashcards.folders"
-  | "flashcards.deckDensity"
   | "flashcards.search.studyState"
   | "flashcards.search.selection"
   | "templates.layout"
@@ -31,14 +30,6 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
       "Drag a folder handle to reorder folders. Drag a deck handle to reorder it or place it in another folder. Keyboard users can focus a handle: Up and Down reorder within a group, Home and End jump to an edge, and Left or Right moves a deck between folder groups and Unsorted decks. Collapse controls only change presentation. Deleting a folder moves its decks to Unsorted decks and never deletes cards or review history.",
     documentation: "Flashcards and deck organization",
     tutorialModuleId: "orientation",
-  },
-  "flashcards.deckDensity": {
-    id: "flashcards.deckDensity",
-    title: "Deck list density",
-    summary: "Comfortable view emphasizes visual summaries; Compact view fits more decks on screen.",
-    details:
-      "Density changes presentation only. It does not alter deck order, schedules, cards, or review history, and it can be chosen independently on each device.",
-    documentation: "Customizing the Flashcards library",
   },
   "flashcards.search.studyState": {
     id: "flashcards.search.studyState",
