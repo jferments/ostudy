@@ -5,10 +5,13 @@
   .sortField { display: grid; min-width: 0; gap: var(--ostudy-space-2); }
   .searchField > span:first-child,
   .sortField > span:first-child { color: var(--ostudy-color-text-secondary); font-size: .76rem; font-weight: 760; }
-  .searchControl { display: flex; min-width: 0; min-height: var(--control-height); align-items: center; gap: var(--ostudy-space-2); border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small); padding-inline: var(--ostudy-space-3); background: var(--ostudy-color-canvas-inset); color: var(--ostudy-color-text-muted); }
+  .searchControl { display: flex; min-width: 0; min-height: var(--control-height); align-items: center; gap: var(--ostudy-space-2); overflow: hidden; border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small); padding-inline: var(--ostudy-space-3); background: var(--ostudy-color-canvas-inset); color: var(--ostudy-color-text-muted); }
   .searchControl:focus-within { border-color: var(--ostudy-color-border-accent); box-shadow: var(--ostudy-shadow-focus); }
-  .searchControl input { width: 100%; min-width: 0; flex: 1; border: 0; padding: 0; background: transparent; box-shadow: none; }
-  .searchControl input:focus { outline: none; box-shadow: none; }
+  .searchControl input { width: 100%; min-width: 0; min-height: calc(var(--control-height) - 2px); flex: 1; appearance: none; -webkit-appearance: none; border: 0 !important; border-radius: 0; padding: 0; background: transparent !important; color: var(--ostudy-color-text-primary); box-shadow: none !important; }
+  .searchControl input:focus { outline: none; box-shadow: none !important; }
+  .searchControl input::-webkit-search-decoration,
+  .searchControl input::-webkit-search-results-button,
+  .searchControl input::-webkit-search-results-decoration { display: none; }
   .scopeButton { display: inline-flex; min-width: 0; min-height: var(--control-height); align-items: center; justify-content: flex-start; gap: var(--ostudy-space-2); border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small); padding-inline: var(--ostudy-space-3); background: var(--ostudy-color-surface-raised); color: var(--ostudy-color-text-secondary); font: inherit; font-weight: 720; }
   .scopeButton span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .filterButton { white-space: nowrap; }
