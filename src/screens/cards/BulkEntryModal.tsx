@@ -9,16 +9,13 @@ import {
   type BulkAnalyzeResult,
   type BulkCardRowInput,
 } from "../../ipc/cards";
-import {
-  getErrorMessage,
-} from "../../ipc/common";
-import {
-  type DeckSummary,
-} from "../../ipc/decks";
+import { getErrorMessage } from "../../ipc/common";
+import { type DeckSummary } from "../../ipc/decks";
 
 interface BulkEntryModalProps {
   decks: DeckSummary[];
   defaultDeckId?: string;
+  fixedDeckId?: string;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
@@ -36,16 +33,21 @@ interface DraftRow {
 export function BulkEntryModal({
   decks,
   defaultDeckId,
+  fixedDeckId,
   onClose,
   onSaved,
   showToast,
 }: BulkEntryModalProps) {
   const activeDecks = decks.filter((deck) => deck.archivedAt === null);
+  const fixedDeck = fixedDeckId
+    ? activeDecks.find((deck) => deck.id === fixedDeckId) ?? null
+    : null;
   const sequence = useRef(4);
   const [deckId, setDeckId] = useState(
-    defaultDeckId && activeDecks.some((deck) => deck.id === defaultDeckId)
-      ? defaultDeckId
-      : (activeDecks[0]?.id ?? ""),
+    fixedDeck?.id ??
+      (defaultDeckId && activeDecks.some((deck) => deck.id === defaultDeckId)
+        ? defaultDeckId
+        : (activeDecks[0]?.id ?? "")),
   );
   const [rows, setRows] = useState<DraftRow[]>([emptyRow(1), emptyRow(2), emptyRow(3)]);
   const [analysis, setAnalysis] = useState<BulkAnalyzeResult | null>(null);
@@ -67,7 +69,7 @@ export function BulkEntryModal({
     contextEntityId: "b".repeat(32),
     payload: { deckId, rows },
     onRecovered: (payload: { deckId: string; rows: DraftRow[] }) => {
-      setDeckId(payload.deckId);
+      setDeckId(fixedDeck?.id ?? payload.deckId);
       setRows(payload.rows);
       sequence.current = Math.max(4, ...payload.rows.map((row) => row.id + 1));
     },
@@ -192,24 +194,31 @@ export function BulkEntryModal({
     >
       <div className="bulk-entry-layout" aria-busy={isSaving}>
         <div className="bulk-entry-controls">
-          <label>
-            <span>Destination deck</span>
-            <select
-              value={deckId}
-              disabled={isSaving}
-              onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                setDeckId(event.currentTarget.value);
-                setErrorMessage(null);
-                clearAnalysis();
-              }}
-            >
-              {activeDecks.map((deck) => (
-                <option key={deck.id} value={deck.id}>
-                  {deck.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {fixedDeck ? (
+            <div>
+              <span>Destination deck</span>
+              <strong>{fixedDeck.name}</strong>
+            </div>
+          ) : (
+            <label>
+              <span>Destination deck</span>
+              <select
+                value={deckId}
+                disabled={isSaving}
+                onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                  setDeckId(event.currentTarget.value);
+                  setErrorMessage(null);
+                  clearAnalysis();
+                }}
+              >
+                {activeDecks.map((deck) => (
+                  <option key={deck.id} value={deck.id}>
+                    {deck.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <p>Exact duplicate question-and-answer pairs are detected before anything is saved.</p>
         </div>
 
@@ -324,7 +333,14 @@ export function BulkEntryModal({
         {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
 
         <div className="modal-actions bulk-entry-actions">
-          <button type="button" className="text-button danger-text" disabled={isSaving} onClick={() => void durableDraft.discard().then(onClose)}>Discard draft</button>
+          <button
+            type="button"
+            className="text-button danger-text"
+            disabled={isSaving}
+            onClick={() => void durableDraft.discard().then(onClose)}
+          >
+            Discard draft
+          </button>
           <button
             type="button"
             className="secondary-button"
