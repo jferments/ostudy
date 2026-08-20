@@ -281,7 +281,7 @@ describe("PracticeScreen", () => {
     const panel = screen.getByRole("region", { name: "Practice workload" });
     expect(within(panel).getAllByText("—")).toHaveLength(4);
     expect(within(panel).queryByText(/^0$/u)).toBeNull();
-    expect(screen.getByRole("button", { name: "Start scheduled practice" })).toBeDisabled();
+    expect((screen.getByRole("button", { name: "Start scheduled practice" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("offers explicit extra practice when the loaded workload is truly zero", async () => {
