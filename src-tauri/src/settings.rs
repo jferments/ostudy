@@ -426,6 +426,9 @@ mod tests {
             daily_review_limit: 200,
             ai_reasoning_effort: DEFAULT_AI_REASONING_EFFORT.to_string(),
         };
-        assert_eq!(validate_settings(&settings).unwrap_err().code, "invalid_theme");
+        assert_eq!(
+            validate_settings(&settings).unwrap_err().code,
+            "invalid_theme"
+        );
     }
 }
