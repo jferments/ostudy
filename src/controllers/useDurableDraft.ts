@@ -49,8 +49,24 @@ interface DurableDraftController<T extends Record<string, unknown>> {
   restart: (payload: T) => Promise<void>;
 }
 
+interface RegisteredDiscardHandler {
+  token: symbol;
+  discard: () => Promise<void>;
+}
+
 const PAYLOAD_SCHEMA_VERSION = 1;
 const AUTOSAVE_DELAY_MS = 650;
+const activeDiscardHandlers = new Map<EditorDraftKind, RegisteredDiscardHandler>();
+
+/**
+ * Discard the durable draft owned by the currently mounted editor of this kind.
+ * App-level navigation uses this after the user explicitly confirms that
+ * unsaved editor changes should be lost. A missing handler means no editor of
+ * that kind is currently mounted.
+ */
+export async function discardActiveDurableDraft(kind: EditorDraftKind): Promise<void> {
+  await activeDiscardHandlers.get(kind)?.discard();
+}
 
 export function useDurableDraft<T extends Record<string, unknown>>(
   options: DurableDraftOptions<T>,
@@ -68,6 +84,7 @@ export function useDurableDraft<T extends Record<string, unknown>>(
   const saveLoopRef = useRef<Promise<void> | null>(null);
   const draftRef = useRef<EditorDraft<T> | null>(null);
   const optionsRef = useRef(options);
+  const discardRegistrationTokenRef = useRef(Symbol("ostudy-durable-draft"));
   optionsRef.current = options;
   draftRef.current = draft;
 
@@ -173,7 +190,10 @@ export function useDurableDraft<T extends Record<string, unknown>>(
     }
     const currentPayload = optionsRef.current.payload;
     const currentKey = stableJson(currentPayload);
-    if (currentKey !== savedPayloadKeyRef.current || assetKey !== pendingAssetIdsRef.current.join(",")) {
+    if (
+      currentKey !== savedPayloadKeyRef.current ||
+      assetKey !== pendingAssetIdsRef.current.join(",")
+    ) {
       pendingPayloadRef.current = currentPayload;
       pendingAssetIdsRef.current = [...new Set(optionsRef.current.assetIds ?? [])].sort();
     }
@@ -182,7 +202,10 @@ export function useDurableDraft<T extends Record<string, unknown>>(
 
   useEffect(() => {
     if (!enabled || !draft || draft.state !== "active") return;
-    if (payloadKey === savedPayloadKeyRef.current && assetKey === pendingAssetIdsRef.current.join(",")) {
+    if (
+      payloadKey === savedPayloadKeyRef.current &&
+      assetKey === pendingAssetIdsRef.current.join(",")
+    ) {
       return;
     }
     pendingPayloadRef.current = options.payload;
@@ -222,8 +245,24 @@ export function useDurableDraft<T extends Record<string, unknown>>(
     draftRef.current = null;
     setDraft(null);
     pendingPayloadRef.current = null;
+    pendingAssetIdsRef.current = [];
+    savedPayloadKeyRef.current = "";
+    setRecovered(false);
+    setErrorMessage(null);
     setStatus("clean");
   }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const token = discardRegistrationTokenRef.current;
+    const kind = options.kind;
+    activeDiscardHandlers.set(kind, { token, discard });
+    return () => {
+      if (activeDiscardHandlers.get(kind)?.token === token) {
+        activeDiscardHandlers.delete(kind);
+      }
+    };
+  }, [discard, enabled, options.kind]);
 
   const prepareCanonicalCommit = useCallback(async (): Promise<EditorDraftCommitRef> => {
     await flush();
@@ -265,6 +304,7 @@ export function useDurableDraft<T extends Record<string, unknown>>(
       draftRef.current = null;
       setDraft(null);
       pendingPayloadRef.current = null;
+      pendingAssetIdsRef.current = [];
       savedPayloadKeyRef.current = "";
       await open(payload, operationIdRef.current);
     },
