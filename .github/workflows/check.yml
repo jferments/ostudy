@@ -30,6 +30,8 @@ permissions:
 
 # Source-writing maintenance, including `git add src-tauri/Cargo.lock`, is deliberately
 # isolated in maintain-generated-candidates.yml and is never performed by Check.
+# A draft can request exact-head terminal qualification by adding the explicit
+# `<!-- ostudy-check:all-full -->` marker to its PR body; ordinary drafts stay fast.
 
 jobs:
   check:
@@ -75,14 +77,9 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_GATE: ${{ inputs.gate || 'all-full' }}
           PR_DRAFT: ${{ github.event.pull_request.draft || false }}
+          PR_BODY: ${{ github.event.pull_request.body || '' }}
         run: |
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            gate="$DISPATCH_GATE"
-          elif [[ "$EVENT_NAME" == "pull_request" && "$PR_DRAFT" == "true" ]]; then
-            gate="fast"
-          else
-            gate="all-full"
-          fi
+          gate="$(node ./scripts/select-check-gate.mjs)"
           echo "gate=$gate" >> "$GITHUB_OUTPUT"
           echo "Selected qualification gate: $gate"
 
