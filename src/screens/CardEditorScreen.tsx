@@ -38,6 +38,7 @@ import {
   type TemplateCardPreview,
   type TemplateValueInput,
 } from "../ipc/templates";
+import { registerPlatformBackHandler } from "../platform/backNavigation";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
@@ -140,6 +141,7 @@ export function CardEditorScreen({
   const [previewAnswer, setPreviewAnswer] = useState(false);
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const platformBackCancelRef = useRef<() => void>(() => undefined);
   const controllerRef = useRef<CardEditorController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new CardEditorController();
   const controller = controllerRef.current;
@@ -235,6 +237,21 @@ export function CardEditorScreen({
     onDirtyChange(durableDraft.hasUnsavedLocalChanges);
     return () => onDirtyChange(false);
   }, [durableDraft.hasUnsavedLocalChanges, onDirtyChange]);
+
+  useEffect(() => {
+    platformBackCancelRef.current = () => {
+      void cancel();
+    };
+  });
+
+  useEffect(
+    () =>
+      registerPlatformBackHandler(() => {
+        platformBackCancelRef.current();
+        return true;
+      }),
+    [],
+  );
 
   useEffect(() => {
     assetDraftRef.current = durableDraft.assetDraftId;
