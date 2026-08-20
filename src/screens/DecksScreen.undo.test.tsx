@@ -6,6 +6,7 @@ import * as cardsIpc from "../ipc/cards";
 import * as decksIpc from "../ipc/decks";
 import * as settingsIpc from "../ipc/settings";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
+import { CardPracticeProvider } from "./cards/CardPracticeContext";
 import { DecksScreen } from "./DecksScreen";
 
 vi.mock("../controllers/useDurableDraft", () => ({
@@ -25,11 +26,19 @@ vi.mock("../controllers/useDurableDraft", () => ({
 }));
 
 vi.mock("../ipc/cards", () => ({
-  deleteCard: vi.fn(),
+  analyzeBulkCards: vi.fn(),
+  bulkCreateCards: vi.fn(),
+  bulkTagCards: vi.fn(),
+  deleteCards: vi.fn(),
   getCardNote: vi.fn(),
+  listMatchingCards: vi.fn(),
+  listTags: vi.fn(),
+  searchCards: vi.fn(),
+  transferCards: vi.fn(),
   undoDeletion: vi.fn(),
 }));
 vi.mock("../ipc/common", () => ({
+  createMutationId: vi.fn(() => "f".repeat(32)),
   createOperationId: vi.fn(() => "c".repeat(32)),
   getErrorCode: () => null,
   getErrorMessage: (error: unknown) =>
@@ -41,15 +50,15 @@ vi.mock("../ipc/decks", () => ({
   prepareDeckExport: vi.fn(),
   getDeck: vi.fn(),
   importDeck: vi.fn(),
-  listDeckCardSummaries: vi.fn(),
   setDeckArchived: vi.fn(),
   updateDeck: vi.fn(),
 }));
-
+vi.mock("../ipc/scheduling", () => ({
+  applyScheduleAction: vi.fn(),
+}));
 vi.mock("../ipc/generated-import", () => ({
   importGeneratedFlashcards: vi.fn(),
 }));
-
 vi.mock("./CardEditorScreen", () => ({
   CardEditorScreen: () => <div>Card editor</div>,
 }));
@@ -86,12 +95,8 @@ const settings: settingsIpc.AppSettings = {
 describe("DecksScreen deletion undo", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(decksIpc.listDeckCardSummaries).mockResolvedValue({
-      cards: [],
-      totalCount: 0,
-      offset: 0,
-      hasMore: false,
-    });
+    vi.mocked(cardsIpc.listTags).mockResolvedValue([]);
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [], totalCount: 0 });
     vi.mocked(decksIpc.deleteDeck).mockResolvedValue({
       affectedCount: 2,
       undoToken,
@@ -110,14 +115,16 @@ describe("DecksScreen deletion undo", () => {
     const showToast = vi.fn();
     render(
       <OverlayProvider>
-        <DecksScreen
-          decks={[deck]}
-          settings={settings}
-          refreshDecks={refreshDecks}
-          onPracticeDeck={vi.fn()}
-          onDirtyChange={vi.fn()}
-          showToast={showToast}
-        />
+        <CardPracticeProvider onPracticeCards={vi.fn()}>
+          <DecksScreen
+            decks={[deck]}
+            settings={settings}
+            refreshDecks={refreshDecks}
+            onPracticeDeck={vi.fn()}
+            onDirtyChange={vi.fn()}
+            showToast={showToast}
+          />
+        </CardPracticeProvider>
       </OverlayProvider>,
     );
 
