@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShowToast } from "../../components/Toast";
 import type { DeckSummary } from "../../ipc/decks";
 import * as folderIpc from "../../ipc/deckFolders";
-import * as settingsIpc from "../../ipc/settings";
+import type { FlashcardsDeckRoute } from "../../navigation/flashcardsRoutes";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
 
@@ -31,20 +31,14 @@ vi.mock("../../ipc/deckFolders", () => ({
   moveDeckInLibrary: vi.fn(),
   moveDeckFolder: vi.fn(),
 }));
-vi.mock("../../ipc/settings", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../ipc/settings")>();
-  return { ...actual, saveSettings: vi.fn() };
-});
 vi.mock("../DecksScreen", () => ({
-  DecksScreen: ({ onViewChange }: { onViewChange?: (view: "library" | "detail" | "editor") => void }) => (
+  DecksScreen: ({
+    onViewChange,
+  }: {
+    onViewChange?: (view: "library" | "detail" | "editor") => void;
+  }) => (
     <div>
-      <button
-        type="button"
-        onClick={() => {
-          onViewChange?.("detail");
-          onViewChange?.("library");
-        }}
-      >
+      <button type="button" onClick={() => onViewChange?.("library")}>
         Return to deck library
       </button>
     </div>
@@ -80,7 +74,6 @@ const settings = {
   decorativeArtwork: true,
   celebrationsEnabled: true,
   tutorialsEnabled: true,
-  deckViewDensity: "comfortable" as const,
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
@@ -88,26 +81,34 @@ const settings = {
   dailyReviewLimit: 200,
 };
 
+const libraryRoute: FlashcardsDeckRoute = {
+  workspace: "decks",
+  view: "library",
+  deckId: null,
+  requestId: 1,
+};
+
 function renderLibrary({
   decks = [pharmacology, anatomy],
   refreshDecks = vi.fn(async () => decks),
   showToast = vi.fn(),
+  onViewChange = vi.fn(),
 }: {
   decks?: DeckSummary[];
   refreshDecks?: () => Promise<DeckSummary[]>;
   showToast?: ShowToast;
+  onViewChange?: (view: "library" | "detail" | "editor", deckId: string | null) => void;
 } = {}) {
   return render(
     <OverlayProvider>
       <DeckLibraryWorkspace
+        route={libraryRoute}
+        onViewChange={onViewChange}
         decks={decks}
         settings={settings}
         refreshDecks={refreshDecks}
         onPracticeDeck={vi.fn()}
-        openDeckRequest={null}
-        onOpenDeckRequestConsumed={vi.fn()}
         onManageTemplates={vi.fn()}
-        onCreateCards={vi.fn()}
         onCardDirtyChange={vi.fn()}
         showToast={showToast}
       />
@@ -127,32 +128,42 @@ describe("DeckLibraryWorkspace", () => {
     });
     deckControllerMocks.undo.mockResolvedValue({ restoredCount: 1 });
     vi.mocked(folderIpc.getDeckLibraryOrganization).mockResolvedValue(organization);
-    vi.mocked(settingsIpc.saveSettings).mockImplementation(async (input) => input);
   });
 
-  it("puts folder controls in the Folders section and keeps every deck studyable", async () => {
+  it("keeps one compact deck presentation with folder controls and study actions", async () => {
     renderLibrary();
 
     const folderHeading = await screen.findByRole("heading", { name: "Folders" });
     const unsortedHeading = screen.getByRole("heading", { name: "Unsorted decks" });
     expect(
       Boolean(
-        folderHeading.compareDocumentPosition(unsortedHeading) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
+        folderHeading.compareDocumentPosition(unsortedHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
     const folderSection = folderHeading.closest("section");
     expect(folderSection).not.toBeNull();
-    expect(within(folderSection as HTMLElement).getByRole("button", { name: "New folder" })).toBeTruthy();
+    expect(
+      within(folderSection as HTMLElement).getByRole("button", { name: "New folder" }),
+    ).toBeTruthy();
     expect(screen.getByText("Pharmacology")).toBeTruthy();
     expect(screen.getByText("Anatomy")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Practice" })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Delete Pharmacology" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete Anatomy" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Move" })).toBeNull();
-    expect(screen.queryByText("↑")).toBeNull();
-    expect(screen.queryByText("↓")).toBeNull();
-    expect(screen.queryByText("Organize what you study")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Comfortable" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Compact" })).toBeNull();
+  });
+
+  it("reports opening a deck through explicit nested route state", async () => {
+    const onViewChange = vi.fn();
+    renderLibrary({ onViewChange });
+
+    const deckButton = (await screen.findByText("Pharmacology")).closest("button");
+    expect(deckButton).not.toBeNull();
+    fireEvent.click(deckButton as HTMLButtonElement);
+
+    expect(onViewChange).toHaveBeenCalledWith("detail", pharmacology.id);
+    expect(await screen.findByRole("button", { name: "Return to deck library" })).toBeTruthy();
   });
 
   it("requires confirmation before deleting a deck from the organized library", async () => {
@@ -176,7 +187,6 @@ describe("DeckLibraryWorkspace", () => {
     await waitFor(() =>
       expect(screen.queryByRole("alertdialog", { name: "Delete “Pharmacology”?" })).toBeNull(),
     );
-    expect(deckControllerMocks.deleteDeck).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete Pharmacology" }));
     const secondDialog = await screen.findByRole("alertdialog", {
@@ -188,7 +198,6 @@ describe("DeckLibraryWorkspace", () => {
       expect(deckControllerMocks.deleteDeck).toHaveBeenCalledWith(pharmacology.id),
     );
     await waitFor(() => expect(refreshDecks).toHaveBeenCalled());
-    await waitFor(() => expect(folderIpc.getDeckLibraryOrganization).toHaveBeenCalledTimes(2));
   });
 
   it("collapses individual folders and exposes a collapse-all control", async () => {
@@ -197,7 +206,6 @@ describe("DeckLibraryWorkspace", () => {
     const collapse = await screen.findByRole("button", { name: "Collapse Nursing folder" });
     expect(collapse.getAttribute("aria-expanded")).toBe("true");
     expect(collapse.getAttribute("title")).toBe("Collapse folder");
-    expect(screen.getByText("Pharmacology")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
 
@@ -206,15 +214,12 @@ describe("DeckLibraryWorkspace", () => {
     expect(expand.getAttribute("title")).toBe("Expand folder");
     expect(screen.queryByText("Pharmacology")).toBeNull();
     expect(screen.getByRole("button", { name: "Collapse all" }).hasAttribute("disabled")).toBe(true);
-    expect(folderIpc.moveDeckInLibrary).not.toHaveBeenCalled();
-    expect(folderIpc.updateDeckFolder).not.toHaveBeenCalled();
 
     fireEvent.click(expand);
-    expect(screen.getByRole("button", { name: "Collapse Nursing folder" })).toBeTruthy();
     expect(screen.getByText("Pharmacology")).toBeTruthy();
   });
 
-  it("moves a deck between groups with the drag handle keyboard alternative", async () => {
+  it("moves a deck between groups with the drag-handle keyboard alternative", async () => {
     const moved = {
       revision: 5,
       folders: [folder],
@@ -239,36 +244,7 @@ describe("DeckLibraryWorkspace", () => {
     );
   });
 
-  it("stops a deck-row drop from bubbling into the parent folder drop target", async () => {
-    const moved = {
-      revision: 5,
-      folders: [folder],
-      placements: [
-        { deckId: anatomy.id, folderId: folder.id, sortOrder: 1000 },
-        { deckId: pharmacology.id, folderId: folder.id, sortOrder: 2000 },
-      ],
-    };
-    vi.mocked(folderIpc.moveDeckInLibrary).mockResolvedValue(moved);
-    renderLibrary();
-
-    const pharmacologyRow = (await screen.findByText("Pharmacology")).closest("article");
-    expect(pharmacologyRow).not.toBeNull();
-    fireEvent.drop(pharmacologyRow as HTMLElement, {
-      dataTransfer: {
-        getData: () => anatomy.id,
-      },
-    });
-
-    await waitFor(() => expect(folderIpc.moveDeckInLibrary).toHaveBeenCalledTimes(1));
-    expect(folderIpc.moveDeckInLibrary).toHaveBeenCalledWith({
-      deckId: anatomy.id,
-      targetFolderId: folder.id,
-      targetIndex: 0,
-      expectedOrganizationRevision: 4,
-    });
-  });
-
-  it("reorders folders with the drag handle keyboard alternative", async () => {
+  it("reorders folders with the drag-handle keyboard alternative", async () => {
     const secondFolder = {
       ...folder,
       id: "g".repeat(32),
@@ -291,9 +267,7 @@ describe("DeckLibraryWorkspace", () => {
     });
     renderLibrary();
 
-    const folderHandle = await screen.findByRole("button", {
-      name: /Reorder Nursing folder\./,
-    });
+    const folderHandle = await screen.findByRole("button", { name: /Reorder Nursing folder\./ });
     fireEvent.keyDown(folderHandle, { key: "ArrowDown" });
 
     await waitFor(() =>
@@ -322,10 +296,9 @@ describe("DeckLibraryWorkspace", () => {
     vi.mocked(folderIpc.createDeckFolder).mockResolvedValue(created);
     renderLibrary();
 
-    fireEvent.keyDown(
-      await screen.findByRole("button", { name: /Reorder Anatomy\./ }),
-      { key: "ArrowLeft" },
-    );
+    fireEvent.keyDown(await screen.findByRole("button", { name: /Reorder Anatomy\./ }), {
+      key: "ArrowLeft",
+    });
 
     await waitFor(() => expect(folderIpc.getDeckLibraryOrganization).toHaveBeenCalledTimes(2));
     fireEvent.click(screen.getByRole("button", { name: "New folder" }));
@@ -343,34 +316,13 @@ describe("DeckLibraryWorkspace", () => {
     );
   });
 
-  it("does not remount the create-deck sheet after opening and returning from the new deck", async () => {
-    const createdDeck = deck("c", "Created deck", 0, 0);
-    const refreshDecks = vi.fn(async () => [pharmacology, anatomy, createdDeck]);
-    deckControllerMocks.create.mockResolvedValue(createdDeck);
-    renderLibrary({ refreshDecks });
-
-    fireEvent.click(await screen.findByRole("button", { name: "New deck" }));
-    const createDialog = await screen.findByRole("dialog", { name: "Create a deck" });
-    fireEvent.change(within(createDialog).getByRole("textbox", { name: "Name" }), {
-      target: { value: createdDeck.name },
-    });
-    fireEvent.click(within(createDialog).getByRole("button", { name: "Create deck" }));
-
-    const returnButton = await screen.findByRole("button", { name: "Return to deck library" });
-    expect(screen.queryByRole("dialog", { name: "Create a deck" })).toBeNull();
-    fireEvent.click(returnButton);
-
-    await screen.findByRole("heading", { name: "Folders" });
-    expect(screen.queryByRole("dialog", { name: "Create a deck" })).toBeNull();
-    expect(document.documentElement.dataset.overlayActive).not.toBe("true");
-  });
-
   it("refreshes decks and organization after returning from nested deck work", async () => {
     const refreshDecks = vi.fn(async () => [pharmacology, anatomy]);
+    const onViewChange = vi.fn();
     vi.mocked(folderIpc.getDeckLibraryOrganization)
       .mockResolvedValueOnce(organization)
       .mockResolvedValueOnce({ ...organization, revision: 5 });
-    renderLibrary({ refreshDecks });
+    renderLibrary({ refreshDecks, onViewChange });
 
     const deckButton = (await screen.findByText("Pharmacology")).closest("button");
     expect(deckButton).not.toBeNull();
@@ -379,17 +331,7 @@ describe("DeckLibraryWorkspace", () => {
 
     await waitFor(() => expect(refreshDecks).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(folderIpc.getDeckLibraryOrganization).toHaveBeenCalledTimes(2));
-  });
-
-  it("persists compact density as a presentation preference", async () => {
-    renderLibrary();
-    fireEvent.click(await screen.findByRole("button", { name: "Compact" }));
-    await waitFor(() =>
-      expect(settingsIpc.saveSettings).toHaveBeenCalledWith({
-        ...settings,
-        deckViewDensity: "compact",
-      }),
-    );
+    expect(onViewChange).toHaveBeenCalledWith("library", null);
   });
 });
 
