@@ -1,16 +1,12 @@
 # Git and pull-request workflow
 
-ostudy uses a publication-first workflow: one focused branch, one draft pull request, and a continuously recoverable remote history. Planning supports delivery, but a code task is not represented by an unpublished patch or a description of changes that exist only in a temporary environment.
+ostudy uses a publication-first, evidence-driven workflow: one focused branch, one draft pull request, directly reviewable source, a durable acceptance ledger, and exact-head qualification. Planning supports delivery, but a code task is not represented by an unpublished patch, task-specific applicator, transient CI tree, or description of changes that exist only in a temporary environment.
 
-This process applies to human contributors and automated maintainers. The mechanism used to access GitHub may differ, but the repository invariants do not.
+This process applies to human contributors and automated maintainers. The repository access mechanism may differ, but the invariants do not.
 
-## 1. Establish the exact base
+## 1. Establish or restore the exact task state
 
-Start from the current intended base, normally `origin/main`, and record its commit SHA.
-
-### Local checkout mode
-
-In a local checkout:
+### New local-checkout task
 
 ```bash
 cd ~/code/ostudy
@@ -22,9 +18,9 @@ BASE_SHA="$(git rev-parse HEAD)"
 printf '%s\n' "$BASE_SHA"
 ```
 
-Stop before switching or rebasing when the working tree contains unrelated changes. Protect them in a separate commit, branch, stash, or worktree rather than allowing a task branch to absorb accidental local state.
+Stop before switching or rebasing when the working tree contains unrelated changes. Protect them in a separate commit, branch, stash, or worktree.
 
-For substantial work, an isolated worktree keeps the primary checkout available:
+For substantial work, use an isolated worktree:
 
 ```bash
 BRANCH="agent/short-description"
@@ -33,67 +29,96 @@ git worktree add -b "$BRANCH" "$WORKTREE" "$BASE_SHA"
 cd "$WORKTREE"
 ```
 
-### Authenticated GitHub Connector mode
+### Authenticated GitHub Connector task
 
-A connector-backed environment must use the authenticated Connector as the source of truth for remote repository state. Use Connector reads to resolve the private repository, fetch the intended base, and record its exact SHA. Do not substitute `gh` availability, anonymous scraping, temporary transfer repositories, CI runner state, or an unrelated local checkout for Connector state.
+Use authenticated Connector reads to resolve the private repository, fetch the intended base, and record its exact SHA. Do not substitute `gh`, anonymous scraping, CI state, an unrelated checkout, or a missing connector action for repository evidence.
 
-Read access and authorization for a concrete write are separate. The absence of an approval prompt is not evidence that writes are unavailable. When the task reaches its first intended mutation, invoke the actual Connector branch/file/commit operation and let the Connector authorization layer handle any required approval. Do not change the Connector to permanent or unrestricted write access merely to bypass that boundary.
+Repository visibility, repository-level permission, a concrete mutation authorization, remote publication, and CI validation are separate states. Invoke the real write when needed; only an actual rejection establishes a write failure. Verify every successful branch/file/commit mutation through GitHub.
 
-Only an actual rejected Connector mutation establishes a Connector write failure. Report the exact operation and error. After a successful mutation, verify the resulting remote branch or head SHA before claiming publication.
+See [`../agents/GITHUB-CONNECTOR.md`](../agents/GITHUB-CONNECTOR.md).
 
-See [`../agents/GITHUB-CONNECTOR.md`](../agents/GITHUB-CONNECTOR.md) for the complete connector-specific procedure.
+### Resuming an existing task
 
-## 2. Publish one focused branch
+Before editing:
 
-Use a short-lived branch that identifies the work, normally:
+1. read the open PR and its machine-readable `ostudy-agent-state` ledger;
+2. verify the actual remote base, branch, and head;
+3. inspect exact-head workflow evidence and unresolved review threads;
+4. enumerate non-terminal `AC-##` criteria and known failures;
+5. reconcile any stale draft metadata.
+
+Do not reconstruct state from memory or from an older green run.
+
+## 2. Define a verifiable change contract
+
+Record:
+
+- the current observed problem;
+- stable `AC-##` acceptance criteria;
+- explicit non-goals;
+- architecture and compatibility surfaces;
+- migrations, data, import/export, platform, privacy, accessibility, and dependency effects;
+- expected tests and manual workflows.
+
+The acceptance identifiers remain stable throughout implementation. Change a requirement only when the human changes the intended behavior; do not rewrite criteria after the fact to fit an incomplete implementation.
+
+The state ledger schema and completion predicate are documented in [`../agents/EXECUTION-STATE.md`](../agents/EXECUTION-STATE.md).
+
+## 3. Publish one focused branch
+
+Use a short-lived branch, normally:
 
 ```text
 agent/<description>
 ```
 
-In a local checkout, publish it before substantial implementation:
+In a local checkout:
 
 ```bash
 git push -u origin HEAD
 ```
 
-In Connector mode, create the task branch from the recorded base SHA through the Connector, then verify the remote branch state.
+In Connector mode, create the branch from the recorded base SHA and verify the remote branch state.
 
-Do not develop directly on `main`. Do not create competing replacement branches for ordinary test failures. A new branch is appropriate only when the existing branch is genuinely unrecoverable or the scope has become a separate change.
+Do not develop directly on `main`. Do not create competing replacement branches for ordinary failures. A new branch is appropriate only when the existing branch is genuinely unrecoverable or the scope is a separate reviewable change.
 
-## 3. Make the first meaningful commit
+## 4. Make the first meaningful direct-source commit
 
-The first commit may be an acceptance-test skeleton, an ADR, a migration shell, a documentation index, or another small piece that truthfully establishes the task. It should not pretend that an unimplemented feature is complete.
+The first commit may be an acceptance-test skeleton, ADR, migration shell, controller boundary, or another small piece that truthfully establishes the task. It must contain the actual reviewable source for that checkpoint.
 
 In a local checkout:
 
 ```bash
-git add <paths>
+git add -- <paths>
 git diff --cached --check
 git commit -m "chore: scaffold <change>"
 git push
 ```
 
-In Connector mode, create or update the intended files on the task branch, then verify the resulting remote head SHA.
+In Connector mode, create/update the intended source paths and verify the resulting remote head.
 
-Publishing early makes the task inspectable and recoverable without encouraging large, opaque commits. A generated local patch is not publication.
+A generated local patch, task-specific source applicator, finalizer, CI-generated product tree, or proposed commit message is not publication. Automatic PR CI may validate source but may not author, stage, commit, push, or change PR readiness.
 
-## 4. Open a draft pull request
+## 5. Open a draft pull request and initialize its ledger
 
-Open one draft pull request from the task branch into `main` as soon as the branch has a meaningful commit. Record:
+Open one draft PR into `main` as soon as the branch has a meaningful commit. Record:
 
-- exact base commit;
+- exact base and current head;
 - user-visible goal;
-- acceptance criteria;
+- stable acceptance criteria;
 - non-goals;
-- data, migration, import/export, platform, privacy, and compatibility surfaces;
-- planned automated and manual validation.
+- architecture/compatibility surfaces;
+- planned automated and manual validation;
+- current implementation state;
+- known failures.
 
-Keep the description truthful as design and risk become clearer. A draft may acknowledge incomplete behavior; it must not claim checks or manual workflows that have not happened.
+The PR template includes one JSON ledger between the `ostudy-agent-state` markers. Drafts may record incomplete criteria and pending gates. A synchronize event may briefly make the recorded draft head stale; the verifier warns rather than fails. Reconcile the ledger at the next checkpoint and require exact identity before review readiness.
 
-## 5. Implement in coherent increments
+Target scope is not current-state evidence. A PR that contains only an ADR or scaffold must say so explicitly.
 
-Inspect current code, callers, tests, migrations, format fixtures, and documentation before introducing a new path. Prefer small vertical commits that are individually understandable, for example:
+## 6. Implement coherent vertical increments
+
+Inspect current code, callers, tests, migrations, fixtures, external formats, and documentation before introducing a path. Prefer understandable commits, for example:
 
 1. schema/domain behavior and migration coverage;
 2. native service and typed IPC;
@@ -101,13 +126,21 @@ Inspect current code, callers, tests, migrations, format fixtures, and documenta
 4. regression and acceptance tests;
 5. documentation and cleanup.
 
-The exact sequence depends on the change. The rule is that each commit has a clear purpose and is pushed to the same branch. Do not leave the only copy of a large change in an agent-local scratch directory.
+Keep each commit purposeful and on the same branch. Do not leave the only copy of substantial source in an agent-local workspace or self-hosted runner.
 
-Avoid mixing feature behavior, dependency upgrades, broad refactors, mass formatting, and unrelated cleanup. When a refactor is necessary for the feature, explain why it is part of the same coherent boundary.
+Avoid mixing feature behavior, dependency upgrades, broad refactors, mass formatting, and unrelated cleanup. Explain any refactor required by the feature.
 
-## 6. Validate during development
+After each meaningful publication checkpoint:
 
-Use the tiered checks while editing:
+- verify the remote head;
+- update acceptance status/evidence/tests;
+- update `currentState`;
+- record known failure fingerprints;
+- record only validation actually performed against the named SHA.
+
+## 7. Validate during development
+
+Use increasingly expensive checks:
 
 ```bash
 ./scripts/check-changed.sh
@@ -115,36 +148,48 @@ Use the tiered checks while editing:
 ./scripts/check-fast.sh
 ```
 
-Consume complete failure information from a meaningful branch head before making speculative changes. When CI fails:
+The `Check` workflow runs static first, then the selected gate. Draft PRs use fast qualification. Every run checks out and verifies the exact PR head.
 
-1. identify the exact failing command and commit;
-2. reproduce the narrowest available failure;
-3. fix behavior or the legitimate test contract rather than suppressing the check;
-4. add or refine regression coverage;
-5. push the correction to the same pull request;
-6. review the new exact-head result.
+When CI fails:
+
+1. verify the tested SHA and current head;
+2. read job steps, decoded logs, `ostudy-qualification-result.json`, and bounded diagnostics;
+3. identify every independent actionable failure;
+4. classify failures using [`../agents/FAILURE-TRIAGE.md`](../agents/FAILURE-TRIAGE.md);
+5. use the focused reproduction;
+6. repair a coherent batch on the same branch;
+7. rerun the narrow boundary before escalating.
+
+An unchanged-head retry is allowed once only with evidence of a transient external failure. The same fingerprint twice requires a strategy change before another broad run. Do not use no-op commits, PR-state toggles, expanded permissions, arbitrary retries/sleeps/timeouts, skipped tests, or weakened assertions to manufacture a green result.
 
 A static parse, mocked frontend test, or successful build step must not be reported as a successful native application test.
 
-Repository publication and CI availability are separate. A missing, busy, offline, or mismatched self-hosted runner may block validation, but it does not establish that GitHub branch, commit, or pull-request writes are unavailable.
+## 8. Qualify the completed head
 
-## 7. Qualify the completed head
-
-When implementation is complete, run:
+When every in-scope acceptance criterion is implemented, run:
 
 ```bash
 ./scripts/check.sh
 ```
 
-Then launch the standalone artifact produced by the gate:
+Then launch the exact standalone artifact produced by the gate:
 
 ```bash
 ./run-app.sh
 ```
 
-Manually exercise the changed workflow, including relevant persistence after restart, keyboard and touch behavior, compact and wide layouts, themes, pending/cancel/error states, migration of existing data, and import/export or backup compatibility.
+Manually exercise the changed workflow, including relevant persistence after restart, keyboard/touch behavior, compact/medium/wide layouts, themes, pending/cancel/error states, migration of existing data, and import/export or backup compatibility.
 
-In a local checkout, inspect exactly what the pull request proposes:
+Android-affecting work also runs:
+
+```bash
+./scripts/android-test.sh
+./scripts/android-emulator-smoke.sh
+```
+
+Physical camera/device paths, live providers, private credentials, or hardware-specific behavior remain explicitly human-required where deterministic CI cannot perform them.
+
+Inspect exactly what the PR proposes:
 
 ```bash
 git diff --name-status origin/main...HEAD
@@ -152,67 +197,75 @@ git diff --stat origin/main...HEAD
 git log --oneline origin/main..HEAD
 ```
 
-In Connector mode, inspect the remote PR changed-file list/diff and verify its current head SHA through GitHub.
+In Connector mode, inspect the remote PR changed-file list/diff and verify the current head through GitHub.
 
-A green workflow run qualifies only the commit it tested. A later push invalidates an older successful result.
+A newer push invalidates an older green result.
 
-## 8. Prepare for review
+## 9. Satisfy the readiness contract
 
-Update the pull-request description with:
+A PR may be marked ready only when:
 
-- exact base and current head commits;
-- acceptance criteria addressed;
-- design decisions and important tradeoffs;
+- `currentState` is `readyForReview`;
+- the ledger base, branch, and head exactly match GitHub;
+- every acceptance criterion is terminal and has evidence;
+- static, fast, and full passed on the current head;
+- Android passed or is explicitly `notRequired` for a non-Android change;
+- manual workflows are passed, `notRequired`, or explicitly `humanRequired`;
+- `knownFailures` is empty.
+
+`notRun`, inspection alone, an older green result, or a target-scope paragraph does not qualify readiness.
+
+Update the PR with:
+
+- implemented behavior and non-goals;
+- design decisions and tradeoffs;
 - changed files grouped by purpose;
-- tests added or updated;
-- exact commands and CI runs that passed;
-- commands not run and why;
+- tests/documentation added;
+- exact commands and workflow run IDs that passed;
+- checks not run and why;
 - manual workflows actually exercised;
-- migration, compatibility, backup, rollback, known limitation, and residual-risk notes.
+- migration, compatibility, backup, rollback, limitations, and residual risks.
 
-For Connector-backed work, also distinguish publication state from validation state: report the remote branch/head and PR state separately from CI runner/workflow results.
+For Connector-backed work, distinguish publication state from validation and manual acceptance state.
 
-Mark the pull request ready only when its published head is complete and the required automated gate has passed. Human review and acceptance remain necessary even when an automated maintainer wrote the code.
+## 10. Merge and synchronize
 
-## 9. Merge and synchronize
+The normal merge method is **Squash and merge** after exact-head CI and human acceptance. An automated maintainer does not merge its own PR unless the repository owner explicitly requests that operation.
 
-The normal merge method is **Squash and merge** after exact-head CI and human acceptance both pass. An automated maintainer does not merge its own pull request unless the repository owner explicitly requests that operation.
-
-After merge in a local checkout:
+After merge locally:
 
 ```bash
 git switch main
 git pull --ff-only
 git branch -d <merged-branch>
-```
-
-Delete the remote branch after confirming the merge and updated local main:
-
-```bash
 git push origin --delete <merged-branch>
 ```
 
-When using a worktree, remove it only after any local artifacts or test evidence have been reviewed:
+When using a worktree, remove it only after local artifacts/evidence are reviewed:
 
 ```bash
 git worktree remove ../ostudy-short-description
 ```
 
+## Explicit maintenance workflows
+
+Ordinary `Check` qualification is read-only. The separately named `Maintain generated Rust candidates` workflow is manual-only, requires explicit confirmation, refuses `main`, and restricts changes to canonical Rust source/lockfile paths. It is a maintenance escape hatch—not the normal implementation path and never a mechanism for CI-authored product features.
+
 ## Releases
 
-A normal merge does not automatically change the application version. A release change updates these together:
+A normal merge does not automatically change the application version. A release updates together:
 
 - `package.json`;
 - `src-tauri/Cargo.toml`;
 - `src-tauri/tauri.conf.json`.
 
-Run the release qualification from a clean source copy:
+Run:
 
 ```bash
 ./scripts/release-check.sh
 ```
 
-After the release commit is merged, tag the exact `main` commit:
+After merge, tag the exact `main` commit:
 
 ```bash
 git switch main
@@ -221,11 +274,9 @@ git tag -a v0.1.0 -m "ostudy 0.1.0"
 git push origin v0.1.0
 ```
 
-The current tag workflow builds Linux artifacts on the self-hosted Linux runner. Windows, macOS, Android, and iOS release pipelines are not yet present.
-
 ## Rollback and recovery
 
-Inspect the history before reversing a change:
+Inspect history before reversing a change:
 
 ```bash
 git log --oneline --decorate --graph --all
@@ -238,23 +289,21 @@ git revert <commit-sha>
 git push origin main
 ```
 
-A migration or external-format rollback may require a forward repair rather than a simple source revert. Document data effects and recovery steps in the original pull request so an emergency change is not forced to rediscover them.
+A migration or external-format rollback may require a forward repair. Document data effects and recovery steps in the original PR. Do not force-push `main` or a shared review branch.
 
-Do not force-push `main` or a shared review branch. If an implementation direction is unsound, stop adding code, preserve the published branch for diagnosis, and correct it transparently or start a clean replacement only when the original branch cannot be recovered safely.
+If an implementation direction is unsound, stop adding code, preserve the published branch/evidence, and correct it transparently. Starting a clean replacement is reserved for genuinely unrecoverable branches, not ordinary failures.
 
 ## Completion record
 
-A task handoff is complete when it identifies:
+A handoff identifies:
 
-- base SHA, branch, head SHA, and pull-request number;
-- implemented behavior and non-goals;
-- files and migrations changed;
-- tests and documentation added;
+- base SHA, branch, head SHA, and PR number;
+- acceptance status and non-goals;
+- files/migrations changed;
+- tests/documentation added;
 - local commands and exact results;
-- CI state for the current head;
-- manual acceptance performed or still required;
-- limitations, compatibility effects, rollback concerns, and merge method.
+- exact-head CI state and qualification artifact;
+- manual acceptance performed or still human-required;
+- known failures, limitations, compatibility effects, rollback concerns, and merge method.
 
-For Connector-backed work, every claimed remote mutation must be verified through GitHub, and any failed Connector operation must be reported with its exact error rather than inferred from local or CI state.
-
-The durable result is the published branch and pull request, not a promise to provide code later.
+The durable result is the published branch and PR. Completion is a conjunction of acceptance, publication, exact-head validation, manual boundaries, and no unresolved failure—not a narrative impression that substantial work occurred.

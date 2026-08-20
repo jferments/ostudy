@@ -1,134 +1,112 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
-const files = {
-  workflow: ".github/workflows/check.yml",
-  library: "scripts/lib/diagnostics.bash",
-  nativeSmoke: "scripts/smoke-native.sh",
-  summary: "scripts/summarize-check-failure.mjs",
-  diagnosticsDoc: "docs/development/diagnostics.md",
-  testingDoc: "docs/development/testing-and-ci.md",
-};
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const workflow = await readFile(join(root, ".github", "workflows", "check.yml"), "utf8");
+const checkStatic = await readFile(join(root, "scripts", "check-static.sh"), "utf8");
+const checkFast = await readFile(join(root, "scripts", "check-fast.sh"), "utf8");
+const checkFull = await readFile(join(root, "scripts", "check.sh"), "utf8");
+const diagnostics = await readFile(join(root, "scripts", "lib", "diagnostics.bash"), "utf8");
+const summary = await readFile(join(root, "scripts", "summarize-check-failure.mjs"), "utf8");
+const resultWriter = await readFile(join(root, "scripts", "write-qualification-result.mjs"), "utf8");
+const handoffRenderer = await readFile(join(root, "scripts", "render-agent-handoff.mjs"), "utf8");
 
-const contents = Object.fromEntries(
-  await Promise.all(
-    Object.entries(files).map(async ([key, path]) => [key, await readFile(path, "utf8")]),
-  ),
-);
+const failures = [];
 
-const staticIndex = contents.workflow.indexOf("- name: Run static qualification first");
-const runnerPreflightIndex = contents.workflow.indexOf(
-  "- name: Verify unified runner resources and nested KVM",
-);
-const metadataIndex = contents.workflow.indexOf("- name: Require committed Rust dependency graph");
-const fastIndex = contents.workflow.indexOf("- name: Run fast qualification");
-const linuxIndex = contents.workflow.indexOf("- name: Run authoritative Linux qualification");
-const androidIndex = contents.workflow.indexOf(
-  "- name: Run authoritative Android compile and package qualification",
-);
+for (const [path, content] of [
+  ["scripts/check-static.sh", checkStatic],
+  ["scripts/check-fast.sh", checkFast],
+  ["scripts/check.sh", checkFull],
+]) {
+  for (const required of [
+    "source \"$SCRIPT_DIR/lib/diagnostics.bash\"",
+    "ostudy_parse_diagnostic_args",
+    "OSTUDY_QUALIFICATION_COMMAND",
+    "ostudy_capture_failure_artifacts",
+  ]) {
+    if (!content.includes(required)) failures.push(`${path} missing ${required}`);
+  }
+}
 
-const contracts = [
-  [
-    "CI establishes a low-noise first-run diagnostic timeline",
-    contents.library.includes("OSTUDY_CI_LOG_FILTER:-warn,ostudy=info"),
-  ],
-  [
-    "CI retains bounded failure artifacts without a separate debug rerun",
-    contents.library.includes("OSTUDY_KEEP_FAILURE_ARTIFACTS=1"),
-  ],
-  [
-    "diagnostic artifacts support a runner-owned root",
-    contents.library.includes("OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT"),
-  ],
-  [
-    "nested qualification wrappers share one failure-capture token",
-    contents.library.includes("OSTUDY_DIAGNOSTIC_CAPTURE_TOKEN") &&
-      contents.library.includes("failure-claim"),
-  ],
-  [
-    "every captured boundary writes a focused replay script",
-    contents.library.includes("reproduce.sh") &&
-      contents.library.includes("ostudy_replay_command_for_step"),
-  ],
-  [
-    "the authoritative workflow exports the first-run baseline to every platform step",
-    /OSTUDY_LOG:\s*warn,ostudy=info/u.test(contents.workflow) &&
-      /OSTUDY_DIAGNOSTICS_AUTOMATIC:\s*"1"/u.test(contents.workflow),
-  ],
-  [
-    "the authoritative workflow owns a runner-temp diagnostic directory",
-    contents.workflow.includes(
-      'echo "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT=$RUNNER_TEMP/ostudy-diagnostics" >> "$GITHUB_ENV"',
-    ),
-  ],
-  [
-    "static qualification is the first substantive qualification boundary",
-    staticIndex >= 0 &&
-      runnerPreflightIndex > staticIndex &&
-      metadataIndex > staticIndex &&
-      fastIndex > staticIndex &&
-      linuxIndex > staticIndex &&
-      androidIndex > staticIndex &&
-      contents.workflow.includes("if: steps.gate.outputs.gate != 'preflight'") &&
-      contents.workflow.includes(
-        'bash ./scripts/check-static.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"',
-      ),
-  ],
-  [
-    "qualification keeps the minimum read-only repository permission",
-    /permissions:\s*\n\s*contents:\s*read/u.test(contents.workflow) &&
-      !/statuses:\s*write/u.test(contents.workflow) &&
-      !contents.workflow.includes("statuses/$QUALIFIED_SHA") &&
-      !contents.workflow.includes("ostudy/static") &&
-      !contents.workflow.includes("ostudy/qualification"),
-  ],
-  [
-    "the failure summary reads structured diagnostic artifacts",
-    contents.workflow.includes('--diagnostics "$RUNNER_TEMP/ostudy-diagnostics"') &&
-      contents.summary.includes("Structured application diagnostics"),
-  ],
-  [
-    "recovered WebDriver transport flakes preserve their isolated app log",
-    contents.nativeSmoke.includes("ostudy_capture_transient_artifacts") &&
-      contents.nativeSmoke.includes("application_log"),
-  ],
-  [
-    "final WebDriver failures preserve their isolated app log before cleanup",
-    contents.nativeSmoke.includes("ostudy_capture_failure_artifacts") &&
-      contents.nativeSmoke.indexOf("ostudy_capture_failure_artifacts") <
-        contents.nativeSmoke.lastIndexOf('return "$status"'),
-  ],
-  [
-    "bounded diagnostic evidence is uploaded even when a transient retry recovers",
-    /name: Upload bounded diagnostic evidence[\s\S]*?if: always\(\)[\s\S]*?ostudy-diagnostics/u.test(
-      contents.workflow,
-    ),
-  ],
-  [
-    "developer diagnostics documentation explains focused replay",
-    contents.diagnosticsDoc.includes("Focused failure replay") &&
-      contents.diagnosticsDoc.includes("reproduce.sh"),
-  ],
-  [
-    "CI documentation explains the first-run diagnostic baseline and static-first gate",
-    contents.testingDoc.includes("warn,ostudy=info") &&
-      contents.testingDoc.includes("transient WebDriver") &&
-      contents.testingDoc.includes("failure-capture token") &&
-      contents.testingDoc.includes("static qualification first") &&
-      contents.testingDoc.includes("GitHub service incidents") &&
-      contents.testingDoc.indexOf("check-static.sh") <
-        contents.testingDoc.indexOf("unified runner/KVM preflight"),
-  ],
-];
+for (const required of [
+  "OSTUDY_CI_LOG_FILTER: warn,ostudy=info",
+  "OSTUDY_DIAGNOSTICS_ACTIVE: \"1\"",
+  "OSTUDY_DIAGNOSTICS_AUTOMATIC: \"1\"",
+  "OSTUDY_KEEP_FAILURE_ARTIFACTS: \"1\"",
+  "ostudy-static-check.log",
+  "ostudy-fast-check.log",
+  "ostudy-full-check.log",
+  "ostudy-android-test.log",
+  "ostudy-android-smoke.log",
+  "summarize-check-failure.mjs",
+  "write-qualification-result.mjs",
+  "render-agent-handoff.mjs",
+  "ostudy-qualification-result.json",
+  "ostudy-pr-contract.json",
+  "ostudy-agent-handoff.md",
+  "Enforce handoff evidence integrity",
+  "export-diagnostics.sh",
+  "Upload bounded diagnostic evidence",
+  "Upload bounded failure evidence",
+]) {
+  if (!workflow.includes(required)) failures.push(`check.yml missing ${required}`);
+}
 
-const failures = contracts.filter(([, passed]) => !passed).map(([description]) => description);
+for (const required of [
+  "failure-claim",
+  "reproduce.sh",
+  "replayFilter",
+  "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT",
+  "OSTUDY_DIAGNOSTIC_CAPTURE_TOKEN",
+  "ostudy_capture_transient_artifacts",
+]) {
+  if (!diagnostics.includes(required)) failures.push(`diagnostics library missing ${required}`);
+}
+
+for (const required of [
+  "Fastest local reproduction",
+  "OSTUDY_FORCE_CHECK=1",
+  "OSTUDY_KEEP_FAILURE_ARTIFACTS=1",
+  "renderStructuredDiagnostics",
+]) {
+  if (!summary.includes(required)) failures.push(`failure summarizer missing ${required}`);
+}
+
+for (const required of [
+  "schemaVersion: 1",
+  "fingerprint",
+  "focusedReproduction",
+  "classificationHint",
+]) {
+  if (!resultWriter.includes(required)) failures.push(`qualification result writer missing ${required}`);
+}
+
+for (const required of [
+  "Evidence integrity",
+  "Changed files",
+  "Commands represented by this qualification",
+  "Qualification head",
+  "Requested method",
+]) {
+  if (!handoffRenderer.includes(required)) failures.push(`handoff renderer missing ${required}`);
+}
+
+if (workflow.includes("OSTUDY_LOG: debug")) {
+  failures.push("check.yml must not default qualification to a repository-wide debug filter");
+}
+if (/OSTUDY_LOG:\s*\$\{\{/u.test(workflow)) {
+  failures.push("check.yml must not accept an untrusted dynamic OSTUDY_LOG expression");
+}
+
 if (failures.length > 0) {
-  console.error("Diagnostics workflow contract failed:");
-  for (const failure of failures) console.error(`- ${failure}`);
+  console.error("Diagnostics workflow verification failed:");
+  for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
 
 console.log(
-  "OK   CI runs static qualification before runner/full gates with read-only repository access, captures a low-noise structured timeline, preserves isolated failure state, emits focused replay commands, and uploads bounded transient/failure evidence.",
+  "OK   Static/fast/full checks share bounded failure capture, CI starts with low-noise structured diagnostics, exact-head JSON and Markdown handoff evidence are retained, and summaries emit focused reproductions.",
 );

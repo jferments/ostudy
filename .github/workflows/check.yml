@@ -3,7 +3,7 @@ name: Check
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, edited]
   push:
     branches: [main]
   workflow_dispatch:
@@ -20,11 +20,6 @@ on:
           - linux-full
           - android-full
           - all-full
-      apply_candidates:
-        description: Explicitly commit canonical Cargo.lock and rustfmt output to the selected branch
-        required: true
-        default: false
-        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -33,9 +28,13 @@ concurrency:
 permissions:
   contents: read
 
+# Source-writing maintenance is deliberately isolated in
+# maintain-generated-candidates.yml and is never performed by Check.
+# A draft can request exact-head terminal qualification by adding the explicit
+# `<!-- ostudy-check:all-full -->` marker to its PR body; ordinary drafts stay fast.
+
 jobs:
   check:
-    if: github.event_name != 'workflow_dispatch' || inputs.apply_candidates != true
     runs-on: [self-hosted, linux, x64, ostudy-unified]
     timeout-minutes: 300
 
@@ -78,28 +77,34 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_GATE: ${{ inputs.gate || 'all-full' }}
           PR_DRAFT: ${{ github.event.pull_request.draft || false }}
+          PR_BODY: ${{ github.event.pull_request.body || '' }}
         run: |
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            gate="$DISPATCH_GATE"
-          elif [[ "$EVENT_NAME" == "pull_request" && "$PR_DRAFT" == "true" ]]; then
-            gate="fast"
-          else
-            gate="all-full"
-          fi
+          gate="$(node ./scripts/select-check-gate.mjs)"
           echo "gate=$gate" >> "$GITHUB_OUTPUT"
           echo "Selected qualification gate: $gate"
 
+      - name: Verify pull-request execution contract
+        id: pr_contract
+        if: github.event_name == 'pull_request'
+        run: |
+          node ./scripts/verify-pr-contract.mjs \
+            --event "$GITHUB_EVENT_PATH" \
+            --output "$RUNNER_TEMP/ostudy-pr-contract.json"
+
       - name: Run static qualification first
+        id: static
         if: steps.gate.outputs.gate != 'preflight'
         run: |
           set -o pipefail
           bash ./scripts/check-static.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"
 
       - name: Verify unified runner resources and nested KVM
+        id: preflight
         if: steps.gate.outputs.gate != 'static'
         run: bash ./scripts/runner/guest-preflight.sh
 
       - name: Require committed Rust dependency graph
+        id: dependency_graph
         if: steps.gate.outputs.gate != 'static'
         run: |
           cargo metadata \
@@ -109,30 +114,89 @@ jobs:
             > /dev/null
 
       - name: Run fast qualification
+        id: fast
         if: steps.gate.outputs.gate == 'fast'
         run: |
           set -o pipefail
           bash ./scripts/check-fast.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-fast-check.log"
 
       - name: Run authoritative Linux qualification
+        id: linux_full
         if: steps.gate.outputs.gate == 'linux-full' || steps.gate.outputs.gate == 'all-full'
         run: |
           set -o pipefail
           bash ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-full-check.log"
 
       - name: Run authoritative Android compile and package qualification
+        id: android_compile
         if: steps.gate.outputs.gate == 'android-full' || steps.gate.outputs.gate == 'all-full'
         run: |
           set -o pipefail
           bash ./scripts/android-test.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-android-test.log"
 
       - name: Run authoritative Android Emulator smoke qualification
+        id: android_smoke
         if: steps.gate.outputs.gate == 'android-full' || steps.gate.outputs.gate == 'all-full'
         run: |
           set -o pipefail
           bash ./scripts/android-emulator-smoke.sh \
             --artifacts "$RUNNER_TEMP/android-smoke" \
             2>&1 | tee "$RUNNER_TEMP/ostudy-android-smoke.log"
+
+      - name: Write machine-readable qualification evidence
+        id: qualification_evidence
+        if: always()
+        env:
+          GATE: ${{ steps.gate.outputs.gate || 'unknown' }}
+          JOB_STATUS: ${{ job.status }}
+          PR_CONTRACT_STATUS: ${{ steps.pr_contract.outcome }}
+          STATIC_STATUS: ${{ steps.static.outcome }}
+          PREFLIGHT_STATUS: ${{ steps.preflight.outcome }}
+          DEPENDENCY_STATUS: ${{ steps.dependency_graph.outcome }}
+          FAST_STATUS: ${{ steps.fast.outcome }}
+          LINUX_STATUS: ${{ steps.linux_full.outcome }}
+          ANDROID_COMPILE_STATUS: ${{ steps.android_compile.outcome }}
+          ANDROID_SMOKE_STATUS: ${{ steps.android_smoke.outcome }}
+        run: |
+          node ./scripts/write-qualification-result.mjs \
+            --output "$RUNNER_TEMP/ostudy-qualification-result.json" \
+            --status "$JOB_STATUS" \
+            --gate "$GATE" \
+            --step "pr-contract=${PR_CONTRACT_STATUS:-skipped}" \
+            --step "static=${STATIC_STATUS:-skipped}" \
+            --step "preflight=${PREFLIGHT_STATUS:-skipped}" \
+            --step "dependency-graph=${DEPENDENCY_STATUS:-skipped}" \
+            --step "fast=${FAST_STATUS:-skipped}" \
+            --step "linux-full=${LINUX_STATUS:-skipped}" \
+            --step "android-compile=${ANDROID_COMPILE_STATUS:-skipped}" \
+            --step "android-smoke=${ANDROID_SMOKE_STATUS:-skipped}" \
+            --diagnostics "$RUNNER_TEMP/ostudy-diagnostics" \
+            --diagnostics "$RUNNER_TEMP/android-smoke" \
+            "$RUNNER_TEMP/ostudy-static-check.log" \
+            "$RUNNER_TEMP/ostudy-fast-check.log" \
+            "$RUNNER_TEMP/ostudy-full-check.log" \
+            "$RUNNER_TEMP/ostudy-android-test.log" \
+            "$RUNNER_TEMP/ostudy-android-smoke.log" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Render evidence-derived handoff
+        id: handoff
+        if: always()
+        run: |
+          arguments=(
+            --qualification "$RUNNER_TEMP/ostudy-qualification-result.json"
+            --repository-root "$GITHUB_WORKSPACE"
+            --output "$RUNNER_TEMP/ostudy-agent-handoff.md"
+          )
+          if [[ -f "$RUNNER_TEMP/ostudy-pr-contract.json" ]]; then
+            arguments+=(--contract "$RUNNER_TEMP/ostudy-pr-contract.json")
+          fi
+          status=0
+          node ./scripts/render-agent-handoff.mjs "${arguments[@]}" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [[ -f "$RUNNER_TEMP/ostudy-agent-handoff.md" ]]; then
+            cat "$RUNNER_TEMP/ostudy-agent-handoff.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Summarize qualification failure
         if: failure()
@@ -156,8 +220,12 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ostudy-diagnostics-${{ env.QUALIFIED_SHA }}
-          path: ${{ runner.temp }}/ostudy-diagnostics/**
-          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/ostudy-qualification-result.json
+            ${{ runner.temp }}/ostudy-pr-contract.json
+            ${{ runner.temp }}/ostudy-agent-handoff.md
+            ${{ runner.temp }}/ostudy-diagnostics/**
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Upload bounded failure evidence
@@ -180,8 +248,9 @@ jobs:
       - name: Publish exact-head qualification summary
         if: always()
         env:
-          GATE: ${{ steps.gate.outputs.gate }}
+          GATE: ${{ steps.gate.outputs.gate || 'unknown' }}
           JOB_STATUS: ${{ job.status }}
+          HANDOFF_STATUS: ${{ steps.handoff.outputs.status || 'unknown' }}
         run: |
           {
             echo '# ostudy qualification'
@@ -190,57 +259,12 @@ jobs:
             echo "- Runner: \`$RUNNER_NAME\`"
             echo "- Gate: \`$GATE\`"
             echo "- Diagnostic baseline: \`$OSTUDY_CI_LOG_FILTER\`"
-            echo "- Status: **$JOB_STATUS**"
+            echo "- Handoff evidence status: \`$HANDOFF_STATUS\`"
+            echo "- Status before evidence-integrity enforcement: **$JOB_STATUS**"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  apply-generated-candidates:
-    if: github.event_name == 'workflow_dispatch' && inputs.apply_candidates == true
-    permissions:
-      contents: write
-    runs-on: [self-hosted, linux, x64, ostudy-unified]
-    timeout-minutes: 15
-
-    steps:
-      - name: Check out selected branch
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          fetch-depth: 0
-
-      - name: Expose user-local tools
+      - name: Enforce handoff evidence integrity
+        if: always() && steps.handoff.outputs.status != '0'
         run: |
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Resolve and format canonical Rust sources
-        run: |
-          cargo metadata \
-            --manifest-path src-tauri/Cargo.toml \
-            --format-version 1 \
-            > /dev/null
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all
-          git diff --check
-
-      - name: Validate generated scope
-        run: |
-          changed="$(git status --porcelain | sed -E 's/^.. //')"
-          if [[ -z "$changed" ]]; then
-            echo "No generated Rust changes were required."
-            exit 0
-          fi
-          unexpected="$(printf '%s\n' "$changed" | grep -Ev '^src-tauri/(Cargo\.lock|.*\.rs)$' || true)"
-          if [[ -n "$unexpected" ]]; then
-            echo "Generated normalization changed unexpected files:" >&2
-            printf '%s\n' "$unexpected" >&2
-            exit 1
-          fi
-
-      - name: Commit canonical candidates
-        run: |
-          if git diff --quiet -- src-tauri; then
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src-tauri/Cargo.lock src-tauri/src src-tauri/build.rs
-          git commit -m "chore: normalize Rust source and lockfile"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "Evidence-derived handoff integrity failed; see the uploaded handoff artifact." >&2
+          exit 1

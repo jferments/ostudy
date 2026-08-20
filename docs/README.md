@@ -39,17 +39,21 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 ## Develop and maintain ostudy
 
 - [Development guide](development/guide.md) covers setup, repository layout, change design, and day-to-day commands.
+- [Git and pull-request workflow](development/workflow.md) defines direct-source publication, the PR acceptance ledger, exact-head review readiness, merge, release, and rollback.
+- [Testing and CI](development/testing-and-ci.md) defines validation tiers, read-only automatic qualification, machine-readable exact-head evidence, failure fingerprints, Android gates, and GitHub incident handling.
+- [Automated-maintainer index](agents/README.md) is the operational entry point for agents and LLM maintenance tools.
+- [Agent execution state](agents/EXECUTION-STATE.md) defines the multidimensional task state, completion predicate, PR ledger, and resumption protocol.
+- [Agent failure triage](agents/FAILURE-TRIAGE.md) defines classification, focused reproduction, retry budgets, and stopping rules.
+- [GitHub Connector workflow](agents/GITHUB-CONNECTOR.md) separates repository visibility, concrete write authorization, publication, CI, and service incidents.
 - [Android development architecture](development/android.md) documents the Kotlin/Rust boundary, generated project, emulator tests, package checks, and Android workflows.
 - [Android build and install](development/android-build-and-install.md) gives the exact debug/release build, APK install, artifact, and qualification commands.
 - [Unified Linux/Android runner](development/unified-linux-android-runner.md) documents the isolated single-VM CI architecture, security boundary, nested-KVM qualification, workflow model, recovery, and rollback.
 - [Unified runner setup and operations](development/unified-runner-setup.md) gives the maintained ML-tower/libvirt provisioning, registration, service-management, snapshot, and retirement procedure.
 - [Legacy split Android runner notes](development/android-self-hosted-runner.md) records the retired split-runner topology and migration context.
 - [Platform portability inventory](development/platform-portability-inventory.md) records the current OS assumptions and the phase responsible for removing each one.
-- [Git and pull-request workflow](development/workflow.md) defines the publication, review, merge, release, and rollback process.
-- [Testing and CI](development/testing-and-ci.md) is the authoritative description of validation tiers, GitHub incident handling, and the unified automated workflow.
 - [Dependency audit](development/dependency-audit.md) records the pinned dependency graph and native runtime trust boundaries.
 - The remaining documents in [`development/`](development/) are focused acceptance and regression plans for high-risk subsystems.
-- [`agents/`](agents/) contains additional guardrails for automated maintainers; [`AGENTS.md`](../AGENTS.md) remains their repository-wide entry point.
+- [`AGENTS.md`](../AGENTS.md) remains the repository-wide instruction entry point for automated maintainers.
 
 ## Reference material
 
@@ -59,10 +63,10 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 
 ## Historical records
 
-Documents that explain an earlier implementation stage, completed roadmap, or dated audit live under [`history/`](history/). They are retained for project archaeology, not as current product instructions. When historical material conflicts with maintained documentation or the source code, the maintained documentation and current implementation take precedence.
+Documents that explain an earlier implementation stage, completed roadmap, or dated audit live under [`history/`](history/). They are retained for project archaeology, not as current product instructions. When historical material conflicts with maintained documentation or source, the maintained documentation and current implementation take precedence.
 
-- [GitHub outage and PR #54 workflow audit — August 17, 2026](history/github-outage-audit-2026-08-17.md) records the service incident, the retained engineering fixes, the removed outage-specific workaround, and the permanent incident-response rules.
+- [GitHub outage and PR #54 workflow audit — August 17, 2026](history/github-outage-audit-2026-08-17.md) records the service incident, retained engineering fixes, removed outage-specific workaround, and permanent incident-response rules.
 
 ## Documentation maintenance
 
-A maintained guide should answer a reader's question in cohesive prose, link to deeper material instead of repeating it, and clearly distinguish current behavior from planned work. Implementation-stage notes and validation snapshots should be moved to `history/` when they stop describing the active project. Relative links and the small set of conventional root files are checked by the repository's static validation gate.
+A maintained guide should answer a reader's question in cohesive prose, link to deeper material instead of repeating it, and clearly distinguish current behavior from planned work. Implementation-stage notes and validation snapshots should move to `history/` when they stop describing the active project. Relative links and the conventional root/docs organization are checked by the static gate.
