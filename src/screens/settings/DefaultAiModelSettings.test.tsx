@@ -18,7 +18,6 @@ const settings: AppSettings = {
   decorativeArtwork: true,
   celebrationsEnabled: true,
   tutorialsEnabled: true,
-  deckViewDensity: "comfortable",
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,

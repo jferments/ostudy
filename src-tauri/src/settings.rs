@@ -29,7 +29,6 @@ const FONT_PRESETS: &[&str] = &[
 ];
 const MOTION_PREFERENCES: &[&str] = &["system", "full", "reduced", "none"];
 const MATERIAL_PREFERENCES: &[&str] = &["automatic", "rich", "simple"];
-const DECK_VIEW_DENSITIES: &[&str] = &["comfortable", "compact"];
 const AI_REASONING_EFFORTS: &[&str] = &[
     "automatic",
     "none",
@@ -59,7 +58,6 @@ pub struct AppSettingsDto {
     pub decorative_artwork: bool,
     pub celebrations_enabled: bool,
     pub tutorials_enabled: bool,
-    pub deck_view_density: String,
     pub confirm_deletions: bool,
     pub practice_shuffle: bool,
     pub desired_retention: f64,
@@ -139,8 +137,7 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         )?,
         decorative_artwork: get_setting(connection, "decorativeArtwork", true)?,
         celebrations_enabled: get_setting(connection, "celebrationsEnabled", true)?,
-        tutorials_enabled: get_setting(connection, "tutorialsEnabled", true)?,
-        deck_view_density: get_setting(connection, "deckViewDensity", "comfortable".to_string())?,
+        tutorials_enabled: get_setting(connection, "tutorialsEnabled", false)?,
         confirm_deletions: get_setting(connection, "confirmDeletions", true)?,
         practice_shuffle: get_setting(connection, "practiceShuffle", true)?,
         desired_retention: get_setting(connection, "desiredRetention", 0.90_f64)?,
@@ -274,10 +271,6 @@ fn save_settings_in_connection(
             serde_json::to_string(&settings.tutorials_enabled),
         ),
         (
-            "deckViewDensity",
-            serde_json::to_string(&settings.deck_view_density),
-        ),
-        (
             "confirmDeletions",
             serde_json::to_string(&settings.confirm_deletions),
         ),
@@ -344,12 +337,6 @@ fn validate_settings(settings: &AppSettingsDto) -> Result<(), CommandError> {
         MATERIAL_PREFERENCES,
         "invalid_material_preference",
         "Select an available material preference.",
-    )?;
-    validate_choice(
-        &settings.deck_view_density,
-        DECK_VIEW_DENSITIES,
-        "invalid_deck_view_density",
-        "Select an available deck-list density.",
     )?;
     validate_choice(
         &settings.ai_reasoning_effort,
@@ -428,6 +415,7 @@ mod tests {
         assert_eq!(settings.card_font, "plex");
         assert_eq!(settings.daily_new_limit, 20);
         assert_eq!(settings.daily_review_limit, 200);
+        assert!(!settings.tutorials_enabled);
         assert_eq!(settings.ai_reasoning_effort, "low");
         assert_eq!(current_ai_reasoning_effort(), "low");
         settings.daily_new_limit = 12;

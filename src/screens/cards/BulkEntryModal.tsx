@@ -19,6 +19,7 @@ import {
 interface BulkEntryModalProps {
   decks: DeckSummary[];
   defaultDeckId?: string;
+  destinationMode?: "selectable" | "fixed";
   onClose: () => void;
   onSaved: () => void | Promise<void>;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
@@ -36,17 +37,23 @@ interface DraftRow {
 export function BulkEntryModal({
   decks,
   defaultDeckId,
+  destinationMode = "selectable",
   onClose,
   onSaved,
   showToast,
 }: BulkEntryModalProps) {
   const activeDecks = decks.filter((deck) => deck.archivedAt === null);
-  const sequence = useRef(4);
-  const [deckId, setDeckId] = useState(
-    defaultDeckId && activeDecks.some((deck) => deck.id === defaultDeckId)
+  const fixedDeck =
+    destinationMode === "fixed"
+      ? activeDecks.find((deck) => deck.id === defaultDeckId) ?? null
+      : null;
+  const initialDeckId =
+    fixedDeck?.id ??
+    (defaultDeckId && activeDecks.some((deck) => deck.id === defaultDeckId)
       ? defaultDeckId
-      : (activeDecks[0]?.id ?? ""),
-  );
+      : (activeDecks[0]?.id ?? ""));
+  const sequence = useRef(4);
+  const [deckId, setDeckId] = useState(initialDeckId);
   const [rows, setRows] = useState<DraftRow[]>([emptyRow(1), emptyRow(2), emptyRow(3)]);
   const [analysis, setAnalysis] = useState<BulkAnalyzeResult | null>(null);
   const [duplicateRowIds, setDuplicateRowIds] = useState<Set<number>>(new Set());
@@ -67,7 +74,7 @@ export function BulkEntryModal({
     contextEntityId: "b".repeat(32),
     payload: { deckId, rows },
     onRecovered: (payload: { deckId: string; rows: DraftRow[] }) => {
-      setDeckId(payload.deckId);
+      setDeckId(destinationMode === "fixed" ? initialDeckId : payload.deckId);
       setRows(payload.rows);
       sequence.current = Math.max(4, ...payload.rows.map((row) => row.id + 1));
     },
@@ -192,24 +199,31 @@ export function BulkEntryModal({
     >
       <div className="bulk-entry-layout" aria-busy={isSaving}>
         <div className="bulk-entry-controls">
-          <label>
-            <span>Destination deck</span>
-            <select
-              value={deckId}
-              disabled={isSaving}
-              onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                setDeckId(event.currentTarget.value);
-                setErrorMessage(null);
-                clearAnalysis();
-              }}
-            >
-              {activeDecks.map((deck) => (
-                <option key={deck.id} value={deck.id}>
-                  {deck.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {destinationMode === "fixed" ? (
+            <div className="bulk-entry-fixed-destination" aria-label="Destination deck">
+              <span>Destination deck</span>
+              <strong>{fixedDeck?.name ?? "Current deck"}</strong>
+            </div>
+          ) : (
+            <label>
+              <span>Destination deck</span>
+              <select
+                value={deckId}
+                disabled={isSaving}
+                onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+                  setDeckId(event.currentTarget.value);
+                  setErrorMessage(null);
+                  clearAnalysis();
+                }}
+              >
+                {activeDecks.map((deck) => (
+                  <option key={deck.id} value={deck.id}>
+                    {deck.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <p>Exact duplicate question-and-answer pairs are detected before anything is saved.</p>
         </div>
 

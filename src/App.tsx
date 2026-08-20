@@ -7,6 +7,7 @@ import { NavigationSidebar } from "./components/NavigationSidebar";
 import { Toast } from "./components/Toast";
 import { useAppController } from "./controllers/useAppController";
 import { AppearanceProvider } from "./ui/appearance/AppearanceProvider";
+import { useLayoutMode } from "./ui/layout/layoutMode";
 import { AmbientBackdrop } from "./ui/materials/AmbientBackdrop";
 import { RouteTransition } from "./ui/motion/Motion";
 import { LoadingState } from "./ui/primitives/EmptyState";
@@ -41,7 +42,8 @@ export type {
 
 function App() {
   const controller = useAppController();
-  const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? true;
+  const layoutMode = useLayoutMode();
+  const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? false;
 
   return (
     <AppearanceProvider settings={controller.activeSettings}>
@@ -67,7 +69,11 @@ function App() {
         ) : (
           <>
             <AmbientBackdrop />
-            <div className={`${shellStyles.shell} app-shell`} data-ui-root="true">
+            <div
+              className={`${shellStyles.shell} app-shell`}
+              data-ui-root="true"
+              data-layout-mode={layoutMode}
+            >
               <IncomingShareCoordinator
                 refreshDecks={controller.refreshDecks}
                 showToast={controller.showToast}
@@ -77,7 +83,7 @@ function App() {
 
               <main className={`${shellStyles.main} main-area`}>
                 <RouteTransition
-                  routeKey={controller.section}
+                  routeKey={`${controller.section}:${controller.sectionRootRequestId}`}
                   relation="sibling"
                   className={shellStyles.routeLayer}
                 >
@@ -86,6 +92,8 @@ function App() {
                       {controller.section === "decks" ? (
                         <FlashcardsWorkspace
                           workspace={controller.flashcardsWorkspace}
+                          rootRequest={controller.flashcardsRootRequest}
+                          onRouteChange={controller.updateFlashcardsRoute}
                           onWorkspaceChange={controller.navigateFlashcardsWorkspace}
                           decks={controller.decks}
                           settings={controller.activeSettings}

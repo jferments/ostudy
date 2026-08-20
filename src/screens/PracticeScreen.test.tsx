@@ -189,7 +189,7 @@ function renderPractice(overrides?: Partial<React.ComponentProps<typeof Practice
 }
 
 async function startAndReveal(): Promise<void> {
-  fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+  await screen.findByRole("checkbox", { name: /Dog facts/u });
   await screen.findByText("1 cards in the scheduled session");
   fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
   fireEvent.click(await screen.findByRole("button", { name: "Show answer" }));
@@ -223,9 +223,72 @@ describe("PracticeScreen", () => {
     vi.mocked(practiceIpc.submitPracticeReview).mockResolvedValue(completedReview);
   });
 
+  it("defaults direct Practice entry to every active deck that contains cards", async () => {
+    renderPractice({ decks: [deck, secondDeck] });
+
+    await waitFor(() =>
+      expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledWith(
+        [deck.id, secondDeck.id],
+        [],
+      ),
+    );
+    const dogChoice = (await screen.findByRole("checkbox", {
+      name: /Dog facts/u,
+    })) as HTMLInputElement;
+    const catChoice = screen.getByRole("checkbox", { name: /Cat facts/u }) as HTMLInputElement;
+    expect(dogChoice.checked).toBe(true);
+    expect(catChoice.checked).toBe(true);
+  });
+
+  it("shows loading and error states without fabricating zero workload metrics", async () => {
+    const first = deferred<practiceIpc.PracticeWorkloadOverview>();
+    vi.mocked(practiceIpc.getPracticeWorkload).mockReturnValueOnce(first.promise);
+    renderPractice();
+
+    expect(await screen.findByText("Calculating the selected practice workload…")).toBeTruthy();
+    expect(screen.queryByText("reviews remaining")).toBeNull();
+    first.resolve(workload);
+    expect(await screen.findByText("reviews remaining")).toBeTruthy();
+
+    vi.mocked(practiceIpc.getPracticeWorkload)
+      .mockRejectedValueOnce(new Error("Workload service unavailable."))
+      .mockResolvedValueOnce(workload);
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+    expect(await screen.findByText("Workload unavailable")).toBeTruthy();
+    expect(screen.getByText("Workload service unavailable.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("1 cards in the scheduled session")).toBeTruthy();
+  });
+
+  it("treats an empty non-autostart launch as the canonical all-decks Practice root", async () => {
+    const onLaunchConsumed = vi.fn();
+    renderPractice({
+      decks: [deck, secondDeck],
+      launchRequest: {
+        requestId: 7,
+        deckIds: [],
+        tagIds: [],
+        cardIds: [],
+        autoStart: false,
+        mode: "scheduled",
+        returnTarget: null,
+      },
+      onLaunchConsumed,
+    });
+
+    await waitFor(() => expect(onLaunchConsumed).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledWith(
+        [deck.id, secondDeck.id],
+        [],
+      ),
+    );
+  });
+
   it("shows authoritative daily workload and starts scheduled mode", async () => {
     renderPractice();
-    fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+    await screen.findByRole("checkbox", { name: /Dog facts/u });
     expect(await screen.findByText("1 cards in the scheduled session")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
     await waitFor(() =>
@@ -247,7 +310,7 @@ describe("PracticeScreen", () => {
       .mockReturnValueOnce(second.promise);
     renderPractice({ decks: [deck, secondDeck] });
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+    await screen.findByRole("checkbox", { name: /Dog facts/u });
     await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("checkbox", { name: /Cat facts/u }));
     await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledTimes(2));
@@ -267,7 +330,7 @@ describe("PracticeScreen", () => {
   it("offers explicit extra practice when nothing fits the scheduled workload", async () => {
     vi.mocked(practiceIpc.getPracticeWorkload).mockResolvedValue(noDueWorkload);
     renderPractice({ decks: [noDueDeck] });
-    fireEvent.click(await screen.findByRole("checkbox", { name: /Reviewed dog facts/u }));
+    await screen.findByRole("checkbox", { name: /Reviewed dog facts/u });
     fireEvent.click(await screen.findByRole("button", { name: "Study this selection anyway" }));
     await waitFor(() =>
       expect(practiceIpc.startSelectedPractice).toHaveBeenCalledWith({
@@ -377,7 +440,7 @@ describe("PracticeScreen", () => {
       .mockRejectedValueOnce(new Error("Native response was lost."))
       .mockResolvedValueOnce(session);
     renderPractice();
-    fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+    await screen.findByRole("checkbox", { name: /Dog facts/u });
     await screen.findByText("1 cards in the scheduled session");
 
     fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));

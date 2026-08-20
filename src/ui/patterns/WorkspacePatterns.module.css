@@ -3,6 +3,7 @@
     width: min(100%, var(--page-width));
     min-width: 0;
     min-height: 100%;
+    container: workspace / inline-size;
     margin-inline: auto;
     padding: clamp(28px, 5vw, 56px) var(--ostudy-layout-page-gutter) calc(72px + var(--safe-bottom));
   }
@@ -38,6 +39,13 @@
   .secondaryActions { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: var(--ostudy-space-2); }
   .statPill { justify-content: space-between; gap: var(--ostudy-space-2); }
   .statPill strong { color: var(--ostudy-color-text-primary); font-variant-numeric: tabular-nums; }
+
+  @container workspace (max-width: 900px) {
+    .pageHeader { gap: var(--ostudy-space-4); }
+    .headerActions { max-width: 100%; }
+    .commandBar { align-items: stretch; }
+    .commandActions { flex: 1 1 100%; justify-content: flex-start; }
+  }
 
   @media (max-width: 760px) {
     .page { padding-block-start: calc(var(--safe-top) + var(--ostudy-space-5)); padding-inline: max(18px, var(--safe-left)) max(18px, var(--safe-right)); }

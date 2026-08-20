@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { CardEditorController } from "../controllers/cardEditorController";
 import { useDurableDraft } from "../controllers/useDurableDraft";
@@ -72,6 +72,7 @@ interface CardEditorScreenProps {
     template: CardTemplate,
   ) => void | Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
+  onRegisterBackAction?: (action: (() => void) | null) => void;
   onMoveCopy?: () => void;
 }
 
@@ -83,6 +84,7 @@ export function CardEditorScreen({
   onSaved,
   onTemplateGenerated,
   onDirtyChange,
+  onRegisterBackAction,
   onMoveCopy,
 }: CardEditorScreenProps) {
   const existing = card !== null && card.noteId !== "";
@@ -143,6 +145,7 @@ export function CardEditorScreen({
   const controllerRef = useRef<CardEditorController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new CardEditorController();
   const controller = controllerRef.current;
+  const cancelRef = useRef<(() => Promise<void>) | null>(null);
   const confirm = useConfirm();
 
   const title = existing ? "Edit flashcard" : "Add flashcard";
@@ -604,6 +607,16 @@ export function CardEditorScreen({
     setAssetDraftId(null);
     onCancel();
   }
+
+  cancelRef.current = cancel;
+  useLayoutEffect(() => {
+    if (!onRegisterBackAction) return;
+    const action = () => {
+      void cancelRef.current?.();
+    };
+    onRegisterBackAction(action);
+    return () => onRegisterBackAction(null);
+  }, [onRegisterBackAction]);
 
   const saveLabel = selectedCustomTemplate
     ? `Generate ${selectedCustomTemplate.rules.length} ${

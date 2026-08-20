@@ -21,7 +21,11 @@ expectContains(
   "stable action button sizing",
 );
 expectContains(css, ".sectionActions { display: flex;", "folder section action group");
-expectContains(css, "@media (max-width: 640px)", "compact breakpoint");
+expectContains(
+  css,
+  "@container deck-library (max-width: 640px)",
+  "compact deck-library container breakpoint",
+);
 expectContains(
   css,
   ".toolbarActions { width: 100%; flex-wrap: wrap; justify-content: stretch; }",
@@ -45,7 +49,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Default desktop sizing and responsive deck-library controls preserve usable action groups.",
+  "OK   Default desktop sizing and container-responsive deck-library controls preserve usable action groups.",
 );
 
 function expectContains(source, expected, label) {

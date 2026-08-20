@@ -21,7 +21,7 @@ const fallbackProfile: AppearanceProfile = {
   material: "standard",
   artworkEnabled: true,
   celebrationsEnabled: true,
-  tutorialsEnabled: true,
+  tutorialsEnabled: false,
   coarsePointer: false,
   hoverAvailable: true,
   forcedColors: false,

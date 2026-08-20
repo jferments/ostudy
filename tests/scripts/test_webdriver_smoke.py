@@ -27,7 +27,7 @@ ANDROID_SMOKE_TEST_PATH = (
     / "AndroidSmokeTest.kt"
 )
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
-CREATE_CARDS_PATH = ROOT / "src" / "screens" / "flashcards" / "CreateCardsWorkspace.tsx"
+DECKS_SCREEN_PATH = ROOT / "src" / "screens" / "DecksScreen.tsx"
 TOUR_PROVIDER_PATH = ROOT / "src" / "ui" / "tutorials" / "TourProvider.tsx"
 SPEC = importlib.util.spec_from_file_location("ostudy_webdriver_smoke", SMOKE_PATH)
 if SPEC is None or SPEC.loader is None:
@@ -121,8 +121,8 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn("PRACTICE_COMPLETE_SELECTOR", harness)
         self.assertNotIn('"Session complete"', harness)
 
-    def test_create_cards_exposes_stable_bulk_add_automation_hook(self) -> None:
-        source = CREATE_CARDS_PATH.read_text(encoding="utf-8")
+    def test_deck_detail_exposes_stable_bulk_add_automation_hook(self) -> None:
+        source = DECKS_SCREEN_PATH.read_text(encoding="utf-8")
         self.assertIn('data-testid="bulk-add-cards"', source)
 
     def test_android_smoke_entry_point_installs_test_bridge_only_when_requested(self) -> None:
@@ -179,10 +179,13 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
             package_verifier,
         )
 
-    def test_android_smoke_build_cannot_auto_start_contextual_tutorials(self) -> None:
+    def test_tutorials_require_an_explicit_start_event(self) -> None:
         source = TOUR_PROVIDER_PATH.read_text(encoding="utf-8")
-        self.assertIn("VITE_OSTUDY_ANDROID_TEST_BRIDGE", source)
-        self.assertIn("CONTEXTUAL_AUTO_START_ENABLED", source)
+        legacy_auto_start_symbol = "CONTEXTUAL_AUTO_" + "START_ENABLED"
+        self.assertIn('window.addEventListener("ostudy:start-tutorial"', source)
+        self.assertNotIn(legacy_auto_start_symbol, source)
+        self.assertNotIn("findContextualModule", source)
+        self.assertNotIn("autoStartTimer", source)
 
 
 if __name__ == "__main__":

@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as generatedImport from "../ipc/generated-import";
 import * as commonIpc from "../ipc/common";
 import * as decksIpc from "../ipc/decks";
 import * as settingsIpc from "../ipc/settings";
+import { dispatchPlatformBack, platformBackHandlerCountForTests } from "../platform/backNavigation";
 import * as platformFiles from "../platform/files";
 import { DecksScreen } from "./DecksScreen";
 
@@ -60,9 +61,24 @@ vi.mock("../ipc/decks", () => ({
   updateDeck: vi.fn(),
 }));
 
-vi.mock("./CardEditorScreen", () => ({
-  CardEditorScreen: () => <div>Card editor</div>,
-}));
+vi.mock("./CardEditorScreen", async () => {
+  const React = await import("react");
+  return {
+    CardEditorScreen: ({
+      onCancel,
+      onRegisterBackAction,
+    }: {
+      onCancel: () => void;
+      onRegisterBackAction?: (action: (() => void) | null) => void;
+    }) => {
+      React.useLayoutEffect(() => {
+        onRegisterBackAction?.(onCancel);
+        return () => onRegisterBackAction?.(null);
+      }, [onCancel, onRegisterBackAction]);
+      return <div>Card editor</div>;
+    },
+  };
+});
 
 const deck: decksIpc.DeckSummary = {
   id: "a".repeat(32),
@@ -154,7 +170,7 @@ describe("DecksScreen", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Dog facts" })).toBeTruthy();
     });
-    expect(await screen.findByLabelText("Reversible")).toBeTruthy();
+    expect(await screen.findByLabelText("Reversible card")).toBeTruthy();
     expect(screen.queryByText(/card variants/u)).toBeNull();
 
     const detailPractice = screen.getByRole("button", { name: "Practice" });
@@ -162,6 +178,39 @@ describe("DecksScreen", () => {
     fireEvent.click(detailPractice);
 
     expect(onPracticeDeck).toHaveBeenCalledWith(deck.id, "detail");
+  });
+
+  it("keeps Android Back owned through editor, detail, and library", async () => {
+    const view = render(
+      <DecksScreen
+        decks={[deck]}
+        settings={settings}
+        refreshDecks={async () => [deck]}
+        onPracticeDeck={vi.fn()}
+        onDirtyChange={vi.fn()}
+        showToast={vi.fn()}
+      />,
+    );
+
+    const deckButton = screen.getByText("Dog facts").closest("button");
+    expect(deckButton).not.toBeNull();
+    fireEvent.click(deckButton as HTMLButtonElement);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Dog facts" })).toBeTruthy());
+    await waitFor(() => expect(platformBackHandlerCountForTests()).toBe(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add flashcard" }));
+    await waitFor(() => expect(screen.getByText("Card editor")).toBeTruthy());
+    expect(platformBackHandlerCountForTests()).toBe(1);
+
+    await act(async () => expect(dispatchPlatformBack()).toBe(true));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Dog facts" })).toBeTruthy());
+    expect(screen.queryByText("Card editor")).toBeNull();
+    expect(platformBackHandlerCountForTests()).toBe(1);
+
+    await act(async () => expect(dispatchPlatformBack()).toBe(true));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Decks" })).toBeTruthy());
+    await waitFor(() => expect(platformBackHandlerCountForTests()).toBe(0));
+    view.unmount();
   });
 
   it("imports generated JSON through the ordinary Import deck button", async () => {

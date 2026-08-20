@@ -34,7 +34,7 @@ import {
   type RecentDeckSummary,
 } from "./practice/confidence";
 import { PracticeComplete } from "./practice/PracticeComplete";
-import { PracticeSetup } from "./practice/PracticeSetup";
+import { PracticeSetup, type PracticeWorkloadState } from "./practice/PracticeSetup";
 
 interface PracticeScreenProps {
   decks: DeckSummary[];
@@ -76,7 +76,11 @@ export function PracticeScreen({
   showToast,
 }: PracticeScreenProps) {
   const activeDecks = decks.filter((deck) => deck.archivedAt === null);
-  const [selectedDeckIds, setSelectedDeckIds] = useState<Set<string>>(new Set());
+  const [selectedDeckIds, setSelectedDeckIds] = useState<Set<string>>(() =>
+    new Set(
+      launchRequest || restoreCheckpoint ? [] : defaultPracticeDeckIds(activeDecks),
+    ),
+  );
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [temporaryCardIds, setTemporaryCardIds] = useState<string[]>([]);
   const [shuffle, setShuffle] = useState(settings.practiceShuffle);
@@ -86,8 +90,9 @@ export function PracticeScreen({
   const [position, setPosition] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [previewSet, setPreviewSet] = useState<ReviewPreviewSet | null>(null);
-  const [workload, setWorkload] = useState<PracticeWorkloadOverview | null>(null);
-  const [isLoadingWorkload, setIsLoadingWorkload] = useState(false);
+  const [workloadState, setWorkloadState] = useState<PracticeWorkloadState>(() =>
+    selectedDeckIds.size > 0 ? { status: "loading" } : { status: "idle" },
+  );
   const [isLoadingWindow, setIsLoadingWindow] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false);
@@ -162,21 +167,16 @@ export function PracticeScreen({
   const loadWorkload = useCallback(async (deckIds: string[], tagIds: string[]): Promise<void> => {
     if (deckIds.length === 0 && tagIds.length === 0) {
       controller.invalidateWorkload();
-      setWorkload(null);
-      setIsLoadingWorkload(false);
+      setWorkloadState({ status: "idle" });
       return;
     }
-    setIsLoadingWorkload(true);
+    setWorkloadState({ status: "loading" });
     try {
       const loaded = await controller.workload(deckIds, tagIds);
       if (!loaded) return;
-      setWorkload(loaded);
-      setErrorMessage(null);
-      setIsLoadingWorkload(false);
+      setWorkloadState(classifyWorkload(loaded));
     } catch (error: unknown) {
-      setWorkload(null);
-      setErrorMessage(getErrorMessage(error));
-      setIsLoadingWorkload(false);
+      setWorkloadState({ status: "error", message: getErrorMessage(error) });
     }
   }, [controller]);
 
@@ -330,9 +330,16 @@ export function PracticeScreen({
       }
       return;
     }
-    const eligible = launchRequest.deckIds.filter((deckId) =>
+    const requestedDeckIds = launchRequest.deckIds.filter((deckId) =>
       activeDecks.some((deck) => deck.id === deckId && deck.generatedCardCount > 0),
     );
+    const isCanonicalRootLaunch =
+      !launchRequest.autoStart &&
+      requestedDeckIds.length === 0 &&
+      launchRequest.tagIds.length === 0;
+    const eligible = isCanonicalRootLaunch
+      ? defaultPracticeDeckIds(activeDecks)
+      : requestedDeckIds;
     setTemporaryCardIds([]);
     setSelectedDeckIds(new Set(eligible));
     setSelectedTagIds(new Set(launchRequest.tagIds));
@@ -768,20 +775,35 @@ export function PracticeScreen({
         selectedDeckIds={selectedDeckIds}
         shuffle={shuffle}
         isStarting={isStarting}
-        isLoadingWorkload={isLoadingWorkload}
-        workload={workload}
+        workloadState={workloadState}
         recentDecks={recentDecks}
         onSelectedDeckIdsChange={(next) => {
           setSelectedDeckIds(next);
           setSelectedTagIds(new Set());
         }}
         onShuffleChange={setShuffle}
+        onRetryWorkload={() =>
+          void loadWorkload([...selectedDeckIds], [...selectedTagIds])
+        }
         onStart={(deckIds, requestedShuffle, mode) =>
           void beginSession(deckIds, [...selectedTagIds], requestedShuffle, mode)
         }
       />
     </div>
   );
+}
+
+function defaultPracticeDeckIds(decks: DeckSummary[]): string[] {
+  return decks
+    .filter((deck) => deck.archivedAt === null && deck.generatedCardCount > 0)
+    .map((deck) => deck.id);
+}
+
+function classifyWorkload(workload: PracticeWorkloadOverview): PracticeWorkloadState {
+  const available = workload.scheduledReviews + workload.scheduledNew + workload.extraAvailable;
+  return available === 0
+    ? { status: "empty", value: workload }
+    : { status: "loaded", value: workload };
 }
 
 function operationIdForStart(

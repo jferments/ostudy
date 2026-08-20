@@ -22,8 +22,8 @@
 
   .routeLayer { min-width: 0; min-height: 100%; }
 
-  @media (min-width: 761px) and (max-width: 1020px) {
-    .shell { grid-template-columns: var(--ostudy-navigation-medium-width) minmax(0, 1fr); }
+  @media (min-width: 761px) and (max-width: 1179px) {
+    .shell { grid-template-columns: clamp(184px, 23vw, 212px) minmax(0, 1fr); }
   }
 
   @media (max-width: 760px) {

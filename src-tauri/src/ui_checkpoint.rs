@@ -23,7 +23,8 @@ const CHECKPOINT_SCHEMA_VERSION: i64 = 1;
 const MAX_CHECKPOINT_BYTES: usize = 64 * 1024;
 const DEVICE_STATE_DIRECTORY: &str = "device-state";
 const CHECKPOINT_FILENAME: &str = "ui-checkpoint-v1.json";
-const FLASHCARDS_WORKSPACES: &[&str] = &["decks", "templates", "search", "transfer", "create"];
+const FLASHCARDS_WORKSPACES: &[&str] = &["decks", "templates", "search", "transfer"];
+const LEGACY_CREATE_WORKSPACE: &str = "create";
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -91,13 +92,14 @@ pub fn get_ui_checkpoint(
         quarantine_invalid_checkpoint(paths.inner(), &path)?;
         return Ok(None);
     }
-    let checkpoint: UiCheckpointDto = match serde_json::from_slice(&bytes) {
+    let mut checkpoint: UiCheckpointDto = match serde_json::from_slice(&bytes) {
         Ok(checkpoint) => checkpoint,
         Err(_) => {
             quarantine_invalid_checkpoint(paths.inner(), &path)?;
             return Ok(None);
         }
     };
+    normalize_legacy_checkpoint(&mut checkpoint);
     if validate_checkpoint(&checkpoint).is_err() {
         quarantine_invalid_checkpoint(paths.inner(), &path)?;
         return Ok(None);
@@ -110,7 +112,7 @@ pub fn save_ui_checkpoint(
     paths: State<'_, AppPaths>,
     input: SaveUiCheckpointInput,
 ) -> Result<UiCheckpointDto, CommandError> {
-    let checkpoint = UiCheckpointDto {
+    let mut checkpoint = UiCheckpointDto {
         schema_version: CHECKPOINT_SCHEMA_VERSION,
         updated_at: unix_time_millis()?,
         section: input.section,
@@ -120,6 +122,7 @@ pub fn save_ui_checkpoint(
         practice: input.practice,
         analytics: input.analytics,
     };
+    normalize_legacy_checkpoint(&mut checkpoint);
     validate_checkpoint(&checkpoint)?;
     let encoded = serde_json::to_vec(&checkpoint).map_err(CommandError::serialization)?;
     if encoded.len() > MAX_CHECKPOINT_BYTES {
@@ -156,6 +159,14 @@ pub fn save_ui_checkpoint(
 #[tauri::command]
 pub fn clear_ui_checkpoint(paths: State<'_, AppPaths>) -> Result<(), CommandError> {
     remove_file_if_exists(&checkpoint_path(paths.inner()))
+}
+
+fn normalize_legacy_checkpoint(checkpoint: &mut UiCheckpointDto) {
+    if checkpoint.flashcards_workspace.as_deref() == Some(LEGACY_CREATE_WORKSPACE) {
+        checkpoint.flashcards_workspace = Some("decks".to_string());
+        checkpoint.deck_id = None;
+        checkpoint.editor_draft_id = None;
+    }
 }
 
 fn validate_checkpoint(checkpoint: &UiCheckpointDto) -> Result<(), CommandError> {
@@ -292,6 +303,25 @@ mod tests {
             analytics: None,
         };
         validate_checkpoint(&checkpoint).expect("checkpoint should be valid");
+    }
+
+    #[test]
+    fn checkpoint_normalizes_the_removed_create_workspace() {
+        let mut checkpoint = UiCheckpointDto {
+            schema_version: 1,
+            updated_at: 1,
+            section: CheckpointSection::Decks,
+            flashcards_workspace: Some("create".to_string()),
+            deck_id: Some("a".repeat(32)),
+            editor_draft_id: Some("b".repeat(32)),
+            practice: None,
+            analytics: None,
+        };
+        normalize_legacy_checkpoint(&mut checkpoint);
+        assert_eq!(checkpoint.flashcards_workspace.as_deref(), Some("decks"));
+        assert_eq!(checkpoint.deck_id, None);
+        assert_eq!(checkpoint.editor_draft_id, None);
+        validate_checkpoint(&checkpoint).expect("normalized checkpoint should be valid");
     }
 
     #[test]

@@ -1,0 +1,23 @@
+@layer components {
+  .cardBrowserPanel { container: card-browser / inline-size; }
+  .cardBrowserToolbar {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(220px, 1fr) auto auto;
+    align-items: end;
+    gap: var(--ostudy-space-3);
+  }
+  .cardBrowserActions { display: flex; min-width: 0; flex-wrap: wrap; justify-content: flex-end; gap: var(--ostudy-space-2); }
+  .emptyActions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--ostudy-space-2); }
+
+  @container card-browser (max-width: 840px) {
+    .cardBrowserToolbar { grid-template-columns: minmax(0, 1fr) auto; }
+    .cardBrowserActions { grid-column: 1 / -1; width: 100%; }
+    .cardBrowserActions > * { flex: 1 1 180px; }
+  }
+
+  @container card-browser (max-width: 540px) {
+    .cardBrowserToolbar { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+    .cardBrowserActions > * { flex-basis: 130px; }
+  }
+}

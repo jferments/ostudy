@@ -233,7 +233,16 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     find_workspace_tab(session_id, "Templates", deadline)
     find_workspace_tab(session_id, "Search", deadline)
     find_workspace_tab(session_id, "Import/Export", deadline)
-    find_workspace_tab(session_id, "Create Cards", deadline)
+    workspace_labels = execute(
+        session_id,
+        """
+        return [...document.querySelectorAll(
+          'main [role=tablist][aria-label="Flashcards workspaces"] button[role=tab]'
+        )].map((button) => button.getAttribute('aria-label'));
+        """,
+    )
+    if workspace_labels != ["Decks", "Templates", "Search", "Import/Export"]:
+        raise AssertionError(f"Unexpected compact Flashcards workspaces: {workspace_labels!r}")
     assert_no_horizontal_overflow(session_id, "compact Flashcards workspace")
 
 
@@ -317,44 +326,49 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     )
     webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
 
-    create_cards = find_workspace_tab(session_id, "Create Cards", deadline)
-    webdriver.click(session_id, create_cards)
+    deck_tab = find_workspace_tab(session_id, "Decks", deadline)
+    webdriver.click(session_id, deck_tab)
     webdriver.find_element(
         session_id,
         "css selector",
-        "main [data-testid='create-cards-workspace']",
+        "main [aria-label='Deck library controls']",
         deadline,
     )
-    hero = execute(
+    workspace = execute(
         session_id,
         """
-        const surface = document.querySelector("main [data-testid='create-cards-hero']");
-        const heading = surface?.querySelector('h2');
-        if (!(heading instanceof HTMLElement) || !(surface instanceof HTMLElement)) return null;
-        const h = heading.getBoundingClientRect();
-        const s = surface.getBoundingClientRect();
+        const root = document.querySelector('main .flashcards-workspace');
+        const tabList = document.querySelector(
+          'main [role="tablist"][aria-label="Flashcards workspaces"]'
+        );
+        const toolbar = document.querySelector("main [aria-label='Deck library controls']");
+        if (!(root instanceof HTMLElement) || !(tabList instanceof HTMLElement)
+            || !(toolbar instanceof HTMLElement)) return null;
+        const tabs = [...tabList.querySelectorAll('[role="tab"]')];
+        const rootRect = root.getBoundingClientRect();
+        const toolbarRect = toolbar.getBoundingClientRect();
         return {
-          headingLeft: h.left,
-          headingRight: h.right,
-          surfaceLeft: s.left,
-          surfaceRight: s.right,
-          headingClient: heading.clientWidth,
-          headingScroll: heading.scrollWidth,
-          surfaceClient: surface.clientWidth,
-          surfaceScroll: surface.scrollWidth
+          labels: tabs.map((tab) => tab.getAttribute('aria-label')),
+          rootClient: root.clientWidth,
+          rootScroll: root.scrollWidth,
+          toolbarLeft: toolbarRect.left,
+          toolbarRight: toolbarRect.right,
+          rootLeft: rootRect.left,
+          rootRight: rootRect.right,
         };
         """,
     )
-    if not isinstance(hero, dict):
-        raise AssertionError("Could not measure the Create Cards hero at medium desktop width")
+    if not isinstance(workspace, dict):
+        raise AssertionError("Could not measure the Decks workspace at medium desktop width")
+    if workspace.get("labels") != ["Decks", "Templates", "Search", "Import/Export"]:
+        raise AssertionError(f"Unexpected medium Flashcards workspaces: {workspace!r}")
     if (
-        float(hero["headingLeft"]) < float(hero["surfaceLeft"]) - 1
-        or float(hero["headingRight"]) > float(hero["surfaceRight"]) + 1
-        or int(hero["headingScroll"]) > int(hero["headingClient"]) + 1
-        or int(hero["surfaceScroll"]) > int(hero["surfaceClient"]) + 1
+        int(workspace["rootScroll"]) > int(workspace["rootClient"]) + 1
+        or float(workspace["toolbarLeft"]) < float(workspace["rootLeft"]) - 1
+        or float(workspace["toolbarRight"]) > float(workspace["rootRight"]) + 1
     ):
-        raise AssertionError(f"Create Cards hero text escaped its surface: {hero!r}")
-    assert_no_horizontal_overflow(session_id, "medium Create Cards workspace")
+        raise AssertionError(f"Deck library controls escaped the medium workspace: {workspace!r}")
+    assert_no_horizontal_overflow(session_id, "medium Decks workspace")
 
     search = find_workspace_tab(session_id, "Search", deadline)
     webdriver.click(session_id, search)
@@ -424,24 +438,9 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
     webdriver.wait_for_main_heading(session_id, deck_name, deadline)
     wait_for_overlay_inactive(session_id, deadline, "new deck detail assertions")
 
-    back = webdriver.find_element(
-        session_id,
-        "xpath",
-        "//main//button[contains(normalize-space(.), 'All decks')]",
-        deadline,
-    )
-    webdriver.click(session_id, back)
-    webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
-    wait_for_overlay_inactive(session_id, deadline, "Flashcards tabs after returning from new deck")
+    # Bulk Add is a deck-local authoring action after Phase 1. Stay on the
+    # newly created deck detail rather than navigating to the removed Create Cards workspace.
 
-    create_cards = find_workspace_tab(session_id, "Create Cards", deadline)
-    webdriver.click(session_id, create_cards)
-    webdriver.find_element(
-        session_id,
-        "css selector",
-        "main [data-testid='create-cards-workspace']",
-        deadline,
-    )
     bulk_add = webdriver.find_element(
         session_id,
         "css selector",
@@ -460,42 +459,44 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
         session_id,
         """
         const controls = document.querySelector('.bulk-entry-controls');
-        const select = controls?.querySelector('select');
+        const destination = controls?.querySelector('.bulk-entry-fixed-destination');
         const help = controls?.querySelector('p');
-        if (!(controls instanceof HTMLElement) || !(select instanceof HTMLElement) || !(help instanceof HTMLElement)) {
+        if (!(controls instanceof HTMLElement) || !(destination instanceof HTMLElement) || !(help instanceof HTMLElement)) {
           return null;
         }
         const c = controls.getBoundingClientRect();
-        const s = select.getBoundingClientRect();
+        const d = destination.getBoundingClientRect();
         const h = help.getBoundingClientRect();
         return {
           controlsLeft: c.left,
           controlsRight: c.right,
-          selectLeft: s.left,
-          selectRight: s.right,
+          destinationLeft: d.left,
+          destinationRight: d.right,
           helpLeft: h.left,
           helpRight: h.right,
-          selectMinWidth: getComputedStyle(select).minWidth,
-          selectMaxWidth: getComputedStyle(select).maxWidth
+          controlsClient: controls.clientWidth,
+          controlsScroll: controls.scrollWidth
         };
         """,
     )
     if not isinstance(measurements, dict):
-        raise AssertionError(f"Could not measure Bulk Add controls: {measurements!r}")
+        raise AssertionError(f"Could not measure deck-local Bulk Add controls: {measurements!r}")
 
+    controls_left = float(measurements["controlsLeft"])
     controls_right = float(measurements["controlsRight"])
-    select_right = float(measurements["selectRight"])
+    destination_left = float(measurements["destinationLeft"])
+    destination_right = float(measurements["destinationRight"])
     help_left = float(measurements["helpLeft"])
     help_right = float(measurements["helpRight"])
-    if select_right > help_left - 8:
+    if (
+        destination_left < controls_left - 1
+        or destination_right > controls_right + 1
+        or help_left < controls_left - 1
+        or help_right > controls_right + 1
+        or int(measurements["controlsScroll"]) > int(measurements["controlsClient"]) + 1
+    ):
         raise AssertionError(
-            "Bulk Add destination selector overlaps explanatory text: "
-            f"selectRight={select_right:.1f}, helpLeft={help_left:.1f}, "
-            f"styles={measurements!r}"
-        )
-    if select_right > controls_right + 1 or help_right > controls_right + 1:
-        raise AssertionError(
-            f"Bulk Add controls escaped their container: {measurements!r}"
+            f"Deck-local Bulk Add controls escaped their container: {measurements!r}"
         )
     assert_no_horizontal_overflow(session_id, "Bulk Add dialog")
 

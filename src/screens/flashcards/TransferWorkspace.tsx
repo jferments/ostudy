@@ -6,7 +6,6 @@ import { DecksController } from "../../controllers/decksController";
 import { createOperationId, getErrorMessage } from "../../ipc/common";
 import type { DeckSummary } from "../../ipc/decks";
 import { publishExport, selectExternalImport, shareExport } from "../../platform/files";
-import { Artwork } from "../../ui/artwork/Artwork";
 import { Icon } from "../../ui/icons/Icon";
 import { ResponsiveGrid, Stack } from "../../ui/layout/Layout";
 import { Button } from "../../ui/primitives/Button";
@@ -104,10 +103,6 @@ export function TransferWorkspace({
         </Surface>
       </ResponsiveGrid>
       <AndroidDeckSharePanel decks={decks} showToast={showToast} />
-      <Surface level={1} material="soft" className={styles.transferHelp}>
-        <Artwork slot="tutorial.welcome" />
-        <div><h2>Local and portable</h2><p>Deck exports contain the study content needed to move a deck between ostudy installations. Full-library backup remains available in Settings.</p></div>
-      </Surface>
     </Stack>
   );
 }

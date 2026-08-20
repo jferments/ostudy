@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -10,20 +11,26 @@ import type { DeckOpenRequest } from "../../App";
 import type { ShowToast } from "../../components/Toast";
 import type { DeckSummary } from "../../ipc/decks";
 import type { AppSettings } from "../../ipc/settings";
-import type { FlashcardsWorkspaceName } from "../../navigation/flashcardsRoutes";
+import type {
+  FlashcardsRootRequest,
+  FlashcardsRouteState,
+  FlashcardsWorkspaceName,
+} from "../../navigation/flashcardsRoutes";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
 import { Icon, type IconName } from "../../ui/icons/Icon";
 import { RouteTransition } from "../../ui/motion/Motion";
 import { PageHeader, PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { CardsScreen } from "../CardsScreen";
 import { TemplatesScreen } from "../TemplatesScreen";
-import { CreateCardsWorkspace } from "./CreateCardsWorkspace";
+import { BulkEntryModal } from "../cards/BulkEntryModal";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
 import { TransferWorkspace } from "./TransferWorkspace";
 import styles from "./FlashcardsWorkspace.module.css";
 
 interface FlashcardsWorkspaceProps {
   workspace: FlashcardsWorkspaceName;
+  rootRequest: FlashcardsRootRequest | null;
+  onRouteChange: (route: FlashcardsRouteState) => void;
   onWorkspaceChange: (workspace: FlashcardsWorkspaceName) => void | Promise<void>;
   decks: DeckSummary[];
   settings: AppSettings;
@@ -47,11 +54,18 @@ const WORKSPACES: ReadonlyArray<{
   { value: "templates", label: "Templates", compactLabel: "Templates", icon: "template" },
   { value: "search", label: "Search", compactLabel: "Search", icon: "search" },
   { value: "transfer", label: "Import/Export", compactLabel: "Transfer", icon: "import" },
-  { value: "create", label: "Create Cards", compactLabel: "Create", icon: "plus" },
 ];
+
+const LIBRARY_ROUTE: FlashcardsRouteState = {
+  workspace: "decks",
+  deckView: "library",
+  deckId: null,
+};
 
 export function FlashcardsWorkspace({
   workspace,
+  rootRequest,
+  onRouteChange,
   onWorkspaceChange,
   decks,
   settings,
@@ -64,50 +78,36 @@ export function FlashcardsWorkspace({
   onTemplateDirtyChange,
   showToast,
 }: FlashcardsWorkspaceProps) {
-  const [deckNested, setDeckNested] = useState(false);
+  const [, setDeckRoute] = useState<FlashcardsRouteState>(LIBRARY_ROUTE);
+  const [bulkDeckId, setBulkDeckId] = useState<string | null>(null);
   const buttonsRef = useRef<Array<HTMLButtonElement | null>>([]);
-  const panelRef = useRef<HTMLDivElement | null>(null);
   const workspaceChangeRef = useRef(onWorkspaceChange);
+  const effectiveRootRequestId = rootRequest?.workspace === workspace ? rootRequest.requestId : 0;
 
   useLayoutEffect(() => {
     workspaceChangeRef.current = onWorkspaceChange;
   }, [onWorkspaceChange]);
 
-  useLayoutEffect(() => {
-    if (workspace !== "decks" || !panelRef.current) {
-      setDeckNested(false);
-      return;
-    }
-    const panel = panelRef.current;
-    const update = () => {
-      setDeckNested(Boolean(panel.querySelector(".back-button:not([disabled])")));
-    };
-    update();
-    const observer = new MutationObserver(update);
-    observer.observe(panel, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["disabled"],
-    });
-    return () => observer.disconnect();
-  }, [workspace]);
+  const reportDeckRoute = useCallback(
+    (route: FlashcardsRouteState) => {
+      setDeckRoute(route);
+      onRouteChange(route);
+    },
+    [onRouteChange],
+  );
 
   useEffect(() => {
-    if (workspace === "decks" && !deckNested) return;
+    if (workspace === "decks") return;
+    onRouteChange({ workspace, deckView: "library", deckId: null });
+  }, [onRouteChange, workspace]);
+
+  useEffect(() => {
+    if (workspace === "decks") return;
     return registerPlatformBackHandler(() => {
-      if (workspace === "decks") {
-        const back = panelRef.current?.querySelector<HTMLButtonElement>(
-          ".back-button:not([disabled])",
-        );
-        if (!back) return false;
-        back.click();
-        return true;
-      }
       void workspaceChangeRef.current("decks");
       return true;
     });
-  }, [deckNested, workspace]);
+  }, [workspace]);
 
   function activateAt(index: number): void {
     const item = WORKSPACES[index];
@@ -126,6 +126,8 @@ export function FlashcardsWorkspace({
     event.preventDefault();
     activateAt(next);
   }
+
+  const bulkDeck = decks.find((deck) => deck.id === bulkDeckId && deck.archivedAt === null) ?? null;
 
   return (
     <PageScaffold width="full" className={`flashcards-workspace ${styles.workspace}`}>
@@ -166,55 +168,62 @@ export function FlashcardsWorkspace({
         </div>
       </div>
 
-      <div ref={panelRef}>
-        <RouteTransition routeKey={workspace} relation="sibling" className={styles.panel}>
-          {workspace === "decks" ? (
-            <DeckLibraryWorkspace
-              decks={decks}
-              settings={settings}
-              refreshDecks={refreshDecks}
-              onPracticeDeck={onPracticeDeck}
-              openDeckRequest={openDeckRequest}
-              onOpenDeckRequestConsumed={onOpenDeckRequestConsumed}
-              onManageTemplates={() => onWorkspaceChange("templates")}
-              onCreateCards={() => onWorkspaceChange("create")}
-              onCardDirtyChange={onCardDirtyChange}
-              showToast={showToast}
-            />
-          ) : null}
-          {workspace === "templates" ? (
-            <TemplatesScreen
-              onBack={() => onWorkspaceChange("decks")}
-              onDirtyChange={onTemplateDirtyChange}
-              showToast={showToast}
-            />
-          ) : null}
-          {workspace === "search" ? (
-            <CardsScreen
-              decks={decks}
-              refreshDecks={refreshDecks}
-              onPracticeCards={onPracticeCards}
-              onDirtyChange={onCardDirtyChange}
-              showToast={showToast}
-            />
-          ) : null}
-          {workspace === "transfer" ? (
-            <TransferWorkspace
-              decks={decks}
-              refreshDecks={refreshDecks}
-              showToast={showToast}
-            />
-          ) : null}
-          {workspace === "create" ? (
-            <CreateCardsWorkspace
-              decks={decks}
-              refreshDecks={refreshDecks}
-              onDirtyChange={onCardDirtyChange}
-              showToast={showToast}
-            />
-          ) : null}
-        </RouteTransition>
-      </div>
+      <RouteTransition
+        routeKey={`${workspace}:${workspace === "decks" ? 0 : effectiveRootRequestId}`}
+        relation="sibling"
+        className={styles.panel}
+      >
+        {workspace === "decks" ? (
+          <DeckLibraryWorkspace
+            decks={decks}
+            settings={settings}
+            refreshDecks={refreshDecks}
+            onPracticeDeck={onPracticeDeck}
+            openDeckRequest={openDeckRequest}
+            onOpenDeckRequestConsumed={onOpenDeckRequestConsumed}
+            onManageTemplates={() => onWorkspaceChange("templates")}
+            onBulkAddDeck={setBulkDeckId}
+            rootRequestId={effectiveRootRequestId}
+            onRouteChange={reportDeckRoute}
+            onCardDirtyChange={onCardDirtyChange}
+            showToast={showToast}
+          />
+        ) : null}
+        {workspace === "templates" ? (
+          <TemplatesScreen
+            onBack={() => onWorkspaceChange("decks")}
+            onDirtyChange={onTemplateDirtyChange}
+            showToast={showToast}
+          />
+        ) : null}
+        {workspace === "search" ? (
+          <CardsScreen
+            decks={decks}
+            refreshDecks={refreshDecks}
+            onPracticeCards={onPracticeCards}
+            onDirtyChange={onCardDirtyChange}
+            showToast={showToast}
+          />
+        ) : null}
+        {workspace === "transfer" ? (
+          <TransferWorkspace decks={decks} refreshDecks={refreshDecks} showToast={showToast} />
+        ) : null}
+      </RouteTransition>
+
+      {bulkDeck ? (
+        <BulkEntryModal
+          key={bulkDeck.id}
+          decks={decks}
+          defaultDeckId={bulkDeck.id}
+          destinationMode="fixed"
+          onClose={() => setBulkDeckId(null)}
+          onSaved={async () => {
+            await refreshDecks();
+            setBulkDeckId(null);
+          }}
+          showToast={showToast}
+        />
+      ) : null}
     </PageScaffold>
   );
 }

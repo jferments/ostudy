@@ -90,7 +90,7 @@ export function resolveAppearanceProfile(
     material,
     artworkEnabled: (settings.decorativeArtwork ?? true) && !environment.forcedColors,
     celebrationsEnabled: (settings.celebrationsEnabled ?? true) && motion === "full",
-    tutorialsEnabled: settings.tutorialsEnabled ?? true,
+    tutorialsEnabled: settings.tutorialsEnabled ?? false,
     coarsePointer: environment.coarsePointer,
     hoverAvailable: environment.hoverAvailable,
     forcedColors: environment.forcedColors,

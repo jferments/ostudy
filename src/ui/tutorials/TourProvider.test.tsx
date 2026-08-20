@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   dispatchPlatformBack,
@@ -16,28 +16,44 @@ function Anchors() {
   );
 }
 
+function startOrientationTutorial(): void {
+  window.dispatchEvent(
+    new CustomEvent("ostudy:start-tutorial", {
+      detail: { moduleId: "orientation" },
+    }),
+  );
+}
+
 describe("TourProvider", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     window.localStorage.clear();
   });
 
   afterEach(() => {
-    vi.runOnlyPendingTimers();
-    vi.useRealTimers();
     expect(platformBackHandlerCountForTests()).toBe(0);
   });
 
-  it("starts a short first-run module only when its contextual anchor exists", async () => {
+  it("does not auto-start merely because contextual anchors are rendered", async () => {
     const view = render(
       <TourProvider enabled>
         <Anchors />
       </TourProvider>,
     );
 
-    await act(async () => {
-      vi.advanceTimersByTime(700);
-    });
+    await act(async () => Promise.resolve());
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(platformBackHandlerCountForTests()).toBe(0);
+    view.unmount();
+  });
+
+  it("starts and advances a tutorial only after an explicit request", async () => {
+    const view = render(
+      <TourProvider enabled>
+        <Anchors />
+      </TourProvider>,
+    );
+
+    await act(async () => startOrientationTutorial());
     expect(
       screen.getByRole("dialog", {
         name: "Everything for flashcards lives together",
@@ -51,15 +67,13 @@ describe("TourProvider", () => {
     view.unmount();
   });
 
-  it("lets Android Back dismiss the active tutorial and records the dismissal", async () => {
+  it("lets Android Back dismiss a manually started tutorial and records dismissal", async () => {
     const view = render(
       <TourProvider enabled>
         <Anchors />
       </TourProvider>,
     );
-    await act(async () => {
-      vi.advanceTimersByTime(700);
-    });
+    await act(async () => startOrientationTutorial());
 
     await act(async () => {
       expect(dispatchPlatformBack()).toBe(true);
@@ -69,15 +83,13 @@ describe("TourProvider", () => {
     view.unmount();
   });
 
-  it("never starts contextual guidance when tutorials are disabled", async () => {
+  it("ignores explicit tutorial requests while tutorials are disabled", async () => {
     render(
       <TourProvider enabled={false}>
         <Anchors />
       </TourProvider>,
     );
-    await act(async () => {
-      vi.advanceTimersByTime(2_000);
-    });
+    await act(async () => startOrientationTutorial());
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

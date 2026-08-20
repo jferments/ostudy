@@ -20,7 +20,6 @@ const settings: AppSettings = {
   decorativeArtwork: true,
   celebrationsEnabled: true,
   tutorialsEnabled: true,
-  deckViewDensity: "comfortable",
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
@@ -56,6 +55,14 @@ describe("appearance resolution", () => {
     expect(profile.artworkEnabled).toBe(false);
     expect(profile.celebrationsEnabled).toBe(false);
     expect(profile.material).toBe("simple");
+  });
+
+  it("keeps interactive tutorials disabled until explicitly enabled", () => {
+    const profile = resolveAppearanceProfile(
+      { ...settings, tutorialsEnabled: undefined },
+      environment,
+    );
+    expect(profile.tutorialsEnabled).toBe(false);
   });
 
   it("maps legacy animation settings during the bundled transition", () => {

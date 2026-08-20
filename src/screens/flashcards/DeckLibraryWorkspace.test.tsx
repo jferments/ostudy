@@ -80,7 +80,6 @@ const settings = {
   decorativeArtwork: true,
   celebrationsEnabled: true,
   tutorialsEnabled: true,
-  deckViewDensity: "comfortable" as const,
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
@@ -107,7 +106,9 @@ function renderLibrary({
         openDeckRequest={null}
         onOpenDeckRequestConsumed={vi.fn()}
         onManageTemplates={vi.fn()}
-        onCreateCards={vi.fn()}
+        onBulkAddDeck={vi.fn()}
+        rootRequestId={0}
+        onRouteChange={vi.fn()}
         onCardDirtyChange={vi.fn()}
         showToast={showToast}
       />
@@ -381,15 +382,12 @@ describe("DeckLibraryWorkspace", () => {
     await waitFor(() => expect(folderIpc.getDeckLibraryOrganization).toHaveBeenCalledTimes(2));
   });
 
-  it("persists compact density as a presentation preference", async () => {
+  it("uses one compact deck layout without a persisted density control", async () => {
     renderLibrary();
-    fireEvent.click(await screen.findByRole("button", { name: "Compact" }));
-    await waitFor(() =>
-      expect(settingsIpc.saveSettings).toHaveBeenCalledWith({
-        ...settings,
-        deckViewDensity: "compact",
-      }),
-    );
+    await screen.findByRole("heading", { name: "Folders" });
+    expect(screen.queryByRole("button", { name: "Compact" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Comfortable" })).toBeNull();
+    expect(settingsIpc.saveSettings).not.toHaveBeenCalled();
   });
 });
 

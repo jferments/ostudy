@@ -9,6 +9,10 @@ import {
   type DiagnosticConfiguration,
   type DiagnosticLevel,
 } from "../../ipc/diagnostics";
+import {
+  formatLayoutDiagnostics,
+  useLayoutDiagnostics,
+} from "../../ui/layout/layoutMode";
 import styles from "./Settings.module.css";
 
 type DiagnosticTarget =
@@ -42,6 +46,7 @@ function formatBytes(bytes: number): string {
 }
 
 export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
+  const layout = useLayoutDiagnostics();
   const [configuration, setConfiguration] = useState<DiagnosticConfiguration | null>(null);
   const [target, setTarget] = useState<DiagnosticTarget>("database");
   const [level, setLevel] = useState<Extract<DiagnosticLevel, "debug" | "trace">>("debug");
@@ -89,6 +94,15 @@ export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
       setErrorMessage(getErrorMessage(error));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function copyLayoutDiagnostics(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(formatLayoutDiagnostics(layout));
+      showToast("success", "Layout diagnostics copied.");
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
     }
   }
 
@@ -216,6 +230,28 @@ export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
           onClick={() => void flushNow()}
         >
           Flush diagnostic log
+        </button>
+      </section>
+
+      <section className={styles.settingsCard}>
+        <div className={styles.sectionHeading}>
+          <div>
+            <h2>Responsive layout</h2>
+            <p>Safe viewport facts for diagnosing phone, tablet, scaling, and input-mode issues.</p>
+          </div>
+        </div>
+        <dl>
+          <dt>Mode</dt>
+          <dd>{layout.mode}</dd>
+          <dt>Viewport</dt>
+          <dd>{layout.width} × {layout.height} CSS px · {layout.orientation}</dd>
+          <dt>Interface scale</dt>
+          <dd>{layout.uiScalePercent}% · effective width {layout.effectiveWidthAtScale}px</dd>
+          <dt>Display/input</dt>
+          <dd>{layout.devicePixelRatio}× device pixels · {layout.input} pointer</dd>
+        </dl>
+        <button type="button" className="secondary-button" onClick={() => void copyLayoutDiagnostics()}>
+          Copy layout diagnostics
         </button>
       </section>
 

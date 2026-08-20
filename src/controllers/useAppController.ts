@@ -11,7 +11,12 @@ import {
   saveUiCheckpoint,
   type PracticeCheckpoint,
 } from "../ipc/uiCheckpoint";
-import type { FlashcardsWorkspaceName } from "../navigation/flashcardsRoutes";
+import {
+  normalizeFlashcardsWorkspaceName,
+  type FlashcardsRootRequest,
+  type FlashcardsRouteState,
+  type FlashcardsWorkspaceName,
+} from "../navigation/flashcardsRoutes";
 import { registerPlatformBackHandler } from "../platform/backNavigation";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import {
@@ -68,13 +73,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   materialPreference: "automatic",
   decorativeArtwork: true,
   celebrationsEnabled: true,
-  tutorialsEnabled: true,
-  deckViewDensity: "comfortable",
+  tutorialsEnabled: false,
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
   dailyNewLimit: 20,
   dailyReviewLimit: 200,
+  aiReasoningEffort: "low",
 };
 
 interface NormalizedDestination {
@@ -86,6 +91,15 @@ export function useAppController() {
   const [section, setSection] = useState<AppSection>("decks");
   const [flashcardsWorkspace, setFlashcardsWorkspace] =
     useState<FlashcardsWorkspaceName>("decks");
+  const [flashcardsRootRequest, setFlashcardsRootRequest] =
+    useState<FlashcardsRootRequest | null>(null);
+  const flashcardsRootRequestSequence = useRef(1);
+  const [flashcardsRoute, setFlashcardsRoute] = useState<FlashcardsRouteState>({
+    workspace: "decks",
+    deckView: "library",
+    deckId: null,
+  });
+  const [sectionRootRequestId, setSectionRootRequestId] = useState(0);
   const [decks, setDecks] = useState<DeckSummary[]>([]);
   const [savedSettings, setSavedSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [activeSettings, setActiveSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -148,9 +162,9 @@ export function useAppController() {
               : restored.section;
           const restoredWorkspace =
             restoredSection === "decks"
-              ? restoredCheckpoint.flashcardsWorkspace ??
-                restored.flashcardsWorkspace ??
-                "decks"
+              ? normalizeFlashcardsWorkspaceName(
+                  restoredCheckpoint.flashcardsWorkspace ?? restored.flashcardsWorkspace,
+                )
               : "decks";
           setSection(restoredSection);
           setFlashcardsWorkspace(restoredWorkspace);
@@ -161,6 +175,11 @@ export function useAppController() {
             setFlashcardsWorkspace("decks");
             setDeckOpenRequest({
               requestId: deckOpenRequestSequence.current,
+              deckId: restoredCheckpoint.deckId,
+            });
+            setFlashcardsRoute({
+              workspace: "decks",
+              deckView: "detail",
               deckId: restoredCheckpoint.deckId,
             });
             deckOpenRequestSequence.current += 1;
@@ -199,14 +218,14 @@ export function useAppController() {
     void saveUiCheckpoint({
       section,
       flashcardsWorkspace: section === "decks" ? flashcardsWorkspace : undefined,
-      deckId: deckOpenRequest?.deckId,
+      deckId: flashcardsRoute.deckId ?? undefined,
       analytics,
     }).catch((error: unknown) => {
       console.error("Unable to save the device navigation checkpoint:", getErrorMessage(error));
     });
   }, [
     analyticsLaunch,
-    deckOpenRequest?.deckId,
+    flashcardsRoute.deckId,
     flashcardsWorkspace,
     isLoading,
     section,
@@ -226,7 +245,7 @@ export function useAppController() {
         void saveUiCheckpoint({
           section,
           flashcardsWorkspace: section === "decks" ? flashcardsWorkspace : undefined,
-          deckId: deckOpenRequest?.deckId,
+          deckId: flashcardsRoute.deckId ?? undefined,
         }).catch((error: unknown) => {
           console.error(
             "Unable to save the lifecycle navigation checkpoint:",
@@ -248,7 +267,7 @@ export function useAppController() {
       disposed = true;
       unlisten?.();
     };
-  }, [deckOpenRequest?.deckId, flashcardsWorkspace, isLoading, section]);
+  }, [flashcardsRoute.deckId, flashcardsWorkspace, isLoading, section]);
 
   useEffect(() => {
     if (section === "decks") return;
@@ -359,14 +378,48 @@ export function useAppController() {
     setPracticeLaunch({ requestId, deckIds, tagIds, cardIds, autoStart, mode, returnTarget });
   }
 
+  function requestFlashcardsRoot(workspace: FlashcardsWorkspaceName): void {
+    const requestId = flashcardsRootRequestSequence.current;
+    flashcardsRootRequestSequence.current += 1;
+    setFlashcardsWorkspace(workspace);
+    setDeckOpenRequest(null);
+    setFlashcardsRoute({ workspace, deckView: "library", deckId: null });
+    setFlashcardsRootRequest({ requestId, workspace });
+  }
+
+  const updateFlashcardsRoute = useCallback((route: FlashcardsRouteState): void => {
+    setFlashcardsRoute(route);
+  }, []);
+
   async function navigate(next: AppSection): Promise<void> {
     const destination = normalizeDestination(next);
-    const alreadyThere =
-      destination.section === section &&
-      (destination.section !== "decks" ||
-        destination.flashcardsWorkspace === undefined ||
-        destination.flashcardsWorkspace === flashcardsWorkspace);
-    if (alreadyThere && destination.section !== "practice") return;
+    const sameSection = destination.section === section;
+
+    if (sameSection) {
+      if (section === "practice" && hasActivePracticeSession()) {
+        if (!(await confirmPracticeTermination("decks"))) return;
+      }
+      if (!(await canLeaveCurrentSection())) return;
+      if (destination.section === "decks") {
+        requestFlashcardsRoot(destination.flashcardsWorkspace ?? "decks");
+        void refreshDecks().catch((error: unknown) =>
+          showToast("error", getErrorMessage(error)),
+        );
+        return;
+      }
+      if (destination.section === "practice") {
+        setPracticeRestore(null);
+        nextPracticeRequest([], [], [], false, "scheduled", null);
+      }
+      if (destination.section === "analytics") {
+        const requestId = analyticsRequestSequence.current;
+        analyticsRequestSequence.current += 1;
+        setAnalyticsLaunch({ requestId, range: "7d", deckIds: [], tagIds: [] });
+      }
+      setSectionRootRequestId((current) => current + 1);
+      return;
+    }
+
     if (!(await confirmPracticeTermination(destination.section))) return;
     if (!(await canLeaveCurrentSection())) return;
     if (destination.section === "practice") {
@@ -379,7 +432,7 @@ export function useAppController() {
       setAnalyticsLaunch({ requestId, range: "7d", deckIds: [], tagIds: [] });
     }
     if (destination.section === "decks") {
-      setFlashcardsWorkspace(destination.flashcardsWorkspace ?? "decks");
+      requestFlashcardsRoot(destination.flashcardsWorkspace ?? "decks");
       void refreshDecks().catch((error: unknown) =>
         showToast("error", getErrorMessage(error)),
       );
@@ -390,11 +443,10 @@ export function useAppController() {
   async function navigateFlashcardsWorkspace(
     next: FlashcardsWorkspaceName,
   ): Promise<void> {
-    if (section === "decks" && next === flashcardsWorkspace) return;
     if (!(await canLeaveCurrentSection())) return;
     setSection("decks");
-    setFlashcardsWorkspace(next);
-    if (next === "decks" || next === "search" || next === "create") {
+    requestFlashcardsRoot(next);
+    if (next === "decks" || next === "search") {
       void refreshDecks().catch((error: unknown) =>
         showToast("error", getErrorMessage(error)),
       );
@@ -457,9 +509,11 @@ export function useAppController() {
       const requestId = deckOpenRequestSequence.current;
       deckOpenRequestSequence.current += 1;
       setDeckOpenRequest({ requestId, deckId: target.deckId });
+      setFlashcardsRoute({ workspace: "decks", deckView: "detail", deckId: target.deckId });
     }
     if (destination.section === "decks") {
-      setFlashcardsWorkspace(target.deckId ? "decks" : workspace);
+      if (!target.deckId) requestFlashcardsRoot(workspace);
+      else setFlashcardsWorkspace("decks");
       void refreshDecks().catch((error: unknown) =>
         showToast("error", getErrorMessage(error)),
       );
@@ -492,6 +546,9 @@ export function useAppController() {
   return {
     section,
     flashcardsWorkspace,
+    flashcardsRootRequest,
+    flashcardsRoute,
+    sectionRootRequestId,
     decks,
     savedSettings,
     activeSettings,
@@ -511,6 +568,7 @@ export function useAppController() {
     consumeAnalyticsLaunch,
     navigate,
     navigateFlashcardsWorkspace,
+    updateFlashcardsRoute,
     practiceDeck,
     practiceScope,
     practiceCards,
@@ -550,12 +608,12 @@ function normalizeSettings(settings: AppSettings): AppSettings {
     materialPreference: settings.materialPreference ?? "automatic",
     decorativeArtwork: settings.decorativeArtwork ?? true,
     celebrationsEnabled: settings.celebrationsEnabled ?? true,
-    tutorialsEnabled: settings.tutorialsEnabled ?? true,
-    deckViewDensity: settings.deckViewDensity ?? "comfortable",
+    tutorialsEnabled: settings.tutorialsEnabled ?? false,
     confirmDeletions: settings.confirmDeletions,
     practiceShuffle: settings.practiceShuffle,
     desiredRetention: settings.desiredRetention,
     dailyNewLimit: settings.dailyNewLimit,
     dailyReviewLimit: settings.dailyReviewLimit,
+    aiReasoningEffort: settings.aiReasoningEffort ?? "low",
   };
 }

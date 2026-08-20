@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import type { DeckOpenRequest } from "../App";
@@ -26,10 +26,13 @@ import {
   type CardTemplate,
   type GenerateTemplateCardsResult,
 } from "../ipc/templates";
+import { registerPlatformBackHandler } from "../platform/backNavigation";
 import { publishExport, selectExternalImport } from "../platform/files";
 import { useMediaQuery } from "../ui/hooks/useMediaQuery";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { CardEditorScreen } from "./CardEditorScreen";
+import { CardPreviewRow } from "./cards/CardPreviewRow";
+import styles from "./DecksScreen.module.css";
 
 interface DecksScreenProps {
   decks: DeckSummary[];
@@ -39,13 +42,13 @@ interface DecksScreenProps {
   openDeckRequest?: DeckOpenRequest | null;
   onOpenDeckRequestConsumed?: () => void;
   onManageTemplates?: () => void | Promise<void>;
-  onBulkAdd?: () => void;
-  onViewChange?: (view: DeckView) => void;
+  onBulkAdd?: (deckId: string) => void;
+  onViewChange?: (view: DeckView, deckId: string | null) => void;
   onDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
 }
 
-type DeckView = "library" | "detail" | "editor";
+export type DeckView = "library" | "detail" | "editor";
 const DECK_CARD_PAGE_SIZE = 50;
 
 export function DecksScreen({
@@ -85,15 +88,37 @@ export function DecksScreen({
   if (controllerRef.current === null) controllerRef.current = new DecksController();
   const controller = controllerRef.current;
   const handledOpenRequestRef = useRef<number | null>(null);
+  const viewRef = useRef<DeckView>("library");
+  const editorBackActionRef = useRef<(() => void) | null>(null);
   const confirm = useConfirm();
   const compact = useMediaQuery("(max-width: 760px)");
+  const ownsNestedBack = view !== "library";
+  viewRef.current = view;
+
+  const registerEditorBackAction = useCallback((action: (() => void) | null): void => {
+    editorBackActionRef.current = action;
+  }, []);
+
+  useEffect(() => {
+    if (!ownsNestedBack) return;
+    return registerPlatformBackHandler(() => {
+      if (viewRef.current === "editor") {
+        const editorBack = editorBackActionRef.current;
+        if (!editorBack) return false;
+        editorBack();
+        return true;
+      }
+      setView("library");
+      return true;
+    });
+  }, [ownsNestedBack]);
 
   const selectedDeckId = selectedDeck?.id ?? null;
   const activeDecks = decks.filter((deck) => deck.archivedAt === null);
   const archivedDecks = decks.filter((deck) => deck.archivedAt !== null);
 
   useEffect(() => () => controller.invalidate(), [controller]);
-  useEffect(() => onViewChange?.(view), [onViewChange, view]);
+  useEffect(() => onViewChange?.(view, selectedDeckId), [onViewChange, selectedDeckId, view]);
   useEffect(() => {
     if (!compact) setSearchDialogOpen(false);
   }, [compact]);
@@ -500,6 +525,7 @@ export function DecksScreen({
         decks={decks}
         card={editingCard}
         onDirtyChange={onDirtyChange}
+        onRegisterBackAction={registerEditorBackAction}
         onCancel={() => {
           onDirtyChange(false);
           setEditingCard(null);
@@ -559,16 +585,6 @@ export function DecksScreen({
                   onClick={() => void onManageTemplates()}
                 >
                   Manage templates
-                </button>
-              ) : null}
-              {onBulkAdd ? (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={activeDecks.length === 0}
-                  onClick={onBulkAdd}
-                >
-                  Bulk add
                 </button>
               ) : null}
               <button
@@ -810,23 +826,13 @@ export function DecksScreen({
               >
                 Delete deck
               </button>
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => {
-                  setEditingCard(null);
-                  setView("editor");
-                }}
-              >
-                Add flashcard
-              </button>
             </div>
           </header>
 
           {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
 
-          <section className="card-browser-panel">
-            <div className="card-browser-toolbar">
+          <section className={`card-browser-panel ${styles.cardBrowserPanel}`}>
+            <div className={`card-browser-toolbar ${styles.cardBrowserToolbar}`}>
               {compact ? (
                 <button
                   type="button"
@@ -873,6 +879,28 @@ export function DecksScreen({
                   ? ` · ${selectedDeck.studyableDueCount} ready now`
                   : ""}
               </span>
+              <div className={styles.cardBrowserActions}>
+                {onBulkAdd ? (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    data-testid="bulk-add-cards"
+                    onClick={() => onBulkAdd(selectedDeck.id)}
+                  >
+                    Bulk add
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => {
+                    setEditingCard(null);
+                    setView("editor");
+                  }}
+                >
+                  Add flashcard
+                </button>
+              </div>
             </div>
 
             {isLoadingCards && cards.length === 0 ? (
@@ -884,16 +912,27 @@ export function DecksScreen({
                   +
                 </div>
                 <h2>This deck is empty</h2>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => {
-                    setEditingCard(null);
-                    setView("editor");
-                  }}
-                >
-                  Add the first flashcard
-                </button>
+                <div className={styles.emptyActions}>
+                  {onBulkAdd ? (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => onBulkAdd(selectedDeck.id)}
+                    >
+                      Bulk add
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => {
+                      setEditingCard(null);
+                      setView("editor");
+                    }}
+                  >
+                    Add the first flashcard
+                  </button>
+                </div>
               </section>
             ) : null}
             {!isLoadingCards &&
@@ -907,47 +946,13 @@ export function DecksScreen({
             ) : null}
             {cards.length > 0 ? (
               <div className="card-list">
-                {cards.map((card, index) => (
-                  <article key={card.noteId} className="card-row">
-                    <button
-                      type="button"
-                      className="card-row-main"
-                      onClick={() => void openCardEditor(card)}
-                    >
-                      <span className="card-number">{index + 1}</span>
-                      <span className="card-row-side">
-                        <small>Question</small>
-                        <strong>{summarize(card.questionExcerpt, card.imageCount > 0)}</strong>
-                      </span>
-                      <span className="card-row-divider" aria-hidden="true">
-                        →
-                      </span>
-                      <span className="card-row-side">
-                        <small>Answer</small>
-                        <strong>{summarize(card.answerExcerpt, card.imageCount > 0)}</strong>
-                      </span>
-                    </button>
-                    <div className="card-row-actions">
-                      <span
-                        className="card-row-reversible"
-                        aria-label={card.reversible ? "Reversible" : undefined}
-                        title={card.reversible ? "Reversible card" : undefined}
-                        aria-hidden={card.reversible ? undefined : "true"}
-                      >
-                        {card.reversible ? "🔄" : null}
-                      </span>
-                      <button type="button" onClick={() => void openCardEditor(card)}>
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="danger-text"
-                        onClick={() => void handleDeleteCard(card)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </article>
+                {cards.map((card) => (
+                  <CardPreviewRow
+                    key={card.noteId}
+                    card={card}
+                    onEdit={() => void openCardEditor(card)}
+                    onDelete={() => void handleDeleteCard(card)}
+                  />
                 ))}
                 {hasMoreCards ? (
                   <button
@@ -1112,10 +1117,4 @@ function practiceTitle(deck: DeckSummary): string {
   return `Practice all ${deck.generatedCardCount} ${
     deck.generatedCardCount === 1 ? "card" : "cards"
   } in this deck`;
-}
-
-function summarize(text: string, hasImage: boolean): string {
-  const normalized = text.replace(/\s+/gu, " ").trim();
-  if (normalized === "") return hasImage ? "Image content" : "Empty";
-  return normalized.length > 150 ? `${normalized.slice(0, 147)}…` : normalized;
 }

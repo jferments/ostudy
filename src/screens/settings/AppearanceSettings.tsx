@@ -98,10 +98,10 @@ export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
         </label>
         <label className={styles.switchRow}>
           <span>
-            <strong>Contextual tutorials</strong>
-            <small>Offer short, dismissible walkthroughs for unfamiliar workflows.</small>
+            <strong>Enable interactive tutorials</strong>
+            <small>Allow tutorials to be started manually from Help. They never open from navigation alone.</small>
           </span>
-          <input type="checkbox" checked={draft.tutorialsEnabled ?? true} onChange={(event) => update({ tutorialsEnabled: event.currentTarget.checked })} />
+          <input type="checkbox" checked={draft.tutorialsEnabled ?? false} onChange={(event) => update({ tutorialsEnabled: event.currentTarget.checked })} />
         </label>
       </section>
 
