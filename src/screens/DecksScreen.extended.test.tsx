@@ -1,12 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as cardsIpc from "../ipc/cards";
 import * as generatedImport from "../ipc/generated-import";
 import * as commonIpc from "../ipc/common";
 import * as decksIpc from "../ipc/decks";
 import * as platformFiles from "../platform/files";
 import { makeDeck, makeSettings, resetTestEntityIds } from "../test/factories";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
+import { CardPracticeProvider } from "./cards/CardPracticeContext";
 import { DecksScreen } from "./DecksScreen";
 
 vi.mock("../controllers/useDurableDraft", () => ({
@@ -36,11 +38,18 @@ vi.mock("../ipc/generated-import", () => ({
 const importOperationId = "9".repeat(32);
 
 vi.mock("../ipc/cards", () => ({
-  deleteCard: vi.fn(),
+  analyzeBulkCards: vi.fn(),
+  bulkCreateCards: vi.fn(),
+  bulkTagCards: vi.fn(),
+  deleteCards: vi.fn(),
   getCardNote: vi.fn(),
-  undoDeletion: vi.fn(),
+  listMatchingCards: vi.fn(),
+  listTags: vi.fn(),
+  searchCards: vi.fn(),
+  transferCards: vi.fn(),
 }));
 vi.mock("../ipc/common", () => ({
+  createMutationId: vi.fn(() => "f".repeat(32)),
   createOperationId: vi.fn(() => importOperationId),
   getErrorCode: (error: unknown) =>
     typeof error === "object" && error !== null && "code" in error
@@ -60,37 +69,41 @@ vi.mock("../ipc/decks", () => ({
   prepareDeckExport: vi.fn(),
   getDeck: vi.fn(),
   importDeck: vi.fn(),
-  listDeckCardSummaries: vi.fn(),
   setDeckArchived: vi.fn(),
   updateDeck: vi.fn(),
+}));
+vi.mock("../ipc/scheduling", () => ({
+  applyScheduleAction: vi.fn(),
 }));
 vi.mock("./CardEditorScreen", () => ({
   CardEditorScreen: () => <div>Card editor</div>,
 }));
 
-function summaryFor(deck: decksIpc.DeckSummary): decksIpc.DeckCardSummary {
+function browserRow(deck: decksIpc.DeckSummary): cardsIpc.CardBrowserRow {
   return {
+    cardId: "b".repeat(32),
     noteId: "c".repeat(32),
-    primaryCardId: "b".repeat(32),
-    questionExcerpt: `${deck.name} question`,
-    answerExcerpt: "Answer",
-    generatedCardCount: 1,
-    imageCount: 0,
-    reversible: false,
+    deckId: deck.id,
+    deckName: deck.name,
+    cardType: "basic",
+    cardLabel: "Basic",
+    frontText: `${deck.name} question`,
+    backText: "Answer",
+    tags: [],
+    dueAt: Date.now(),
+    lastReviewedAt: null,
+    reviewCount: 0,
+    suspendedAt: null,
+    buriedUntil: null,
+    needsMorePractice: false,
+    createdAt: 1,
     updatedAt: 1,
   };
 }
 
-function pageFor(deck: decksIpc.DeckSummary): decksIpc.DeckCardSummaryPage {
-  if (deck.sourceNoteCount === 0) {
-    return { cards: [], totalCount: 0, offset: 0, hasMore: false };
-  }
-  return {
-    cards: [summaryFor(deck)],
-    totalCount: deck.sourceNoteCount,
-    offset: 0,
-    hasMore: deck.sourceNoteCount > 1,
-  };
+function pageFor(deck: decksIpc.DeckSummary): cardsIpc.CardSearchPage {
+  if (deck.sourceNoteCount === 0) return { cards: [], totalCount: 0 };
+  return { cards: [browserRow(deck)], totalCount: deck.sourceNoteCount };
 }
 
 function renderDeckLibrary(
@@ -110,7 +123,9 @@ function renderDeckLibrary(
   };
   render(
     <OverlayProvider>
-      <DecksScreen {...props} />
+      <CardPracticeProvider onPracticeCards={vi.fn()}>
+        <DecksScreen {...props} />
+      </CardPracticeProvider>
     </OverlayProvider>,
   );
   return { deck, props, refreshDecks, showToast };
@@ -130,13 +145,14 @@ describe("DecksScreen extended behavior", () => {
     vi.clearAllMocks();
     resetTestEntityIds();
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
-    vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "export", destinationKind: "desktop_file", completedAt: Date.now() });
-    vi.mocked(decksIpc.listDeckCardSummaries).mockResolvedValue({
-      cards: [],
-      totalCount: 0,
-      offset: 0,
-      hasMore: false,
+    vi.mocked(platformFiles.publishExport).mockResolvedValue({
+      preparedExportId: "2".repeat(32),
+      displayName: "export",
+      destinationKind: "desktop_file",
+      completedAt: Date.now(),
     });
+    vi.mocked(cardsIpc.listTags).mockResolvedValue([]);
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [], totalCount: 0 });
   });
 
   it("creates a named deck and opens its detail view", async () => {
@@ -154,9 +170,7 @@ describe("DecksScreen extended behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: "New deck" }));
     const nameInput = screen.getByRole("textbox", { name: "Deck name" });
     await waitFor(() => expect(document.activeElement).toBe(nameInput));
-    fireEvent.change(nameInput, {
-      target: { value: "  Neurology  " },
-    });
+    fireEvent.change(nameInput, { target: { value: "  Neurology  " } });
     fireEvent.change(screen.getByRole("textbox", { name: /Description/u }), {
       target: { value: "CNS review" },
     });
@@ -171,7 +185,8 @@ describe("DecksScreen extended behavior", () => {
       expect(refreshDecks).toHaveBeenCalledOnce();
     });
     expect(screen.getByRole("heading", { name: "Neurology" })).toBeTruthy();
-    expect(screen.getByText("This deck is empty")).toBeTruthy();
+    expect(await screen.findByText("This deck is empty")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Card filters" })).toBeNull();
   });
 
   it("does not invoke an importer when the platform picker is canceled", async () => {
@@ -183,14 +198,13 @@ describe("DecksScreen extended behavior", () => {
   });
 
   it("rejects an unsupported selected extension without mutating the library", async () => {
-    vi.mocked(platformFiles.selectExternalImport).mockRejectedValue(new Error("Unsupported external file."));
+    vi.mocked(platformFiles.selectExternalImport).mockRejectedValue(
+      new Error("Unsupported external file."),
+    );
     const { showToast } = renderDeckLibrary();
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
     await waitFor(() => {
-      expect(showToast).toHaveBeenCalledWith(
-        "error",
-        "Unsupported external file.",
-      );
+      expect(showToast).toHaveBeenCalledWith("error", "Unsupported external file.");
     });
     expect(decksIpc.importDeck).not.toHaveBeenCalled();
     expect(generatedImport.importGeneratedFlashcards).not.toHaveBeenCalled();
@@ -203,7 +217,16 @@ describe("DecksScreen extended behavior", () => {
       sourceNoteCount: 2,
       generatedCardCount: 3,
     });
-    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "study_content", detectedKind: "generated_json", displayName: "cards.ostudy.json", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
+      id: "1".repeat(32),
+      purpose: "study_content",
+      detectedKind: "generated_json",
+      displayName: "cards.ostudy.json",
+      mediaType: "application/octet-stream",
+      byteSize: 128,
+      sha256: "0".repeat(64),
+      expiresAt: Date.now() + 60_000,
+    });
     vi.mocked(generatedImport.importGeneratedFlashcards).mockResolvedValue({
       deckId: imported.id,
       createdNoteCount: 2,
@@ -211,7 +234,7 @@ describe("DecksScreen extended behavior", () => {
       skippedDuplicateCount: 4,
     });
     vi.mocked(decksIpc.getDeck).mockResolvedValue(imported);
-    vi.mocked(decksIpc.listDeckCardSummaries).mockResolvedValue(pageFor(imported));
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue(pageFor(imported));
     const { showToast } = renderDeckLibrary();
 
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
@@ -223,33 +246,34 @@ describe("DecksScreen extended behavior", () => {
       );
     });
     expect(screen.getByRole("heading", { name: imported.name })).toBeTruthy();
+    expect(await screen.findByRole("table", { name: "Matching cards" })).toBeTruthy();
   });
 
-  it("keeps a committed studydeck import open when its card page cannot load", async () => {
+  it("keeps a committed studydeck import open when its shared card query cannot load", async () => {
     const imported = makeDeck({
       name: "Imported deck",
       sourceNoteCount: 2,
       generatedCardCount: 2,
     });
-    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "study_content", detectedKind: "studydeck", displayName: "imported.studydeck", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
-    vi.mocked(decksIpc.importDeck).mockResolvedValue({
-      deck: imported,
-      cardCount: 2,
-      assetCount: 0,
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
+      id: "1".repeat(32),
+      purpose: "study_content",
+      detectedKind: "studydeck",
+      displayName: "imported.studydeck",
+      mediaType: "application/octet-stream",
+      byteSize: 128,
+      sha256: "0".repeat(64),
+      expiresAt: Date.now() + 60_000,
     });
-    vi.mocked(decksIpc.listDeckCardSummaries).mockRejectedValue(
-      new Error("Card page unavailable."),
-    );
+    vi.mocked(decksIpc.importDeck).mockResolvedValue({ deck: imported, cardCount: 2, assetCount: 0 });
+    vi.mocked(cardsIpc.searchCards).mockRejectedValue(new Error("Card page unavailable."));
     const refreshDecks = vi.fn().mockResolvedValue([imported]);
     const { showToast } = renderDeckLibrary(undefined, { refreshDecks });
 
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
 
     await waitFor(() => {
-      expect(decksIpc.importDeck).toHaveBeenCalledWith(
-        "1".repeat(32),
-        importOperationId,
-      );
+      expect(decksIpc.importDeck).toHaveBeenCalledWith("1".repeat(32), importOperationId);
       expect(showToast).toHaveBeenCalledWith(
         "success",
         "Imported “Imported deck” with 2 cards.",
@@ -258,11 +282,19 @@ describe("DecksScreen extended behavior", () => {
     });
     expect(screen.getByRole("heading", { name: imported.name })).toBeTruthy();
     expect(await screen.findByText("Card page unavailable.")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "No matching flashcards" })).toBeNull();
   });
 
   it("keeps the library usable when a studydeck import fails", async () => {
-    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "study_content", detectedKind: "studydeck", displayName: "broken.studydeck", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
+      id: "1".repeat(32),
+      purpose: "study_content",
+      detectedKind: "studydeck",
+      displayName: "broken.studydeck",
+      mediaType: "application/octet-stream",
+      byteSize: 128,
+      sha256: "0".repeat(64),
+      expiresAt: Date.now() + 60_000,
+    });
     vi.mocked(decksIpc.importDeck).mockRejectedValue({
       code: "invalid_deck_package",
       message: "Invalid deck package.",
@@ -272,10 +304,7 @@ describe("DecksScreen extended behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
 
     await waitFor(() => {
-      expect(decksIpc.importDeck).toHaveBeenCalledWith(
-        "1".repeat(32),
-        importOperationId,
-      );
+      expect(decksIpc.importDeck).toHaveBeenCalledWith("1".repeat(32), importOperationId);
       expect(showToast).toHaveBeenCalledWith("error", "Invalid deck package.");
     });
     expect(screen.getByRole("heading", { name: "Decks" })).toBeTruthy();
@@ -283,7 +312,16 @@ describe("DecksScreen extended behavior", () => {
 
   it("reuses one import operation identity after an ambiguous transport result", async () => {
     const imported = makeDeck({ name: "Recovered import" });
-    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "study_content", detectedKind: "studydeck", displayName: "retry.studydeck", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
+      id: "1".repeat(32),
+      purpose: "study_content",
+      detectedKind: "studydeck",
+      displayName: "retry.studydeck",
+      mediaType: "application/octet-stream",
+      byteSize: 128,
+      sha256: "0".repeat(64),
+      expiresAt: Date.now() + 60_000,
+    });
     vi.mocked(decksIpc.importDeck)
       .mockRejectedValueOnce(new Error("Native response was interrupted."))
       .mockResolvedValueOnce({ deck: imported, cardCount: 1, assetCount: 0 });
@@ -295,16 +333,8 @@ describe("DecksScreen extended behavior", () => {
 
     await waitFor(() => {
       expect(decksIpc.importDeck).toHaveBeenCalledTimes(2);
-      expect(decksIpc.importDeck).toHaveBeenNthCalledWith(
-        1,
-        "1".repeat(32),
-        importOperationId,
-      );
-      expect(decksIpc.importDeck).toHaveBeenNthCalledWith(
-        2,
-        "1".repeat(32),
-        importOperationId,
-      );
+      expect(decksIpc.importDeck).toHaveBeenNthCalledWith(1, "1".repeat(32), importOperationId);
+      expect(decksIpc.importDeck).toHaveBeenNthCalledWith(2, "1".repeat(32), importOperationId);
       expect(commonIpc.createOperationId).toHaveBeenCalled();
     });
   });
@@ -336,8 +366,25 @@ describe("DecksScreen extended behavior", () => {
   });
 
   it("exports to the selected path and reports the exact generated-card count", async () => {
-    vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "export", destinationKind: "desktop_file", completedAt: Date.now() });
-    vi.mocked(decksIpc.prepareDeckExport).mockResolvedValue({ preparedExport: { id: "2".repeat(32), purpose: "studydeck", suggestedFilename: "deck.studydeck", mediaType: "application/vnd.ostudy.studydeck", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 }, cardCount: 3, assetCount: 1 });
+    vi.mocked(platformFiles.publishExport).mockResolvedValue({
+      preparedExportId: "2".repeat(32),
+      displayName: "export",
+      destinationKind: "desktop_file",
+      completedAt: Date.now(),
+    });
+    vi.mocked(decksIpc.prepareDeckExport).mockResolvedValue({
+      preparedExport: {
+        id: "2".repeat(32),
+        purpose: "studydeck",
+        suggestedFilename: "deck.studydeck",
+        mediaType: "application/vnd.ostudy.studydeck",
+        byteSize: 128,
+        sha256: "0".repeat(64),
+        expiresAt: Date.now() + 60_000,
+      },
+      cardCount: 3,
+      assetCount: 1,
+    });
     const { deck, showToast } = renderDeckLibrary();
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     await waitFor(() => {
