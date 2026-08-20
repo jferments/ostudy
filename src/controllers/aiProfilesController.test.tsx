@@ -182,7 +182,8 @@ describe("useAiProfilesController", () => {
       .mockRejectedValueOnce(new Error("Secure credential storage unavailable."))
       .mockResolvedValueOnce(connected);
 
-    const { result } = renderHook(() => useAiProfilesController(vi.fn()));
+    const showToast = vi.fn();
+    const { result } = renderHook(() => useAiProfilesController(showToast));
     await waitFor(() => expect(result.current.catalog.length).toBe(1));
 
     act(() => {
