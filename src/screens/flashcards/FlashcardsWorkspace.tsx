@@ -1,36 +1,31 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useRef, type KeyboardEvent } from "react";
 
-import type { DeckOpenRequest } from "../../App";
 import type { ShowToast } from "../../components/Toast";
 import type { DeckSummary } from "../../ipc/decks";
 import type { AppSettings } from "../../ipc/settings";
-import type { FlashcardsWorkspaceName } from "../../navigation/flashcardsRoutes";
+import type {
+  FlashcardsDeckView,
+  FlashcardsRoute,
+  FlashcardsWorkspaceName,
+} from "../../navigation/flashcardsRoutes";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
 import { Icon, type IconName } from "../../ui/icons/Icon";
 import { RouteTransition } from "../../ui/motion/Motion";
 import { PageHeader, PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { CardsScreen } from "../CardsScreen";
 import { TemplatesScreen } from "../TemplatesScreen";
-import { CreateCardsWorkspace } from "./CreateCardsWorkspace";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
 import { TransferWorkspace } from "./TransferWorkspace";
 import styles from "./FlashcardsWorkspace.module.css";
 
 interface FlashcardsWorkspaceProps {
-  workspace: FlashcardsWorkspaceName;
+  route: FlashcardsRoute;
   onWorkspaceChange: (workspace: FlashcardsWorkspaceName) => void | Promise<void>;
+  onDeckViewChange: (view: FlashcardsDeckView, deckId: string | null) => void;
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
   onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
-  openDeckRequest: DeckOpenRequest | null;
-  onOpenDeckRequestConsumed: () => void;
   onPracticeCards: (cardIds: string[]) => void | Promise<void>;
   onCardDirtyChange: (dirty: boolean) => void;
   onTemplateDirtyChange: (dirty: boolean) => void;
@@ -47,51 +42,27 @@ const WORKSPACES: ReadonlyArray<{
   { value: "templates", label: "Templates", compactLabel: "Templates", icon: "template" },
   { value: "search", label: "Search", compactLabel: "Search", icon: "search" },
   { value: "transfer", label: "Import/Export", compactLabel: "Transfer", icon: "import" },
-  { value: "create", label: "Create Cards", compactLabel: "Create", icon: "plus" },
 ];
 
 export function FlashcardsWorkspace({
-  workspace,
+  route,
   onWorkspaceChange,
+  onDeckViewChange,
   decks,
   settings,
   refreshDecks,
   onPracticeDeck,
   onPracticeCards,
-  openDeckRequest,
-  onOpenDeckRequestConsumed,
   onCardDirtyChange,
   onTemplateDirtyChange,
   showToast,
 }: FlashcardsWorkspaceProps) {
-  const [deckNested, setDeckNested] = useState(false);
   const buttonsRef = useRef<Array<HTMLButtonElement | null>>([]);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const workspaceChangeRef = useRef(onWorkspaceChange);
-
-  useLayoutEffect(() => {
-    workspaceChangeRef.current = onWorkspaceChange;
-  }, [onWorkspaceChange]);
-
-  useLayoutEffect(() => {
-    if (workspace !== "decks" || !panelRef.current) {
-      setDeckNested(false);
-      return;
-    }
-    const panel = panelRef.current;
-    const update = () => {
-      setDeckNested(Boolean(panel.querySelector(".back-button:not([disabled])")));
-    };
-    update();
-    const observer = new MutationObserver(update);
-    observer.observe(panel, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["disabled"],
-    });
-    return () => observer.disconnect();
-  }, [workspace]);
+  workspaceChangeRef.current = onWorkspaceChange;
+  const workspace = route.workspace;
+  const deckNested = workspace === "decks" && route.view !== "library";
 
   useEffect(() => {
     if (workspace === "decks" && !deckNested) return;
@@ -126,6 +97,8 @@ export function FlashcardsWorkspace({
     event.preventDefault();
     activateAt(next);
   }
+
+  const routeKey = workspace === "decks" ? workspace : `${workspace}:${route.requestId}`;
 
   return (
     <PageScaffold width="full" className={`flashcards-workspace ${styles.workspace}`}>
@@ -166,18 +139,17 @@ export function FlashcardsWorkspace({
         </div>
       </div>
 
-      <div ref={panelRef}>
-        <RouteTransition routeKey={workspace} relation="sibling" className={styles.panel}>
-          {workspace === "decks" ? (
+      <div ref={panelRef} className={styles.panelContainer}>
+        <RouteTransition routeKey={routeKey} relation="sibling" className={styles.panel}>
+          {route.workspace === "decks" ? (
             <DeckLibraryWorkspace
+              route={route}
+              onViewChange={onDeckViewChange}
               decks={decks}
               settings={settings}
               refreshDecks={refreshDecks}
               onPracticeDeck={onPracticeDeck}
-              openDeckRequest={openDeckRequest}
-              onOpenDeckRequestConsumed={onOpenDeckRequestConsumed}
               onManageTemplates={() => onWorkspaceChange("templates")}
-              onCreateCards={() => onWorkspaceChange("create")}
               onCardDirtyChange={onCardDirtyChange}
               showToast={showToast}
             />
@@ -202,14 +174,6 @@ export function FlashcardsWorkspace({
             <TransferWorkspace
               decks={decks}
               refreshDecks={refreshDecks}
-              showToast={showToast}
-            />
-          ) : null}
-          {workspace === "create" ? (
-            <CreateCardsWorkspace
-              decks={decks}
-              refreshDecks={refreshDecks}
-              onDirtyChange={onCardDirtyChange}
               showToast={showToast}
             />
           ) : null}
