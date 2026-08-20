@@ -7,13 +7,13 @@ describe("settingsEvents", () => {
   it("delivers the complete persisted settings object and can unsubscribe", () => {
     const listener = vi.fn();
     const unsubscribe = listenForSavedSettings(listener);
-    const settings = makeSettings({ deckViewDensity: "compact" });
+    const settings = makeSettings({ uiScale: 120 });
 
     announceSettingsSaved(settings);
     expect(listener).toHaveBeenCalledWith(settings);
 
     unsubscribe();
-    announceSettingsSaved(makeSettings({ deckViewDensity: "comfortable" }));
+    announceSettingsSaved(makeSettings({ uiScale: 100 }));
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });
