@@ -45,6 +45,36 @@
     border-bottom: 1px solid var(--ostudy-color-border-subtle);
   }
 
+  .deck-card-search {
+    display: flex;
+    justify-content: flex-end;
+    margin-block-end: 10px;
+  }
+
+  .deck-card-search label {
+    display: grid;
+    width: min(100%, 420px);
+    gap: 5px;
+    color: var(--ostudy-color-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .deck-card-search input[type="search"] {
+    width: 100%;
+    min-height: 40px;
+    border: 1px solid var(--ostudy-color-border-default);
+    border-radius: var(--ostudy-radius-md);
+    background: var(--ostudy-color-surface-1);
+    color: var(--ostudy-color-text-primary);
+    padding: 8px 11px;
+  }
+
+  .deck-card-search input[type="search"]:focus-visible {
+    outline: 2px solid var(--ostudy-color-focus-ring);
+    outline-offset: 2px;
+  }
+
   .card-browser-workspace {
     min-width: 0;
   }
