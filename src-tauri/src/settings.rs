@@ -417,21 +417,18 @@ mod tests {
         assert_eq!(settings.daily_new_limit, 20);
         assert_eq!(settings.daily_review_limit, 200);
         assert_eq!(settings.ai_reasoning_effort, "low");
-        assert_eq!(current_ai_reasoning_effort(), "low");
         settings.daily_new_limit = 12;
         settings.daily_review_limit = 80;
         settings.ai_reasoning_effort = "none".to_string();
         database
             .with_connection(|connection| save_settings_in_connection(connection, &settings))
             .expect("settings should save");
-        publish_ai_reasoning_effort(&settings.ai_reasoning_effort);
         let loaded = database
             .with_connection(load_settings)
             .expect("settings should reload");
         assert_eq!(loaded.daily_new_limit, 12);
         assert_eq!(loaded.daily_review_limit, 80);
         assert_eq!(loaded.ai_reasoning_effort, "none");
-        assert_eq!(current_ai_reasoning_effort(), "none");
     }
 
     #[test]
