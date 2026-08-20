@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AppSettings } from "../../ipc/settings";
+import type { FlashcardsWorkspaceName } from "../../navigation/flashcardsRoutes";
 import {
   dispatchPlatformBack,
   platformBackHandlerCountForTests,
@@ -40,11 +41,17 @@ const settings: AppSettings = {
   dailyReviewLimit: 200,
 };
 
+interface RenderWorkspaceOptions {
+  workspace?: FlashcardsWorkspaceName;
+  navigationKey?: number;
+  onWorkspaceChange?: (workspace: FlashcardsWorkspaceName) => void | Promise<void>;
+}
+
 function renderWorkspace({
-  workspace = "decks" as const,
+  workspace = "decks",
   navigationKey = 1,
   onWorkspaceChange = vi.fn(),
-} = {}) {
+}: RenderWorkspaceOptions = {}) {
   return render(
     <FlashcardsWorkspace
       workspace={workspace}
