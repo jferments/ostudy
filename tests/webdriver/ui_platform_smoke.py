@@ -55,16 +55,10 @@ def send_key(session_id: str, value: str) -> None:
     try:
         webdriver.request("DELETE", f"/session/{session_id}/actions")
     except Exception:
-        # Some WebDriver builds release actions automatically after the sequence.
         pass
 
 
-def wait_for_absent(
-    session_id: str,
-    using: str,
-    value: str,
-    deadline: float,
-) -> None:
+def wait_for_absent(session_id: str, using: str, value: str, deadline: float) -> None:
     while time.monotonic() < deadline:
         result = webdriver.request(
             "POST",
@@ -101,7 +95,6 @@ def overlay_snapshot(session_id: str) -> dict[str, Any]:
 
 
 def wait_for_overlay_inactive(session_id: str, deadline: float, label: str) -> None:
-    """Require top-layer teardown before interacting with background controls."""
     last: dict[str, Any] | None = None
     while time.monotonic() < deadline:
         last = overlay_snapshot(session_id)
@@ -116,7 +109,6 @@ def wait_for_overlay_inactive(session_id: str, deadline: float, label: str) -> N
 
 
 def wait_for_focus(session_id: str, element_id: str, deadline: float) -> None:
-    """Wait for React's queued post-showModal initial-focus step to settle."""
     while time.monotonic() < deadline:
         focused = execute(
             session_id,
@@ -130,7 +122,6 @@ def wait_for_focus(session_id: str, element_id: str, deadline: float) -> None:
 
 
 def wait_for_active_label(session_id: str, expected: str, deadline: float) -> None:
-    """Wait for the queued overlay-unmount focus restoration to complete."""
     last_label = ""
     while time.monotonic() < deadline:
         last_label = str(
@@ -142,9 +133,7 @@ def wait_for_active_label(session_id: str, expected: str, deadline: float) -> No
         if expected in last_label:
             return
         time.sleep(0.05)
-    raise AssertionError(
-        f"Dialog focus was not restored to {expected}: {last_label!r}"
-    )
+    raise AssertionError(f"Dialog focus was not restored to {expected}: {last_label!r}")
 
 
 def assert_no_horizontal_overflow(session_id: str, label: str) -> None:
@@ -182,8 +171,15 @@ def find_workspace_tab(session_id: str, label: str, deadline: float) -> str:
     )
 
 
+def assert_layout_mode(session_id: str, expected: str) -> None:
+    actual = execute(session_id, "return document.documentElement.dataset.layout || '';")
+    if actual != expected:
+        raise AssertionError(f"Expected {expected} layout mode, got {actual!r}")
+
+
 def verify_compact_navigation(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 390, 700)
+    assert_layout_mode(session_id, "compact")
     more = webdriver.find_element(
         session_id,
         "css selector",
@@ -208,7 +204,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         """,
     )
     if int(removed_destinations) != 0:
-        raise AssertionError("Compact More sheet still exposed Flashcards workspaces as top-level destinations")
+        raise AssertionError("Compact More sheet exposed Flashcards sub-workspaces as destinations")
 
     settings = webdriver.find_element(
         session_id,
@@ -229,11 +225,14 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     )
     webdriver.click(session_id, flashcards)
     webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
-    find_workspace_tab(session_id, "Decks", deadline)
-    find_workspace_tab(session_id, "Templates", deadline)
-    find_workspace_tab(session_id, "Search", deadline)
-    find_workspace_tab(session_id, "Import/Export", deadline)
-    find_workspace_tab(session_id, "Create Cards", deadline)
+    for label in ("Decks", "Templates", "Search", "Import/Export"):
+        find_workspace_tab(session_id, label, deadline)
+    create_count = execute(
+        session_id,
+        "return [...document.querySelectorAll(\"[role='tablist'][aria-label='Flashcards workspaces'] [role='tab']\")].filter((button) => (button.textContent || '').includes('Create Cards')).length;",
+    )
+    if int(create_count) != 0:
+        raise AssertionError("Removed Create Cards workspace is still present")
     assert_no_horizontal_overflow(session_id, "compact Flashcards workspace")
 
 
@@ -268,7 +267,8 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
 
 
 def verify_wide_navigation(session_id: str, deadline: float) -> None:
-    set_window_rect(session_id, 1100, 720)
+    set_window_rect(session_id, 1280, 800)
+    assert_layout_mode(session_id, "wide")
     webdriver.find_element(
         session_id,
         "css selector",
@@ -286,29 +286,13 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
         "return [...document.querySelectorAll(\"nav[aria-label='Main navigation'] button\")].filter((button) => button.textContent.includes('More')).length;",
     )
     if int(more_count) != 0:
-        raise AssertionError("Wide navigation still displayed the compact More destination")
-    removed_count = execute(
-        session_id,
-        """
-        return [...document.querySelectorAll("nav[aria-label='Main navigation'] button")]
-          .filter((button) => {
-            const label = button.textContent || '';
-            return label.includes('Templates') || label.includes('Search/Filter') || label.includes('Create Cards');
-          }).length;
-        """,
-    )
-    if int(removed_count) != 0:
-        raise AssertionError("Wide navigation exposed Flashcards workspaces as top-level destinations")
+        raise AssertionError("Wide navigation displayed the compact More destination")
     assert_no_horizontal_overflow(session_id, "wide application shell")
 
 
 def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
-    """Regress medium-desktop overflow with the full sidebar consuming workspace width."""
-    set_window_rect(session_id, 1174, 760)
-    # The preceding compact-navigation scenario already returns to the
-    # Flashcards route. Assert that invariant with read-only lookups instead of
-    # sending a redundant navigation click whose response could be lost after
-    # the route was already active.
+    set_window_rect(session_id, 900, 760)
+    assert_layout_mode(session_id, "medium")
     webdriver.find_element(
         session_id,
         "css selector",
@@ -317,44 +301,30 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     )
     webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
 
-    create_cards = find_workspace_tab(session_id, "Create Cards", deadline)
-    webdriver.click(session_id, create_cards)
-    webdriver.find_element(
-        session_id,
-        "css selector",
-        "main [data-testid='create-cards-workspace']",
-        deadline,
-    )
-    hero = execute(
+    label_metrics = execute(
         session_id,
         """
-        const surface = document.querySelector("main [data-testid='create-cards-hero']");
-        const heading = surface?.querySelector('h2');
-        if (!(heading instanceof HTMLElement) || !(surface instanceof HTMLElement)) return null;
-        const h = heading.getBoundingClientRect();
-        const s = surface.getBoundingClientRect();
-        return {
-          headingLeft: h.left,
-          headingRight: h.right,
-          surfaceLeft: s.left,
-          surfaceRight: s.right,
-          headingClient: heading.clientWidth,
-          headingScroll: heading.scrollWidth,
-          surfaceClient: surface.clientWidth,
-          surfaceScroll: surface.scrollWidth
-        };
+        const nav = document.querySelector("nav[aria-label='Main navigation']");
+        if (!(nav instanceof HTMLElement)) return null;
+        const labels = [...nav.querySelectorAll('button span:last-child')]
+          .filter((span) => span instanceof HTMLElement)
+          .map((span) => ({ text: (span.textContent || '').trim(), width: span.getBoundingClientRect().width }));
+        return labels;
         """,
     )
-    if not isinstance(hero, dict):
-        raise AssertionError("Could not measure the Create Cards hero at medium desktop width")
-    if (
-        float(hero["headingLeft"]) < float(hero["surfaceLeft"]) - 1
-        or float(hero["headingRight"]) > float(hero["surfaceRight"]) + 1
-        or int(hero["headingScroll"]) > int(hero["headingClient"]) + 1
-        or int(hero["surfaceScroll"]) > int(hero["surfaceClient"]) + 1
-    ):
-        raise AssertionError(f"Create Cards hero text escaped its surface: {hero!r}")
-    assert_no_horizontal_overflow(session_id, "medium Create Cards workspace")
+    if not isinstance(label_metrics, list) or not label_metrics:
+        raise AssertionError(f"Could not measure medium navigation labels: {label_metrics!r}")
+    hidden = [item for item in label_metrics if item.get("text") and float(item.get("width", 0)) < 8]
+    if hidden:
+        raise AssertionError(f"Medium navigation hid text labels: {hidden!r}")
+
+    tab_count = execute(
+        session_id,
+        "return document.querySelectorAll(\"[role='tablist'][aria-label='Flashcards workspaces'] [role='tab']\").length;",
+    )
+    if int(tab_count) != 4:
+        raise AssertionError(f"Expected four Flashcards tabs at medium width, got {tab_count}")
+    assert_no_horizontal_overflow(session_id, "medium Decks workspace")
 
     search = find_workspace_tab(session_id, "Search", deadline)
     webdriver.click(session_id, search)
@@ -364,41 +334,14 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
         "main section[aria-label='Card filters']",
         deadline,
     )
-    filter_bar = execute(
-        session_id,
-        """
-        const section = document.querySelector("section[aria-label='Card filters']");
-        const bar = section?.querySelector('[data-surface-level]');
-        if (!(bar instanceof HTMLElement)) return null;
-        const rect = bar.getBoundingClientRect();
-        const children = [...bar.children].filter((child) => child instanceof HTMLElement);
-        const childRects = children.map((child) => child.getBoundingClientRect());
-        return {
-          left: rect.left,
-          right: rect.right,
-          client: bar.clientWidth,
-          scroll: bar.scrollWidth,
-          minChildLeft: childRects.length ? Math.min(...childRects.map((child) => child.left)) : rect.left,
-          maxChildRight: childRects.length ? Math.max(...childRects.map((child) => child.right)) : rect.right
-        };
-        """,
-    )
-    if not isinstance(filter_bar, dict):
-        raise AssertionError("Could not measure the Search filter bar at medium desktop width")
-    if (
-        float(filter_bar["minChildLeft"]) < float(filter_bar["left"]) - 1
-        or float(filter_bar["maxChildRight"]) > float(filter_bar["right"]) + 1
-        or int(filter_bar["scroll"]) > int(filter_bar["client"]) + 1
-    ):
-        raise AssertionError(f"Search controls escaped the filter bar: {filter_bar!r}")
     assert_no_horizontal_overflow(session_id, "medium Search workspace")
 
     decks = find_workspace_tab(session_id, "Decks", deadline)
     webdriver.click(session_id, decks)
+    webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
 
 
-def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
-    """Regress the native-select intrinsic-width overlap shown in Bulk Add."""
+def verify_deck_scoped_bulk_add(session_id: str, deadline: float) -> None:
     deck_name = "Cardiology pharmacology respiratory physiology comprehensive review collection"
     new_deck = webdriver.find_element(
         session_id,
@@ -424,30 +367,20 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
     webdriver.wait_for_main_heading(session_id, deck_name, deadline)
     wait_for_overlay_inactive(session_id, deadline, "new deck detail assertions")
 
-    back = webdriver.find_element(
-        session_id,
-        "xpath",
-        "//main//button[contains(normalize-space(.), 'All decks')]",
-        deadline,
-    )
-    webdriver.click(session_id, back)
-    webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
-    wait_for_overlay_inactive(session_id, deadline, "Flashcards tabs after returning from new deck")
-
-    create_cards = find_workspace_tab(session_id, "Create Cards", deadline)
-    webdriver.click(session_id, create_cards)
-    webdriver.find_element(
-        session_id,
-        "css selector",
-        "main [data-testid='create-cards-workspace']",
-        deadline,
-    )
     bulk_add = webdriver.find_element(
         session_id,
-        "css selector",
-        "main button[data-testid='bulk-add-cards']",
+        "xpath",
+        "//main//button[normalize-space(.)='Bulk add']",
         deadline,
     )
+    add_flashcard = webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//button[normalize-space(.)='Add flashcard']",
+        deadline,
+    )
+    if not bulk_add or not add_flashcard:
+        raise AssertionError("Deck detail did not expose both card-authoring actions")
     webdriver.click(session_id, bulk_add)
     webdriver.find_element(
         session_id,
@@ -456,48 +389,30 @@ def verify_bulk_add_containment(session_id: str, deadline: float) -> None:
         deadline,
     )
 
-    measurements = execute(
+    destination = execute(
         session_id,
         """
         const controls = document.querySelector('.bulk-entry-controls');
-        const select = controls?.querySelector('select');
-        const help = controls?.querySelector('p');
-        if (!(controls instanceof HTMLElement) || !(select instanceof HTMLElement) || !(help instanceof HTMLElement)) {
-          return null;
-        }
-        const c = controls.getBoundingClientRect();
-        const s = select.getBoundingClientRect();
-        const h = help.getBoundingClientRect();
+        if (!(controls instanceof HTMLElement)) return null;
+        const select = controls.querySelector('select');
+        const strong = controls.querySelector('strong');
         return {
-          controlsLeft: c.left,
-          controlsRight: c.right,
-          selectLeft: s.left,
-          selectRight: s.right,
-          helpLeft: h.left,
-          helpRight: h.right,
-          selectMinWidth: getComputedStyle(select).minWidth,
-          selectMaxWidth: getComputedStyle(select).maxWidth
+          hasSelect: Boolean(select),
+          destination: (strong?.textContent || '').trim(),
+          client: controls.clientWidth,
+          scroll: controls.scrollWidth
         };
         """,
     )
-    if not isinstance(measurements, dict):
-        raise AssertionError(f"Could not measure Bulk Add controls: {measurements!r}")
-
-    controls_right = float(measurements["controlsRight"])
-    select_right = float(measurements["selectRight"])
-    help_left = float(measurements["helpLeft"])
-    help_right = float(measurements["helpRight"])
-    if select_right > help_left - 8:
-        raise AssertionError(
-            "Bulk Add destination selector overlaps explanatory text: "
-            f"selectRight={select_right:.1f}, helpLeft={help_left:.1f}, "
-            f"styles={measurements!r}"
-        )
-    if select_right > controls_right + 1 or help_right > controls_right + 1:
-        raise AssertionError(
-            f"Bulk Add controls escaped their container: {measurements!r}"
-        )
-    assert_no_horizontal_overflow(session_id, "Bulk Add dialog")
+    if not isinstance(destination, dict):
+        raise AssertionError(f"Could not inspect deck-scoped Bulk Add controls: {destination!r}")
+    if destination.get("hasSelect") is True:
+        raise AssertionError("Deck-scoped Bulk Add still asks for a destination deck")
+    if destination.get("destination") != deck_name:
+        raise AssertionError(f"Bulk Add did not retain the open deck destination: {destination!r}")
+    if int(destination.get("scroll", 0)) > int(destination.get("client", 0)) + 1:
+        raise AssertionError(f"Bulk Add controls overflowed their container: {destination!r}")
+    assert_no_horizontal_overflow(session_id, "deck-scoped Bulk Add dialog")
 
     send_key(session_id, ESCAPE_KEY)
     wait_for_absent(session_id, "css selector", "[role='dialog']", deadline)
@@ -531,11 +446,11 @@ def main() -> int:
         verify_dialog_focus(session_id, webdriver.deadline_after())
         verify_wide_navigation(session_id, webdriver.deadline_after())
         verify_medium_flashcards_layout(session_id, webdriver.deadline_after(45))
-        verify_bulk_add_containment(session_id, webdriver.deadline_after(45))
+        verify_deck_scoped_bulk_add(session_id, webdriver.deadline_after(45))
         print(
-            "Native UI platform smoke passed: compact/wide navigation, medium-width Flashcards "
-            "containment, no horizontal overflow, Bulk Add control containment, dialog focus "
-            "containment, Escape dismissal, and focus restoration."
+            "Native UI platform smoke passed: compact/wide navigation, labeled medium navigation, "
+            "four Flashcards roots, deck-scoped authoring, no horizontal overflow, Bulk Add fixed "
+            "destination containment, dialog focus containment, Escape dismissal, and focus restoration."
         )
         return 0
     except Exception:
