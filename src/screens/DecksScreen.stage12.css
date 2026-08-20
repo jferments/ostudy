@@ -1,3 +1,5 @@
+@import "./cards/CardListing.css";
+
 @layer components {
   .decks-screen {
     container-type: inline-size;
@@ -78,37 +80,6 @@
     grid-template-columns: 32px minmax(0, 1fr);
     gap: var(--ostudy-space-3);
     padding: 12px var(--ostudy-space-4);
-  }
-
-  .card-row-preview {
-    display: grid;
-    min-width: 0;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
-  }
-
-  .card-preview-line {
-    display: flex;
-    min-width: 0;
-    align-items: baseline;
-    gap: 6px;
-  }
-
-  .card-preview-label {
-    flex: none;
-    color: var(--ostudy-color-text-accent);
-    font-size: 0.78rem;
-    font-weight: 850;
-  }
-
-  .card-preview-line strong {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--ostudy-color-text-secondary);
-    font-size: 0.88rem;
-    font-weight: 620;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .card-row-divider {
