@@ -12,6 +12,7 @@ import { PageHeader, PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { CardsScreen } from "../CardsScreen";
 import "../DecksScreen.stage12.css";
 import { TemplatesScreen } from "../TemplatesScreen";
+import { CardPracticeProvider } from "../cards/CardPracticeContext";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
 import { TransferWorkspace } from "./TransferWorkspace";
 import styles from "./FlashcardsWorkspace.module.css";
@@ -138,47 +139,49 @@ export function FlashcardsWorkspace({
         relation="sibling"
         className={styles.panel}
       >
-        {workspace === "decks" ? (
-          <DeckLibraryWorkspace
-            key={navigationKey}
-            decks={decks}
-            settings={settings}
-            refreshDecks={refreshDecks}
-            onPracticeDeck={onPracticeDeck}
-            openDeckRequest={openDeckRequest}
-            onOpenDeck={onOpenDeck}
-            onReturnToLibrary={onReturnToLibrary}
-            onManageTemplates={() => onWorkspaceChange("templates")}
-            onCardDirtyChange={onCardDirtyChange}
-            showToast={showToast}
-          />
-        ) : null}
-        {workspace === "templates" ? (
-          <TemplatesScreen
-            key={navigationKey}
-            onBack={() => onWorkspaceChange("decks")}
-            onDirtyChange={onTemplateDirtyChange}
-            showToast={showToast}
-          />
-        ) : null}
-        {workspace === "search" ? (
-          <CardsScreen
-            key={navigationKey}
-            decks={decks}
-            refreshDecks={refreshDecks}
-            onPracticeCards={onPracticeCards}
-            onDirtyChange={onCardDirtyChange}
-            showToast={showToast}
-          />
-        ) : null}
-        {workspace === "transfer" ? (
-          <TransferWorkspace
-            key={navigationKey}
-            decks={decks}
-            refreshDecks={refreshDecks}
-            showToast={showToast}
-          />
-        ) : null}
+        <CardPracticeProvider onPracticeCards={onPracticeCards}>
+          {workspace === "decks" ? (
+            <DeckLibraryWorkspace
+              key={navigationKey}
+              decks={decks}
+              settings={settings}
+              refreshDecks={refreshDecks}
+              onPracticeDeck={onPracticeDeck}
+              openDeckRequest={openDeckRequest}
+              onOpenDeck={onOpenDeck}
+              onReturnToLibrary={onReturnToLibrary}
+              onManageTemplates={() => onWorkspaceChange("templates")}
+              onCardDirtyChange={onCardDirtyChange}
+              showToast={showToast}
+            />
+          ) : null}
+          {workspace === "templates" ? (
+            <TemplatesScreen
+              key={navigationKey}
+              onBack={() => onWorkspaceChange("decks")}
+              onDirtyChange={onTemplateDirtyChange}
+              showToast={showToast}
+            />
+          ) : null}
+          {workspace === "search" ? (
+            <CardsScreen
+              key={navigationKey}
+              decks={decks}
+              refreshDecks={refreshDecks}
+              onPracticeCards={onPracticeCards}
+              onDirtyChange={onCardDirtyChange}
+              showToast={showToast}
+            />
+          ) : null}
+          {workspace === "transfer" ? (
+            <TransferWorkspace
+              key={navigationKey}
+              decks={decks}
+              refreshDecks={refreshDecks}
+              showToast={showToast}
+            />
+          ) : null}
+        </CardPracticeProvider>
       </RouteTransition>
     </PageScaffold>
   );
