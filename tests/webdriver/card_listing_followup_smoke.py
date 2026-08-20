@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused native regression for shared card listings and narrow medium layout."""
+"""Focused native regression for the shared Deck/Search card browser."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import signal
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import smoke as webdriver
 import ui_platform_smoke as ui
@@ -86,89 +87,87 @@ def create_card(session_id: str, deadline: float) -> tuple[str, str, str]:
     )
     webdriver.click(session_id, save)
     webdriver.wait_for_main_heading(session_id, deck_name, deadline)
+    webdriver.find_element(
+        session_id,
+        "css selector",
+        "main .organized-card-list[aria-label='Matching cards']",
+        deadline,
+    )
     return deck_name, question, answer
 
 
-def assert_deck_preview(session_id: str, question: str, answer: str) -> None:
+def listing_snapshot(session_id: str) -> dict[str, Any]:
     measurement = ui.execute(
         session_id,
         """
-        const preview = document.querySelector('.card-row-preview');
-        const lines = preview ? [...preview.querySelectorAll('.card-preview-line')] : [];
-        if (!(preview instanceof HTMLElement) || lines.length < 2) return null;
+        const sides = document.querySelector('main .organized-card-row .card-listing-sides');
+        if (!(sides instanceof HTMLElement)) return null;
+        const lines = [...sides.querySelectorAll(':scope > .card-listing-line')]
+          .filter((line) => line instanceof HTMLElement);
+        if (lines.length !== 2) return null;
         const q = lines[0].getBoundingClientRect();
         const a = lines[1].getBoundingClientRect();
-        const qLabel = lines[0].querySelector('.card-preview-label');
-        const aLabel = lines[1].querySelector('.card-preview-label');
-        const qText = lines[0].querySelector('strong');
-        const aText = lines[1].querySelector('strong');
         return {
-          qLabel: (qLabel?.textContent || '').trim(),
-          aLabel: (aLabel?.textContent || '').trim(),
-          question: (qText?.textContent || '').replace(/\\s+/g, ' ').trim(),
-          answer: (aText?.textContent || '').replace(/\\s+/g, ' ').trim(),
+          sidesClass: sides.className,
+          lineCount: lines.length,
+          qLabel: (lines[0].querySelector('.card-listing-label')?.textContent || '').trim(),
+          aLabel: (lines[1].querySelector('.card-listing-label')?.textContent || '').trim(),
+          question: (lines[0].querySelector('strong')?.textContent || '').trim(),
+          answer: (lines[1].querySelector('strong')?.textContent || '').trim(),
           qTop: q.top,
           aTop: a.top,
-          columns: getComputedStyle(preview).gridTemplateColumns,
+          arrowCount: [...sides.querySelectorAll('[aria-hidden=true]')]
+            .filter((element) => (element.textContent || '').includes('→')).length,
         };
         """,
     )
     if not isinstance(measurement, dict):
-        raise AssertionError(f"Deck card preview was not measurable: {measurement!r}")
+        raise AssertionError(f"Shared card listing was not measurable: {measurement!r}")
+    return measurement
+
+
+def assert_shared_listing(
+    measurement: dict[str, Any],
+    question: str,
+    answer: str,
+    label: str,
+) -> None:
+    if measurement.get("lineCount") != 2:
+        raise AssertionError(f"{label} does not contain exactly two shared Q/A lines: {measurement!r}")
     if measurement.get("qLabel") != "Q:" or measurement.get("aLabel") != "A:":
-        raise AssertionError(f"Deck preview does not use compact Q:/A: labels: {measurement!r}")
-    if measurement.get("question") != question or measurement.get("answer") != answer:
-        raise AssertionError(f"Deck preview lost card content: {measurement!r}")
+        raise AssertionError(f"{label} does not use literal Q:/A: labels: {measurement!r}")
+    if question not in str(measurement.get("question", "")):
+        raise AssertionError(f"{label} lost the question text: {measurement!r}")
+    if answer not in str(measurement.get("answer", "")):
+        raise AssertionError(f"{label} lost the answer text: {measurement!r}")
     if float(measurement["aTop"]) <= float(measurement["qTop"]) + 1:
-        raise AssertionError(f"Deck Q/A previews share one horizontal line: {measurement!r}")
+        raise AssertionError(f"{label} Q/A previews share one horizontal line: {measurement!r}")
+    if int(measurement.get("arrowCount", -1)) != 0:
+        raise AssertionError(f"{label} still renders the old Q→A arrow: {measurement!r}")
 
 
-def assert_search_surface_and_preview(session_id: str, question: str, answer: str, deadline: float) -> None:
-    search_tab = ui.find_workspace_tab(session_id, "Search", deadline)
-    webdriver.click(session_id, search_tab)
-    webdriver.find_element(
+def assert_deck_browser(session_id: str, question: str, answer: str) -> dict[str, Any]:
+    filter_count = ui.execute(
         session_id,
-        "css selector",
-        "main section[aria-label='Card filters']",
-        deadline,
+        "return document.querySelectorAll(\"main section[aria-label='Card filters']\").length;",
     )
-    webdriver.find_element(
-        session_id,
-        "css selector",
-        "main .organized-card-sides",
-        deadline,
-    )
+    if int(filter_count) != 0:
+        raise AssertionError("Deck detail exposed the advanced Search/Filter form")
+    measurement = listing_snapshot(session_id)
+    assert_shared_listing(measurement, question, answer, "Deck detail")
+    return measurement
 
+
+def assert_search_surface(session_id: str) -> None:
     measurement = ui.execute(
         session_id,
         """
         const input = document.querySelector("main section[aria-label='Card filters'] input[type='search']");
         const surface = input?.parentElement;
-        const sides = document.querySelector('main .organized-card-sides');
-        if (!(input instanceof HTMLInputElement) || !(surface instanceof HTMLElement) || !(sides instanceof HTMLElement)) {
-          return null;
-        }
-        const content = [...sides.children]
-          .filter((element) => element.getAttribute('aria-hidden') !== 'true')
-          .filter((element) => element instanceof HTMLElement);
-        if (content.length < 2) return null;
-        const qLabel = content[0].querySelector('small');
-        const aLabel = content[1].querySelector('small');
-        const qText = content[0].querySelector('strong');
-        const aText = content[1].querySelector('strong');
-        const arrow = [...sides.children].find((element) => element.getAttribute('aria-hidden') === 'true');
-        const q = content[0].getBoundingClientRect();
-        const a = content[1].getBoundingClientRect();
+        if (!(input instanceof HTMLInputElement) || !(surface instanceof HTMLElement)) return null;
         const inputRect = input.getBoundingClientRect();
         const surfaceRect = surface.getBoundingClientRect();
         return {
-          question: (qText?.textContent || '').replace(/\\s+/g, ' ').trim(),
-          answer: (aText?.textContent || '').replace(/\\s+/g, ' ').trim(),
-          qLabel: qLabel ? getComputedStyle(qLabel, '::after').content : '',
-          aLabel: aLabel ? getComputedStyle(aLabel, '::after').content : '',
-          qTop: q.top,
-          aTop: a.top,
-          arrowDisplay: arrow instanceof HTMLElement ? getComputedStyle(arrow).display : null,
           iconInsideSurface: Boolean(surface.querySelector('svg')),
           inputBackground: getComputedStyle(input).backgroundColor,
           surfaceBackground: getComputedStyle(surface).backgroundColor,
@@ -180,24 +179,50 @@ def assert_search_surface_and_preview(session_id: str, question: str, answer: st
         """,
     )
     if not isinstance(measurement, dict):
-        raise AssertionError(f"Search card presentation was not measurable: {measurement!r}")
-    if "Q:" not in str(measurement.get("qLabel", "")) or "A:" not in str(measurement.get("aLabel", "")):
-        raise AssertionError(f"Search results do not present compact Q:/A: labels: {measurement!r}")
-    if measurement.get("question") != question or measurement.get("answer") != answer:
-        raise AssertionError(f"Search result preview lost card content: {measurement!r}")
-    if float(measurement["aTop"]) <= float(measurement["qTop"]) + 1:
-        raise AssertionError(f"Search Q/A previews share one horizontal line: {measurement!r}")
-    if measurement.get("arrowDisplay") != "none":
-        raise AssertionError(f"Search result still displays the old Q→A arrow: {measurement!r}")
+        raise AssertionError(f"Search input surface was not measurable: {measurement!r}")
     if measurement.get("iconInsideSurface") is not True:
         raise AssertionError(f"Search icon is outside the input surface: {measurement!r}")
     if measurement.get("inputBackground") not in ("rgba(0, 0, 0, 0)", "transparent"):
-        raise AssertionError(f"Search input paints a second background inside its surface: {measurement!r}")
+        raise AssertionError(f"Search input paints a second background: {measurement!r}")
     if measurement.get("surfaceBackground") in ("rgba(0, 0, 0, 0)", "transparent"):
         raise AssertionError(f"Search control has no unified painted surface: {measurement!r}")
-    if float(measurement["inputLeft"]) < float(measurement["surfaceLeft"]) or float(measurement["inputRight"]) > float(measurement["surfaceRight"]) + 1:
+    if (
+        float(measurement["inputLeft"]) < float(measurement["surfaceLeft"])
+        or float(measurement["inputRight"]) > float(measurement["surfaceRight"]) + 1
+    ):
         raise AssertionError(f"Search input escapes its unified surface: {measurement!r}")
-    ui.assert_no_horizontal_overflow(session_id, "medium Search listing follow-up")
+
+
+def assert_search_browser(
+    session_id: str,
+    question: str,
+    answer: str,
+    deck_measurement: dict[str, Any],
+    deadline: float,
+) -> None:
+    search_tab = ui.find_workspace_tab(session_id, "Search", deadline)
+    webdriver.click(session_id, search_tab)
+    webdriver.find_element(
+        session_id,
+        "css selector",
+        "main section[aria-label='Card filters']",
+        deadline,
+    )
+    webdriver.find_element(
+        session_id,
+        "css selector",
+        "main .organized-card-list[aria-label='Matching cards']",
+        deadline,
+    )
+    measurement = listing_snapshot(session_id)
+    assert_shared_listing(measurement, question, answer, "Search/Filter")
+    if measurement.get("sidesClass") != deck_measurement.get("sidesClass"):
+        raise AssertionError(
+            "Deck and Search did not render the same shared card-listing DOM contract: "
+            f"deck={deck_measurement!r}, search={measurement!r}"
+        )
+    assert_search_surface(session_id)
+    ui.assert_no_horizontal_overflow(session_id, "medium shared Search card browser")
 
 
 def main() -> int:
@@ -223,22 +248,19 @@ def main() -> int:
         webdriver.wait_for_driver(webdriver.deadline_after(20))
         session_id = webdriver.create_session(application)
         webdriver.verify_shell(session_id, webdriver.deadline_after())
-        assert_medium_navigation(session_id, webdriver.deadline_after(45))
-        _, question, answer = create_card(session_id, webdriver.deadline_after(60))
-        assert_deck_preview(session_id, question, answer)
-        assert_search_surface_and_preview(
-            session_id,
-            question,
-            answer,
-            webdriver.deadline_after(60),
-        )
+        deadline = webdriver.deadline_after(60)
+        assert_medium_navigation(session_id, deadline)
+        _, question, answer = create_card(session_id, deadline)
+        deck_measurement = assert_deck_browser(session_id, question, answer)
+        assert_search_browser(session_id, question, answer, deck_measurement, deadline)
         print(
-            "Native card-listing follow-up smoke passed: 928px medium navigation has complete labels; "
-            "Deck and Search use separate Q:/A: lines; Search uses one icon/input surface."
+            "Native shared card-browser smoke passed: 928px navigation labels fit; Deck hides "
+            "advanced filters; Deck and Search share literal two-line Q:/A: rows; Search uses one "
+            "icon/input surface."
         )
         return 0
     except Exception:
-        print("\n--- tauri-driver card-listing follow-up log ---")
+        print("\n--- tauri-driver shared card-browser log ---")
         try:
             print(log_path.read_text(encoding="utf-8"))
         except OSError:
