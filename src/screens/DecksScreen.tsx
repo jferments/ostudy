@@ -1,35 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
-import type { DeckOpenRequest } from "../App";
-import { DecksController } from "../controllers/decksController";
-
 import { Modal } from "../components/Modal";
 import type { ShowToast } from "../components/Toast";
-import {
-  type CardNote,
-} from "../ipc/cards";
-import {
-  createOperationId,
-  getErrorCode,
-  getErrorMessage,
-} from "../ipc/common";
+import { DecksController } from "../controllers/decksController";
+import { type CardNote } from "../ipc/cards";
+import { createOperationId, getErrorCode, getErrorMessage } from "../ipc/common";
 import {
   type CreateDeckInput,
   type DeckCardSummary,
   type DeckSummary,
 } from "../ipc/decks";
-import {
-  type AppSettings,
-} from "../ipc/settings";
+import { type AppSettings } from "../ipc/settings";
 import {
   type CardTemplate,
   type GenerateTemplateCardsResult,
 } from "../ipc/templates";
+import type { DeckOpenRequest, FlashcardsDeckView } from "../navigation/flashcardsRoutes";
 import { publishExport, selectExternalImport } from "../platform/files";
 import { useMediaQuery } from "../ui/hooks/useMediaQuery";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { CardEditorScreen } from "./CardEditorScreen";
+import { BulkEntryModal } from "./cards/BulkEntryModal";
+import styles from "./DecksScreen.module.css";
 
 interface DecksScreenProps {
   decks: DeckSummary[];
@@ -38,8 +31,9 @@ interface DecksScreenProps {
   onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
   openDeckRequest?: DeckOpenRequest | null;
   onOpenDeckRequestConsumed?: () => void;
+  rootRequestId?: number | null;
+  onNavigationRejected?: (view: FlashcardsDeckView) => void;
   onManageTemplates?: () => void | Promise<void>;
-  onBulkAdd?: () => void;
   onViewChange?: (view: DeckView) => void;
   onDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
@@ -55,8 +49,8 @@ export function DecksScreen({
   onPracticeDeck,
   openDeckRequest = null,
   onOpenDeckRequestConsumed,
+  rootRequestId = null,
   onManageTemplates,
-  onBulkAdd,
   onViewChange,
   onDirtyChange,
   showToast,
@@ -68,6 +62,7 @@ export function DecksScreen({
   const [hasMoreCards, setHasMoreCards] = useState(false);
   const [editingCard, setEditingCard] = useState<CardNote | null>(null);
   const [deckDialog, setDeckDialog] = useState<"create" | "edit" | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [isLoadingDeck, setIsLoadingDeck] = useState(false);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const loadingDeckRef = useRef(false);
@@ -85,6 +80,7 @@ export function DecksScreen({
   if (controllerRef.current === null) controllerRef.current = new DecksController();
   const controller = controllerRef.current;
   const handledOpenRequestRef = useRef<number | null>(null);
+  const handledRootRequestRef = useRef<number | null>(null);
   const confirm = useConfirm();
   const compact = useMediaQuery("(max-width: 760px)");
 
@@ -97,6 +93,16 @@ export function DecksScreen({
   useEffect(() => {
     if (!compact) setSearchDialogOpen(false);
   }, [compact]);
+
+  useEffect(() => {
+    if (rootRequestId === null || handledRootRequestRef.current === rootRequestId) return;
+    handledRootRequestRef.current = rootRequestId;
+    setBulkOpen(false);
+    setSearchDialogOpen(false);
+    setDeckDialog(null);
+    setEditingCard(null);
+    setView("library");
+  }, [rootRequestId]);
 
   useEffect(() => {
     if (!selectedDeckId) return;
@@ -124,13 +130,14 @@ export function DecksScreen({
     if (view !== "detail" || !selectedDeckId) return;
     const timer = window.setTimeout(() => {
       setIsLoadingCards(true);
-      void controller.cards({
-        deckId: selectedDeckId,
-        query: search,
-        sort: cardSort,
-        limit: DECK_CARD_PAGE_SIZE,
-        offset: 0,
-      })
+      void controller
+        .cards({
+          deckId: selectedDeckId,
+          query: search,
+          sort: cardSort,
+          limit: DECK_CARD_PAGE_SIZE,
+          offset: 0,
+        })
         .then((page) => {
           if (!page) return;
           setCards(page.cards);
@@ -247,6 +254,11 @@ export function DecksScreen({
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
     }
+  }
+
+  function openNewCardEditor(): void {
+    setEditingCard(null);
+    setView("editor");
   }
 
   async function handleDeckSaved(input: CreateDeckInput): Promise<void> {
@@ -561,16 +573,6 @@ export function DecksScreen({
                   Manage templates
                 </button>
               ) : null}
-              {onBulkAdd ? (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={activeDecks.length === 0}
-                  onClick={onBulkAdd}
-                >
-                  Bulk add
-                </button>
-              ) : null}
               <button
                 type="button"
                 className="secondary-button"
@@ -810,69 +812,73 @@ export function DecksScreen({
               >
                 Delete deck
               </button>
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => {
-                  setEditingCard(null);
-                  setView("editor");
-                }}
-              >
-                Add flashcard
-              </button>
             </div>
           </header>
 
           {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
 
-          <section className="card-browser-panel">
-            <div className="card-browser-toolbar">
-              {compact ? (
+          <section className={styles.cardBrowserPanel} aria-label={`${selectedDeck.name} cards`}>
+            <div className={styles.cardBrowserToolbar}>
+              <div className={styles.cardBrowserFilters}>
+                {compact ? (
+                  <button
+                    type="button"
+                    className="deck-search-trigger"
+                    aria-label="Search this deck"
+                    title={search ? `Search: ${search}` : "Search this deck"}
+                    onClick={() => setSearchDialogOpen(true)}
+                  >
+                    <span aria-hidden="true">⌕</span>
+                    <span className="sr-only">Search this deck</span>
+                  </button>
+                ) : (
+                  <label className="search-field">
+                    <span>Search this deck</span>
+                    <input
+                      type="search"
+                      value={search}
+                      onChange={(event) => setSearch(event.currentTarget.value)}
+                      placeholder="Search questions and answers"
+                    />
+                  </label>
+                )}
+                <label className={styles.sortControl}>
+                  <span>Sort</span>
+                  <select
+                    value={cardSort}
+                    onChange={(event) =>
+                      setCardSort(
+                        event.currentTarget.value as
+                          | "created_desc"
+                          | "practiced_desc"
+                          | "practiced_asc",
+                      )
+                    }
+                  >
+                    <option value="created_desc">Time created</option>
+                    <option value="practiced_desc">Most recently practiced</option>
+                    <option value="practiced_asc">Least recently practiced</option>
+                  </select>
+                </label>
+                <span className={styles.cardCountSummary}>
+                  {cardTotalCount} {cardTotalCount === 1 ? "card" : "cards"}
+                  {selectedDeck.studyableDueCount > 0
+                    ? ` · ${selectedDeck.studyableDueCount} ready`
+                    : ""}
+                </span>
+              </div>
+              <div className={styles.cardAuthoringActions}>
                 <button
                   type="button"
-                  className="deck-search-trigger"
-                  aria-label="Search this deck"
-                  title={search ? `Search: ${search}` : "Search this deck"}
-                  onClick={() => setSearchDialogOpen(true)}
+                  className="secondary-button"
+                  onClick={() => setBulkOpen(true)}
                 >
-                  <span aria-hidden="true">⌕</span>
-                  <span className="sr-only">Search this deck</span>
+                  Bulk add
                 </button>
-              ) : (
-                <label className="search-field">
-                  <span>Search this deck</span>
-                  <input
-                    type="search"
-                    value={search}
-                    onChange={(event) => setSearch(event.currentTarget.value)}
-                    placeholder="Search questions and answers"
-                  />
-                </label>
-              )}
-              <label>
-                <span>Sort</span>
-                <select
-                  value={cardSort}
-                  onChange={(event) =>
-                    setCardSort(
-                      event.currentTarget.value as
-                        | "created_desc"
-                        | "practiced_desc"
-                        | "practiced_asc",
-                    )
-                  }
-                >
-                  <option value="created_desc">Time created</option>
-                  <option value="practiced_desc">Most recently practiced</option>
-                  <option value="practiced_asc">Least recently practiced</option>
-                </select>
-              </label>
-              <span className="card-count-summary">
-                {cardTotalCount} {cardTotalCount === 1 ? "Card" : "Cards"}
-                {selectedDeck.studyableDueCount > 0
-                  ? ` · ${selectedDeck.studyableDueCount} ready now`
-                  : ""}
-              </span>
+                <button type="button" className="primary-button" onClick={openNewCardEditor}>
+                  Add flashcard
+                </button>
+              </div>
             </div>
 
             {isLoadingCards && cards.length === 0 ? (
@@ -884,14 +890,7 @@ export function DecksScreen({
                   +
                 </div>
                 <h2>This deck is empty</h2>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => {
-                    setEditingCard(null);
-                    setView("editor");
-                  }}
-                >
+                <button type="button" className="primary-button" onClick={openNewCardEditor}>
                   Add the first flashcard
                 </button>
               </section>
@@ -906,30 +905,35 @@ export function DecksScreen({
               </div>
             ) : null}
             {cards.length > 0 ? (
-              <div className="card-list">
+              <div className={styles.cardList}>
                 {cards.map((card, index) => (
-                  <article key={card.noteId} className="card-row">
+                  <article key={card.noteId} className={styles.cardRow}>
                     <button
                       type="button"
-                      className="card-row-main"
+                      className={styles.cardRowMain}
                       onClick={() => void openCardEditor(card)}
                     >
-                      <span className="card-number">{index + 1}</span>
-                      <span className="card-row-side">
-                        <small>Question</small>
-                        <strong>{summarize(card.questionExcerpt, card.imageCount > 0)}</strong>
-                      </span>
-                      <span className="card-row-divider" aria-hidden="true">
-                        →
-                      </span>
-                      <span className="card-row-side">
-                        <small>Answer</small>
-                        <strong>{summarize(card.answerExcerpt, card.imageCount > 0)}</strong>
+                      <span className={styles.cardNumber}>{index + 1}</span>
+                      <span className={styles.cardPreview}>
+                        <span className={styles.cardPreviewLine}>
+                          <span className={styles.cardPreviewLabel} aria-hidden="true">
+                            Q:
+                          </span>
+                          <span className="sr-only">Question: </span>
+                          <strong>{summarize(card.questionExcerpt, card.imageCount > 0)}</strong>
+                        </span>
+                        <span className={styles.cardPreviewLine}>
+                          <span className={styles.cardPreviewLabel} aria-hidden="true">
+                            A:
+                          </span>
+                          <span className="sr-only">Answer: </span>
+                          <strong>{summarize(card.answerExcerpt, card.imageCount > 0)}</strong>
+                        </span>
                       </span>
                     </button>
-                    <div className="card-row-actions">
+                    <div className={styles.cardRowActions}>
                       <span
-                        className="card-row-reversible"
+                        className={styles.cardRowReversible}
                         aria-label={card.reversible ? "Reversible" : undefined}
                         title={card.reversible ? "Reversible card" : undefined}
                         aria-hidden={card.reversible ? undefined : "true"}
@@ -1008,6 +1012,16 @@ export function DecksScreen({
             </div>
           </div>
         </Modal>
+      ) : null}
+
+      {bulkOpen && selectedDeck ? (
+        <BulkEntryModal
+          decks={activeDecks}
+          fixedDeckId={selectedDeck.id}
+          onClose={() => setBulkOpen(false)}
+          onSaved={() => refreshSelectedDeckAfterMutation(selectedDeck.id)}
+          showToast={showToast}
+        />
       ) : null}
     </div>
   );
@@ -1117,5 +1131,5 @@ function practiceTitle(deck: DeckSummary): string {
 function summarize(text: string, hasImage: boolean): string {
   const normalized = text.replace(/\s+/gu, " ").trim();
   if (normalized === "") return hasImage ? "Image content" : "Empty";
-  return normalized.length > 150 ? `${normalized.slice(0, 147)}…` : normalized;
+  return normalized.length > 512 ? `${normalized.slice(0, 509)}…` : normalized;
 }
