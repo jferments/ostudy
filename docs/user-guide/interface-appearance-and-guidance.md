@@ -2,9 +2,25 @@
 
 ostudy uses the same information architecture and study behavior across desktop, tablet, and mobile. Appearance settings change presentation, not domain behavior.
 
+## Responsive layout modes
+
+The application resolves one shared shell mode from the available CSS viewport:
+
+- **Compact** uses the phone app bar, bottom navigation, and single-column workspace layouts.
+- **Medium** is intended for tablets and compact desktop windows. It uses a narrow but labeled sidebar and lets each workspace adapt to its actual content width.
+- **Wide** uses the full sidebar and wide desktop layouts.
+
+The shell publishes the current layout mode and pointer mode to the application root. Feature layouts use container queries where their available width can differ from the overall viewport because of navigation chrome. This prevents tablets from receiving an icon-only shell while their content independently switches between unrelated phone and desktop breakpoints.
+
+Layout behavior never depends on a device name or user-agent string. Portrait and landscape tablets, desktop windows, touchscreens, and mouse-driven systems are resolved from available width, pointer precision, text scale, material preference, and motion preference.
+
+Compact visual spacing does not reduce interaction targets. Coarse-pointer drag handles, checkboxes, and destructive or primary actions retain touch-sized controls.
+
 ## Themes
 
 The built-in themes are **Light**, **Dark**, **Console**, and **Synthwave**. Every theme implements the same semantic roles for canvas, surfaces, text, borders, accent, status, focus, elevation, and materials. Feature screens do not select theme-specific colors or branch their behavior by theme name.
+
+Every layout mode preserves explicit text and border contrast rather than depending only on subtle background differences. This is particularly important for color e-ink displays and other low-refresh or reduced-contrast devices.
 
 ## Typography and scale
 
