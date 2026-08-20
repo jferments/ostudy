@@ -2,17 +2,20 @@
 
 The **Flashcards** area is the main place to organize study material, create cards, find existing cards, and transfer study content.
 
-Its compact heading is followed immediately by five workspace tabs:
+Its compact heading is followed by four workspace tabs:
 
 - **Decks**
 - **Templates**
 - **Search**
 - **Import/Export**
-- **Create Cards**
 
-On compact mobile layouts the tabs form a centered two-row arrangement: three tabs on the first row and two tabs on the second. They do not require horizontal scrolling.
+Card authoring belongs to the deck that will contain the cards rather than to a separate global workspace. Open a deck to add one flashcard or use **Bulk add** for several question-and-answer pairs.
 
-Switching tabs changes presentation state only. The active tab is stored in the local presentation checkpoint so ostudy can restore the previous workspace after restart. Card content, review history, and credentials are not stored in that checkpoint.
+Switching tabs changes presentation state only. Re-selecting a workspace returns it to its root. In particular, selecting **Decks** while a deck is open returns to the main deck listing. The active workspace and open deck destination are stored in the local presentation checkpoint so ostudy can restore useful navigation state after restart. Card content, review history, and credentials are not stored in that checkpoint.
+
+## Responsive layout
+
+Flashcards uses the same compact, medium, and wide layout model as the application shell. Phone-sized layouts use the compact bottom navigation and single-column workspace content. Tablet and intermediate widths use a labeled medium navigation rail rather than an icon-only desktop/mobile hybrid. Feature panels adapt to their own available width, so deck controls and card previews do not depend on one global desktop breakpoint.
 
 ## Decks
 
@@ -57,9 +60,17 @@ Collapse state is presentational only. It does not alter folder membership, deck
 
 Every active deck with generated cards has a **Practice** button. Starting from a deck is an explicit request to study that deck, so the session follows the deck-practice workload rules rather than merely opening its editor.
 
-### Comfortable and Compact density
+### Compact deck rows
 
-**Comfortable** density shows more description and progress detail. **Compact** density fits more deck rows on screen. Density is presentation state only and never changes card content or durable ordering.
+The deck library uses one compact presentation at every viewport size. Deck names, card counts, ready counts, movement controls, and study actions remain available without maintaining a second comfortable/compact preference. Touch and keyboard targets remain large enough for coarse-pointer and keyboard use even though the visual rows are compact.
+
+### Adding cards to a deck
+
+Open a deck to manage its cards. The card table toolbar contains **Bulk add** and **Add flashcard**.
+
+**Add flashcard** opens the full card editor for the current deck. **Bulk add** opens the existing duplicate-aware bulk-entry workflow with that deck fixed as the destination, so users do not have to select the destination again. Both routes use the same durable draft, validation, duplicate detection, template, and managed-asset boundaries as the rest of ostudy.
+
+Card rows use a compact preview. On narrow layouts the content is presented as two horizontal text lines beginning with **Q:** and **A:**; the text uses the available width and then ellipsizes. The former arrow column and vertically separated Question/Answer blocks are not used.
 
 ## Templates
 
@@ -90,7 +101,3 @@ Use **Import/Export** for deck-scoped content transfers and complete-library pro
 - `.ostudybackup` protects the complete local library, including folders, deck placement, templates, schedules, review events, analytics sources, settings, managed images, and retained documents. Provider credentials are excluded.
 
 A newly imported deck begins in **Unsorted decks** because folder membership is organization state belonging to the receiving library.
-
-## Create Cards
-
-Use **Create Cards** for focused single-card authoring or bulk entry. Both routes use the same validation, duplicate analysis, durable draft, template, and managed-asset boundaries as card creation from inside a deck.
