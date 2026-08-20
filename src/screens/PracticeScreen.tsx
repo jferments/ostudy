@@ -34,7 +34,7 @@ import {
   type RecentDeckSummary,
 } from "./practice/confidence";
 import { PracticeComplete } from "./practice/PracticeComplete";
-import { PracticeSetup } from "./practice/PracticeSetup";
+import { PracticeSetup, type PracticeWorkloadStatus } from "./practice/PracticeSetup";
 
 interface PracticeScreenProps {
   decks: DeckSummary[];
@@ -87,7 +87,8 @@ export function PracticeScreen({
   const [revealed, setRevealed] = useState(false);
   const [previewSet, setPreviewSet] = useState<ReviewPreviewSet | null>(null);
   const [workload, setWorkload] = useState<PracticeWorkloadOverview | null>(null);
-  const [isLoadingWorkload, setIsLoadingWorkload] = useState(false);
+  const [workloadStatus, setWorkloadStatus] = useState<PracticeWorkloadStatus>("idle");
+  const [workloadError, setWorkloadError] = useState<string | null>(null);
   const [isLoadingWindow, setIsLoadingWindow] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false);
@@ -163,20 +164,22 @@ export function PracticeScreen({
     if (deckIds.length === 0 && tagIds.length === 0) {
       controller.invalidateWorkload();
       setWorkload(null);
-      setIsLoadingWorkload(false);
+      setWorkloadError(null);
+      setWorkloadStatus("empty");
       return;
     }
-    setIsLoadingWorkload(true);
+    setWorkload(null);
+    setWorkloadError(null);
+    setWorkloadStatus("loading");
     try {
       const loaded = await controller.workload(deckIds, tagIds);
       if (!loaded) return;
       setWorkload(loaded);
-      setErrorMessage(null);
-      setIsLoadingWorkload(false);
+      setWorkloadStatus("ready");
     } catch (error: unknown) {
       setWorkload(null);
-      setErrorMessage(getErrorMessage(error));
-      setIsLoadingWorkload(false);
+      setWorkloadError(getErrorMessage(error));
+      setWorkloadStatus("error");
     }
   }, [controller]);
 
@@ -673,7 +676,6 @@ export function PracticeScreen({
     setErrorMessage(null);
     void saveUiCheckpoint({ section: "practice" });
     void loadRecentPractice();
-    void loadWorkload([...selectedDeckIds], []);
   }
 
   if (session && editingCard) {
@@ -768,8 +770,9 @@ export function PracticeScreen({
         selectedDeckIds={selectedDeckIds}
         shuffle={shuffle}
         isStarting={isStarting}
-        isLoadingWorkload={isLoadingWorkload}
+        workloadStatus={workloadStatus}
         workload={workload}
+        workloadError={workloadError}
         recentDecks={recentDecks}
         onSelectedDeckIdsChange={(next) => {
           setSelectedDeckIds(next);
