@@ -224,13 +224,12 @@ describe("SettingsScreen AI/LLM behavior", () => {
     renderSettings();
     await openAiTab();
     fireEvent.click(screen.getByRole("button", { name: "Add model" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Provider" }), {
-      target: { value: "deepseek" },
-    });
+    const provider = await screen.findByRole("combobox", { name: "Provider" });
+    fireEvent.change(provider, { target: { value: "deepseek" } });
 
     expect(screen.queryByText("Bearer token")).toBeNull();
     expect(screen.queryByText("Enable profile")).toBeNull();
-    const apiKey = screen.getByRole("textbox", { name: "API key" });
+    const apiKey = await screen.findByLabelText("API key");
     expect(
       (screen.getByRole("button", { name: "Connect and load models" }) as HTMLButtonElement)
         .disabled,
@@ -277,11 +276,10 @@ describe("SettingsScreen AI/LLM behavior", () => {
     await openAiTab();
     fireEvent.click(screen.getByRole("button", { name: "Add model" }));
 
-    expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement).value).toBe(
-      "llama_cpp",
-    );
+    const provider = await screen.findByRole("combobox", { name: "Provider" });
+    expect((provider as HTMLSelectElement).value).toBe("llama_cpp");
     expect(screen.getByRole("textbox", { name: "Server URL" })).toBeTruthy();
-    expect(screen.queryByRole("textbox", { name: "API key" })).toBeNull();
+    expect(screen.queryByLabelText("API key")).toBeNull();
     expect(screen.queryByText("Bearer token")).toBeNull();
     expect(screen.queryByText("Enable profile")).toBeNull();
 
@@ -314,14 +312,14 @@ describe("SettingsScreen AI/LLM behavior", () => {
     await openAiTab();
     await screen.findByDisplayValue("Local nursing model");
 
-    expect(screen.queryByRole("textbox", { name: "API key" })).toBeNull();
+    expect(screen.queryByLabelText("API key")).toBeNull();
     fireEvent.click(screen.getByText("Advanced settings"));
     const authentication = screen.getByRole("combobox", { name: "Server authentication" });
     expect((authentication as HTMLSelectElement).value).toBe("none");
     expect(screen.queryByText("Bearer token")).toBeNull();
 
     fireEvent.change(authentication, { target: { value: "bearer" } });
-    expect(screen.getByRole("textbox", { name: "API key" })).toBeTruthy();
+    expect(screen.getByLabelText("API key")).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "Connect and load models" }) as HTMLButtonElement)
         .disabled,
@@ -344,7 +342,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
     await screen.findByDisplayValue("DeepSeek course model");
     await waitFor(() => expect(aiIpc.listAiProviderModels).toHaveBeenCalledWith(deepseekId, 1));
 
-    const apiKey = screen.getByRole("textbox", { name: "API key" });
+    const apiKey = screen.getByLabelText("API key");
     expect((apiKey as HTMLInputElement).value).toBe("");
     expect((apiKey as HTMLInputElement).placeholder).toContain("Saved");
 
@@ -419,7 +417,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
     expect(screen.getByText("Technical details")).toBeTruthy();
     fireEvent.click(screen.getByText("Technical details"));
     expect(screen.getByText("Text completion")).toBeTruthy();
-    expect(screen.getByText("JSON Object Output")).toBeTruthy();
+    expect(screen.getByText(/json object output/iu)).toBeTruthy();
     expect(showToast).toHaveBeenCalledWith("success", "AI provider profile verified.");
   });
 
@@ -430,7 +428,7 @@ describe("SettingsScreen AI/LLM behavior", () => {
     const onDirtyChange = vi.fn();
     renderSettings(onDirtyChange);
     await openAiTab();
-    const apiKey = await screen.findByRole("textbox", { name: "API key" });
+    const apiKey = await screen.findByLabelText("API key");
     fireEvent.change(apiKey, { target: { value: "temporary-entry" } });
     await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
     expect(aiIpc.setAiProviderCredential).not.toHaveBeenCalled();
