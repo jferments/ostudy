@@ -15,6 +15,8 @@ import {
   resolveFontFamily,
 } from "./appearanceTypes";
 
+export type LayoutMode = "compact" | "medium" | "wide";
+
 const fallbackProfile: AppearanceProfile = {
   theme: "dark",
   motion: "full",
@@ -28,6 +30,7 @@ const fallbackProfile: AppearanceProfile = {
 };
 
 const AppearanceContext = createContext<AppearanceProfile>(fallbackProfile);
+const LayoutContext = createContext<LayoutMode>("wide");
 
 export function AppearanceProvider({
   settings,
@@ -40,6 +43,9 @@ export function AppearanceProvider({
   const systemReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const systemReducedTransparency = useMediaQuery("(prefers-reduced-transparency: reduce)");
   const forcedColors = useMediaQuery("(forced-colors: active)");
+  const compactViewport = useMediaQuery("(max-width: 760px)");
+  const mediumViewport = useMediaQuery("(min-width: 761px) and (max-width: 1120px)");
+  const layoutMode: LayoutMode = compactViewport ? "compact" : mediumViewport ? "medium" : "wide";
   const profile = useMemo(
     () =>
       resolveAppearanceProfile(settings, {
@@ -70,6 +76,7 @@ export function AppearanceProvider({
     root.dataset.contrast = profile.forcedColors ? "forced" : "normal";
     root.dataset.input = profile.coarsePointer ? "coarse" : "fine";
     root.dataset.hover = profile.hoverAvailable ? "available" : "unavailable";
+    root.dataset.layout = layoutMode;
 
     // Compatibility attributes remain only while legacy selectors are migrated.
     root.dataset.animationsEnabled = profile.motion === "none" ? "false" : "true";
@@ -84,6 +91,7 @@ export function AppearanceProvider({
     );
     root.style.colorScheme = settings.theme === "light" ? "light" : "dark";
   }, [
+    layoutMode,
     profile,
     settings.cardBaseSize,
     settings.cardFont,
@@ -92,19 +100,29 @@ export function AppearanceProvider({
     settings.uiScale,
   ]);
 
-  return <AppearanceContext.Provider value={profile}>{children}</AppearanceContext.Provider>;
+  return (
+    <AppearanceContext.Provider value={profile}>
+      <LayoutContext.Provider value={layoutMode}>{children}</LayoutContext.Provider>
+    </AppearanceContext.Provider>
+  );
 }
 
 export function useAppearance(): AppearanceProfile {
   return useContext(AppearanceContext);
 }
 
+export function useLayoutMode(): LayoutMode {
+  return useContext(LayoutContext);
+}
+
 export function useVisualCapabilities() {
   const appearance = useAppearance();
   const platform = usePlatformCapabilities();
+  const layoutMode = useLayoutMode();
   return {
     appearance,
     platform,
-    compact: appearance.coarsePointer || platform.androidInsets !== null,
+    layoutMode,
+    compact: layoutMode === "compact",
   };
 }
