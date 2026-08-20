@@ -58,7 +58,6 @@ export function FlashcardsWorkspace({
   showToast,
 }: FlashcardsWorkspaceProps) {
   const buttonsRef = useRef<Array<HTMLButtonElement | null>>([]);
-  const panelRef = useRef<HTMLDivElement | null>(null);
   const workspaceChangeRef = useRef(onWorkspaceChange);
   workspaceChangeRef.current = onWorkspaceChange;
   const workspace = route.workspace;
@@ -67,14 +66,6 @@ export function FlashcardsWorkspace({
   useEffect(() => {
     if (workspace === "decks" && !deckNested) return;
     return registerPlatformBackHandler(() => {
-      if (workspace === "decks") {
-        const back = panelRef.current?.querySelector<HTMLButtonElement>(
-          ".back-button:not([disabled])",
-        );
-        if (!back) return false;
-        back.click();
-        return true;
-      }
       void workspaceChangeRef.current("decks");
       return true;
     });
@@ -139,7 +130,7 @@ export function FlashcardsWorkspace({
         </div>
       </div>
 
-      <div ref={panelRef} className={styles.panelContainer}>
+      <div className={styles.panelContainer}>
         <RouteTransition routeKey={routeKey} relation="sibling" className={styles.panel}>
           {route.workspace === "decks" ? (
             <DeckLibraryWorkspace
