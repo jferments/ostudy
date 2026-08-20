@@ -12,9 +12,10 @@ interface CardsScreenProps {
 }
 
 /**
- * Search/Filter is now a thin route wrapper around the same card browser used
- * inside an open deck. Filtering, pagination, card rows, authoring, selection,
- * and bulk operations all live in CardBrowserWorkspace.
+ * Search/Filter is a thin route wrapper around the same card browser used
+ * inside an open deck. The shared browser owns queries, pagination, rows,
+ * selection, editing, and bulk card operations while this route explicitly
+ * selects the full Search/Filter control surface and omits deck-only authoring.
  */
 export function CardsScreen({
   decks,
@@ -31,7 +32,7 @@ export function CardsScreen({
       onPracticeCards={onPracticeCards}
       onDirtyChange={onDirtyChange}
       showToast={showToast}
-      showFilters
+      controls="search"
       showPageHeader={!embedded}
     />
   );
