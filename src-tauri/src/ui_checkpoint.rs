@@ -214,7 +214,8 @@ fn validate_checkpoint(checkpoint: &UiCheckpointDto) -> Result<(), CommandError>
         ));
     }
     if checkpoint.flashcards_view.as_deref() == Some("deck") {
-        if checkpoint.flashcards_workspace.as_deref() != Some("decks") || checkpoint.deck_id.is_none()
+        if checkpoint.flashcards_workspace.as_deref() != Some("decks")
+            || checkpoint.deck_id.is_none()
         {
             return Err(CommandError::new(
                 "invalid_ui_checkpoint",
