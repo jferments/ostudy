@@ -1,0 +1,112 @@
+name: Restore AI roadmap phases 4-6
+
+on:
+  push:
+    branches: [agent/ui-navigation-responsive-practice]
+    paths:
+      - scripts/restore-ai-phases-4-6.py
+      - .github/workflows/restore-ai-phases-4-6.yml
+  workflow_dispatch:
+
+concurrency:
+  group: restore-ai-phases-4-6
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 120
+    env:
+      CI: "true"
+      CARGO_TERM_COLOR: always
+      PRODUCT_BASE: c9c613f35a4836b140c7fbfc407aebbcdb070978
+      AI_SOURCE: 54f67d3da2e1136a2bbbb9c0d87d0dd5cd2c801e
+      OSTUDY_CI_LOG_FILTER: warn,ostudy=info
+      OSTUDY_LOG: warn,ostudy=info
+      OSTUDY_DIAGNOSTICS_ACTIVE: "1"
+      OSTUDY_DIAGNOSTICS_AUTOMATIC: "1"
+      OSTUDY_KEEP_FAILURE_ARTIFACTS: "1"
+
+    steps:
+      - name: Check out staging branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/ui-navigation-responsive-practice
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Expose pinned toolchains and caches
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          echo "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT=$RUNNER_TEMP/ostudy-diagnostics" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/.cache/ostudy/gradle" "$HOME/.cache/ostudy/cargo-target" "$RUNNER_TEMP/ostudy-diagnostics"
+
+      - name: Build clean Phase 4-6 candidate
+        run: |
+          cp scripts/restore-ai-phases-4-6.py "$RUNNER_TEMP/restore-ai-phases-4-6.py"
+          git reset --hard "$PRODUCT_BASE"
+          git clean -ffdx
+          git fetch origin "$AI_SOURCE"
+          git checkout "$AI_SOURCE" -- \
+            src-tauri/src/ai/document_intelligence.rs \
+            src-tauri/src/ai/document_intelligence_adapter.rs \
+            src-tauri/src/ai/document_prompt_policy.rs \
+            src-tauri/src/ai/mod.rs \
+            src-tauri/src/ai/policy.rs \
+            src-tauri/src/ai/probes.rs \
+            src-tauri/src/ai/profiles.rs \
+            src-tauri/src/ai/providers.rs \
+            src-tauri/src/ai/providers/openrouter.rs \
+            src-tauri/src/ai/setup.rs \
+            src-tauri/src/document_checkpoints.rs \
+            src-tauri/src/document_more.rs \
+            src-tauri/src/document_scale.rs \
+            src-tauri/src/documents.rs \
+            src-tauri/src/lib.rs \
+            src-tauri/src/settings.rs \
+            src-tauri/src/settings/extended_tests.rs \
+            src/ipc/aiPolicy.ts \
+            src/ipc/aiSetup.ts \
+            src/ipc/settings.ts \
+            src/screens/SettingsScreen.tsx \
+            src/screens/settings/AiModelSetupSettings.module.css \
+            src/screens/settings/AiModelSetupSettings.tsx
+          cp "$RUNNER_TEMP/restore-ai-phases-4-6.py" scripts/.tmp-restore-ai-phases-4-6.py
+          python3 scripts/.tmp-restore-ai-phases-4-6.py
+          rm scripts/.tmp-restore-ai-phases-4-6.py
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          git diff --check
+          git status --short
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run candidate fast qualification
+        run: |
+          set -o pipefail
+          OSTUDY_FORCE_CHECK=1 ./scripts/check-fast.sh 2>&1 | tee "$RUNNER_TEMP/phase4-6-fast.log"
+
+      - name: Summarize failure
+        if: failure()
+        run: |
+          node ./scripts/summarize-check-failure.mjs \
+            --diagnostics "$RUNNER_TEMP/ostudy-diagnostics" \
+            "$RUNNER_TEMP/phase4-6-fast.log" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload bounded failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: phase4-6-restore-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/phase4-6-fast.log
+            ${{ runner.temp }}/ostudy-diagnostics/**
+          if-no-files-found: ignore
+          retention-days: 7
