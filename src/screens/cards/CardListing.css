@@ -1,70 +1,36 @@
 @layer components {
-  /* Deck detail and Search/Filter intentionally have different row controls,
-     but the card-content preview is one shared visual contract everywhere. */
-  :is(.card-row-preview, .organized-card-sides) {
+  /*
+   * CardBrowserWorkspace is the only card-row renderer for both Deck detail and
+   * Search/Filter. Keep the Q/A content contract here so the two routes cannot
+   * acquire independent label, truncation, or responsive behavior again.
+   */
+  .organized-card-sides.card-listing-sides {
     display: grid;
     min-width: 0;
     grid-template-columns: minmax(0, 1fr);
+    grid-auto-flow: row;
+    align-items: stretch;
     gap: 2px;
   }
 
-  /* Search/Filter still has a legacy three-column Q -> A rule in cards.css.
-     This shared listing module is the new cross-workspace contract, so make
-     its vertical layout authoritative until the remaining legacy stylesheet
-     is retired. */
-  .organized-card-sides {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) !important;
-    grid-auto-flow: row !important;
-    align-items: stretch !important;
-    gap: 2px !important;
-  }
-
-  .card-preview-line,
-  .organized-card-sides > span:not([aria-hidden]) {
+  .organized-card-sides.card-listing-sides > .card-listing-line {
     display: grid;
     min-width: 0;
+    grid-column: 1;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: baseline;
     gap: 6px;
   }
 
-  .organized-card-sides > span:not([aria-hidden]) {
-    grid-column: 1 !important;
-  }
-
-  .card-preview-label,
-  .organized-card-sides > span:not([aria-hidden]) > small {
+  .card-listing-label {
     min-width: 20px;
-    margin: 0;
     color: var(--ostudy-color-text-accent);
     font-size: 0.78rem;
     font-weight: 850;
     line-height: inherit;
-    text-transform: none;
   }
 
-  /* Search rows retain their full Question/Answer text in the accessibility
-     tree while presenting the same compact Q:/A: labels used by deck rows. */
-  .organized-card-sides > span:not([aria-hidden]) > small {
-    overflow: hidden;
-    width: 20px;
-    font-size: 0;
-    white-space: nowrap;
-  }
-
-  .organized-card-sides > span:not([aria-hidden]):first-child > small::after {
-    content: "Q:";
-    font-size: 0.78rem;
-  }
-
-  .organized-card-sides > span:not([aria-hidden]):last-child > small::after {
-    content: "A:";
-    font-size: 0.78rem;
-  }
-
-  .card-preview-line strong,
-  .organized-card-sides strong {
+  .organized-card-sides.card-listing-sides > .card-listing-line > strong {
     display: block;
     min-width: 0;
     overflow: hidden;
@@ -75,7 +41,16 @@
     white-space: nowrap;
   }
 
-  .organized-card-sides > span[aria-hidden] {
-    display: none !important;
+  .shared-card-browser .card-browser-heading {
+    border-bottom: 1px solid var(--ostudy-color-border-subtle);
+  }
+
+  .card-browser-workspace {
+    min-width: 0;
+  }
+
+  .deck-card-browser-editor-host {
+    min-width: 0;
+    min-height: 100%;
   }
 }
