@@ -179,6 +179,25 @@ jobs:
             "$RUNNER_TEMP/ostudy-android-smoke.log" \
             >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Render evidence-derived handoff
+        id: handoff
+        if: always()
+        run: |
+          arguments=(
+            --qualification "$RUNNER_TEMP/ostudy-qualification-result.json"
+            --repository-root "$GITHUB_WORKSPACE"
+            --output "$RUNNER_TEMP/ostudy-agent-handoff.md"
+          )
+          if [[ -f "$RUNNER_TEMP/ostudy-pr-contract.json" ]]; then
+            arguments+=(--contract "$RUNNER_TEMP/ostudy-pr-contract.json")
+          fi
+          status=0
+          node ./scripts/render-agent-handoff.mjs "${arguments[@]}" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [[ -f "$RUNNER_TEMP/ostudy-agent-handoff.md" ]]; then
+            cat "$RUNNER_TEMP/ostudy-agent-handoff.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Summarize qualification failure
         if: failure()
         run: |
@@ -204,6 +223,7 @@ jobs:
           path: |
             ${{ runner.temp }}/ostudy-qualification-result.json
             ${{ runner.temp }}/ostudy-pr-contract.json
+            ${{ runner.temp }}/ostudy-agent-handoff.md
             ${{ runner.temp }}/ostudy-diagnostics/**
           if-no-files-found: warn
           retention-days: 7
@@ -230,6 +250,7 @@ jobs:
         env:
           GATE: ${{ steps.gate.outputs.gate || 'unknown' }}
           JOB_STATUS: ${{ job.status }}
+          HANDOFF_STATUS: ${{ steps.handoff.outputs.status || 'unknown' }}
         run: |
           {
             echo '# ostudy qualification'
@@ -238,5 +259,12 @@ jobs:
             echo "- Runner: \`$RUNNER_NAME\`"
             echo "- Gate: \`$GATE\`"
             echo "- Diagnostic baseline: \`$OSTUDY_CI_LOG_FILTER\`"
-            echo "- Status: **$JOB_STATUS**"
+            echo "- Handoff evidence status: \`$HANDOFF_STATUS\`"
+            echo "- Status before evidence-integrity enforcement: **$JOB_STATUS**"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce handoff evidence integrity
+        if: always() && steps.handoff.outputs.status != '0'
+        run: |
+          echo "Evidence-derived handoff integrity failed; see the uploaded handoff artifact." >&2
+          exit 1

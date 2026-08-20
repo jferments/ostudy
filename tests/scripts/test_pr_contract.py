@@ -29,6 +29,11 @@ def base_contract() -> dict:
         "branch": "agent/test-contract",
         "executionMode": "githubConnector",
         "currentState": "implementation",
+        "nonGoals": [],
+        "compatibilityNotes": [],
+        "rollbackNotes": [],
+        "residualRisks": [],
+        "mergeMethod": "squash",
         "acceptance": {
             "AC-01": {
                 "status": "implemented",
@@ -115,6 +120,13 @@ class PullRequestContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("validation.android.notRequired requires explanatory evidence", completed.stderr)
 
+    def test_merge_method_must_use_supported_vocabulary(self) -> None:
+        contract = base_contract()
+        contract["mergeMethod"] = "forcePush"
+        completed, _ = self.run_contract(contract)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("mergeMethod must be one of", completed.stderr)
+
     def test_passed_validation_must_match_ledger_head(self) -> None:
         contract = base_contract()
         contract["validation"]["static"] = {
@@ -131,6 +143,13 @@ class PullRequestContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("readyForReview", completed.stderr)
         self.assertIn("AC-02 is not terminal", completed.stderr)
+
+    def test_ready_pull_request_rejects_empty_risk_record(self) -> None:
+        contract = self.ready_contract()
+        contract["residualRisks"] = []
+        completed, _ = self.run_contract(contract, draft=False)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("residualRisks must contain at least one explicit readiness entry", completed.stderr)
 
     def test_ready_pull_request_rejects_not_run_full_gate(self) -> None:
         contract = self.ready_contract()
@@ -152,6 +171,10 @@ class PullRequestContractTests(unittest.TestCase):
     def ready_contract() -> dict:
         contract = base_contract()
         contract["currentState"] = "readyForReview"
+        contract["nonGoals"] = ["No product behavior changes."]
+        contract["compatibilityNotes"] = ["No durable data format changes."]
+        contract["rollbackNotes"] = ["Revert the source-only commit."]
+        contract["residualRisks"] = ["Human review remains required."]
         contract["acceptance"]["AC-02"] = {
             "status": "notApplicable",
             "evidence": ["No additional product behavior is in scope."],

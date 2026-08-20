@@ -1,6 +1,6 @@
 # Agent execution state and completion evidence
 
-This document defines the durable state model for automated contributors working on ostudy. It prevents planning, local edits, publication, validation, and manual acceptance from being collapsed into one vague claim that a task is "done."
+This document defines the durable state model for automated contributors working on ostudy. It prevents planning, local edits, publication, validation, manual acceptance, and completion from being collapsed into one vague claim that a task is "done."
 
 ## State is multidimensional
 
@@ -71,6 +71,11 @@ Substantial pull requests keep one machine-readable ledger in the pull-request b
   "branch": "agent/example",
   "executionMode": "githubConnector",
   "currentState": "implementation",
+  "nonGoals": ["No scheduling behavior changes."],
+  "compatibilityNotes": ["No durable format changes."],
+  "rollbackNotes": ["Revert the source-only commit."],
+  "residualRisks": ["Human review remains required."],
+  "mergeMethod": "squash",
   "acceptance": {
     "AC-01": {
       "status": "implemented",
@@ -152,7 +157,18 @@ githubConnector
 githubConnectorWithExecutionWorkspace
 ```
 
-A draft pull request may contain incomplete statuses. A pull request may be marked ready only when every acceptance criterion has a terminal state, static/fast/full passed on the current exact head, every additional platform/manual entry is terminal and explained, `knownFailures` is empty, and remaining manual-only boundaries are explicit.
+`mergeMethod` is one of:
+
+```text
+squash
+mergeCommit
+rebase
+humanDecision
+```
+
+Drafts may leave the four narrative arrays empty while facts are still being established. Before review readiness, `nonGoals`, `compatibilityNotes`, `rollbackNotes`, and `residualRisks` each contain at least one explicit entry; `None` is acceptable only when written as a checked, explanatory statement rather than omitted state.
+
+A pull request may be marked ready only when every acceptance criterion has a terminal state, static/fast/full passed on the current exact head, every additional platform/manual entry is terminal and explained, the four readiness narrative arrays are populated, `knownFailures` is empty, and remaining manual-only boundaries are explicit.
 
 A known failure is recorded as an object with:
 
@@ -167,6 +183,26 @@ A known failure is recorded as an object with:
 ```
 
 The classification vocabulary is defined in [Failure triage](FAILURE-TRIAGE.md).
+
+## Evidence-derived handoff
+
+Every `Check` run writes `ostudy-qualification-result.json`. Pull-request runs also write `ostudy-pr-contract.json`. `scripts/render-agent-handoff.mjs` combines those validated records with the exact Git diff into `ostudy-agent-handoff.md`.
+
+The renderer includes:
+
+- base, branch, PR state, and exact published/tested head;
+- acceptance status and implementation/test evidence;
+- changed files grouped by purpose;
+- non-goals, compatibility effects, rollback notes, and residual risks;
+- validation ledger and the commands represented by the run;
+- exact workflow/run/step state;
+- manual acceptance and known failures;
+- requested merge method;
+- evidence-integrity warnings or errors.
+
+It never silently combines mismatched SHAs. A qualification/PR-head mismatch produces an artifact marked `invalid` and a nonzero exit. Draft ledger drift remains visible as a warning while the actual GitHub head remains the publication authority.
+
+The generated handoff is the factual starting point for the final response and PR review record. It does not replace human review or allow an agent to claim manual behavior it did not exercise.
 
 ## Session resumption
 

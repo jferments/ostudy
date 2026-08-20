@@ -57,6 +57,11 @@ List unresolved defects, compatibility effects, rollback concerns, or `None know
   "branch": "agent/replace-with-task-branch",
   "executionMode": "localCheckout",
   "currentState": "planning",
+  "nonGoals": [],
+  "compatibilityNotes": [],
+  "rollbackNotes": [],
+  "residualRisks": [],
+  "mergeMethod": "squash",
   "acceptance": {
     "AC-01": {
       "status": "notStarted",

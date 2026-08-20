@@ -46,6 +46,12 @@ const EXECUTION_MODES = new Set([
   "githubConnector",
   "githubConnectorWithExecutionWorkspace",
 ]);
+const MERGE_METHODS = new Set([
+  "squash",
+  "mergeCommit",
+  "rebase",
+  "humanDecision",
+]);
 const FAILURE_CLASSIFICATIONS = new Set([
   "product",
   "testContract",
@@ -55,6 +61,12 @@ const FAILURE_CLASSIFICATIONS = new Set([
   "externalManualBoundary",
   "unknown",
 ]);
+const NARRATIVE_ARRAYS = [
+  "nonGoals",
+  "compatibilityNotes",
+  "rollbackNotes",
+  "residualRisks",
+];
 
 const options = parseArguments(process.argv.slice(2));
 const source = await readSource(options);
@@ -200,6 +212,10 @@ function validateContract(contract, actual, forceStrict, errors, warnings) {
   requireString(contract, "branch", errors);
   requireEnum(contract, "executionMode", EXECUTION_MODES, errors);
   requireEnum(contract, "currentState", CURRENT_STATES, errors);
+  requireEnum(contract, "mergeMethod", MERGE_METHODS, errors);
+  for (const key of NARRATIVE_ARRAYS) {
+    validateStringArray(contract[key], key, errors);
+  }
 
   const strict = forceStrict || actual?.draft === false;
   validateIdentity("baseSha", contract.baseSha, actual?.baseSha, strict, errors, warnings);
@@ -343,6 +359,11 @@ function validateFailure(failure, index, errors) {
 function validateReadyState(contract, actual, errors) {
   if (contract.currentState !== "readyForReview") {
     errors.push("A non-draft or strict pull request must record currentState readyForReview.");
+  }
+  for (const key of NARRATIVE_ARRAYS) {
+    if (!Array.isArray(contract[key]) || contract[key].length === 0) {
+      errors.push(`${key} must contain at least one explicit readiness entry.`);
+    }
   }
   for (const [identifier, entry] of Object.entries(contract.acceptance ?? {})) {
     if (!TERMINAL_ACCEPTANCE_STATUSES.has(entry.status)) {
