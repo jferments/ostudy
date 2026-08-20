@@ -14,7 +14,6 @@ mod extended_tests {
             decorative_artwork: true,
             celebrations_enabled: true,
             tutorials_enabled: true,
-            deck_view_density: "comfortable".to_string(),
             confirm_deletions: true,
             practice_shuffle: true,
             desired_retention: 0.90,
@@ -38,7 +37,6 @@ mod extended_tests {
             decorative_artwork: false,
             celebrations_enabled: false,
             tutorials_enabled: false,
-            deck_view_density: "compact".to_string(),
             confirm_deletions: false,
             practice_shuffle: false,
             desired_retention: 0.96,
@@ -64,7 +62,6 @@ mod extended_tests {
         assert_eq!(loaded.decorative_artwork, expected.decorative_artwork);
         assert_eq!(loaded.celebrations_enabled, expected.celebrations_enabled);
         assert_eq!(loaded.tutorials_enabled, expected.tutorials_enabled);
-        assert_eq!(loaded.deck_view_density, expected.deck_view_density);
         assert_eq!(loaded.confirm_deletions, expected.confirm_deletions);
         assert_eq!(loaded.practice_shuffle, expected.practice_shuffle);
         assert_eq!(loaded.desired_retention, expected.desired_retention);
@@ -98,13 +95,6 @@ mod extended_tests {
         );
 
         let mut value = settings();
-        value.deck_view_density = "microscopic".to_string();
-        assert_eq!(
-            validate_settings(&value).unwrap_err().code,
-            "invalid_deck_view_density"
-        );
-
-        let mut value = settings();
         value.ai_reasoning_effort = "unbounded".to_string();
         assert_eq!(
             validate_settings(&value).unwrap_err().code,
@@ -132,7 +122,7 @@ mod extended_tests {
     }
 
     #[test]
-    fn strict_settings_input_rejects_removed_or_misspelled_fields() {
+    fn strict_settings_input_rejects_removed_deck_density_and_misspelled_fields() {
         let error = serde_json::from_value::<AppSettingsDto>(json!({
             "theme": "dark",
             "uiFont": "system",
@@ -150,11 +140,57 @@ mod extended_tests {
             "desiredRetention": 0.9,
             "dailyNewLimit": 20,
             "dailyReviewLimit": 200,
+            "aiReasoningEffort": "low"
+        }))
+        .expect_err("removed deck density must not be accepted by the bundled IPC contract");
+        assert!(error.to_string().contains("deckViewDensity"));
+
+        let error = serde_json::from_value::<AppSettingsDto>(json!({
+            "theme": "dark",
+            "uiFont": "system",
+            "cardFont": "system",
+            "uiScale": 100,
+            "cardBaseSize": 18,
+            "motionPreference": "system",
+            "materialPreference": "automatic",
+            "decorativeArtwork": true,
+            "celebrationsEnabled": true,
+            "tutorialsEnabled": true,
+            "confirmDeletions": true,
+            "practiceShuffle": true,
+            "desiredRetention": 0.9,
+            "dailyNewLimit": 20,
+            "dailyReviewLimit": 200,
             "aiReasoningEffort": "low",
             "shuffleDecks": true
         }))
-        .expect_err("obsolete settings must not be ignored");
+        .expect_err("misspelled settings must not be ignored");
         assert!(error.to_string().contains("shuffleDecks"));
+    }
+
+    #[test]
+    fn saving_settings_removes_the_obsolete_deck_density_key() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES ('deckViewDensity', '\"comfortable\"', 1)",
+                        [],
+                    )
+                    .map_err(CommandError::database)?;
+                save_settings_in_connection(connection, &settings())?;
+                let remaining: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM app_settings WHERE key = 'deckViewDensity'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(remaining, 0);
+                Ok(())
+            })
+            .expect("obsolete density key should be removed");
     }
 
     #[test]
