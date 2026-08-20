@@ -8,6 +8,18 @@
     gap: 2px;
   }
 
+  /* Search/Filter still has a legacy three-column Q -> A rule in cards.css.
+     This shared listing module is the new cross-workspace contract, so make
+     its vertical layout authoritative until the remaining legacy stylesheet
+     is retired. */
+  .organized-card-sides {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-auto-flow: row !important;
+    align-items: stretch !important;
+    gap: 2px !important;
+  }
+
   .card-preview-line,
   .organized-card-sides > span:not([aria-hidden]) {
     display: grid;
@@ -15,6 +27,10 @@
     grid-template-columns: auto minmax(0, 1fr);
     align-items: baseline;
     gap: 6px;
+  }
+
+  .organized-card-sides > span:not([aria-hidden]) {
+    grid-column: 1 !important;
   }
 
   .card-preview-label,
@@ -60,6 +76,6 @@
   }
 
   .organized-card-sides > span[aria-hidden] {
-    display: none;
+    display: none !important;
   }
 }
