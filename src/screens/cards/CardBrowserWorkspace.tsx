@@ -41,6 +41,7 @@ interface CardBrowserWorkspaceProps {
   showToast: ShowToast;
   fixedDeckId?: string;
   controls?: CardBrowserControls;
+  showFilters?: boolean;
   showPageHeader?: boolean;
   onViewChange?: (view: CardBrowserView) => void;
 }
@@ -79,10 +80,20 @@ export function CardBrowserWorkspace({
   onDirtyChange,
   showToast,
   fixedDeckId,
-  controls = fixedDeckId === undefined ? "search" : "deck",
+  controls,
+  showFilters,
   showPageHeader = fixedDeckId === undefined,
   onViewChange,
 }: CardBrowserWorkspaceProps) {
+  const controlMode: CardBrowserControls =
+    controls ??
+    (showFilters === undefined
+      ? fixedDeckId === undefined
+        ? "search"
+        : "deck"
+      : showFilters
+        ? "search"
+        : "deck");
   const activeDecks = useMemo(
     () => decks.filter((deck) => deck.archivedAt === null),
     [decks],
@@ -502,7 +513,7 @@ export function CardBrowserWorkspace({
 
   const listContent = (
     <>
-      {controls === "search" ? (
+      {controlMode === "search" ? (
         <CardFilters
           activeDecks={activeDecks}
           deckIds={deckIds}
@@ -577,7 +588,7 @@ export function CardBrowserWorkspace({
               {page.totalCount} {page.totalCount === 1 ? "card" : "cards"}
             </span>
           </div>
-          {controls === "deck" ? (
+          {controlMode === "deck" ? (
             <div className="card-browser-actions">
               <button
                 type="button"
@@ -694,7 +705,7 @@ export function CardBrowserWorkspace({
           showToast={showToast}
         />
       ) : null}
-      {bulkEntryOpen && controls === "deck" && selectedDeck ? (
+      {bulkEntryOpen && controlMode === "deck" && selectedDeck ? (
         <BulkEntryModal
           decks={activeDecks}
           fixedDeckId={selectedDeck.id}
