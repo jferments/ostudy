@@ -152,7 +152,7 @@ describe("DecksScreen", () => {
     vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [card], totalCount: 1 });
   });
 
-  it("keeps Practice enabled and renders the shared Q/A browser for a non-empty deck", async () => {
+  it("uses the shared Q/A browser with deck-only authoring and lightweight search", async () => {
     const { onPracticeDeck } = renderDecks();
 
     const libraryPractice = screen.getByRole("button", { name: "Practice" });
@@ -167,7 +167,30 @@ describe("DecksScreen", () => {
     expect(within(table).getByText("Q:")).toBeTruthy();
     expect(within(table).getByText("A:")).toBeTruthy();
     expect(within(table).getByText("Reverse")).toBeTruthy();
+
     expect(screen.queryByRole("region", { name: "Card filters" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Search this deck" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Bulk add" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add flashcard" })).toBeTruthy();
+
+    const practiceSelected = screen.getByRole("button", { name: "Practice selected" });
+    expect((practiceSelected as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Do dogs have fur?" }));
+    expect((practiceSelected as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search cards" }), {
+      target: { value: "fur" },
+    });
+    await waitFor(() =>
+      expect(cardsIpc.searchCards).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          deckIds: [deck.id],
+          query: "fur",
+          statusFilter: "all",
+          sort: "relevance",
+        }),
+      ),
+    );
 
     const detailPractice = screen.getByRole("button", { name: "Practice" });
     expect(detailPractice.hasAttribute("disabled")).toBe(false);
