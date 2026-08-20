@@ -60,7 +60,7 @@ for (const required of [
   "reproduce.sh",
   "replayFilter",
   "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT",
-  "OSTUDY_FAILURE_CAPTURE_TOKEN",
+  "OSTUDY_DIAGNOSTIC_CAPTURE_TOKEN",
   "ostudy_capture_transient_artifacts",
 ]) {
   if (!diagnostics.includes(required)) failures.push(`diagnostics library missing ${required}`);
