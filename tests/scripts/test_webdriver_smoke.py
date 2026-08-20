@@ -28,6 +28,10 @@ ANDROID_SMOKE_TEST_PATH = (
 )
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
 DECKS_SCREEN_PATH = ROOT / "src" / "screens" / "DecksScreen.tsx"
+CARD_BROWSER_WORKSPACE_PATH = (
+    ROOT / "src" / "screens" / "cards" / "CardBrowserWorkspace.tsx"
+)
+CARDS_SCREEN_PATH = ROOT / "src" / "screens" / "CardsScreen.tsx"
 TOUR_PROVIDER_PATH = ROOT / "src" / "ui" / "tutorials" / "TourProvider.tsx"
 SPEC = importlib.util.spec_from_file_location("ostudy_webdriver_smoke", SMOKE_PATH)
 if SPEC is None or SPEC.loader is None:
@@ -121,12 +125,28 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn("PRACTICE_COMPLETE_SELECTOR", harness)
         self.assertNotIn('"Session complete"', harness)
 
-    def test_open_deck_exposes_bulk_add_from_the_card_table(self) -> None:
-        source = DECKS_SCREEN_PATH.read_text(encoding="utf-8")
-        self.assertIn('className="card-browser-actions"', source)
-        self.assertIn("setBulkEntryOpen(true)", source)
-        self.assertIn("Bulk add", source)
-        self.assertIn("fixedDeckId={selectedDeck.id}", source)
+    def test_deck_and_search_delegate_to_one_card_browser(self) -> None:
+        decks = DECKS_SCREEN_PATH.read_text(encoding="utf-8")
+        search = CARDS_SCREEN_PATH.read_text(encoding="utf-8")
+        browser = CARD_BROWSER_WORKSPACE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("<CardBrowserWorkspace", decks)
+        self.assertIn("fixedDeckId={selectedDeck.id}", decks)
+        self.assertIn("showFilters={false}", decks)
+        self.assertNotIn("controller.cards(", decks)
+        self.assertNotIn('className="card-row-preview"', decks)
+
+        self.assertIn("<CardBrowserWorkspace", search)
+        self.assertIn("showFilters", search)
+        self.assertNotIn("organized-card-row", search)
+
+        self.assertIn('className="card-browser-actions"', browser)
+        self.assertIn("setBulkEntryOpen(true)", browser)
+        self.assertIn("Bulk add", browser)
+        self.assertIn("Add flashcard", browser)
+        self.assertIn('className="organized-card-sides card-listing-sides"', browser)
+        self.assertIn("Q:", browser)
+        self.assertIn("A:", browser)
 
     def test_android_smoke_entry_point_installs_test_bridge_only_when_requested(self) -> None:
         source = MAIN_ENTRY_PATH.read_text(encoding="utf-8")
