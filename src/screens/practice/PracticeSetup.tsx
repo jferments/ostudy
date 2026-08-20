@@ -1,6 +1,12 @@
+import { useEffect, useRef } from "react";
+
 import type { DeckSummary } from "../../ipc/decks";
 import type { PracticeWorkloadOverview } from "../../ipc/practice";
 import { formatConfidence, type RecentDeckSummary } from "./confidence";
+import {
+  resolvePracticeSetupDeckIds,
+  savePracticeSetupDeckIds,
+} from "./practiceSetupScope";
 
 export type PracticeWorkloadStatus = "idle" | "empty" | "loading" | "ready" | "error";
 
@@ -9,9 +15,11 @@ interface PracticeSetupProps {
   selectedDeckIds: Set<string>;
   shuffle: boolean;
   isStarting: boolean;
-  workloadStatus: PracticeWorkloadStatus;
+  /** Compatibility for the parent while workload state is migrated explicitly. */
+  isLoadingWorkload?: boolean;
+  workloadStatus?: PracticeWorkloadStatus;
   workload: PracticeWorkloadOverview | null;
-  workloadError: string | null;
+  workloadError?: string | null;
   recentDecks: RecentDeckSummary[];
   onSelectedDeckIdsChange: (deckIds: Set<string>) => void;
   onShuffleChange: (shuffle: boolean) => void;
@@ -25,21 +33,45 @@ export function PracticeSetup({
   selectedDeckIds,
   shuffle,
   isStarting,
+  isLoadingWorkload = false,
   workloadStatus,
   workload,
-  workloadError,
+  workloadError = null,
   recentDecks,
   onSelectedDeckIdsChange,
   onShuffleChange,
   onStart,
 }: PracticeSetupProps) {
+  const scopeInitialized = useRef(false);
   const decksWithCards = decks.filter(
     (deck) => deck.archivedAt === null && deck.generatedCardCount > 0,
   );
-  const workloadReady = workloadStatus === "ready" && workload !== null;
+  const resolvedWorkloadStatus: PracticeWorkloadStatus =
+    workloadStatus ??
+    (isLoadingWorkload
+      ? "loading"
+      : workload
+        ? "ready"
+        : selectedDeckIds.size === 0
+          ? "empty"
+          : "idle");
+  const workloadReady = resolvedWorkloadStatus === "ready" && workload !== null;
   const scheduledCount = workloadReady
     ? workload.scheduledReviews + workload.scheduledNew
     : null;
+
+  useEffect(() => {
+    if (scopeInitialized.current || decks.length === 0) return;
+    scopeInitialized.current = true;
+    if (selectedDeckIds.size > 0) return;
+    const restored = resolvePracticeSetupDeckIds(decks);
+    if (restored.length > 0) onSelectedDeckIdsChange(new Set(restored));
+  }, [decks, onSelectedDeckIdsChange, selectedDeckIds.size]);
+
+  function commitDeckSelection(next: Set<string>): void {
+    savePracticeSetupDeckIds(next);
+    onSelectedDeckIdsChange(next);
+  }
 
   if (decksWithCards.length === 0) {
     return (
@@ -62,9 +94,7 @@ export function PracticeSetup({
             <button
               type="button"
               className="text-button"
-              onClick={() =>
-                onSelectedDeckIdsChange(new Set(decksWithCards.map((deck) => deck.id)))
-              }
+              onClick={() => commitDeckSelection(new Set(decksWithCards.map((deck) => deck.id)))}
             >
               Select all
             </button>
@@ -72,7 +102,7 @@ export function PracticeSetup({
               <button
                 type="button"
                 className="text-button"
-                onClick={() => onSelectedDeckIdsChange(new Set())}
+                onClick={() => commitDeckSelection(new Set())}
               >
                 Clear
               </button>
@@ -97,7 +127,7 @@ export function PracticeSetup({
                     const next = new Set(selectedDeckIds);
                     if (event.currentTarget.checked) next.add(deck.id);
                     else next.delete(deck.id);
-                    onSelectedDeckIdsChange(next);
+                    commitDeckSelection(next);
                   }}
                 />
                 <span>
@@ -194,7 +224,7 @@ export function PracticeSetup({
           <strong>{workloadReady ? workload.needsMorePractice : "—"}</strong>
           <small>need more practice</small>
         </div>
-        <WorkloadStatus status={workloadStatus} error={workloadError} />
+        <WorkloadStatus status={resolvedWorkloadStatus} error={workloadError} />
       </section>
 
       <section className="recent-practice-section" aria-labelledby="recent-practice-heading">
