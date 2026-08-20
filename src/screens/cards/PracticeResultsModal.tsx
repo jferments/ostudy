@@ -50,7 +50,7 @@ export function PracticeResultsModal({
     try {
       createdDeck = await createDeck({
         name,
-        description: `Created from ${sourceLabel} in Search/Filter.`,
+        description: `Created from a card selection in ${sourceLabel}.`,
       });
       const result = await transferCards({
         noteIds: cards.map((card) => card.noteId),
@@ -95,7 +95,7 @@ export function PracticeResultsModal({
   return (
     <Modal
       title="Practice these cards"
-      description={`${cards.length} ${cards.length === 1 ? "card matches" : "cards match"} ${sourceLabel}.`}
+      description={`${cards.length} selected ${cards.length === 1 ? "card" : "cards"} from ${sourceLabel}.`}
       width="medium"
       onClose={() => {
         if (!isSaving) onClose();
@@ -124,7 +124,7 @@ export function PracticeResultsModal({
           <div>
             <h3>Save as a permanent deck</h3>
             <p>
-              Copies the matching cards into a new deck. The originals and their review histories
+              Copies the selected cards into a new deck. The originals and their review histories
               remain in their current decks; copied cards start with fresh schedules.
             </p>
           </div>
@@ -133,7 +133,7 @@ export function PracticeResultsModal({
             <input
               value={deckName}
               disabled={isSaving}
-              placeholder="Filtered study set"
+              placeholder="Selected study set"
               onChange={(event) => {
                 setDeckName(event.currentTarget.value);
                 setErrorMessage(null);
