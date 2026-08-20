@@ -13,7 +13,7 @@
   },
   "navigation": {
     "wideWidth": { "$type": "dimension", "$value": "248px" },
-    "mediumWidth": { "$type": "dimension", "$value": "88px" },
+    "mediumWidth": { "$type": "dimension", "$value": "176px" },
     "compactHeight": { "$type": "dimension", "$value": "68px" },
     "appBarHeight": { "$type": "dimension", "$value": "56px" }
   },

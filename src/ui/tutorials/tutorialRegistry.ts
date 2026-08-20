@@ -22,14 +22,14 @@ export interface TutorialModule {
 export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>> = {
   orientation: {
     id: "orientation",
-    version: 1,
+    version: 2,
     title: "Welcome to ostudy",
     autoStartAnchor: "flashcards.workspaces",
     steps: [
       {
         id: "flashcards-workspaces",
         title: "Everything for flashcards lives together",
-        body: "Decks, templates, Search, import and export, and card creation are separate workspaces inside Flashcards. Switching workspaces does not alter your study data.",
+        body: "Decks, templates, Search, and import or export are separate workspaces inside Flashcards. Open a deck to add one card or bulk add many cards to that deck.",
         anchor: "flashcards.workspaces",
         placement: "bottom",
       },

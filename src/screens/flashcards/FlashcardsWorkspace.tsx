@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
 
 import type { DeckOpenRequest } from "../../App";
 import type { ShowToast } from "../../components/Toast";
@@ -16,21 +10,23 @@ import { Icon, type IconName } from "../../ui/icons/Icon";
 import { RouteTransition } from "../../ui/motion/Motion";
 import { PageHeader, PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { CardsScreen } from "../CardsScreen";
+import "../DecksScreen.stage12.css";
 import { TemplatesScreen } from "../TemplatesScreen";
-import { CreateCardsWorkspace } from "./CreateCardsWorkspace";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
 import { TransferWorkspace } from "./TransferWorkspace";
 import styles from "./FlashcardsWorkspace.module.css";
 
 interface FlashcardsWorkspaceProps {
   workspace: FlashcardsWorkspaceName;
+  navigationKey: number;
   onWorkspaceChange: (workspace: FlashcardsWorkspaceName) => void | Promise<void>;
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
   onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
   openDeckRequest: DeckOpenRequest | null;
-  onOpenDeckRequestConsumed: () => void;
+  onOpenDeck: (deckId: string) => void;
+  onReturnToLibrary: () => void;
   onPracticeCards: (cardIds: string[]) => void | Promise<void>;
   onCardDirtyChange: (dirty: boolean) => void;
   onTemplateDirtyChange: (dirty: boolean) => void;
@@ -47,11 +43,11 @@ const WORKSPACES: ReadonlyArray<{
   { value: "templates", label: "Templates", compactLabel: "Templates", icon: "template" },
   { value: "search", label: "Search", compactLabel: "Search", icon: "search" },
   { value: "transfer", label: "Import/Export", compactLabel: "Transfer", icon: "import" },
-  { value: "create", label: "Create Cards", compactLabel: "Create", icon: "plus" },
 ];
 
 export function FlashcardsWorkspace({
   workspace,
+  navigationKey,
   onWorkspaceChange,
   decks,
   settings,
@@ -59,55 +55,26 @@ export function FlashcardsWorkspace({
   onPracticeDeck,
   onPracticeCards,
   openDeckRequest,
-  onOpenDeckRequestConsumed,
+  onOpenDeck,
+  onReturnToLibrary,
   onCardDirtyChange,
   onTemplateDirtyChange,
   showToast,
 }: FlashcardsWorkspaceProps) {
-  const [deckNested, setDeckNested] = useState(false);
   const buttonsRef = useRef<Array<HTMLButtonElement | null>>([]);
-  const panelRef = useRef<HTMLDivElement | null>(null);
   const workspaceChangeRef = useRef(onWorkspaceChange);
 
   useLayoutEffect(() => {
     workspaceChangeRef.current = onWorkspaceChange;
   }, [onWorkspaceChange]);
 
-  useLayoutEffect(() => {
-    if (workspace !== "decks" || !panelRef.current) {
-      setDeckNested(false);
-      return;
-    }
-    const panel = panelRef.current;
-    const update = () => {
-      setDeckNested(Boolean(panel.querySelector(".back-button:not([disabled])")));
-    };
-    update();
-    const observer = new MutationObserver(update);
-    observer.observe(panel, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["disabled"],
-    });
-    return () => observer.disconnect();
-  }, [workspace]);
-
   useEffect(() => {
-    if (workspace === "decks" && !deckNested) return;
+    if (workspace === "decks") return;
     return registerPlatformBackHandler(() => {
-      if (workspace === "decks") {
-        const back = panelRef.current?.querySelector<HTMLButtonElement>(
-          ".back-button:not([disabled])",
-        );
-        if (!back) return false;
-        back.click();
-        return true;
-      }
       void workspaceChangeRef.current("decks");
       return true;
     });
-  }, [deckNested, workspace]);
+  }, [workspace]);
 
   function activateAt(index: number): void {
     const item = WORKSPACES[index];
@@ -166,55 +133,53 @@ export function FlashcardsWorkspace({
         </div>
       </div>
 
-      <div ref={panelRef}>
-        <RouteTransition routeKey={workspace} relation="sibling" className={styles.panel}>
-          {workspace === "decks" ? (
-            <DeckLibraryWorkspace
-              decks={decks}
-              settings={settings}
-              refreshDecks={refreshDecks}
-              onPracticeDeck={onPracticeDeck}
-              openDeckRequest={openDeckRequest}
-              onOpenDeckRequestConsumed={onOpenDeckRequestConsumed}
-              onManageTemplates={() => onWorkspaceChange("templates")}
-              onCreateCards={() => onWorkspaceChange("create")}
-              onCardDirtyChange={onCardDirtyChange}
-              showToast={showToast}
-            />
-          ) : null}
-          {workspace === "templates" ? (
-            <TemplatesScreen
-              onBack={() => onWorkspaceChange("decks")}
-              onDirtyChange={onTemplateDirtyChange}
-              showToast={showToast}
-            />
-          ) : null}
-          {workspace === "search" ? (
-            <CardsScreen
-              decks={decks}
-              refreshDecks={refreshDecks}
-              onPracticeCards={onPracticeCards}
-              onDirtyChange={onCardDirtyChange}
-              showToast={showToast}
-            />
-          ) : null}
-          {workspace === "transfer" ? (
-            <TransferWorkspace
-              decks={decks}
-              refreshDecks={refreshDecks}
-              showToast={showToast}
-            />
-          ) : null}
-          {workspace === "create" ? (
-            <CreateCardsWorkspace
-              decks={decks}
-              refreshDecks={refreshDecks}
-              onDirtyChange={onCardDirtyChange}
-              showToast={showToast}
-            />
-          ) : null}
-        </RouteTransition>
-      </div>
+      <RouteTransition
+        routeKey={`${workspace}:${navigationKey}`}
+        relation="sibling"
+        className={styles.panel}
+      >
+        {workspace === "decks" ? (
+          <DeckLibraryWorkspace
+            key={navigationKey}
+            decks={decks}
+            settings={settings}
+            refreshDecks={refreshDecks}
+            onPracticeDeck={onPracticeDeck}
+            openDeckRequest={openDeckRequest}
+            onOpenDeck={onOpenDeck}
+            onReturnToLibrary={onReturnToLibrary}
+            onManageTemplates={() => onWorkspaceChange("templates")}
+            onCardDirtyChange={onCardDirtyChange}
+            showToast={showToast}
+          />
+        ) : null}
+        {workspace === "templates" ? (
+          <TemplatesScreen
+            key={navigationKey}
+            onBack={() => onWorkspaceChange("decks")}
+            onDirtyChange={onTemplateDirtyChange}
+            showToast={showToast}
+          />
+        ) : null}
+        {workspace === "search" ? (
+          <CardsScreen
+            key={navigationKey}
+            decks={decks}
+            refreshDecks={refreshDecks}
+            onPracticeCards={onPracticeCards}
+            onDirtyChange={onCardDirtyChange}
+            showToast={showToast}
+          />
+        ) : null}
+        {workspace === "transfer" ? (
+          <TransferWorkspace
+            key={navigationKey}
+            decks={decks}
+            refreshDecks={refreshDecks}
+            showToast={showToast}
+          />
+        ) : null}
+      </RouteTransition>
     </PageScaffold>
   );
 }

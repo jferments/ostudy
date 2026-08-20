@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import type { AppSection } from "../controllers/useAppController";
-import { useMediaQuery } from "../ui/hooks/useMediaQuery";
+import { useLayoutMode } from "../ui/layout/LayoutModeProvider";
 import { Icon, type IconName } from "../ui/icons/Icon";
 import { Sheet } from "../ui/overlays/Dialog";
 import { BrandLockup } from "./Brand";
@@ -30,7 +30,8 @@ function isActive(item: AppSection, current: AppSection): boolean {
 }
 
 export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProps) {
-  const compact = useMediaQuery("(max-width: 760px)");
+  const { layoutMode } = useLayoutMode();
+  const compact = layoutMode === "compact";
   const [moreOpen, setMoreOpen] = useState(false);
 
   function navigate(next: AppSection): void {
