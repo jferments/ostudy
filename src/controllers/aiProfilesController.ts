@@ -254,11 +254,19 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
 
     setMutating(true);
     setErrorMessage(null);
+    let committedProfile: AiProviderProfileDetail | null = selectedProfile;
+    let credentialCommitted = false;
     try {
       const wasExisting = selectedProfile !== null;
-      let saved = selectedProfile
-        ? await updateAiProviderProfile(selectedProfile.id, selectedProfile.revision, draft)
-        : await createAiProviderProfile(draft);
+      let saved: AiProviderProfileDetail;
+      if (!selectedProfile) {
+        saved = await createAiProviderProfile(draft);
+      } else if (profileDraftDirty) {
+        saved = await updateAiProviderProfile(selectedProfile.id, selectedProfile.revision, draft);
+      } else {
+        saved = selectedProfile;
+      }
+      committedProfile = saved;
 
       if (saved.authMode !== "none" && credentialDraft !== "") {
         saved = await setAiProviderCredential(
@@ -267,6 +275,8 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
           credentialDraft,
           credentialPersistence,
         );
+        committedProfile = saved;
+        credentialCommitted = true;
       }
 
       setSelectedProfile(saved);
@@ -280,6 +290,15 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       showToast("success", wasExisting ? "AI connection updated." : "AI connection saved.");
       if (canDiscoverModels(saved)) await discoverModelsForProfile(saved, false);
     } catch (error: unknown) {
+      if (committedProfile && committedProfile !== selectedProfile) {
+        setSelectedProfile(committedProfile);
+        setSelectedProfileId(committedProfile.id);
+        setDraft(draftFromProfile(committedProfile));
+        setProbeResult(null);
+        setModels([]);
+        setModelsLoaded(false);
+      }
+      if (credentialCommitted) setCredentialDraft("");
       setErrorMessage(getErrorMessage(error));
     } finally {
       setMutating(false);
