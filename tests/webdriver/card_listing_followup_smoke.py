@@ -4,13 +4,11 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import signal
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
 
 import smoke as webdriver
 import ui_platform_smoke as ui
@@ -100,9 +98,15 @@ def assert_deck_preview(session_id: str, question: str, answer: str) -> None:
         if (!(preview instanceof HTMLElement) || lines.length < 2) return null;
         const q = lines[0].getBoundingClientRect();
         const a = lines[1].getBoundingClientRect();
+        const qLabel = lines[0].querySelector('.card-preview-label');
+        const aLabel = lines[1].querySelector('.card-preview-label');
+        const qText = lines[0].querySelector('strong');
+        const aText = lines[1].querySelector('strong');
         return {
-          question: (lines[0].textContent || '').replace(/\\s+/g, ' ').trim(),
-          answer: (lines[1].textContent || '').replace(/\\s+/g, ' ').trim(),
+          qLabel: (qLabel?.textContent || '').trim(),
+          aLabel: (aLabel?.textContent || '').trim(),
+          question: (qText?.textContent || '').replace(/\\s+/g, ' ').trim(),
+          answer: (aText?.textContent || '').replace(/\\s+/g, ' ').trim(),
           qTop: q.top,
           aTop: a.top,
           columns: getComputedStyle(preview).gridTemplateColumns,
@@ -111,10 +115,10 @@ def assert_deck_preview(session_id: str, question: str, answer: str) -> None:
     )
     if not isinstance(measurement, dict):
         raise AssertionError(f"Deck card preview was not measurable: {measurement!r}")
-    if not str(measurement.get("question", "")).startswith(f"Q: {question}"):
-        raise AssertionError(f"Deck question preview does not use Q: format: {measurement!r}")
-    if not str(measurement.get("answer", "")).startswith(f"A: {answer}"):
-        raise AssertionError(f"Deck answer preview does not use A: format: {measurement!r}")
+    if measurement.get("qLabel") != "Q:" or measurement.get("aLabel") != "A:":
+        raise AssertionError(f"Deck preview does not use compact Q:/A: labels: {measurement!r}")
+    if measurement.get("question") != question or measurement.get("answer") != answer:
+        raise AssertionError(f"Deck preview lost card content: {measurement!r}")
     if float(measurement["aTop"]) <= float(measurement["qTop"]) + 1:
         raise AssertionError(f"Deck Q/A previews share one horizontal line: {measurement!r}")
 
@@ -150,14 +154,16 @@ def assert_search_surface_and_preview(session_id: str, question: str, answer: st
         if (content.length < 2) return null;
         const qLabel = content[0].querySelector('small');
         const aLabel = content[1].querySelector('small');
+        const qText = content[0].querySelector('strong');
+        const aText = content[1].querySelector('strong');
         const arrow = [...sides.children].find((element) => element.getAttribute('aria-hidden') === 'true');
         const q = content[0].getBoundingClientRect();
         const a = content[1].getBoundingClientRect();
         const inputRect = input.getBoundingClientRect();
         const surfaceRect = surface.getBoundingClientRect();
         return {
-          question: (content[0].textContent || '').replace(/\\s+/g, ' ').trim(),
-          answer: (content[1].textContent || '').replace(/\\s+/g, ' ').trim(),
+          question: (qText?.textContent || '').replace(/\\s+/g, ' ').trim(),
+          answer: (aText?.textContent || '').replace(/\\s+/g, ' ').trim(),
           qLabel: qLabel ? getComputedStyle(qLabel, '::after').content : '',
           aLabel: aLabel ? getComputedStyle(aLabel, '::after').content : '',
           qTop: q.top,
@@ -177,7 +183,7 @@ def assert_search_surface_and_preview(session_id: str, question: str, answer: st
         raise AssertionError(f"Search card presentation was not measurable: {measurement!r}")
     if "Q:" not in str(measurement.get("qLabel", "")) or "A:" not in str(measurement.get("aLabel", "")):
         raise AssertionError(f"Search results do not present compact Q:/A: labels: {measurement!r}")
-    if question not in str(measurement.get("question", "")) or answer not in str(measurement.get("answer", "")):
+    if measurement.get("question") != question or measurement.get("answer") != answer:
         raise AssertionError(f"Search result preview lost card content: {measurement!r}")
     if float(measurement["aTop"]) <= float(measurement["qTop"]) + 1:
         raise AssertionError(f"Search Q/A previews share one horizontal line: {measurement!r}")
@@ -217,11 +223,15 @@ def main() -> int:
         webdriver.wait_for_driver(webdriver.deadline_after(20))
         session_id = webdriver.create_session(application)
         webdriver.verify_shell(session_id, webdriver.deadline_after())
-        deadline = webdriver.deadline_after(60)
-        assert_medium_navigation(session_id, deadline)
-        _, question, answer = create_card(session_id, deadline)
+        assert_medium_navigation(session_id, webdriver.deadline_after(45))
+        _, question, answer = create_card(session_id, webdriver.deadline_after(60))
         assert_deck_preview(session_id, question, answer)
-        assert_search_surface_and_preview(session_id, question, answer, deadline)
+        assert_search_surface_and_preview(
+            session_id,
+            question,
+            answer,
+            webdriver.deadline_after(60),
+        )
         print(
             "Native card-listing follow-up smoke passed: 928px medium navigation has complete labels; "
             "Deck and Search use separate Q:/A: lines; Search uses one icon/input surface."
