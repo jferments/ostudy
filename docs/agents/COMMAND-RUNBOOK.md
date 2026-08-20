@@ -51,13 +51,19 @@ Check the emulator/toolchain environment:
 pnpm android:doctor:emulator
 ```
 
+Compile/package the Android application and Android-facing tests:
+
+```bash
+pnpm android:test
+```
+
 Run the official API-36 emulator smoke suite:
 
 ```bash
 pnpm android:smoke
 ```
 
-`./scripts/check.sh` remains the authoritative cross-platform merge gate and includes the repository's required Android qualification through CI when the PR contract requires it.
+For pull requests, the PR #60 exact-head workflow is authoritative for the complete required Linux/Tauri + Android qualification.
 
 ## Android physical-device acceptance
 
@@ -87,7 +93,7 @@ pnpm android:install:existing -- --serial <adb-serial>
 
 The maintained install wrapper uses non-streaming ADB installation because it is reliable on the physical Android devices used for acceptance and provides a simpler package-manager boundary than streamed install.
 
-Use `pnpm android:dev` only when live Android hot-reload is specifically needed. Ordinary acceptance should use the built debug APK above; do not substitute a custom Tauri device-selection or LAN-host command line.
+Use `pnpm android:dev` only when live Android hot reload is specifically needed. Ordinary acceptance should use the built debug APK above; do not substitute a custom Tauri device-selection or LAN-host command line.
 
 Retrieve app-private debug diagnostics when needed:
 
