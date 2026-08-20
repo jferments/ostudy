@@ -15,11 +15,9 @@ interface PracticeSetupProps {
   selectedDeckIds: Set<string>;
   shuffle: boolean;
   isStarting: boolean;
-  /** Compatibility for the parent while workload state is migrated explicitly. */
-  isLoadingWorkload?: boolean;
-  workloadStatus?: PracticeWorkloadStatus;
+  workloadStatus: PracticeWorkloadStatus;
   workload: PracticeWorkloadOverview | null;
-  workloadError?: string | null;
+  workloadError: string | null;
   recentDecks: RecentDeckSummary[];
   onSelectedDeckIdsChange: (deckIds: Set<string>) => void;
   onShuffleChange: (shuffle: boolean) => void;
@@ -33,10 +31,9 @@ export function PracticeSetup({
   selectedDeckIds,
   shuffle,
   isStarting,
-  isLoadingWorkload = false,
   workloadStatus,
   workload,
-  workloadError = null,
+  workloadError,
   recentDecks,
   onSelectedDeckIdsChange,
   onShuffleChange,
@@ -46,19 +43,10 @@ export function PracticeSetup({
   const decksWithCards = decks.filter(
     (deck) => deck.archivedAt === null && deck.generatedCardCount > 0,
   );
-  const resolvedWorkloadStatus: PracticeWorkloadStatus =
-    workloadStatus ??
-    (isLoadingWorkload
-      ? "loading"
-      : workload
-        ? "ready"
-        : selectedDeckIds.size === 0
-          ? "empty"
-          : "idle");
-  const workloadReady = resolvedWorkloadStatus === "ready" && workload !== null;
+  const workloadReady = workloadStatus === "ready" && workload !== null;
   const scheduledCount = workloadReady
     ? workload.scheduledReviews + workload.scheduledNew
-    : null;
+    : 0;
 
   useEffect(() => {
     if (scopeInitialized.current || decks.length === 0) return;
@@ -172,7 +160,7 @@ export function PracticeSetup({
             <span>Shuffle within priority groups</span>
           </label>
           <div className="practice-due-inline">
-            <strong>{scheduledCount ?? "—"}</strong>
+            <strong>{workloadReady ? scheduledCount : "—"}</strong>
             <span>scheduled</span>
           </div>
           {workloadReady && scheduledCount > 0 ? (
@@ -224,7 +212,7 @@ export function PracticeSetup({
           <strong>{workloadReady ? workload.needsMorePractice : "—"}</strong>
           <small>need more practice</small>
         </div>
-        <WorkloadStatus status={resolvedWorkloadStatus} error={workloadError} />
+        <WorkloadStatus status={workloadStatus} error={workloadError} />
       </section>
 
       <section className="recent-practice-section" aria-labelledby="recent-practice-heading">
