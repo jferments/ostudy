@@ -289,7 +289,7 @@ describe("CardsScreen", () => {
     await waitFor(() => expect(cardsIpc.listMatchingCards).toHaveBeenCalled());
   });
 
-  it("enables Add card only for one selected active deck", async () => {
+  it("enables Add flashcard only for one selected active deck", async () => {
     renderScreen();
     await screen.findByText("What reverses warfarin?");
     fireEvent.click(screen.getByRole("button", { name: "All active decks" }));
@@ -301,7 +301,7 @@ describe("CardsScreen", () => {
       ),
     );
     fireEvent.click(within(dialog).getByRole("button", { name: "View results" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add card" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add flashcard" }));
     expect(await screen.findByText("Card editor")).toBeTruthy();
   });
 });
