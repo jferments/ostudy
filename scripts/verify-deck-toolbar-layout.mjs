@@ -11,27 +11,30 @@ const [css, tauriConfigText] = await Promise.all([
 ]);
 const failures = [];
 
-expectContains(css, ".toolbar { display: flex;", "deck toolbar");
-expectContains(css, "justify-content: flex-end;", "desktop toolbar alignment");
-expectContains(css, ".toolbarActions { display: flex;", "deck toolbar action group");
-expectContains(css, "flex-wrap: nowrap;", "non-wrapping desktop action row");
-expectContains(
+expectPattern(css, /\.toolbar\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*flex-end;/su, "deck toolbar");
+expectPattern(css, /\.toolbar\s*>\s*button\s*\{[^}]*flex:\s*0\s+0\s+auto;[^}]*white-space:\s*nowrap;/su, "stable toolbar action sizing");
+expectPattern(css, /\.library\s*\{[^}]*container-name:\s*deck-library;[^}]*container-type:\s*inline-size;/su, "deck-library container boundary");
+expectPattern(css, /\.sectionActions\s*\{[^}]*display:\s*flex;/su, "folder section action group");
+expectContains(css, "@container deck-library (max-width: 760px)", "medium container breakpoint");
+expectContains(css, "@container deck-library (max-width: 560px)", "compact container breakpoint");
+expectPattern(
   css,
-  ".toolbarActions > button { flex: 0 0 auto; white-space: nowrap; }",
-  "stable action button sizing",
-);
-expectContains(css, ".sectionActions { display: flex;", "folder section action group");
-expectContains(css, "@media (max-width: 640px)", "compact breakpoint");
-expectContains(
-  css,
-  ".toolbarActions { width: 100%; flex-wrap: wrap; justify-content: stretch; }",
-  "compact toolbar wrapping",
-);
-expectContains(
-  css,
-  ".sectionActions { width: 100%; justify-content: stretch; }",
+  /@container deck-library \(max-width: 560px\)[\s\S]*?\.sectionActions\s*\{[^}]*width:\s*100%;[^}]*justify-content:\s*stretch;/u,
   "compact folder controls",
 );
+expectPattern(
+  css,
+  /\.deckMain\s*\{[^}]*padding:\s*8px\s+var\(--ostudy-space-3\);/su,
+  "single compact deck presentation",
+);
+expectPattern(css, /@media \(pointer:\s*coarse\)/u, "coarse-pointer touch targets");
+
+if (/\.density\b/u.test(css) || /data-density/u.test(css)) {
+  failures.push("Deck density controls or density-specific styling must not be reintroduced.");
+}
+if (/\.dragHandle\s*\{[^}]*border-inline-end:/su.test(css)) {
+  failures.push("The deck move handle must not render a vertical inline separator.");
+}
 
 const tauriConfig = JSON.parse(tauriConfigText);
 const mainWindow = tauriConfig?.app?.windows?.find((window) => window?.label === "main");
@@ -45,9 +48,13 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Default desktop sizing and responsive deck-library controls preserve usable action groups.",
+  "OK   Desktop sizing, compact deck density, container responsiveness, and touch targets satisfy the deck-library layout contract.",
 );
 
 function expectContains(source, expected, label) {
   if (!source.includes(expected)) failures.push(`Missing ${label}: ${expected}`);
+}
+
+function expectPattern(source, pattern, label) {
+  if (!pattern.test(source)) failures.push(`Missing ${label}: ${pattern}`);
 }
