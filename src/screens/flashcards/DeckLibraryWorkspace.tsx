@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import type { DeckOpenRequest } from "../../App";
 import type { ShowToast } from "../../components/Toast";
 import { DecksController } from "../../controllers/decksController";
 import { getErrorCode, getErrorMessage } from "../../ipc/common";
@@ -24,11 +25,6 @@ import {
   type DeckLibraryOrganization,
 } from "../../ipc/deckFolders";
 import type { AppSettings } from "../../ipc/settings";
-import type {
-  DeckOpenRequest,
-  FlashcardsDeckRoute,
-  FlashcardsDeckView,
-} from "../../navigation/flashcardsRoutes";
 import { Artwork } from "../../ui/artwork/Artwork";
 import { HelpTrigger } from "../../ui/help/HelpProvider";
 import { Icon } from "../../ui/icons/Icon";
@@ -41,12 +37,13 @@ import { DecksScreen } from "../DecksScreen";
 import styles from "./DeckLibraryWorkspace.module.css";
 
 interface DeckLibraryWorkspaceProps {
-  route: FlashcardsDeckRoute;
-  onViewChange: (view: FlashcardsDeckView, deckId: string | null) => void;
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
   onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
+  openDeckRequest: DeckOpenRequest | null;
+  onOpenDeck: (deckId: string) => void;
+  onReturnToLibrary: () => void;
   onManageTemplates: () => void | Promise<void>;
   onCardDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
@@ -74,12 +71,13 @@ const FOLDER_DRAG_MIME = "application/x-ostudy-folder-id";
 const UNSORTED_DATA_VALUE = "__unsorted__";
 
 export function DeckLibraryWorkspace({
-  route,
-  onViewChange,
   decks,
   settings,
   refreshDecks,
   onPracticeDeck,
+  openDeckRequest,
+  onOpenDeck,
+  onReturnToLibrary,
   onManageTemplates,
   onCardDirtyChange,
   showToast,
@@ -92,14 +90,7 @@ export function DeckLibraryWorkspace({
   const [announcement, setAnnouncement] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set());
-  const [detailRequest, setDetailRequest] = useState<DeckOpenRequest | null>(() =>
-    route.view !== "library" && route.deckId
-      ? { requestId: route.requestId, deckId: route.deckId }
-      : null,
-  );
-  const [rootRequestId, setRootRequestId] = useState<number | null>(null);
-  const requestSequence = useRef(Math.max(1, route.requestId + 1));
-  const handledRouteRequestRef = useRef<number | null>(null);
+  const detailOpenedRef = useRef(false);
   const organizationRef = useRef<DeckLibraryOrganization | null>(null);
   const organizationMutationRef = useRef(false);
   const lastDeckLifecycleSignatureRef = useRef<string | null>(null);
@@ -137,20 +128,6 @@ export function DeckLibraryWorkspace({
       clearPointerDropTarget();
     };
   }, [controller]);
-
-  useEffect(() => {
-    if (handledRouteRequestRef.current === route.requestId) return;
-    handledRouteRequestRef.current = route.requestId;
-    requestSequence.current = Math.max(requestSequence.current, route.requestId + 1);
-    setFolderDraft(null);
-    if (route.view === "library") {
-      if (detailRequest) setRootRequestId(route.requestId);
-      return;
-    }
-    if (!route.deckId) return;
-    setRootRequestId(null);
-    setDetailRequest({ requestId: route.requestId, deckId: route.deckId });
-  }, [detailRequest, route.deckId, route.requestId, route.view]);
 
   const placementByDeck = useMemo(
     () => new Map((organization?.placements ?? []).map((placement) => [placement.deckId, placement])),
@@ -243,12 +220,8 @@ export function DeckLibraryWorkspace({
   }
 
   function openDeck(deckId: string): void {
-    const requestId = requestSequence.current;
-    requestSequence.current += 1;
     setFolderDraft(null);
-    setRootRequestId(null);
-    setDetailRequest({ requestId, deckId });
-    onViewChange("detail", deckId);
+    onOpenDeck(deckId);
   }
 
   async function createDeck(name: string, description: string): Promise<void> {
@@ -416,7 +389,10 @@ export function DeckLibraryWorkspace({
     const previous = organizationRef.current;
     if (!previous || isMutating || !beginOrganizationMutation()) return;
     const currentIndex = previous.folders.findIndex((candidate) => candidate.id === folder.id);
-    const boundedTarget = Math.min(Math.max(0, targetIndex), Math.max(0, previous.folders.length - 1));
+    const boundedTarget = Math.min(
+      Math.max(0, targetIndex),
+      Math.max(0, previous.folders.length - 1),
+    );
     if (currentIndex === boundedTarget) {
       finishOrganizationMutation();
       return;
@@ -603,28 +579,24 @@ export function DeckLibraryWorkspace({
     });
   }
 
-  if (detailRequest) {
+  if (openDeckRequest) {
     return (
       <DecksScreen
-        key={detailRequest.requestId}
+        key={openDeckRequest.requestId}
         decks={decks}
         settings={settings}
         refreshDecks={refreshDecks}
         onPracticeDeck={onPracticeDeck}
-        openDeckRequest={detailRequest}
+        openDeckRequest={openDeckRequest}
         onOpenDeckRequestConsumed={() => undefined}
-        rootRequestId={rootRequestId}
-        onNavigationRejected={(view) => onViewChange(view, detailRequest.deckId)}
         onManageTemplates={onManageTemplates}
         onViewChange={(view) => {
-          if (view === "library") {
-            setDetailRequest(null);
-            setRootRequestId(null);
-            onViewChange("library", null);
+          if (view === "detail" || view === "editor") detailOpenedRef.current = true;
+          if (view === "library" && detailOpenedRef.current) {
+            detailOpenedRef.current = false;
+            onReturnToLibrary();
             void refreshLibraryAfterDetail();
-            return;
           }
-          onViewChange(view, detailRequest.deckId);
         }}
         onDirtyChange={onCardDirtyChange}
         showToast={showToast}
@@ -635,12 +607,14 @@ export function DeckLibraryWorkspace({
   return (
     <div className={styles.root} aria-busy={isLoading || isMutating}>
       <div className={styles.toolbar} aria-label="Deck library controls">
-        <Button
-          variant="primary"
-          onClick={() => setFolderDraft({ mode: "create", folder: null, name: "__deck__" })}
-        >
-          <Icon name="plus" size={18} /> New deck
-        </Button>
+        <div className={styles.toolbarActions}>
+          <Button
+            variant="primary"
+            onClick={() => setFolderDraft({ mode: "create", folder: null, name: "__deck__" })}
+          >
+            <Icon name="plus" size={18} /> New deck
+          </Button>
+        </div>
       </div>
 
       <div className="sr-only" aria-live="polite">
@@ -1095,7 +1069,6 @@ function DeckItem({
         </span>
         <span className={styles.deckCopy}>
           <strong>{deck.name}</strong>
-          {deck.description ? <span>{deck.description}</span> : null}
           <small>
             {deck.generatedCardCount} cards · {deck.studyableDueCount} ready
           </small>
