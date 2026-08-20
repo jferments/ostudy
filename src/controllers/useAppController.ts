@@ -26,6 +26,7 @@ import {
   terminateActivePracticeSession,
 } from "./practiceExitGuard";
 import { useRequestLane } from "./requestLane";
+import { discardActiveDurableDraft } from "./useDurableDraft";
 
 export type AppSection =
   | "decks"
@@ -338,6 +339,15 @@ export function useAppController() {
       destructive: true,
     });
     if (!accepted) return false;
+    try {
+      await discardActiveDurableDraft("card");
+    } catch (error: unknown) {
+      showToast(
+        "error",
+        `The flashcard draft could not be discarded: ${getErrorMessage(error)}`,
+      );
+      return false;
+    }
     setHasUnsavedCard(false);
     return true;
   }
@@ -354,6 +364,15 @@ export function useAppController() {
       destructive: true,
     });
     if (!accepted) return false;
+    try {
+      await discardActiveDurableDraft("template");
+    } catch (error: unknown) {
+      showToast(
+        "error",
+        `The template draft could not be discarded: ${getErrorMessage(error)}`,
+      );
+      return false;
+    }
     setHasUnsavedTemplate(false);
     return true;
   }
