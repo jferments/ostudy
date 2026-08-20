@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type MotionPreference = "system" | "full" | "reduced" | "none";
 export type MaterialPreference = "automatic" | "rich" | "simple";
-export type DeckViewDensity = "comfortable" | "compact";
 export type AiReasoningEffort =
   | "automatic"
   | "none"
@@ -24,7 +23,6 @@ export interface AppSettings {
   decorativeArtwork?: boolean;
   celebrationsEnabled?: boolean;
   tutorialsEnabled?: boolean;
-  deckViewDensity?: DeckViewDensity;
   /** Durable read compatibility until all bundled callers use motionPreference. */
   animationsEnabled?: boolean;
   /** Durable read compatibility until all bundled callers use motionPreference. */
