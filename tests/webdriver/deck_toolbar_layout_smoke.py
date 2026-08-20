@@ -70,6 +70,8 @@ def verify_compact_tabs(session_id: str, width: int) -> None:
 
 def verify_toolbar(session_id: str, width: int, height: int, deadline: float) -> None:
     ui.set_window_rect(session_id, width, height)
+    expected_layout = "compact" if width <= 760 else "medium" if width <= 1180 else "wide"
+    ui.wait_for_layout_mode(session_id, expected_layout, deadline)
     webdriver.find_element(
         session_id,
         "css selector",
