@@ -31,6 +31,7 @@ import { ScheduleActionModal } from "./ScheduleActionModal";
 import { scheduleActionNotice } from "./scheduleActionResult";
 
 export type CardBrowserView = "list" | "editor";
+export type CardBrowserControls = "deck" | "search";
 
 interface CardBrowserWorkspaceProps {
   decks: DeckSummary[];
@@ -39,7 +40,7 @@ interface CardBrowserWorkspaceProps {
   onDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
   fixedDeckId?: string;
-  showFilters?: boolean;
+  controls?: CardBrowserControls;
   showPageHeader?: boolean;
   onViewChange?: (view: CardBrowserView) => void;
 }
@@ -66,8 +67,10 @@ const PAGE_SIZE = 100;
 /**
  * The single card-listing workspace used by both global Search/Filter and an
  * open deck. Both callers use the same native search contract, pagination,
- * row markup, selection semantics, authoring actions, and bulk operations.
- * An open deck simply supplies one immutable deck filter and hides CardFilters.
+ * row markup, selection semantics, card editing, and bulk operations. The
+ * control mode intentionally varies only the screen-specific controls above
+ * that shared behavior: Search/Filter gets the complete filter model, while a
+ * deck gets a fixed scope, one lightweight search field, and authoring actions.
  */
 export function CardBrowserWorkspace({
   decks,
@@ -76,7 +79,7 @@ export function CardBrowserWorkspace({
   onDirtyChange,
   showToast,
   fixedDeckId,
-  showFilters = fixedDeckId === undefined,
+  controls = fixedDeckId === undefined ? "search" : "deck",
   showPageHeader = fixedDeckId === undefined,
   onViewChange,
 }: CardBrowserWorkspaceProps) {
@@ -99,7 +102,6 @@ export function CardBrowserWorkspace({
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSelectingAll, setIsSelectingAll] = useState(false);
-  const [isResolvingPractice, setIsResolvingPractice] = useState(false);
   const [isApplyingSchedule, setIsApplyingSchedule] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedCards, setSelectedCards] = useState<Map<string, SelectionCard>>(new Map());
@@ -110,7 +112,6 @@ export function CardBrowserWorkspace({
   const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
   const [moveCopyCards, setMoveCopyCards] = useState<TransferableCard[]>([]);
   const [practiceCards, setPracticeCards] = useState<SelectionCard[] | null>(null);
-  const [practiceSourceLabel, setPracticeSourceLabel] = useState("the current results");
   const pendingScheduleMutationRef = useRef<PendingScheduleMutation | null>(null);
   const controllerRef = useRef<CardsController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new CardsController();
@@ -152,6 +153,9 @@ export function CardBrowserWorkspace({
       ? (activeDecks.find((deck) => deck.id === scopedDeckIds[0]) ?? null)
       : null;
   const browserView: CardBrowserView = editingCard || creatingDeckId ? "editor" : "list";
+  const practiceSourceLabel = fixedDeckId
+    ? `the “${selectedDeck?.name ?? "current"}” deck`
+    : "Search/Filter";
 
   const loadTags = useCallback(async (): Promise<void> => {
     try {
@@ -226,6 +230,11 @@ export function CardBrowserWorkspace({
     const timeout = window.setTimeout(() => void loadCards(), 180);
     return () => window.clearTimeout(timeout);
   }, [loadCards]);
+
+  function changeQuery(value: string): void {
+    setQuery(value);
+    if (value.trim() !== "" && sort === "updated_desc") setSort("relevance");
+  }
 
   async function refreshAfterMutation(): Promise<void> {
     await Promise.all([loadCards(), loadTags(), refreshDecks()]);
@@ -308,22 +317,6 @@ export function CardBrowserWorkspace({
     if (notes.length === 0) return;
     setMoveCopyCards(notes);
     setSelectionAction("move_copy");
-  }
-
-  async function practiceAllResults(): Promise<void> {
-    if (page.totalCount === 0 || isResolvingPractice) return;
-    setIsResolvingPractice(true);
-    setErrorMessage(null);
-    try {
-      const matches = await controller.matching(searchInput);
-      if (!matches) return;
-      setPracticeSourceLabel(fixedDeckId ? "this deck" : "the current filtered results");
-      setPracticeCards(matches);
-    } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
-    } finally {
-      setIsResolvingPractice(false);
-    }
   }
 
   async function applySimpleScheduleAction(
@@ -509,7 +502,7 @@ export function CardBrowserWorkspace({
 
   const listContent = (
     <>
-      {showFilters ? (
+      {controls === "search" ? (
         <CardFilters
           activeDecks={activeDecks}
           deckIds={deckIds}
@@ -521,17 +514,26 @@ export function CardBrowserWorkspace({
           tags={tags}
           tagIds={tagIds}
           onDeckIdsChange={setFilterDeckIds}
-          onQueryChange={(value) => {
-            setQuery(value);
-            if (value.trim() !== "" && sort === "updated_desc") setSort("relevance");
-          }}
+          onQueryChange={changeQuery}
           onAvailabilityFilterChange={setAvailabilityFilter}
           onStatusFilterChange={setStatusFilter}
           onReviewedFilterChange={setReviewedFilter}
           onSortChange={setSort}
           onTagIdsChange={setTagIds}
         />
-      ) : null}
+      ) : (
+        <section className="deck-card-search" aria-label="Search this deck">
+          <label>
+            <span>Search cards</span>
+            <input
+              type="search"
+              value={query}
+              placeholder="Question, answer, or tag"
+              onChange={(event) => changeQuery(event.currentTarget.value)}
+            />
+          </label>
+        </section>
+      )}
 
       {selectedCards.size > 0 ? (
         <section className="card-selection-bar" aria-live="polite">
@@ -557,16 +559,6 @@ export function CardBrowserWorkspace({
             <option value="reset">Reset schedules</option>
             <option value="delete">Delete cards</option>
           </select>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => {
-              setPracticeSourceLabel("the selected cards");
-              setPracticeCards(selected);
-            }}
-          >
-            Practice selected
-          </button>
           <button type="button" className="text-button" onClick={() => setSelectedCards(new Map())}>
             Deselect all
           </button>
@@ -585,28 +577,30 @@ export function CardBrowserWorkspace({
               {page.totalCount} {page.totalCount === 1 ? "card" : "cards"}
             </span>
           </div>
-          <div className="card-browser-actions">
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={!selectedDeck}
-              title={selectedDeck ? undefined : "Select exactly one active deck before bulk adding cards"}
-              onClick={() => {
-                if (selectedDeck) setBulkEntryOpen(true);
-              }}
-            >
-              Bulk add
-            </button>
-            <button
-              type="button"
-              className="primary-button"
-              disabled={!selectedDeck}
-              title={selectedDeck ? undefined : "Select exactly one active deck before adding a card"}
-              onClick={beginCreateCard}
-            >
-              Add flashcard
-            </button>
-          </div>
+          {controls === "deck" ? (
+            <div className="card-browser-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={!selectedDeck}
+                title={selectedDeck ? undefined : "This deck is unavailable for bulk card entry"}
+                onClick={() => {
+                  if (selectedDeck) setBulkEntryOpen(true);
+                }}
+              >
+                Bulk add
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                disabled={!selectedDeck}
+                title={selectedDeck ? undefined : "This deck is unavailable for adding a card"}
+                onClick={beginCreateCard}
+              >
+                Add flashcard
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {page.totalCount > 0 ? (
@@ -641,14 +635,10 @@ export function CardBrowserWorkspace({
             <button
               type="button"
               className="primary-button"
-              disabled={
-                isResolvingPractice ||
-                statusFilter === "suspended" ||
-                statusFilter === "buried"
-              }
-              onClick={() => void practiceAllResults()}
+              disabled={selectedCards.size === 0}
+              onClick={() => setPracticeCards(selected)}
             >
-              {isResolvingPractice ? "Preparing…" : "Practice results"}
+              Practice selected
             </button>
           </div>
         ) : null}
@@ -659,7 +649,7 @@ export function CardBrowserWorkspace({
             <p>
               {fixedDeckId
                 ? "Add a flashcard or use Bulk add to start studying this deck."
-                : "Try removing a filter, changing the search, or adding cards."}
+                : "Try removing a filter or changing the search."}
             </p>
           </section>
         ) : null}
@@ -704,7 +694,7 @@ export function CardBrowserWorkspace({
           showToast={showToast}
         />
       ) : null}
-      {bulkEntryOpen && selectedDeck ? (
+      {bulkEntryOpen && controls === "deck" && selectedDeck ? (
         <BulkEntryModal
           decks={activeDecks}
           fixedDeckId={selectedDeck.id}
@@ -747,6 +737,7 @@ function CardBrowserListRow({
   onToggleSelected: () => void;
   onOpen: () => void;
 }) {
+  const dueLabel = formatDue(card.dueAt);
   return (
     <article
       className={selected ? "organized-card-row selected" : "organized-card-row"}
@@ -803,7 +794,7 @@ function CardBrowserListRow({
         </span>
       </button>
       <div className="organized-card-meta">
-        <span>{formatDue(card.dueAt)}</span>
+        {dueLabel ? <span>{dueLabel}</span> : null}
         <small>{formatLastStudied(card.lastReviewedAt)}</small>
       </div>
     </article>
@@ -838,8 +829,8 @@ function summarize(value: string): string {
   return normalized.length > 512 ? `${normalized.slice(0, 509)}…` : normalized;
 }
 
-function formatDue(value: number): string {
-  if (value <= Date.now()) return "Ready now";
+function formatDue(value: number): string | null {
+  if (value <= Date.now()) return null;
   return `Scheduled ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
     new Date(value),
   )}`;
