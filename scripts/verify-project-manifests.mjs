@@ -26,6 +26,7 @@ const [
   checkFull,
   checkChanged,
   checkWorkflow,
+  maintenanceWorkflow,
   releaseWorkflow,
   pullRequestTemplate,
 ] = await Promise.all([
@@ -44,6 +45,7 @@ const [
   read("scripts", "check.sh"),
   read("scripts", "check-changed.sh"),
   read(".github", "workflows", "check.yml"),
+  read(".github", "workflows", "maintain-generated-candidates.yml"),
   read(".github", "workflows", "release.yml"),
   read(".github", "pull_request_template.md"),
 ]);
@@ -230,6 +232,7 @@ requireText("check-static.sh", checkStatic, [
   "verify-project-manifests.mjs",
   "verify-ipc-contract.mjs",
   "verify-repository-policy.mjs",
+  "verify-agent-workflow-policy.mjs",
   "verify-test-policy.mjs",
   "python3 -m unittest",
   "pnpm install --frozen-lockfile",
@@ -239,18 +242,33 @@ requireText("check-static.sh", checkStatic, [
 requireText("check-fast.sh", checkFast, ["check-static.sh", "install-native-deps.sh", "pnpm test", "cargo check"]);
 requireText("check.sh", checkFull, ["install-native-deps.sh", "pnpm run build", "cargo clippy", "cargo test", "smoke-native.sh"]);
 requireText("check-changed.sh", checkChanged, ["vitest run --changed", "cargo test", "check-fast.sh", "iteration aid"]);
-requireText("check workflow", checkWorkflow, [
+requireText("read-only check workflow", checkWorkflow, [
+  "permissions:\n  contents: read",
   "runs-on: [self-hosted, linux, x64, ostudy-unified]",
+  "persist-credentials: false",
   "OSTUDY_CARGO_TARGET_DIR",
+  "select-check-gate.mjs",
+  "verify-pr-contract.mjs",
+  "write-qualification-result.mjs",
   "cargo metadata",
-  "git add src-tauri/Cargo.lock",
   "check-fast.sh",
   "check.sh",
 ]);
+requireText("manual generated-candidate maintenance workflow", maintenanceWorkflow, [
+  "workflow_dispatch:",
+  "contents: write",
+  'if [[ "$GITHUB_REF_NAME" == "main" ]]',
+  "git add -- src-tauri/Cargo.lock src-tauri/src src-tauri/build.rs",
+  'git push origin "HEAD:$GITHUB_REF_NAME"',
+]);
 requireText("release workflow", releaseWorkflow, ["runs-on: [self-hosted, linux, x64, ostudy-unified]", "./scripts/release.sh"]);
-if (!pullRequestTemplate.includes("Acceptance criteria") || !pullRequestTemplate.includes("./scripts/check.sh")) {
-  failures.push("pull request template is missing acceptance criteria or full validation");
-}
+requireText("pull request template", pullRequestTemplate, [
+  "Acceptance criteria",
+  "<!-- ostudy-agent-state:start -->",
+  "./scripts/check-static.sh",
+  "./scripts/check-fast.sh",
+  "./scripts/check.sh",
+]);
 
 for (const [name, expected] of [
   ["check:static", "./scripts/check-static.sh"],
@@ -263,6 +281,7 @@ for (const [name, expected] of [
 }
 
 for (const requiredPath of [
+  ".github/workflows/maintain-generated-candidates.yml",
   "scripts/build.sh",
   "scripts/install-native-deps.sh",
   "scripts/install-native-deps.ps1",
@@ -271,10 +290,20 @@ for (const requiredPath of [
   "scripts/check-fast.sh",
   "scripts/check.sh",
   "scripts/check-changed.sh",
+  "scripts/select-check-gate.mjs",
+  "scripts/verify-pr-contract.mjs",
+  "scripts/verify-agent-workflow-policy.mjs",
+  "scripts/write-qualification-result.mjs",
   "scripts/verify-ipc-contract.mjs",
   "scripts/verify-repository-policy.mjs",
   "scripts/log-run.py",
   "tests/scripts/test_log_run.py",
+  "tests/scripts/test_check_gate_selection.py",
+  "tests/scripts/test_pr_contract.py",
+  "tests/scripts/test_agent_workflow_policy.py",
+  "tests/scripts/test_qualification_result.py",
+  "docs/agents/EXECUTION-STATE.md",
+  "docs/agents/FAILURE-TRIAGE.md",
   "src/ipc/diagnostics.ts",
   "src/ipc/diagnostics.test.ts",
   "src/ipc/documents.ts",
@@ -307,7 +336,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, audited native PDFium provisioning, resource-aware document concurrency, and tiered qualification manifests are consistent.`,
+  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, audited native PDFium provisioning, resource-aware document concurrency, direct-source workflow policy, and tiered qualification manifests are consistent.`,
 );
 
 function parseEnv(text) {

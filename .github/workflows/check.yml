@@ -28,8 +28,8 @@ concurrency:
 permissions:
   contents: read
 
-# Source-writing maintenance, including `git add src-tauri/Cargo.lock`, is deliberately
-# isolated in maintain-generated-candidates.yml and is never performed by Check.
+# Source-writing maintenance is deliberately isolated in
+# maintain-generated-candidates.yml and is never performed by Check.
 # A draft can request exact-head terminal qualification by adding the explicit
 # `<!-- ostudy-check:all-full -->` marker to its PR body; ordinary drafts stay fast.
 
