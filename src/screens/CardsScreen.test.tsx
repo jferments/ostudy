@@ -289,19 +289,27 @@ describe("CardsScreen", () => {
     await waitFor(() => expect(cardsIpc.listMatchingCards).toHaveBeenCalled());
   });
 
-  it("enables Add flashcard only for one selected active deck", async () => {
+  it("shows full filters without authoring and enables Practice selected only after selection", async () => {
     renderScreen();
-    await screen.findByText("What reverses warfarin?");
-    fireEvent.click(screen.getByRole("button", { name: "All active decks" }));
-    const dialog = await screen.findByRole("dialog", { name: "Filter flashcards" });
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Pharmacology/u }));
-    await waitFor(() =>
-      expect(cardsIpc.searchCards).toHaveBeenLastCalledWith(
-        expect.objectContaining({ deckIds: [deck.id] }),
-      ),
+    const table = await screen.findByRole("table", { name: "Matching cards" });
+
+    expect(screen.getByRole("region", { name: "Card filters" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add flashcard" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Bulk add" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Practice results" })).toBeNull();
+    expect(within(table).queryByText("Ready now")).toBeNull();
+
+    const practiceSelected = screen.getByRole("button", { name: "Practice selected" });
+    expect((practiceSelected as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: "Select What reverses warfarin?",
+      }),
     );
-    fireEvent.click(within(dialog).getByRole("button", { name: "View results" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add flashcard" }));
-    expect(await screen.findByText("Card editor")).toBeTruthy();
+    expect((practiceSelected as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(practiceSelected);
+    expect(await screen.findByRole("dialog", { name: "Practice these cards" })).toBeTruthy();
   });
 });
