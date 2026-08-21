@@ -557,6 +557,8 @@ mod tests {
                 None,
             )
             .unwrap(),
+            page_start: 21,
+            page_end: 22,
             token_estimate: 800,
             source_text: "bounded source".to_string(),
         }
@@ -574,6 +576,8 @@ mod tests {
             None,
         )
         .unwrap();
+        second.page_start = 22;
+        second.page_end = 23;
         assert_ne!(source_sha256(&first), source_sha256(&second));
     }
 
