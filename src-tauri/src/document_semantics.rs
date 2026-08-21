@@ -180,6 +180,7 @@ pub(crate) fn build_semantic_partitions(
                     || next_units.len() > plan.partition_max_units);
             let reached_target = token_total >= plan.partition_target_tokens
                 || units.len() >= plan.partition_target_units;
+
             if exceeds_hard_boundary || (end > start && reached_target) {
                 break;
             }
@@ -264,6 +265,7 @@ fn build_semantic_windows_internal(
             let next_tokens = token_total.saturating_add(unit.token_estimate.max(1));
             let mut next_units = source_units.clone();
             next_units.extend(unit.unit_numbers.iter().copied());
+
             let would_exceed =
                 end > start && (next_tokens > max_tokens || next_units.len() > max_units);
             if would_exceed {
@@ -358,7 +360,11 @@ fn partition_heading(chunk: &SemanticChunk) -> Option<String> {
     let first_line = heading.lines().find(|line| !line.trim().is_empty())?.trim();
     let root = [" > ", " › ", " :: ", " / ", " | "]
         .iter()
-        .filter_map(|separator| first_line.split_once(separator).map(|(left, _)| left.trim()))
+        .filter_map(|separator| {
+            first_line
+                .split_once(separator)
+                .map(|(left, _)| left.trim())
+        })
         .find(|value| !value.is_empty())
         .unwrap_or(first_line);
     let bounded = root
@@ -381,12 +387,20 @@ fn build_source_units<'a>(
         let text_token_estimate = chunk.full_text.chars().count().max(1).div_ceil(4);
         let source_token_estimate = chunk.token_estimate.max(text_token_estimate).max(1);
         let token_segments = source_token_estimate.div_ceil(max_tokens).max(1);
-        let unit_segments = chunk.source_locator.unit_numbers.len().div_ceil(max_units).max(1);
+        let unit_segments = chunk
+            .source_locator
+            .unit_numbers
+            .len()
+            .div_ceil(max_units)
+            .max(1);
         let segment_count = token_segments.max(unit_segments);
         let text_segments = split_text_into_segments(&chunk.full_text, segment_count);
 
         for segment_index in 0..segment_count {
-            let text = text_segments.get(segment_index).cloned().unwrap_or_default();
+            let text = text_segments
+                .get(segment_index)
+                .cloned()
+                .unwrap_or_default();
             let unit_numbers = segment_source_units(
                 &chunk.source_locator.unit_numbers,
                 segment_index,
@@ -411,6 +425,7 @@ fn split_text_into_segments(value: &str, segment_count: usize) -> Vec<String> {
     if segment_count <= 1 {
         return vec![value.trim().to_string()];
     }
+
     let characters = value.chars().collect::<Vec<_>>();
     if characters.is_empty() {
         return vec![String::new(); segment_count];
@@ -585,7 +600,8 @@ mod tests {
         oversized.full_text = (0..12_000)
             .map(|index| format!("concept-{index} "))
             .collect::<String>();
-        let windows = build_semantic_windows(&[oversized, chunk(1, &[13], 100)], 1_000, 3, 100);
+        let windows =
+            build_semantic_windows(&[oversized, chunk(1, &[13], 100)], 1_000, 3, 100);
         assert!(windows.len() > 4);
         assert!(windows.iter().all(|window| window.token_estimate <= 1_000));
         assert!(windows
@@ -638,7 +654,10 @@ mod tests {
         let windows = build_partitioned_semantic_windows(&chunks, plan, 10_000, 10, 0);
         assert_eq!(windows.len(), 2);
         assert_eq!(
-            windows.iter().map(|window| window.window_index).collect::<Vec<_>>(),
+            windows
+                .iter()
+                .map(|window| window.window_index)
+                .collect::<Vec<_>>(),
             vec![0, 1]
         );
         validate_semantic_windows(&windows, &DocumentSourceDescriptor::pdf(11)).unwrap();
@@ -683,7 +702,10 @@ mod tests {
         let windows = build_semantic_windows(&[chunk], 1_000, 10, 0);
         assert_eq!(windows.len(), 1);
         assert_eq!(windows[0].source_locator.unit_kind, SourceUnitKind::Slide);
-        assert_eq!(windows[0].source_locator.asset_ids, vec!["slide-render:000003"]);
+        assert_eq!(
+            windows[0].source_locator.asset_ids,
+            vec!["slide-render:000003"]
+        );
         assert_eq!((windows[0].page_start, windows[0].page_end), (3, 3));
     }
 }
