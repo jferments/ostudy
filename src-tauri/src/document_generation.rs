@@ -2,8 +2,8 @@
 //!
 //! Initial generation may reuse validated window checkpoints; additional
 //! generation normally starts with empty cache input. Both paths otherwise use
-//! exactly the same image loading, bounded retry, job transitions, progress,
-//! and total-card safety rules.
+//! exactly the same canonical visual-evidence loading, bounded retry, job
+//! transitions, progress, and total-card safety rules.
 
 use std::time::Instant;
 
@@ -60,8 +60,8 @@ struct WindowGenerationRequest<'a> {
 pub(crate) async fn execute_generation_windows(
     mut input: GenerationExecution<'_>,
 ) -> Result<Vec<Value>, CommandError> {
-    let renders = if input.task.include_page_images {
-        document_store::load_source_renders(input.database, input.document_id)?
+    let source_assets = if input.task.include_page_images {
+        document_store::load_source_assets(input.database, input.document_id)?
     } else {
         Vec::new()
     };
@@ -126,6 +126,8 @@ pub(crate) async fn execute_generation_windows(
         let batch = &missing[cursor..end];
         let first = &input.windows[batch[0]];
         let last = &input.windows[*batch.last().unwrap_or(&batch[0])];
+        let first_locator = first.source_locator();
+        let last_locator = last.source_locator();
         set_current_task_phase_range(
             "generating",
             (
@@ -134,8 +136,8 @@ pub(crate) async fn execute_generation_windows(
             ),
             completed,
             input.windows.len(),
-            Some(first.page_start),
-            Some(last.page_end),
+            Some(first_locator.first()),
+            Some(last_locator.last()),
             Some(first.partition_index + 1),
         );
 
@@ -151,7 +153,7 @@ pub(crate) async fn execute_generation_windows(
             images.push(if input.task.include_page_images {
                 document_store::load_window_images(
                     input.paths,
-                    &renders,
+                    &source_assets,
                     window,
                     input.plan.max_images_per_window,
                 )?
@@ -249,6 +251,7 @@ async fn generation_slot(
 ) -> Option<(usize, Result<Vec<Value>, CommandError>)> {
     let position = position?;
     let window = &input.windows[position];
+    let locator = window.source_locator();
     let started = Instant::now();
     crate::logging::debug_target(
         "ai.document.generation",
@@ -258,8 +261,8 @@ async fn generation_slot(
             "provider": input.task.provider_kind.as_str(),
             "model": input.task.model_id.as_str(),
             "window": position + 1,
-            "pageStart": window.page_start,
-            "pageEnd": window.page_end,
+            "sourceUnitStart": locator.first(),
+            "sourceUnitEnd": locator.last(),
             "sourceTokens": window.token_estimate,
             "cardBudget": input.plan.max_cards_per_window,
         }),
@@ -285,8 +288,8 @@ async fn generation_slot(
                 "provider": input.task.provider_kind.as_str(),
                 "model": input.task.model_id.as_str(),
                 "window": position + 1,
-                "pageStart": window.page_start,
-                "pageEnd": window.page_end,
+                "sourceUnitStart": locator.first(),
+                "sourceUnitEnd": locator.last(),
                 "cards": cards.len(),
                 "durationMs": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
             }),
@@ -299,8 +302,8 @@ async fn generation_slot(
                 "provider": input.task.provider_kind.as_str(),
                 "model": input.task.model_id.as_str(),
                 "window": position + 1,
-                "pageStart": window.page_start,
-                "pageEnd": window.page_end,
+                "sourceUnitStart": locator.first(),
+                "sourceUnitEnd": locator.last(),
                 "code": error.code.as_str(),
                 "durationMs": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
             }),
@@ -313,11 +316,11 @@ async fn generation_slot(
             CommandError::new(
                 error.code,
                 format!(
-                    "Card generation failed for source window {}/{} (PDF pages {}–{}): {} Completed windows are checkpointed; Retry generation resumes the remaining source windows instead of starting over.",
+                    "Card generation failed for source window {}/{} (source units {}–{}): {} Completed windows are checkpointed; Retry generation resumes the remaining source windows instead of starting over.",
                     position + 1,
                     input.windows.len(),
-                    window.page_start,
-                    window.page_end,
+                    locator.first(),
+                    locator.last(),
                     error.message,
                 ),
             )
