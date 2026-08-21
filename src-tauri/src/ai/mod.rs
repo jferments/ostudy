@@ -7,9 +7,9 @@
 
 mod catalog;
 pub(crate) mod concurrency;
+#[path = "document_intelligence_adapter.rs"]
 pub(crate) mod document_intelligence;
 pub(crate) mod document_provider;
-mod document_reasoning;
 mod endpoint_policy;
 mod gateway;
 pub(crate) mod probes;
