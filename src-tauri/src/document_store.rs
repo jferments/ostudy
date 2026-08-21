@@ -577,7 +577,9 @@ pub(crate) fn load_source_assets(
                  WHERE document_id = ?1
                  ORDER BY COALESCE(source_unit_number, 0), asset_id",
             )
-            .map_err(|error| db_error("document_source_assets_prepare_failed", document_id, error))?;
+            .map_err(|error| {
+                db_error("document_source_assets_prepare_failed", document_id, error)
+            })?;
         let assets = statement
             .query_map([document_id], |row| {
                 Ok(SourceAssetRecord {
@@ -612,7 +614,9 @@ pub(crate) fn load_source_renders(
                    AND source_unit_number IS NOT NULL
                  ORDER BY source_unit_number",
             )
-            .map_err(|error| db_error("document_source_renders_prepare_failed", document_id, error))?;
+            .map_err(|error| {
+                db_error("document_source_renders_prepare_failed", document_id, error)
+            })?;
         let renders = statement
             .query_map([document_id], |row| {
                 Ok(SourceRenderRecord {
