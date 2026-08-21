@@ -153,6 +153,7 @@ pub(crate) struct SourceLocator {
 }
 
 impl SourceLocator {
+    #[cfg(test)]
     pub(crate) fn new(
         unit_kind: SourceUnitKind,
         unit_numbers: Vec<i64>,
@@ -201,13 +202,6 @@ impl SourceLocator {
             asset_ids,
             time_range_ms,
         })
-    }
-
-    pub(crate) fn pages(
-        page_numbers: Vec<i64>,
-        section_label: Option<String>,
-    ) -> Result<Self, CommandError> {
-        Self::new(SourceUnitKind::Page, page_numbers, section_label)
     }
 
     pub(crate) fn first(&self) -> i64 {
