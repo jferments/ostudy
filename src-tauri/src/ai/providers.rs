@@ -407,14 +407,8 @@ pub async fn run_document_schema_probe(
         &schema,
         profile.require_zero_data_retention,
     );
-    let outcome = send_completion(
-        gateway,
-        profile,
-        bearer,
-        ProviderAdapter::Openrouter,
-        body,
-    )
-    .await?;
+    let outcome =
+        send_completion(gateway, profile, bearer, ProviderAdapter::Openrouter, body).await?;
     let parsed: DocumentSchemaProbePayload =
         serde_json::from_str(outcome.content.trim()).map_err(|_| {
             error(
@@ -479,7 +473,9 @@ fn document_schema_probe_schema() -> Value {
     })
 }
 
-fn validate_document_schema_probe(payload: &DocumentSchemaProbePayload) -> Result<(), AiGatewayError> {
+fn validate_document_schema_probe(
+    payload: &DocumentSchemaProbePayload,
+) -> Result<(), AiGatewayError> {
     if payload.cards.len() != 2 {
         return Err(error(
             "ai_document_schema_probe_invalid",
@@ -860,7 +856,10 @@ mod tests {
             openrouter::MAX_MODELS,
         )
         .expect("OpenRouter model list should parse");
-        let ids = models.iter().map(|model| model.id.as_str()).collect::<Vec<_>>();
+        let ids = models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>();
         assert!(ids.contains(&"openai/structured"));
         assert!(ids.contains(&"legacy/unknown"));
         assert!(!ids.contains(&"legacy/no-structured"));
