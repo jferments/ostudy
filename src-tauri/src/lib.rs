@@ -52,7 +52,6 @@ mod library_backup_commands;
 mod logging;
 mod paths;
 mod pdf_backend;
-#[allow(dead_code)]
 #[path = "document_ingestion.rs"]
 mod pdf_document_ingestion;
 mod pdf_ocr_backend;
