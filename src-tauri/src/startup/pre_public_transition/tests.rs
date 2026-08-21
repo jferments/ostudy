@@ -299,12 +299,7 @@ fn historical_zero_marker_preserves_library_and_analytics() {
                 "require_zero_data_retention"
             )
             .unwrap());
-            assert!(column_exists(
-                connection,
-                "documents",
-                "canonical_schema_version"
-            )
-            .unwrap());
+            assert!(column_exists(connection, "documents", "canonical_schema_version").unwrap());
             let profile_sql: String = connection
                 .query_row(
                     "SELECT sql FROM sqlite_schema
