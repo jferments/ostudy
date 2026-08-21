@@ -71,7 +71,7 @@ if (await exists(aiModulePath)) {
       "src-tauri/src/ai/mod.rs: document_intelligence must be declared as a normal Rust module",
     );
   }
-  if (/\#\s*\[\s*path\s*=\s*["'][^"']*document_intelligence/u.test(aiModule)) {
+  if (/#\s*\[\s*path\s*=\s*["'][^"']*document_intelligence/u.test(aiModule)) {
     violations.push(
       "src-tauri/src/ai/mod.rs: path-attributed document-intelligence aliases are forbidden",
     );
@@ -90,7 +90,7 @@ if (await exists(facadePath)) {
       );
     }
   }
-  if (/\#\s*\[\s*path\s*=/u.test(facade)) {
+  if (/#\s*\[\s*path\s*=/u.test(facade)) {
     violations.push(
       "src-tauri/src/ai/document_intelligence/mod.rs: path-attributed child modules are forbidden",
     );
