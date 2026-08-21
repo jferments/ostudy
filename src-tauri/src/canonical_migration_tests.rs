@@ -276,10 +276,7 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
         )
         .map_err(CommandError::database)?;
     assert_eq!(semantic_repair.0, "canonical_semantic_chunk_hashes");
-    assert_eq!(
-        semantic_repair.1,
-        CANONICAL_SEMANTIC_HASH_REPAIR_CHECKSUM
-    );
+    assert_eq!(semantic_repair.1, CANONICAL_SEMANTIC_HASH_REPAIR_CHECKSUM);
     assert_eq!(semantic_repair.2, 1);
 
     let block_repair: (String, String, i64) = connection
