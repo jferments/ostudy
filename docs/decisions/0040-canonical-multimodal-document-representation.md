@@ -52,7 +52,7 @@ PDF becomes the reference adapter. Its existing extractor, renderer, OCR recover
 
 The immutable public baseline migration remains unchanged. A new append-only migration introduces generic source-file, source-unit, source-block, and source-asset records and converts existing PDF page data transactionally. Existing document IDs, source hashes, managed files, semantic content, outlines, generation state, and generated decks remain intact.
 
-Generic durable vocabulary replaces page-only vocabulary at domain boundaries. Compatibility reads may be retained only where required during one atomic schema transition; new code does not dual-write two competing representations.
+Generic durable vocabulary replaces page-only vocabulary at domain boundaries. During this migration, the canonical source ledger is authoritative while the existing PDF page/semantic tables remain a temporary compatibility projection for unchanged UI, IPC, backup, and generation code. New PDF ingestion writes the canonical authority and that compatibility projection atomically in one transaction so they cannot diverge; later generic UI/IPC stages can remove the page-shaped projection once all consumers have moved to canonical records.
 
 Checkpoint identities include the source-bundle hash, adapter/backend identity, canonical-schema version, semantic-planner version, selected visual evidence, and provider/model/prompt identities. An adapter or OCR upgrade invalidates affected derivatives without changing the immutable source.
 
