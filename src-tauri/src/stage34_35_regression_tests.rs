@@ -46,10 +46,14 @@ fn canonical_database_reopen_does_not_mutate_application_rows() {
                 )
                 .map_err(CommandError::database)?;
             assert_eq!(deck, (222, 7));
-            let repair_rows: i64 = connection
-                .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
+            let repair_ledger: (i64, i64) = connection
+                .query_row(
+                    "SELECT COUNT(*), COALESCE(SUM(changed_rows), 0) FROM data_repairs",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
                 .map_err(CommandError::database)?;
-            assert_eq!(repair_rows, 0);
+            assert_eq!(repair_ledger, (2, 0));
             Ok(())
         })
         .expect("canonical startup should be read-only");
