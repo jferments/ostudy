@@ -531,13 +531,14 @@ pub(crate) fn load_semantic_chunks(
                 let locator_json: String = row.get(3)?;
                 let types_json: String = row.get(4)?;
                 let token_estimate: i64 = row.get(6)?;
-                let source_locator = serde_json::from_str(&locator_json).map_err(|error| {
-                    rusqlite::Error::FromSqlConversionFailure(
-                        locator_json.len(),
-                        rusqlite::types::Type::Text,
-                        Box::new(error),
-                    )
-                })?;
+                let source_locator: SourceLocator =
+                    serde_json::from_str(&locator_json).map_err(|error| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            locator_json.len(),
+                            rusqlite::types::Type::Text,
+                            Box::new(error),
+                        )
+                    })?;
                 let element_types = serde_json::from_str(&types_json).map_err(|error| {
                     rusqlite::Error::FromSqlConversionFailure(
                         types_json.len(),
