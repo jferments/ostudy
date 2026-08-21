@@ -7,7 +7,7 @@ use std::{
 use rusqlite::{params, Connection, TransactionBehavior};
 
 use super::*;
-use crate::database::Database;
+use crate::database::{Database, LATEST_SCHEMA_VERSION};
 
 static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -16,6 +16,54 @@ fn temp_database_path(name: &str) -> PathBuf {
     let directory = std::env::temp_dir().join(format!("ostudy-{name}-{}-{id}", std::process::id()));
     fs::create_dir_all(&directory).expect("temporary database directory should exist");
     directory.join("library.sqlite3")
+}
+
+fn open_public_v1_fixture(path: &std::path::Path) -> Connection {
+    let connection = Connection::open(path).expect("public-v1 fixture should open");
+    connection
+        .execute_batch(include_str!("../../../migrations/0001_public_baseline.sql"))
+        .expect("immutable public-v1 schema should load");
+    connection
+        .execute(
+            "INSERT OR REPLACE INTO schema_metadata(key, value)
+             VALUES ('schema_lineage', ?1)",
+            [PUBLIC_SCHEMA_LINEAGE],
+        )
+        .expect("public lineage should be recorded");
+    connection
+        .execute(
+            "INSERT INTO schema_migrations(version, name, checksum, applied_at)
+             VALUES (?1, ?2, ?3, 0)",
+            params![
+                PUBLIC_BASELINE_VERSION,
+                PUBLIC_BASELINE_NAME,
+                PUBLIC_BASELINE_CHECKSUM,
+            ],
+        )
+        .expect("public baseline migration should be recorded");
+    connection
+        .pragma_update(None, "user_version", PUBLIC_BASELINE_VERSION)
+        .expect("public-v1 SQLite marker should be set");
+    connection
+}
+
+fn assert_preexisting_data_survives_schema_additions(
+    before: &PreservedDataSnapshot,
+    after: &PreservedDataSnapshot,
+) {
+    for (table, count) in &before.table_counts {
+        assert_eq!(
+            after.count(table),
+            *count,
+            "pre-existing table {table} must preserve its row count"
+        );
+    }
+    assert_eq!(after.deck_ids, before.deck_ids);
+    assert_eq!(after.note_ids, before.note_ids);
+    assert_eq!(after.card_ids, before.card_ids);
+    assert_eq!(after.review_ids, before.review_ids);
+    assert_eq!(after.review_attribution_ids, before.review_attribution_ids);
+    assert_eq!(after.ai_profile_ids, before.ai_profile_ids);
 }
 
 fn seed_library(connection: &Connection) {
@@ -195,16 +243,8 @@ DELETE FROM data_repairs;
 #[test]
 fn historical_zero_marker_preserves_library_and_analytics() {
     let path = temp_database_path("pre-public-adoption");
-    let database = Database::open(&path).expect("public fixture should open");
-    database
-        .with_connection(|connection| {
-            seed_library(connection);
-            Ok(())
-        })
-        .expect("library fixture should seed");
-    drop(database);
-
-    let mut connection = Connection::open(&path).expect("fixture database should reopen");
+    let mut connection = open_public_v1_fixture(&path);
+    seed_library(&connection);
     convert_public_database_to_final_pre_public(&mut connection, 0);
     let before = preserved_data_snapshot(&connection).expect("legacy snapshot should load");
     assert_eq!(read_sqlite_user_version(&connection).unwrap(), 0);
@@ -218,14 +258,11 @@ fn historical_zero_marker_preserves_library_and_analytics() {
     assert_eq!(report.review_count, 1);
     assert!(report.backup_path.is_file());
 
-    let database = Database::open(&path).expect("adopted database should open");
+    let database = Database::open(&path).expect("adopted database should open and migrate");
     database
         .with_connection(|connection| {
-            assert_eq!(
-                preserved_data_snapshot(connection).unwrap(),
-                before,
-                "all learner-table counts and critical entity identities must survive"
-            );
+            let after = preserved_data_snapshot(connection).unwrap();
+            assert_preexisting_data_survives_schema_additions(&before, &after);
             let lineage: String = connection
                 .query_row(
                     "SELECT value FROM schema_metadata WHERE key = 'schema_lineage'",
@@ -234,25 +271,38 @@ fn historical_zero_marker_preserves_library_and_analytics() {
                 )
                 .unwrap();
             assert_eq!(lineage, PUBLIC_SCHEMA_LINEAGE);
-            let migration: (i64, String, String) = connection
-                .query_row(
-                    "SELECT version, name, checksum FROM schema_migrations",
-                    [],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-                )
-                .unwrap();
+
+            let migrations = read_ledger(connection, "schema_migrations").unwrap();
             assert_eq!(
-                migration,
-                (
-                    PUBLIC_BASELINE_VERSION,
-                    PUBLIC_BASELINE_NAME.to_string(),
-                    PUBLIC_BASELINE_CHECKSUM.to_string(),
-                )
+                migrations.len(),
+                usize::try_from(LATEST_SCHEMA_VERSION).unwrap()
             );
+            assert_eq!(
+                migrations[0],
+                LedgerEntry {
+                    version: PUBLIC_BASELINE_VERSION,
+                    name: PUBLIC_BASELINE_NAME.to_string(),
+                    checksum: PUBLIC_BASELINE_CHECKSUM.to_string(),
+                }
+            );
+            assert_eq!(migrations[1].version, 2);
+            assert_eq!(migrations[1].name, "canonical_documents");
+
+            let repairs = read_ledger(connection, "data_repairs").unwrap();
+            assert_eq!(repairs.len(), 2);
+            assert_eq!(repairs[0].name, "canonical_semantic_chunk_hashes");
+            assert_eq!(repairs[1].name, "canonical_block_hashes");
+
             assert!(column_exists(
                 connection,
                 "ai_provider_profiles",
                 "require_zero_data_retention"
+            )
+            .unwrap());
+            assert!(column_exists(
+                connection,
+                "documents",
+                "canonical_schema_version"
             )
             .unwrap());
             let profile_sql: String = connection
@@ -267,7 +317,7 @@ fn historical_zero_marker_preserves_library_and_analytics() {
             assert!(!profile_sql.contains("provider_kind IN"));
             Ok(())
         })
-        .expect("adopted data should remain queryable");
+        .expect("adopted data should remain queryable after current migrations");
     drop(database);
     fs::remove_dir_all(path.parent().unwrap()).expect("temporary fixture should clean up");
 }
@@ -275,10 +325,7 @@ fn historical_zero_marker_preserves_library_and_analytics() {
 #[test]
 fn explicitly_stamped_v26_marker_is_also_adoptable() {
     let path = temp_database_path("pre-public-stamped");
-    let database = Database::open(&path).expect("public fixture should open");
-    drop(database);
-
-    let mut connection = Connection::open(&path).expect("fixture database should reopen");
+    let mut connection = open_public_v1_fixture(&path);
     convert_public_database_to_final_pre_public(&mut connection, 26);
     drop(connection);
 
