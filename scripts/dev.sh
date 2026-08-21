@@ -4,9 +4,13 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
+source "$ROOT_DIR/versions.env"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/node-toolchain.bash"
+ostudy_activate_node_toolchain
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/diagnostics.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 ostudy_parse_diagnostic_args "$@"
 if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
   printf 'Usage: ./scripts/dev.sh [diagnostic options]\n' >&2

@@ -26,14 +26,22 @@ struct Migration {
     sql: &'static str,
 }
 
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "public_baseline",
-    checksum: "2d978f8be026ecb820e71ba77a8585e1de51cb08fc2820714526a33284167f85",
-    sql: include_str!("../migrations/0001_public_baseline.sql"),
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "public_baseline",
+        checksum: "2d978f8be026ecb820e71ba77a8585e1de51cb08fc2820714526a33284167f85",
+        sql: include_str!("../migrations/0001_public_baseline.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "canonical_documents",
+        checksum: "dba2a5fd43b9544c1a4da9e060106f157ca5ac839a5c87ca831d7ceef8bb7733",
+        sql: include_str!("../migrations/0002_canonical_documents.sql"),
+    },
+];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 1;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 2;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -240,7 +248,7 @@ fn verify_public_ledger_exists(connection: &Connection) -> Result<(), String> {
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'schema_migrations')",
             [],
-            |row| row.get(0),
+            |row| row.get::<_, i64>(0),
         )
         .map_err(|error| format!("Could not inspect the public migration ledger: {error}"))?;
     if exists == 0 {
@@ -323,6 +331,15 @@ fn verify_integrity(connection: &Connection) -> Result<(), String> {
 }
 
 #[cfg(test)]
+fn public_baseline_connection() -> Result<Connection, String> {
+    let mut connection = Connection::open_in_memory()
+        .map_err(|error| format!("Could not open a public-baseline fixture database: {error}"))?;
+    configure_connection(&connection)?;
+    apply_transactional_migration(&mut connection, &MIGRATIONS[0])?;
+    Ok(connection)
+}
+
+#[cfg(test)]
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct SchemaObject {
@@ -369,17 +386,15 @@ mod tests {
         }
         use sha2::{Digest, Sha256};
 
-        let database = Database::open_in_memory().expect("database should open");
-        let objects = database
-            .with_connection(|connection| {
-                let objects = schema_objects(connection).map_err(CommandError::database)?;
-                serde_json::to_value(objects).map_err(CommandError::serialization)
-            })
-            .expect("public schema objects should serialize");
+        let connection = public_baseline_connection().expect("baseline database should open");
+        let objects = serde_json::to_value(
+            schema_objects(&connection).expect("public baseline objects should load"),
+        )
+        .expect("public baseline objects should serialize");
         let manifest = serde_json::json!({
             "formatVersion": 1,
             "schemaLineage": PUBLIC_SCHEMA_LINEAGE,
-            "schemaVersion": LATEST_SCHEMA_VERSION,
+            "schemaVersion": MIGRATIONS[0].version,
             "baselineSha256": format!(
                 "{:x}",
                 Sha256::digest(MIGRATIONS[0].sql.as_bytes())
@@ -395,7 +410,7 @@ mod tests {
     }
 
     #[test]
-    fn public_baseline_is_idempotent_and_matches_manifest() {
+    fn latest_schema_is_idempotent_and_public_baseline_fixture_is_immutable() {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
@@ -415,22 +430,30 @@ mod tests {
                     )
                     .map_err(CommandError::database)?;
                 assert_eq!(lineage, PUBLIC_SCHEMA_LINEAGE);
-                let manifest: serde_json::Value = serde_json::from_str(include_str!(
-                    "../tests/fixtures/public-baseline-schema.json"
-                ))
-                .map_err(CommandError::serialization)?;
-                let expected = manifest
-                    .get("objects")
-                    .cloned()
-                    .ok_or_else(|| CommandError::new("fixture_error", "Missing schema objects."))?;
-                let actual = serde_json::to_value(
-                    schema_objects(connection).map_err(CommandError::database)?,
-                )
-                .map_err(CommandError::serialization)?;
-                assert_eq!(actual, expected);
                 Ok(())
             })
-            .expect("public schema should be stable");
+            .expect("latest public schema should be idempotent");
+
+        let connection = public_baseline_connection().expect("baseline database should open");
+        let manifest: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/public-baseline-schema.json"
+        ))
+        .expect("public baseline manifest should decode");
+        assert_eq!(
+            manifest
+                .get("schemaVersion")
+                .and_then(serde_json::Value::as_i64),
+            Some(MIGRATIONS[0].version)
+        );
+        let expected = manifest
+            .get("objects")
+            .cloned()
+            .expect("baseline manifest should contain schema objects");
+        let actual = serde_json::to_value(
+            schema_objects(&connection).expect("public baseline objects should load"),
+        )
+        .expect("public baseline objects should serialize");
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -496,7 +519,7 @@ mod tests {
     #[test]
     fn public_migration_checksum_and_future_version_are_enforced() {
         let mut connection = Connection::open_in_memory().expect("database should open");
-        initialize_connection(&mut connection).expect("baseline should apply");
+        initialize_connection(&mut connection).expect("public migrations should apply");
         connection
             .execute(
                 "UPDATE schema_migrations SET checksum = 'modified' WHERE version = 1",
@@ -512,8 +535,9 @@ mod tests {
             .unwrap();
         connection
             .execute(
-                "INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (2, 'future', 'future', 0)",
-                [],
+                "INSERT INTO schema_migrations (version, name, checksum, applied_at)
+                 VALUES (?1, 'future', 'future', 0)",
+                [LATEST_SCHEMA_VERSION + 1],
             )
             .unwrap();
         assert!(initialize_connection(&mut connection).is_err());

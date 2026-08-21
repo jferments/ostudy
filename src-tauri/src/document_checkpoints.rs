@@ -15,13 +15,14 @@ use crate::{
         DocumentOutline, DocumentTaskContext, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
     },
     database::Database,
+    document_domain::SourceLocator,
     document_scale::DocumentScalePlan,
     document_semantics::SemanticWindow,
     util::unix_time_millis,
 };
 
-const OUTLINE_CHECKPOINT_CONTRACT: &str = "document-outline-v3";
-const GENERATION_CHECKPOINT_CONTRACT: &str = "document-generation-v2";
+const OUTLINE_CHECKPOINT_CONTRACT: &str = "document-outline-v4-canonical-source";
+const GENERATION_CHECKPOINT_CONTRACT: &str = "document-generation-v3-canonical-source";
 const MAX_CHECKPOINT_CARDS: usize = 16;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -180,7 +181,7 @@ pub(crate) fn load_outline_fragments_best_effort(
         let mut cached = vec![None; windows.len()];
         let mut statement = connection
             .prepare(
-                "SELECT window_index, source_sha256, fragment_json
+                "SELECT window_index, source_sha256, source_locator_json, fragment_json
                  FROM document_outline_checkpoints
                  WHERE document_id = ?1 AND contract_key = ?2
                  ORDER BY window_index",
@@ -192,18 +193,23 @@ pub(crate) fn load_outline_fragments_best_effort(
                     row.get::<_, i64>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
                 ))
             })
             .map_err(crate::error::CommandError::database)?;
         for row in rows {
-            let (index, stored_sha, json) = row.map_err(crate::error::CommandError::database)?;
+            let (index, stored_sha, locator_json, json) =
+                row.map_err(crate::error::CommandError::database)?;
             let Ok(index) = usize::try_from(index) else {
                 continue;
             };
             let Some(window) = windows.get(index) else {
                 continue;
             };
-            if stored_sha != source_sha256(window) {
+            let Ok(stored_locator) = serde_json::from_str::<SourceLocator>(&locator_json) else {
+                continue;
+            };
+            if stored_sha != source_sha256(window) || stored_locator != window.source_locator() {
                 continue;
             }
             if let Ok(fragment) = serde_json::from_str::<DocumentOutline>(&json) {
@@ -261,20 +267,38 @@ pub(crate) fn persist_outline_fragment_best_effort(
         }
     };
     let locator = window.source_locator();
+    let locator_json = match serde_json::to_string(&locator) {
+        Ok(value) => value,
+        Err(error) => {
+            cache_log(
+                "document_checkpoint_write_failed",
+                document_id,
+                format!(
+                    "stage=outline window={} locator={error}",
+                    window.window_index
+                ),
+            );
+            return false;
+        }
+    };
     let result = database.with_connection(|connection| {
         connection
             .execute(
                 "INSERT INTO document_outline_checkpoints (
                      document_id, contract_key, source_sha256, window_index,
                      partition_index, partition_title, page_start, page_end,
-                     token_estimate, fragment_json, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)
+                     source_locator_json, token_estimate, fragment_json,
+                     created_at, updated_at
+                 ) VALUES (
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12
+                 )
                  ON CONFLICT(document_id, contract_key, window_index) DO UPDATE SET
                      source_sha256 = excluded.source_sha256,
                      partition_index = excluded.partition_index,
                      partition_title = excluded.partition_title,
                      page_start = excluded.page_start,
                      page_end = excluded.page_end,
+                     source_locator_json = excluded.source_locator_json,
                      token_estimate = excluded.token_estimate,
                      fragment_json = excluded.fragment_json,
                      updated_at = excluded.updated_at",
@@ -287,6 +311,7 @@ pub(crate) fn persist_outline_fragment_best_effort(
                     window.partition_title,
                     locator.first(),
                     locator.last(),
+                    locator_json,
                     to_i64(window.token_estimate),
                     json,
                     now,
@@ -318,7 +343,7 @@ pub(crate) fn load_generation_cards_best_effort(
     let result = database.with_connection(|connection| {
         connection
             .query_row(
-                "SELECT source_sha256, cards_json, card_count
+                "SELECT source_sha256, source_locator_json, cards_json, card_count
                  FROM document_generation_checkpoints
                  WHERE document_id = ?1 AND contract_key = ?2 AND window_index = ?3",
                 params![document_id, contract_key, to_i64(window.window_index)],
@@ -326,7 +351,8 @@ pub(crate) fn load_generation_cards_best_effort(
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
-                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, i64>(3)?,
                     ))
                 },
             )
@@ -347,8 +373,11 @@ pub(crate) fn load_generation_cards_best_effort(
             return None;
         }
     };
-    let (stored_sha, json, count) = row?;
-    if stored_sha != source_sha256(window) {
+    let (stored_sha, locator_json, json, count) = row?;
+    let Ok(stored_locator) = serde_json::from_str::<SourceLocator>(&locator_json) else {
+        return None;
+    };
+    if stored_sha != source_sha256(window) || stored_locator != window.source_locator() {
         return None;
     }
     let Ok(cards) = serde_json::from_str::<Vec<Value>>(&json) else {
@@ -408,20 +437,38 @@ pub(crate) fn persist_generation_cards_best_effort(
         }
     };
     let locator = window.source_locator();
+    let locator_json = match serde_json::to_string(&locator) {
+        Ok(value) => value,
+        Err(error) => {
+            cache_log(
+                "document_checkpoint_write_failed",
+                document_id,
+                format!(
+                    "stage=generation window={} locator={error}",
+                    window.window_index
+                ),
+            );
+            return false;
+        }
+    };
     let result = database.with_connection(|connection| {
         connection
             .execute(
                 "INSERT INTO document_generation_checkpoints (
                      document_id, contract_key, source_sha256, window_index,
                      partition_index, partition_title, page_start, page_end,
-                     token_estimate, cards_json, card_count, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
+                     source_locator_json, token_estimate, cards_json, card_count,
+                     created_at, updated_at
+                 ) VALUES (
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13
+                 )
                  ON CONFLICT(document_id, contract_key, window_index) DO UPDATE SET
                      source_sha256 = excluded.source_sha256,
                      partition_index = excluded.partition_index,
                      partition_title = excluded.partition_title,
                      page_start = excluded.page_start,
                      page_end = excluded.page_end,
+                     source_locator_json = excluded.source_locator_json,
                      token_estimate = excluded.token_estimate,
                      cards_json = excluded.cards_json,
                      card_count = excluded.card_count,
@@ -435,6 +482,7 @@ pub(crate) fn persist_generation_cards_best_effort(
                     window.partition_title,
                     locator.first(),
                     locator.last(),
+                    locator_json,
                     to_i64(window.token_estimate),
                     json,
                     to_i64(cards.len()),
@@ -492,6 +540,7 @@ fn to_i64(value: usize) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document_domain::SourceUnitKind;
 
     fn window() -> SemanticWindow {
         SemanticWindow {
@@ -500,8 +549,14 @@ mod tests {
             partition_title: "Chapter 3".to_string(),
             first_chunk_index: 10,
             last_chunk_index: 12,
-            page_numbers: vec![21, 22],
-            visual_page_numbers: vec![22],
+            source_locator: SourceLocator::with_evidence(
+                SourceUnitKind::Slide,
+                vec![21, 22],
+                Some("Chapter 3".to_string()),
+                vec!["slide-render:000022".to_string()],
+                None,
+            )
+            .unwrap(),
             page_start: 21,
             page_end: 22,
             token_estimate: 800,
@@ -513,7 +568,14 @@ mod tests {
     fn window_hash_changes_when_semantic_locator_changes() {
         let first = window();
         let mut second = first.clone();
-        second.page_numbers = vec![22, 23];
+        second.source_locator = SourceLocator::with_evidence(
+            SourceUnitKind::Slide,
+            vec![22, 23],
+            Some("Chapter 3".to_string()),
+            vec!["slide-render:000023".to_string()],
+            None,
+        )
+        .unwrap();
         second.page_start = 22;
         second.page_end = 23;
         assert_ne!(source_sha256(&first), source_sha256(&second));

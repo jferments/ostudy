@@ -6,9 +6,11 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/versions.env"
 # shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/node-toolchain.bash"
+ostudy_activate_node_toolchain
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/cargo-target.sh"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
 cd "$ROOT_DIR"
 

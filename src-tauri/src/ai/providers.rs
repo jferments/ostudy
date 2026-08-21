@@ -19,6 +19,10 @@ pub(crate) fn openrouter_provider_preferences(
     openrouter::provider_preferences(require_parameters, require_zero_data_retention)
 }
 
+pub(crate) fn openrouter_strict_schema(value: &Value) -> Value {
+    openrouter::strict_schema(value)
+}
+
 const DEFAULT_MAX_MODEL_LIST_BYTES: usize = 512 * 1024;
 const DEFAULT_MAX_MODELS: usize = 500;
 const MAX_COMPLETION_BYTES: usize = 256 * 1024;
@@ -64,6 +68,28 @@ pub struct ProviderProperties {
 struct StructuredProbePayload {
     ok: bool,
     echo: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentSchemaProbePayload {
+    cards: Vec<DocumentSchemaProbeCard>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+enum DocumentSchemaProbeCard {
+    Basic {
+        front: String,
+        back: String,
+        tags: Vec<String>,
+    },
+    Cloze {
+        text: String,
+        blanks: Vec<String>,
+        mode: String,
+        tags: Vec<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -362,6 +388,133 @@ pub async fn run_structured_probe(
     Ok(outcome)
 }
 
+pub async fn run_document_schema_probe(
+    gateway: &AiGateway,
+    profile: &ProfileSnapshot,
+    bearer: Option<&str>,
+) -> Result<CompletionOutcome, AiGatewayError> {
+    if profile.provider_kind != ProviderKind::Openrouter {
+        return Err(error(
+            "ai_document_schema_probe_not_applicable",
+            "This provider does not use the OpenRouter document structured-output probe.",
+            false,
+            None,
+        ));
+    }
+    let schema = document_schema_probe_schema();
+    let body = openrouter::document_schema_probe_body(
+        &profile.model_id,
+        &schema,
+        profile.require_zero_data_retention,
+    );
+    let outcome =
+        send_completion(gateway, profile, bearer, ProviderAdapter::Openrouter, body).await?;
+    let parsed: DocumentSchemaProbePayload =
+        serde_json::from_str(outcome.content.trim()).map_err(|_| {
+            error(
+                "ai_document_schema_probe_invalid",
+                "The model returned invalid JSON for ostudy's document-generation contract probe.",
+                false,
+                None,
+            )
+        })?;
+    validate_document_schema_probe(&parsed)?;
+    Ok(outcome)
+}
+
+fn document_schema_probe_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cards"],
+        "properties": {
+            "cards": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["type", "front", "back", "tags"],
+                            "properties": {
+                                "type": {"const": "basic"},
+                                "front": {"const": "Probe question"},
+                                "back": {"const": "Probe answer"},
+                                "tags": {
+                                    "type": "array",
+                                    "items": {"const": "probe"}
+                                }
+                            }
+                        },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["type", "text", "blanks", "mode", "tags"],
+                            "properties": {
+                                "type": {"const": "cloze"},
+                                "text": {"const": "The probe value is stable."},
+                                "blanks": {
+                                    "type": "array",
+                                    "items": {"const": "stable"}
+                                },
+                                "mode": {"const": "one_at_a_time"},
+                                "tags": {
+                                    "type": "array",
+                                    "items": {"const": "probe"}
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    })
+}
+
+fn validate_document_schema_probe(
+    payload: &DocumentSchemaProbePayload,
+) -> Result<(), AiGatewayError> {
+    if payload.cards.len() != 2 {
+        return Err(error(
+            "ai_document_schema_probe_invalid",
+            "The model did not return the two required document-contract probe cards.",
+            false,
+            None,
+        ));
+    }
+    let basic_ok = payload.cards.iter().any(|card| match card {
+        DocumentSchemaProbeCard::Basic { front, back, tags } => {
+            front == "Probe question" && back == "Probe answer" && tags == &["probe"]
+        }
+        _ => false,
+    });
+    let cloze_ok = payload.cards.iter().any(|card| match card {
+        DocumentSchemaProbeCard::Cloze {
+            text,
+            blanks,
+            mode,
+            tags,
+        } => {
+            text == "The probe value is stable."
+                && blanks == &["stable"]
+                && mode == "one_at_a_time"
+                && tags == &["probe"]
+        }
+        _ => false,
+    });
+    if !basic_ok || !cloze_ok {
+        return Err(error(
+            "ai_document_schema_probe_invalid",
+            "The model returned structured JSON but did not satisfy ostudy's representative document-generation contract.",
+            false,
+            None,
+        ));
+    }
+    Ok(())
+}
+
 async fn send_completion(
     gateway: &AiGateway,
     profile: &ProfileSnapshot,
@@ -455,7 +608,14 @@ fn parse_model_list(
     }
 
     let mut models = Vec::with_capacity(data.len());
+    let mut declared_incompatible = 0_usize;
     for item in data {
+        if adapter == ProviderAdapter::Openrouter
+            && openrouter::model_structured_outputs_declared(item) == Some(false)
+        {
+            declared_incompatible = declared_incompatible.saturating_add(1);
+            continue;
+        }
         let id = item.get("id").and_then(Value::as_str).ok_or_else(|| {
             error(
                 "ai_provider_protocol_error",
@@ -498,6 +658,14 @@ fn parse_model_list(
             context_window_tokens,
             reasoning,
         });
+    }
+    if declared_incompatible > 0 {
+        crate::logging::debug_target(
+            "ai.provider.openrouter",
+            "openrouter_models_without_structured_output_hidden",
+            "OpenRouter models that explicitly lack structured outputs were excluded from the selectable catalog.",
+            json!({"modelCount": declared_incompatible}),
+        );
     }
     models.sort_by(|left, right| {
         left.display_name
@@ -664,6 +832,60 @@ mod tests {
         );
         assert_eq!(reasoning.default_effort.as_deref(), Some("high"));
         assert!(!reasoning.mandatory);
+    }
+
+    #[test]
+    fn openrouter_hides_models_that_explicitly_lack_structured_outputs() {
+        let models = parse_model_list(
+            &json!({
+                "data": [
+                    {
+                        "id": "openai/structured",
+                        "supported_parameters": ["temperature", "structured_outputs"]
+                    },
+                    {
+                        "id": "legacy/no-structured",
+                        "supported_parameters": ["temperature", "response_format"]
+                    },
+                    {
+                        "id": "legacy/unknown"
+                    }
+                ]
+            }),
+            ProviderAdapter::Openrouter,
+            openrouter::MAX_MODELS,
+        )
+        .expect("OpenRouter model list should parse");
+        let ids = models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>();
+        assert!(ids.contains(&"openai/structured"));
+        assert!(ids.contains(&"legacy/unknown"));
+        assert!(!ids.contains(&"legacy/no-structured"));
+    }
+
+    #[test]
+    fn document_schema_probe_validates_representative_generation_union() {
+        let payload: DocumentSchemaProbePayload = serde_json::from_value(json!({
+            "cards": [
+                {
+                    "type": "basic",
+                    "front": "Probe question",
+                    "back": "Probe answer",
+                    "tags": ["probe"]
+                },
+                {
+                    "type": "cloze",
+                    "text": "The probe value is stable.",
+                    "blanks": ["stable"],
+                    "mode": "one_at_a_time",
+                    "tags": ["probe"]
+                }
+            ]
+        }))
+        .unwrap();
+        validate_document_schema_probe(&payload).unwrap();
     }
 
     #[test]

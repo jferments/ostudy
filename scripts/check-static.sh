@@ -6,12 +6,14 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/versions.env"
 # shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/node-toolchain.bash"
+ostudy_activate_node_toolchain
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/check-state.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/diagnostics.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export OSTUDY_QUALIFICATION_COMMAND="./scripts/check-static.sh"
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 ostudy_parse_diagnostic_args "$@"
 if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
   printf 'Usage: ./scripts/check-static.sh [diagnostic options]\n' >&2

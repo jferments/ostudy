@@ -25,11 +25,14 @@ mod device_sync;
 mod device_sync_qr_commands;
 mod diagnostics;
 mod document_backup;
+mod document_canonical;
+mod document_canonical_store;
 mod document_checkpoints;
 mod document_cost;
 mod document_delete_reconciliation;
 mod document_domain;
 mod document_generation;
+#[path = "document_adapters.rs"]
 mod document_ingestion;
 mod document_more;
 mod document_operations;
@@ -49,6 +52,8 @@ mod library_backup_commands;
 mod logging;
 mod paths;
 mod pdf_backend;
+#[path = "document_ingestion.rs"]
+mod pdf_document_ingestion;
 mod pdf_ocr_backend;
 #[cfg_attr(mobile, allow(dead_code))]
 mod pdf_render_backend;
@@ -70,6 +75,8 @@ mod ui_checkpoint;
 mod util;
 mod workload;
 
+#[cfg(test)]
+mod canonical_migration_tests;
 #[cfg(test)]
 mod deck_folders_backup_tests;
 #[cfg(test)]

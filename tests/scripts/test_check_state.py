@@ -32,6 +32,32 @@ class WorktreeMutationGuardTests(unittest.TestCase):
             check=False,
         )
 
+    def write_command(self, path: Path, output: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            f"#!/usr/bin/env bash\nprintf '%s\\n' {shlex.quote(output)}\n",
+            encoding="utf-8",
+        )
+        path.chmod(0o755)
+
+    def fingerprint(self, repo: Path, fake_bin: Path) -> str:
+        environment = os.environ.copy()
+        environment["OSTUDY_ROOT_DIR"] = str(repo)
+        environment["PATH"] = f"{fake_bin}:/usr/bin:/bin"
+        completed = subprocess.run(
+            [
+                "bash",
+                "-c",
+                f"source {shlex.quote(str(CHECK_STATE))}; ostudy_check_fingerprint",
+            ],
+            capture_output=True,
+            text=True,
+            env=environment,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        return completed.stdout.strip()
+
     def test_new_untracked_native_file_is_attributed_to_the_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             repo = Path(raw_directory) / "repo"
@@ -78,6 +104,24 @@ class WorktreeMutationGuardTests(unittest.TestCase):
             )
             self.assertEqual(completed.returncode, 1)
             self.assertIn("+ M tracked.txt", completed.stderr)
+
+    def test_fingerprint_changes_when_npm_version_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            repo = Path(raw_directory) / "repo"
+            fake_bin = Path(raw_directory) / "bin"
+            repo.mkdir()
+            self.initialize_repo(repo)
+            self.write_command(fake_bin / "node", "v24.18.0")
+            self.write_command(fake_bin / "npm", "11.16.0")
+            self.write_command(fake_bin / "pnpm", "11.14.0")
+            self.write_command(fake_bin / "rustc", "rustc 1.97.1 fake")
+            self.write_command(fake_bin / "cargo", "cargo 1.97.1 fake")
+
+            before = self.fingerprint(repo, fake_bin)
+            self.write_command(fake_bin / "npm", "11.19.0")
+            after = self.fingerprint(repo, fake_bin)
+
+            self.assertNotEqual(before, after)
 
 
 if __name__ == "__main__":
