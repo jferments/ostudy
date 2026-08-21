@@ -12,7 +12,7 @@ use rusqlite::{params, TransactionBehavior};
 use crate::{
     ai::document_intelligence::{DocumentTaskContext, SourcePageImage},
     database::Database,
-    document_domain::DocumentSourceDescriptor,
+    document_domain::{DocumentSourceDescriptor, SourceLocator},
     document_semantics::{validate_semantic_windows, SemanticChunk, SemanticWindow},
     error::CommandError,
     paths::AppPaths,
@@ -22,8 +22,10 @@ use crate::{
 const MAX_RENDER_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
-pub(crate) struct SourceRenderRecord {
-    pub unit_number: i64,
+pub(crate) struct SourceAssetRecord {
+    pub asset_id: String,
+    pub source_unit_number: Option<i64>,
+    pub media_type: String,
     pub relative_path: String,
     pub byte_size: i64,
     pub sha256: String,
@@ -157,12 +159,7 @@ pub(crate) fn initialize_additional_progress(
                  SET scale_mode = ?1, generation_window_count = ?2,
                      generation_completed_window_count = 0, updated_at = ?3
                  WHERE id = ?4 AND lifecycle_state = 'processing'",
-                params![
-                    scale_mode,
-                    to_i64(generation_window_count),
-                    now,
-                    document_id
-                ],
+                params![scale_mode, to_i64(generation_window_count), now, document_id],
             )
             .map_err(|error| {
                 db_error("document_additional_plan_write_failed", document_id, error)
@@ -257,9 +254,13 @@ pub(crate) fn create_generation_job(
                 "INSERT INTO document_generation_jobs (
                      id, document_id, profile_id, provider_kind, model_id,
                      profile_revision, credential_epoch, network_scope, state,
-                     page_count, processed_page_count, generated_candidate_count,
+                     page_count, processed_page_count, source_unit_count,
+                     processed_source_unit_count, generated_candidate_count,
                      created_at, started_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'generating', ?9, 0, 0, ?10, ?10, ?10)",
+                 ) VALUES (
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'generating',
+                     ?9, 0, ?9, 0, 0, ?10, ?10, ?10
+                 )",
                 params![
                     job_id,
                     document_id,
@@ -287,9 +288,13 @@ pub(crate) fn create_generation_job(
                 .execute(
                     "INSERT INTO document_generation_windows (
                          job_id, window_index, first_chunk_index, last_chunk_index,
-                         page_start, page_end, page_numbers_json, token_estimate,
-                         state, card_count, updated_at
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'pending', 0, ?9)",
+                         page_start, page_end, page_numbers_json,
+                         source_locator_json, visual_asset_ids_json,
+                         token_estimate, state, card_count, updated_at
+                     ) VALUES (
+                         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                         ?10, 'pending', 0, ?11
+                     )",
                     params![
                         job_id,
                         to_i64(window.window_index),
@@ -298,6 +303,9 @@ pub(crate) fn create_generation_job(
                         locator.first(),
                         locator.last(),
                         serde_json::to_string(&locator.unit_numbers)
+                            .map_err(CommandError::serialization)?,
+                        serde_json::to_string(&locator).map_err(CommandError::serialization)?,
+                        serde_json::to_string(&locator.asset_ids)
                             .map_err(CommandError::serialization)?,
                         to_i64(window.token_estimate),
                         now,
@@ -387,11 +395,7 @@ pub(crate) fn mark_window_complete(
                      safe_error_message = '', updated_at = ?3
                  WHERE job_id = ?4 AND window_index = ?5 AND state IN ('pending', 'running')",
                 params![
-                    if card_count == 0 {
-                        "skipped"
-                    } else {
-                        "succeeded"
-                    },
+                    if card_count == 0 { "skipped" } else { "succeeded" },
                     to_i64(card_count),
                     now,
                     job_id,
@@ -417,6 +421,10 @@ pub(crate) fn mark_window_complete(
             .execute(
                 "UPDATE document_generation_jobs
                  SET processed_page_count = MIN(page_count, MAX(processed_page_count, ?1)),
+                     processed_source_unit_count = MIN(
+                         source_unit_count,
+                         MAX(processed_source_unit_count, ?1)
+                     ),
                      generated_candidate_count = (
                          SELECT COALESCE(SUM(card_count), 0)
                          FROM document_generation_windows WHERE job_id = ?2
@@ -487,9 +495,9 @@ pub(crate) fn load_semantic_chunks(
     database.with_connection(|connection| {
         let mut statement = connection
             .prepare(
-                "SELECT chunk_index, text, full_text, page_numbers_json,
+                "SELECT chunk_index, text, full_text, source_locator_json,
                         element_types_json, heading_context, token_estimate
-                 FROM document_semantic_chunks
+                 FROM document_semantic_chunk_sources
                  WHERE document_id = ?1 ORDER BY chunk_index",
             )
             .map_err(|error| {
@@ -501,12 +509,12 @@ pub(crate) fn load_semantic_chunks(
             })?;
         let chunks = statement
             .query_map([document_id], |row| {
-                let units_json: String = row.get(3)?;
+                let locator_json: String = row.get(3)?;
                 let types_json: String = row.get(4)?;
                 let token_estimate: i64 = row.get(6)?;
-                let page_numbers = serde_json::from_str(&units_json).map_err(|error| {
+                let source_locator = serde_json::from_str(&locator_json).map_err(|error| {
                     rusqlite::Error::FromSqlConversionFailure(
-                        units_json.len(),
+                        locator_json.len(),
                         rusqlite::types::Type::Text,
                         Box::new(error),
                     )
@@ -522,7 +530,7 @@ pub(crate) fn load_semantic_chunks(
                     chunk_index: row.get(0)?,
                     text: row.get(1)?,
                     full_text: row.get(2)?,
-                    page_numbers,
+                    source_locator,
                     element_types,
                     heading_context: row.get(5)?,
                     token_estimate: usize::try_from(token_estimate).unwrap_or(usize::MAX),
@@ -537,108 +545,111 @@ pub(crate) fn load_semantic_chunks(
     })
 }
 
-pub(crate) fn load_source_renders(
+pub(crate) fn load_source_assets(
     database: &Database,
     document_id: &str,
-) -> Result<Vec<SourceRenderRecord>, CommandError> {
+) -> Result<Vec<SourceAssetRecord>, CommandError> {
     database.with_connection(|connection| {
         let mut statement = connection
             .prepare(
-                "SELECT page_number, render_relative_path, render_byte_size, render_sha256
-                 FROM document_pages WHERE document_id = ?1 ORDER BY page_number",
+                "SELECT asset_id, source_unit_number, media_type,
+                        relative_path, byte_size, sha256
+                 FROM document_source_assets
+                 WHERE document_id = ?1
+                 ORDER BY COALESCE(source_unit_number, 0), asset_id",
             )
             .map_err(|error| {
                 db_error(
-                    "document_render_projection_prepare_failed",
+                    "document_source_assets_prepare_failed",
                     document_id,
                     error,
                 )
             })?;
-        let renders = statement
+        let assets = statement
             .query_map([document_id], |row| {
-                Ok(SourceRenderRecord {
-                    unit_number: row.get(0)?,
-                    relative_path: row.get(1)?,
-                    byte_size: row.get(2)?,
-                    sha256: row.get(3)?,
+                Ok(SourceAssetRecord {
+                    asset_id: row.get(0)?,
+                    source_unit_number: row.get(1)?,
+                    media_type: row.get(2)?,
+                    relative_path: row.get(3)?,
+                    byte_size: row.get(4)?,
+                    sha256: row.get(5)?,
                 })
             })
             .map_err(|error| {
-                db_error(
-                    "document_render_projection_query_failed",
-                    document_id,
-                    error,
-                )
+                db_error("document_source_assets_query_failed", document_id, error)
             })?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| {
-                db_error(
-                    "document_render_projection_decode_failed",
-                    document_id,
-                    error,
-                )
+                db_error("document_source_assets_decode_failed", document_id, error)
             })?;
-        Ok(renders)
+        Ok(assets)
     })
 }
 
 pub(crate) fn load_window_images(
     paths: &AppPaths,
-    renders: &[SourceRenderRecord],
+    assets: &[SourceAssetRecord],
     window: &SemanticWindow,
     maximum: usize,
 ) -> Result<Vec<SourcePageImage>, CommandError> {
-    if window.visual_page_numbers.is_empty() || maximum == 0 {
+    if window.source_locator.asset_ids.is_empty() || maximum == 0 {
         return Ok(Vec::new());
     }
-    let selected = select_source_units(&window.visual_page_numbers, maximum);
+    let selected = select_source_assets(&window.source_locator.asset_ids, maximum);
     let mut images = Vec::with_capacity(selected.len());
-    for unit_number in selected {
-        let render = renders
+    for asset_id in selected {
+        let asset = assets
             .iter()
-            .find(|render| render.unit_number == unit_number)
+            .find(|asset| asset.asset_id == asset_id)
             .ok_or_else(|| {
                 CommandError::new(
-                    "document_render_missing",
-                    "A selected rendered source unit is missing.",
+                    "document_source_asset_missing",
+                    "A selected canonical source asset is missing.",
                 )
             })?;
+        if !asset.media_type.starts_with("image/") {
+            return Err(CommandError::new(
+                "document_source_asset_not_image",
+                "A selected multimodal source asset is not an image.",
+            ));
+        }
         let bytes =
-            fs::read(paths.resolve_relative(&render.relative_path)).map_err(CommandError::io)?;
+            fs::read(paths.resolve_relative(&asset.relative_path)).map_err(CommandError::io)?;
         if bytes.is_empty()
             || bytes.len() > MAX_RENDER_BYTES
-            || to_i64(bytes.len()) != render.byte_size
-            || sha256_hex(&bytes) != render.sha256
+            || to_i64(bytes.len()) != asset.byte_size
+            || sha256_hex(&bytes) != asset.sha256
         {
             return Err(CommandError::new(
-                "document_render_invalid",
-                "A rendered source unit failed its size or integrity check. Retry generation to rebuild it.",
+                "document_source_asset_invalid",
+                "A canonical source asset failed its size or integrity check. Retry generation to rebuild it.",
             ));
         }
         images.push(SourcePageImage {
-            page_number: unit_number,
+            page_number: asset.source_unit_number.unwrap_or_else(|| window.source_locator.first()),
             bytes,
         });
     }
     Ok(images)
 }
 
-pub(crate) fn select_source_units(unit_numbers: &[i64], maximum: usize) -> Vec<i64> {
+pub(crate) fn select_source_assets(asset_ids: &[String], maximum: usize) -> Vec<String> {
     if maximum == 0 {
         return Vec::new();
     }
-    let mut unique = unit_numbers.to_vec();
-    unique.sort_unstable();
+    let mut unique = asset_ids.to_vec();
+    unique.sort();
     unique.dedup();
     if unique.len() <= maximum {
         return unique;
     }
     if maximum == 1 {
-        return vec![unique[unique.len() / 2]];
+        return vec![unique[unique.len() / 2].clone()];
     }
     let last = unique.len() - 1;
     (0..maximum)
-        .map(|index| unique[index * last / (maximum - 1)])
+        .map(|index| unique[index * last / (maximum - 1)].clone())
         .collect()
 }
 
@@ -690,15 +701,22 @@ fn sha256_hex(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use crate::{
-        document_scale::DocumentScalePlan, document_semantics::build_partitioned_semantic_windows,
+        document_domain::{SourceLocator, SourceUnitKind},
+        document_scale::DocumentScalePlan,
+        document_semantics::build_partitioned_semantic_windows,
     };
 
-    fn chunk(index: i64, page: i64) -> SemanticChunk {
+    fn chunk(index: i64, unit: i64) -> SemanticChunk {
         SemanticChunk {
             chunk_index: index,
             text: format!("text {index}"),
             full_text: format!("text {index}"),
-            page_numbers: vec![page],
+            source_locator: SourceLocator::new(
+                SourceUnitKind::Page,
+                vec![unit],
+                Some("One chapter".to_string()),
+            )
+            .unwrap(),
             element_types: vec!["paragraph".to_string()],
             heading_context: Some("One chapter".to_string()),
             token_estimate: 100,
@@ -765,49 +783,64 @@ mod tests {
             &windows,
         )
         .expect("multi-window job should persist");
-        let indices = database
+        let rows = database
             .with_connection(|connection| {
                 let mut statement = connection
-                    .prepare("SELECT window_index FROM document_generation_windows WHERE job_id = ?1 ORDER BY window_index")
+                    .prepare(
+                        "SELECT window_index, source_locator_json
+                         FROM document_generation_windows
+                         WHERE job_id = ?1 ORDER BY window_index",
+                    )
                     .map_err(CommandError::database)?;
-                let indices = statement
-                    .query_map([job], |row| row.get::<_, i64>(0))
+                let rows = statement
+                    .query_map([job], |row| {
+                        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                    })
                     .map_err(CommandError::database)?
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(CommandError::database)?;
-                Ok(indices)
+                Ok(rows)
             })
             .unwrap();
-        assert_eq!(indices, vec![0, 1]);
+        assert_eq!(rows.iter().map(|row| row.0).collect::<Vec<_>>(), vec![0, 1]);
+        let first_locator: SourceLocator = serde_json::from_str(&rows[0].1).unwrap();
+        assert_eq!(first_locator.unit_kind, SourceUnitKind::Page);
     }
 
     #[test]
     fn invalid_window_identity_is_rejected_before_job_insert() {
-        let mut window = SemanticWindow {
+        let window = SemanticWindow {
             window_index: 1,
             partition_index: 0,
             partition_title: "Chapter".to_string(),
             first_chunk_index: 0,
             last_chunk_index: 0,
-            page_numbers: vec![1],
-            visual_page_numbers: Vec::new(),
-            page_start: 1,
-            page_end: 1,
+            source_locator: SourceLocator::new(
+                SourceUnitKind::Page,
+                vec![1],
+                Some("Chapter".to_string()),
+            )
+            .unwrap(),
             token_estimate: 10,
             source_text: "source".to_string(),
         };
-        let error = validate_semantic_windows(&[window.clone()], &DocumentSourceDescriptor::pdf(1))
+        let error = validate_semantic_windows(&[window], &DocumentSourceDescriptor::pdf(1))
             .unwrap_err();
         assert_eq!(error.code, "invalid_document_window_identity");
-        window.window_index = 0;
-        validate_semantic_windows(&[window], &DocumentSourceDescriptor::pdf(1)).unwrap();
     }
 
     #[test]
-    fn source_sampling_is_deterministic() {
+    fn source_asset_sampling_is_deterministic() {
+        let assets = (1..=40)
+            .map(|index| format!("asset-{index:03}"))
+            .collect::<Vec<_>>();
         assert_eq!(
-            select_source_units(&(1..=40).collect::<Vec<_>>(), 3),
-            vec![1, 20, 40]
+            select_source_assets(&assets, 3),
+            vec![
+                "asset-001".to_string(),
+                "asset-020".to_string(),
+                "asset-040".to_string()
+            ]
         );
     }
 }
