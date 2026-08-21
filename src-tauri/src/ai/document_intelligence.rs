@@ -2651,7 +2651,10 @@ mod tests {
             body.pointer("/provider/data_collection"),
             Some(&json!("deny"))
         );
-        assert_eq!(body.pointer("/provider/sort"), Some(&json!("throughput")));
+        assert_eq!(
+            body.pointer("/provider/sort"),
+            Some(&json!("throughput"))
+        );
         assert_eq!(body.pointer("/reasoning/effort"), Some(&json!("low")));
         assert_eq!(
             body.pointer("/response_format/type"),
