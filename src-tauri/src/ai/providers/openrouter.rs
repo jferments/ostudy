@@ -46,7 +46,7 @@ pub(super) fn structured_probe_body(
             }
         ],
         "temperature": 0,
-        "max_tokens": 128,
+        "max_tokens": 256,
         "stream": false,
         "provider": provider_preferences(true, require_zero_data_retention),
         "response_format": {
@@ -54,10 +54,113 @@ pub(super) fn structured_probe_body(
             "json_schema": {
                 "name": "ostudy_connection_probe",
                 "strict": true,
-                "schema": schema
+                "schema": strict_schema(&schema)
             }
         }
     })
+}
+
+pub(super) fn document_schema_probe_body(
+    model_id: &str,
+    schema: &Value,
+    require_zero_data_retention: bool,
+) -> Value {
+    json!({
+        "model": model_id,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are validating a structured-output contract. Return only the JSON required by the schema."
+            },
+            {
+                "role": "user",
+                "content": concat!(
+                    "Return exactly two synthetic cards. First: type basic, front Probe question, ",
+                    "back Probe answer, tags containing probe. Second: type cloze, text The probe value is stable., ",
+                    "blanks containing stable, mode one_at_a_time, tags containing probe."
+                )
+            }
+        ],
+        "temperature": 0,
+        "max_tokens": 768,
+        "stream": false,
+        "reasoning": { "effort": "minimal" },
+        "provider": provider_preferences(true, require_zero_data_retention),
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "ostudy_document_contract_probe",
+                "strict": true,
+                "schema": strict_schema(schema)
+            }
+        }
+    })
+}
+
+/// Lower ostudy's richer validation schema to the portable strict subset used
+/// by OpenAI-style structured output implementations behind OpenRouter.
+///
+/// Local Rust validation remains authoritative for length/item/range bounds.
+/// The wire schema focuses on deterministic shape: unions use `anyOf`, constants
+/// become one-value enums, every object property is required, and additional
+/// properties are forbidden. This avoids routed providers silently degrading
+/// strict enforcement when handed keywords outside their supported subset.
+pub(super) fn strict_schema(value: &Value) -> Value {
+    match value {
+        Value::Array(values) => Value::Array(values.iter().map(strict_schema).collect()),
+        Value::Object(object) => {
+            if let Some(constant) = object.get("const") {
+                let value_type = match constant {
+                    Value::String(_) => "string",
+                    Value::Number(number) if number.is_i64() || number.is_u64() => "integer",
+                    Value::Number(_) => "number",
+                    Value::Bool(_) => "boolean",
+                    _ => "string",
+                };
+                return json!({
+                    "type": value_type,
+                    "enum": [constant.clone()]
+                });
+            }
+
+            let mut normalized = serde_json::Map::new();
+            for (key, child) in object {
+                match key.as_str() {
+                    "minLength" | "maxLength" | "minItems" | "maxItems" | "required" => {}
+                    "oneOf" => {
+                        normalized.insert("anyOf".to_string(), strict_schema(child));
+                    }
+                    _ => {
+                        normalized.insert(key.clone(), strict_schema(child));
+                    }
+                }
+            }
+            if let Some(properties) = normalized.get("properties").and_then(Value::as_object) {
+                let required = properties
+                    .keys()
+                    .cloned()
+                    .map(Value::String)
+                    .collect::<Vec<_>>();
+                normalized.insert("required".to_string(), Value::Array(required));
+                normalized.insert("additionalProperties".to_string(), Value::Bool(false));
+            }
+            Value::Object(normalized)
+        }
+        _ => value.clone(),
+    }
+}
+
+/// OpenRouter's model catalog declares `structured_outputs` separately from
+/// ordinary JSON mode/response formatting. Only an explicit declaration is
+/// treated as authoritative; older catalog shapes that omit the field remain
+/// unknown rather than being silently rejected.
+pub(super) fn model_structured_outputs_declared(item: &Value) -> Option<bool> {
+    let parameters = item.get("supported_parameters")?.as_array()?;
+    Some(parameters.iter().any(|value| {
+        value
+            .as_str()
+            .is_some_and(|value| value == "structured_outputs")
+    }))
 }
 
 /// OpenRouter defaults permit endpoints that may retain data and, unless an
@@ -242,6 +345,59 @@ mod tests {
         );
         assert!(body.get("debug").is_none());
         assert!(body.get("plugins").is_none());
+    }
+
+    #[test]
+    fn strict_schema_uses_portable_union_and_required_properties() {
+        let schema = strict_schema(&json!({
+            "type": "object",
+            "properties": {
+                "cards": {
+                    "type": "array",
+                    "maxItems": 4,
+                    "items": {
+                        "oneOf": [{
+                            "type": "object",
+                            "properties": {
+                                "type": {"const": "basic"},
+                                "front": {"type": "string", "maxLength": 100},
+                                "tags": {"type": "array", "maxItems": 4}
+                            },
+                            "required": ["type", "front"]
+                        }]
+                    }
+                }
+            },
+            "required": ["cards"]
+        }));
+        assert!(schema.pointer("/properties/cards/items/oneOf").is_none());
+        assert!(schema.pointer("/properties/cards/items/anyOf").is_some());
+        assert!(schema.pointer("/properties/cards/maxItems").is_none());
+        assert_eq!(
+            schema.pointer("/properties/cards/items/anyOf/0/required"),
+            Some(&json!(["front", "tags", "type"]))
+        );
+        assert_eq!(
+            schema.pointer("/properties/cards/items/anyOf/0/properties/type/enum"),
+            Some(&json!(["basic"]))
+        );
+    }
+
+    #[test]
+    fn model_catalog_structured_output_declaration_is_explicit() {
+        assert_eq!(
+            model_structured_outputs_declared(&json!({
+                "supported_parameters": ["temperature", "structured_outputs"]
+            })),
+            Some(true)
+        );
+        assert_eq!(
+            model_structured_outputs_declared(&json!({
+                "supported_parameters": ["temperature", "response_format"]
+            })),
+            Some(false)
+        );
+        assert_eq!(model_structured_outputs_declared(&json!({})), None);
     }
 
     #[test]
