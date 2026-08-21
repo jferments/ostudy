@@ -20,7 +20,7 @@ use super::{
     AiRuntimeState,
 };
 
-const ADAPTER_REVISION: i64 = 5;
+const ADAPTER_REVISION: i64 = 6;
 const RESULT_SCHEMA_VERSION: i64 = 1;
 const MAX_PERSISTED_RESULT_BYTES: usize = 32 * 1024;
 
@@ -318,7 +318,7 @@ pub async fn test_ai_provider_profile(
                     None,
                     SafeAiError {
                         code: "ai_model_not_found".to_string(),
-                        message: "The selected model is not available from this provider. Refresh models and save one of the returned model IDs.".to_string(),
+                        message: "The selected model is not available from this provider's document-compatible model list. Refresh models and save one of the returned model IDs.".to_string(),
                         retryable: false,
                         retry_after_seconds: None,
                     },
@@ -409,6 +409,7 @@ pub async fn test_ai_provider_profile(
                 models.is_some(),
                 false,
                 false,
+                None,
                 false,
                 &properties,
             );
@@ -458,9 +459,64 @@ pub async fn test_ai_provider_profile(
         }
     };
 
+    let (document_schema_outcome, document_schema_supported) =
+        if profile.provider_kind == ProviderKind::Openrouter {
+            if structured_outcome.is_some() {
+                let started = Instant::now();
+                match providers::run_document_schema_probe(
+                    &runtime.gateway,
+                    &request_profile,
+                    bearer,
+                )
+                .await
+                {
+                    Ok(outcome) => {
+                        let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
+                        phases.push(passed_phase(
+                            "document_generation_schema",
+                            "Document generation schema",
+                            &format!(
+                                "The selected OpenRouter model satisfied ostudy's representative flashcard union contract (finish: {finish})."
+                            ),
+                            Some(elapsed_ms(started)),
+                        ));
+                        (Some(outcome), Some(true))
+                    }
+                    Err(error_value) => {
+                        optional_failure = true;
+                        phases.push(failed_phase(
+                            "document_generation_schema",
+                            "Document generation schema",
+                            "Structured JSON works, but the model did not reliably satisfy ostudy's representative flashcard generation contract.",
+                            Some(elapsed_ms(started)),
+                            error_value.safe,
+                        ));
+                        (None, Some(false))
+                    }
+                }
+            } else {
+                phases.push(skipped_phase(
+                    "document_generation_schema",
+                    "Document generation schema",
+                    "The document contract probe was skipped because the basic structured-output probe did not pass.",
+                ));
+                (None, Some(false))
+            }
+        } else {
+            phases.push(skipped_phase(
+                "document_generation_schema",
+                "Document generation schema",
+                "This provider uses its existing provider-specific document structured-output contract.",
+            ));
+            (None, None)
+        };
+
     let usage_reported = text_outcome.prompt_tokens.is_some()
         || text_outcome.completion_tokens.is_some()
         || structured_outcome.as_ref().is_some_and(|outcome| {
+            outcome.prompt_tokens.is_some() || outcome.completion_tokens.is_some()
+        })
+        || document_schema_outcome.as_ref().is_some_and(|outcome| {
             outcome.prompt_tokens.is_some() || outcome.completion_tokens.is_some()
         });
     let capabilities = build_capabilities(
@@ -469,6 +525,7 @@ pub async fn test_ai_provider_profile(
         models.is_some(),
         true,
         structured_outcome.is_some(),
+        document_schema_supported,
         usage_reported,
         &properties,
     );
@@ -709,6 +766,7 @@ fn build_capabilities(
     model_listing: bool,
     text_completion: bool,
     structured_output: bool,
+    document_generation_schema: Option<bool>,
     usage_reported: bool,
     properties: &ProviderProperties,
 ) -> Vec<AiCapabilityDto> {
@@ -760,6 +818,19 @@ fn build_capabilities(
         CapabilitySource::Probed,
         None,
     );
+    if let Some(supported) = document_generation_schema {
+        set_capability(
+            &mut capabilities,
+            "document_generation_schema",
+            if supported {
+                CapabilityStatus::Supported
+            } else {
+                CapabilityStatus::Unsupported
+            },
+            CapabilitySource::Probed,
+            None,
+        );
+    }
     set_capability(
         &mut capabilities,
         "local_schema_validation",
@@ -853,6 +924,7 @@ fn default_unknown_capabilities(provider_kind: ProviderKind) -> Vec<AiCapability
         "image_input",
         "json_object_output",
         "json_schema_output",
+        "document_generation_schema",
         "local_schema_validation",
         "model_listing",
         "usage_reporting",
@@ -998,7 +1070,7 @@ mod tests {
     }
 
     #[test]
-    fn openrouter_probes_can_report_provider_enforced_json_schema() {
+    fn openrouter_probes_can_report_provider_enforced_json_schema_and_document_contract() {
         let profile = profile(ProviderKind::Openrouter, "openai/example");
         let capabilities = build_capabilities(
             &profile,
@@ -1006,6 +1078,7 @@ mod tests {
             true,
             true,
             true,
+            Some(true),
             true,
             &ProviderProperties::default(),
         );
@@ -1014,6 +1087,11 @@ mod tests {
             .find(|capability| capability.key == "json_schema_output")
             .expect("schema capability should exist");
         assert_eq!(schema.status, CapabilityStatus::Supported);
+        let document = capabilities
+            .iter()
+            .find(|capability| capability.key == "document_generation_schema")
+            .expect("document capability should exist");
+        assert_eq!(document.status, CapabilityStatus::Supported);
     }
 
     #[test]
