@@ -60,17 +60,20 @@ pub(super) fn structured_probe_body(
     })
 }
 
-/// OpenRouter defaults permit endpoints that may retain data. ostudy sends a
-/// stricter request policy for study content and requires parameter-compatible
-/// endpoints whenever the task relies on a structured-output contract.
+/// OpenRouter defaults permit endpoints that may retain data and, unless an
+/// explicit sorting rule is supplied, primarily price-balance across otherwise
+/// eligible providers. That default is a poor fit for ostudy's document jobs:
+/// one document can issue many long structured completions, so a slow endpoint
+/// can multiply wall-clock time across every outline, generation, and curation
+/// batch.
 ///
-/// Endpoint precision is a hard quality boundary: INT4/FP4/FP6 and endpoints
-/// whose quantization is unknown are never selected. Within the eligible set,
-/// ostudy leaves OpenRouter's price/uptime load balancing enabled so concurrent
-/// independent windows can spread across healthy endpoints. A p90 throughput
-/// preference keeps consistently slow endpoints behind cheaper fast candidates;
-/// performance preferences remain soft so healthy high-precision fallbacks are
-/// still available during constrained capacity.
+/// ostudy therefore makes throughput the dominant routing objective for its
+/// OpenRouter profile traffic while retaining the existing privacy, parameter,
+/// precision, and fallback boundaries. The percentile preferences remain useful
+/// secondary signals, but `sort = throughput` ensures that a merely-cheaper slow
+/// endpoint does not stay ahead of a substantially faster eligible endpoint.
+/// Connection probes intentionally use the same provider policy so a successful
+/// probe exercises the route class used by later document work.
 pub(super) fn provider_preferences(
     require_parameters: bool,
     require_zero_data_retention: bool,
@@ -80,6 +83,7 @@ pub(super) fn provider_preferences(
         "data_collection": "deny",
         "zdr": require_zero_data_retention,
         "allow_fallbacks": true,
+        "sort": "throughput",
         "quantizations": HIGH_PRECISION_QUANTIZATIONS,
         "preferred_min_throughput": {
             "p90": PREFERRED_MIN_P90_THROUGHPUT_TPS
@@ -232,6 +236,10 @@ mod tests {
         );
         assert_eq!(body.pointer("/provider/zdr"), Some(&json!(true)));
         assert_eq!(
+            body.pointer("/provider/sort"),
+            Some(&json!("throughput"))
+        );
+        assert_eq!(
             body.pointer("/response_format/type"),
             Some(&json!("json_schema"))
         );
@@ -240,16 +248,17 @@ mod tests {
     }
 
     #[test]
-    fn provider_preferences_enforce_precision_and_prefer_cheap_fast_routes() {
+    fn provider_preferences_enforce_precision_and_prioritize_throughput() {
         let ordinary = provider_preferences(true, false);
         assert_eq!(ordinary.pointer("/data_collection"), Some(&json!("deny")));
         assert_eq!(ordinary.pointer("/zdr"), Some(&json!(false)));
+        assert_eq!(ordinary.pointer("/sort"), Some(&json!("throughput")));
 
         let strict = provider_preferences(true, true);
         assert_eq!(strict.pointer("/data_collection"), Some(&json!("deny")));
         assert_eq!(strict.pointer("/zdr"), Some(&json!(true)));
         assert_eq!(strict.pointer("/require_parameters"), Some(&json!(true)));
-        assert!(strict.pointer("/sort").is_none());
+        assert_eq!(strict.pointer("/sort"), Some(&json!("throughput")));
         assert_eq!(
             strict.pointer("/preferred_min_throughput/p90"),
             Some(&json!(50))
