@@ -15,9 +15,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    document_domain::{
-        validate_asset_id, DocumentSourceDescriptor, SourceLocator, SourceUnitKind,
-    },
+    document_domain::{validate_asset_id, DocumentSourceDescriptor, SourceLocator, SourceUnitKind},
     error::CommandError,
 };
 
@@ -125,11 +123,7 @@ impl CanonicalBlockRole {
     pub(crate) fn benefits_from_visual_evidence(self) -> bool {
         matches!(
             self,
-            Self::Table
-                | Self::Equation
-                | Self::KeyValue
-                | Self::Image
-                | Self::ImageDescription
+            Self::Table | Self::Equation | Self::KeyValue | Self::Image | Self::ImageDescription
         )
     }
 }
@@ -556,9 +550,7 @@ impl CanonicalDocument {
             if let Some(parent) = &block.parent_heading {
                 validate_text(parent, MAX_HEADING_ITEM_CHARS, false)?;
             }
-            if block
-                .geometry
-                .is_some_and(|geometry| !geometry.validate())
+            if block.geometry.is_some_and(|geometry| !geometry.validate())
                 || block
                     .confidence
                     .is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value))
@@ -800,7 +792,11 @@ fn validate_relative_path(value: &str) -> Result<(), CommandError> {
 }
 
 fn validate_sha256(value: &str) -> Result<(), CommandError> {
-    if value.len() != 64 || value.chars().any(|character| !character.is_ascii_hexdigit()) {
+    if value.len() != 64
+        || value
+            .chars()
+            .any(|character| !character.is_ascii_hexdigit())
+    {
         return Err(invalid_canonical(
             "A canonical record has an invalid SHA-256 identity.",
         ));

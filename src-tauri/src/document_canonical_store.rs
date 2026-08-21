@@ -153,8 +153,7 @@ pub(crate) fn persist_canonical_ingestion(
                         .map_err(CommandError::serialization)?,
                     geometry_json,
                     block.confidence,
-                    serde_json::to_string(&block.asset_ids)
-                        .map_err(CommandError::serialization)?,
+                    serde_json::to_string(&block.asset_ids).map_err(CommandError::serialization)?,
                     serde_json::to_string(&block.attributes)
                         .map_err(CommandError::serialization)?,
                     block.content_sha256,
@@ -247,9 +246,5 @@ fn canonical_db_error(
     detail: String,
     error: impl std::fmt::Display,
 ) -> CommandError {
-    CommandError::database_at(
-        event,
-        format!("document={document_id} {detail}"),
-        error,
-    )
+    CommandError::database_at(event, format!("document={document_id} {detail}"), error)
 }

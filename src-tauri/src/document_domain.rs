@@ -158,13 +158,7 @@ impl SourceLocator {
         unit_numbers: Vec<i64>,
         section_label: Option<String>,
     ) -> Result<Self, CommandError> {
-        Self::with_evidence(
-            unit_kind,
-            unit_numbers,
-            section_label,
-            Vec::new(),
-            None,
-        )
+        Self::with_evidence(unit_kind, unit_numbers, section_label, Vec::new(), None)
     }
 
     pub(crate) fn with_evidence(
@@ -313,8 +307,7 @@ pub(crate) fn validate_asset_id(value: &str) -> Result<(), CommandError> {
     if value.is_empty()
         || value.chars().count() > MAX_ASSET_ID_CHARS
         || value.chars().any(|character| {
-            !(character.is_ascii_alphanumeric()
-                || matches!(character, '-' | '_' | '.' | ':' | '/'))
+            !(character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':' | '/'))
         })
     {
         return Err(CommandError::new(

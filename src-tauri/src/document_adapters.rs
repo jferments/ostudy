@@ -108,12 +108,8 @@ impl DocumentAdapter for PdfDocumentAdapter {
             request.maximum_source_units,
             |progress| report_progress(progress),
         )?;
-        let canonical = canonicalize_pdf(
-            request.document_id,
-            request.source_path,
-            self,
-            &legacy_pdf,
-        )?;
+        let canonical =
+            canonicalize_pdf(request.document_id, request.source_path, self, &legacy_pdf)?;
         Ok(AdapterExtraction {
             canonical,
             legacy_pdf,
@@ -597,7 +593,8 @@ fn canonicalize_pdf(
                 semantic_analysis_degraded: processed.semantic.semantic_analysis_degraded,
                 ocr_unit_count: processed.ocr.page_count,
                 ocr_mean_confidence: processed.ocr.mean_confidence,
-                ocr_engine: (!processed.ocr.engine.is_empty()).then(|| processed.ocr.engine.clone()),
+                ocr_engine: (!processed.ocr.engine.is_empty())
+                    .then(|| processed.ocr.engine.clone()),
             },
         },
         semantic_chunks,
@@ -734,8 +731,7 @@ fn persist_pdf_compatibility_projection(
                     to_i64(chunk.chunk_index),
                     text,
                     full_text,
-                    serde_json::to_string(&unit_numbers)
-                        .map_err(CommandError::serialization)?,
+                    serde_json::to_string(&unit_numbers).map_err(CommandError::serialization)?,
                     serde_json::to_string(&chunk.bounding_boxes)
                         .map_err(CommandError::serialization)?,
                     serde_json::to_string(&chunk.element_types)
@@ -841,21 +837,19 @@ mod tests {
     use crate::{
         document_domain::DocumentSourceDescriptor,
         pdf_backend::{
-            ExtractedDocument, ExtractedSemanticChunk, ExtractedSemanticElement,
-            ExtractedTextPage, SemanticBBox,
+            ExtractedDocument, ExtractedSemanticChunk, ExtractedSemanticElement, ExtractedTextPage,
+            SemanticBBox,
         },
         pdf_document_ingestion::{ExtractionMode, IngestedPage, OcrIngestionSummary},
     };
 
     #[test]
     fn registry_rejects_formats_without_an_enabled_adapter() {
-        let error = match DocumentAdapterRegistry::select(
-            DocumentFormat::Docx,
-            Path::new("unused.docx"),
-        ) {
-            Ok(_) => panic!("DOCX must not be enabled before its adapter ships"),
-            Err(error) => error,
-        };
+        let error =
+            match DocumentAdapterRegistry::select(DocumentFormat::Docx, Path::new("unused.docx")) {
+                Ok(_) => panic!("DOCX must not be enabled before its adapter ships"),
+                Err(error) => error,
+            };
         assert_eq!(error.code, "document_ingestion_adapter_unavailable");
     }
 
