@@ -247,5 +247,9 @@ fn canonical_db_error(
     detail: String,
     error: impl std::fmt::Display,
 ) -> CommandError {
-    CommandError::database_at(event, format!("document={document_id} {detail}"), error)
+    CommandError::database_at(
+        event,
+        format!("document={document_id} {detail}"),
+        error,
+    )
 }

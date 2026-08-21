@@ -440,7 +440,9 @@ mod tests {
         ))
         .expect("public baseline manifest should decode");
         assert_eq!(
-            manifest.get("schemaVersion").and_then(serde_json::Value::as_i64),
+            manifest
+                .get("schemaVersion")
+                .and_then(serde_json::Value::as_i64),
             Some(MIGRATIONS[0].version)
         );
         let expected = manifest

@@ -158,7 +158,13 @@ impl SourceLocator {
         unit_numbers: Vec<i64>,
         section_label: Option<String>,
     ) -> Result<Self, CommandError> {
-        Self::with_evidence(unit_kind, unit_numbers, section_label, Vec::new(), None)
+        Self::with_evidence(
+            unit_kind,
+            unit_numbers,
+            section_label,
+            Vec::new(),
+            None,
+        )
     }
 
     pub(crate) fn with_evidence(
@@ -339,7 +345,10 @@ mod tests {
             SourceUnitKind::Page,
             vec![3, 1, 3, 2],
             Some(" Chapter 1 ".to_string()),
-            vec!["unit-render:000003".to_string(), "unit-render:000001".to_string()],
+            vec![
+                "unit-render:000003".to_string(),
+                "unit-render:000001".to_string(),
+            ],
             None,
         )
         .expect("locator should build");

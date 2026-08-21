@@ -132,7 +132,9 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
     assert_eq!(version, LATEST_SCHEMA_VERSION);
 
     let migration_rows: i64 = connection
-        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row.get(0))
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
         .map_err(CommandError::database)?;
     assert_eq!(migration_rows, 2);
 
@@ -253,7 +255,10 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
             |row| row.get(0),
         )
         .map_err(CommandError::database)?;
-    assert_eq!(legacy_page_count, 1, "compatibility projection must remain intact");
+    assert_eq!(
+        legacy_page_count, 1,
+        "compatibility projection must remain intact"
+    );
 
     let foreign_key_violations: i64 = connection
         .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {

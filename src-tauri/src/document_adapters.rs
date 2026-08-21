@@ -21,10 +21,9 @@ use crate::{
     database::Database,
     document_canonical::{
         unit_render_asset_id, CanonicalAsset, CanonicalAssetRole, CanonicalBlock,
-        CanonicalBlockRole, CanonicalDocument, CanonicalExtractionReport,
-        CanonicalIngestion, CanonicalSemanticChunk, CanonicalSourceFile,
-        CanonicalSourceUnit, DocumentMetadata, NormalizedBoundingBox,
-        CANONICAL_DOCUMENT_SCHEMA_VERSION,
+        CanonicalBlockRole, CanonicalDocument, CanonicalExtractionReport, CanonicalIngestion,
+        CanonicalSemanticChunk, CanonicalSourceFile, CanonicalSourceUnit, DocumentMetadata,
+        NormalizedBoundingBox, CANONICAL_DOCUMENT_SCHEMA_VERSION,
     },
     document_canonical_store,
     document_domain::{DocumentFormat, SourceLocator},
@@ -244,9 +243,7 @@ pub(crate) fn update_ingestion_progress(
             .map_err(|error| {
                 CommandError::database_at(
                     "canonical_document_progress_failed",
-                    format!(
-                        "document={document_id} completed={completed} total={total}"
-                    ),
+                    format!("document={document_id} completed={completed} total={total}"),
                     error,
                 )
             })?;
@@ -555,17 +552,15 @@ fn canonicalize_pdf(
             .iter()
             .map(|unit| to_i64(*unit))
             .collect::<Vec<_>>();
-        let visual_asset_ids = if chunk_needs_visual_grounding(
-            &chunk.element_types,
-            &chunk.full_text,
-        ) {
-            unit_numbers
-                .iter()
-                .map(|unit| unit_render_asset_id(*unit))
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
-        };
+        let visual_asset_ids =
+            if chunk_needs_visual_grounding(&chunk.element_types, &chunk.full_text) {
+                unit_numbers
+                    .iter()
+                    .map(|unit| unit_render_asset_id(*unit))
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
         let locator = SourceLocator::with_evidence(
             processed.source.unit_kind,
             unit_numbers,
@@ -602,8 +597,7 @@ fn canonicalize_pdf(
                 semantic_analysis_degraded: processed.semantic.semantic_analysis_degraded,
                 ocr_unit_count: processed.ocr.page_count,
                 ocr_mean_confidence: processed.ocr.mean_confidence,
-                ocr_engine: (!processed.ocr.engine.is_empty())
-                    .then(|| processed.ocr.engine.clone()),
+                ocr_engine: (!processed.ocr.engine.is_empty()).then(|| processed.ocr.engine.clone()),
             },
         },
         semantic_chunks,
@@ -794,9 +788,7 @@ fn normalize_element_type(value: &str) -> Result<&'static str, CommandError> {
 fn normalize_semantic_text(value: &str, maximum: usize) -> String {
     value
         .chars()
-        .filter(|character| {
-            !character.is_control() || matches!(character, '\n' | '\t')
-        })
+        .filter(|character| !character.is_control() || matches!(character, '\n' | '\t'))
         .take(maximum)
         .collect::<String>()
         .trim()
@@ -852,9 +844,7 @@ mod tests {
             ExtractedDocument, ExtractedSemanticChunk, ExtractedSemanticElement,
             ExtractedTextPage, SemanticBBox,
         },
-        pdf_document_ingestion::{
-            ExtractionMode, IngestedPage, OcrIngestionSummary,
-        },
+        pdf_document_ingestion::{ExtractionMode, IngestedPage, OcrIngestionSummary},
     };
 
     #[test]
@@ -888,14 +878,11 @@ mod tests {
         let render_id = unit_render_asset_id(1);
         let legacy = IngestedDocument {
             source: DocumentSourceDescriptor::pdf(1),
-            pages: vec![crate::pdf_document_ingestion::IngestedPage {
+            pages: vec![IngestedPage {
                 unit_number: 1,
                 plain_text: "Cardiac output is heart rate times stroke volume.".to_string(),
-                text_sha256: sha256_hex(
-                    b"Cardiac output is heart rate times stroke volume.",
-                ),
-                render_relative_path:
-                    "documents/fixture/pages/page-000001.png".to_string(),
+                text_sha256: sha256_hex(b"Cardiac output is heart rate times stroke volume."),
+                render_relative_path: "documents/fixture/pages/page-000001.png".to_string(),
                 render_byte_size: 10,
                 render_sha256: "a".repeat(64),
             }],
@@ -927,8 +914,7 @@ mod tests {
                 chunks: vec![ExtractedSemanticChunk {
                     chunk_index: 4,
                     text: "Cardiac output table".to_string(),
-                    full_text:
-                        "Cardiac output is heart rate times stroke volume.".to_string(),
+                    full_text: "Cardiac output is heart rate times stroke volume.".to_string(),
                     page_numbers: vec![1],
                     bounding_boxes: Vec::new(),
                     element_types: vec!["table".to_string()],
@@ -956,9 +942,17 @@ mod tests {
             &legacy,
         )
         .expect("PDF should canonicalize");
-        canonical.validate().expect("canonical output should validate");
-        assert_eq!(canonical.document.extraction.adapter_backend, PDF_ADAPTER_BACKEND);
-        assert_eq!(canonical.document.blocks[0].asset_ids, vec![render_id.clone()]);
+        canonical
+            .validate()
+            .expect("canonical output should validate");
+        assert_eq!(
+            canonical.document.extraction.adapter_backend,
+            PDF_ADAPTER_BACKEND
+        );
+        assert_eq!(
+            canonical.document.blocks[0].asset_ids,
+            vec![render_id.clone()]
+        );
         assert_eq!(
             canonical.semantic_chunks[0].source_locator.asset_ids,
             vec![render_id]

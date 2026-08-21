@@ -556,7 +556,9 @@ impl CanonicalDocument {
             if let Some(parent) = &block.parent_heading {
                 validate_text(parent, MAX_HEADING_ITEM_CHARS, false)?;
             }
-            if block.geometry.is_some_and(|geometry| !geometry.validate())
+            if block
+                .geometry
+                .is_some_and(|geometry| !geometry.validate())
                 || block
                     .confidence
                     .is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value))
@@ -917,10 +919,15 @@ mod tests {
     #[test]
     fn canonical_pdf_fixture_preserves_text_visual_and_embedding_identity() {
         let fixture = fixture();
-        fixture.validate().expect("canonical fixture should validate");
+        fixture
+            .validate()
+            .expect("canonical fixture should validate");
         assert_eq!(fixture.document.source.format, DocumentFormat::Pdf);
         assert_eq!(fixture.document.source.unit_kind, SourceUnitKind::Page);
-        assert!(fixture.document.full_text_projection().contains("Cardiac output"));
+        assert!(fixture
+            .document
+            .full_text_projection()
+            .contains("Cardiac output"));
         assert_eq!(fixture.document.full_text_sha256().len(), 64);
         assert_eq!(fixture.semantic_chunks[0].content_sha256.len(), 64);
         assert_eq!(
