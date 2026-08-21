@@ -19,7 +19,6 @@ import { Icon } from "../icons/Icon";
 import { useOverlayContext } from "../overlays/overlayContext";
 import { Button } from "../primitives/Button";
 import {
-  tutorialModuleOrder,
   tutorialModules,
   type TutorialModuleId,
   type TutorialPlacement,
@@ -52,8 +51,6 @@ interface AnchorBox {
 }
 
 const STORAGE_KEY = "ostudy.tutorials.v1";
-const CONTEXTUAL_AUTO_START_ENABLED =
-  import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE !== "1";
 const EMPTY_STATE: StoredTutorialState = {
   schemaVersion: 1,
   completed: {},
@@ -79,7 +76,6 @@ export function TourProvider({
   const [anchorFound, setAnchorFound] = useState(false);
   const actionRef = useRef<HTMLButtonElement | null>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
-  const autoStartTimer = useRef<number | null>(null);
   const { topId } = useOverlayContext();
 
   const persist = useCallback((next: StoredTutorialState) => {
@@ -148,43 +144,6 @@ export function TourProvider({
     window.addEventListener("ostudy:start-tutorial", handleStart);
     return () => window.removeEventListener("ostudy:start-tutorial", handleStart);
   }, [close, enabled, start]);
-
-  useEffect(() => {
-    if (!enabled || active || !CONTEXTUAL_AUTO_START_ENABLED) return;
-
-    function findContextualModule(): TutorialModuleId | null {
-      for (const moduleId of tutorialModuleOrder) {
-        const module = tutorialModules[moduleId];
-        if (stored.completed[moduleId] === module.version) continue;
-        if (stored.dismissed[moduleId] === module.version) continue;
-        if (document.querySelector(`[data-tour-anchor="${module.autoStartAnchor}"]`)) {
-          return moduleId;
-        }
-      }
-      return null;
-    }
-
-    function schedule(): void {
-      if (autoStartTimer.current !== null) return;
-      const moduleId = findContextualModule();
-      if (!moduleId) return;
-      autoStartTimer.current = window.setTimeout(() => {
-        autoStartTimer.current = null;
-        if (!active && document.visibilityState !== "hidden") start(moduleId);
-      }, moduleId === "orientation" ? 700 : 500);
-    }
-
-    schedule();
-    const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => {
-      observer.disconnect();
-      if (autoStartTimer.current !== null) {
-        window.clearTimeout(autoStartTimer.current);
-        autoStartTimer.current = null;
-      }
-    };
-  }, [active, enabled, start, stored.completed, stored.dismissed]);
 
   const module = active ? tutorialModules[active.moduleId] : null;
   const step = module?.steps[active?.stepIndex ?? 0] ?? null;

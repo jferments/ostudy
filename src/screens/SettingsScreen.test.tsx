@@ -55,7 +55,11 @@ vi.mock("../ipc/aiProfiles", () => ({
 }));
 vi.mock("../ipc/common", async (importOriginal) => {
   const original = await importOriginal<typeof import("../ipc/common")>();
-  return { ...original, getErrorMessage: (error: unknown) => error instanceof Error ? error.message : "Unexpected error" };
+  return {
+    ...original,
+    getErrorMessage: (error: unknown) =>
+      error instanceof Error ? error.message : "Unexpected error",
+  };
 });
 
 const settings: settingsIpc.AppSettings = {
@@ -126,7 +130,12 @@ describe("SettingsScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
-    vi.mocked(platformFiles.publishExport).mockResolvedValue({ preparedExportId: "2".repeat(32), displayName: "export", destinationKind: "desktop_file", completedAt: Date.now() });
+    vi.mocked(platformFiles.publishExport).mockResolvedValue({
+      preparedExportId: "2".repeat(32),
+      displayName: "export",
+      destinationKind: "desktop_file",
+      completedAt: Date.now(),
+    });
     vi.mocked(settingsIpc.getAppInfo).mockResolvedValue({
       appVersion: "0.1.0",
       dataDirectory: "/tmp/ostudy/data",
@@ -135,7 +144,21 @@ describe("SettingsScreen", () => {
       databaseSchemaVersion: 16,
     });
     vi.mocked(settingsIpc.saveSettings).mockImplementation(async (input) => input);
-    vi.mocked(backupIpc.prepareLibraryBackup).mockResolvedValue({ preparedExport: { id: "2".repeat(32), purpose: "library_backup", suggestedFilename: "library.ostudybackup", mediaType: "application/vnd.ostudy.backup", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 }, deckCount: 3, templateCount: 2, reviewCount: 41, assetCount: 4 });
+    vi.mocked(backupIpc.prepareLibraryBackup).mockResolvedValue({
+      preparedExport: {
+        id: "2".repeat(32),
+        purpose: "library_backup",
+        suggestedFilename: "library.ostudybackup",
+        mediaType: "application/vnd.ostudy.backup",
+        byteSize: 128,
+        sha256: "0".repeat(64),
+        expiresAt: Date.now() + 60_000,
+      },
+      deckCount: 3,
+      templateCount: 2,
+      reviewCount: 41,
+      assetCount: 4,
+    });
     vi.mocked(backupIpc.prepareLibraryRestore).mockResolvedValue({
       deckCount: 3,
       templateCount: 2,
@@ -172,8 +195,12 @@ describe("SettingsScreen", () => {
     const deviceSync = screen.getByRole("heading", { name: "Device synchronization" });
     const storage = screen.getByRole("heading", { name: "Storage" });
     expect(panel.contains(storage)).toBe(true);
-    expect(dataSafety.compareDocumentPosition(deviceSync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(deviceSync.compareDocumentPosition(storage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      dataSafety.compareDocumentPosition(deviceSync) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      deviceSync.compareDocumentPosition(storage) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("previews and saves appearance preferences without touching AI profile state", async () => {
@@ -186,7 +213,9 @@ describe("SettingsScreen", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save preferences" }));
     await waitFor(() => {
-      expect(settingsIpc.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: "light" }));
+      expect(settingsIpc.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ theme: "light" }),
+      );
       expect(onSavedSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: "light" }));
       expect(showToast).toHaveBeenCalledWith("success", "Settings saved.");
     });
@@ -210,11 +239,11 @@ describe("SettingsScreen", () => {
     expect(screen.getByText(/shuffling, are chosen on the Practice screen/u)).toBeTruthy();
   });
 
-  it("uses one New profile action and selects provider type inside the connection form", async () => {
+  it("uses one Add model action and selects the provider inside the simple setup form", async () => {
     renderSettings();
     fireEvent.click(screen.getByRole("tab", { name: "AI/LLM" }));
-    expect(await screen.findByRole("heading", { name: "AI provider profiles" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "New profile" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "AI models" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add model" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Add llama\.cpp/u })).toBeNull();
     expect(screen.queryByRole("button", { name: /Add DeepSeek/u })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Planned providers" })).toBeNull();
@@ -222,14 +251,14 @@ describe("SettingsScreen", () => {
     expect(screen.queryByRole("heading", { name: "Default task profile" })).toBeNull();
     expect(screen.getAllByRole("combobox", { name: "Flashcard generation" })).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "New profile" }));
-    const provider = await screen.findByRole("combobox", { name: "Provider type" });
+    fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+    const provider = await screen.findByRole("combobox", { name: "Provider" });
     expect((provider as HTMLSelectElement).value).toBe("llama_cpp");
     fireEvent.change(provider, { target: { value: "deepseek" } });
-    expect((provider as HTMLSelectElement).value).toBe("deepseek");
-    expect(screen.queryByText(/chat template embedded with the loaded model/u)).toBeNull();
-    expect(screen.queryByText(/credential never enters SQLite/u)).toBeNull();
-    expect(screen.queryByText(/normally reports the loaded GGUF file path/u)).toBeNull();
+    await waitFor(() => expect((provider as HTMLSelectElement).value).toBe("deepseek"));
+    expect(await screen.findByLabelText("API key")).toBeTruthy();
+    expect(screen.queryByText("Bearer token")).toBeNull();
+    expect(screen.queryByText("Enable profile")).toBeNull();
   });
 
   it("backs up provider metadata while explicitly excluding credentials", async () => {
@@ -250,12 +279,23 @@ describe("SettingsScreen", () => {
   });
 
   it("prepares restore only after shared destructive confirmation", async () => {
-    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "library_backup", detectedKind: "ostudybackup", displayName: "library.ostudybackup", mediaType: "application/octet-stream", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
+      id: "1".repeat(32),
+      purpose: "library_backup",
+      detectedKind: "ostudybackup",
+      displayName: "library.ostudybackup",
+      mediaType: "application/octet-stream",
+      byteSize: 128,
+      sha256: "0".repeat(64),
+      expiresAt: Date.now() + 60_000,
+    });
     const { showToast } = renderSettings();
     fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
     await screen.findByText("/tmp/ostudy/data");
     fireEvent.click(screen.getByRole("button", { name: "Restore backup" }));
-    expect(await screen.findByRole("alertdialog", { name: "Restore this complete library?" })).toBeTruthy();
+    expect(
+      await screen.findByRole("alertdialog", { name: "Restore this complete library?" }),
+    ).toBeTruthy();
     expect(backupIpc.prepareLibraryRestore).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Prepare restore" }));
     await waitFor(() => {

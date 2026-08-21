@@ -2,7 +2,7 @@
 
 The Android application uses the same React interface, Rust application logic, SQLite schema, scheduling engine, analytics, document pipeline, synchronization merge engine, import formats, and backup format as the desktop application. Kotlin is limited to Android APIs such as the document picker, Sharesheet, lifecycle, system Back, window/IME insets, connectivity, Android Keystore, PDF rasterization, ML Kit OCR, QR acquisition, and foreground services.
 
-The current Android build supports ordinary study/authoring features plus PDF import/generation, bundled ML Kit document OCR, encrypted same-LAN device synchronization, QR pairing, and optional secure AI-credential transfer.
+The short build/test/install command reference is [`../agents/COMMAND-RUNBOOK.md`](../agents/COMMAND-RUNBOOK.md). Prefer those maintained wrappers over hand-written Tauri, Gradle, or ADB command sequences.
 
 ## Supported development baseline
 
@@ -18,41 +18,17 @@ The current Android build supports ordinary study/authoring features plus PDF im
 
 The exact project pins are in [`../../versions.env`](../../versions.env). Do not select an arbitrary newer NDK or SDK merely because Android Studio offers one; update the repository pins and qualification together.
 
-## 1. Install host prerequisites
+## 1. Install the Android toolchain
 
-Install the ordinary Linux ostudy prerequisites first. Then install a complete JDK 17. On Ubuntu, a typical package is:
-
-```bash
-sudo apt update
-sudo apt install openjdk-17-jdk unzip qemu-kvm
-```
-
-For accelerated emulator use, add your account to the KVM group and sign out/in:
+Install the ordinary Linux ostudy prerequisites first, including JDK 17 and KVM support when you will use the emulator. From the repository root:
 
 ```bash
-sudo usermod -aG kvm "$USER"
-```
-
-Confirm that `/dev/kvm` is readable and writable after signing back in.
-
-Android Studio is recommended for inspecting the generated project, Layout Inspector, Logcat, and device management, but the command-line build does not depend on the IDE. The repository downloads the pinned Android command-line tools into an ostudy-owned cache unless `ANDROID_HOME` already points to another SDK.
-
-## 2. Install the pinned Android SDK and Rust targets
-
-From the repository root:
-
-```bash
+corepack enable
 pnpm install --frozen-lockfile
 pnpm android:install-deps
-
-rustup target add \
-  aarch64-linux-android \
-  armv7-linux-androideabi \
-  i686-linux-android \
-  x86_64-linux-android
 ```
 
-`android:install-deps` installs the pinned platform, Build Tools, NDK, emulator, and API 36 Google APIs system image. The script verifies the downloaded command-line tools archive against the SHA-256 value in `versions.env`.
+The repository wrapper installs/verifies the pinned Android platform, Build Tools, NDK, emulator, and API 36 Google APIs image. It also verifies the downloaded command-line-tools archive against the checksum in `versions.env`.
 
 Run the environment doctor:
 
@@ -60,15 +36,17 @@ Run the environment doctor:
 pnpm android:doctor
 ```
 
-For emulator development, use the stricter check:
+For emulator development and qualification:
 
 ```bash
 pnpm android:doctor:emulator
 ```
 
-The scripts derive and export `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `NDK_HOME`, and `JAVA_HOME`, then create the untracked `src-tauri/gen/android/local.properties` file when needed. Do not commit `local.properties`; it contains a machine-specific SDK path.
+The wrappers derive `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `NDK_HOME`, and `JAVA_HOME`, then create the untracked `src-tauri/gen/android/local.properties` when needed. Do not commit `local.properties`; it contains a machine-specific SDK path.
 
-## 3. Create and boot the official emulator
+Android Studio is useful for inspecting the generated project, Layout Inspector, Logcat, and device management, but it is not the canonical command-line build/install entrypoint.
+
+## 2. Official emulator
 
 Create the pinned API 36 virtual device once:
 
@@ -76,7 +54,7 @@ Create the pinned API 36 virtual device once:
 pnpm android:avd create
 ```
 
-Start it with a visible emulator window:
+Start it visibly:
 
 ```bash
 pnpm android:avd start
@@ -95,103 +73,85 @@ pnpm android:avd status
 pnpm android:avd stop
 ```
 
-The official Android Emulator is the qualification environment. Waydroid can be useful for a quick informal installation check on Linux, but it does not replace the API-level, clean-data, process-lifecycle, native-inset, OCR, and native-library checks performed by the emulator suite.
+The official Android Emulator is the automated qualification environment. Informal containers/emulators can be useful for experimentation but do not replace the clean API-level, lifecycle, native-inset, OCR, and native-library checks in the maintained smoke suite.
 
-## 4. Run ostudy in Android development mode
+## 3. Physical Android device
 
-With an emulator or USB-debugging device connected:
-
-```bash
-pnpm android:dev
-```
-
-Select a particular device when more than one is attached:
-
-```bash
-bash ./scripts/android-dev.sh --device emulator-5554
-```
-
-For a physical phone, enable Developer Options and USB debugging, authorize the computer, and confirm it appears under:
+Enable Developer options and USB debugging on the phone/tablet, authorize the development computer, then confirm the device is visible:
 
 ```bash
 adb devices -l
 ```
 
-Hot development requires the phone to reach the Vite server on the development computer. Supply the computer's LAN address when automatic selection is insufficient:
-
-```bash
-bash ./scripts/android-dev.sh --device <serial> --host 192.168.1.25
-```
-
-Allow the development port through the local firewall. `localhost` inside Android means the Android device itself, not the development computer. The standard Android Emulator can reach the host through `10.0.2.2` when testing a local AI server.
-
-## 5. Build and install a debug APK
-
-For a physical arm64 phone:
-
-```bash
-pnpm android:build:debug
-```
-
-For the x86_64 emulator:
-
-```bash
-pnpm android:build:emulator
-```
-
-Generated APKs are under:
-
-```text
-src-tauri/gen/android/app/build/outputs/apk/
-```
-
-The maintained install wrapper builds, verifies, installs, and launches the normal debug application:
+With exactly one authorized physical device connected, build, verify, install, and launch the normal ARM64 debug application:
 
 ```bash
 pnpm android:install
 ```
 
-If more than one device is connected:
+When more than one device is connected, select one through the same wrapper:
 
 ```bash
-bash ./scripts/android-install.sh --debug --target aarch64 --serial <adb-serial>
+pnpm android:install -- --serial <adb-serial>
 ```
 
-Install an already-built debug APK without rebuilding:
+If the debug APK has already been built and you only need to reinstall it:
 
 ```bash
-pnpm android:install:existing
+pnpm android:install:existing -- --serial <adb-serial>
 ```
 
-The install wrapper deliberately excludes instrumentation APKs from artifact discovery. The debug build uses application ID `io.github.jferments.ostudy.dev`, so it can coexist with a future signed release build. Its app-private data is separate from the release package.
+The maintained install wrapper deliberately uses non-streaming replacement installation (`adb install --no-streaming -r`). This is the canonical physical-device package-manager path because it proved reliable on the physical devices used during development. Do not fall back to streamed `adb install -r` merely because an ad-hoc command is shorter.
 
-## 6. Run automated Android qualification
+The debug application ID is `io.github.jferments.ostudy.dev`, so it can coexist with a future signed release package `io.github.jferments.ostudy`.
 
-Compile the Android app, Kotlin tests, instrumentation package, shared TypeScript tests, and Rust tests:
+Generated APKs remain under:
+
+```text
+src-tauri/gen/android/app/build/outputs/apk/
+```
+
+## 4. Optional Android hot reload
+
+Use Tauri/Vite development mode only when you specifically need live hot reload:
+
+```bash
+pnpm android:dev
+```
+
+This is not the normal physical-device acceptance path. Hot reload adds Tauri device-selection and host-networking requirements because the Android WebView must reach the development Vite server. A built debug APK installed with `pnpm android:install` does not have that dependency.
+
+If hot reload fails, diagnose the maintained `android:dev` wrapper/Tauri boundary. Do not reconstruct a new sequence of `tauri android dev`, device arguments, host flags, Android Studio commands, or Vite bind addresses from memory.
+
+For a local AI server, remember that network addresses are device-relative: the standard emulator reaches the development host through `10.0.2.2`; a physical phone normally needs the computer's reachable LAN address; `127.0.0.1` refers to the Android device itself.
+
+## 5. Automated Android qualification
+
+Compile/package the Android application and its Android-facing tests with:
 
 ```bash
 pnpm android:test
 ```
 
-Run the complete official-emulator smoke suite:
+Run the complete official API-36 emulator smoke suite with:
 
 ```bash
 pnpm android:smoke
 ```
 
-The smoke suite starts a clean API 36 AVD, builds an x86_64 APK with an explicitly opt-in test bridge, installs the application and instrumentation APK, and verifies representative application behavior. Native instrumentation also verifies system/cutout inset ownership, `adjustResize` keyboard behavior, and a real offline ML Kit recognition pass against a synthetic high-contrast text image.
+The smoke suite builds a clean x86_64 debug application with the explicitly opt-in emulator test bridge, installs the application/instrumentation packages, and verifies representative product behavior. It covers native inset/IME ownership, system Back, persistence, practice restoration, file-picker ownership/cancellation, and a real offline ML Kit recognition path.
 
-The UI smoke creates a deck/card, performs a review, restarts the app, verifies persistence and analytics, checks Android Back behavior, restores an interrupted practice session, exercises document-picker cancellation, and verifies native picker ownership is released between operations.
+The test bridge is excluded from normal debug builds unless the smoke build explicitly requests it, and package verification rejects that bridge in release artifacts.
 
-Diagnostics are written to:
+For the shared desktop/Tauri gate:
 
-```text
-artifacts/android-smoke/
+```bash
+./scripts/check.sh
 ```
 
-The test bridge is not present in normal debug builds unless `--smoke-bridge` is requested, and the package verifier rejects it in a release APK.
+For pull requests, the PR #60 state ledger and exact-head CI evidence are authoritative. A green run qualifies only the SHA it tested.
 
-## 7. PDF processing and OCR
+## 6. PDF processing and OCR
 
 Android PDF processing uses the shared durable document pipeline with Android-specific native adapters:
 
@@ -204,21 +164,21 @@ Android does **not** require Tesseract, Tesseract4Android, a Tesseract sidecar, 
 
 A user-started long-running PDF generation task acquires an Android foreground service with a visible processing notification and a partial wake lock. Activity backgrounding therefore does not make the WebView the lifetime owner of the operation. Full process death or a device restart still ends the process; durable checkpoints let ostudy recover and retry/resume when reopened.
 
-## 8. Trusted-device synchronization
+## 7. Trusted-device synchronization
 
 Open **Settings → Backup/Sync → Device synchronization** on both installations. Devices must be able to reach one another on the same private network.
 
-Protocol version 2 treats every invitation as a **one-way offer from the device that created it**. On the sending device, choose whether to include API provider settings/saved credentials, then select **Create sync offer**. Android can select **Scan and receive**; once the QR code is detected, the scan itself accepts the offer and receiving starts immediately. Pasted invitation text uses **Accept sync offer**.
+Protocol version 2 treats every invitation as a one-way offer from the device that created it. On the sending device, choose whether to include API provider settings/saved credentials, then select **Create sync offer**. Android can select **Scan and receive**; once the QR code is detected, the scan itself accepts the offer and receiving starts immediately. Pasted invitation text uses **Accept sync offer**.
 
 The receiver never has to generate a reverse invitation to complete that transfer, and accepting an offer does not upload the receiver's library to the sender. To send Android-side changes back later, intentionally create a new offer on Android and accept that offer on the desktop.
 
-Shared Rust authenticates the devices, encrypts synchronization frames, validates the versioned package, performs common-base merging, and records explicit conflicts rather than silently discarding overlapping edits. General `app_settings` are excluded from both the outgoing package and the merge allowlist, so themes, fonts, UI scale, motion, and other device-specific preferences remain local.
+Shared Rust authenticates the devices, encrypts synchronization frames, validates the versioned package, performs common-base merging, and records explicit conflicts rather than silently discarding overlapping edits. General `app_settings` are excluded from both the outgoing package and the merge allowlist, so themes, fonts, UI scale, motion, tutorials, and other device-specific preferences remain local.
 
-API provider profiles/task defaults are also excluded by default. They are included only when the **sender** enables the API-sharing option for that offer. Saved credential bytes use the authenticated encrypted channel and are written through Android Keystore rather than SQLite when the receiving secure store is available.
+API provider profiles/task defaults are also excluded by default. They are included only when the sender enables the API-sharing option for that offer. Saved credential bytes use the authenticated encrypted channel and are written through Android Keystore rather than SQLite when the receiving secure store is available.
 
 See [Synchronize trusted devices](../user-guide/device-sync.md) for the user workflow and [Device synchronization architecture](../architecture/device-sync.md) for protocol details.
 
-## 9. Build release artifacts
+## 8. Release artifacts
 
 Build a release APK for direct distribution:
 
@@ -232,11 +192,9 @@ Build a multi-ABI Android App Bundle:
 pnpm android:build:aab
 ```
 
-Release outputs are under the generated Gradle `build/outputs` tree. An AAB is an application-store input, not a directly installable phone package.
+An AAB is an application-store input, not a directly installable phone package. Release signing material must remain outside the repository. Do not commit a keystore, passwords, or `keystore.properties`.
 
-A release intended for distribution still requires a protected signing keystore and release workflow configuration. Do not commit a keystore, passwords, or `keystore.properties`. Signing material is deliberately unavailable to pull-request jobs.
-
-The manual **Android package** workflow on the unified self-hosted runner can build a debug APK, release APK, or release AAB and uploads the selected artifact with the exact source SHA in its artifact name.
+The manual **Android package** workflow on the unified self-hosted runner can build the supported Android artifacts and records the exact source SHA in the uploaded artifact name.
 
 ## Android storage and permissions
 
@@ -248,34 +206,45 @@ Android Auto Backup and device-transfer backup are disabled for the application 
 
 ## Secure provider credentials
 
-Secure AI-provider credentials use an AES-256-GCM key generated in Android Keystore. Encrypted records remain in app-private preferences excluded from backup. Session-only credentials still disappear when Android kills the process. Credentials are never included in SQLite learner data, authoring drafts, deck exports, complete backups, diagnostics, or ordinary incoming/outgoing shares.
+Secure AI-provider credentials use an AES-256-GCM key generated in Android Keystore. Encrypted records remain in app-private preferences excluded from backup. Session-only credentials disappear when Android kills the process. Credentials are never included in SQLite learner data, authoring drafts, deck exports, complete backups, diagnostics, or ordinary incoming/outgoing shares.
 
-Device Sync can transfer selected secure credentials only when explicitly enabled **by the sender** for an authenticated encrypted LAN offer. File-based synchronization never contains credential bytes.
+Device Sync can transfer selected secure credentials only when explicitly enabled by the sender for an authenticated encrypted LAN offer. File-based synchronization never contains credential bytes.
 
 ## Manual acceptance before merging an Android change
 
-1. Confirm the app header is below the Android status/cutout region and the bottom ostudy navigation is above gesture/three-button system navigation.
-2. Open Create Deck and other representative editors; show the software keyboard and confirm the focused field and actions remain reachable.
-3. Create, edit, archive, and delete decks and cards.
-4. Add a managed image to a card and template; restart and verify rendering.
-5. Start practice, reveal and rate cards, then verify Analytics.
-6. Background and resume during editing and practice.
-7. Force-stop and relaunch during an unfinished card/template/bulk draft and during revealed-but-unrated practice.
-8. Import a `.studydeck` and generated `.ostudy.json` through the picker.
-9. Save and restore an `.ostudybackup` through a document provider.
-10. Save and share a deck through Android's system interfaces, and send a supported file to ostudy from Files.
-11. Save a provider credential, restart, and test the provider profile.
-12. Import a digital-text PDF and confirm generation succeeds without unnecessary page OCR.
-13. Import a scanned/image-only PDF and confirm ML Kit OCR recovers usable text and generation can complete.
-14. Start a longer PDF job, background the app, and verify the foreground processing notification remains visible.
-15. Cancel/retry a PDF job and verify cards are not duplicated or partially committed.
-16. Create one desktop sync offer and scan it on Android. Confirm the Android app receives the desktop library without creating a phone invitation or pressing a second confirmation button. Repeat with API sharing off/on and confirm Android appearance settings never change.
-17. Create an intentional reverse offer from Android only when testing Android→desktop changes; verify ordinary one-sided edits use the stored baseline and intentional same-field edits surface as explicit conflicts.
-18. Rotate, test landscape, test the software keyboard, and verify system Back closes overlays/nested screens correctly.
+For changes that affect Android behavior, use the maintained install wrapper first, then verify the relevant workflows on the actual physical device being tested. Do not assume the device model from earlier testing.
+
+Representative acceptance checks include:
+
+1. The app header is below the status/cutout region and bottom navigation is above system navigation.
+2. Editors remain reachable with the software keyboard visible.
+3. Create/edit/archive/delete deck and card paths work.
+4. Managed images survive restart.
+5. Practice reveal/rating and Analytics work.
+6. Background/resume and force-stop/relaunch preserve the intended durable state.
+7. Import/export/backup use Android system pickers correctly.
+8. Saved AI credentials remain available after restart and provider testing succeeds.
+9. Digital-text and scanned PDFs use the intended extraction/OCR pipeline.
+10. Longer PDF jobs keep their foreground-processing behavior and do not duplicate cards after cancel/retry.
+11. Device-sync QR receive/send behavior works in the intended direction.
+12. Portrait/landscape, IME resizing, and system Back behave correctly.
+
+Choose the checks relevant to the change; the emulator suite remains the automated baseline.
 
 ## Troubleshooting
 
-### The emulator is very slow or will not start
+### Physical install fails
+
+Start with:
+
+```bash
+adb devices -l
+pnpm android:install -- --serial <adb-serial>
+```
+
+The wrapper already uses `--no-streaming -r`. Capture the complete `adb` package-manager error if installation still fails rather than switching to a different install mechanism.
+
+### Emulator is slow or will not start
 
 Run:
 
@@ -283,43 +252,31 @@ Run:
 pnpm android:doctor:emulator
 ```
 
-The regular test path requires KVM. A nested virtual machine may not expose hardware virtualization even when the outer host supports it; use a properly configured self-hosted runner or physical device in that case.
+The regular qualification path requires KVM. A nested virtual machine may not expose hardware virtualization even when the outer host supports it; use the configured self-hosted runner or an appropriate development host.
 
 ### Android Studio cannot find the SDK
 
-Run any repository Android script once. It writes `src-tauri/gen/android/local.properties` from the selected `ANDROID_HOME`. You can also open `src-tauri/gen/android` directly in Android Studio after that file exists.
+Run a repository Android wrapper once. It writes `src-tauri/gen/android/local.properties` from the selected SDK. You can then open `src-tauri/gen/android` in Android Studio for inspection if needed.
 
 ### A local AI server is unreachable
 
 - emulator to development host: use `10.0.2.2`;
-- physical phone: use the computer's LAN address;
-- do not use `127.0.0.1` unless the server runs on Android itself;
-- confirm phone and host are on the same network;
+- physical phone: use the computer's reachable LAN address;
+- do not use `127.0.0.1` unless the model server runs on Android itself;
+- confirm the devices can communicate on the local network;
 - LAN HTTP still requires ostudy's explicit insecure-local-network acknowledgement;
 - cloud providers remain HTTPS-only.
 
-### Device synchronization fails after QR detection
+### Retrieve Android diagnostics
 
-Android system Logcat is useful for native camera/Activity crashes, but ostudy's Rust synchronization diagnostics are written to the debug app's private structured JSONL log. With the phone connected, retrieve the current log with:
+With the debug device connected:
 
 ```bash
 pnpm android:diagnostics
 ```
 
-To select one phone when several ADB devices are connected:
-
-```bash
-bash ./scripts/android-diagnostics.sh --serial <adb-serial>
-```
-
-The command uses Android `run-as` and therefore targets the debuggable package `io.github.jferments.ostudy.dev`. It prints the private `diagnostics/ostudy.jsonl` without copying credentials, document text, prompts, or other data excluded by the diagnostic redaction boundary.
-
-After the encrypted pairing handshake, a receiver-side synchronization failure is returned to the sender as a typed encrypted error rather than appearing only as an EOF/`failed to fill whole buffer`. Optional API-credential storage failure does not invalidate an already committed study-library merge; the receiver completes library synchronization and reports that credentials need to be entered again.
-
-### A document provider import fails
-
-Retry with a local Downloads copy and inspect Logcat. ostudy deliberately rejects empty, oversized, changing, malformed, or unsupported content even when the provider supplied a plausible filename or MIME type.
+The diagnostics wrapper reads the debug app's bounded private log without copying credentials, document text, prompts, or other data excluded by the diagnostic redaction boundary.
 
 ### PDF OCR fails
 
-No Tesseract installation is required on Android. Capture the document-processing phase and redacted error text, verify the page image is readable at normal zoom, and inspect Logcat for the native ML Kit adapter error. Very low-resolution scans, unusual scripts not covered by the bundled Latin recognizer, extreme page dimensions, or malformed PDFs may still need preprocessing or a future script-specific model.
+No Tesseract installation is required on Android. Capture the document-processing phase and redacted error text, verify the page image is readable at normal zoom, and inspect Logcat for the native ML Kit adapter error. Very low-resolution scans, unusual scripts not covered by the bundled recognizer, extreme page dimensions, or malformed PDFs may still need preprocessing or a future script-specific model.

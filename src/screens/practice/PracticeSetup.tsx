@@ -1,14 +1,23 @@
+import { useEffect, useRef } from "react";
+
 import type { DeckSummary } from "../../ipc/decks";
 import type { PracticeWorkloadOverview } from "../../ipc/practice";
 import { formatConfidence, type RecentDeckSummary } from "./confidence";
+import {
+  resolvePracticeSetupDeckIds,
+  savePracticeSetupDeckIds,
+} from "./practiceSetupScope";
+
+export type PracticeWorkloadStatus = "idle" | "empty" | "loading" | "ready" | "error";
 
 interface PracticeSetupProps {
   decks: DeckSummary[];
   selectedDeckIds: Set<string>;
   shuffle: boolean;
   isStarting: boolean;
-  isLoadingWorkload: boolean;
+  workloadStatus: PracticeWorkloadStatus;
   workload: PracticeWorkloadOverview | null;
+  workloadError: string | null;
   recentDecks: RecentDeckSummary[];
   onSelectedDeckIdsChange: (deckIds: Set<string>) => void;
   onShuffleChange: (shuffle: boolean) => void;
@@ -22,17 +31,35 @@ export function PracticeSetup({
   selectedDeckIds,
   shuffle,
   isStarting,
-  isLoadingWorkload,
+  workloadStatus,
   workload,
+  workloadError,
   recentDecks,
   onSelectedDeckIdsChange,
   onShuffleChange,
   onStart,
 }: PracticeSetupProps) {
+  const scopeInitialized = useRef(false);
   const decksWithCards = decks.filter(
     (deck) => deck.archivedAt === null && deck.generatedCardCount > 0,
   );
-  const scheduledCount = (workload?.scheduledReviews ?? 0) + (workload?.scheduledNew ?? 0);
+  const workloadReady = workloadStatus === "ready" && workload !== null;
+  const scheduledCount = workloadReady
+    ? workload.scheduledReviews + workload.scheduledNew
+    : 0;
+
+  useEffect(() => {
+    if (scopeInitialized.current || decks.length === 0) return;
+    scopeInitialized.current = true;
+    if (selectedDeckIds.size > 0) return;
+    const restored = resolvePracticeSetupDeckIds(decks);
+    if (restored.length > 0) onSelectedDeckIdsChange(new Set(restored));
+  }, [decks, onSelectedDeckIdsChange, selectedDeckIds.size]);
+
+  function commitDeckSelection(next: Set<string>): void {
+    savePracticeSetupDeckIds(next);
+    onSelectedDeckIdsChange(next);
+  }
 
   if (decksWithCards.length === 0) {
     return (
@@ -55,9 +82,7 @@ export function PracticeSetup({
             <button
               type="button"
               className="text-button"
-              onClick={() =>
-                onSelectedDeckIdsChange(new Set(decksWithCards.map((deck) => deck.id)))
-              }
+              onClick={() => commitDeckSelection(new Set(decksWithCards.map((deck) => deck.id)))}
             >
               Select all
             </button>
@@ -65,7 +90,7 @@ export function PracticeSetup({
               <button
                 type="button"
                 className="text-button"
-                onClick={() => onSelectedDeckIdsChange(new Set())}
+                onClick={() => commitDeckSelection(new Set())}
               >
                 Clear
               </button>
@@ -90,7 +115,7 @@ export function PracticeSetup({
                     const next = new Set(selectedDeckIds);
                     if (event.currentTarget.checked) next.add(deck.id);
                     else next.delete(deck.id);
-                    onSelectedDeckIdsChange(next);
+                    commitDeckSelection(next);
                   }}
                 />
                 <span>
@@ -106,7 +131,7 @@ export function PracticeSetup({
           })}
         </div>
 
-        {workload && selectedDeckIds.size > 0 ? (
+        {workloadReady && selectedDeckIds.size > 0 ? (
           <div className="session-plan-copy">
             <strong>{scheduledCount} cards in the scheduled session</strong>
             <span>
@@ -135,23 +160,23 @@ export function PracticeSetup({
             <span>Shuffle within priority groups</span>
           </label>
           <div className="practice-due-inline">
-            <strong>{scheduledCount}</strong>
+            <strong>{workloadReady ? scheduledCount : "—"}</strong>
             <span>scheduled</span>
           </div>
-          {scheduledCount > 0 ? (
+          {workloadReady && scheduledCount > 0 ? (
             <button
               type="button"
               className="primary-button practice-start-button"
-              disabled={selectedDeckIds.size === 0 || isStarting || isLoadingWorkload}
+              disabled={selectedDeckIds.size === 0 || isStarting}
               onClick={() => onStart([...selectedDeckIds], shuffle, "scheduled")}
             >
               {isStarting ? "Starting…" : "Start scheduled practice"}
             </button>
-          ) : workload && workload.extraAvailable > 0 && selectedDeckIds.size > 0 ? (
+          ) : workloadReady && workload.extraAvailable > 0 && selectedDeckIds.size > 0 ? (
             <button
               type="button"
               className="secondary-button practice-start-button"
-              disabled={isStarting || isLoadingWorkload}
+              disabled={isStarting}
               onClick={() => onStart([...selectedDeckIds], shuffle, "extra")}
             >
               {isStarting ? "Starting…" : "Study this selection anyway"}
@@ -167,27 +192,27 @@ export function PracticeSetup({
       <section className="practice-workload-panel" aria-label="Practice workload" aria-live="polite">
         <div>
           <span>Today</span>
-          <strong>{workload?.reviewsRemaining ?? 0}</strong>
+          <strong>{workloadReady ? workload.reviewsRemaining : "—"}</strong>
           <small>reviews remaining</small>
         </div>
         <div>
           <span>New</span>
-          <strong>{workload?.newRemaining ?? 0}</strong>
+          <strong>{workloadReady ? workload.newRemaining : "—"}</strong>
           <small>cards remaining</small>
         </div>
         <div>
           <span>Ready now</span>
           <strong>
-            {(workload?.studyableDueReviews ?? 0) + (workload?.studyableDueNew ?? 0)}
+            {workloadReady ? workload.studyableDueReviews + workload.studyableDueNew : "—"}
           </strong>
           <small>studyable cards</small>
         </div>
         <div>
           <span>Priority</span>
-          <strong>{workload?.needsMorePractice ?? 0}</strong>
+          <strong>{workloadReady ? workload.needsMorePractice : "—"}</strong>
           <small>need more practice</small>
         </div>
-        {isLoadingWorkload ? <span className="workload-loading">Updating…</span> : null}
+        <WorkloadStatus status={workloadStatus} error={workloadError} />
       </section>
 
       <section className="recent-practice-section" aria-labelledby="recent-practice-heading">
@@ -220,4 +245,30 @@ export function PracticeSetup({
       </section>
     </>
   );
+}
+
+function WorkloadStatus({
+  status,
+  error,
+}: {
+  status: PracticeWorkloadStatus;
+  error: string | null;
+}) {
+  if (status === "loading") {
+    return <span className="workload-loading">Updating…</span>;
+  }
+  if (status === "empty") {
+    return <span className="workload-loading">Select at least one deck to plan a session.</span>;
+  }
+  if (status === "error") {
+    return (
+      <span className="workload-loading">
+        Workload unavailable{error ? `: ${error}` : "."}
+      </span>
+    );
+  }
+  if (status === "idle") {
+    return <span className="workload-loading">Preparing workload…</span>;
+  }
+  return null;
 }

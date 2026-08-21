@@ -52,7 +52,6 @@
   overflow-wrap: anywhere;
 }
 
-
 .credentialField {
   position: relative;
   display: block;
@@ -92,4 +91,54 @@
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.advancedSettings {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.advancedSettings > summary {
+  min-height: 48px;
+  padding: 14px 18px;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 760;
+}
+
+.advancedBody {
+  display: grid;
+  gap: 16px;
+  border-top: 1px solid var(--border);
+  padding: 18px;
+}
+
+.probeSummary {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--surface-strong);
+}
+
+.probeSummary > span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.probeSummary[data-status="verified"] > strong {
+  color: var(--success);
+}
+
+.probeSummary[data-status="partial"] > strong {
+  color: var(--warning);
+}
+
+.probeSummary[data-status="failed"] > strong {
+  color: var(--danger);
 }

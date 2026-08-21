@@ -42,7 +42,7 @@ export type {
 
 function App() {
   const controller = useAppController();
-  const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? true;
+  const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? false;
 
   return (
     <LayoutModeProvider>

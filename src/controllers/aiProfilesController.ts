@@ -53,6 +53,7 @@ export interface AiProfilesController {
   updateDraft: (patch: Partial<AiProfileDraft>) => void;
   setCredentialDraft: (value: string) => void;
   setCredentialPersistence: (value: AiCredentialPersistence) => void;
+  connectSetup: () => Promise<void>;
   saveProfile: () => Promise<void>;
   deleteProfile: () => Promise<void>;
   saveCredential: () => Promise<void>;
@@ -115,10 +116,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
           if (serverModelId) {
             setDraft((current) => (current ? { ...current, modelId: serverModelId } : current));
             if (announceChanges) {
-              showToast(
-                "info",
-                "The provider reports one available model. ostudy selected it; save the model choice to finish setup.",
-              );
+              showToast("info", "The provider reports one available model. ostudy selected it.");
             }
           }
         } else if (profile.modelId && !selectedStillAvailable) {
@@ -182,7 +180,6 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       return;
     }
     const token = detailLane.begin();
-    setErrorMessage(null);
     void Promise.all([getAiProviderProfile(profileId), getAiProviderProbeResult(profileId)])
       .then(([profile, probe]) => {
         if (!detailLane.isCurrent(token)) return;
@@ -204,13 +201,6 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       });
   }, [detailLane, discoverModelsForProfile, selectedProfileId]);
 
-  // AI provider configuration is already protected by operation identity and
-  // optimistic profile revisions. Treating it as a durable content-editor
-  // draft introduced a second, unrelated revision lifecycle: saving a
-  // credential increments the profile revision while an editor draft may still
-  // be opening against the previous revision. Keep credentials ephemeral and
-  // track the small settings form directly instead of blocking provider actions
-  // on the card/template draft subsystem.
   const profileDraftDirty = hasProfileDraftChanges(draft, selectedProfile, selectedProfileId);
   const dirty = credentialDraft !== "" || profileDraftDirty;
 
@@ -248,6 +238,70 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
 
   function updateDraft(patch: Partial<AiProfileDraft>): void {
     setDraft((current) => (current ? { ...current, ...patch } : current));
+  }
+
+  async function connectSetup(): Promise<void> {
+    if (!draft || mutating) return;
+    if (
+      draft.authMode !== "none" &&
+      credentialDraft === "" &&
+      !profileHasCredential(selectedProfile)
+    ) {
+      setErrorMessage("Enter the API key before connecting to this provider.");
+      return;
+    }
+
+    setMutating(true);
+    setErrorMessage(null);
+    let committedProfile: AiProviderProfileDetail | null = selectedProfile;
+    let credentialCommitted = false;
+    try {
+      const wasExisting = selectedProfile !== null;
+      let saved: AiProviderProfileDetail;
+      if (!selectedProfile) {
+        saved = await createAiProviderProfile(draft);
+      } else if (profileDraftDirty) {
+        saved = await updateAiProviderProfile(selectedProfile.id, selectedProfile.revision, draft);
+      } else {
+        saved = selectedProfile;
+      }
+      committedProfile = saved;
+
+      if (saved.authMode !== "none" && credentialDraft !== "") {
+        saved = await setAiProviderCredential(
+          saved.id,
+          saved.revision,
+          credentialDraft,
+          credentialPersistence,
+        );
+        committedProfile = saved;
+        credentialCommitted = true;
+      }
+
+      setSelectedProfile(saved);
+      setSelectedProfileId(saved.id);
+      setDraft(draftFromProfile(saved));
+      setCredentialDraft("");
+      setProbeResult(null);
+      setModels([]);
+      setModelsLoaded(false);
+      await loadProfiles();
+      showToast("success", wasExisting ? "AI connection updated." : "AI connection saved.");
+      if (canDiscoverModels(saved)) await discoverModelsForProfile(saved, false);
+    } catch (error: unknown) {
+      if (committedProfile && committedProfile !== selectedProfile) {
+        setSelectedProfile(committedProfile);
+        setSelectedProfileId(committedProfile.id);
+        setDraft(draftFromProfile(committedProfile));
+        setProbeResult(null);
+        setModels([]);
+        setModelsLoaded(false);
+      }
+      if (credentialCommitted) setCredentialDraft("");
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setMutating(false);
+    }
   }
 
   async function saveProfile(): Promise<void> {
@@ -436,6 +490,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     updateDraft,
     setCredentialDraft,
     setCredentialPersistence,
+    connectSetup,
     saveProfile,
     deleteProfile,
     saveCredential,
@@ -450,6 +505,11 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
 
 function canDiscoverModels(profile: AiProviderProfileDetail): boolean {
   if (profile.authMode === "none") return true;
+  return profileHasCredential(profile);
+}
+
+function profileHasCredential(profile: AiProviderProfileDetail | null): boolean {
+  if (!profile) return false;
   return (
     profile.credentialStatus.status === "saved_securely" ||
     profile.credentialStatus.status === "session_only"

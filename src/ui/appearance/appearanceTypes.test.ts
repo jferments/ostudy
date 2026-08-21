@@ -57,6 +57,11 @@ describe("appearance resolution", () => {
     expect(profile.material).toBe("simple");
   });
 
+  it("keeps interactive tutorials off when an older settings shape omits the preference", () => {
+    const profile = resolveAppearanceProfile({ ...settings, tutorialsEnabled: undefined }, environment);
+    expect(profile.tutorialsEnabled).toBe(false);
+  });
+
   it("maps legacy animation settings during the bundled transition", () => {
     const profile = resolveAppearanceProfile(
       {

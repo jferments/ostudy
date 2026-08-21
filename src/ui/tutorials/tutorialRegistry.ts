@@ -15,7 +15,6 @@ export interface TutorialModule {
   id: TutorialModuleId;
   version: number;
   title: string;
-  autoStartAnchor: string;
   steps: readonly TutorialStep[];
 }
 
@@ -24,7 +23,6 @@ export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>>
     id: "orientation",
     version: 2,
     title: "Welcome to ostudy",
-    autoStartAnchor: "flashcards.workspaces",
     steps: [
       {
         id: "flashcards-workspaces",
@@ -46,7 +44,6 @@ export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>>
     id: "search",
     version: 1,
     title: "Find and manage cards",
-    autoStartAnchor: "search.filters",
     steps: [
       {
         id: "filters",
@@ -62,7 +59,6 @@ export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>>
     id: "practice",
     version: 1,
     title: "Practice a deck",
-    autoStartAnchor: "practice.card",
     steps: [
       {
         id: "card",
@@ -85,7 +81,6 @@ export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>>
     id: "documents",
     version: 1,
     title: "Create cards from documents",
-    autoStartAnchor: "documents.upload",
     steps: [
       {
         id: "upload",
@@ -98,10 +93,3 @@ export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>>
     ],
   },
 };
-
-export const tutorialModuleOrder: readonly TutorialModuleId[] = [
-  "orientation",
-  "search",
-  "practice",
-  "documents",
-];

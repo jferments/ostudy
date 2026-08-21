@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as analyticsIpc from "../ipc/analytics";
@@ -137,7 +137,9 @@ const workload: practiceIpc.PracticeWorkloadOverview = {
 const noDueWorkload: practiceIpc.PracticeWorkloadOverview = {
   ...workload,
   studyableDueReviews: 0,
+  studyableDueNew: 0,
   scheduledReviews: 0,
+  scheduledNew: 0,
   needsMorePractice: 0,
 };
 const previews: practiceIpc.ReviewPreviewSet = {
@@ -189,7 +191,6 @@ function renderPractice(overrides?: Partial<React.ComponentProps<typeof Practice
 }
 
 async function startAndReveal(): Promise<void> {
-  fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
   await screen.findByText("1 cards in the scheduled session");
   fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
   fireEvent.click(await screen.findByRole("button", { name: "Show answer" }));
@@ -199,6 +200,7 @@ async function startAndReveal(): Promise<void> {
 describe("PracticeScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     vi.mocked(analyticsIpc.getRecentPracticeReviews).mockResolvedValue([]);
     vi.mocked(practiceIpc.getPracticeWorkload).mockResolvedValue(workload);
     vi.mocked(practiceIpc.getPracticeCardWindow).mockResolvedValue({
@@ -223,20 +225,27 @@ describe("PracticeScreen", () => {
     vi.mocked(practiceIpc.submitPracticeReview).mockResolvedValue(completedReview);
   });
 
-  it("shows authoritative daily workload and starts scheduled mode", async () => {
-    renderPractice();
-    fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+  it("selects the eligible setup scope by default and starts with that exact workload scope", async () => {
+    renderPractice({ decks: [deck, secondDeck] });
+    const dog = await screen.findByRole("checkbox", { name: /Dog facts/u });
+    const cat = screen.getByRole("checkbox", { name: /Cat facts/u });
+    await waitFor(() => {
+      expect((dog as HTMLInputElement).checked).toBe(true);
+      expect((cat as HTMLInputElement).checked).toBe(true);
+      expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledWith(
+        expect.arrayContaining([deck.id, secondDeck.id]),
+        [],
+      );
+    });
+
     expect(await screen.findByText("1 cards in the scheduled session")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
-    await waitFor(() =>
-      expect(practiceIpc.startSelectedPractice).toHaveBeenCalledWith({
-        operationId: "0".repeat(32),
-        deckIds: [deck.id],
-        tagIds: [],
-        shuffle: true,
-        mode: "scheduled",
-      }),
-    );
+    await waitFor(() => {
+      const input = vi.mocked(practiceIpc.startSelectedPractice).mock.calls[0]?.[0];
+      expect(new Set(input?.deckIds)).toEqual(new Set([deck.id, secondDeck.id]));
+      expect(input?.tagIds).toEqual([]);
+      expect(input?.mode).toBe("scheduled");
+    });
   });
 
   it("discards a slower workload response for an obsolete deck scope", async () => {
@@ -247,9 +256,9 @@ describe("PracticeScreen", () => {
       .mockReturnValueOnce(second.promise);
     renderPractice({ decks: [deck, secondDeck] });
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
+    const cat = await screen.findByRole("checkbox", { name: /Cat facts/u });
     await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Cat facts/u }));
+    fireEvent.click(cat);
     await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenCalledTimes(2));
 
     second.resolve({
@@ -264,10 +273,22 @@ describe("PracticeScreen", () => {
     expect(screen.queryByText("1 cards in the scheduled session")).toBeNull();
   });
 
-  it("offers explicit extra practice when nothing fits the scheduled workload", async () => {
+  it("shows workload errors as unavailable state instead of zero metrics", async () => {
+    vi.mocked(practiceIpc.getPracticeWorkload).mockRejectedValue(new Error("Planner unavailable"));
+    renderPractice();
+
+    expect(await screen.findByText("Workload unavailable: Planner unavailable")).toBeTruthy();
+    const panel = screen.getByRole("region", { name: "Practice workload" });
+    expect(within(panel).getAllByText("—")).toHaveLength(4);
+    expect(within(panel).queryByText(/^0$/u)).toBeNull();
+    expect((screen.getByRole("button", { name: "Start scheduled practice" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("offers explicit extra practice when the loaded workload is truly zero", async () => {
     vi.mocked(practiceIpc.getPracticeWorkload).mockResolvedValue(noDueWorkload);
     renderPractice({ decks: [noDueDeck] });
-    fireEvent.click(await screen.findByRole("checkbox", { name: /Reviewed dog facts/u }));
+    const panel = await screen.findByRole("region", { name: "Practice workload" });
+    expect(within(panel).getAllByText("0").length).toBeGreaterThan(0);
     fireEvent.click(await screen.findByRole("button", { name: "Study this selection anyway" }));
     await waitFor(() =>
       expect(practiceIpc.startSelectedPractice).toHaveBeenCalledWith({
@@ -377,7 +398,6 @@ describe("PracticeScreen", () => {
       .mockRejectedValueOnce(new Error("Native response was lost."))
       .mockResolvedValueOnce(session);
     renderPractice();
-    fireEvent.click(await screen.findByRole("checkbox", { name: /Dog facts/u }));
     await screen.findByText("1 cards in the scheduled session");
 
     fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));

@@ -33,7 +33,7 @@ const DEFAULTS: AppSettings = {
   materialPreference: "automatic",
   decorativeArtwork: true,
   celebrationsEnabled: true,
-  tutorialsEnabled: true,
+  tutorialsEnabled: false,
   confirmDeletions: true,
   practiceShuffle: true,
   desiredRetention: 0.9,
