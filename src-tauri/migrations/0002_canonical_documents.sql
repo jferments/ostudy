@@ -56,11 +56,14 @@ ADD COLUMN source_locator_json TEXT NOT NULL DEFAULT '{}';
 ALTER TABLE document_generation_windows
 ADD COLUMN visual_asset_ids_json TEXT NOT NULL DEFAULT '[]';
 
+-- Public-v1 generation-window rows did not persist a partition title. Keep the
+-- locator label absent rather than fabricating one during migration; semantic
+-- planning can derive a display label from canonical chunks when needed.
 UPDATE document_generation_windows
 SET source_locator_json = json_object(
         'unitKind', 'page',
         'unitNumbers', json(page_numbers_json),
-        'sectionLabel', partition_title,
+        'sectionLabel', NULL,
         'assetIds', json_array(),
         'timeRangeMs', NULL
     );
@@ -334,6 +337,29 @@ SELECT element.document_id,
 FROM document_semantic_elements AS element
 ORDER BY element.document_id, element.element_index;
 
+-- Preserve the same page-render evidence that the live PDF adapter would attach
+-- to a visual semantic chunk. This keeps migrated public-v1 documents equivalent
+-- to newly ingested PDFs for later multimodal enrichment and retrieval.
+WITH canonical_chunks AS (
+    SELECT chunk.*,
+           document.source_unit_kind,
+           CASE
+               WHEN EXISTS (
+                   SELECT 1
+                   FROM json_each(chunk.element_types_json)
+                   WHERE value IN ('image', 'table', 'key_value')
+               ) OR instr(chunk.full_text, 'has no extractable structured text') > 0
+               THEN COALESCE((
+                   SELECT json_group_array(
+                       'unit-render:' || printf('%06d', CAST(value AS INTEGER))
+                   )
+                   FROM json_each(chunk.page_numbers_json)
+               ), json_array())
+               ELSE json_array()
+           END AS visual_asset_ids_json
+    FROM document_semantic_chunks AS chunk
+    JOIN documents AS document ON document.id = chunk.document_id
+)
 INSERT INTO document_semantic_chunk_sources (
     document_id, chunk_index, source_locator_json,
     visual_asset_ids_json, content_sha256,
@@ -342,19 +368,18 @@ INSERT INTO document_semantic_chunk_sources (
 SELECT chunk.document_id,
        chunk.chunk_index,
        json_object(
-           'unitKind', document.source_unit_kind,
+           'unitKind', chunk.source_unit_kind,
            'unitNumbers', json(chunk.page_numbers_json),
            'sectionLabel', chunk.heading_context,
-           'assetIds', json_array(),
+           'assetIds', json(chunk.visual_asset_ids_json),
            'timeRangeMs', NULL
        ),
-       json_array(),
+       chunk.visual_asset_ids_json,
        chunk.text_sha256,
        1,
        chunk.created_at,
        chunk.created_at
-FROM document_semantic_chunks AS chunk
-JOIN documents AS document ON document.id = chunk.document_id
+FROM canonical_chunks AS chunk
 ORDER BY chunk.document_id, chunk.chunk_index;
 
 UPDATE documents
