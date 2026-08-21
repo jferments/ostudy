@@ -145,6 +145,16 @@ enum ModelMatch {
     Missing,
 }
 
+struct CapabilityEvidence<'a> {
+    models: Option<&'a [ProviderModel]>,
+    model_listing: bool,
+    text_completion: bool,
+    structured_output: bool,
+    document_generation_schema: Option<bool>,
+    usage_reported: bool,
+    properties: &'a ProviderProperties,
+}
+
 #[tauri::command]
 pub async fn list_ai_provider_models(
     database: State<'_, Database>,
@@ -405,13 +415,15 @@ pub async fn test_ai_provider_profile(
             ));
             let capabilities = build_capabilities(
                 &profile,
-                models.as_deref(),
-                models.is_some(),
-                false,
-                false,
-                None,
-                false,
-                &properties,
+                CapabilityEvidence {
+                    models: models.as_deref(),
+                    model_listing: models.is_some(),
+                    text_completion: false,
+                    structured_output: false,
+                    document_generation_schema: None,
+                    usage_reported: false,
+                    properties: &properties,
+                },
             );
             return finish_and_persist(
                 database.inner(),
@@ -518,13 +530,15 @@ pub async fn test_ai_provider_profile(
         });
     let capabilities = build_capabilities(
         &profile,
-        models.as_deref(),
-        models.is_some(),
-        true,
-        structured_outcome.is_some(),
-        document_schema_supported,
-        usage_reported,
-        &properties,
+        CapabilityEvidence {
+            models: models.as_deref(),
+            model_listing: models.is_some(),
+            text_completion: true,
+            structured_output: structured_outcome.is_some(),
+            document_generation_schema: document_schema_supported,
+            usage_reported,
+            properties: &properties,
+        },
     );
     let overall_status = if optional_failure {
         ProbeOverallStatus::Partial
@@ -759,14 +773,17 @@ fn snapshot_matches_result(profile: &ProfileSnapshot, result: &AiProviderProbeRe
 
 fn build_capabilities(
     profile: &ProfileSnapshot,
-    models: Option<&[ProviderModel]>,
-    model_listing: bool,
-    text_completion: bool,
-    structured_output: bool,
-    document_generation_schema: Option<bool>,
-    usage_reported: bool,
-    properties: &ProviderProperties,
+    evidence: CapabilityEvidence<'_>,
 ) -> Vec<AiCapabilityDto> {
+    let CapabilityEvidence {
+        models,
+        model_listing,
+        text_completion,
+        structured_output,
+        document_generation_schema,
+        usage_reported,
+        properties,
+    } = evidence;
     let mut capabilities = default_unknown_capabilities(profile.provider_kind);
     set_capability(
         &mut capabilities,
@@ -1069,15 +1086,18 @@ mod tests {
     #[test]
     fn openrouter_probes_can_report_provider_enforced_json_schema_and_document_contract() {
         let profile = profile(ProviderKind::Openrouter, "openai/example");
+        let properties = ProviderProperties::default();
         let capabilities = build_capabilities(
             &profile,
-            None,
-            true,
-            true,
-            true,
-            Some(true),
-            true,
-            &ProviderProperties::default(),
+            CapabilityEvidence {
+                models: None,
+                model_listing: true,
+                text_completion: true,
+                structured_output: true,
+                document_generation_schema: Some(true),
+                usage_reported: true,
+                properties: &properties,
+            },
         );
         let schema = capabilities
             .iter()
