@@ -12,7 +12,8 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     ai::document_intelligence::{
-        DocumentOutline, DocumentTaskContext, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
+        DocumentOutline, DocumentTaskContext, FLASHCARD_PROMPT_VERSION, FLASHCARD_SCHEMA_VERSION,
+        OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
     },
     database::Database,
     document_domain::SourceLocator,
@@ -22,7 +23,7 @@ use crate::{
 };
 
 const OUTLINE_CHECKPOINT_CONTRACT: &str = "document-outline-v4-canonical-source";
-const GENERATION_CHECKPOINT_CONTRACT: &str = "document-generation-v3-canonical-source";
+const GENERATION_CHECKPOINT_CONTRACT: &str = "document-generation-v4-modular-source";
 const MAX_CHECKPOINT_CARDS: usize = 16;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -150,7 +151,7 @@ pub(crate) fn generation_contract_key(
         }
     };
     Some(hash_text(&format!(
-        "{GENERATION_CHECKPOINT_CONTRACT}|{}|{}|max_cards={maximum_cards}|outline={}",
+        "{GENERATION_CHECKPOINT_CONTRACT}|{}|{}|flashcard_schema={FLASHCARD_SCHEMA_VERSION}|flashcard_prompt={FLASHCARD_PROMPT_VERSION}|max_cards={maximum_cards}|outline={}",
         identity.material(),
         plan.planning_fingerprint(),
         hash_text(&outline_json),

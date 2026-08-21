@@ -101,6 +101,7 @@ The exact sequence depends on the change. Each commit has one understandable pur
 - Update the PR state ledger after each meaningful publication checkpoint.
 - When changing a shared Rust struct, enum, serialized shape, migration schema, or other cross-module contract, search the entire repository for constructors, struct literals, deserializers, compatibility projections, tests, and documentation before declaring the increment complete. Do not rely on production call sites alone; stale test literals are compile failures too.
 - Treat a migration file and its registered checksum as one atomic contract. If migration bytes change before release, update the checksum in the same coherent increment and immediately qualify the manifest/static boundary before moving on.
+- For an architecture or monolith-removal refactor, publish the final ownership topology together with every required manifest, verifier, fixture, and regression-test update. Removing a required source path without registering its explicit replacement paths is an actionable static failure; do not weaken or delete the check merely to make the tree pass. A temporary compatibility module must be private, clearly documented, short-lived, and removed before terminal acceptance.
 
 In a local checkout, inspect continuously:
 
@@ -194,7 +195,7 @@ Before review readiness:
 - `currentState` is `readyForReview`;
 - actual base, branch, and head exactly match the ledger;
 - every acceptance criterion is terminal and has evidence;
-- static, fast, and full passed on the current exact head;
+- static, fast, and full passed on the current head;
 - Android passed or is explicitly `notRequired` for a non-Android change;
 - manual paths are passed, `notRequired`, or explicitly `humanRequired`;
 - `knownFailures` is empty.

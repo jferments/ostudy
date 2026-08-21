@@ -8,10 +8,10 @@ Date: 2026-08-21
 
 PR #63 made `CanonicalDocument`, canonical semantic chunks, source locators, and
 visual-evidence identities the authoritative input to document planning. The
-large-document AI implementation predates that boundary. Its public service is
-already partly separated: the execution facade performs bounded concurrent
+large-document AI implementation predates that boundary. Its public service was
+already partly separated: the execution facade performed bounded concurrent
 outline work, checkpoint reuse, deterministic persistence, and final assembly.
-The underlying `document_intelligence.rs`, however, combines approximately
+The underlying `document_intelligence.rs`, however, combined approximately
 113 KiB of unrelated responsibilities:
 
 - document-learning contracts and local validation;
@@ -20,17 +20,17 @@ The underlying `document_intelligence.rs`, however, combines approximately
 - provider profile loading and task context;
 - provider request bodies, endpoint selection, schema lowering, response
   decoding, compatibility retries, and token accounting; and
-- PDF-specific language that no longer represents the canonical input model.
+- PDF-specific language that no longer represented the canonical input model.
 
-That shape makes provider changes risky because they share a file with learning
-logic, makes format-neutral reasoning difficult to verify, and gives future
+That shape made provider changes risky because they shared a file with learning
+logic, made format-neutral reasoning difficult to verify, and gave future
 study-guide, practice-test, tutoring, semantic-search, and embedding features no
 stable domain layer to reuse.
 
 ## Decision
 
 `crate::ai::document_intelligence` remains the stable application-facing service
-boundary. It becomes a normal Rust module directory with the following owners:
+boundary. It is a normal Rust module directory with the following owners:
 
 - `mod.rs` — format-neutral orchestration. It owns bounded concurrency, cached
   fragment reuse, source-order persistence, deterministic collection, and
@@ -80,16 +80,24 @@ Provider wire objects must not escape transport.
 PR #63 intentionally preserves `pageStart`, `pageEnd`, `page_count`, and
 `SourcePageImage` as compatibility projections while PDF remains the only
 shipping ingestion adapter. This refactor does not change persisted outline or
-checkpoint JSON and therefore does not require a migration. Within new reasoning
-code, those numeric values are interpreted as one-based canonical source-unit
-bounds. New prompts, errors, and diagnostics use “source unit”, “source window”,
-or “visual evidence” unless a message is specifically describing the PDF
-adapter.
+checkpoint JSON and therefore does not require a database migration. Within new
+reasoning code, those numeric values are interpreted as one-based canonical
+source-unit bounds. New prompts, errors, and diagnostics use “source unit”,
+“source window”, or “visual evidence” unless a message is specifically
+describing the PDF adapter.
+
+The outline, flashcard, and curation prompts changed materially from PDF-oriented
+to canonical source-unit language, so their prompt versions advance. Existing
+outline and generation checkpoints are rebuildable acceleration data, not
+learner data. Outline checkpoint identity already includes outline prompt/schema
+versions; generation checkpoint identity now includes flashcard prompt/schema
+versions as well. Old rows remain harmless and simply stop matching the new
+contract. Serialized card, outline, and checkpoint row shapes remain unchanged.
 
 A later versioned contract may replace the compatibility names with explicit
 `SourceLocator` values. That change must update persisted checkpoints, repair or
-migrate existing rows, and revise prompt/schema versions atomically. It is not
-part of this behavior-preserving architecture refactor.
+migrate existing rows where necessary, and revise prompt/schema versions
+atomically. It is not part of this architecture refactor.
 
 ## Semantic reasoning and future embeddings
 
@@ -121,9 +129,9 @@ specific.
 2. Source and model content are never written to routine diagnostics.
 3. Independent provider calls may run concurrently; durable writes and returned
    artifact order remain deterministic by canonical source-window order.
-4. Cached fragments and generated-window checkpoints remain compatible across
-   this refactor because prompt/schema versions and persisted JSON shapes do not
-   change.
+4. Persisted outline/card JSON shapes remain compatible. Prompt/schema version
+   changes invalidate only rebuildable checkpoints through explicit contract
+   identity; they do not require learner-data migration.
 5. A failed optional global synthesis cannot discard deterministic local outline
    assembly.
 6. A failed curation batch retains already validated candidates rather than
@@ -153,8 +161,11 @@ Provider changes become localized and independently testable. Learning logic can
 be reused by later artifact types, and non-PDF adapters can feed the same
 orchestrator without inheriting PDF wording or wire details. More files and
 explicit visibility boundaries are introduced, and some compatibility names
-remain until a future versioned persistence change. The refactor deliberately
-prefers those explicit seams over a smaller file count with hidden coupling.
+remain until a future versioned persistence change. The prompt-version increase
+causes existing document-AI checkpoints to be recomputed on the next run, but no
+canonical document, deck, card, review history, or user setting is lost. The
+refactor deliberately prefers those explicit seams over a smaller file count
+with hidden coupling.
 
 ## Alternatives rejected
 
