@@ -375,11 +375,8 @@ fn normalize_fragment_outline(
         1_800,
         &format!("Educational material from source units {window_start}–{window_end}."),
     );
-    let learning_objectives = normalize_outline_items(
-        outline.learning_objectives,
-        MAX_FRAGMENT_OBJECTIVES,
-        500,
-    );
+    let learning_objectives =
+        normalize_outline_items(outline.learning_objectives, MAX_FRAGMENT_OBJECTIVES, 500);
     let key_concepts = normalize_outline_items(outline.key_concepts, MAX_FRAGMENT_CONCEPTS, 240);
     let mut sections = Vec::new();
     for (index, section) in outline
