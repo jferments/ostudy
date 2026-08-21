@@ -222,22 +222,35 @@ CREATE TABLE document_source_assets (
         ON DELETE CASCADE
 ) STRICT;
 
+-- Canonical semantic chunks are self-contained and do not depend on the legacy
+-- page-shaped semantic table. This table is the downstream read path for
+-- planning, multimodal evidence selection, and future embedding derivatives.
 CREATE TABLE document_semantic_chunk_sources (
-    document_id TEXT NOT NULL,
+    document_id TEXT NOT NULL
+        REFERENCES documents(id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL
         CHECK (chunk_index >= 0),
+    text TEXT NOT NULL
+        CHECK (length(text) <= 1000000),
+    full_text TEXT NOT NULL
+        CHECK (length(full_text) <= 1100000),
     source_locator_json TEXT NOT NULL,
     visual_asset_ids_json TEXT NOT NULL,
+    element_types_json TEXT NOT NULL
+        CHECK (length(element_types_json) <= 32000),
+    heading_context TEXT
+        CHECK (heading_context IS NULL OR length(heading_context) <= 2000),
+    token_estimate INTEGER NOT NULL
+        CHECK (token_estimate >= 0),
+    is_oversized INTEGER NOT NULL
+        CHECK (is_oversized IN (0, 1)),
     content_sha256 TEXT NOT NULL
         CHECK (length(content_sha256) = 64),
     canonical_schema_version INTEGER NOT NULL
         CHECK (canonical_schema_version >= 1),
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
-    PRIMARY KEY (document_id, chunk_index),
-    FOREIGN KEY (document_id, chunk_index)
-        REFERENCES document_semantic_chunks(document_id, chunk_index)
-        ON DELETE CASCADE
+    PRIMARY KEY (document_id, chunk_index)
 ) STRICT;
 
 INSERT INTO document_source_files (
@@ -361,12 +374,15 @@ WITH canonical_chunks AS (
     JOIN documents AS document ON document.id = chunk.document_id
 )
 INSERT INTO document_semantic_chunk_sources (
-    document_id, chunk_index, source_locator_json,
-    visual_asset_ids_json, content_sha256,
+    document_id, chunk_index, text, full_text, source_locator_json,
+    visual_asset_ids_json, element_types_json, heading_context,
+    token_estimate, is_oversized, content_sha256,
     canonical_schema_version, created_at, updated_at
 )
 SELECT chunk.document_id,
        chunk.chunk_index,
+       chunk.text,
+       chunk.full_text,
        json_object(
            'unitKind', chunk.source_unit_kind,
            'unitNumbers', json(chunk.page_numbers_json),
@@ -375,6 +391,10 @@ SELECT chunk.document_id,
            'timeRangeMs', NULL
        ),
        chunk.visual_asset_ids_json,
+       chunk.element_types_json,
+       chunk.heading_context,
+       chunk.token_estimate,
+       chunk.is_oversized,
        chunk.text_sha256,
        1,
        chunk.created_at,
