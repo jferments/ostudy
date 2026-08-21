@@ -1,8 +1,7 @@
 use serde_json::Value;
 
 use crate::{
-    document_scale::generation_visible_completion_tokens,
-    document_semantics::SemanticWindow,
+    document_scale::generation_visible_completion_tokens, document_semantics::SemanticWindow,
     error::CommandError,
 };
 
@@ -140,9 +139,6 @@ mod tests {
 
     #[test]
     fn visible_generation_budget_still_scales_with_card_count() {
-        assert!(
-            generation_visible_completion_tokens(16)
-                > generation_visible_completion_tokens(4)
-        );
+        assert!(generation_visible_completion_tokens(16) > generation_visible_completion_tokens(4));
     }
 }

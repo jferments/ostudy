@@ -4,9 +4,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::{
-    document_scale::{
-        GLOBAL_OUTLINE_VISIBLE_COMPLETION_TOKENS, OUTLINE_VISIBLE_COMPLETION_TOKENS,
-    },
+    document_scale::{GLOBAL_OUTLINE_VISIBLE_COMPLETION_TOKENS, OUTLINE_VISIBLE_COMPLETION_TOKENS},
     document_semantics::SemanticWindow,
     error::CommandError,
 };
@@ -375,17 +373,14 @@ fn normalize_fragment_outline(
     let summary = sanitize_outline_text(
         &outline.summary,
         1_800,
-        &format!(
-            "Educational material from source units {window_start}–{window_end}."
-        ),
+        &format!("Educational material from source units {window_start}–{window_end}."),
     );
     let learning_objectives = normalize_outline_items(
         outline.learning_objectives,
         MAX_FRAGMENT_OBJECTIVES,
         500,
     );
-    let key_concepts =
-        normalize_outline_items(outline.key_concepts, MAX_FRAGMENT_CONCEPTS, 240);
+    let key_concepts = normalize_outline_items(outline.key_concepts, MAX_FRAGMENT_CONCEPTS, 240);
     let mut sections = Vec::new();
     for (index, section) in outline
         .sections
@@ -497,18 +492,20 @@ fn assemble_outline_fragments(
     }
 
     sections.sort_by(|left, right| {
-        (left.page_start, left.page_end, left.title.to_ascii_lowercase()).cmp(&(
-            right.page_start,
-            right.page_end,
-            right.title.to_ascii_lowercase(),
-        ))
+        (
+            left.page_start,
+            left.page_end,
+            left.title.to_ascii_lowercase(),
+        )
+            .cmp(&(
+                right.page_start,
+                right.page_end,
+                right.title.to_ascii_lowercase(),
+            ))
     });
     sections.truncate(MAX_OUTLINE_SECTIONS);
-    let learning_objectives = normalize_outline_items(
-        learning_objectives,
-        MAX_OUTLINE_OBJECTIVES,
-        1_200,
-    );
+    let learning_objectives =
+        normalize_outline_items(learning_objectives, MAX_OUTLINE_OBJECTIVES, 1_200);
     let key_concepts = normalize_outline_items(key_concepts, MAX_OUTLINE_CONCEPTS, 700);
     let summary = if summaries.is_empty() {
         format!(
@@ -652,12 +649,8 @@ mod tests {
             partition_title: "Cardiovascular physiology".to_string(),
             first_chunk_index: 0,
             last_chunk_index: 0,
-            source_locator: SourceLocator::new(
-                SourceUnitKind::Page,
-                (start..=end).collect(),
-                None,
-            )
-            .unwrap(),
+            source_locator: SourceLocator::new(SourceUnitKind::Page, (start..=end).collect(), None)
+                .unwrap(),
             page_start: start,
             page_end: end,
             token_estimate: 100,

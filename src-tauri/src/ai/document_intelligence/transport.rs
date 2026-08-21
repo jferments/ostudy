@@ -13,9 +13,7 @@ use super::super::{
 };
 use super::{
     context::DocumentTaskContext,
-    contracts::{
-        SourcePageImage, MAX_COMPLETION_BYTES, MAX_INLINE_IMAGES, MAX_REQUEST_JSON_BYTES,
-    },
+    contracts::{SourcePageImage, MAX_COMPLETION_BYTES, MAX_INLINE_IMAGES, MAX_REQUEST_JSON_BYTES},
     support::{output_error, truncated_output_error},
 };
 
@@ -37,11 +35,10 @@ pub(super) async fn request_json(
     request: JsonTaskRequest<'_>,
 ) -> Result<Value, CommandError> {
     let profile = task.profile();
-    let credential = runtime.secrets.resolve(
-        &profile.id,
-        profile.auth_mode,
-        task.credential_storage(),
-    )?;
+    let credential =
+        runtime
+            .secrets
+            .resolve(&profile.id, profile.auth_mode, task.credential_storage())?;
     let bearer = credential
         .as_ref()
         .map(|secret| secret.as_utf8())
@@ -480,9 +477,9 @@ fn gateway_to_command(error: AiGatewayError) -> CommandError {
 
 #[cfg(test)]
 mod tests {
+    use super::super::schemas::flashcard_schema;
     use super::*;
     use crate::ai::catalog::AuthMode;
-    use super::super::schemas::flashcard_schema;
 
     fn openrouter_profile() -> ProfileSnapshot {
         ProfileSnapshot {

@@ -42,10 +42,7 @@ mod tests {
 
     #[test]
     fn repeated_contract_failures_collapse_to_a_bounded_stable_error() {
-        let error = collapse_contract_error(
-            output_error("x".repeat(1_000)),
-            "document outline",
-        );
+        let error = collapse_contract_error(output_error("x".repeat(1_000)), "document outline");
         assert_eq!(error.code, "ai_document_output_invalid");
         assert!(error.message.contains("invalid document outline twice"));
         assert!(error.message.len() < 700);

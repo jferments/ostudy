@@ -216,9 +216,7 @@ fn network_scope_name(scope: NetworkScope) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::document_provider::{
-        DocumentReasoningCapabilities, StructuredOutputStrategy,
-    };
+    use crate::ai::document_provider::{DocumentReasoningCapabilities, StructuredOutputStrategy};
 
     #[test]
     fn completion_budget_delegates_to_the_negotiated_provider_capability_model() {

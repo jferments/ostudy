@@ -207,10 +207,7 @@ fn is_document_provenance_tag(value: &str) -> bool {
     )
 }
 
-fn normalize_generated_card(
-    index: usize,
-    card: GeneratedStudyCard,
-) -> Result<Value, CommandError> {
+fn normalize_generated_card(index: usize, card: GeneratedStudyCard) -> Result<Value, CommandError> {
     match card {
         GeneratedStudyCard::Basic { front, back, tags } => {
             validate_card_text(index, "front", &front)?;
@@ -329,11 +326,7 @@ fn normalize_generated_card(
     }
 }
 
-fn build_cloze_text(
-    index: usize,
-    text: &str,
-    blanks: &[String],
-) -> Result<String, CommandError> {
+fn build_cloze_text(index: usize, text: &str, blanks: &[String]) -> Result<String, CommandError> {
     if blanks.is_empty() || blanks.len() > MAX_CLOZE_BLANKS {
         return Err(output_error(format!(
             "Generated card {} must select between one and {MAX_CLOZE_BLANKS} cloze blanks.",

@@ -2,21 +2,15 @@ use std::collections::HashSet;
 
 use serde_json::{json, Value};
 
-use crate::{
-    document_scale::CURATION_VISIBLE_COMPLETION_TOKENS, error::CommandError,
-};
+use crate::{document_scale::CURATION_VISIBLE_COMPLETION_TOKENS, error::CommandError};
 
 use super::super::AiRuntimeState;
 use super::{
     context::DocumentTaskContext,
-    contracts::{
-        parse_curation, DocumentOutline, MAX_CURATE_CARDS_PER_BATCH,
-    },
+    contracts::{parse_curation, DocumentOutline, MAX_CURATE_CARDS_PER_BATCH},
     outline::outline_context_for_curation,
     schemas::curation_schema,
-    support::{
-        bounded_diagnostic, collapse_contract_error, retryable_contract_error,
-    },
+    support::{bounded_diagnostic, collapse_contract_error, retryable_contract_error},
     transport::{request_json, JsonTaskRequest},
 };
 
@@ -189,7 +183,10 @@ async fn request_curation_with_retry(
 }
 
 fn compact_card_summary(index: usize, card: &Value) -> String {
-    let card_type = card.get("type").and_then(Value::as_str).unwrap_or("unknown");
+    let card_type = card
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
     let prompt = card
         .get("front")
         .or_else(|| card.get("text"))
@@ -246,20 +243,26 @@ mod tests {
     #[test]
     fn curation_batches_are_bounded_without_losing_candidates() {
         let cards = (0..70)
-            .map(|index| json!({
-                "type": "basic",
-                "front": format!("Question {index}"),
-                "back": format!("Answer {index}"),
-                "tags": []
-            }))
+            .map(|index| {
+                json!({
+                    "type": "basic",
+                    "front": format!("Question {index}"),
+                    "back": format!("Answer {index}"),
+                    "tags": []
+                })
+            })
             .collect::<Vec<_>>();
         let batches = into_curation_batches(cards);
-        assert_eq!(batches.iter().map(Vec::len).collect::<Vec<_>>(), vec![32, 32, 6]);
+        assert_eq!(
+            batches.iter().map(Vec::len).collect::<Vec<_>>(),
+            vec![32, 32, 6]
+        );
     }
 
     #[test]
     fn identity_normalizes_case_and_whitespace() {
-        let first = json!({"type":"basic", "front":"  Cardiac   Output ", "back":"Flow per minute"});
+        let first =
+            json!({"type":"basic", "front":"  Cardiac   Output ", "back":"Flow per minute"});
         let second = json!({"type":"basic", "front":"cardiac output", "back":"flow per minute"});
         assert_eq!(card_identity(&first), card_identity(&second));
     }

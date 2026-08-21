@@ -345,7 +345,10 @@ mod tests {
             "chat_template_kwargs",
             "prompt_tokens",
         ] {
-            assert!(!source.contains(forbidden), "unexpected wire term: {forbidden}");
+            assert!(
+                !source.contains(forbidden),
+                "unexpected wire term: {forbidden}"
+            );
         }
     }
 }
