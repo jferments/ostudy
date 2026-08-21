@@ -2695,8 +2695,14 @@ mod tests {
             partition_title: "Nearby partition".to_string(),
             first_chunk_index: 0,
             last_chunk_index: 0,
-            page_numbers: vec![12],
-            visual_page_numbers: Vec::new(),
+            source_locator: crate::document_domain::SourceLocator::with_evidence(
+                crate::document_domain::SourceUnitKind::Page,
+                vec![12, 13, 14, 15],
+                Some("Nearby partition".to_string()),
+                Vec::new(),
+                None,
+            )
+            .unwrap(),
             page_start: 12,
             page_end: 15,
             token_estimate: 1_000,
@@ -2812,8 +2818,14 @@ mod tests {
             partition_title: "Chapter 3".to_string(),
             first_chunk_index: 9,
             last_chunk_index: 11,
-            page_numbers: vec![21, 22],
-            visual_page_numbers: Vec::new(),
+            source_locator: crate::document_domain::SourceLocator::with_evidence(
+                crate::document_domain::SourceUnitKind::Page,
+                vec![21, 22],
+                Some("Chapter 3".to_string()),
+                Vec::new(),
+                None,
+            )
+            .unwrap(),
             page_start: 21,
             page_end: 22,
             token_estimate: 900,
