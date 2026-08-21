@@ -36,7 +36,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 2,
         name: "canonical_documents",
-        checksum: "7147bb0940eb6fdb58515fb1726503e425cb2ce03f86e09667dbeb672e9fc589",
+        checksum: "0e4ee6445e06739766846aebe55803b8efb6236a1e6cabe9f1096a1dc189e86e",
         sql: include_str!("../migrations/0002_canonical_documents.sql"),
     },
 ];
