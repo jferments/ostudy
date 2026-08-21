@@ -532,8 +532,7 @@ fn canonicalize_pdf(
             element.element_index.to_string(),
         );
         if let Some(font_name) = &element.font_name {
-            let font_name =
-                normalize_semantic_text(font_name, MAX_CANONICAL_ATTRIBUTE_VALUE_CHARS);
+            let font_name = normalize_semantic_text(font_name, MAX_CANONICAL_ATTRIBUTE_VALUE_CHARS);
             if !font_name.is_empty() {
                 attributes.insert("fontName".to_string(), font_name);
             }
@@ -1032,8 +1031,8 @@ mod tests {
                     ExtractedSemanticChunk {
                         chunk_index: 4,
                         text: "Cardiac\u{000c} output table".to_string(),
-                        full_text:
-                            "Cardiac output is heart rate\u{000b} times stroke volume.".to_string(),
+                        full_text: "Cardiac output is heart rate\u{000b} times stroke volume."
+                            .to_string(),
                         page_numbers: vec![1],
                         bounding_boxes: Vec::new(),
                         element_types: vec!["table".to_string()],
@@ -1089,20 +1088,32 @@ mod tests {
             .heading_path
             .iter()
             .all(|heading| !heading.chars().any(char::is_control)));
-        assert_eq!(canonical.document.blocks[0].asset_ids, vec![render_id.clone()]);
+        assert_eq!(
+            canonical.document.blocks[0].asset_ids,
+            vec![render_id.clone()]
+        );
         assert!(canonical.document.blocks[1].text.is_empty());
-        assert_eq!(canonical.document.blocks[1].asset_ids, vec![render_id.clone()]);
+        assert_eq!(
+            canonical.document.blocks[1].asset_ids,
+            vec![render_id.clone()]
+        );
         assert_eq!(canonical.semantic_chunks.len(), 2);
         assert_eq!(canonical.semantic_chunks[0].text, "Cardiac output table");
         assert!(!canonical.semantic_chunks[0]
             .full_text
             .chars()
             .any(char::is_control));
-        assert_eq!(canonical.semantic_chunks[0].source_locator.asset_ids, vec![render_id.clone()]);
+        assert_eq!(
+            canonical.semantic_chunks[0].source_locator.asset_ids,
+            vec![render_id.clone()]
+        );
         assert!(canonical.semantic_chunks[1]
             .full_text
             .contains("visual or non-text content"));
-        assert_eq!(canonical.semantic_chunks[1].source_locator.asset_ids, vec![render_id]);
+        assert_eq!(
+            canonical.semantic_chunks[1].source_locator.asset_ids,
+            vec![render_id]
+        );
         assert_eq!(canonical.semantic_chunks[0].content_sha256.len(), 64);
         assert_eq!(canonical.document.full_text_sha256().len(), 64);
 
