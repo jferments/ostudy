@@ -235,10 +235,7 @@ mod tests {
             Some(&json!("deny"))
         );
         assert_eq!(body.pointer("/provider/zdr"), Some(&json!(true)));
-        assert_eq!(
-            body.pointer("/provider/sort"),
-            Some(&json!("throughput"))
-        );
+        assert_eq!(body.pointer("/provider/sort"), Some(&json!("throughput")));
         assert_eq!(
             body.pointer("/response_format/type"),
             Some(&json!("json_schema"))
