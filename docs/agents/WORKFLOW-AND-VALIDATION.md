@@ -99,6 +99,8 @@ The exact sequence depends on the change. Each commit has one understandable pur
 - Avoid dependency changes and broad refactors unless they are part of the accepted scope.
 - Update affected documentation and ADRs in the same branch.
 - Update the PR state ledger after each meaningful publication checkpoint.
+- When changing a shared Rust struct, enum, serialized shape, migration schema, or other cross-module contract, search the entire repository for constructors, struct literals, deserializers, compatibility projections, tests, and documentation before declaring the increment complete. Do not rely on production call sites alone; stale test literals are compile failures too.
+- Treat a migration file and its registered checksum as one atomic contract. If migration bytes change before release, update the checksum in the same coherent increment and immediately qualify the manifest/static boundary before moving on.
 
 In a local checkout, inspect continuously:
 
@@ -123,6 +125,10 @@ Use the cheapest gate that answers the current question, then escalate only as t
 ```
 
 Draft pull requests run the fast tier. Ready pull requests run the authoritative Linux and Android matrix on the self-hosted runner. A successful result qualifies only the exact source SHA it tested. `OSTUDY_FORCE_CHECK=1` bypasses exact-tree cache reuse when deliberately required.
+
+Validation evidence is invalidated by every later source-tree change. Never describe a predecessor SHA as the current head's passing evidence, even when the later edit appears mechanical. Re-run the narrowest affected boundary, then escalate again.
+
+For migration or manifest work, run static qualification immediately after changing migration bytes, registered checksums, version metadata, or generated manifests. Do not wait for a broad test run to discover a checksum mismatch. For a shared Rust-domain refactor, run a test-compiling Rust gate (`check-fast.sh` or the repository's focused equivalent) before reviewer handoff so stale `#[cfg(test)]` struct literals and warning-as-error failures cannot remain hidden behind successful frontend tests.
 
 Manually exercise the affected UI path with `./run-app.sh`. For persistence work, restart and verify the stored result. For UI work, include keyboard, touch/coarse-pointer, pending/error/cancel states, compact/medium/wide layouts, reduced motion, and relevant themes.
 
@@ -149,6 +155,8 @@ After failure:
 6. repair one coherent batch;
 7. publish and verify the new head;
 8. rerun the focused boundary before escalating.
+
+If static fails, consume the static failure before spending a fast/full run. If a formatter reports exact diffs, apply or reproduce the formatter output rather than repeatedly approximating formatting by hand.
 
 An unchanged-head rerun is allowed once only when evidence supports a transient external failure. The same fingerprint twice requires a strategy change before another broad run. Never use no-op commits, PR-state toggles, permission expansion, blanket retries, longer timeouts, sleeps, test skips, or weakened assertions merely to obtain green CI.
 
@@ -179,7 +187,7 @@ In Connector mode, verify the corresponding remote branch/PR diff and record the
 
 The ledger is machine-validated on PR events.
 
-For draft work it may contain incomplete criteria and pending gates. A synchronize event may briefly make its recorded head stale; draft verification reports that as a warning so implementation can proceed. Reconcile it at the next checkpoint.
+For draft work it may contain incomplete criteria and pending gates. A synchronize event may briefly make its recorded head stale; draft verification reports that as a warning so implementation can proceed. Reconcile it at the next checkpoint. Before requesting or interpreting a final qualification run, re-fetch the actual PR head and synchronize the ledger to that SHA.
 
 Before review readiness:
 
@@ -191,7 +199,7 @@ Before review readiness:
 - manual paths are passed, `notRequired`, or explicitly `humanRequired`;
 - `knownFailures` is empty.
 
-`notRun` is not completion evidence and cannot qualify readiness.
+`notRun` is not completion evidence and cannot qualify readiness. Do not hand a branch to a reviewer as complete while any known automated failure remains, even when the failure appears mechanical or a predecessor SHA was green.
 
 ## 9. Propose; do not self-merge
 
