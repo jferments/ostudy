@@ -120,9 +120,7 @@ fn verify_repair_definition(repair: &DataRepair) -> Result<(), String> {
     Ok(())
 }
 
-fn repair_canonical_semantic_chunk_hashes(
-    transaction: &Transaction<'_>,
-) -> Result<i64, String> {
+fn repair_canonical_semantic_chunk_hashes(transaction: &Transaction<'_>) -> Result<i64, String> {
     let rows = {
         let mut statement = transaction
             .prepare(
@@ -131,7 +129,9 @@ fn repair_canonical_semantic_chunk_hashes(
                  FROM document_semantic_chunk_sources
                  ORDER BY document_id, chunk_index",
             )
-            .map_err(|error| format!("Could not prepare canonical semantic hash repair: {error}"))?;
+            .map_err(|error| {
+                format!("Could not prepare canonical semantic hash repair: {error}")
+            })?;
         statement
             .query_map([], |row| {
                 Ok((
