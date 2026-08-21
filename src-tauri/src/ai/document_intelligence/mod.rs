@@ -1,10 +1,10 @@
 //! Format-neutral orchestration for bounded document-intelligence work.
 //!
-//! This facade owns concurrent outline-window execution, checkpoint reuse,
-//! deterministic persistence order, and final outline assembly. Domain reasoning
-//! and provider transport are still temporarily hosted by `legacy`; subsequent
-//! commits in this pull request move those responsibilities behind explicit
-//! modules without changing this public service boundary.
+//! This module is the stable application-facing facade. It owns concurrency,
+//! checkpoint reuse, deterministic source-order persistence, and coordination.
+//! Domain reasoning and provider wire transport live behind explicit private
+//! modules so new document formats and learning artifacts can reuse the same
+//! source-grounded contracts.
 
 use std::time::Instant;
 
@@ -13,32 +13,41 @@ use crate::{
     task_cancellation::set_current_task_phase_range,
 };
 
-use super::{catalog, endpoint_policy, gateway, profiles, secrets, AiRuntimeState};
+use super::AiRuntimeState;
 
-mod legacy;
+mod context;
+mod contracts;
+mod curation;
+mod flashcards;
+mod outline;
+mod schemas;
+mod support;
+mod transport;
 
-pub(crate) use legacy::{
-    curate_document_cards, flashcard_completion_token_ceiling, generate_window_flashcards,
-    load_document_task_context, DocumentOutline, DocumentTaskContext, FlashcardGenerationLimits,
-    OutlineBuildSources, SourcePageImage, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
+pub(crate) use context::{load_document_task_context, DocumentTaskContext};
+pub(crate) use contracts::{DocumentOutline, OutlineSection, SourcePageImage};
+pub(crate) use curation::curate_document_cards;
+pub(crate) use flashcards::{
+    flashcard_completion_token_ceiling, generate_window_flashcards, FlashcardGenerationLimits,
+    FLASHCARD_PROMPT_VERSION, FLASHCARD_SCHEMA_VERSION,
 };
+pub(crate) use outline::{OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION};
 
 const VISUAL_ONLY_MARKER: &str = "has no extractable structured text";
 
-/// Build the reusable global outline used by all later generation windows.
+/// Build the reusable global outline used by later learning-artifact windows.
 ///
 /// Text-bearing documents request independent local outline fragments with
-/// bounded provider concurrency. Remote windows fan out immediately; they
-/// deliberately do not share an OpenRouter sticky session because these are
-/// independent batch requests with different source text. Completed fragments
-/// are persisted serially, then deterministic Rust assembly/global synthesis
-/// consumes them as cached fragments so request completion order cannot change
-/// hierarchy.
+/// bounded provider concurrency. Remote windows deliberately do not share a
+/// sticky provider session because each call has distinct canonical source
+/// material. Completed fragments are persisted serially in source-window order;
+/// deterministic Rust assembly and optional global synthesis run only after all
+/// local windows have resolved.
 pub(crate) async fn build_document_outline<F>(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
     document_title: &str,
-    page_count: i64,
+    source_unit_count: i64,
     windows: &[SemanticWindow],
     cached_fragments: &[Option<DocumentOutline>],
     mut persist_fragment: F,
@@ -55,15 +64,15 @@ where
         if !task.include_page_images {
             return Err(CommandError::new(
                 "document_requires_image_input",
-                "This PDF has no extractable text. Choose a verified image-capable llama.cpp flashcard-generation profile and retry.",
+                "This document has no extractable text. Choose a verified image-capable llama.cpp flashcard-generation profile and retry.",
             ));
         }
         return Ok(DocumentOutline {
             summary: format!(
-                "{document_title} is an image-only PDF. Rendered pages are the authoritative source for flashcard generation."
+                "{document_title} is image-only. Rendered visual evidence is the authoritative source for learning-artifact generation."
             ),
             learning_objectives: vec![
-                "Identify and understand the important concepts, relationships, diagrams, tables, and equations shown in the rendered document pages."
+                "Identify and understand the important concepts, relationships, diagrams, tables, and equations shown in the rendered document source units."
                     .to_string(),
             ],
             key_concepts: Vec::new(),
@@ -74,7 +83,7 @@ where
     if windows.is_empty() {
         return Err(CommandError::new(
             "document_has_no_semantic_content",
-            "The PDF did not contain source windows that ostudy could analyze.",
+            "The document did not contain canonical source windows that ostudy could analyze.",
         ));
     }
 
@@ -109,13 +118,15 @@ where
         let batch = &missing[cursor..end];
         let first = &windows[batch[0]];
         let last = &windows[*batch.last().unwrap_or(&batch[0])];
+        let first_locator = first.source_locator();
+        let last_locator = last.source_locator();
         set_current_task_phase_range(
             "outline",
             (Some(batch[0] + 1), batch.last().map(|index| *index + 1)),
             completed,
             windows.len(),
-            Some(first.page_start),
-            Some(last.page_end),
+            Some(first_locator.first()),
+            Some(last_locator.last()),
             Some(first.partition_index + 1),
         );
 
@@ -124,10 +135,38 @@ where
         let i2 = batch.get(2).copied();
         let i3 = batch.get(3).copied();
         let (r0, r1, r2, r3) = tokio::join!(
-            outline_slot(runtime, task, document_title, page_count, windows, i0),
-            outline_slot(runtime, task, document_title, page_count, windows, i1),
-            outline_slot(runtime, task, document_title, page_count, windows, i2),
-            outline_slot(runtime, task, document_title, page_count, windows, i3),
+            outline_slot(
+                runtime,
+                task,
+                document_title,
+                source_unit_count,
+                windows,
+                i0
+            ),
+            outline_slot(
+                runtime,
+                task,
+                document_title,
+                source_unit_count,
+                windows,
+                i1
+            ),
+            outline_slot(
+                runtime,
+                task,
+                document_title,
+                source_unit_count,
+                windows,
+                i2
+            ),
+            outline_slot(
+                runtime,
+                task,
+                document_title,
+                source_unit_count,
+                windows,
+                i3
+            ),
         );
 
         let mut first_error = None;
@@ -151,18 +190,28 @@ where
         cursor = end;
     }
 
-    let images = vec![Vec::<SourcePageImage>::new(); windows.len()];
-    legacy::build_document_outline(
+    let fragments = resolved
+        .into_iter()
+        .enumerate()
+        .map(|(index, fragment)| {
+            fragment.ok_or_else(|| {
+                CommandError::new(
+                    "document_outline_assembly_incomplete",
+                    format!(
+                        "Canonical source window {} did not produce or reuse an outline fragment.",
+                        index + 1
+                    ),
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    outline::assemble_document_outline(
         runtime,
         task,
         document_title,
-        page_count,
-        OutlineBuildSources {
-            windows,
-            cached_fragments: &resolved,
-            window_images: &images,
-        },
-        |_window, _fragment| Ok(()),
+        source_unit_count,
+        windows,
+        fragments,
     )
     .await
 }
@@ -171,12 +220,13 @@ async fn outline_slot(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
     document_title: &str,
-    page_count: i64,
+    source_unit_count: i64,
     windows: &[SemanticWindow],
     index: Option<usize>,
 ) -> Option<(usize, Result<DocumentOutline, CommandError>)> {
     let index = index?;
     let window = &windows[index];
+    let locator = window.source_locator();
     crate::logging::debug_target(
         "ai.document.outline",
         "document_outline_window_started",
@@ -187,24 +237,24 @@ async fn outline_slot(
             "window": index + 1,
             "totalWindows": windows.len(),
             "partition": window.partition_index + 1,
-            "pageStart": window.page_start,
-            "pageEnd": window.page_end,
+            "sourceUnitStart": locator.first(),
+            "sourceUnitEnd": locator.last(),
             "sourceTokens": window.token_estimate,
         }),
     );
     let started = Instant::now();
-    let result = match legacy::request_outline_fragment(
+    let result = match outline::request_outline_fragment(
         runtime,
         task,
         document_title,
-        page_count,
+        source_unit_count,
         window,
         &[],
     )
     .await
     {
         Ok(fragment) => Ok(fragment),
-        Err(error) if windows.len() > 1 && legacy::recoverable_outline_window_error(&error) => {
+        Err(error) if windows.len() > 1 && outline::recoverable_outline_window_error(&error) => {
             crate::logging::warn_target(
                 "ai.document.outline",
                 "document_outline_window_native_fallback",
@@ -213,25 +263,24 @@ async fn outline_slot(
                     "window": index + 1,
                     "totalWindows": windows.len(),
                     "partition": window.partition_index + 1,
-                    "pageStart": window.page_start,
-                    "pageEnd": window.page_end,
+                    "sourceUnitStart": locator.first(),
+                    "sourceUnitEnd": locator.last(),
                     "code": error.code.as_str(),
                 }),
             );
-            Ok(legacy::native_outline_fallback(document_title, window))
+            Ok(outline::native_outline_fallback(document_title, window))
         }
         Err(error) => {
             crate::logging::error(
                 "document_outline_window_failed",
                 format!(
-                    "provider={} model={} window={}/{} partition={} pages={}-{} source_tokens={} code={} detail={}",
+                    "provider={} model={} window={}/{} partition={} locator={} source_tokens={} code={} detail={}",
                     task.provider_kind,
                     task.model_id,
                     index + 1,
                     windows.len(),
                     window.partition_index + 1,
-                    window.page_start,
-                    window.page_end,
+                    locator.stable_identity(),
                     window.token_estimate,
                     error.code,
                     error.message.chars().take(600).collect::<String>(),
@@ -240,12 +289,12 @@ async fn outline_slot(
             Err(CommandError::new(
                 error.code,
                 format!(
-                    "Outline pass failed in source window {}/{} (partition {}, PDF pages {}–{}, about {} source tokens): {}",
+                    "Outline pass failed in source window {}/{} (partition {}, source units {}–{}, about {} source tokens): {}",
                     index + 1,
                     windows.len(),
                     window.partition_index + 1,
-                    window.page_start,
-                    window.page_end,
+                    locator.first(),
+                    locator.last(),
                     window.token_estimate,
                     error.message,
                 ),
@@ -263,8 +312,8 @@ async fn outline_slot(
                 "window": index + 1,
                 "totalWindows": windows.len(),
                 "partition": window.partition_index + 1,
-                "pageStart": window.page_start,
-                "pageEnd": window.page_end,
+                "sourceUnitStart": locator.first(),
+                "sourceUnitEnd": locator.last(),
                 "sourceTokens": window.token_estimate,
                 "sections": fragment.sections.len(),
                 "objectives": fragment.learning_objectives.len(),
@@ -281,9 +330,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn visual_only_marker_matches_extraction_fallback_contract() {
+    fn visual_only_marker_matches_adapter_fallback_contract() {
         assert!(
             "Rendered PDF page 2 has no extractable structured text.".contains(VISUAL_ONLY_MARKER)
         );
+    }
+
+    #[test]
+    fn public_document_intelligence_facade_has_no_provider_wire_vocabulary() {
+        let source = include_str!("mod.rs");
+        for forbidden in [
+            "response_format",
+            "tool_choice",
+            "chat_template_kwargs",
+            "prompt_tokens",
+        ] {
+            assert!(!source.contains(forbidden), "unexpected wire term: {forbidden}");
+        }
     }
 }
