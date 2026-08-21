@@ -736,8 +736,7 @@ async fn curation_slot(
 </ostudy-candidates>
 
          Return the zero-based indices of candidates that should remain. Keep strong coverage of major learning objectives and a useful mix of recall and application.          QUALITY GATE: reject a candidate unless its answer directly and completely answers its question and is supported by the document context. Reject question/answer mismatches, incomplete answers to multi-part questions, answers that are only headings/topic labels, unsupported numerical claims, reversed question/answer direction, vague prompts whose answer is not uniquely determined, and cards that require seeing the PDF to make sense. For definitions, keep only genuine term/definition pairs.          Also remove globally minor or hyperspecific trivia, bibliography/citation artifacts, near-duplicates, and redundant cards that test the same knowledge in essentially the same way. When uncertain whether a candidate is semantically correct, drop it. Do not rewrite cards and do not invent replacements.",
-        summaries.join("
-")
+        summaries.join("\n")
     );
     Some((
         batch_index,
@@ -942,9 +941,7 @@ async fn request_flashcards_with_retry(
         Ok(cards) => Ok(cards),
         Err(error) if retryable_contract_error(&error) => {
             let repaired = format!(
-                "{user}
-
-A prior response failed local schema validation. Generate a fresh response from the source and follow the JSON contract exactly. Do not discuss the failure. Return JSON only."
+                "{user}\n\nA prior response failed local schema validation. Generate a fresh response from the source and follow the JSON contract exactly. Do not discuss the failure. Return JSON only."
             );
             request_json(
                 runtime,
@@ -2551,7 +2548,7 @@ mod tests {
             body.pointer("/provider/data_collection"),
             Some(&json!("deny"))
         );
-        assert!(body.pointer("/provider/sort").is_none());
+        assert_eq!(body.pointer("/provider/sort"), Some(&json!("throughput")));
         assert_eq!(
             body.pointer("/provider/preferred_min_throughput/p90"),
             Some(&json!(50))
