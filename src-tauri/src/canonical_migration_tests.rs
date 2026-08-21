@@ -13,8 +13,12 @@ const PUBLIC_BASELINE_CHECKSUM: &str =
 const DOCUMENT_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const CANONICAL_SEMANTIC_HASH_REPAIR_CHECKSUM: &str =
     "779d93574a75f1e694fc4476bbf278ce7a540155cc4c35cf113f9ddb03d2a46f";
+const CANONICAL_BLOCK_HASH_REPAIR_CHECKSUM: &str =
+    "02a07faa3635627246ef361160e94fe80a4634f7d36c97dbc3d6cb0819846085";
 const EXPECTED_CANONICAL_CHUNK_HASH: &str =
     "1ddbbf54830254d96e8eaf5c04a21564d65f02984061b9d7b3c49931223bad3d";
+const EXPECTED_CANONICAL_BLOCK_HASH: &str =
+    "d4d9309e42a634acaabb18a6805f2da962eb887bb4518672e0e35fcdac70a6fe";
 
 #[test]
 fn public_v1_pdf_rows_migrate_to_the_canonical_source_ledger() {
@@ -217,13 +221,21 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
     assert_eq!(asset.2, 1);
     assert!(asset.3.ends_with("page-000001.png"));
 
-    let block: (String, String, i64, String) = connection
+    let block: (String, String, i64, String, String) = connection
         .query_row(
-            "SELECT role, text, source_unit_number, asset_ids_json
+            "SELECT role, text, source_unit_number, asset_ids_json, content_sha256
              FROM document_source_blocks
              WHERE document_id = ?1 AND block_index = 0",
             [DOCUMENT_ID],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .map_err(CommandError::database)?;
     assert_eq!(block.0, "table");
@@ -233,6 +245,8 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
         serde_json::from_str::<Value>(&block.3).map_err(CommandError::serialization)?,
         serde_json::json!(["unit-render:000001"])
     );
+    assert_ne!(block.4, "4".repeat(64));
+    assert_eq!(block.4, EXPECTED_CANONICAL_BLOCK_HASH);
 
     let chunk: (String, String, String) = connection
         .query_row(
@@ -254,16 +268,30 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
     assert_ne!(chunk.2, "5".repeat(64));
     assert_eq!(chunk.2, EXPECTED_CANONICAL_CHUNK_HASH);
 
-    let repair: (String, String, i64) = connection
+    let semantic_repair: (String, String, i64) = connection
         .query_row(
             "SELECT name, checksum, changed_rows FROM data_repairs WHERE version = 1",
             [],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .map_err(CommandError::database)?;
-    assert_eq!(repair.0, "canonical_semantic_chunk_hashes");
-    assert_eq!(repair.1, CANONICAL_SEMANTIC_HASH_REPAIR_CHECKSUM);
-    assert_eq!(repair.2, 1);
+    assert_eq!(semantic_repair.0, "canonical_semantic_chunk_hashes");
+    assert_eq!(
+        semantic_repair.1,
+        CANONICAL_SEMANTIC_HASH_REPAIR_CHECKSUM
+    );
+    assert_eq!(semantic_repair.2, 1);
+
+    let block_repair: (String, String, i64) = connection
+        .query_row(
+            "SELECT name, checksum, changed_rows FROM data_repairs WHERE version = 2",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(CommandError::database)?;
+    assert_eq!(block_repair.0, "canonical_block_hashes");
+    assert_eq!(block_repair.1, CANONICAL_BLOCK_HASH_REPAIR_CHECKSUM);
+    assert_eq!(block_repair.2, 1);
 
     let legacy_page_count: i64 = connection
         .query_row(
