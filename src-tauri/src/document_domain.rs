@@ -296,7 +296,10 @@ impl DocumentSourceDescriptor {
         if self.unit_count == 0 {
             return Err(CommandError::new(
                 "document_has_no_source_units",
-                "The document did not contain any source units that ostudy could process.",
+                format!(
+                    "The document did not contain any {} that ostudy could process.",
+                    self.unit_kind.plural_label()
+                ),
             ));
         }
         Ok(())

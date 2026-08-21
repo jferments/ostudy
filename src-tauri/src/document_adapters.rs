@@ -106,7 +106,7 @@ impl DocumentAdapter for PdfDocumentAdapter {
             request.document_id,
             request.source_path,
             request.maximum_source_units,
-            |progress| report_progress(progress),
+            report_progress,
         )?;
         let canonical =
             canonicalize_pdf(request.document_id, request.source_path, self, &legacy_pdf)?;
