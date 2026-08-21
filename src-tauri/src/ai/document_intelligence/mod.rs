@@ -1,3 +1,11 @@
+//! Format-neutral orchestration for bounded document-intelligence work.
+//!
+//! This facade owns concurrent outline-window execution, checkpoint reuse,
+//! deterministic persistence order, and final outline assembly. Domain reasoning
+//! and provider transport are still temporarily hosted by `legacy`; subsequent
+//! commits in this pull request move those responsibilities behind explicit
+//! modules without changing this public service boundary.
+
 use std::time::Instant;
 
 use crate::{
@@ -7,10 +15,9 @@ use crate::{
 
 use super::{catalog, endpoint_policy, gateway, profiles, secrets, AiRuntimeState};
 
-#[path = "document_intelligence.rs"]
-mod implementation;
+mod legacy;
 
-pub(crate) use implementation::{
+pub(crate) use legacy::{
     curate_document_cards, flashcard_completion_token_ceiling, generate_window_flashcards,
     load_document_task_context, DocumentOutline, DocumentTaskContext, FlashcardGenerationLimits,
     OutlineBuildSources, SourcePageImage, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
@@ -20,12 +27,13 @@ const VISUAL_ONLY_MARKER: &str = "has no extractable structured text";
 
 /// Build the reusable global outline used by all later generation windows.
 ///
-/// Text-bearing PDFs request independent local outline fragments with bounded
-/// provider concurrency. Remote windows fan out immediately; they deliberately
-/// do not share an OpenRouter sticky session because these are independent batch
-/// requests with different source text. Completed fragments are persisted
-/// serially, then the deterministic Rust assembly/global-synthesis path consumes
-/// them as cached fragments so request completion order cannot change hierarchy.
+/// Text-bearing documents request independent local outline fragments with
+/// bounded provider concurrency. Remote windows fan out immediately; they
+/// deliberately do not share an OpenRouter sticky session because these are
+/// independent batch requests with different source text. Completed fragments
+/// are persisted serially, then deterministic Rust assembly/global synthesis
+/// consumes them as cached fragments so request completion order cannot change
+/// hierarchy.
 pub(crate) async fn build_document_outline<F>(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
@@ -144,7 +152,7 @@ where
     }
 
     let images = vec![Vec::<SourcePageImage>::new(); windows.len()];
-    implementation::build_document_outline(
+    legacy::build_document_outline(
         runtime,
         task,
         document_title,
@@ -185,7 +193,7 @@ async fn outline_slot(
         }),
     );
     let started = Instant::now();
-    let result = match implementation::request_outline_fragment(
+    let result = match legacy::request_outline_fragment(
         runtime,
         task,
         document_title,
@@ -196,9 +204,7 @@ async fn outline_slot(
     .await
     {
         Ok(fragment) => Ok(fragment),
-        Err(error)
-            if windows.len() > 1 && implementation::recoverable_outline_window_error(&error) =>
-        {
+        Err(error) if windows.len() > 1 && legacy::recoverable_outline_window_error(&error) => {
             crate::logging::warn_target(
                 "ai.document.outline",
                 "document_outline_window_native_fallback",
@@ -212,10 +218,7 @@ async fn outline_slot(
                     "code": error.code.as_str(),
                 }),
             );
-            Ok(implementation::native_outline_fallback(
-                document_title,
-                window,
-            ))
+            Ok(legacy::native_outline_fallback(document_title, window))
         }
         Err(error) => {
             crate::logging::error(
@@ -258,6 +261,8 @@ async fn outline_slot(
                 "provider": task.provider_kind.as_str(),
                 "model": task.model_id.as_str(),
                 "window": index + 1,
+                "totalWindows": windows.len(),
+                "partition": window.partition_index + 1,
                 "pageStart": window.page_start,
                 "pageEnd": window.page_end,
                 "sourceTokens": window.token_estimate,
