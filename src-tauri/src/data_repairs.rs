@@ -25,15 +25,27 @@ struct DataRepair {
 
 const CANONICAL_SEMANTIC_HASH_REPAIR_CONTRACT: &str =
     "canonical_semantic_chunk_hashes_v1|sha256(locator={stable_identity}|types={element_types_csv}|heading={heading_or_empty}|text={full_text})";
+const CANONICAL_BLOCK_HASH_REPAIR_CONTRACT: &str =
+    "canonical_block_hashes_v1|sha256(unit={source_unit_number}|ordinal={block_ordinal}|role={role}|headings={heading_path_gt_join}|assets={asset_ids_csv}|text={text})";
 
-const REPAIRS: &[DataRepair] = &[DataRepair {
-    version: 1,
-    name: "canonical_semantic_chunk_hashes",
-    contract: CANONICAL_SEMANTIC_HASH_REPAIR_CONTRACT,
-    checksum: "779d93574a75f1e694fc4476bbf278ce7a540155cc4c35cf113f9ddb03d2a46f",
-    phase: RepairPhase::AfterMigration(2),
-    apply: repair_canonical_semantic_chunk_hashes,
-}];
+const REPAIRS: &[DataRepair] = &[
+    DataRepair {
+        version: 1,
+        name: "canonical_semantic_chunk_hashes",
+        contract: CANONICAL_SEMANTIC_HASH_REPAIR_CONTRACT,
+        checksum: "779d93574a75f1e694fc4476bbf278ce7a540155cc4c35cf113f9ddb03d2a46f",
+        phase: RepairPhase::AfterMigration(2),
+        apply: repair_canonical_semantic_chunk_hashes,
+    },
+    DataRepair {
+        version: 2,
+        name: "canonical_block_hashes",
+        contract: CANONICAL_BLOCK_HASH_REPAIR_CONTRACT,
+        checksum: "02a07faa3635627246ef361160e94fe80a4634f7d36c97dbc3d6cb0819846085",
+        phase: RepairPhase::AfterMigration(2),
+        apply: repair_canonical_block_hashes,
+    },
+];
 
 pub(crate) fn apply_required_repairs(
     connection: &mut Connection,
@@ -201,6 +213,91 @@ fn repair_canonical_semantic_chunk_hashes(transaction: &Transaction<'_>) -> Resu
     Ok(changed_rows)
 }
 
+fn repair_canonical_block_hashes(transaction: &Transaction<'_>) -> Result<i64, String> {
+    let rows = {
+        let mut statement = transaction
+            .prepare(
+                "SELECT document_id, block_index, source_unit_number, block_ordinal,
+                        role, text, heading_path_json, asset_ids_json, content_sha256
+                 FROM document_source_blocks
+                 ORDER BY document_id, block_index",
+            )
+            .map_err(|error| format!("Could not prepare canonical block hash repair: {error}"))?;
+        statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                ))
+            })
+            .map_err(|error| format!("Could not read canonical block hash rows: {error}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("Could not decode canonical block hash rows: {error}"))?
+    };
+
+    let mut changed_rows = 0_i64;
+    for (
+        document_id,
+        block_index,
+        source_unit_number,
+        block_ordinal,
+        role,
+        text,
+        heading_path_json,
+        asset_ids_json,
+        stored_hash,
+    ) in rows
+    {
+        let heading_path: Vec<String> = serde_json::from_str(&heading_path_json).map_err(|error| {
+            format!(
+                "Could not decode canonical heading path for document {document_id} block {block_index}: {error}"
+            )
+        })?;
+        let asset_ids: Vec<String> = serde_json::from_str(&asset_ids_json).map_err(|error| {
+            format!(
+                "Could not decode canonical asset identities for document {document_id} block {block_index}: {error}"
+            )
+        })?;
+        let expected_hash = canonical_block_hash(
+            source_unit_number,
+            block_ordinal,
+            &role,
+            &text,
+            &heading_path,
+            &asset_ids,
+        );
+        if stored_hash == expected_hash {
+            continue;
+        }
+        let changed = transaction
+            .execute(
+                "UPDATE document_source_blocks
+                 SET content_sha256 = ?1
+                 WHERE document_id = ?2 AND block_index = ?3 AND content_sha256 = ?4",
+                params![expected_hash, document_id, block_index, stored_hash],
+            )
+            .map_err(|error| {
+                format!(
+                    "Could not repair canonical block hash for document {document_id} block {block_index}: {error}"
+                )
+            })?;
+        if changed != 1 {
+            return Err(format!(
+                "Canonical block hash repair lost ownership of document {document_id} block {block_index}."
+            ));
+        }
+        changed_rows = changed_rows.saturating_add(1);
+    }
+    Ok(changed_rows)
+}
+
 fn canonical_semantic_chunk_hash(
     locator: &SourceLocator,
     full_text: &str,
@@ -215,6 +312,27 @@ fn canonical_semantic_chunk_hash(
                 locator.stable_identity(),
                 element_types.join(","),
                 heading_context.unwrap_or_default()
+            )
+            .as_bytes()
+        )
+    )
+}
+
+fn canonical_block_hash(
+    source_unit_number: i64,
+    block_ordinal: i64,
+    role: &str,
+    text: &str,
+    heading_path: &[String],
+    asset_ids: &[String],
+) -> String {
+    format!(
+        "{:x}",
+        Sha256::digest(
+            format!(
+                "unit={source_unit_number}|ordinal={block_ordinal}|role={role}|headings={}|assets={}|text={text}",
+                heading_path.join(" > "),
+                asset_ids.join(",")
             )
             .as_bytes()
         )
@@ -256,8 +374,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn repair_contract_checksum_matches_declared_contract() {
-        verify_repair_definition(&REPAIRS[0]).expect("repair checksum should match its contract");
+    fn repair_contract_checksums_match_declared_contracts() {
+        for repair in REPAIRS {
+            verify_repair_definition(repair).expect("repair checksum should match its contract");
+        }
     }
 
     #[test]
@@ -292,6 +412,40 @@ mod tests {
                 "Diffusion depends on surface area.",
                 &["table".to_string()],
                 Some("Gas exchange"),
+            )
+        );
+    }
+
+    #[test]
+    fn block_hash_includes_source_role_structure_assets_and_text() {
+        let baseline = canonical_block_hash(
+            1,
+            0,
+            "table",
+            "CO = HR × SV",
+            &["Hemodynamics".to_string()],
+            &["unit-render:000001".to_string()],
+        );
+        assert_ne!(
+            baseline,
+            canonical_block_hash(
+                1,
+                0,
+                "paragraph",
+                "CO = HR × SV",
+                &["Hemodynamics".to_string()],
+                &["unit-render:000001".to_string()],
+            )
+        );
+        assert_ne!(
+            baseline,
+            canonical_block_hash(
+                1,
+                0,
+                "table",
+                "CO = HR × SV",
+                &["Hemodynamics".to_string()],
+                &[],
             )
         );
     }
