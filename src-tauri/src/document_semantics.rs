@@ -600,8 +600,7 @@ mod tests {
         oversized.full_text = (0..12_000)
             .map(|index| format!("concept-{index} "))
             .collect::<String>();
-        let windows =
-            build_semantic_windows(&[oversized, chunk(1, &[13], 100)], 1_000, 3, 100);
+        let windows = build_semantic_windows(&[oversized, chunk(1, &[13], 100)], 1_000, 3, 100);
         assert!(windows.len() > 4);
         assert!(windows.iter().all(|window| window.token_estimate <= 1_000));
         assert!(windows
