@@ -33,16 +33,12 @@ pub(crate) struct SourceAssetRecord {
 
 /// Temporary PDF-facing projection backed by canonical source assets.
 ///
-/// The current Documents command still verifies one rendered image per PDF
-/// page. Keeping that preflight here avoids reading `document_pages` as an
-/// authority while preserving the existing UI/IPC behavior until the generic
-/// document viewer lands.
+/// The current Documents command only needs one canonical render path per PDF
+/// page to verify derivative completeness before generation. Visual evidence
+/// integrity is checked later from `SourceAssetRecord` when images are loaded.
 #[derive(Clone, Debug)]
 pub(crate) struct SourceRenderRecord {
-    pub unit_number: i64,
     pub relative_path: String,
-    pub byte_size: i64,
-    pub sha256: String,
 }
 
 #[derive(Clone, Debug)]
@@ -173,7 +169,12 @@ pub(crate) fn initialize_additional_progress(
                  SET scale_mode = ?1, generation_window_count = ?2,
                      generation_completed_window_count = 0, updated_at = ?3
                  WHERE id = ?4 AND lifecycle_state = 'processing'",
-                params![scale_mode, to_i64(generation_window_count), now, document_id],
+                params![
+                    scale_mode,
+                    to_i64(generation_window_count),
+                    now,
+                    document_id
+                ],
             )
             .map_err(|error| {
                 db_error("document_additional_plan_write_failed", document_id, error)
@@ -409,7 +410,11 @@ pub(crate) fn mark_window_complete(
                      safe_error_message = '', updated_at = ?3
                  WHERE job_id = ?4 AND window_index = ?5 AND state IN ('pending', 'running')",
                 params![
-                    if card_count == 0 { "skipped" } else { "succeeded" },
+                    if card_count == 0 {
+                        "skipped"
+                    } else {
+                        "succeeded"
+                    },
                     to_i64(card_count),
                     now,
                     job_id,
@@ -572,13 +577,7 @@ pub(crate) fn load_source_assets(
                  WHERE document_id = ?1
                  ORDER BY COALESCE(source_unit_number, 0), asset_id",
             )
-            .map_err(|error| {
-                db_error(
-                    "document_source_assets_prepare_failed",
-                    document_id,
-                    error,
-                )
-            })?;
+            .map_err(|error| db_error("document_source_assets_prepare_failed", document_id, error))?;
         let assets = statement
             .query_map([document_id], |row| {
                 Ok(SourceAssetRecord {
@@ -590,9 +589,7 @@ pub(crate) fn load_source_assets(
                     sha256: row.get(5)?,
                 })
             })
-            .map_err(|error| {
-                db_error("document_source_assets_query_failed", document_id, error)
-            })?
+            .map_err(|error| db_error("document_source_assets_query_failed", document_id, error))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| {
                 db_error("document_source_assets_decode_failed", document_id, error)
@@ -608,32 +605,21 @@ pub(crate) fn load_source_renders(
     database.with_connection(|connection| {
         let mut statement = connection
             .prepare(
-                "SELECT source_unit_number, relative_path, byte_size, sha256
+                "SELECT relative_path
                  FROM document_source_assets
                  WHERE document_id = ?1
                    AND role = 'unit_render'
                    AND source_unit_number IS NOT NULL
                  ORDER BY source_unit_number",
             )
-            .map_err(|error| {
-                db_error(
-                    "document_source_renders_prepare_failed",
-                    document_id,
-                    error,
-                )
-            })?;
+            .map_err(|error| db_error("document_source_renders_prepare_failed", document_id, error))?;
         let renders = statement
             .query_map([document_id], |row| {
                 Ok(SourceRenderRecord {
-                    unit_number: row.get(0)?,
-                    relative_path: row.get(1)?,
-                    byte_size: row.get(2)?,
-                    sha256: row.get(3)?,
+                    relative_path: row.get(0)?,
                 })
             })
-            .map_err(|error| {
-                db_error("document_source_renders_query_failed", document_id, error)
-            })?
+            .map_err(|error| db_error("document_source_renders_query_failed", document_id, error))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| {
                 db_error("document_source_renders_decode_failed", document_id, error)
@@ -883,8 +869,8 @@ mod tests {
             token_estimate: 10,
             source_text: "source".to_string(),
         };
-        let error = validate_semantic_windows(&[window], &DocumentSourceDescriptor::pdf(1))
-            .unwrap_err();
+        let error =
+            validate_semantic_windows(&[window], &DocumentSourceDescriptor::pdf(1)).unwrap_err();
         assert_eq!(error.code, "invalid_document_window_identity");
     }
 
