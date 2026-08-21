@@ -400,14 +400,28 @@ fn public_baseline_preserves_stage36_38_attribution_schema() {
                     |row| row.get(0),
                 )
                 .expect("public baseline ledger entry should load");
+            let canonical_migration_present: i64 = connection
+                .query_row(
+                    "SELECT EXISTS(
+                         SELECT 1 FROM schema_migrations
+                         WHERE version = 2 AND name = 'canonical_documents'
+                     )",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("canonical migration ledger entry should load");
             let migration_count: i64 = connection
                 .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
                     row.get(0)
                 })
                 .expect("migration count should load");
-            let repair_count: i64 = connection
-                .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
-                .expect("repair count should load");
+            let repair_state: (i64, i64) = connection
+                .query_row(
+                    "SELECT COUNT(*), COALESCE(SUM(changed_rows), 0) FROM data_repairs",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .expect("repair state should load");
             let attribution_tables: i64 = connection
                 .query_row(
                     "SELECT COUNT(*) FROM sqlite_master
@@ -425,10 +439,11 @@ fn public_baseline_preserves_stage36_38_attribution_schema() {
             assert_eq!(schema_version, LATEST_SCHEMA_VERSION);
             assert_eq!(schema_lineage, "ostudy-public-v1");
             assert_eq!(public_baseline_present, 1);
-            assert_eq!(migration_count, 1);
-            assert_eq!(repair_count, 0);
+            assert_eq!(canonical_migration_present, 1);
+            assert_eq!(migration_count, LATEST_SCHEMA_VERSION);
+            assert_eq!(repair_state, (2, 0));
             assert_eq!(attribution_tables, 4);
             Ok(())
         })
-        .expect("public baseline should retain Stage 3.6-3.8 attribution state");
+        .expect("public schema should retain Stage 3.6-3.8 attribution state");
 }
