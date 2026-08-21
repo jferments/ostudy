@@ -5,7 +5,9 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/versions.env"
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/node-toolchain.bash"
+ostudy_activate_node_toolchain
 
 CHECK_NATIVE_SMOKE=0
 case "${1:-}" in
@@ -46,6 +48,14 @@ for command_name in \
   pkg-config sqlite3 sha256sum tar; do
   require_command "$command_name"
 done
+
+if [[ -n "${OSTUDY_NODE_TOOLCHAIN_BIN:-}" ]]; then
+  ok "Node toolchain: ${OSTUDY_NODE_TOOLCHAIN_SOURCE} (${OSTUDY_NODE_TOOLCHAIN_BIN})"
+else
+  printf 'NOTE No exact Node %s/npm %s pair was found in the project-managed install or PATH.\n' \
+    "$NODE_VERSION" "$NPM_VERSION" >&2
+  printf '     Run ./scripts/setup-ubuntu.sh or activate the repository .nvmrc, then retry.\n' >&2
+fi
 
 if (( CHECK_NATIVE_SMOKE == 1 )); then
   for command_name in xvfb-run WebKitWebDriver tauri-driver; do
