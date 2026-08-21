@@ -94,7 +94,7 @@ fn seed_public_v1_pdf(path: &std::path::Path) {
                  bbox_height, confidence, font_name, font_size, is_bold,
                  is_italic, text_sha256, created_at
              ) VALUES (
-                 ?1, 0, 1, 'paragraph', ?2, 'Hemodynamics',
+                 ?1, 0, 1, 'table', ?2, 'Hemodynamics',
                  '[\"Hemodynamics\"]', 0.1, 0.2, 0.7, 0.1, 0.99,
                  'Example Sans', 12.0, 0, 0, ?3, 10
              )",
@@ -113,7 +113,7 @@ fn seed_public_v1_pdf(path: &std::path::Path) {
                  token_estimate, is_oversized, text_sha256, created_at
              ) VALUES (
                  ?1, 0, 'Cardiac output', ?2, '[1]',
-                 '[{\"pageNumber\":1}]', '[\"paragraph\"]',
+                 '[{\"pageNumber\":1}]', '[\"table\"]',
                  'Hemodynamics', 18, 0, ?3, 10
              )",
             params![
@@ -222,12 +222,12 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .map_err(CommandError::database)?;
-    assert_eq!(block.0, "paragraph");
+    assert_eq!(block.0, "table");
     assert!(block.1.contains("Cardiac output"));
     assert_eq!(block.2, 1);
     assert_eq!(
         serde_json::from_str::<Value>(&block.3).map_err(CommandError::serialization)?,
-        serde_json::json!([])
+        serde_json::json!(["unit-render:000001"])
     );
 
     let chunk: (String, String, String) = connection
@@ -242,9 +242,10 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
     let chunk_locator: SourceLocator =
         serde_json::from_str(&chunk.0).map_err(CommandError::serialization)?;
     assert_eq!(chunk_locator.unit_numbers, vec![1]);
+    assert_eq!(chunk_locator.asset_ids, vec!["unit-render:000001"]);
     assert_eq!(
         serde_json::from_str::<Value>(&chunk.1).map_err(CommandError::serialization)?,
-        serde_json::json!([])
+        serde_json::json!(["unit-render:000001"])
     );
     assert_eq!(chunk.2, "5".repeat(64));
 
