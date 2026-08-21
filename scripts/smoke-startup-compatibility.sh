@@ -270,7 +270,19 @@ if grep -Eq 'application_startup_blocked|panicked at|Failed to setup app|panic_c
 fi
 
 lineage="$(sqlite3 "$DATABASE" "SELECT value FROM schema_metadata WHERE key='schema_lineage';")"
-migration="$(sqlite3 -separator '|' "$DATABASE" 'SELECT version, name, checksum FROM schema_migrations;')"
+schema_version="$(sqlite3 "$DATABASE" 'PRAGMA user_version;')"
+migrations="$(sqlite3 -separator '|' "$DATABASE" 'SELECT version, name, checksum FROM schema_migrations ORDER BY version;')"
+repairs="$(sqlite3 -separator '|' "$DATABASE" 'SELECT version, name, checksum, changed_rows FROM data_repairs ORDER BY version;')"
+expected_migrations="$(cat <<'EOF'
+1|public_baseline|2d978f8be026ecb820e71ba77a8585e1de51cb08fc2820714526a33284167f85
+2|canonical_documents|dba2a5fd43b9544c1a4da9e060106f157ca5ac839a5c87ca831d7ceef8bb7733
+EOF
+)"
+expected_repairs="$(cat <<'EOF'
+1|canonical_semantic_chunk_hashes|779d93574a75f1e694fc4476bbf278ce7a540155cc4c35cf113f9ddb03d2a46f|0
+2|canonical_block_hashes|02a07faa3635627246ef361160e94fe80a4634f7d36c97dbc3d6cb0819846085|0
+EOF
+)"
 after_decks="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM decks;')"
 after_cards="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM cards;')"
 after_reviews="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM review_events;')"
@@ -280,8 +292,16 @@ after_attributions="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM review_event_att
   printf 'ERROR: adopted database has unexpected lineage: %s\n' "$lineage" >&2
   exit 1
 }
-[[ "$migration" == "1|public_baseline|2d978f8be026ecb820e71ba77a8585e1de51cb08fc2820714526a33284167f85" ]] || {
-  printf 'ERROR: adopted database has unexpected public migration ledger: %s\n' "$migration" >&2
+[[ "$schema_version" == "2" ]] || {
+  printf 'ERROR: adopted database has unexpected SQLite schema version: %s\n' "$schema_version" >&2
+  exit 1
+}
+[[ "$migrations" == "$expected_migrations" ]] || {
+  printf 'ERROR: adopted database has unexpected current migration ledger:\n%s\n' "$migrations" >&2
+  exit 1
+}
+[[ "$repairs" == "$expected_repairs" ]] || {
+  printf 'ERROR: adopted database has unexpected canonical repair ledger:\n%s\n' "$repairs" >&2
   exit 1
 }
 [[ "$before_decks" == "$after_decks" && "$before_cards" == "$after_cards" ]] || {
@@ -299,4 +319,4 @@ backup_count="$(find "$APP_DATA" -maxdepth 1 -type f -name 'library.sqlite3.pre-
   exit 1
 }
 
-printf 'Native startup compatibility smoke passed: the built application backed up and adopted the actual historical final-v26 database, preserved decks/cards/reviews/analytics, completed startup, and did not enter a reset or panic path.\n'
+printf 'Native startup compatibility smoke passed: the built application backed up and adopted the actual historical final-v26 database, migrated it through the complete current public lineage, preserved decks/cards/reviews/analytics, completed startup, and did not enter a reset or panic path.\n'
