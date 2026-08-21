@@ -3,23 +3,24 @@ use std::collections::{BTreeSet, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    document_domain::{DocumentSourceDescriptor, SourceLocator},
+    document_domain::{DocumentSourceDescriptor, SourceLocator, SourceUnitKind},
     document_scale::DocumentScalePlan,
     error::CommandError,
 };
 
 /// Persisted, engine-neutral semantic chunk used by all document-aware AI tasks.
 ///
-/// `page_numbers` is the current PDF adapter's persisted source-unit projection.
-/// The rest of the document platform consumes `SemanticWindow::source_locator()`
-/// rather than depending directly on PDF terminology.
+/// The chunk owns a canonical source locator rather than a format-specific page
+/// list. Visual evidence is carried by the locator's asset identities, allowing
+/// slides, flowing sections, EPUB chapters, note images, and future timed media
+/// to use the same planner without pretending to be PDF pages.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SemanticChunk {
     pub chunk_index: i64,
     pub text: String,
     pub full_text: String,
-    pub page_numbers: Vec<i64>,
+    pub source_locator: SourceLocator,
     pub element_types: Vec<String>,
     pub heading_context: Option<String>,
     pub token_estimate: usize,
@@ -33,11 +34,7 @@ pub(crate) struct SemanticPartition {
     chunk_end: usize,
 }
 
-/// A contiguous, overlapping semantic source window.
-///
-/// The legacy page fields remain a compatibility projection while PDF is the
-/// only ingestion adapter. Generic consumers must use `source_locator()` for
-/// identity, validation, persistence, and diagnostics.
+/// A contiguous, overlapping semantic source window with canonical provenance.
 #[derive(Clone, Debug)]
 pub(crate) struct SemanticWindow {
     pub window_index: usize,
@@ -45,21 +42,14 @@ pub(crate) struct SemanticWindow {
     pub partition_title: String,
     pub first_chunk_index: i64,
     pub last_chunk_index: i64,
-    pub page_numbers: Vec<i64>,
-    pub visual_page_numbers: Vec<i64>,
-    pub page_start: i64,
-    pub page_end: i64,
+    pub source_locator: SourceLocator,
     pub token_estimate: usize,
     pub source_text: String,
 }
 
 impl SemanticWindow {
     pub(crate) fn source_locator(&self) -> SourceLocator {
-        SourceLocator::pages(
-            self.page_numbers.clone(),
-            Some(self.partition_title.clone()),
-        )
-        .expect("semantic PDF source windows are normalized to positive source units")
+        self.source_locator.clone()
     }
 }
 
@@ -68,7 +58,7 @@ struct SourceUnit<'a> {
     chunk: &'a SemanticChunk,
     segment_index: usize,
     segment_count: usize,
-    page_numbers: Vec<i64>,
+    unit_numbers: Vec<i64>,
     text: String,
     token_estimate: usize,
 }
@@ -132,14 +122,13 @@ pub(crate) fn validate_semantic_windows(
                 "A semantic source window has no bounded source content.",
             ));
         }
-        let locator = window.source_locator();
-        if locator.unit_kind != source.unit_kind {
+        if window.source_locator.unit_kind != source.unit_kind {
             return Err(CommandError::new(
                 "invalid_document_source_locator",
                 "A semantic source window uses the wrong source-unit kind for this document.",
             ));
         }
-        locator.validate_within(source.unit_count)?;
+        window.source_locator.validate_within(source.unit_count)?;
     }
     Ok(())
 }
@@ -149,8 +138,6 @@ pub(crate) fn validate_semantic_windows(
 /// Heading changes deliberately do not create request boundaries. Heading
 /// context remains attached to every chunk and is visible to the model, while
 /// transport packing is controlled only by bounded token/source-unit capacity.
-/// This prevents a highly structured textbook from degenerating into nearly one
-/// provider request per heading or page.
 pub(crate) fn build_semantic_partitions(
     chunks: &[SemanticChunk],
     plan: DocumentScalePlan,
@@ -171,7 +158,7 @@ pub(crate) fn build_semantic_partitions(
             let chunk_tokens = effective_chunk_tokens(chunk);
             let next_tokens = token_total.saturating_add(chunk_tokens);
             let mut next_units = units.clone();
-            next_units.extend(chunk.page_numbers.iter().copied());
+            next_units.extend(chunk.source_locator.unit_numbers.iter().copied());
 
             let exceeds_hard_boundary = end > start
                 && (next_tokens > plan.partition_max_tokens
@@ -189,7 +176,7 @@ pub(crate) fn build_semantic_partitions(
         }
 
         if end == start {
-            units.extend(chunks[start].page_numbers.iter().copied());
+            units.extend(chunks[start].source_locator.unit_numbers.iter().copied());
             end = start + 1;
         }
 
@@ -245,6 +232,10 @@ fn build_semantic_windows_internal(
         return Vec::new();
     }
 
+    let unit_kind = chunks
+        .first()
+        .map(|chunk| chunk.source_locator.unit_kind)
+        .unwrap_or(SourceUnitKind::Section);
     let units = build_source_units(chunks, max_tokens, max_units);
     let mut windows = Vec::new();
     let mut start = 0_usize;
@@ -258,7 +249,7 @@ fn build_semantic_windows_internal(
             let unit = &units[end];
             let next_tokens = token_total.saturating_add(unit.token_estimate.max(1));
             let mut next_units = source_units.clone();
-            next_units.extend(unit.page_numbers.iter().copied());
+            next_units.extend(unit.unit_numbers.iter().copied());
 
             let would_exceed =
                 end > start && (next_tokens > max_tokens || next_units.len() > max_units);
@@ -273,21 +264,19 @@ fn build_semantic_windows_internal(
         if end == start {
             end = start + 1;
             token_total = units[start].token_estimate.max(1).min(max_tokens);
-            source_units.extend(units[start].page_numbers.iter().copied().take(max_units));
+            source_units.extend(units[start].unit_numbers.iter().copied().take(max_units));
         }
 
         let selected = &units[start..end];
-        let mut page_numbers = source_units.into_iter().collect::<Vec<_>>();
-        if page_numbers.is_empty() {
-            page_numbers.push(1);
+        let mut unit_numbers = source_units.into_iter().collect::<Vec<_>>();
+        if unit_numbers.is_empty() {
+            unit_numbers.push(1);
         }
-        let page_start = page_numbers.first().copied().unwrap_or(1);
-        let page_end = page_numbers.last().copied().unwrap_or(page_start);
-        let visual_page_numbers = selected
+        let unit_start = unit_numbers.first().copied().unwrap_or(1);
+        let unit_end = unit_numbers.last().copied().unwrap_or(unit_start);
+        let asset_ids = selected
             .iter()
-            .filter(|unit| chunk_needs_visual_grounding(unit.chunk))
-            .flat_map(|unit| unit.page_numbers.iter().copied())
-            .filter(|number| *number >= 1)
+            .flat_map(|unit| unit.chunk.source_locator.asset_ids.iter().cloned())
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
@@ -300,10 +289,18 @@ fn build_semantic_windows_internal(
             "<ostudy-partition index=\"{}\" title=\"{}\" source-units=\"{}-{}\">\n{}\n</ostudy-partition>",
             partition_index,
             escape_attribute(partition_title),
-            page_start,
-            page_end,
+            unit_start,
+            unit_end,
             chunks_text
         );
+        let source_locator = SourceLocator::with_evidence(
+            unit_kind,
+            unit_numbers,
+            Some(partition_title.to_string()),
+            asset_ids,
+            None,
+        )
+        .expect("persisted semantic chunks contain validated canonical source locators");
 
         windows.push(SemanticWindow {
             window_index: windows.len(),
@@ -311,10 +308,7 @@ fn build_semantic_windows_internal(
             partition_title: partition_title.to_string(),
             first_chunk_index: selected.first().map_or(0, |unit| unit.chunk.chunk_index),
             last_chunk_index: selected.last().map_or(0, |unit| unit.chunk.chunk_index),
-            page_numbers,
-            visual_page_numbers,
-            page_start,
-            page_end,
+            source_locator,
             token_estimate: token_total.min(max_tokens),
             source_text,
         });
@@ -370,16 +364,6 @@ fn partition_heading(chunk: &SemanticChunk) -> Option<String> {
     (!bounded.is_empty()).then_some(bounded)
 }
 
-fn chunk_needs_visual_grounding(chunk: &SemanticChunk) -> bool {
-    chunk
-        .element_types
-        .iter()
-        .any(|element_type| matches!(element_type.as_str(), "image" | "table" | "key_value"))
-        || chunk
-            .full_text
-            .contains("has no extractable structured text")
-}
-
 fn build_source_units<'a>(
     chunks: &'a [SemanticChunk],
     max_tokens: usize,
@@ -391,7 +375,7 @@ fn build_source_units<'a>(
         let text_token_estimate = text_chars.div_ceil(4);
         let source_token_estimate = chunk.token_estimate.max(text_token_estimate).max(1);
         let token_segments = source_token_estimate.div_ceil(max_tokens).max(1);
-        let unit_segments = chunk.page_numbers.len().div_ceil(max_units).max(1);
+        let unit_segments = chunk.source_locator.unit_numbers.len().div_ceil(max_units).max(1);
         let segment_count = token_segments.max(unit_segments);
         let text_segments = split_text_into_segments(&chunk.full_text, segment_count);
 
@@ -400,15 +384,18 @@ fn build_source_units<'a>(
                 .get(segment_index)
                 .cloned()
                 .unwrap_or_default();
-            let page_numbers =
-                segment_source_units(&chunk.page_numbers, segment_index, segment_count);
+            let unit_numbers = segment_source_units(
+                &chunk.source_locator.unit_numbers,
+                segment_index,
+                segment_count,
+            );
             let distributed_estimate = source_token_estimate.div_ceil(segment_count);
             let segment_estimate = text.chars().count().div_ceil(4).max(distributed_estimate);
             units.push(SourceUnit {
                 chunk,
                 segment_index,
                 segment_count,
-                page_numbers,
+                unit_numbers,
                 text,
                 token_estimate: segment_estimate.clamp(1, max_tokens),
             });
@@ -508,7 +495,7 @@ fn format_unit_for_model(unit: &SourceUnit<'_>) -> String {
     let chunk = unit.chunk;
     let heading = chunk.heading_context.as_deref().unwrap_or("(no heading)");
     let source_units = unit
-        .page_numbers
+        .unit_numbers
         .iter()
         .map(ToString::to_string)
         .collect::<Vec<_>>()
@@ -551,12 +538,17 @@ mod tests {
     use super::*;
     use crate::document_domain::DocumentSourceDescriptor;
 
-    fn chunk(index: i64, pages: &[i64], tokens: usize) -> SemanticChunk {
+    fn chunk(index: i64, units: &[i64], tokens: usize) -> SemanticChunk {
         SemanticChunk {
             chunk_index: index,
             text: format!("text {index}"),
             full_text: format!("Section {index}\ntext {index}"),
-            page_numbers: pages.to_vec(),
+            source_locator: SourceLocator::new(
+                SourceUnitKind::Page,
+                units.to_vec(),
+                Some(format!("Section {index}")),
+            )
+            .unwrap(),
             element_types: vec!["paragraph".to_string()],
             heading_context: Some(format!("Section {index}")),
             token_estimate: tokens,
@@ -649,7 +641,7 @@ mod tests {
     }
 
     #[test]
-    fn heading_dense_fifty_five_page_source_uses_a_small_number_of_outline_windows() {
+    fn heading_dense_fifty_five_unit_source_uses_a_small_number_of_outline_windows() {
         let mut chunks = (0..55)
             .map(|index| chunk(index, &[index + 1], 600))
             .collect::<Vec<_>>();
@@ -666,7 +658,7 @@ mod tests {
         );
         assert!(
             windows.len() <= 4,
-            "55 heading-dense pages produced {} outline windows",
+            "55 heading-dense source units produced {} outline windows",
             windows.len()
         );
         assert_eq!(windows.first().unwrap().source_locator().first(), 1);
@@ -713,7 +705,7 @@ mod tests {
     }
 
     #[test]
-    fn packed_windows_can_cross_heading_boundaries_without_losing_provenance() {
+    fn packed_windows_preserve_visual_asset_evidence() {
         let mut chunks = Vec::new();
         for index in 0..8 {
             let mut value = chunk(index, &[index + 1], 700);
@@ -724,6 +716,14 @@ mod tests {
             });
             if index == 5 {
                 value.element_types = vec!["image".to_string()];
+                value.source_locator = SourceLocator::with_evidence(
+                    SourceUnitKind::Page,
+                    vec![6],
+                    Some("Chapter B".to_string()),
+                    vec!["unit-render:000006".to_string()],
+                    None,
+                )
+                .unwrap();
             }
             chunks.push(value);
         }
@@ -735,8 +735,35 @@ mod tests {
         assert!(windows
             .iter()
             .any(|window| window.source_text.contains("Chapter B")));
-        assert!(windows
-            .iter()
-            .any(|window| window.visual_page_numbers.contains(&6)));
+        assert!(windows.iter().any(|window| {
+            window
+                .source_locator
+                .asset_ids
+                .contains(&"unit-render:000006".to_string())
+        }));
+    }
+
+    #[test]
+    fn non_pdf_source_units_remain_non_pdf_through_window_planning() {
+        let chunk = SemanticChunk {
+            chunk_index: 0,
+            text: "diagram".to_string(),
+            full_text: "A flow diagram connects preload to stroke volume.".to_string(),
+            source_locator: SourceLocator::with_evidence(
+                SourceUnitKind::Slide,
+                vec![3],
+                Some("Frank-Starling mechanism".to_string()),
+                vec!["slide-render:000003".to_string()],
+                None,
+            )
+            .unwrap(),
+            element_types: vec!["image".to_string()],
+            heading_context: Some("Frank-Starling mechanism".to_string()),
+            token_estimate: 20,
+        };
+        let windows = build_semantic_windows(&[chunk], 1_000, 10, 0);
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0].source_locator.unit_kind, SourceUnitKind::Slide);
+        assert_eq!(windows[0].source_locator.asset_ids, vec!["slide-render:000003"]);
     }
 }
