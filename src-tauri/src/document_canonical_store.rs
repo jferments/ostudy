@@ -211,17 +211,29 @@ pub(crate) fn persist_canonical_ingestion(
         transaction
             .execute(
                 "INSERT INTO document_semantic_chunk_sources (
-                     document_id, chunk_index, source_locator_json,
-                     visual_asset_ids_json, content_sha256,
-                     canonical_schema_version, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+                     document_id, chunk_index, text, full_text,
+                     source_locator_json, visual_asset_ids_json,
+                     element_types_json, heading_context, token_estimate,
+                     is_oversized, content_sha256, canonical_schema_version,
+                     created_at, updated_at
+                 ) VALUES (
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7,
+                     ?8, ?9, ?10, ?11, ?12, ?13, ?13
+                 )",
                 params![
                     document_id,
                     chunk.chunk_index,
+                    chunk.text,
+                    chunk.full_text,
                     serde_json::to_string(&chunk.source_locator)
                         .map_err(CommandError::serialization)?,
                     serde_json::to_string(&chunk.source_locator.asset_ids)
                         .map_err(CommandError::serialization)?,
+                    serde_json::to_string(&chunk.element_types)
+                        .map_err(CommandError::serialization)?,
+                    chunk.heading_context,
+                    i64::try_from(chunk.token_estimate).unwrap_or(i64::MAX),
+                    i64::from(chunk.is_oversized),
                     chunk.content_sha256,
                     CANONICAL_DOCUMENT_SCHEMA_VERSION,
                     now,
