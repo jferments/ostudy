@@ -38,6 +38,16 @@ pub(crate) use crate::pdf_document_ingestion::IngestionProgress;
 
 const PDF_ADAPTER_BACKEND: &str = "pdf-canonical-adapter-v1";
 const HASH_BUFFER_BYTES: usize = 128 * 1024;
+const MAX_CANONICAL_FILE_NAME_CHARS: usize = 255;
+const MAX_CANONICAL_TITLE_CHARS: usize = 1_000;
+const MAX_CANONICAL_UNIT_TEXT_CHARS: usize = 250_000;
+const MAX_CANONICAL_BLOCK_TEXT_CHARS: usize = 250_000;
+const MAX_CANONICAL_HEADING_CHARS: usize = 500;
+const MAX_CANONICAL_HEADING_ITEMS: usize = 64;
+const MAX_CANONICAL_ATTRIBUTE_VALUE_CHARS: usize = 2_000;
+const MAX_CANONICAL_CHUNK_TEXT_CHARS: usize = 1_000_000;
+const MAX_CANONICAL_CHUNK_FULL_TEXT_CHARS: usize = 1_100_000;
+const MAX_CANONICAL_HEADING_CONTEXT_CHARS: usize = 2_000;
 
 #[derive(Debug)]
 pub(crate) struct AdapterExtraction {
@@ -324,8 +334,15 @@ pub(crate) fn persist_ingested_document(
                 "The managed source changed while ostudy was extracting it. Import the document again.",
             ));
         }
-        canonical.document.metadata.title = Some(stored_source.0);
-        source_file.original_filename = stored_source.1;
+        let normalized_title = normalize_semantic_text(&stored_source.0, MAX_CANONICAL_TITLE_CHARS);
+        canonical.document.metadata.title = (!normalized_title.is_empty()).then_some(normalized_title);
+        let normalized_filename =
+            normalize_semantic_text(&stored_source.1, MAX_CANONICAL_FILE_NAME_CHARS);
+        source_file.original_filename = if normalized_filename.is_empty() {
+            "source.pdf".to_string()
+        } else {
+            normalized_filename
+        };
         source_file.media_type = stored_source.2;
         source_file.relative_path = stored_source.5;
         canonical.validate()?;
@@ -448,8 +465,9 @@ fn canonicalize_pdf(
     let original_filename = source_path
         .file_name()
         .and_then(|value| value.to_str())
-        .unwrap_or("source.pdf")
-        .to_string();
+        .map(|value| normalize_semantic_text(value, MAX_CANONICAL_FILE_NAME_CHARS))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "source.pdf".to_string());
     let source_file = CanonicalSourceFile {
         file_ordinal: 1,
         original_filename,
@@ -468,7 +486,7 @@ fn canonicalize_pdf(
                 processed.source.unit_kind,
                 format!("Page {}", page.unit_number),
                 None,
-                page.plain_text.clone(),
+                normalize_semantic_text(&page.plain_text, MAX_CANONICAL_UNIT_TEXT_CHARS),
                 1,
             )
         })
@@ -491,6 +509,7 @@ fn canonicalize_pdf(
         })
         .collect::<Vec<_>>();
 
+    let mut normalized_block_count = 0_usize;
     let mut block_ordinals = BTreeMap::<i64, i64>::new();
     let mut blocks = Vec::with_capacity(processed.semantic.elements.len());
     for (block_index, element) in processed.semantic.elements.iter().enumerate() {
@@ -513,7 +532,11 @@ fn canonicalize_pdf(
             element.element_index.to_string(),
         );
         if let Some(font_name) = &element.font_name {
-            attributes.insert("fontName".to_string(), font_name.clone());
+            let font_name =
+                normalize_semantic_text(font_name, MAX_CANONICAL_ATTRIBUTE_VALUE_CHARS);
+            if !font_name.is_empty() {
+                attributes.insert("fontName".to_string(), font_name);
+            }
         }
         if let Some(font_size) = element.font_size.filter(|value| value.is_finite()) {
             attributes.insert("fontSize".to_string(), font_size.to_string());
@@ -525,14 +548,32 @@ fn canonicalize_pdf(
         } else {
             Vec::new()
         };
+        let text = normalize_semantic_text(&element.text, MAX_CANONICAL_BLOCK_TEXT_CHARS);
+        let parent_heading = normalize_optional_semantic_text(
+            element.parent_heading.as_deref(),
+            MAX_CANONICAL_HEADING_CHARS,
+        );
+        let heading_path = element
+            .heading_path
+            .iter()
+            .take(MAX_CANONICAL_HEADING_ITEMS)
+            .map(|value| normalize_semantic_text(value, MAX_CANONICAL_HEADING_CHARS))
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        if text != element.text
+            || parent_heading != element.parent_heading
+            || heading_path != element.heading_path
+        {
+            normalized_block_count = normalized_block_count.saturating_add(1);
+        }
         blocks.push(CanonicalBlock::new(
             to_i64(block_index),
             *block_ordinal,
             source_unit_number,
             role,
-            element.text.clone(),
-            element.parent_heading.clone(),
-            element.heading_path.clone(),
+            text,
+            parent_heading,
+            heading_path,
             geometry,
             confidence,
             asset_ids,
@@ -541,6 +582,8 @@ fn canonicalize_pdf(
         *block_ordinal = block_ordinal.saturating_add(1);
     }
 
+    let mut normalized_chunk_count = 0_usize;
+    let mut visual_only_chunk_count = 0_usize;
     let mut semantic_chunks = Vec::with_capacity(processed.semantic.chunks.len());
     for (chunk_index, chunk) in processed.semantic.chunks.iter().enumerate() {
         let unit_numbers = chunk
@@ -548,33 +591,73 @@ fn canonicalize_pdf(
             .iter()
             .map(|unit| to_i64(*unit))
             .collect::<Vec<_>>();
-        let visual_asset_ids =
-            if chunk_needs_visual_grounding(&chunk.element_types, &chunk.full_text) {
-                unit_numbers
-                    .iter()
-                    .map(|unit| unit_render_asset_id(*unit))
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            };
+        let heading_context = normalize_optional_semantic_text(
+            chunk.heading_context.as_deref(),
+            MAX_CANONICAL_HEADING_CONTEXT_CHARS,
+        );
+        let mut text = normalize_semantic_text(&chunk.text, MAX_CANONICAL_CHUNK_TEXT_CHARS);
+        let mut full_text =
+            normalize_semantic_text(&chunk.full_text, MAX_CANONICAL_CHUNK_FULL_TEXT_CHARS);
+        if text.is_empty() && !full_text.is_empty() {
+            text = full_text.clone();
+        } else if full_text.is_empty() && !text.is_empty() {
+            full_text = text.clone();
+        }
+        let empty_after_normalization = text.is_empty() && full_text.is_empty();
+        if empty_after_normalization {
+            let label = format_source_units(&unit_numbers);
+            full_text = format!(
+                "Source {label} contains visual or non-text content with no extractable semantic text. Use the attached source image as evidence and do not infer unsupported details."
+            );
+            text = full_text.clone();
+            visual_only_chunk_count = visual_only_chunk_count.saturating_add(1);
+        }
+        let needs_visual_grounding = empty_after_normalization
+            || chunk_needs_visual_grounding(&chunk.element_types, &full_text);
+        let visual_asset_ids = if needs_visual_grounding {
+            unit_numbers
+                .iter()
+                .map(|unit| unit_render_asset_id(*unit))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         let locator = SourceLocator::with_evidence(
             processed.source.unit_kind,
             unit_numbers,
-            chunk.heading_context.clone(),
+            heading_context.clone(),
             visual_asset_ids,
             None,
         )?;
+        if text != chunk.text
+            || full_text != chunk.full_text
+            || heading_context != chunk.heading_context
+        {
+            normalized_chunk_count = normalized_chunk_count.saturating_add(1);
+        }
         semantic_chunks.push(CanonicalSemanticChunk::new(
             to_i64(chunk_index),
-            chunk.text.clone(),
-            chunk.full_text.clone(),
+            text,
+            full_text,
             locator,
             chunk.element_types.clone(),
-            chunk.heading_context.clone(),
-            chunk.token_estimate,
+            heading_context,
+            chunk.token_estimate.max(1),
             chunk.is_oversized,
         ));
     }
+
+    crate::logging::debug_target(
+        "document.canonical",
+        "canonical_adapter_text_normalized",
+        "Normalized parser-owned text before constructing canonical document records.",
+        serde_json::json!({
+            "document": document_id,
+            "normalizedBlocks": normalized_block_count,
+            "normalizedChunks": normalized_chunk_count,
+            "visualOnlyChunks": visual_only_chunk_count,
+        }),
+    );
 
     let canonical = CanonicalIngestion {
         document: CanonicalDocument {
@@ -781,6 +864,12 @@ fn normalize_element_type(value: &str) -> Result<&'static str, CommandError> {
     }
 }
 
+fn normalize_optional_semantic_text(value: Option<&str>, maximum: usize) -> Option<String> {
+    value
+        .map(|value| normalize_semantic_text(value, maximum))
+        .filter(|value| !value.is_empty())
+}
+
 fn normalize_semantic_text(value: &str, maximum: usize) -> String {
     value
         .chars()
@@ -789,6 +878,18 @@ fn normalize_semantic_text(value: &str, maximum: usize) -> String {
         .collect::<String>()
         .trim()
         .to_string()
+}
+
+fn format_source_units(unit_numbers: &[i64]) -> String {
+    match unit_numbers {
+        [] => "unit".to_string(),
+        [unit] => format!("unit {unit}"),
+        units => format!(
+            "units {}–{}",
+            units.first().copied().unwrap_or(1),
+            units.last().copied().unwrap_or(1)
+        ),
+    }
 }
 
 fn hash_file(path: &Path) -> Result<(i64, String), CommandError> {
@@ -854,7 +955,7 @@ mod tests {
     }
 
     #[test]
-    fn pdf_canonicalization_keeps_visual_and_embedding_ready_provenance() {
+    fn pdf_canonicalization_normalizes_parser_text_and_preserves_visual_evidence() {
         let root = std::env::temp_dir().join(format!(
             "ostudy-pdf-adapter-{}-{}",
             std::process::id(),
@@ -870,6 +971,7 @@ mod tests {
         source.sync_all().unwrap();
 
         let render_id = unit_render_asset_id(1);
+        let long_heading = format!("{}\u{000c}", "H".repeat(600));
         let legacy = IngestedDocument {
             source: DocumentSourceDescriptor::pdf(1),
             pages: vec![IngestedPage {
@@ -886,36 +988,71 @@ mod tests {
                     page_number: 1,
                     text: "Cardiac output is heart rate times stroke volume.".to_string(),
                 }],
-                elements: vec![ExtractedSemanticElement {
-                    element_index: 7,
-                    page_number: 1,
-                    element_type: "table".to_string(),
-                    text: "CO = HR × SV".to_string(),
-                    parent_heading: Some("Hemodynamics".to_string()),
-                    heading_path: vec!["Hemodynamics".to_string()],
-                    bbox: SemanticBBox {
-                        x: 0.1,
-                        y: 0.2,
-                        width: 0.5,
-                        height: 0.1,
+                elements: vec![
+                    ExtractedSemanticElement {
+                        element_index: 7,
+                        page_number: 1,
+                        element_type: "table".to_string(),
+                        text: "CO = HR\u{000c} × SV".to_string(),
+                        parent_heading: Some(long_heading),
+                        heading_path: vec!["Hemodynamics\u{000b}".to_string()],
+                        bbox: SemanticBBox {
+                            x: 0.1,
+                            y: 0.2,
+                            width: 0.5,
+                            height: 0.1,
+                        },
+                        confidence: 0.99,
+                        font_name: Some("Example\u{0007} Sans".to_string()),
+                        font_size: Some(12.0),
+                        is_bold: true,
+                        is_italic: false,
                     },
-                    confidence: 0.99,
-                    font_name: Some("Example Sans".to_string()),
-                    font_size: Some(12.0),
-                    is_bold: true,
-                    is_italic: false,
-                }],
-                chunks: vec![ExtractedSemanticChunk {
-                    chunk_index: 4,
-                    text: "Cardiac output table".to_string(),
-                    full_text: "Cardiac output is heart rate times stroke volume.".to_string(),
-                    page_numbers: vec![1],
-                    bounding_boxes: Vec::new(),
-                    element_types: vec!["table".to_string()],
-                    heading_context: Some("Hemodynamics".to_string()),
-                    token_estimate: 16,
-                    is_oversized: false,
-                }],
+                    ExtractedSemanticElement {
+                        element_index: 8,
+                        page_number: 1,
+                        element_type: "image".to_string(),
+                        text: String::new(),
+                        parent_heading: None,
+                        heading_path: Vec::new(),
+                        bbox: SemanticBBox {
+                            x: 0.2,
+                            y: 0.4,
+                            width: 0.4,
+                            height: 0.3,
+                        },
+                        confidence: 1.0,
+                        font_name: None,
+                        font_size: None,
+                        is_bold: false,
+                        is_italic: false,
+                    },
+                ],
+                chunks: vec![
+                    ExtractedSemanticChunk {
+                        chunk_index: 4,
+                        text: "Cardiac\u{000c} output table".to_string(),
+                        full_text:
+                            "Cardiac output is heart rate\u{000b} times stroke volume.".to_string(),
+                        page_numbers: vec![1],
+                        bounding_boxes: Vec::new(),
+                        element_types: vec!["table".to_string()],
+                        heading_context: Some("Hemodynamics\u{000c}".to_string()),
+                        token_estimate: 16,
+                        is_oversized: false,
+                    },
+                    ExtractedSemanticChunk {
+                        chunk_index: 5,
+                        text: "\u{000c}".to_string(),
+                        full_text: "\u{000b}".to_string(),
+                        page_numbers: vec![1],
+                        bounding_boxes: Vec::new(),
+                        element_types: vec!["image".to_string()],
+                        heading_context: None,
+                        token_estimate: 1,
+                        is_oversized: false,
+                    },
+                ],
                 native_text_failed_pages: Vec::new(),
                 semantic_analysis_degraded: false,
             },
@@ -935,22 +1072,37 @@ mod tests {
             &PDF_ADAPTER,
             &legacy,
         )
-        .expect("PDF should canonicalize");
+        .expect("PDF parser text should normalize into canonical records");
         canonical
             .validate()
-            .expect("canonical output should validate");
+            .expect("normalized canonical output should validate");
         assert_eq!(
             canonical.document.extraction.adapter_backend,
             PDF_ADAPTER_BACKEND
         );
-        assert_eq!(
-            canonical.document.blocks[0].asset_ids,
-            vec![render_id.clone()]
-        );
-        assert_eq!(
-            canonical.semantic_chunks[0].source_locator.asset_ids,
-            vec![render_id]
-        );
+        assert_eq!(canonical.document.blocks[0].text, "CO = HR × SV");
+        assert!(canonical.document.blocks[0]
+            .parent_heading
+            .as_deref()
+            .is_some_and(|heading| heading.chars().count() == MAX_CANONICAL_HEADING_CHARS));
+        assert!(canonical.document.blocks[0]
+            .heading_path
+            .iter()
+            .all(|heading| !heading.chars().any(char::is_control)));
+        assert_eq!(canonical.document.blocks[0].asset_ids, vec![render_id.clone()]);
+        assert!(canonical.document.blocks[1].text.is_empty());
+        assert_eq!(canonical.document.blocks[1].asset_ids, vec![render_id.clone()]);
+        assert_eq!(canonical.semantic_chunks.len(), 2);
+        assert_eq!(canonical.semantic_chunks[0].text, "Cardiac output table");
+        assert!(!canonical.semantic_chunks[0]
+            .full_text
+            .chars()
+            .any(char::is_control));
+        assert_eq!(canonical.semantic_chunks[0].source_locator.asset_ids, vec![render_id.clone()]);
+        assert!(canonical.semantic_chunks[1]
+            .full_text
+            .contains("visual or non-text content"));
+        assert_eq!(canonical.semantic_chunks[1].source_locator.asset_ids, vec![render_id]);
         assert_eq!(canonical.semantic_chunks[0].content_sha256.len(), 64);
         assert_eq!(canonical.document.full_text_sha256().len(), 64);
 
