@@ -31,6 +31,20 @@ pub(crate) struct SourceAssetRecord {
     pub sha256: String,
 }
 
+/// Temporary PDF-facing projection backed by canonical source assets.
+///
+/// The current Documents command still verifies one rendered image per PDF
+/// page. Keeping that preflight here avoids reading `document_pages` as an
+/// authority while preserving the existing UI/IPC behavior until the generic
+/// document viewer lands.
+#[derive(Clone, Debug)]
+pub(crate) struct SourceRenderRecord {
+    pub unit_number: i64,
+    pub relative_path: String,
+    pub byte_size: i64,
+    pub sha256: String,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct GenerationJobIdentity {
     pub profile_id: String,
@@ -587,6 +601,47 @@ pub(crate) fn load_source_assets(
     })
 }
 
+pub(crate) fn load_source_renders(
+    database: &Database,
+    document_id: &str,
+) -> Result<Vec<SourceRenderRecord>, CommandError> {
+    database.with_connection(|connection| {
+        let mut statement = connection
+            .prepare(
+                "SELECT source_unit_number, relative_path, byte_size, sha256
+                 FROM document_source_assets
+                 WHERE document_id = ?1
+                   AND role = 'unit_render'
+                   AND source_unit_number IS NOT NULL
+                 ORDER BY source_unit_number",
+            )
+            .map_err(|error| {
+                db_error(
+                    "document_source_renders_prepare_failed",
+                    document_id,
+                    error,
+                )
+            })?;
+        let renders = statement
+            .query_map([document_id], |row| {
+                Ok(SourceRenderRecord {
+                    unit_number: row.get(0)?,
+                    relative_path: row.get(1)?,
+                    byte_size: row.get(2)?,
+                    sha256: row.get(3)?,
+                })
+            })
+            .map_err(|error| {
+                db_error("document_source_renders_query_failed", document_id, error)
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                db_error("document_source_renders_decode_failed", document_id, error)
+            })?;
+        Ok(renders)
+    })
+}
+
 pub(crate) fn load_window_images(
     paths: &AppPaths,
     assets: &[SourceAssetRecord],
@@ -627,7 +682,9 @@ pub(crate) fn load_window_images(
             ));
         }
         images.push(SourcePageImage {
-            page_number: asset.source_unit_number.unwrap_or_else(|| window.source_locator.first()),
+            page_number: asset
+                .source_unit_number
+                .unwrap_or_else(|| window.source_locator.first()),
             bytes,
         });
     }
@@ -821,6 +878,8 @@ mod tests {
                 Some("Chapter".to_string()),
             )
             .unwrap(),
+            page_start: 1,
+            page_end: 1,
             token_estimate: 10,
             source_text: "source".to_string(),
         };
