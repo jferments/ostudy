@@ -11,6 +11,10 @@ use crate::{
 const PUBLIC_BASELINE_CHECKSUM: &str =
     "2d978f8be026ecb820e71ba77a8585e1de51cb08fc2820714526a33284167f85";
 const DOCUMENT_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const CANONICAL_SEMANTIC_HASH_REPAIR_CHECKSUM: &str =
+    "779d93574a75f1e694fc4476bbf278ce7a540155cc4c35cf113f9ddb03d2a46f";
+const EXPECTED_CANONICAL_CHUNK_HASH: &str =
+    "1ddbbf54830254d96e8eaf5c04a21564d65f02984061b9d7b3c49931223bad3d";
 
 #[test]
 fn public_v1_pdf_rows_migrate_to_the_canonical_source_ledger() {
@@ -247,7 +251,19 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
         serde_json::from_str::<Value>(&chunk.1).map_err(CommandError::serialization)?,
         serde_json::json!(["unit-render:000001"])
     );
-    assert_eq!(chunk.2, "5".repeat(64));
+    assert_ne!(chunk.2, "5".repeat(64));
+    assert_eq!(chunk.2, EXPECTED_CANONICAL_CHUNK_HASH);
+
+    let repair: (String, String, i64) = connection
+        .query_row(
+            "SELECT name, checksum, changed_rows FROM data_repairs WHERE version = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(CommandError::database)?;
+    assert_eq!(repair.0, "canonical_semantic_chunk_hashes");
+    assert_eq!(repair.1, CANONICAL_SEMANTIC_HASH_REPAIR_CHECKSUM);
+    assert_eq!(repair.2, 1);
 
     let legacy_page_count: i64 = connection
         .query_row(
