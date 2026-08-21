@@ -2651,10 +2651,7 @@ mod tests {
             body.pointer("/provider/data_collection"),
             Some(&json!("deny"))
         );
-        assert_eq!(
-            body.pointer("/provider/sort"),
-            Some(&json!("throughput"))
-        );
+        assert_eq!(body.pointer("/provider/sort"), Some(&json!("throughput")));
         assert_eq!(body.pointer("/reasoning/effort"), Some(&json!("low")));
         assert_eq!(
             body.pointer("/response_format/type"),
@@ -2672,7 +2669,10 @@ mod tests {
             .pointer("/properties/cards/items/anyOf/0")
             .unwrap();
         let property_count = first_variant["properties"].as_object().unwrap().len();
-        assert_eq!(first_variant["required"].as_array().unwrap().len(), property_count);
+        assert_eq!(
+            first_variant["required"].as_array().unwrap().len(),
+            property_count
+        );
         assert!(body.get("plugins").is_none());
         assert!(body.get("debug").is_none());
     }
