@@ -54,8 +54,14 @@ describe("DocumentsSection", () => {
     vi.mocked(aiProfiles.listAiProviderProfiles).mockResolvedValue([profile()]);
   });
 
-  it("shows only the current flashcard-generation model immediately below Documents", async () => {
-    render(<DocumentsSection refreshDecks={vi.fn()} showToast={vi.fn()} />);
+  it("shows the generation model and study-guide entry point immediately below Documents", async () => {
+    render(
+      <DocumentsSection
+        refreshDecks={vi.fn()}
+        onPracticeCards={vi.fn()}
+        showToast={vi.fn()}
+      />,
+    );
 
     const heading = screen.getByRole("heading", { name: "Documents" });
     const model = await screen.findByText("Current Flashcard Generation model");
@@ -63,6 +69,7 @@ describe("DocumentsSection", () => {
       Boolean(heading.compareDocumentPosition(model) & Node.DOCUMENT_POSITION_FOLLOWING),
     ).toBe(true);
     expect(screen.getByText("unsloth/Qwen3.6-27B-MTP-GGUF")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Study guides" })).toBeTruthy();
     expect(screen.queryByText("llama.cpp / Unsloth GGUF")).toBeNull();
     expect(screen.queryByText(/stay on this computer/u)).toBeNull();
     expect(screen.queryByText(/Local computer/u)).toBeNull();
@@ -73,7 +80,13 @@ describe("DocumentsSection", () => {
     vi.mocked(aiProfiles.getAiTaskDefaults).mockResolvedValue({
       flashcardGenerationProfileId: null,
     });
-    render(<DocumentsSection refreshDecks={vi.fn()} showToast={vi.fn()} />);
+    render(
+      <DocumentsSection
+        refreshDecks={vi.fn()}
+        onPracticeCards={vi.fn()}
+        showToast={vi.fn()}
+      />,
+    );
 
     expect(await screen.findByText("Not configured")).toBeTruthy();
     expect(screen.queryByText(/Settings → AI\/LLM/u)).toBeNull();
