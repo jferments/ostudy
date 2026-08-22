@@ -239,7 +239,6 @@ pub struct PreparedExportDto {
 pub(crate) struct ResolvedStagedImport {
     pub path: PathBuf,
     pub display_name: String,
-    pub detected_kind: ExternalFileKind,
 }
 
 #[derive(Clone, Debug)]
@@ -363,7 +362,6 @@ pub(crate) fn resolve_staged_import(
     Ok(ResolvedStagedImport {
         path,
         display_name: stored.0.display_name,
-        detected_kind: stored.0.detected_kind,
     })
 }
 
