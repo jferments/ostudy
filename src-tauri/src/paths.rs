@@ -108,17 +108,6 @@ impl AppPaths {
         )
     }
 
-    pub fn document_asset_relative_path(
-        document_id: &str,
-        asset_ordinal: usize,
-        extension: &str,
-    ) -> String {
-        format!(
-            "documents/{document_id}/assets/asset-{asset_ordinal:06}.{}",
-            safe_extension(extension)
-        )
-    }
-
     pub fn document_versioned_asset_relative_path(
         document_id: &str,
         asset_ordinal: usize,
@@ -186,10 +175,6 @@ mod tests {
         assert_eq!(
             AppPaths::document_source_relative_path_with_extension("abc", "docx"),
             "documents/abc/source.docx"
-        );
-        assert_eq!(
-            AppPaths::document_asset_relative_path("abc", 3, "png"),
-            "documents/abc/assets/asset-000003.png"
         );
         assert_eq!(
             AppPaths::document_versioned_asset_relative_path("abc", 3, 42, "png"),
