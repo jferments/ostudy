@@ -183,7 +183,7 @@ pub(crate) fn ensure_document_learning_plan(
 
         let mut topic_ids = Vec::with_capacity(draft.topics.len());
         for topic in &draft.topics {
-            let topic_id = transaction
+            let existing_topic_id = transaction
                 .query_row(
                     "SELECT id FROM document_learning_topics
                      WHERE document_id = ?1 AND anchor_hash = ?2",
@@ -191,8 +191,11 @@ pub(crate) fn ensure_document_learning_plan(
                     |row| row.get::<_, String>(0),
                 )
                 .optional()
-                .map_err(CommandError::database)?
-                .unwrap_or_else(generate_id);
+                .map_err(CommandError::database)?;
+            let topic_id = match existing_topic_id {
+                Some(topic_id) => topic_id,
+                None => generate_id(&transaction)?,
+            };
             transaction
                 .execute(
                     "INSERT OR IGNORE INTO document_learning_topics (
@@ -221,7 +224,7 @@ pub(crate) fn ensure_document_learning_plan(
             )
             .map_err(CommandError::database)?;
 
-        let plan_id = generate_id();
+        let plan_id = generate_id(&transaction)?;
         transaction
             .execute(
                 "INSERT INTO document_learning_plans (
@@ -441,10 +444,7 @@ pub(crate) fn topics_for_source_locator<'a>(
         .collect::<Vec<_>>();
     topics.sort_by_key(|topic| {
         (
-            topic
-                .source_locator
-                .last()
-                .saturating_sub(topic.source_locator.first()),
+            topic.source_locator.unit_numbers.len(),
             topic.sort_index,
             topic.id.as_str(),
         )
@@ -520,6 +520,23 @@ fn compile_plan(
                 ),
             ));
         }
+
+        let mut asset_ids = topic.source_locator.asset_ids.clone();
+        asset_ids.extend(
+            matching
+                .iter()
+                .flat_map(|chunk| chunk.source_locator.asset_ids.iter().cloned()),
+        );
+        asset_ids.sort();
+        asset_ids.dedup();
+        let source_locator = SourceLocator::with_evidence(
+            topic.source_locator.unit_kind,
+            topic.source_locator.unit_numbers.clone(),
+            topic.source_locator.section_label.clone(),
+            asset_ids,
+            topic.source_locator.time_range_ms,
+        )?;
+
         let evidence_chunk_indices = matching
             .iter()
             .map(|chunk| chunk.chunk_index)
@@ -536,9 +553,25 @@ fn compile_plan(
                 .collect::<Vec<_>>()
                 .join("|")
         ));
+        let mut stable_evidence = matching
+            .iter()
+            .map(|chunk| {
+                format!(
+                    "{}:{}",
+                    chunk.source_locator.stable_identity(),
+                    chunk.content_hash
+                )
+            })
+            .collect::<Vec<_>>();
+        stable_evidence.sort();
+        stable_evidence.dedup();
+        let stable_evidence_hash = hash_text(&format!(
+            "topic-evidence-anchor-v1|{}",
+            stable_evidence.join("|")
+        ));
         let anchor_hash = hash_text(&format!(
-            "topic-anchor-v1|locator={}|evidence={evidence_hash}",
-            topic.source_locator.stable_identity(),
+            "topic-anchor-v2|locator={}|evidence={stable_evidence_hash}",
+            source_locator.stable_identity(),
         ));
         compiled_topics.push(CompiledTopicDraft {
             parent_index: topic.parent_index,
@@ -547,7 +580,7 @@ fn compile_plan(
             summary: topic.summary.clone(),
             learning_objectives: topic.learning_objectives.clone(),
             key_concepts: topic.key_concepts.clone(),
-            source_locator: topic.source_locator.clone(),
+            source_locator,
             evidence_chunk_indices,
             evidence_hashes,
             evidence_hash,
@@ -620,7 +653,11 @@ fn normalize_topic_input(
 }
 
 fn locators_overlap(left: &SourceLocator, right: &SourceLocator) -> bool {
-    left.first() <= right.last() && right.first() <= left.last()
+    left.unit_kind == right.unit_kind
+        && left
+            .unit_numbers
+            .iter()
+            .any(|number| right.unit_numbers.contains(number))
 }
 
 fn normalize_items(values: Vec<String>, maximum: usize, maximum_chars: usize) -> Vec<String> {
@@ -795,6 +832,31 @@ mod tests {
 
         assert_ne!(first.topics[0].id, second.topics[0].id);
         assert_ne!(first.topics[0].anchor_hash, second.topics[0].anchor_hash);
+    }
+
+    #[test]
+    fn semantic_chunk_reindexing_preserves_topic_identity() {
+        let database = database();
+        let first = ensure_document_learning_plan(
+            &database,
+            DOCUMENT_ID,
+            input("Ventricular preload"),
+            &evidence('a'),
+        )
+        .unwrap();
+        let mut reindexed = evidence('a');
+        reindexed[0].chunk_index = 20;
+        reindexed[1].chunk_index = 21;
+        let second = ensure_document_learning_plan(
+            &database,
+            DOCUMENT_ID,
+            input("Ventricular preload"),
+            &reindexed,
+        )
+        .unwrap();
+
+        assert_eq!(first.topics[0].id, second.topics[0].id);
+        assert_ne!(first.topics[0].evidence_hash, second.topics[0].evidence_hash);
     }
 
     #[test]
