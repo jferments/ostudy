@@ -911,11 +911,8 @@ fn persist_image_assets(
             ));
         }
         let ordinal = assets.len() + 1;
-        let asset_id = register_asset_identity(
-            &mut identity_by_source_index,
-            source_index,
-            ordinal,
-        );
+        let asset_id =
+            register_asset_identity(&mut identity_by_source_index, source_index, ordinal);
         let extension = image_extension(&asset.media_type);
         let relative_path = AppPaths::document_asset_relative_path(document_id, ordinal, extension);
         let destination = paths.resolve_relative(&relative_path);
@@ -1187,8 +1184,14 @@ mod tests {
             register_asset_identity(&mut identity, 3, 2),
             "anydoc-asset:000002"
         );
-        assert_eq!(identity.get(&1).map(String::as_str), Some("anydoc-asset:000001"));
-        assert_eq!(identity.get(&3).map(String::as_str), Some("anydoc-asset:000002"));
+        assert_eq!(
+            identity.get(&1).map(String::as_str),
+            Some("anydoc-asset:000001")
+        );
+        assert_eq!(
+            identity.get(&3).map(String::as_str),
+            Some("anydoc-asset:000002")
+        );
         assert!(!identity.contains_key(&0));
         assert!(!identity.contains_key(&2));
     }
