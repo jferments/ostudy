@@ -591,7 +591,9 @@ fn current_backup_restores_active_editor_draft_and_its_staged_image() {
         })
         .expect("persistent draft fixture");
 
-    let backup_path = source_paths.app_data_dir().join("draft-current.ostudybackup");
+    let backup_path = source_paths
+        .app_data_dir()
+        .join("draft-current.ostudybackup");
     let exported = export_backup(&source, &source_paths, &backup_path).expect("current backup");
     assert_eq!(
         exported.asset_count, 0,
