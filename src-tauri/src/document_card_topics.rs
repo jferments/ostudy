@@ -12,11 +12,8 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     authoring::card_types_and_templates::generated_import::GeneratedImportCommitContext,
-    database::Database,
-    document_domain::SourceLocator,
-    document_learning::DocumentLearningPlan,
-    document_semantics::SemanticWindow,
-    document_topic_links::link_generated_note_to_learning_plan,
+    database::Database, document_domain::SourceLocator, document_learning::DocumentLearningPlan,
+    document_semantics::SemanticWindow, document_topic_links::link_generated_note_to_learning_plan,
     error::CommandError,
 };
 
