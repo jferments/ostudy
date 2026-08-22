@@ -40,6 +40,7 @@ mod document_import;
 mod document_ingestion;
 mod document_learning;
 mod document_learning_plan;
+mod document_learning_service;
 mod document_more;
 mod document_operations;
 mod document_outline_service;
