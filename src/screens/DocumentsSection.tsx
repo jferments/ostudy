@@ -17,10 +17,15 @@ import styles from "./DocumentsSection.module.css";
 
 interface DocumentsSectionProps {
   refreshDecks: () => Promise<unknown>;
+  onPracticeCards: (cardIds: string[]) => Promise<void>;
   showToast: ShowToast;
 }
 
-export function DocumentsSection({ refreshDecks, showToast }: DocumentsSectionProps) {
+export function DocumentsSection({
+  refreshDecks,
+  onPracticeCards,
+  showToast,
+}: DocumentsSectionProps) {
   const capabilities = usePlatformCapabilities();
   const documentProcessingAvailable =
     capabilities.native === null ||
@@ -86,7 +91,7 @@ export function DocumentsSection({ refreshDecks, showToast }: DocumentsSectionPr
         </small>
       </div>
       <div className={styles.providerActions}>
-        <StudyGuideLauncher showToast={showToast} />
+        <StudyGuideLauncher showToast={showToast} onPracticeCards={onPracticeCards} />
         <HelpTrigger topicId="documents.provider" label="Help with document AI profiles" />
       </div>
     </Surface>
