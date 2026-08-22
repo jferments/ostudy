@@ -233,6 +233,7 @@ requireText("check-static.sh", checkStatic, [
   "verify-ipc-contract.mjs",
   "verify-repository-policy.mjs",
   "verify-agent-workflow-policy.mjs",
+  "verify-document-ai-boundaries.mjs",
   "verify-test-policy.mjs",
   "python3 -m unittest",
   "pnpm install --frozen-lockfile",
@@ -296,12 +297,14 @@ for (const requiredPath of [
   "scripts/write-qualification-result.mjs",
   "scripts/verify-ipc-contract.mjs",
   "scripts/verify-repository-policy.mjs",
+  "scripts/verify-document-ai-boundaries.mjs",
   "scripts/log-run.py",
   "tests/scripts/test_log_run.py",
   "tests/scripts/test_check_gate_selection.py",
   "tests/scripts/test_pr_contract.py",
   "tests/scripts/test_agent_workflow_policy.py",
   "tests/scripts/test_qualification_result.py",
+  "tests/scripts/test_document_ai_boundaries.py",
   "docs/agents/EXECUTION-STATE.md",
   "docs/agents/FAILURE-TRIAGE.md",
   "src/ipc/diagnostics.ts",
@@ -315,13 +318,22 @@ for (const requiredPath of [
   "src-tauri/src/pdf_render_backend.rs",
   "src-tauri/src/system_resources.rs",
   "src-tauri/src/document_backup.rs",
-  "src-tauri/src/ai/document_intelligence.rs",
+  "src-tauri/src/ai/document_intelligence/mod.rs",
+  "src-tauri/src/ai/document_intelligence/context.rs",
+  "src-tauri/src/ai/document_intelligence/contracts.rs",
+  "src-tauri/src/ai/document_intelligence/curation.rs",
+  "src-tauri/src/ai/document_intelligence/flashcards.rs",
+  "src-tauri/src/ai/document_intelligence/outline.rs",
+  "src-tauri/src/ai/document_intelligence/schemas.rs",
+  "src-tauri/src/ai/document_intelligence/support.rs",
+  "src-tauri/src/ai/document_intelligence/transport.rs",
   "src-tauri/tests/fixtures/public-baseline-schema.json",
   "scripts/reset-pre-public-data.sh",
   "src-tauri/tests/fixtures/document-generation/simple-text.pdf",
   "docs/decisions/0017-managed-pdf-flashcard-generation.md",
   "docs/decisions/0018-structured-document-intelligence.md",
   "docs/decisions/0025-cross-platform-ocr-runtime.md",
+  "docs/decisions/0041-modular-document-ai-architecture.md",
 ]) {
   try {
     await access(join(root, requiredPath));
@@ -336,7 +348,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, audited native PDFium provisioning, resource-aware document concurrency, direct-source workflow policy, and tiered qualification manifests are consistent.`,
+  `OK   Identity, exact versions, ${migrationFiles.length} immutable migrations, environment mirrors, audited native PDFium provisioning, resource-aware document concurrency, modular document-AI boundaries, direct-source workflow policy, and tiered qualification manifests are consistent.`,
 );
 
 function parseEnv(text) {

@@ -130,6 +130,8 @@ Keep each commit purposeful and on the same branch. Do not leave the only copy o
 
 Avoid mixing feature behavior, dependency upgrades, broad refactors, mass formatting, and unrelated cleanup. Explain any refactor required by the feature.
 
+A structural boundary or monolith-removal increment must publish the target ownership/dependency rule, move reviewable source directly, and update every enforcing manifest, static verifier, fixture, and regression test in the same pull request. When a required path is removed, register its explicit replacement paths rather than weakening or deleting the old check. A temporary compatibility module is acceptable only as a clearly documented, short-lived step on the published branch; it must not survive completion or become a second public API.
+
 After each meaningful publication checkpoint:
 
 - verify the remote head;

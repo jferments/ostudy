@@ -31,6 +31,7 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 - [Architecture overview](architecture/overview.md) explains the frontend, native domain, persistence, and platform boundaries.
 - [Platform services](architecture/platform-services.md) defines the typed operating-system ports, opaque file flow, secure-store boundary, lifecycle/time/resource observations, and enforcement rules.
 - [AI and document processing](architecture/ai-and-document-processing.md) documents provider isolation and the PDF extraction, rendering, OCR, and generation pipeline.
+- [Document AI architecture, routing, and concurrency](architecture/document-ai-routing.md) defines the format-neutral reasoning modules, provider-transport boundary, multimodal evidence, deterministic large-job orchestration, checkpoints, and routing policy.
 - [Device synchronization](architecture/device-sync.md) documents the trusted-device identity, encrypted LAN transport, common-base merge, conflicts, and asset/credential boundaries.
 - [Card format and data model](architecture/card-format-and-data-model.md) describes notes, scheduled presentations, rich content, templates, search, and interchange formats.
 - [UI architecture](architecture/ui.md) describes shared interaction primitives, responsive layouts, accessibility, and platform adapters.
