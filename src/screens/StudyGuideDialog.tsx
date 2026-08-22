@@ -371,11 +371,10 @@ export function StudyGuideDialog({
             <textarea
               value={editing.value}
               rows={10}
-              onChange={(event) =>
-                setEditing((current) =>
-                  current ? { ...current, value: event.currentTarget.value } : current,
-                )
-              }
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                setEditing((current) => (current ? { ...current, value } : current));
+              }}
             />
           </label>
           <p>
