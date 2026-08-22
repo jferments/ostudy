@@ -106,8 +106,8 @@ pub fn import_generated_flashcards(
     })
 }
 
-/// Existing internal authoring hook. Callers that do not need per-note source
-/// provenance keep the compact callback contract.
+/// Existing internal authoring hook kept only for the rollback regression.
+#[cfg(test)]
 pub(crate) fn import_generated_flashcards_bytes_with_commit<F>(
     database: &Database,
     bytes: &[u8],
