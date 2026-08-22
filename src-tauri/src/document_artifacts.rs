@@ -302,7 +302,11 @@ pub(crate) fn complete_document_artifact_job(
                  WHERE id = ?4 AND state = 'committing'",
                 params![
                     api_token_count,
-                    if api_token_usage_complete { 1_i64 } else { 0_i64 },
+                    if api_token_usage_complete {
+                        1_i64
+                    } else {
+                        0_i64
+                    },
                     now,
                     job_id,
                 ],
@@ -342,7 +346,11 @@ pub(crate) fn fail_document_artifact_job(
                     bounded(&error.code, MAX_SAFE_ERROR_CODE),
                     bounded(&error.message, MAX_SAFE_ERROR_MESSAGE),
                     api_token_count,
-                    if api_token_usage_complete { 1_i64 } else { 0_i64 },
+                    if api_token_usage_complete {
+                        1_i64
+                    } else {
+                        0_i64
+                    },
                     now,
                     job_id,
                 ],
@@ -442,34 +450,30 @@ pub(crate) fn load_document_artifact_job(
     })
 }
 
-fn valid_transition(
-    expected: DocumentArtifactJobState,
-    next: DocumentArtifactJobState,
-) -> bool {
+fn valid_transition(expected: DocumentArtifactJobState, next: DocumentArtifactJobState) -> bool {
     matches!(
         (expected, next),
-        (DocumentArtifactJobState::Queued, DocumentArtifactJobState::Preparing)
-            | (
-                DocumentArtifactJobState::Preparing,
-                DocumentArtifactJobState::Generating
-            )
-            | (
-                DocumentArtifactJobState::Generating,
-                DocumentArtifactJobState::Generating
-            )
-            | (
-                DocumentArtifactJobState::Generating,
-                DocumentArtifactJobState::Committing
-            )
-            | (
-                DocumentArtifactJobState::Queued
-                    | DocumentArtifactJobState::Preparing
-                    | DocumentArtifactJobState::Generating
-                    | DocumentArtifactJobState::Committing,
-                DocumentArtifactJobState::Canceled
-                    | DocumentArtifactJobState::Interrupted
-                    | DocumentArtifactJobState::Failed
-            )
+        (
+            DocumentArtifactJobState::Queued,
+            DocumentArtifactJobState::Preparing
+        ) | (
+            DocumentArtifactJobState::Preparing,
+            DocumentArtifactJobState::Generating
+        ) | (
+            DocumentArtifactJobState::Generating,
+            DocumentArtifactJobState::Generating
+        ) | (
+            DocumentArtifactJobState::Generating,
+            DocumentArtifactJobState::Committing
+        ) | (
+            DocumentArtifactJobState::Queued
+                | DocumentArtifactJobState::Preparing
+                | DocumentArtifactJobState::Generating
+                | DocumentArtifactJobState::Committing,
+            DocumentArtifactJobState::Canceled
+                | DocumentArtifactJobState::Interrupted
+                | DocumentArtifactJobState::Failed
+        )
     ) && expected.is_active()
 }
 
