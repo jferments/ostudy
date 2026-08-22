@@ -119,6 +119,18 @@ impl AppPaths {
         )
     }
 
+    pub fn document_versioned_asset_relative_path(
+        document_id: &str,
+        asset_ordinal: usize,
+        content_fingerprint: u64,
+        extension: &str,
+    ) -> String {
+        format!(
+            "documents/{document_id}/assets/asset-{asset_ordinal:06}{content_fingerprint:020}.{}",
+            safe_extension(extension)
+        )
+    }
+
     pub fn document_page_relative_path(document_id: &str, page_number: i64) -> String {
         format!("documents/{document_id}/pages/page-{page_number:06}.png")
     }
@@ -178,6 +190,10 @@ mod tests {
         assert_eq!(
             AppPaths::document_asset_relative_path("abc", 3, "png"),
             "documents/abc/assets/asset-000003.png"
+        );
+        assert_eq!(
+            AppPaths::document_versioned_asset_relative_path("abc", 3, 42, "png"),
+            "documents/abc/assets/asset-00000300000000000000000042.png"
         );
         assert_eq!(
             AppPaths::document_source_relative_path_with_extension("abc", "../exe"),
