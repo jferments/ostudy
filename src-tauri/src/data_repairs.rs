@@ -155,7 +155,7 @@ fn repair_canonical_semantic_chunk_hashes(transaction: &Transaction<'_>) -> Resu
             .map_err(|error| {
                 format!("Could not prepare canonical semantic hash repair: {error}")
             })?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -169,7 +169,8 @@ fn repair_canonical_semantic_chunk_hashes(transaction: &Transaction<'_>) -> Resu
             })
             .map_err(|error| format!("Could not read canonical semantic hash rows: {error}"))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Could not decode canonical semantic hash rows: {error}"))?
+            .map_err(|error| format!("Could not decode canonical semantic hash rows: {error}"))?;
+        rows
     };
 
     let mut changed_rows = 0_i64;
@@ -234,7 +235,7 @@ fn repair_canonical_block_hashes(transaction: &Transaction<'_>) -> Result<i64, S
                  ORDER BY document_id, block_index",
             )
             .map_err(|error| format!("Could not prepare canonical block hash repair: {error}"))?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -250,7 +251,8 @@ fn repair_canonical_block_hashes(transaction: &Transaction<'_>) -> Result<i64, S
             })
             .map_err(|error| format!("Could not read canonical block hash rows: {error}"))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Could not decode canonical block hash rows: {error}"))?
+            .map_err(|error| format!("Could not decode canonical block hash rows: {error}"))?;
+        rows
     };
 
     let mut changed_rows = 0_i64;
