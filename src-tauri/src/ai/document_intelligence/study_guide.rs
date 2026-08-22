@@ -3,8 +3,8 @@ use serde_json::{json, Value};
 use crate::{
     document_learning::{DocumentLearningPlan, LearningTopic},
     document_study_guides::{
-        validate_study_guide_section_content, StudyGuideSectionContent,
-        STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
+        validate_study_guide_section_content, StudyGuideSectionContent, STUDY_GUIDE_PROMPT_VERSION,
+        STUDY_GUIDE_SCHEMA_VERSION,
     },
     error::CommandError,
 };
