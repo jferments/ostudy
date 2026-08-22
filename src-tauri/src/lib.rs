@@ -33,6 +33,7 @@ mod document_cost;
 mod document_delete_reconciliation;
 mod document_domain;
 mod document_generation;
+mod document_import;
 #[path = "document_adapters.rs"]
 mod document_ingestion;
 mod document_more;
@@ -250,6 +251,7 @@ pub fn run() {
             ai::probes::test_ai_provider_profile,
             ai::probes::get_ai_provider_probe_result,
             documents::list_documents,
+            document_import::import_document,
             document_operations::import_pdf_document,
             document_operations::run_pdf_flashcard_generation,
             document_more::generate_more_pdf_flashcards,
