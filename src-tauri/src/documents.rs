@@ -369,11 +369,11 @@ async fn process_and_generate(
             tokio::sync::mpsc::unbounded_channel::<document_ingestion::IngestionProgress>();
         let processing_task = tauri::async_runtime::spawn_blocking(move || {
             document_ingestion::ingest_document(
+                format,
                 &paths_owned,
                 &render_runtime,
                 &id_owned,
                 &source_owned,
-                format,
                 MAX_SUPPORTED_SOURCE_UNITS,
                 |progress| {
                     progress_sender.send(progress).map_err(|_| {
