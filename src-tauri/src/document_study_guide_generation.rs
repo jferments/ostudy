@@ -524,7 +524,7 @@ mod tests {
     #[test]
     fn execution_requires_plan_ordered_evidence() {
         let plan = plan();
-        let evidence = vec![StudyGuideTopicEvidence {
+        let evidence = [StudyGuideTopicEvidence {
             topic_id: "wrong".to_string(),
             source_text: "Evidence".to_string(),
             images: Vec::new(),
