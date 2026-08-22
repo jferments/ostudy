@@ -123,11 +123,6 @@ impl AppPaths {
         format!("documents/{document_id}/pages/page-{page_number:06}.png")
     }
 
-    /// Compatibility helper for existing PDF import tests.
-    pub fn staged_document_relative_path(document_id: &str) -> String {
-        Self::staged_document_relative_path_with_extension(document_id, "pdf")
-    }
-
     pub fn staged_document_relative_path_with_extension(
         document_id: &str,
         extension: &str,
