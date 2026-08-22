@@ -162,7 +162,8 @@ fn document_backup_round_trip_preserves_non_pdf_source_and_canonical_images() {
         .expect("test PNG should decode");
     let source_relative =
         AppPaths::document_source_relative_path_with_extension(DOCUMENT_ID, "csv");
-    let asset_relative = AppPaths::document_asset_relative_path(DOCUMENT_ID, 1, "png");
+    let asset_relative =
+        AppPaths::document_versioned_asset_relative_path(DOCUMENT_ID, 1, 42, "png");
     let source_path = paths.resolve_relative(&source_relative);
     let asset_path = paths.resolve_relative(&asset_relative);
     fs::create_dir_all(source_path.parent().expect("source parent"))
