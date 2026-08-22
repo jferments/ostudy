@@ -5,7 +5,7 @@
 //! locator and the active learning plan, validated locally, and retained across
 //! guide prose revisions.
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 
 use crate::{
@@ -71,7 +71,7 @@ pub(crate) struct TopicCardProjection {
 /// transaction. The narrowest overlapping topic becomes primary; wider
 /// overlapping topics are supporting. No model-returned topic ID is trusted.
 pub(crate) fn link_generated_note_to_learning_plan(
-    transaction: &Transaction<'_>,
+    connection: &Connection,
     document_id: &str,
     note_id: &str,
     generation_job_id: Option<&str>,
@@ -91,7 +91,7 @@ pub(crate) fn link_generated_note_to_learning_plan(
         ));
     }
 
-    let note_exists = transaction
+    let note_exists = connection
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM notes WHERE id = ?1 AND deleted_at IS NULL)",
             [note_id],
@@ -117,7 +117,7 @@ pub(crate) fn link_generated_note_to_learning_plan(
         ));
     }
 
-    transaction
+    connection
         .execute(
             "DELETE FROM document_note_topics WHERE note_id = ?1",
             [note_id],
@@ -132,7 +132,7 @@ pub(crate) fn link_generated_note_to_learning_plan(
         } else {
             NoteTopicRelationship::Supporting
         };
-        transaction
+        connection
             .execute(
                 "INSERT INTO document_note_topics (
                      document_id, note_id, topic_id, relationship_kind,
@@ -334,7 +334,7 @@ fn to_usize(value: i64) -> Result<usize, CommandError> {
 mod tests {
     use super::*;
     use crate::{
-        document_domain::{SourceUnitKind},
+        document_domain::SourceUnitKind,
         document_learning::{DocumentLearningPlan, LearningTopic, LEARNING_PLAN_COMPILER_VERSION},
     };
 
