@@ -9,8 +9,7 @@ use rusqlite::{params, OptionalExtension};
 
 use crate::{
     ai::{document_intelligence, document_provider, AiRuntimeState},
-    authoring::card_types_and_templates::generated_import::
-        import_generated_flashcards_bytes_with_commit_context,
+    authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit_context,
     database::Database,
     document_card_topics::{
         attach_generated_card_source_windows, link_imported_notes_to_topics,
@@ -182,11 +181,8 @@ pub(crate) async fn process_and_generate_initial_flashcards(
         &task.model_id,
     )?;
     task.apply_provider_capabilities(&capabilities);
-    let calibration = document_cost::load_cost_calibration(
-        database,
-        &task.provider_kind,
-        &task.model_id,
-    )?;
+    let calibration =
+        document_cost::load_cost_calibration(database, &task.provider_kind, &task.model_id)?;
     let scale_plan = DocumentScalePlan::for_capabilities(
         source.unit_count,
         &capabilities,
@@ -279,11 +275,8 @@ pub(crate) async fn process_and_generate_initial_flashcards(
     let learning_plan =
         ensure_learning_plan_for_outline(database, document_id, &source, &outline, &chunks)?;
 
-    let checkpoint_identity = CheckpointIdentity::from_task(
-        &task,
-        &stored.extraction_backend,
-        &capability_fingerprint,
-    );
+    let checkpoint_identity =
+        CheckpointIdentity::from_task(&task, &stored.extraction_backend, &capability_fingerprint);
     let generation_contract = document_checkpoints::generation_contract_key(
         &checkpoint_identity,
         scale_plan,
@@ -344,13 +337,9 @@ pub(crate) async fn process_and_generate_initial_flashcards(
         &generation_windows,
         generated_values.clone(),
     )?;
-    let curated_values = document_intelligence::curate_document_cards(
-        runtime,
-        &task,
-        &outline,
-        generated_values,
-    )
-    .await?;
+    let curated_values =
+        document_intelligence::curate_document_cards(runtime, &task, &outline, generated_values)
+            .await?;
     if curated_values.is_empty() {
         return Err(CommandError::new(
             "document_generated_no_cards",
@@ -415,7 +404,11 @@ pub(crate) async fn process_and_generate_initial_flashcards(
                         import_result.deck_id,
                         now,
                         api_token_count,
-                        if api_token_usage_complete { 1_i64 } else { 0_i64 },
+                        if api_token_usage_complete {
+                            1_i64
+                        } else {
+                            0_i64
+                        },
                         document_id,
                     ],
                 )
