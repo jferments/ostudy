@@ -8,11 +8,8 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    anydoc_document_adapter,
-    assets::detect_image_bytes,
-    document_domain::DocumentFormat,
-    error::CommandError,
-    paths::AppPaths,
+    anydoc_document_adapter, assets::detect_image_bytes, document_domain::DocumentFormat,
+    error::CommandError, paths::AppPaths,
 };
 
 const MAX_SOURCE_DOCUMENT_BYTES: usize = 512 * 1024 * 1024;
@@ -588,11 +585,17 @@ fn valid_source_asset_path(document_id: &str, components: &[Component<'_>]) -> b
         return false;
     };
     let path = Path::new(file_name);
-    let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or_default();
-    let extension = path.extension().and_then(|value| value.to_str()).unwrap_or_default();
-    stem.strip_prefix("asset-")
-        .is_some_and(|ordinal| !ordinal.is_empty() && ordinal.bytes().all(|byte| byte.is_ascii_digit()))
-        && !extension.is_empty()
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    stem.strip_prefix("asset-").is_some_and(|ordinal| {
+        !ordinal.is_empty() && ordinal.bytes().all(|byte| byte.is_ascii_digit())
+    }) && !extension.is_empty()
         && extension.len() <= 16
         && extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
 }
