@@ -32,17 +32,6 @@ impl NoteTopicRelationship {
             Self::Supporting => "supporting",
         }
     }
-
-    fn from_db(value: &str) -> Result<Self, CommandError> {
-        match value {
-            "primary" => Ok(Self::Primary),
-            "supporting" => Ok(Self::Supporting),
-            _ => Err(CommandError::new(
-                "invalid_document_note_topic_link",
-                "A persisted note-topic relationship was invalid.",
-            )),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -166,15 +155,6 @@ pub(crate) fn link_generated_note_to_learning_plan(
     Ok(links)
 }
 
-pub(crate) fn load_note_topic_links(
-    database: &Database,
-    note_id: &str,
-) -> Result<Vec<DocumentNoteTopicLink>, CommandError> {
-    validate_entity_id(note_id, "note")?;
-    database
-        .with_connection(|connection| load_note_topic_links_from_connection(connection, note_id))
-}
-
 pub(crate) fn load_topic_card_projection(
     database: &Database,
     document_id: &str,
@@ -279,52 +259,6 @@ pub(crate) fn load_topic_card_ids(
             .map_err(CommandError::database)?;
         Ok(card_ids)
     })
-}
-
-fn load_note_topic_links_from_connection(
-    connection: &Connection,
-    note_id: &str,
-) -> Result<Vec<DocumentNoteTopicLink>, CommandError> {
-    let mut statement = connection
-        .prepare(
-            "SELECT document_id, topic_id, relationship_kind,
-                    source_locator_json, evidence_hash,
-                    generation_job_id, created_at
-             FROM document_note_topics WHERE note_id = ?1
-             ORDER BY CASE relationship_kind WHEN 'primary' THEN 0 ELSE 1 END,
-                      topic_id",
-        )
-        .map_err(CommandError::database)?;
-    let rows = statement
-        .query_map([note_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, Option<String>>(5)?,
-                row.get::<_, i64>(6)?,
-            ))
-        })
-        .map_err(CommandError::database)?;
-    let links = rows
-        .map(|row| {
-            let row = row.map_err(CommandError::database)?;
-            Ok(DocumentNoteTopicLink {
-                document_id: row.0,
-                note_id: note_id.to_string(),
-                topic_id: row.1,
-                relationship: NoteTopicRelationship::from_db(&row.2)?,
-                source_locator: serde_json::from_str(&row.3)
-                    .map_err(CommandError::serialization)?,
-                evidence_hash: row.4,
-                generation_job_id: row.5,
-                created_at: row.6,
-            })
-        })
-        .collect::<Result<Vec<_>, CommandError>>()?;
-    Ok(links)
 }
 
 fn to_usize(value: i64) -> Result<usize, CommandError> {
