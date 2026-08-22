@@ -483,7 +483,7 @@ pub(crate) fn load_document_study_guide(
                  WHERE guide_id = ?1 ORDER BY sort_index, topic_id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([guide_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -494,7 +494,8 @@ pub(crate) fn load_document_study_guide(
                     row.get::<_, String>(5)?,
                 ))
             })
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        let sections = rows
             .map(|row| {
                 let (topic_id, sort_index, content_json, content_text, content_hash, locator_json) =
                     row.map_err(CommandError::database)?;
@@ -516,7 +517,8 @@ pub(crate) fn load_document_study_guide(
                     source_locator: deserialize_json(&locator_json)?,
                 })
             })
-            .collect::<Result<Vec<_>, CommandError>>()
+            .collect::<Result<Vec<_>, CommandError>>()?;
+        Ok(sections)
     })?;
     let overlays = load_document_study_guide_overlays(database, &header.0, Some(guide_id))?;
 
@@ -730,7 +732,7 @@ fn load_overlays_from_connection(
              ORDER BY created_at, id",
         )
         .map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map(params![document_id, guide_id], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -747,7 +749,8 @@ fn load_overlays_from_connection(
                 row.get::<_, i64>(11)?,
             ))
         })
-        .map_err(CommandError::database)?
+        .map_err(CommandError::database)?;
+    let overlays = rows
         .map(|row| {
             let row = row.map_err(CommandError::database)?;
             Ok(StudyGuideOverlay {
@@ -765,7 +768,8 @@ fn load_overlays_from_connection(
                 updated_at: row.11,
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>, CommandError>>()?;
+    Ok(overlays)
 }
 
 fn overlay_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StudyGuideOverlay> {
