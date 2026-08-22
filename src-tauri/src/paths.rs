@@ -102,7 +102,10 @@ impl AppPaths {
         document_id: &str,
         extension: &str,
     ) -> String {
-        format!("documents/{document_id}/source.{}", safe_extension(extension))
+        format!(
+            "documents/{document_id}/source.{}",
+            safe_extension(extension)
+        )
     }
 
     pub fn document_asset_relative_path(
@@ -159,9 +162,7 @@ impl AppPaths {
 fn safe_extension(extension: &str) -> &str {
     if !extension.is_empty()
         && extension.len() <= 16
-        && extension
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric())
+        && extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
     {
         extension
     } else {

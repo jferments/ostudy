@@ -463,10 +463,22 @@ mod tests {
     #[test]
     fn anydoc_formats_have_stable_families_and_source_units() {
         assert!(DocumentFormat::Docx.is_anydoc());
-        assert_eq!(DocumentFormat::Pptx.source_unit_kind(), SourceUnitKind::Slide);
-        assert_eq!(DocumentFormat::Epub.source_unit_kind(), SourceUnitKind::Chapter);
-        assert_eq!(DocumentFormat::Excel.source_unit_kind(), SourceUnitKind::Section);
-        assert_eq!(DocumentFormat::from_db("xlsx").unwrap(), DocumentFormat::Excel);
+        assert_eq!(
+            DocumentFormat::Pptx.source_unit_kind(),
+            SourceUnitKind::Slide
+        );
+        assert_eq!(
+            DocumentFormat::Epub.source_unit_kind(),
+            SourceUnitKind::Chapter
+        );
+        assert_eq!(
+            DocumentFormat::Excel.source_unit_kind(),
+            SourceUnitKind::Section
+        );
+        assert_eq!(
+            DocumentFormat::from_db("xlsx").unwrap(),
+            DocumentFormat::Excel
+        );
         assert!(!DocumentFormat::Pdf.is_anydoc());
     }
 

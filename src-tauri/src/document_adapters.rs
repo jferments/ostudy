@@ -144,12 +144,8 @@ impl SelectedAdapter {
                     request.maximum_source_units,
                     |progress| report_progress(progress.into()),
                 )?;
-                let canonical = canonicalize_pdf(
-                    request.document_id,
-                    request.source_path,
-                    self,
-                    &legacy_pdf,
-                )?;
+                let canonical =
+                    canonicalize_pdf(request.document_id, request.source_path, self, &legacy_pdf)?;
                 Ok(AdapterExtraction {
                     canonical,
                     pdf_compatibility: Some(legacy_pdf),
@@ -181,10 +177,7 @@ impl SelectedAdapter {
 struct DocumentAdapterRegistry;
 
 impl DocumentAdapterRegistry {
-    fn select(
-        format: DocumentFormat,
-        source_path: &Path,
-    ) -> Result<SelectedAdapter, CommandError> {
+    fn select(format: DocumentFormat, source_path: &Path) -> Result<SelectedAdapter, CommandError> {
         let adapter = if format == DocumentFormat::Pdf {
             let mut file = File::open(source_path).map_err(CommandError::io)?;
             let mut signature = [0_u8; 5];
@@ -250,9 +243,7 @@ pub(crate) fn active_extraction_backend(
     }
 }
 
-pub(crate) fn active_render_backend(
-    format: DocumentFormat,
-) -> Result<&'static str, CommandError> {
+pub(crate) fn active_render_backend(format: DocumentFormat) -> Result<&'static str, CommandError> {
     if format == DocumentFormat::Pdf {
         Ok(active_pdf_render_backend())
     } else if anydoc_document_adapter::supports(format) {
@@ -339,9 +330,7 @@ pub(crate) fn update_ingestion_progress(
                     .map_err(|error| {
                         CommandError::database_at(
                             "canonical_document_progress_failed",
-                            format!(
-                                "document={document_id} completed={completed} total={total}"
-                            ),
+                            format!("document={document_id} completed={completed} total={total}"),
                             error,
                         )
                     })?;
@@ -379,9 +368,7 @@ pub(crate) fn update_ingestion_progress(
                     .map_err(|error| {
                         CommandError::database_at(
                             "canonical_document_progress_failed",
-                            format!(
-                                "document={document_id} completed={completed} total={total}"
-                            ),
+                            format!("document={document_id} completed={completed} total={total}"),
                             error,
                         )
                     })?;
@@ -691,8 +678,7 @@ fn canonicalize_pdf(
             element.element_index.to_string(),
         );
         if let Some(font_name) = &element.font_name {
-            let font_name =
-                normalize_semantic_text(font_name, MAX_CANONICAL_ATTRIBUTE_VALUE_CHARS);
+            let font_name = normalize_semantic_text(font_name, MAX_CANONICAL_ATTRIBUTE_VALUE_CHARS);
             if !font_name.is_empty() {
                 attributes.insert("fontName".to_string(), font_name);
             }
@@ -1105,14 +1091,19 @@ mod tests {
 
     #[test]
     fn registry_keeps_pdf_native_and_enables_anydoc_families() {
-        assert_eq!(active_adapter_backend(DocumentFormat::Pdf).unwrap(), PDF_ADAPTER_BACKEND);
+        assert_eq!(
+            active_adapter_backend(DocumentFormat::Pdf).unwrap(),
+            PDF_ADAPTER_BACKEND
+        );
         assert_eq!(
             active_adapter_backend(DocumentFormat::Docx).unwrap(),
             anydoc_document_adapter::ANYDOC_ADAPTER_BACKEND
         );
         assert_eq!(active_render_backend(DocumentFormat::Docx).unwrap(), "none");
         assert_eq!(
-            active_adapter_backend(DocumentFormat::Html).unwrap_err().code,
+            active_adapter_backend(DocumentFormat::Html)
+                .unwrap_err()
+                .code,
             "document_ingestion_adapter_unavailable"
         );
     }
@@ -1252,9 +1243,15 @@ mod tests {
             .heading_path
             .iter()
             .all(|heading| !heading.chars().any(char::is_control)));
-        assert_eq!(canonical.document.blocks[0].asset_ids, vec![render_id.clone()]);
+        assert_eq!(
+            canonical.document.blocks[0].asset_ids,
+            vec![render_id.clone()]
+        );
         assert!(canonical.document.blocks[1].text.is_empty());
-        assert_eq!(canonical.document.blocks[1].asset_ids, vec![render_id.clone()]);
+        assert_eq!(
+            canonical.document.blocks[1].asset_ids,
+            vec![render_id.clone()]
+        );
         assert_eq!(canonical.semantic_chunks.len(), 2);
         assert_eq!(canonical.semantic_chunks[0].text, "Cardiac output table");
         assert!(!canonical.semantic_chunks[0]
@@ -1268,7 +1265,10 @@ mod tests {
         assert!(canonical.semantic_chunks[1]
             .full_text
             .contains("visual or non-text content"));
-        assert_eq!(canonical.semantic_chunks[1].source_locator.asset_ids, vec![render_id]);
+        assert_eq!(
+            canonical.semantic_chunks[1].source_locator.asset_ids,
+            vec![render_id]
+        );
         assert_eq!(canonical.semantic_chunks[0].content_sha256.len(), 64);
         assert_eq!(canonical.document.full_text_sha256().len(), 64);
 
