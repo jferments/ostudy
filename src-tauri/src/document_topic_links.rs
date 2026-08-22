@@ -124,7 +124,8 @@ pub(crate) fn link_generated_note_to_learning_plan(
         )
         .map_err(CommandError::database)?;
 
-    let locator_json = serde_json::to_string(source_locator).map_err(CommandError::serialization)?;
+    let locator_json =
+        serde_json::to_string(source_locator).map_err(CommandError::serialization)?;
     let mut links = Vec::with_capacity(selected.len());
     for (index, topic) in selected.into_iter().enumerate() {
         let relationship = if index == 0 {
@@ -170,7 +171,8 @@ pub(crate) fn load_note_topic_links(
     note_id: &str,
 ) -> Result<Vec<DocumentNoteTopicLink>, CommandError> {
     validate_entity_id(note_id, "note")?;
-    database.with_connection(|connection| load_note_topic_links_from_connection(connection, note_id))
+    database
+        .with_connection(|connection| load_note_topic_links_from_connection(connection, note_id))
 }
 
 pub(crate) fn load_topic_card_projection(
