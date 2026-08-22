@@ -2,13 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  cancelPdfFlashcardGeneration,
-  deletePdfDocument,
-  generateMorePdfFlashcards,
-  importPdfAndGenerateFlashcards,
+  cancelDocumentFlashcardGeneration,
+  deleteDocument,
+  generateMoreDocumentFlashcards,
+  importDocumentAndGenerateFlashcards,
   listDocuments,
   openDocumentSource,
-  retryPdfFlashcardGeneration,
+  retryDocumentFlashcardGeneration,
   setDocumentArchived,
 } from "./documents";
 
@@ -27,44 +27,44 @@ describe("document IPC", () => {
     expect(invoke).toHaveBeenCalledWith("list_documents", { includeArchived: true });
   });
 
-  it("establishes document identity before starting cancellable PDF generation", async () => {
+  it("establishes document identity before starting cancellable document generation", async () => {
     vi.mocked(invoke)
       .mockResolvedValueOnce({ documentId })
       .mockResolvedValueOnce({ deckId: "b".repeat(32) });
 
-    await importPdfAndGenerateFlashcards("1".repeat(32));
+    await importDocumentAndGenerateFlashcards("1".repeat(32));
 
-    expect(invoke).toHaveBeenNthCalledWith(1, "import_pdf_document", {
+    expect(invoke).toHaveBeenNthCalledWith(1, "import_document", {
       input: { stagedFileId: "1".repeat(32) },
     });
-    expect(invoke).toHaveBeenNthCalledWith(2, "run_pdf_flashcard_generation", {
+    expect(invoke).toHaveBeenNthCalledWith(2, "run_document_flashcard_generation", {
       input: { documentId },
     });
   });
 
   it("uses narrow generation, additional-pass, cancel, native-open, deletion, and archive commands", async () => {
-    await retryPdfFlashcardGeneration(documentId);
-    expect(invoke).toHaveBeenCalledWith("run_pdf_flashcard_generation", {
+    await retryDocumentFlashcardGeneration(documentId);
+    expect(invoke).toHaveBeenCalledWith("run_document_flashcard_generation", {
       input: { documentId },
     });
 
     vi.mocked(invoke).mockClear();
-    await generateMorePdfFlashcards(documentId);
+    await generateMoreDocumentFlashcards(documentId);
     expect(invoke).toHaveBeenCalledWith("generate_more_pdf_flashcards", {
       input: { documentId },
     });
 
     vi.mocked(invoke).mockClear();
-    await cancelPdfFlashcardGeneration(documentId);
-    expect(invoke).toHaveBeenCalledWith("cancel_pdf_flashcard_generation", { documentId });
+    await cancelDocumentFlashcardGeneration(documentId);
+    expect(invoke).toHaveBeenCalledWith("cancel_document_flashcard_generation", { documentId });
 
     vi.mocked(invoke).mockClear();
     await openDocumentSource(documentId);
     expect(invoke).toHaveBeenCalledWith("open_document_source", { documentId });
 
     vi.mocked(invoke).mockClear();
-    await deletePdfDocument(documentId, 4);
-    expect(invoke).toHaveBeenCalledWith("delete_pdf_document", {
+    await deleteDocument(documentId, 4);
+    expect(invoke).toHaveBeenCalledWith("delete_document", {
       input: { documentId, revision: 4 },
     });
 
