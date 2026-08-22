@@ -38,6 +38,7 @@ mod document_generation;
 mod document_import;
 #[path = "document_adapters.rs"]
 mod document_ingestion;
+mod document_initial_generation;
 mod document_learning;
 mod document_learning_plan;
 mod document_learning_service;
