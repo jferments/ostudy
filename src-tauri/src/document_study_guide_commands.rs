@@ -18,13 +18,11 @@ use crate::{
     document_semantics::SemanticChunk,
     document_store,
     document_study_guide_generation::{
-        execute_study_guide_generation, StudyGuideGenerationExecution,
-        StudyGuideTopicEvidence,
+        execute_study_guide_generation, StudyGuideGenerationExecution, StudyGuideTopicEvidence,
     },
     document_study_guides::{
-        discard_study_guide_overlay, load_active_document_study_guide,
-        save_study_guide_overlay, DocumentStudyGuide, SaveStudyGuideOverlayInput,
-        StudyGuideOverlay,
+        discard_study_guide_overlay, load_active_document_study_guide, save_study_guide_overlay,
+        DocumentStudyGuide, SaveStudyGuideOverlayInput, StudyGuideOverlay,
     },
     document_topic_links::{load_topic_card_ids, load_topic_card_projection, TopicCardProjection},
     document_visual_evidence::load_locator_images,
