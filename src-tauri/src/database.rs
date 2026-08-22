@@ -39,9 +39,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "dba2a5fd43b9544c1a4da9e060106f157ca5ac839a5c87ca831d7ceef8bb7733",
         sql: include_str!("../migrations/0002_canonical_documents.sql"),
     },
+    Migration {
+        version: 3,
+        name: "anydoc_document_adapters",
+        checksum: "3fffc105e52e531e6907a480d3479dff02b1426a4f6fa4906253e016c6052ba9",
+        sql: include_str!("../migrations/0003_anydoc_document_adapters.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 2;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 3;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -70,7 +76,7 @@ impl Database {
         let mut connection = self.connection.lock().map_err(|_| {
             CommandError::new(
                 "database_lock_poisoned",
-                "The local database lock could not be acquired. Restart ostudy.",
+                "The local database lock could not be acquired. Restart oStudy.",
             )
         })?;
         operation(&mut connection)
@@ -96,16 +102,12 @@ enum DatabaseLineage {
 }
 
 fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
-    // Lineage inspection must happen before journal/durability configuration.
-    // `PRAGMA journal_mode = WAL` can write SQLite state, so running it first
-    // would violate the promise that an unsupported pre-public database is
-    // rejected without modification.
     let lineage = inspect_lineage(connection)?;
     match lineage {
         DatabaseLineage::Empty | DatabaseLineage::Public => {}
         DatabaseLineage::PrePublic => {
             return Err(format!(
-                "{PRE_PUBLIC_RESET_PREFIX}: This database predates ostudy's public schema baseline. Stop ostudy, preserve a backup if needed, and run scripts/reset-pre-public-data.sh with the exact application data directory. The database was not modified."
+                "{PRE_PUBLIC_RESET_PREFIX}: This database predates oStudy's public schema baseline. Stop oStudy, preserve a backup if needed, and run scripts/reset-pre-public-data.sh with the exact application data directory. The database was not modified."
             ));
         }
         DatabaseLineage::Unknown(value) => {
@@ -209,7 +211,7 @@ fn apply_migrations(connection: &mut Connection, empty_database: bool) -> Result
     };
     if newest_version > LATEST_SCHEMA_VERSION {
         return Err(format!(
-            "This database was created by a newer ostudy version (public schema {newest_version})."
+            "This database was created by a newer oStudy version (public schema {newest_version})."
         ));
     }
 
@@ -454,6 +456,42 @@ mod tests {
         )
         .expect("public baseline objects should serialize");
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn anydoc_migration_preserves_legacy_transfer_rows_and_adds_source_media_type() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                let media_type: String = connection
+                    .query_row(
+                        "SELECT source_media_type FROM documents LIMIT 1",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(CommandError::database)?
+                    .unwrap_or_else(|| "application/pdf".to_string());
+                assert_eq!(media_type, "application/pdf");
+                connection
+                    .execute(
+                        "INSERT INTO staged_external_imports (
+                             id, operation_id, purpose, detected_kind, display_name,
+                             media_type, byte_size, sha256, relative_path, state,
+                             result_json, created_at, updated_at, expires_at
+                         ) VALUES (?1, ?1, 'document', 'docx', 'lesson.docx',
+                                   ?2, 1, ?3, 'transfers/imports/test.docx',
+                                   'staged', '', 1, 1, 2)",
+                        params![
+                            "a".repeat(32),
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            "b".repeat(64),
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .expect("generic staged document should satisfy migration 3");
     }
 
     #[test]
