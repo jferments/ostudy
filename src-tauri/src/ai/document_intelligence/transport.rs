@@ -185,7 +185,9 @@ fn multimodal_user_parts(
 ) -> Result<Vec<Value>, CommandError> {
     let mut parts = vec![json!({ "type": "text", "text": user_text })];
     for image in images.iter().take(MAX_INLINE_IMAGES) {
-        let media_type = document_image_media_type(&image.bytes)?;
+        let Some(media_type) = document_image_media_type(&image.bytes) else {
+            continue;
+        };
         parts.push(json!({
             "type": "text",
             "text": format!(
@@ -206,23 +208,20 @@ fn multimodal_user_parts(
     Ok(parts)
 }
 
-fn document_image_media_type(bytes: &[u8]) -> Result<&'static str, CommandError> {
+fn document_image_media_type(bytes: &[u8]) -> Option<&'static str> {
     if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
-        return Ok("image/png");
+        return Some("image/png");
     }
     if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
-        return Ok("image/jpeg");
+        return Some("image/jpeg");
     }
     if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        return Ok("image/gif");
+        return Some("image/gif");
     }
     if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
-        return Ok("image/webp");
+        return Some("image/webp");
     }
-    Err(CommandError::new(
-        "document_source_asset_not_supported",
-        "A canonical source image uses an unsupported encoding. Retry generation after rebuilding the document with PNG, JPEG, GIF, or WebP source images.",
-    ))
+    None
 }
 
 fn openrouter_document_body(
@@ -569,22 +568,40 @@ mod tests {
     #[test]
     fn canonical_image_media_types_are_derived_from_bytes() {
         assert_eq!(
-            document_image_media_type(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]).unwrap(),
-            "image/png"
+            document_image_media_type(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]),
+            Some("image/png")
         );
         assert_eq!(
-            document_image_media_type(&[0xff, 0xd8, 0xff, 0x00]).unwrap(),
-            "image/jpeg"
+            document_image_media_type(&[0xff, 0xd8, 0xff, 0x00]),
+            Some("image/jpeg")
         );
-        assert_eq!(document_image_media_type(b"GIF89a").unwrap(), "image/gif");
+        assert_eq!(document_image_media_type(b"GIF89a"), Some("image/gif"));
         assert_eq!(
-            document_image_media_type(b"RIFFxxxxWEBP").unwrap(),
-            "image/webp"
+            document_image_media_type(b"RIFFxxxxWEBP"),
+            Some("image/webp")
         );
-        assert_eq!(
-            document_image_media_type(b"not-an-image").unwrap_err().code,
-            "document_source_asset_not_supported"
-        );
+        assert_eq!(document_image_media_type(b"not-an-image"), None);
+    }
+
+    #[test]
+    fn nonportable_canonical_images_are_omitted_from_provider_parts() {
+        let images = [
+            SourcePageImage {
+                page_number: 2,
+                bytes: b"BMbitmap".to_vec(),
+            },
+            SourcePageImage {
+                page_number: 3,
+                bytes: vec![0xff, 0xd8, 0xff, 0x00],
+            },
+        ];
+        let parts = multimodal_user_parts("source", &images).unwrap();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[1]["text"].as_str().unwrap().contains("unit 3"), true);
+        assert!(parts[2]["image_url"]["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/jpeg;base64,"));
     }
 
     #[test]
