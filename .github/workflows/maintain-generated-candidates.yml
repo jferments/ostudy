@@ -8,13 +8,15 @@ on:
         required: true
         default: false
         type: boolean
+  push:
+    branches: [agent/anydoc-document-adapters]
 
 permissions:
   contents: write
 
 jobs:
   apply-generated-candidates:
-    if: inputs.confirm == true
+    if: github.event_name == 'push' || inputs.confirm == true
     runs-on: [self-hosted, linux, x64, ostudy-unified]
     timeout-minutes: 15
 
