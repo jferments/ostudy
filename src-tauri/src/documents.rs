@@ -368,22 +368,34 @@ async fn process_and_generate(
         let (progress_sender, mut progress_receiver) =
             tokio::sync::mpsc::unbounded_channel::<document_ingestion::IngestionProgress>();
         let processing_task = tauri::async_runtime::spawn_blocking(move || {
-            document_ingestion::ingest_document(
-                format,
-                &paths_owned,
-                &render_runtime,
-                &id_owned,
-                &source_owned,
-                MAX_SUPPORTED_SOURCE_UNITS,
-                |progress| {
-                    progress_sender.send(progress).map_err(|_| {
-                        CommandError::new(
-                            "document_processing_stopped",
-                            "The document-processing progress channel closed unexpectedly.",
-                        )
-                    })
-                },
-            )
+            let report_progress = move |progress| {
+                progress_sender.send(progress).map_err(|_| {
+                    CommandError::new(
+                        "document_processing_stopped",
+                        "The document-processing progress channel closed unexpectedly.",
+                    )
+                })
+            };
+            if format == DocumentFormat::Pdf {
+                document_ingestion::ingest_pdf(
+                    &paths_owned,
+                    &render_runtime,
+                    &id_owned,
+                    &source_owned,
+                    MAX_SUPPORTED_SOURCE_UNITS,
+                    report_progress,
+                )
+            } else {
+                document_ingestion::ingest_document(
+                    format,
+                    &paths_owned,
+                    &render_runtime,
+                    &id_owned,
+                    &source_owned,
+                    MAX_SUPPORTED_SOURCE_UNITS,
+                    report_progress,
+                )
+            }
         });
         while let Some(progress) = progress_receiver.recv().await {
             document_ingestion::update_ingestion_progress(database.inner(), document_id, progress)?;
