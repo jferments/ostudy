@@ -569,8 +569,7 @@ mod tests {
     #[test]
     fn canonical_image_media_types_are_derived_from_bytes() {
         assert_eq!(
-            document_image_media_type(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a])
-                .unwrap(),
+            document_image_media_type(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]).unwrap(),
             "image/png"
         );
         assert_eq!(
