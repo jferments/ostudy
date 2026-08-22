@@ -152,7 +152,7 @@ pub(crate) fn create_document_artifact_job(
     }
 
     let now = unix_time_millis()?;
-    let id = generate_id();
+    let id = database.with_connection(|connection| generate_id(connection))?;
     database.with_connection(|connection| {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
