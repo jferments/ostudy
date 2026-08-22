@@ -276,6 +276,7 @@ repairs="$(sqlite3 -separator '|' "$DATABASE" 'SELECT version, name, checksum, c
 expected_migrations="$(cat <<'EOF'
 1|public_baseline|2d978f8be026ecb820e71ba77a8585e1de51cb08fc2820714526a33284167f85
 2|canonical_documents|dba2a5fd43b9544c1a4da9e060106f157ca5ac839a5c87ca831d7ceef8bb7733
+3|anydoc_document_adapters|3fffc105e52e531e6907a480d3479dff02b1426a4f6fa4906253e016c6052ba9
 EOF
 )"
 expected_repairs="$(cat <<'EOF'
@@ -292,7 +293,7 @@ after_attributions="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM review_event_att
   printf 'ERROR: adopted database has unexpected lineage: %s\n' "$lineage" >&2
   exit 1
 }
-[[ "$schema_version" == "2" ]] || {
+[[ "$schema_version" == "3" ]] || {
   printf 'ERROR: adopted database has unexpected SQLite schema version: %s\n' "$schema_version" >&2
   exit 1
 }
