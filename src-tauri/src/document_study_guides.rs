@@ -170,7 +170,7 @@ impl StudyGuideOverlayKind {
     }
 
     fn is_content_bound(self) -> bool {
-        matches!(Self::TitleOverride | Self::BodyOverride | Self::Highlight, self)
+        matches!(self, Self::TitleOverride | Self::BodyOverride | Self::Highlight)
     }
 }
 
@@ -232,7 +232,8 @@ pub(crate) struct SaveStudyGuideOverlayInput {
 /// Existing active content is superseded only inside the same transaction that
 /// inserts the complete replacement. A malformed or incomplete replacement
 /// leaves the prior active guide untouched. Learner notes remain document/topic
-/// overlays; content-bound edits on the old revision become explicit conflicts.
+/// overlays; content-bound edits move forward only when the topic and exact base
+/// content are unchanged, otherwise they become explicit conflicts.
 pub(crate) fn publish_document_study_guide(
     database: &Database,
     document_id: &str,
@@ -259,7 +260,7 @@ pub(crate) fn publish_document_study_guide(
     let overview_json = serialize_json(&normalized_overview)?;
     let overview_text = overview_plain_text(&normalized_overview);
     let now = unix_time_millis()?;
-    let guide_id = generate_id();
+    let guide_id = database.with_connection(|connection| generate_id(connection))?;
 
     database.with_connection(|connection| {
         let transaction = connection
@@ -315,15 +316,6 @@ pub(crate) fn publish_document_study_guide(
                     params![now, prior_id],
                 )
                 .map_err(CommandError::database)?;
-            transaction
-                .execute(
-                    "UPDATE document_study_guide_overlays
-                     SET state = 'conflicted', updated_at = ?1, revision = revision + 1
-                     WHERE guide_id = ?2 AND state = 'active'
-                       AND overlay_kind IN ('title_override', 'body_override', 'highlight')",
-                    params![now, prior_id],
-                )
-                .map_err(CommandError::database)?;
         }
 
         transaction
@@ -373,6 +365,35 @@ pub(crate) fn publish_document_study_guide(
                 .map_err(CommandError::database)?;
         }
 
+        if let Some(prior_id) = prior_active.as_deref() {
+            // Move an edit/highlight to the new revision only when its topic and
+            // exact generated base content are unchanged.
+            transaction
+                .execute(
+                    "UPDATE document_study_guide_overlays
+                     SET guide_id = ?1, updated_at = ?2, revision = revision + 1
+                     WHERE guide_id = ?3 AND state = 'active'
+                       AND overlay_kind IN ('title_override', 'body_override', 'highlight')
+                       AND EXISTS (
+                           SELECT 1 FROM document_study_guide_sections section
+                           WHERE section.guide_id = ?1
+                             AND section.topic_id = document_study_guide_overlays.topic_id
+                             AND section.content_hash = document_study_guide_overlays.base_content_hash
+                       )",
+                    params![guide_id, now, prior_id],
+                )
+                .map_err(CommandError::database)?;
+            transaction
+                .execute(
+                    "UPDATE document_study_guide_overlays
+                     SET state = 'conflicted', updated_at = ?1, revision = revision + 1
+                     WHERE guide_id = ?2 AND state = 'active'
+                       AND overlay_kind IN ('title_override', 'body_override', 'highlight')",
+                    params![now, prior_id],
+                )
+                .map_err(CommandError::database)?;
+        }
+
         transaction.commit().map_err(CommandError::database)
     })?;
     load_document_study_guide(database, &guide_id)
@@ -404,8 +425,8 @@ pub(crate) fn load_document_study_guide(
     guide_id: &str,
 ) -> Result<DocumentStudyGuide, CommandError> {
     validate_entity_id(guide_id, "study guide")?;
-    database.with_connection(|connection| {
-        let header = connection
+    let header = database.with_connection(|connection| {
+        connection
             .query_row(
                 "SELECT document_id, plan_id, job_id, revision, schema_version,
                         prompt_version, assembly_version, overview_json,
@@ -436,14 +457,21 @@ pub(crate) fn load_document_study_guide(
                     "document_study_guide_not_found",
                     "That study guide is no longer available.",
                 )
-            })?;
-        let plan = load_document_learning_plan_from_connection(connection, &header.1)?;
-        let topics = plan
-            .topics
-            .iter()
-            .map(|topic| (topic.id.as_str(), topic))
-            .collect::<HashMap<_, _>>();
-
+            })
+    })?;
+    let plan = load_document_learning_plan(database, &header.1)?;
+    if plan.document_id != header.0 {
+        return Err(CommandError::new(
+            "document_learning_plan_invalid",
+            "The persisted study guide and learning plan have inconsistent document ownership.",
+        ));
+    }
+    let topics = plan
+        .topics
+        .iter()
+        .map(|topic| (topic.id.as_str(), topic))
+        .collect::<HashMap<_, _>>();
+    let sections = database.with_connection(|connection| {
         let mut statement = connection
             .prepare(
                 "SELECT topic_id, sort_index, content_json, content_text,
@@ -452,7 +480,7 @@ pub(crate) fn load_document_study_guide(
                  WHERE guide_id = ?1 ORDER BY sort_index, topic_id",
             )
             .map_err(CommandError::database)?;
-        let sections = statement
+        statement
             .query_map([guide_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -485,26 +513,26 @@ pub(crate) fn load_document_study_guide(
                     source_locator: deserialize_json(&locator_json)?,
                 })
             })
-            .collect::<Result<Vec<_>, CommandError>>()?;
-        let overlays = load_overlays_from_connection(connection, &header.0, Some(guide_id))?;
+            .collect::<Result<Vec<_>, CommandError>>()
+    })?;
+    let overlays = load_document_study_guide_overlays(database, &header.0, Some(guide_id))?;
 
-        Ok(DocumentStudyGuide {
-            id: guide_id.to_string(),
-            document_id: header.0,
-            plan_id: header.1,
-            job_id: header.2,
-            revision: header.3,
-            schema_version: header.4,
-            prompt_version: header.5,
-            assembly_version: header.6,
-            overview: deserialize_json(&header.7)?,
-            overview_text: header.8,
-            sections,
-            overlays,
-            created_at: header.9,
-            updated_at: header.10,
-            published_at: header.11,
-        })
+    Ok(DocumentStudyGuide {
+        id: guide_id.to_string(),
+        document_id: header.0,
+        plan_id: header.1,
+        job_id: header.2,
+        revision: header.3,
+        schema_version: header.4,
+        prompt_version: header.5,
+        assembly_version: header.6,
+        overview: deserialize_json(&header.7)?,
+        overview_text: header.8,
+        sections,
+        overlays,
+        created_at: header.9,
+        updated_at: header.10,
+        published_at: header.11,
     })
 }
 
@@ -532,7 +560,10 @@ pub(crate) fn save_study_guide_overlay(
     }
     let plain_text = normalize_text(&input.plain_text, MAX_OVERLAY_TEXT_CHARS, "");
     let now = unix_time_millis()?;
-    let overlay_id = input.overlay_id.clone().unwrap_or_else(generate_id);
+    let overlay_id = match input.overlay_id.clone() {
+        Some(overlay_id) => overlay_id,
+        None => database.with_connection(|connection| generate_id(connection))?,
+    };
 
     database.with_connection(|connection| {
         validate_overlay_scope(
@@ -672,9 +703,9 @@ fn load_study_guide_overlay(
                     "That study-guide annotation is no longer available.",
                 )
             })
-            .and_then(|mut overlay| {
+            .map(|mut overlay| {
                 overlay.id = overlay_id.to_string();
-                Ok(overlay)
+                overlay
             })
     })
 }
@@ -836,6 +867,12 @@ fn normalize_overview(overview: StudyGuideOverview) -> StudyGuideOverview {
     }
 }
 
+pub(crate) fn validate_study_guide_section_content(
+    content: StudyGuideSectionContent,
+) -> Result<StudyGuideSectionContent, CommandError> {
+    normalize_section_content(content)
+}
+
 fn normalize_section_content(
     content: StudyGuideSectionContent,
 ) -> Result<StudyGuideSectionContent, CommandError> {
@@ -943,13 +980,12 @@ fn validate_overlay_contract(input: &SaveStudyGuideOverlayInput) -> Result<(), C
         }
         _ => {}
     }
-    if !input.rich_doc.is_object() {
-        return Err(CommandError::new(
+    crate::cards::validate_document(&input.rich_doc).map_err(|error| {
+        CommandError::new(
             "invalid_study_guide_overlay",
-            "A study-guide annotation must contain a valid rich-document object.",
-        ));
-    }
-    Ok(())
+            format!("The study-guide annotation is not valid rich content: {}", error.message),
+        )
+    })
 }
 
 fn validate_overlay_scope(
@@ -1029,30 +1065,6 @@ fn section_plain_text(content: &StudyGuideSectionContent) -> String {
         lines.push(visual.explanation.clone());
     }
     normalize_text(&lines.join("\n"), MAX_SECTION_TEXT_CHARS, "")
-}
-
-fn load_document_learning_plan_from_connection(
-    connection: &rusqlite::Connection,
-    plan_id: &str,
-) -> Result<DocumentLearningPlan, CommandError> {
-    let document_id: String = connection
-        .query_row(
-            "SELECT document_id FROM document_learning_plans WHERE id = ?1",
-            [plan_id],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
-    let database = Database::from_existing_connection_for_internal_read(connection)?;
-    let result = load_document_learning_plan(&database, plan_id);
-    database.release_internal_connection();
-    let plan = result?;
-    if plan.document_id != document_id {
-        return Err(CommandError::new(
-            "document_learning_plan_invalid",
-            "The persisted learning plan had inconsistent document ownership.",
-        ));
-    }
-    Ok(plan)
 }
 
 fn normalize_items(values: Vec<String>, maximum: usize, maximum_chars: usize) -> Vec<String> {
