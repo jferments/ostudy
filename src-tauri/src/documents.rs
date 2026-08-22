@@ -33,12 +33,6 @@ const INTERRUPTED_ERROR_MESSAGE: &str =
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ImportPdfDocumentInput {
-    pub staged_file_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RetryPdfGenerationInput {
     pub document_id: String,
 }
