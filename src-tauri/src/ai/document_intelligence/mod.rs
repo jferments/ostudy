@@ -25,7 +25,7 @@ mod support;
 mod transport;
 
 pub(crate) use context::{load_document_task_context, DocumentTaskContext};
-pub(crate) use contracts::{DocumentOutline, OutlineSection, SourcePageImage};
+pub(crate) use contracts::{DocumentOutline, SourcePageImage};
 pub(crate) use curation::curate_document_cards;
 pub(crate) use flashcards::{
     flashcard_completion_token_ceiling, generate_window_flashcards, FlashcardGenerationLimits,
@@ -339,6 +339,9 @@ mod tests {
     #[test]
     fn public_document_intelligence_facade_has_no_provider_wire_vocabulary() {
         let source = include_str!("mod.rs");
+        let production = source
+            .split_once("#[cfg(test)]")
+            .map_or(source, |(production, _)| production);
         for forbidden in [
             "response_format",
             "tool_choice",
@@ -346,7 +349,7 @@ mod tests {
             "prompt_tokens",
         ] {
             assert!(
-                !source.contains(forbidden),
+                !production.contains(forbidden),
                 "unexpected wire term: {forbidden}"
             );
         }
