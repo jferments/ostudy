@@ -1,11 +1,9 @@
-//! Format-adapter registry and the canonical PDF reference adapter.
+//! Canonical document-adapter registry.
 //!
-//! The existing PDF engine remains responsible for native extraction, bounded
-//! rendering, OCR recovery, cancellation, and resource planning. This module is
-//! the public ingestion boundary used by the document workflow: it selects an
-//! adapter from a verified source format, converts parser-specific output into
-//! the app-owned canonical representation, and commits canonical plus temporary
-//! PDF compatibility projections in one transaction.
+//! PDF continues through oStudy's mature oxidize-pdf/PDFium/OCR engine. All
+//! enabled non-PDF formats are parsed by the private AnyDoc backend and mapped
+//! immediately into app-owned canonical records. Downstream persistence and
+//! document intelligence consume only `CanonicalIngestion`.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -18,6 +16,7 @@ use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use sha2::{Digest, Sha256};
 
 use crate::{
+    anydoc_document_adapter,
     database::Database,
     document_canonical::{
         unit_render_asset_id, CanonicalAsset, CanonicalAssetRole, CanonicalBlock,
@@ -34,8 +33,6 @@ use crate::{
     util::unix_time_millis,
 };
 
-pub(crate) use crate::pdf_document_ingestion::IngestionProgress;
-
 const PDF_ADAPTER_BACKEND: &str = "pdf-canonical-adapter-v1";
 const HASH_BUFFER_BYTES: usize = 128 * 1024;
 const MAX_CANONICAL_FILE_NAME_CHARS: usize = 255;
@@ -49,10 +46,47 @@ const MAX_CANONICAL_CHUNK_TEXT_CHARS: usize = 1_000_000;
 const MAX_CANONICAL_CHUNK_FULL_TEXT_CHARS: usize = 1_100_000;
 const MAX_CANONICAL_HEADING_CONTEXT_CHARS: usize = 2_000;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum IngestionProgress {
+    Extracting {
+        completed_units: usize,
+        total_units: usize,
+    },
+    Rendering {
+        completed_units: usize,
+        total_units: usize,
+    },
+    Ocr {
+        completed_units: usize,
+        total_units: usize,
+    },
+}
+
+impl From<pdf_document_ingestion::IngestionProgress> for IngestionProgress {
+    fn from(value: pdf_document_ingestion::IngestionProgress) -> Self {
+        match value {
+            pdf_document_ingestion::IngestionProgress::Rendering {
+                completed_units,
+                total_units,
+            } => Self::Rendering {
+                completed_units,
+                total_units,
+            },
+            pdf_document_ingestion::IngestionProgress::Ocr {
+                completed_units,
+                total_units,
+            } => Self::Ocr {
+                completed_units,
+                total_units,
+            },
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct AdapterExtraction {
     canonical: CanonicalIngestion,
-    legacy_pdf: IngestedDocument,
+    pdf_compatibility: Option<IngestedDocument>,
 }
 
 #[derive(Clone, Copy)]
@@ -64,45 +98,35 @@ struct AdapterRequest<'a> {
     maximum_source_units: usize,
 }
 
-trait DocumentAdapter: Sync {
-    fn format(&self) -> DocumentFormat;
-    fn backend_id(&self) -> &'static str;
-    fn extraction_backend(&self) -> &'static str;
-    fn render_backend(&self) -> Option<&'static str>;
-    fn probe(&self, source_path: &Path) -> Result<bool, CommandError>;
-    fn extract(
-        &self,
-        request: AdapterRequest<'_>,
-        report_progress: &mut dyn FnMut(IngestionProgress) -> Result<(), CommandError>,
-    ) -> Result<AdapterExtraction, CommandError>;
-}
-
 struct PdfDocumentAdapter;
 
 static PDF_ADAPTER: PdfDocumentAdapter = PdfDocumentAdapter;
 
-impl DocumentAdapter for PdfDocumentAdapter {
-    fn format(&self) -> DocumentFormat {
-        DocumentFormat::Pdf
-    }
+enum SelectedAdapter {
+    Pdf,
+    AnyDoc(DocumentFormat),
+}
 
+impl SelectedAdapter {
     fn backend_id(&self) -> &'static str {
-        PDF_ADAPTER_BACKEND
+        match self {
+            Self::Pdf => PDF_ADAPTER_BACKEND,
+            Self::AnyDoc(_) => anydoc_document_adapter::ANYDOC_ADAPTER_BACKEND,
+        }
     }
 
     fn extraction_backend(&self) -> &'static str {
-        pdf_document_ingestion::active_pdf_extraction_backend()
+        match self {
+            Self::Pdf => pdf_document_ingestion::active_pdf_extraction_backend(),
+            Self::AnyDoc(_) => anydoc_document_adapter::ANYDOC_EXTRACTION_BACKEND,
+        }
     }
 
     fn render_backend(&self) -> Option<&'static str> {
-        Some(pdf_document_ingestion::active_pdf_render_backend())
-    }
-
-    fn probe(&self, source_path: &Path) -> Result<bool, CommandError> {
-        let mut file = File::open(source_path).map_err(CommandError::io)?;
-        let mut signature = [0_u8; 5];
-        let read = file.read(&mut signature).map_err(CommandError::io)?;
-        Ok(read == signature.len() && signature == *b"%PDF-")
+        match self {
+            Self::Pdf => Some(pdf_document_ingestion::active_pdf_render_backend()),
+            Self::AnyDoc(_) => None,
+        }
     }
 
     fn extract(
@@ -110,20 +134,47 @@ impl DocumentAdapter for PdfDocumentAdapter {
         request: AdapterRequest<'_>,
         report_progress: &mut dyn FnMut(IngestionProgress) -> Result<(), CommandError>,
     ) -> Result<AdapterExtraction, CommandError> {
-        let legacy_pdf = pdf_document_ingestion::ingest_pdf(
-            request.paths,
-            request.render_runtime,
-            request.document_id,
-            request.source_path,
-            request.maximum_source_units,
-            report_progress,
-        )?;
-        let canonical =
-            canonicalize_pdf(request.document_id, request.source_path, self, &legacy_pdf)?;
-        Ok(AdapterExtraction {
-            canonical,
-            legacy_pdf,
-        })
+        match self {
+            Self::Pdf => {
+                let legacy_pdf = pdf_document_ingestion::ingest_pdf(
+                    request.paths,
+                    request.render_runtime,
+                    request.document_id,
+                    request.source_path,
+                    request.maximum_source_units,
+                    |progress| report_progress(progress.into()),
+                )?;
+                let canonical = canonicalize_pdf(
+                    request.document_id,
+                    request.source_path,
+                    self,
+                    &legacy_pdf,
+                )?;
+                Ok(AdapterExtraction {
+                    canonical,
+                    pdf_compatibility: Some(legacy_pdf),
+                })
+            }
+            Self::AnyDoc(format) => {
+                let canonical = anydoc_document_adapter::extract(
+                    request.paths,
+                    request.document_id,
+                    request.source_path,
+                    *format,
+                    request.maximum_source_units,
+                    |completed_units, total_units| {
+                        report_progress(IngestionProgress::Extracting {
+                            completed_units,
+                            total_units,
+                        })
+                    },
+                )?;
+                Ok(AdapterExtraction {
+                    canonical,
+                    pdf_compatibility: None,
+                })
+            }
+        }
     }
 }
 
@@ -133,43 +184,84 @@ impl DocumentAdapterRegistry {
     fn select(
         format: DocumentFormat,
         source_path: &Path,
-    ) -> Result<&'static dyn DocumentAdapter, CommandError> {
-        let adapter: &'static dyn DocumentAdapter = match format {
-            DocumentFormat::Pdf => &PDF_ADAPTER,
-            _ => {
+    ) -> Result<SelectedAdapter, CommandError> {
+        let adapter = if format == DocumentFormat::Pdf {
+            let mut file = File::open(source_path).map_err(CommandError::io)?;
+            let mut signature = [0_u8; 5];
+            let read = file.read(&mut signature).map_err(CommandError::io)?;
+            if read != signature.len() || signature != *b"%PDF-" {
                 return Err(CommandError::new(
-                    "document_ingestion_adapter_unavailable",
-                    "This ostudy build does not yet include an ingestion adapter for the saved document format.",
+                    "document_source_format_mismatch",
+                    "The managed source bytes do not match the PDF format recorded by oStudy.",
                 ));
             }
-        };
-        if adapter.format() != format || !adapter.probe(source_path)? {
+            SelectedAdapter::Pdf
+        } else if anydoc_document_adapter::supports(format) {
+            if !anydoc_document_adapter::probe(format, source_path)? {
+                return Err(CommandError::new(
+                    "document_source_format_mismatch",
+                    "The managed source bytes do not match the document format recorded by oStudy.",
+                ));
+            }
+            SelectedAdapter::AnyDoc(format)
+        } else {
             return Err(CommandError::new(
-                "document_source_format_mismatch",
-                "The managed source bytes do not match the document format recorded by ostudy.",
+                "document_ingestion_adapter_unavailable",
+                "This oStudy build does not include an ingestion adapter for the saved document format.",
             ));
-        }
+        };
         Ok(adapter)
     }
 }
 
 pub(crate) fn active_pdf_extraction_backend() -> &'static str {
-    PDF_ADAPTER.extraction_backend()
+    pdf_document_ingestion::active_pdf_extraction_backend()
 }
 
 pub(crate) fn active_pdf_render_backend() -> &'static str {
-    PDF_ADAPTER
-        .render_backend()
-        .expect("the PDF reference adapter always has a render backend")
+    pdf_document_ingestion::active_pdf_render_backend()
 }
 
 pub(crate) fn active_adapter_backend(format: DocumentFormat) -> Result<&'static str, CommandError> {
-    match format {
-        DocumentFormat::Pdf => Ok(PDF_ADAPTER.backend_id()),
-        _ => Err(CommandError::new(
+    if format == DocumentFormat::Pdf {
+        Ok(PDF_ADAPTER_BACKEND)
+    } else if anydoc_document_adapter::supports(format) {
+        Ok(anydoc_document_adapter::ANYDOC_ADAPTER_BACKEND)
+    } else {
+        Err(CommandError::new(
             "document_ingestion_adapter_unavailable",
-            "This ostudy build does not yet include an ingestion adapter for the saved document format.",
-        )),
+            "This oStudy build does not include an ingestion adapter for the saved document format.",
+        ))
+    }
+}
+
+pub(crate) fn active_extraction_backend(
+    format: DocumentFormat,
+) -> Result<&'static str, CommandError> {
+    if format == DocumentFormat::Pdf {
+        Ok(active_pdf_extraction_backend())
+    } else if anydoc_document_adapter::supports(format) {
+        Ok(anydoc_document_adapter::ANYDOC_EXTRACTION_BACKEND)
+    } else {
+        Err(CommandError::new(
+            "document_ingestion_adapter_unavailable",
+            "This oStudy build does not include an ingestion adapter for the saved document format.",
+        ))
+    }
+}
+
+pub(crate) fn active_render_backend(
+    format: DocumentFormat,
+) -> Result<&'static str, CommandError> {
+    if format == DocumentFormat::Pdf {
+        Ok(active_pdf_render_backend())
+    } else if anydoc_document_adapter::supports(format) {
+        Ok("none")
+    } else {
+        Err(CommandError::new(
+            "document_ingestion_adapter_unavailable",
+            "This oStudy build does not include an ingestion adapter for the saved document format.",
+        ))
     }
 }
 
@@ -198,7 +290,7 @@ where
     )
 }
 
-/// Compatibility entry point retained until the later generic import/IPC stage.
+/// Compatibility entry point retained for existing PDF-focused tests.
 pub(crate) fn ingest_pdf<F>(
     paths: &AppPaths,
     render_runtime: &PdfRenderRuntime,
@@ -226,39 +318,92 @@ pub(crate) fn update_ingestion_progress(
     document_id: &str,
     progress: IngestionProgress,
 ) -> Result<(), CommandError> {
-    pdf_document_ingestion::update_ingestion_progress(database, document_id, progress)?;
-    let IngestionProgress::Rendering {
-        completed_units,
-        total_units,
-    } = progress
-    else {
-        return Ok(());
-    };
-    let total = to_i64(total_units);
-    let completed = to_i64(completed_units).min(total);
-    database.with_connection(|connection| {
-        let changed = connection
-            .execute(
-                "UPDATE documents
-                 SET source_unit_count = ?1,
-                     extracted_source_unit_count = ?1,
-                     visualized_source_unit_count = ?2
-                 WHERE id = ?3 AND lifecycle_state = 'processing'",
-                params![total, completed, document_id],
-            )
-            .map_err(|error| {
-                CommandError::database_at(
-                    "canonical_document_progress_failed",
-                    format!("document={document_id} completed={completed} total={total}"),
-                    error,
+    match progress {
+        IngestionProgress::Extracting {
+            completed_units,
+            total_units,
+        } => {
+            let total = to_i64(total_units);
+            let completed = to_i64(completed_units).min(total);
+            database.with_connection(|connection| {
+                let changed = connection
+                    .execute(
+                        "UPDATE documents
+                         SET page_count = ?1, extracted_page_count = ?2,
+                             source_unit_count = ?1,
+                             extracted_source_unit_count = ?2,
+                             updated_at = ?3
+                         WHERE id = ?4 AND lifecycle_state = 'processing'",
+                        params![total, completed, unix_time_millis()?, document_id],
+                    )
+                    .map_err(|error| {
+                        CommandError::database_at(
+                            "canonical_document_progress_failed",
+                            format!(
+                                "document={document_id} completed={completed} total={total}"
+                            ),
+                            error,
+                        )
+                    })?;
+                require_one(
+                    changed,
+                    "document_changed",
+                    "The document changed while extraction progress was being recorded.",
                 )
-            })?;
-        require_one(
-            changed,
-            "document_changed",
-            "The document changed while canonical ingestion progress was being recorded.",
-        )
-    })
+            })
+        }
+        IngestionProgress::Rendering {
+            completed_units,
+            total_units,
+        } => {
+            pdf_document_ingestion::update_ingestion_progress(
+                database,
+                document_id,
+                pdf_document_ingestion::IngestionProgress::Rendering {
+                    completed_units,
+                    total_units,
+                },
+            )?;
+            let total = to_i64(total_units);
+            let completed = to_i64(completed_units).min(total);
+            database.with_connection(|connection| {
+                let changed = connection
+                    .execute(
+                        "UPDATE documents
+                         SET source_unit_count = ?1,
+                             extracted_source_unit_count = ?1,
+                             visualized_source_unit_count = ?2
+                         WHERE id = ?3 AND lifecycle_state = 'processing'",
+                        params![total, completed, document_id],
+                    )
+                    .map_err(|error| {
+                        CommandError::database_at(
+                            "canonical_document_progress_failed",
+                            format!(
+                                "document={document_id} completed={completed} total={total}"
+                            ),
+                            error,
+                        )
+                    })?;
+                require_one(
+                    changed,
+                    "document_changed",
+                    "The document changed while rendering progress was being recorded.",
+                )
+            })
+        }
+        IngestionProgress::Ocr {
+            completed_units,
+            total_units,
+        } => pdf_document_ingestion::update_ingestion_progress(
+            database,
+            document_id,
+            pdf_document_ingestion::IngestionProgress::Ocr {
+                completed_units,
+                total_units,
+            },
+        ),
+    }
 }
 
 pub(crate) fn persist_ingested_document(
@@ -288,7 +433,7 @@ pub(crate) fn persist_ingested_document(
 
         let stored_source = transaction
             .query_row(
-                "SELECT title, original_filename, mime_type, byte_size, sha256,
+                "SELECT title, original_filename, source_media_type, byte_size, sha256,
                         source_relative_path
                  FROM documents WHERE id = ?1",
                 [document_id],
@@ -320,7 +465,7 @@ pub(crate) fn persist_ingested_document(
         if canonical.document.source_files.len() != 1 {
             return Err(CommandError::new(
                 "invalid_canonical_document",
-                "The PDF adapter must return exactly one immutable source file.",
+                "A single-file document adapter must return exactly one immutable source file.",
             ));
         }
         let source_file = canonical
@@ -331,7 +476,7 @@ pub(crate) fn persist_ingested_document(
         if source_file.byte_size != stored_source.3 || source_file.sha256 != stored_source.4 {
             return Err(CommandError::new(
                 "document_source_changed",
-                "The managed source changed while ostudy was extracting it. Import the document again.",
+                "The managed source changed while oStudy was extracting it. Import the document again.",
             ));
         }
         let normalized_title = normalize_semantic_text(&stored_source.0, MAX_CANONICAL_TITLE_CHARS);
@@ -339,7 +484,10 @@ pub(crate) fn persist_ingested_document(
         let normalized_filename =
             normalize_semantic_text(&stored_source.1, MAX_CANONICAL_FILE_NAME_CHARS);
         source_file.original_filename = if normalized_filename.is_empty() {
-            "source.pdf".to_string()
+            format!(
+                "source.{}",
+                canonical.document.source.format.default_extension()
+            )
         } else {
             normalized_filename
         };
@@ -366,12 +514,9 @@ pub(crate) fn persist_ingested_document(
 
         document_canonical_store::clear_canonical_derivatives(&transaction, document_id)?;
         clear_pdf_compatibility_derivatives(&transaction, document_id)?;
-        persist_pdf_compatibility_projection(
-            &transaction,
-            document_id,
-            &processed.legacy_pdf,
-            now,
-        )?;
+        if let Some(pdf) = &processed.pdf_compatibility {
+            persist_pdf_compatibility_projection(&transaction, document_id, pdf, now)?;
+        }
         document_canonical_store::persist_canonical_ingestion(
             &transaction,
             document_id,
@@ -380,55 +525,69 @@ pub(crate) fn persist_ingested_document(
         )?;
 
         let unit_count = to_i64(canonical.document.source.unit_count);
-        let ocr_page_count = to_i64(processed.legacy_pdf.ocr.page_count);
+        let extracted_units = to_i64(canonical.document.units.len());
+        let source_asset_count = to_i64(canonical.document.assets.len());
         let visualized_units = canonical
             .document
             .assets
             .iter()
-            .filter(|asset| asset.role == CanonicalAssetRole::UnitRender)
             .filter_map(|asset| asset.source_unit_number)
             .collect::<BTreeSet<_>>()
             .len();
+        let rendered_pages = if processed.pdf_compatibility.is_some() {
+            canonical
+                .document
+                .assets
+                .iter()
+                .filter(|asset| asset.role == CanonicalAssetRole::UnitRender)
+                .filter_map(|asset| asset.source_unit_number)
+                .collect::<BTreeSet<_>>()
+                .len()
+        } else {
+            0
+        };
+        let extraction = &canonical.document.extraction;
         let changed = transaction
             .execute(
                 "UPDATE documents
-                 SET page_count = ?1, extracted_page_count = ?1,
-                     rendered_page_count = ?1,
-                     source_format = ?2, source_unit_kind = ?3,
-                     extraction_backend = ?4, render_backend = ?5,
-                     extraction_mode = ?6, ocr_page_count = ?7,
-                     ocr_completed_page_count = ?7, ocr_mean_confidence = ?8,
-                     ocr_engine = ?9,
-                     semantic_element_count = ?10, semantic_chunk_count = ?11,
-                     canonical_schema_version = ?12, adapter_backend = ?13,
-                     source_file_count = ?14, source_unit_count = ?1,
-                     extracted_source_unit_count = ?15,
-                     visualized_source_unit_count = ?16,
-                     source_asset_count = ?17,
+                 SET page_count = ?1, extracted_page_count = ?2,
+                     rendered_page_count = ?3,
+                     source_format = ?4, source_unit_kind = ?5,
+                     extraction_backend = ?6, render_backend = ?7,
+                     extraction_mode = ?8, ocr_page_count = ?9,
+                     ocr_completed_page_count = ?9, ocr_mean_confidence = ?10,
+                     ocr_engine = ?11,
+                     semantic_element_count = ?12, semantic_chunk_count = ?13,
+                     canonical_schema_version = ?14, adapter_backend = ?15,
+                     source_file_count = ?16, source_unit_count = ?1,
+                     extracted_source_unit_count = ?2,
+                     visualized_source_unit_count = ?17,
+                     source_asset_count = ?18,
                      scale_mode = 'standard', estimated_source_tokens = 0,
                      outline_window_count = 0, outline_completed_window_count = 0,
                      generation_window_count = 0, generation_completed_window_count = 0,
                      outline_state = 'pending', safe_error_code = '', safe_error_message = '',
-                     updated_at = ?18, revision = revision + 1
-                 WHERE id = ?19 AND lifecycle_state = 'processing'",
+                     updated_at = ?19, revision = revision + 1
+                 WHERE id = ?20 AND lifecycle_state = 'processing'",
                 params![
                     unit_count,
+                    extracted_units,
+                    to_i64(rendered_pages),
                     canonical.document.source.format.as_str(),
                     canonical.document.source.unit_kind.as_str(),
-                    processed.legacy_pdf.extraction_backend,
-                    processed.legacy_pdf.render_backend,
-                    processed.legacy_pdf.extraction_mode.as_str(),
-                    ocr_page_count,
-                    processed.legacy_pdf.ocr.mean_confidence,
-                    processed.legacy_pdf.ocr.engine,
+                    extraction.extraction_backend,
+                    extraction.render_backend.as_deref().unwrap_or("none"),
+                    extraction.extraction_mode,
+                    to_i64(extraction.ocr_unit_count),
+                    extraction.ocr_mean_confidence,
+                    extraction.ocr_engine.as_deref().unwrap_or(""),
                     to_i64(canonical.document.blocks.len()),
                     to_i64(canonical.semantic_chunks.len()),
                     canonical.document.schema_version,
-                    canonical.document.extraction.adapter_backend,
+                    extraction.adapter_backend,
                     to_i64(canonical.document.source_files.len()),
-                    to_i64(canonical.document.units.len()),
                     to_i64(visualized_units),
-                    to_i64(canonical.document.assets.len()),
+                    source_asset_count,
                     now,
                     document_id,
                 ],
@@ -458,7 +617,7 @@ pub(crate) fn persist_ingested_document(
 fn canonicalize_pdf(
     document_id: &str,
     source_path: &Path,
-    adapter: &dyn DocumentAdapter,
+    adapter: &SelectedAdapter,
     processed: &IngestedDocument,
 ) -> Result<CanonicalIngestion, CommandError> {
     let (source_byte_size, source_sha256) = hash_file(source_path)?;
@@ -532,7 +691,8 @@ fn canonicalize_pdf(
             element.element_index.to_string(),
         );
         if let Some(font_name) = &element.font_name {
-            let font_name = normalize_semantic_text(font_name, MAX_CANONICAL_ATTRIBUTE_VALUE_CHARS);
+            let font_name =
+                normalize_semantic_text(font_name, MAX_CANONICAL_ATTRIBUTE_VALUE_CHARS);
             if !font_name.is_empty() {
                 attributes.insert("fontName".to_string(), font_name);
             }
@@ -944,13 +1104,17 @@ mod tests {
     };
 
     #[test]
-    fn registry_rejects_formats_without_an_enabled_adapter() {
-        let error =
-            match DocumentAdapterRegistry::select(DocumentFormat::Docx, Path::new("unused.docx")) {
-                Ok(_) => panic!("DOCX must not be enabled before its adapter ships"),
-                Err(error) => error,
-            };
-        assert_eq!(error.code, "document_ingestion_adapter_unavailable");
+    fn registry_keeps_pdf_native_and_enables_anydoc_families() {
+        assert_eq!(active_adapter_backend(DocumentFormat::Pdf).unwrap(), PDF_ADAPTER_BACKEND);
+        assert_eq!(
+            active_adapter_backend(DocumentFormat::Docx).unwrap(),
+            anydoc_document_adapter::ANYDOC_ADAPTER_BACKEND
+        );
+        assert_eq!(active_render_backend(DocumentFormat::Docx).unwrap(), "none");
+        assert_eq!(
+            active_adapter_backend(DocumentFormat::Html).unwrap_err().code,
+            "document_ingestion_adapter_unavailable"
+        );
     }
 
     #[test]
@@ -973,7 +1137,7 @@ mod tests {
         let long_heading = format!("{}\u{000c}", "H".repeat(600));
         let legacy = IngestedDocument {
             source: DocumentSourceDescriptor::pdf(1),
-            pages: vec![IngestedPage {
+            pages: vec![crate::pdf_document_ingestion::IngestedPage {
                 unit_number: 1,
                 plain_text: "Cardiac output is heart rate times stroke volume.".to_string(),
                 text_sha256: sha256_hex(b"Cardiac output is heart rate times stroke volume."),
@@ -1068,7 +1232,7 @@ mod tests {
         let canonical = canonicalize_pdf(
             "0123456789abcdef0123456789abcdef",
             &source_path,
-            &PDF_ADAPTER,
+            &SelectedAdapter::Pdf,
             &legacy,
         )
         .expect("PDF parser text should normalize into canonical records");
@@ -1088,15 +1252,9 @@ mod tests {
             .heading_path
             .iter()
             .all(|heading| !heading.chars().any(char::is_control)));
-        assert_eq!(
-            canonical.document.blocks[0].asset_ids,
-            vec![render_id.clone()]
-        );
+        assert_eq!(canonical.document.blocks[0].asset_ids, vec![render_id.clone()]);
         assert!(canonical.document.blocks[1].text.is_empty());
-        assert_eq!(
-            canonical.document.blocks[1].asset_ids,
-            vec![render_id.clone()]
-        );
+        assert_eq!(canonical.document.blocks[1].asset_ids, vec![render_id.clone()]);
         assert_eq!(canonical.semantic_chunks.len(), 2);
         assert_eq!(canonical.semantic_chunks[0].text, "Cardiac output table");
         assert!(!canonical.semantic_chunks[0]
@@ -1110,10 +1268,7 @@ mod tests {
         assert!(canonical.semantic_chunks[1]
             .full_text
             .contains("visual or non-text content"));
-        assert_eq!(
-            canonical.semantic_chunks[1].source_locator.asset_ids,
-            vec![render_id]
-        );
+        assert_eq!(canonical.semantic_chunks[1].source_locator.asset_ids, vec![render_id]);
         assert_eq!(canonical.semantic_chunks[0].content_sha256.len(), 64);
         assert_eq!(canonical.document.full_text_sha256().len(), 64);
 
