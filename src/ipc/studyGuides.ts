@@ -185,6 +185,10 @@ export async function generateDocumentStudyGuide(
   });
 }
 
+export async function cancelDocumentStudyGuideGeneration(documentId: string): Promise<void> {
+  await invoke("cancel_document_study_guide_generation", { documentId });
+}
+
 export async function getDocumentStudyGuide(
   documentId: string,
 ): Promise<DocumentStudyGuide | null> {
