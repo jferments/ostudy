@@ -24,6 +24,7 @@ interface StudyGuideDialogProps {
   documentId: string;
   documentTitle: string;
   showToast: ShowToast;
+  onPracticeCards: (cardIds: string[]) => Promise<void>;
   onClose: () => void;
 }
 
@@ -39,6 +40,7 @@ export function StudyGuideDialog({
   documentId,
   documentTitle,
   showToast,
+  onPracticeCards,
   onClose,
 }: StudyGuideDialogProps) {
   const [guide, setGuide] = useState<DocumentStudyGuide | null>(null);
@@ -212,15 +214,7 @@ export function StudyGuideDialog({
         showToast("info", "No flashcards are linked to this section yet.");
         return;
       }
-      window.dispatchEvent(
-        new CustomEvent("ostudy:practice-exact-cards", {
-          detail: { cardIds, source: "study-guide", topicId: section.topicId },
-        }),
-      );
-      showToast(
-        "success",
-        `Prepared ${cardIds.length} linked flashcard${cardIds.length === 1 ? "" : "s"} for practice.`,
-      );
+      await onPracticeCards(cardIds);
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
     }
