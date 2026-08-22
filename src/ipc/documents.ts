@@ -87,7 +87,7 @@ export interface DeletePdfDocumentResult {
   preservedDeckCitationCount: number;
 }
 
-interface ImportedPdfDocument {
+interface ImportedDocument {
   documentId: string;
 }
 
@@ -103,13 +103,19 @@ export async function getDocumentGenerationProgress(
   });
 }
 
+export async function importDocument(stagedFileId: string): Promise<ImportedDocument> {
+  return invoke<ImportedDocument>("import_document", {
+    input: { stagedFileId },
+  });
+}
+
 export async function importPdfAndGenerateFlashcards(
   stagedFileId: string,
 ): Promise<DocumentGenerationResult> {
   // Establish a durable document identity before the long-running provider
   // request begins. That lets Documents expose an exact Stop action while the
   // generation command remains in flight.
-  const imported = await invoke<ImportedPdfDocument>("import_pdf_document", {
+  const imported = await invoke<ImportedDocument>("import_pdf_document", {
     input: { stagedFileId },
   });
   return retryPdfFlashcardGeneration(imported.documentId);
