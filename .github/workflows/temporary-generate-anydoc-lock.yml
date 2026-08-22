@@ -1,38 +1,51 @@
-name: Temporary AnyDoc lockfile generation
+name: Temporary AnyDoc implementation snapshot
 
 on:
-  push:
-    branches: [agent/anydoc-document-adapters]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
 
 concurrency:
-  group: temporary-anydoc-lock-${{ github.ref }}
+  group: temporary-anydoc-snapshot-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  generate-lock:
+  prepare-snapshot:
     runs-on: [self-hosted, linux, x64, ostudy-unified]
     timeout-minutes: 30
+    env:
+      QUALIFIED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
-      - name: Check out exact branch head
+      - name: Check out exact source head
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.QUALIFIED_SHA }}
           clean: true
           fetch-depth: 1
           persist-credentials: false
       - name: Expose pinned Rust toolchain
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-      - name: Resolve the dependency graph without mutating repository history
-        run: cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 > /dev/null
-      - name: Verify AnyDoc is present in the resolved graph
-        run: grep -F 'name = "anydoc"' src-tauri/Cargo.lock
-      - name: Upload generated lockfile
+      - name: Resolve and format without writing repository history
+        run: |
+          cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 > /dev/null
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          grep -F 'name = "anydoc"' src-tauri/Cargo.lock
+      - name: Upload formatted implementation snapshot
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         with:
-          name: anydoc-cargo-lock-${{ github.sha }}
-          path: src-tauri/Cargo.lock
+          name: anydoc-implementation-snapshot-${{ env.QUALIFIED_SHA }}
+          path: |
+            src-tauri/Cargo.toml
+            src-tauri/Cargo.lock
+            src-tauri/migrations/**
+            src-tauri/src/**
+            src/**
+            tests/**
+            scripts/**
+            package.json
+            tsconfig*.json
           if-no-files-found: error
           retention-days: 1
