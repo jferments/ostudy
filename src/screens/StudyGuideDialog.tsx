@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { ShowToast } from "../components/Toast";
-import { getErrorMessage } from "../ipc/common";
+import { getErrorCode, getErrorMessage } from "../ipc/common";
+import { openDocumentSource } from "../ipc/documents";
+import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import {
+  cancelDocumentStudyGuideGeneration,
   generateDocumentStudyGuide,
   getDocumentStudyGuide,
   getDocumentTopicCardIds,
   getDocumentTopicCardProjection,
+  prepareDocumentStudyGuidePdf,
   saveDocumentStudyGuideOverlay,
   type DocumentStudyGuide,
   type DocumentStudyGuideSection,
   type StudyGuideOverlay,
   type TopicCardProjection,
 } from "../ipc/studyGuides";
+import { Dialog } from "../ui/overlays/Dialog";
 import styles from "./StudyGuideDialog.module.css";
 
 interface StudyGuideDialogProps {
@@ -39,7 +44,10 @@ export function StudyGuideDialog({
   const [guide, setGuide] = useState<DocumentStudyGuide | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [includeAnnotations, setIncludeAnnotations] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [topicCards, setTopicCards] = useState<Record<string, TopicCardProjection>>({});
@@ -95,23 +103,71 @@ export function StudyGuideDialog({
   );
 
   async function generate(): Promise<void> {
-    if (isGenerating || isSaving) return;
+    if (isGenerating || isSaving || isExporting) return;
     setIsGenerating(true);
     setErrorMessage(null);
     try {
       const generated = await generateDocumentStudyGuide(documentId);
       setGuide(generated);
       setEditing(null);
-      showToast(
-        "success",
-        guide ? "Study guide regenerated." : "Study guide created.",
-      );
+      showToast("success", guide ? "Study guide regenerated." : "Study guide created.");
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      setErrorMessage(message);
-      showToast("error", message);
+      const code = getErrorCode(error);
+      if (code === "document_study_guide_canceled" || code === "ai_request_canceled") {
+        setErrorMessage(null);
+        showToast("info", "Study-guide generation stopped. Saved topic checkpoints can be reused on retry.");
+      } else {
+        const message = getErrorMessage(error);
+        setErrorMessage(message);
+        showToast("error", message);
+      }
     } finally {
       setIsGenerating(false);
+      setIsCanceling(false);
+    }
+  }
+
+  async function stopGeneration(): Promise<void> {
+    if (!isGenerating || isCanceling) return;
+    setIsCanceling(true);
+    try {
+      await cancelDocumentStudyGuideGeneration(documentId);
+      showToast("info", "Stopping study-guide generation…");
+    } catch (error: unknown) {
+      setIsCanceling(false);
+      showToast("error", getErrorMessage(error));
+    }
+  }
+
+  async function exportPdf(): Promise<void> {
+    if (!guide || isExporting || isGenerating || isSaving) return;
+    setIsExporting(true);
+    let preparedExportId: string | null = null;
+    try {
+      const prepared = await prepareDocumentStudyGuidePdf(documentId, includeAnnotations);
+      preparedExportId = prepared.preparedExport.id;
+      const receipt = await publishPreparedExport(prepared.preparedExport.id);
+      if (receipt) {
+        showToast(
+          "success",
+          `Exported study guide revision ${prepared.guideRevision} with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}.`,
+        );
+      }
+    } catch (error: unknown) {
+      showToast("error", getErrorMessage(error));
+    } finally {
+      if (preparedExportId) {
+        await releasePreparedExport(preparedExportId).catch(() => undefined);
+      }
+      setIsExporting(false);
+    }
+  }
+
+  async function openSource(): Promise<void> {
+    try {
+      await openDocumentSource(documentId);
+    } catch (error: unknown) {
+      showToast("error", getErrorMessage(error));
     }
   }
 
@@ -189,146 +245,171 @@ export function StudyGuideDialog({
   }
 
   return (
-    <div className={styles.backdrop} role="presentation" onMouseDown={onClose}>
-      <section
-        className={styles.dialog}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="study-guide-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header className={styles.header}>
-          <div>
-            <p className={styles.eyebrow}>Study guide</p>
-            <h1 id="study-guide-title">{documentTitle}</h1>
-          </div>
-          <div className={styles.headerActions} data-print-hidden>
-            {guide ? (
-              <button type="button" className="secondary-button" onClick={() => window.print()}>
-                Export PDF
-              </button>
-            ) : null}
+    <Dialog
+      title={`Study guide · ${documentTitle}`}
+      description="Source-grounded sections, learner notes, and topic-linked flashcards."
+      onClose={() => onClose()}
+      width="large"
+      presentation="fullscreen"
+      dismissible={!isGenerating && !isSaving && !isExporting}
+      busy={isSaving || isExporting}
+    >
+      <header className={styles.header}>
+        <div>
+          <p className={styles.eyebrow}>Document learning artifact</p>
+          <strong>{guide ? `Revision ${guide.revision}` : "Not generated yet"}</strong>
+        </div>
+        <div className={styles.headerActions}>
+          {guide ? (
+            <label className={styles.annotationToggle}>
+              <input
+                type="checkbox"
+                checked={includeAnnotations}
+                disabled={isExporting}
+                onChange={(event) => setIncludeAnnotations(event.currentTarget.checked)}
+              />
+              Include my notes in PDF
+            </label>
+          ) : null}
+          {guide ? (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={isExporting || isGenerating || isSaving}
+              onClick={() => void exportPdf()}
+            >
+              {isExporting ? "Exporting…" : "Export PDF"}
+            </button>
+          ) : null}
+          <button type="button" className="secondary-button" onClick={() => void openSource()}>
+            Open source
+          </button>
+          {isGenerating ? (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={isCanceling}
+              onClick={() => void stopGeneration()}
+            >
+              {isCanceling ? "Stopping…" : "Stop generation"}
+            </button>
+          ) : (
             <button
               type="button"
               className={guide ? "secondary-button" : "primary-button"}
-              disabled={isGenerating || isSaving}
+              disabled={isSaving || isExporting}
               onClick={() => void generate()}
             >
-              {isGenerating ? "Generating…" : guide ? "Regenerate" : "Create study guide"}
+              {guide ? "Regenerate" : "Create study guide"}
             </button>
-            <button type="button" className="secondary-button" onClick={onClose}>
-              Close
-            </button>
-          </div>
-        </header>
+          )}
+        </div>
+      </header>
 
-        {errorMessage ? (
-          <div className={styles.error} role="alert">
-            {errorMessage}
-          </div>
-        ) : null}
+      {errorMessage ? (
+        <div className={styles.error} role="alert">
+          {errorMessage}
+        </div>
+      ) : null}
 
-        {isLoading ? (
-          <div className={styles.empty}>Loading study guide…</div>
-        ) : !guide ? (
-          <div className={styles.empty}>
-            <h2>No study guide yet</h2>
-            <p>
-              Create a structured guide from the document’s shared learning plan. The same topic
-              identities can later organize linked flashcards, tests, and tutoring.
-            </p>
-          </div>
-        ) : (
-          <div className={styles.layout}>
-            <nav className={styles.contents} aria-label="Study guide contents" data-print-hidden>
-              <strong>Contents</strong>
-              <a href="#guide-overview">Overview</a>
-              {guide.sections.map((section) => (
-                <a key={section.topicId} href={`#topic-${section.topicId}`}>
-                  {section.title}
-                </a>
-              ))}
-            </nav>
+      {isLoading ? (
+        <div className={styles.empty} aria-live="polite">
+          Loading study guide…
+        </div>
+      ) : !guide ? (
+        <div className={styles.empty}>
+          <h2>No study guide yet</h2>
+          <p>
+            Create a structured guide from the document’s shared learning plan. The same stable
+            topic identities organize generated flashcards and future learning tools.
+          </p>
+        </div>
+      ) : (
+        <div className={styles.layout}>
+          <nav className={styles.contents} aria-label="Study guide contents">
+            <strong>Contents</strong>
+            <a href="#guide-overview">Overview</a>
+            {guide.sections.map((section) => (
+              <a key={section.topicId} href={`#topic-${section.topicId}`}>
+                {section.title}
+              </a>
+            ))}
+          </nav>
 
-            <article className={styles.guide}>
-              <section id="guide-overview" className={styles.overview}>
-                <h2>Overview</h2>
-                <p>{guide.overview.summary}</p>
-                <GuideList title="Learning objectives" values={guide.overview.learningObjectives} />
-                <GuideList title="Key concepts" values={guide.overview.keyConcepts} />
-                {guideNote?.plainText ? (
-                  <aside className={styles.personalNote}>
-                    <strong>My guide note</strong>
-                    <p>{guideNote.plainText}</p>
-                  </aside>
-                ) : null}
-                <button
-                  type="button"
-                  className="secondary-button"
-                  data-print-hidden
-                  onClick={beginGuideNote}
-                >
-                  {guideNote ? "Edit guide note" : "Add guide note"}
-                </button>
-              </section>
+          <article className={styles.guide}>
+            <section id="guide-overview" className={styles.overview}>
+              <h2>Overview</h2>
+              <p>{guide.overview.summary}</p>
+              <GuideList title="Learning objectives" values={guide.overview.learningObjectives} />
+              <GuideList title="Key concepts" values={guide.overview.keyConcepts} />
+              {guideNote?.plainText ? (
+                <aside className={styles.personalNote}>
+                  <strong>My guide note</strong>
+                  <p>{guideNote.plainText}</p>
+                </aside>
+              ) : null}
+              <button type="button" className="secondary-button" onClick={beginGuideNote}>
+                {guideNote ? "Edit guide note" : "Add guide note"}
+              </button>
+            </section>
 
-              {guide.sections.map((section) => (
-                <StudyGuideSectionView
-                  key={section.topicId}
-                  section={section}
-                  overlays={guide.overlays}
-                  guideId={guide.id}
-                  projection={topicCards[section.topicId]}
-                  onEditNote={() => beginTopicNote(section)}
-                  onEditSection={() => beginSectionOverride(section)}
-                  onStudy={() => void studyTopic(section)}
-                />
-              ))}
-            </article>
-          </div>
-        )}
-
-        {editing ? (
-          <div className={styles.editor} data-print-hidden>
-            <label>
-              <strong>{editing.mode === "override" ? "Edit generated section" : "Personal note"}</strong>
-              <textarea
-                value={editing.value}
-                rows={10}
-                onChange={(event) =>
-                  setEditing((current) =>
-                    current ? { ...current, value: event.currentTarget.value } : current,
-                  )
-                }
+            {guide.sections.map((section) => (
+              <StudyGuideSectionView
+                key={section.topicId}
+                section={section}
+                overlays={guide.overlays}
+                guideId={guide.id}
+                projection={topicCards[section.topicId]}
+                onEditNote={() => beginTopicNote(section)}
+                onEditSection={() => beginSectionOverride(section)}
+                onStudy={() => void studyTopic(section)}
+                onOpenSource={() => void openSource()}
               />
-            </label>
-            <p>
-              {editing.mode === "override"
-                ? "This is a non-destructive override of the current generated revision. Regeneration preserves it as a conflict for review instead of silently applying it to changed source text."
-                : "Personal notes are attached to the stable document topic and remain available after regeneration."}
-            </p>
-            <div className={styles.editorActions}>
-              <button
-                type="button"
-                className="primary-button"
-                disabled={isSaving}
-                onClick={() => void saveEditing()}
-              >
-                {isSaving ? "Saving…" : "Save"}
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={isSaving}
-                onClick={() => setEditing(null)}
-              >
-                Cancel
-              </button>
-            </div>
+            ))}
+          </article>
+        </div>
+      )}
+
+      {editing ? (
+        <div className={styles.editor}>
+          <label>
+            <strong>{editing.mode === "override" ? "Edit generated section" : "Personal note"}</strong>
+            <textarea
+              value={editing.value}
+              rows={10}
+              onChange={(event) =>
+                setEditing((current) =>
+                  current ? { ...current, value: event.currentTarget.value } : current,
+                )
+              }
+            />
+          </label>
+          <p>
+            {editing.mode === "override"
+              ? "This non-destructive override is tied to the current generated base. Regeneration keeps it only when that base is compatible; otherwise it becomes an explicit conflict for review."
+              : "Personal notes attach to the document or stable learning topic and remain available across guide regeneration."}
+          </p>
+          <div className={styles.editorActions}>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={isSaving}
+              onClick={() => void saveEditing()}
+            >
+              {isSaving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={isSaving}
+              onClick={() => setEditing(null)}
+            >
+              Cancel
+            </button>
           </div>
-        ) : null}
-      </section>
-    </div>
+        </div>
+      ) : null}
+    </Dialog>
   );
 }
 
@@ -340,6 +421,7 @@ interface StudyGuideSectionViewProps {
   onEditNote: () => void;
   onEditSection: () => void;
   onStudy: () => void;
+  onOpenSource: () => void;
 }
 
 function StudyGuideSectionView({
@@ -350,6 +432,7 @@ function StudyGuideSectionView({
   onEditNote,
   onEditSection,
   onStudy,
+  onOpenSource,
 }: StudyGuideSectionViewProps) {
   const note = findEditingOverlay(overlays, section.topicId, "note", guideId);
   const override = findEditingOverlay(overlays, section.topicId, "override", guideId);
@@ -368,7 +451,10 @@ function StudyGuideSectionView({
           <p className={styles.sourceLabel}>{sourceLabel}</p>
           <h2>{section.title}</h2>
         </div>
-        <div className={styles.sectionActions} data-print-hidden>
+        <div className={styles.sectionActions}>
+          <button type="button" className="secondary-button" onClick={onOpenSource}>
+            Open source
+          </button>
           <button type="button" className="secondary-button" onClick={onEditNote}>
             {note ? "Edit note" : "Add note"}
           </button>
@@ -399,9 +485,13 @@ function StudyGuideSectionView({
         </aside>
       ) : null}
       {conflict ? (
-        <aside className={styles.conflict} data-print-hidden>
-          A section edit from an older generated revision is preserved for review. Open the section
-          editor to reconcile it with the current source-grounded content.
+        <aside className={styles.conflict}>
+          <strong>Older section edit needs review.</strong>
+          <p>
+            The generated base changed during regeneration, so ostudy did not silently apply the
+            old override to new source-grounded content. The prior edit remains preserved as a
+            conflict.
+          </p>
         </aside>
       ) : null}
     </section>
@@ -451,7 +541,10 @@ function StructuredSection({ section }: { section: DocumentStudyGuideSection }) 
       ) : null}
       <GuideList title="Common misconceptions" values={content.commonMisconceptions} />
       {content.visualExplanations.map((visual) => (
-        <aside key={`${visual.title}-${visual.explanation.slice(0, 24)}`} className={styles.visualNote}>
+        <aside
+          key={`${visual.title}-${visual.explanation.slice(0, 24)}`}
+          className={styles.visualNote}
+        >
           <strong>{visual.title}</strong>
           <p>{visual.explanation}</p>
         </aside>
