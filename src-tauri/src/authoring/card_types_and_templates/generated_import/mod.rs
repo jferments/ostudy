@@ -197,7 +197,7 @@ mod generated_import_tests {
             "front",
         )
         .expect("fenced code should preserve literal syntax-looking text");
-        crate::cards::validate_document(&fenced).expect("fenced code should validate");
+        crate::cards::validate_document(&fenced).expect("document should validate");
     }
 
     #[test]
@@ -369,7 +369,10 @@ mod generated_import_tests {
         .expect("mapped import should succeed");
         assert_eq!(result.created_note_count, 2);
         assert_eq!(
-            created.iter().map(|note| note.source_index).collect::<Vec<_>>(),
+            created
+                .iter()
+                .map(|note| note.source_index)
+                .collect::<Vec<_>>(),
             vec![0, 2]
         );
         assert!(created.iter().all(|note| note.note_id.len() == 32));
