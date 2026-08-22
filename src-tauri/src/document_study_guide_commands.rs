@@ -1,6 +1,5 @@
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use tauri::State;
 
 use crate::{
@@ -12,11 +11,8 @@ use crate::{
     },
     document_cost,
     document_domain::{DocumentFormat, DocumentSourceDescriptor, SourceUnitKind},
-    document_learning::{
-        ensure_document_learning_plan, load_active_document_learning_plan,
-        DocumentLearningPlan, LearningEvidenceChunk,
-    },
-    document_learning_plan::learning_plan_input_from_outline,
+    document_learning::{load_active_document_learning_plan, DocumentLearningPlan},
+    document_learning_service::ensure_learning_plan_for_outline,
     document_outline_service::{ensure_document_outline, EnsureDocumentOutlineInput},
     document_scale::DocumentScalePlan,
     document_semantics::SemanticChunk,
@@ -161,20 +157,12 @@ async fn generate_document_study_guide_impl(
     })
     .await?;
 
-    let plan_input = learning_plan_input_from_outline(
-        &outline,
-        stored.source.unit_kind,
-        stored.source.unit_count,
-    )?;
-    let evidence_chunks = chunks
-        .iter()
-        .map(learning_evidence_chunk)
-        .collect::<Result<Vec<_>, _>>()?;
-    let learning_plan = ensure_document_learning_plan(
+    let learning_plan = ensure_learning_plan_for_outline(
         database.inner(),
         &input.document_id,
-        plan_input,
-        &evidence_chunks,
+        &stored.source,
+        &outline,
+        &chunks,
     )?;
     let topic_evidence = build_topic_evidence(
         database.inner(),
@@ -331,26 +319,6 @@ fn load_guide_document(
     })
 }
 
-fn learning_evidence_chunk(chunk: &SemanticChunk) -> Result<LearningEvidenceChunk, CommandError> {
-    let chunk_index = usize::try_from(chunk.chunk_index).map_err(|_| {
-        CommandError::new(
-            "document_learning_plan_evidence_invalid",
-            "A canonical semantic chunk had an invalid learning-evidence index.",
-        )
-    })?;
-    let locator = chunk.source_locator.clone();
-    let content_hash = hash_text(&format!(
-        "learning-evidence-v1|locator={}|text={}",
-        locator.stable_identity(),
-        chunk.full_text,
-    ));
-    Ok(LearningEvidenceChunk {
-        chunk_index,
-        source_locator: locator,
-        content_hash,
-    })
-}
-
 fn build_topic_evidence(
     database: &Database,
     paths: &AppPaths,
@@ -421,10 +389,6 @@ fn build_topic_evidence(
             })
         })
         .collect()
-}
-
-fn hash_text(value: &str) -> String {
-    format!("{:x}", Sha256::digest(value.as_bytes()))
 }
 
 #[cfg(test)]
