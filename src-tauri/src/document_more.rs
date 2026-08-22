@@ -12,8 +12,7 @@ use tauri::State;
 
 use crate::{
     ai::{document_intelligence, document_provider, AiRuntimeState},
-    authoring::card_types_and_templates::generated_import::
-        import_generated_flashcards_bytes_with_commit_context,
+    authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit_context,
     database::Database,
     document_card_topics::{
         attach_generated_card_source_windows, link_imported_notes_to_topics,
@@ -320,7 +319,11 @@ async fn generate_more_impl(
                         import_result.created_card_count,
                         now,
                         api_token_count,
-                        if api_token_usage_complete { 1_i64 } else { 0_i64 },
+                        if api_token_usage_complete {
+                            1_i64
+                        } else {
+                            0_i64
+                        },
                         input.document_id,
                         context.deck_id,
                     ],
@@ -591,7 +594,11 @@ fn record_additional_failure(database: &Database, document_id: &str, code: &str,
                     bounded(message, 1000),
                     now,
                     api_token_count,
-                    if api_token_usage_complete { 1_i64 } else { 0_i64 },
+                    if api_token_usage_complete {
+                        1_i64
+                    } else {
+                        0_i64
+                    },
                     document_id,
                 ],
             )
