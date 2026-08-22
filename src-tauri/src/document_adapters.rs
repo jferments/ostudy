@@ -98,10 +98,6 @@ struct AdapterRequest<'a> {
     maximum_source_units: usize,
 }
 
-struct PdfDocumentAdapter;
-
-static PDF_ADAPTER: PdfDocumentAdapter = PdfDocumentAdapter;
-
 enum SelectedAdapter {
     Pdf,
     AnyDoc(DocumentFormat),
@@ -112,20 +108,6 @@ impl SelectedAdapter {
         match self {
             Self::Pdf => PDF_ADAPTER_BACKEND,
             Self::AnyDoc(_) => anydoc_document_adapter::ANYDOC_ADAPTER_BACKEND,
-        }
-    }
-
-    fn extraction_backend(&self) -> &'static str {
-        match self {
-            Self::Pdf => pdf_document_ingestion::active_pdf_extraction_backend(),
-            Self::AnyDoc(_) => anydoc_document_adapter::ANYDOC_EXTRACTION_BACKEND,
-        }
-    }
-
-    fn render_backend(&self) -> Option<&'static str> {
-        match self {
-            Self::Pdf => Some(pdf_document_ingestion::active_pdf_render_backend()),
-            Self::AnyDoc(_) => None,
         }
     }
 
@@ -399,11 +381,33 @@ pub(crate) fn persist_ingested_document(
     processed: &AdapterExtraction,
 ) -> Result<(), CommandError> {
     let mut canonical = processed.canonical.clone();
-    let expected_adapter = active_adapter_backend(canonical.document.source.format)?;
+    let format = canonical.document.source.format;
+    let expected_adapter = active_adapter_backend(format)?;
     if canonical.document.extraction.adapter_backend != expected_adapter {
         return Err(CommandError::new(
             "document_adapter_identity_changed",
             "The selected document adapter changed before its output could be committed.",
+        ));
+    }
+    let expected_extraction = active_extraction_backend(format)?;
+    if canonical.document.extraction.extraction_backend != expected_extraction {
+        return Err(CommandError::new(
+            "document_extraction_backend_changed",
+            "The selected document extraction backend changed before its output could be committed.",
+        ));
+    }
+    let expected_render = active_render_backend(format)?;
+    if canonical
+        .document
+        .extraction
+        .render_backend
+        .as_deref()
+        .unwrap_or("none")
+        != expected_render
+    {
+        return Err(CommandError::new(
+            "document_render_backend_changed",
+            "The selected document rendering backend changed before its output could be committed.",
         ));
     }
     let now = unix_time_millis()?;
@@ -489,6 +493,7 @@ pub(crate) fn persist_ingested_document(
             serde_json::json!({
                 "document": document_id,
                 "format": canonical.document.source.format.as_str(),
+                "formatLabel": canonical.document.source.format.display_label(),
                 "adapter": canonical.document.extraction.adapter_backend.as_str(),
                 "sourceFiles": canonical.document.source_files.len(),
                 "sourceUnits": canonical.document.units.len(),
@@ -815,8 +820,8 @@ fn canonicalize_pdf(
             assets,
             extraction: CanonicalExtractionReport {
                 adapter_backend: adapter.backend_id().to_string(),
-                extraction_backend: adapter.extraction_backend().to_string(),
-                render_backend: adapter.render_backend().map(str::to_string),
+                extraction_backend: processed.extraction_backend.to_string(),
+                render_backend: Some(processed.render_backend.to_string()),
                 extraction_mode: processed.extraction_mode.as_str().to_string(),
                 semantic_analysis_degraded: processed.semantic.semantic_analysis_degraded,
                 ocr_unit_count: processed.ocr.page_count,
@@ -1086,7 +1091,7 @@ mod tests {
             ExtractedDocument, ExtractedSemanticChunk, ExtractedSemanticElement, ExtractedTextPage,
             SemanticBBox,
         },
-        pdf_document_ingestion::{ExtractionMode, IngestedPage, OcrIngestionSummary},
+        pdf_document_ingestion::{ExtractionMode, OcrIngestionSummary},
     };
 
     #[test]
@@ -1233,6 +1238,14 @@ mod tests {
         assert_eq!(
             canonical.document.extraction.adapter_backend,
             PDF_ADAPTER_BACKEND
+        );
+        assert_eq!(
+            canonical.document.extraction.extraction_backend,
+            "fixture-extractor"
+        );
+        assert_eq!(
+            canonical.document.extraction.render_backend.as_deref(),
+            Some("fixture-renderer")
         );
         assert_eq!(canonical.document.blocks[0].text, "CO = HR × SV");
         assert!(canonical.document.blocks[0]

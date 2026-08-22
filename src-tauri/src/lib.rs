@@ -8,6 +8,11 @@
 
 mod ai;
 mod analytics;
+#[expect(
+    dead_code,
+    clippy::only_used_in_recursion,
+    reason = "the next parser-safety increment consumes the staged AnyDoc bounds and list-family context"
+)]
 mod anydoc_document_adapter;
 mod asset_lifecycle;
 mod asset_protocol;
