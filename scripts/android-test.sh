@@ -4,6 +4,11 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
+source "$ROOT_DIR/versions.env"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/node-toolchain.bash"
+ostudy_activate_node_toolchain
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/android-env.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/diagnostics.bash"
