@@ -31,10 +31,28 @@ require_command() {
   fi
 }
 
+require_exact_version() {
+  local command_name="$1"
+  local expected="$2"
+  local actual=""
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    return
+  fi
+  actual="$("$command_name" --version 2>/dev/null | sed 's/^v//')" || actual=""
+  if [[ "$actual" == "$expected" ]]; then
+    ok "$command_name $actual matches versions.env"
+  else
+    fail "$command_name must be $expected from versions.env, found ${actual:-unknown} at $(command -v "$command_name")"
+  fi
+}
+
 printf 'ostudy Android development diagnostics\n\n'
-for command_name in java javac node pnpm rustup rustc cargo python3 curl sha256sum; do
+for command_name in java javac node npm pnpm rustup rustc cargo python3 curl sha256sum; do
   require_command "$command_name"
 done
+require_exact_version node "$NODE_VERSION"
+require_exact_version npm "$NPM_VERSION"
+require_exact_version pnpm "$PNPM_VERSION"
 
 if [[ -d "$ANDROID_HOME" ]]; then
   ok "Android SDK: $ANDROID_HOME"
