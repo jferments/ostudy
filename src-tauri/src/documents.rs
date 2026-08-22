@@ -295,13 +295,15 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                     error,
                 )
             })?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        let managed_sources = rows
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)
+            .map_err(CommandError::database)?;
+        Ok(managed_sources)
     })?;
     for (document_id, relative_path) in managed_sources {
         if !paths.resolve_relative(&relative_path).is_file() {
@@ -415,7 +417,7 @@ fn list_document_rows(
              LIMIT ?2",
         )
         .map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map(
             params![
                 if include_archived { 1_i64 } else { 0_i64 },
@@ -423,9 +425,11 @@ fn list_document_rows(
             ],
             document_row,
         )
-        .map_err(CommandError::database)?
+        .map_err(CommandError::database)?;
+    let documents = rows
         .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(documents)
 }
 
 fn load_document(
