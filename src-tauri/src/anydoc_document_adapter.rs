@@ -66,7 +66,12 @@ struct UnitDraft {
 
 impl UnitDraft {
     fn push(&mut self, block: NormalizedBlock) {
-        if self.title.is_none() && block.role == CanonicalBlockRole::Heading {
+        if self.title.is_none()
+            && matches!(
+                block.role,
+                CanonicalBlockRole::Title | CanonicalBlockRole::Heading
+            )
+        {
             self.title = (!block.text.is_empty()).then(|| block.text.clone());
         }
         self.text_chars = self.text_chars.saturating_add(block.text.chars().count());
