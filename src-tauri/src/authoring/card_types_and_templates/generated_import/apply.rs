@@ -97,10 +97,12 @@ where
         sync_generated_cards(&transaction, &note_id, &deck_id, &cards, now)?;
         replace_note_assets(&transaction, &note_id, &content)?;
         replace_note_tags(&transaction, &note_id, &tags, now)?;
-        commit_context.created_notes.push(GeneratedImportCreatedNote {
-            source_index,
-            note_id,
-        });
+        commit_context
+            .created_notes
+            .push(GeneratedImportCreatedNote {
+                source_index,
+                note_id,
+            });
         created_notes += 1;
         created_cards += i64::try_from(cards.len()).unwrap_or(i64::MAX);
     }
