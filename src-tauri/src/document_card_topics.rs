@@ -40,13 +40,15 @@ pub(crate) fn attach_generated_card_source_windows(
                  ORDER BY window_index",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([job_id], |row| {
                 Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
             })
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        let counts = rows
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)
+            .map_err(CommandError::database)?;
+        Ok(counts)
     })?;
     if counts.len() != windows.len() {
         return Err(CommandError::new(
