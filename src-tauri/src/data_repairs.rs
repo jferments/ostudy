@@ -14,6 +14,14 @@ pub enum RepairPhase {
     AfterMigration(i64),
 }
 
+impl RepairPhase {
+    fn is_satisfied_by(self, current: Self) -> bool {
+        match (self, current) {
+            (Self::AfterMigration(required), Self::AfterMigration(applied)) => required <= applied,
+        }
+    }
+}
+
 struct DataRepair {
     version: i64,
     name: &'static str,
@@ -52,7 +60,10 @@ pub(crate) fn apply_required_repairs(
     phase: RepairPhase,
 ) -> Result<(), String> {
     ensure_ledger_exists(connection)?;
-    for repair in REPAIRS.iter().filter(|repair| repair.phase == phase) {
+    for repair in REPAIRS
+        .iter()
+        .filter(|repair| repair.phase.is_satisfied_by(phase))
+    {
         verify_repair_definition(repair)?;
         let existing = recorded_repair(connection, repair.version)?;
         if let Some((name, checksum)) = existing {
@@ -144,7 +155,7 @@ fn repair_canonical_semantic_chunk_hashes(transaction: &Transaction<'_>) -> Resu
             .map_err(|error| {
                 format!("Could not prepare canonical semantic hash repair: {error}")
             })?;
-        let rows = statement
+        statement
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -158,8 +169,7 @@ fn repair_canonical_semantic_chunk_hashes(transaction: &Transaction<'_>) -> Resu
             })
             .map_err(|error| format!("Could not read canonical semantic hash rows: {error}"))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Could not decode canonical semantic hash rows: {error}"))?;
-        rows
+            .map_err(|error| format!("Could not decode canonical semantic hash rows: {error}"))?
     };
 
     let mut changed_rows = 0_i64;
@@ -224,7 +234,7 @@ fn repair_canonical_block_hashes(transaction: &Transaction<'_>) -> Result<i64, S
                  ORDER BY document_id, block_index",
             )
             .map_err(|error| format!("Could not prepare canonical block hash repair: {error}"))?;
-        let rows = statement
+        statement
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -240,8 +250,7 @@ fn repair_canonical_block_hashes(transaction: &Transaction<'_>) -> Result<i64, S
             })
             .map_err(|error| format!("Could not read canonical block hash rows: {error}"))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Could not decode canonical block hash rows: {error}"))?;
-        rows
+            .map_err(|error| format!("Could not decode canonical block hash rows: {error}"))?
     };
 
     let mut changed_rows = 0_i64;
@@ -380,6 +389,12 @@ mod tests {
         for repair in REPAIRS {
             verify_repair_definition(repair).expect("repair checksum should match its contract");
         }
+    }
+
+    #[test]
+    fn later_migration_phases_include_prerequisite_repairs() {
+        assert!(RepairPhase::AfterMigration(2).is_satisfied_by(RepairPhase::AfterMigration(3)));
+        assert!(!RepairPhase::AfterMigration(3).is_satisfied_by(RepairPhase::AfterMigration(2)));
     }
 
     #[test]
