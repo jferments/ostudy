@@ -76,7 +76,12 @@ mod tests {
     #[test]
     fn locator_without_assets_needs_no_filesystem_evidence() {
         let locator = SourceLocator::new(SourceUnitKind::Page, vec![1], None).unwrap();
-        let paths = AppPaths::for_test(std::env::temp_dir().join("ostudy-empty-visual-evidence"));
+        let root = std::env::temp_dir().join(format!(
+            "ostudy-empty-visual-evidence-{}",
+            std::process::id()
+        ));
+        let paths = AppPaths::new(root.clone()).unwrap();
         assert!(load_locator_images(&paths, &[], &locator, 4).unwrap().is_empty());
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
