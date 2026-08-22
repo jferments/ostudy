@@ -46,25 +46,7 @@ pub(super) async fn request_json(
 
     let (url, body) = match profile.provider_kind {
         ProviderKind::LlamaCpp => {
-            let mut parts = vec![json!({ "type": "text", "text": request.user_text })];
-            for image in request.images.iter().take(MAX_INLINE_IMAGES) {
-                parts.push(json!({
-                    "type": "text",
-                    "text": format!(
-                        "Rendered source unit {} follows. Use it only as source evidence for diagrams, tables, equations, and layout-dependent or image-only content.",
-                        image.page_number
-                    )
-                }));
-                parts.push(json!({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": format!(
-                            "data:image/png;base64,{}",
-                            STANDARD.encode(&image.bytes)
-                        )
-                    }
-                }));
-            }
+            let parts = multimodal_user_parts(request.user_text, request.images)?;
             (
                 completion_endpoint(profile)?,
                 json!({
@@ -116,7 +98,7 @@ pub(super) async fn request_json(
         }
         ProviderKind::Openrouter => (
             completion_endpoint(profile)?,
-            openrouter_document_body(profile, &task.reasoning_effort, &request),
+            openrouter_document_body(profile, &task.reasoning_effort, &request)?,
         ),
         _ => {
             return Err(CommandError::new(
@@ -197,16 +179,67 @@ pub(super) async fn request_json(
     }
 }
 
+fn multimodal_user_parts(
+    user_text: &str,
+    images: &[SourcePageImage],
+) -> Result<Vec<Value>, CommandError> {
+    let mut parts = vec![json!({ "type": "text", "text": user_text })];
+    for image in images.iter().take(MAX_INLINE_IMAGES) {
+        let media_type = document_image_media_type(&image.bytes)?;
+        parts.push(json!({
+            "type": "text",
+            "text": format!(
+                "Rendered source unit {} follows. Use it only as source evidence for diagrams, tables, equations, and layout-dependent or image-only content.",
+                image.page_number
+            )
+        }));
+        parts.push(json!({
+            "type": "image_url",
+            "image_url": {
+                "url": format!(
+                    "data:{media_type};base64,{}",
+                    STANDARD.encode(&image.bytes)
+                )
+            }
+        }));
+    }
+    Ok(parts)
+}
+
+fn document_image_media_type(bytes: &[u8]) -> Result<&'static str, CommandError> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+        return Ok("image/png");
+    }
+    if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        return Ok("image/jpeg");
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return Ok("image/gif");
+    }
+    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        return Ok("image/webp");
+    }
+    Err(CommandError::new(
+        "document_source_asset_not_supported",
+        "A canonical source image uses an unsupported encoding. Retry generation after rebuilding the document with PNG, JPEG, GIF, or WebP source images.",
+    ))
+}
+
 fn openrouter_document_body(
     profile: &ProfileSnapshot,
     reasoning_effort: &str,
     request: &JsonTaskRequest<'_>,
-) -> Value {
+) -> Result<Value, CommandError> {
+    let user_content = if request.images.is_empty() {
+        Value::String(request.user_text.to_string())
+    } else {
+        Value::Array(multimodal_user_parts(request.user_text, request.images)?)
+    };
     let mut body = json!({
         "model": profile.model_id.as_str(),
         "messages": [
             { "role": "system", "content": request.system_prompt },
-            { "role": "user", "content": request.user_text }
+            { "role": "user", "content": user_content }
         ],
         "temperature": 0.12,
         "max_tokens": request.max_tokens,
@@ -227,7 +260,7 @@ fn openrouter_document_body(
     if reasoning_effort != "none" {
         body["reasoning"] = json!({"effort": reasoning_effort});
     }
-    body
+    Ok(body)
 }
 
 fn record_document_usage(task: &DocumentTaskContext, response: &Value) {
@@ -534,6 +567,28 @@ mod tests {
     }
 
     #[test]
+    fn canonical_image_media_types_are_derived_from_bytes() {
+        assert_eq!(
+            document_image_media_type(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a])
+                .unwrap(),
+            "image/png"
+        );
+        assert_eq!(
+            document_image_media_type(&[0xff, 0xd8, 0xff, 0x00]).unwrap(),
+            "image/jpeg"
+        );
+        assert_eq!(document_image_media_type(b"GIF89a").unwrap(), "image/gif");
+        assert_eq!(
+            document_image_media_type(b"RIFFxxxxWEBP").unwrap(),
+            "image/webp"
+        );
+        assert_eq!(
+            document_image_media_type(b"not-an-image").unwrap_err().code,
+            "document_source_asset_not_supported"
+        );
+    }
+
+    #[test]
     fn openrouter_document_requests_use_portable_strict_schema_and_reasoning_effort() {
         let profile = openrouter_profile();
         let schema = flashcard_schema(4);
@@ -544,7 +599,7 @@ mod tests {
             max_tokens: 128,
             images: &[],
         };
-        let body = openrouter_document_body(&profile, "low", &request);
+        let body = openrouter_document_body(&profile, "low", &request).unwrap();
         assert_eq!(
             body.pointer("/provider/require_parameters"),
             Some(&json!(true))
@@ -577,6 +632,33 @@ mod tests {
         );
         assert!(body.get("plugins").is_none());
         assert!(body.get("debug").is_none());
+    }
+
+    #[test]
+    fn openrouter_document_requests_include_canonical_images() {
+        let profile = openrouter_profile();
+        let schema = flashcard_schema(1);
+        let image = SourcePageImage {
+            page_number: 7,
+            bytes: vec![0xff, 0xd8, 0xff, 0x00],
+        };
+        let request = JsonTaskRequest {
+            system_prompt: "system",
+            user_text: "source",
+            schema: &schema,
+            max_tokens: 64,
+            images: &[image],
+        };
+        let body = openrouter_document_body(&profile, "none", &request).unwrap();
+        assert_eq!(
+            body.pointer("/messages/1/content/1/text"),
+            Some(&json!("Rendered source unit 7 follows. Use it only as source evidence for diagrams, tables, equations, and layout-dependent or image-only content."))
+        );
+        let url = body
+            .pointer("/messages/1/content/2/image_url/url")
+            .and_then(Value::as_str)
+            .expect("canonical image data URL should exist");
+        assert!(url.starts_with("data:image/jpeg;base64,"));
     }
 
     #[test]
