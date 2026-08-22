@@ -103,6 +103,7 @@ pub struct DocumentGenerationResultDto {
 struct StoredDocument {
     dto: DocumentDto,
     source_relative_path: String,
+    adapter_backend: String,
     extraction_backend: String,
     render_backend: String,
     semantic_chunk_count: i64,
@@ -349,18 +350,16 @@ async fn process_and_generate(
     }
 
     let format = DocumentFormat::from_db(&stored.source_format)?;
-    if format != DocumentFormat::Pdf {
-        return Err(CommandError::new(
-            "document_ingestion_adapter_unavailable",
-            "This ostudy build does not yet include an ingestion adapter for the saved document format.",
-        ));
-    }
-    let backend_changed = stored.extraction_backend
-        != document_ingestion::active_pdf_extraction_backend()
-        || stored.render_backend != document_ingestion::active_pdf_render_backend();
+    let active_adapter_backend = document_ingestion::active_adapter_backend(format)?;
+    let active_extraction_backend = document_ingestion::active_extraction_backend(format)?;
+    let active_render_backend = document_ingestion::active_render_backend(format)?;
+    let backend_changed = stored.adapter_backend != active_adapter_backend
+        || stored.extraction_backend != active_extraction_backend
+        || stored.render_backend != active_render_backend;
     let incomplete_derivatives = stored.dto.page_count == 0
         || stored.dto.extracted_page_count != stored.dto.page_count
-        || stored.dto.rendered_page_count != stored.dto.page_count
+        || (format == DocumentFormat::Pdf
+            && stored.dto.rendered_page_count != stored.dto.page_count)
         || stored.semantic_chunk_count == 0;
     if backend_changed || incomplete_derivatives {
         let paths_owned = paths.inner().clone();
@@ -369,11 +368,12 @@ async fn process_and_generate(
         let (progress_sender, mut progress_receiver) =
             tokio::sync::mpsc::unbounded_channel::<document_ingestion::IngestionProgress>();
         let processing_task = tauri::async_runtime::spawn_blocking(move || {
-            document_ingestion::ingest_pdf(
+            document_ingestion::ingest_document(
                 &paths_owned,
                 &render_runtime,
                 &id_owned,
                 &source_owned,
+                format,
                 MAX_SUPPORTED_SOURCE_UNITS,
                 |progress| {
                     progress_sender.send(progress).map_err(|_| {
@@ -400,16 +400,18 @@ async fn process_and_generate(
 
     let source = stored.source_descriptor()?;
     source.validate()?;
-    let renders = document_store::load_source_renders(database.inner(), document_id)?;
-    if renders.len() != source.unit_count
-        || renders
-            .iter()
-            .any(|render| !paths.resolve_relative(&render.relative_path).is_file())
-    {
-        return Err(CommandError::new(
-            "document_render_missing",
-            "One or more rendered source units are missing. Retry generation to rebuild the document derivatives.",
-        ));
+    if source.format == DocumentFormat::Pdf {
+        let renders = document_store::load_source_renders(database.inner(), document_id)?;
+        if renders.len() != source.unit_count
+            || renders
+                .iter()
+                .any(|render| !paths.resolve_relative(&render.relative_path).is_file())
+        {
+            return Err(CommandError::new(
+                "document_render_missing",
+                "One or more rendered source units are missing. Retry generation to rebuild the document derivatives.",
+            ));
+        }
     }
     let chunks = document_store::load_semantic_chunks(database.inner(), document_id)?;
     if chunks.is_empty() {
@@ -1027,19 +1029,20 @@ fn load_document(
                     safe_error_code, safe_error_message, created_at, updated_at,
                     completed_at, archived_at, revision,
                     processing_duration_ms, api_token_count, api_token_usage_complete,
-                    source_relative_path, extraction_backend, render_backend, semantic_chunk_count,
-                    source_format, source_unit_kind
+                    source_relative_path, adapter_backend, extraction_backend, render_backend,
+                    semantic_chunk_count, source_format, source_unit_kind
              FROM documents WHERE id = ?1",
             [document_id],
             |row| {
                 Ok(StoredDocument {
                     dto: document_row(row)?,
                     source_relative_path: row.get(33)?,
-                    extraction_backend: row.get(34)?,
-                    render_backend: row.get(35)?,
-                    semantic_chunk_count: row.get(36)?,
-                    source_format: row.get(37)?,
-                    source_unit_kind: row.get(38)?,
+                    adapter_backend: row.get(34)?,
+                    extraction_backend: row.get(35)?,
+                    render_backend: row.get(36)?,
+                    semantic_chunk_count: row.get(37)?,
+                    source_format: row.get(38)?,
+                    source_unit_kind: row.get(39)?,
                 })
             },
         )
@@ -1156,6 +1159,7 @@ mod tests {
                 api_token_usage_complete: false,
             },
             source_relative_path: "documents/id/source.pdf".to_string(),
+            adapter_backend: "adapter".to_string(),
             extraction_backend: "extractor".to_string(),
             render_backend: "renderer".to_string(),
             semantic_chunk_count: 1,
