@@ -856,7 +856,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(first.topics[0].id, second.topics[0].id);
-        assert_ne!(first.topics[0].evidence_hash, second.topics[0].evidence_hash);
+        assert_ne!(
+            first.topics[0].evidence_hash,
+            second.topics[0].evidence_hash
+        );
     }
 
     #[test]
