@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { RichDocument } from "./common";
+import { createOperationId, type RichDocument } from "./common";
+import type { PreparedExport } from "./externalFiles";
 
 export interface SourceLocator {
   unitKind: string;
@@ -177,6 +178,13 @@ export interface SaveStudyGuideOverlayInput {
   expectedRevision?: number;
 }
 
+export interface PreparedStudyGuidePdf {
+  preparedExport: PreparedExport;
+  guideRevision: number;
+  sectionCount: number;
+  annotationCount: number;
+}
+
 export async function generateDocumentStudyGuide(
   documentId: string,
 ): Promise<DocumentStudyGuide> {
@@ -239,5 +247,15 @@ export async function getDocumentTopicCardIds(
 ): Promise<string[]> {
   return invoke<string[]>("get_document_topic_card_ids", {
     input: { documentId, topicIds },
+  });
+}
+
+export async function prepareDocumentStudyGuidePdf(
+  documentId: string,
+  includeAnnotations: boolean,
+  operationId = createOperationId(),
+): Promise<PreparedStudyGuidePdf> {
+  return invoke<PreparedStudyGuidePdf>("prepare_document_study_guide_pdf", {
+    input: { documentId, operationId, includeAnnotations },
   });
 }
