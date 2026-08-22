@@ -17,8 +17,10 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, State};
 
 use crate::{
+    anydoc_document_adapter,
     assets::detect_image_bytes,
     database::Database,
+    document_domain::DocumentFormat,
     error::CommandError,
     external_files::{
         ExternalFileKind, ExternalImportPurpose, PublishPreparedExportInput, PublishReceiptDto,
@@ -35,7 +37,7 @@ use crate::{
 const IMPORT_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
 const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
-const MAX_PDF_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_DOCUMENT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_STUDY_CONTENT_BYTES: u64 = 640 * 1024 * 1024;
 const MAX_BACKUP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 
@@ -212,9 +214,9 @@ fn finalize_acquired_import(
         maximum_import_bytes(purpose),
         acquired.copied_bytes,
     )?;
-    let detected_kind = detect_kind(&partial_path, purpose)?;
+    let detected_kind = detect_kind(&partial_path, purpose, &display_name)?;
     let relative_path =
-        AppPaths::staged_import_relative_path(&operation_id, extension(detected_kind));
+        AppPaths::staged_import_relative_path(&operation_id, detected_kind.extension());
     let ready_path = paths.resolve_relative(&relative_path);
     remove_file_if_exists(&ready_path)?;
 
@@ -233,7 +235,7 @@ fn finalize_acquired_import(
                     purpose.as_str(),
                     detected_kind.as_str(),
                     display_name,
-                    media_type(detected_kind),
+                    detected_kind.media_type(),
                     byte_size,
                     sha256,
                     relative_path,
@@ -291,7 +293,7 @@ fn finalize_acquired_import(
         purpose,
         detected_kind,
         display_name,
-        media_type: media_type(detected_kind).to_string(),
+        media_type: detected_kind.media_type().to_string(),
         byte_size,
         sha256,
         expires_at,
@@ -320,6 +322,21 @@ fn import_request(purpose: ExternalImportPurpose) -> ExternalFileRequest {
             filters: vec![FileFilter {
                 name: "PDF documents".to_string(),
                 extensions: vec!["pdf".to_string()],
+            }],
+        },
+        ExternalImportPurpose::Document => ExternalFileRequest {
+            title: "Choose a document".to_string(),
+            suggested_filename: None,
+            filters: vec![FileFilter {
+                name: "Supported documents".to_string(),
+                extensions: [
+                    "pdf", "doc", "docx", "docm", "ppt", "pps", "pot", "pptx", "pptm",
+                    "ppsx", "potx", "odt", "odp", "rtf", "epub", "xls", "xlsx", "xlsm",
+                    "xlsb", "ods", "csv",
+                ]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
             }],
         },
         ExternalImportPurpose::StudyContent => ExternalFileRequest {
@@ -364,7 +381,7 @@ fn export_request(suggested_filename: &str) -> ExternalFileRequest {
 fn maximum_import_bytes(purpose: ExternalImportPurpose) -> u64 {
     match purpose {
         ExternalImportPurpose::Image => MAX_IMAGE_BYTES,
-        ExternalImportPurpose::PdfDocument => MAX_PDF_BYTES,
+        ExternalImportPurpose::PdfDocument | ExternalImportPurpose::Document => MAX_DOCUMENT_BYTES,
         ExternalImportPurpose::StudyContent => MAX_STUDY_CONTENT_BYTES,
         ExternalImportPurpose::LibraryBackup => MAX_BACKUP_BYTES,
     }
@@ -469,13 +486,13 @@ fn load_import_by_operation(
         row.byte_size,
         &row.sha256,
     )?;
-    let detected_kind = parse_kind(&row.kind)?;
+    let detected_kind = ExternalFileKind::parse(&row.kind)?;
     Ok(Some(StagedExternalFileDto {
         id: row.id,
         purpose: parse_purpose(&row.purpose)?,
         detected_kind,
         display_name: row.display_name,
-        media_type: media_type(detected_kind).to_string(),
+        media_type: detected_kind.media_type().to_string(),
         byte_size: row.byte_size,
         sha256: row.sha256,
         expires_at: row.expires_at,
@@ -534,6 +551,7 @@ fn load_prepared_transfer(
 fn detect_kind(
     path: &Path,
     purpose: ExternalImportPurpose,
+    display_name: &str,
 ) -> Result<ExternalFileKind, CommandError> {
     match purpose {
         ExternalImportPurpose::Image => {
@@ -565,6 +583,7 @@ fn detect_kind(
                 ))
             }
         }
+        ExternalImportPurpose::Document => detect_document_kind(path, display_name),
         ExternalImportPurpose::StudyContent => detect_study_content(path),
         ExternalImportPurpose::LibraryBackup => {
             let format = sqlite_metadata(path, "backup_metadata", "format")?;
@@ -577,6 +596,29 @@ fn detect_kind(
                 ))
             }
         }
+    }
+}
+
+fn detect_document_kind(path: &Path, display_name: &str) -> Result<ExternalFileKind, CommandError> {
+    let bytes = fs::read(path).map_err(CommandError::io)?;
+    let format = anydoc_document_adapter::detected_document_format(&bytes, display_name)?;
+    match format {
+        DocumentFormat::Pdf => Ok(ExternalFileKind::Pdf),
+        DocumentFormat::Doc => Ok(ExternalFileKind::Doc),
+        DocumentFormat::Docx => Ok(ExternalFileKind::Docx),
+        DocumentFormat::Ppt => Ok(ExternalFileKind::Ppt),
+        DocumentFormat::Pptx => Ok(ExternalFileKind::Pptx),
+        DocumentFormat::Odt => Ok(ExternalFileKind::Odt),
+        DocumentFormat::Odp => Ok(ExternalFileKind::Odp),
+        DocumentFormat::Rtf => Ok(ExternalFileKind::Rtf),
+        DocumentFormat::Epub => Ok(ExternalFileKind::Epub),
+        DocumentFormat::Excel => Ok(ExternalFileKind::Excel),
+        DocumentFormat::Ods => Ok(ExternalFileKind::Ods),
+        DocumentFormat::Csv => Ok(ExternalFileKind::Csv),
+        _ => Err(CommandError::new(
+            "unsupported_document_format",
+            "The selected file is not a supported document type.",
+        )),
     }
 }
 
@@ -653,55 +695,13 @@ fn parse_purpose(value: &str) -> Result<ExternalImportPurpose, CommandError> {
     match value {
         "image" => Ok(ExternalImportPurpose::Image),
         "pdf_document" => Ok(ExternalImportPurpose::PdfDocument),
+        "document" => Ok(ExternalImportPurpose::Document),
         "study_content" => Ok(ExternalImportPurpose::StudyContent),
         "library_backup" => Ok(ExternalImportPurpose::LibraryBackup),
         _ => Err(CommandError::new(
             "invalid_external_file_purpose",
             "The staged file purpose is invalid.",
         )),
-    }
-}
-
-fn parse_kind(value: &str) -> Result<ExternalFileKind, CommandError> {
-    match value {
-        "png" => Ok(ExternalFileKind::Png),
-        "jpeg" => Ok(ExternalFileKind::Jpeg),
-        "gif" => Ok(ExternalFileKind::Gif),
-        "webp" => Ok(ExternalFileKind::Webp),
-        "pdf" => Ok(ExternalFileKind::Pdf),
-        "studydeck" => Ok(ExternalFileKind::Studydeck),
-        "generated_json" => Ok(ExternalFileKind::GeneratedJson),
-        "ostudybackup" => Ok(ExternalFileKind::Ostudybackup),
-        _ => Err(CommandError::new(
-            "invalid_external_file_kind",
-            "The staged file type is invalid.",
-        )),
-    }
-}
-
-fn extension(kind: ExternalFileKind) -> &'static str {
-    match kind {
-        ExternalFileKind::Png => "png",
-        ExternalFileKind::Jpeg => "jpg",
-        ExternalFileKind::Gif => "gif",
-        ExternalFileKind::Webp => "webp",
-        ExternalFileKind::Pdf => "pdf",
-        ExternalFileKind::Studydeck => "studydeck",
-        ExternalFileKind::GeneratedJson => "json",
-        ExternalFileKind::Ostudybackup => "ostudybackup",
-    }
-}
-
-fn media_type(kind: ExternalFileKind) -> &'static str {
-    match kind {
-        ExternalFileKind::Png => "image/png",
-        ExternalFileKind::Jpeg => "image/jpeg",
-        ExternalFileKind::Gif => "image/gif",
-        ExternalFileKind::Webp => "image/webp",
-        ExternalFileKind::Pdf => "application/pdf",
-        ExternalFileKind::Studydeck => "application/vnd.ostudy.studydeck",
-        ExternalFileKind::GeneratedJson => "application/json",
-        ExternalFileKind::Ostudybackup => "application/vnd.ostudy.backup",
     }
 }
 
@@ -834,6 +834,7 @@ mod tests {
         for purpose in [
             ExternalImportPurpose::Image,
             ExternalImportPurpose::PdfDocument,
+            ExternalImportPurpose::Document,
             ExternalImportPurpose::StudyContent,
             ExternalImportPurpose::LibraryBackup,
         ] {
@@ -842,6 +843,36 @@ mod tests {
             assert!(!request.filters.is_empty());
             assert!(maximum_import_bytes(purpose) > 0);
         }
+    }
+
+    #[test]
+    fn generic_document_detection_is_content_authoritative() {
+        let pdf = test_file(b"%PDF-1.7\n");
+        assert_eq!(
+            detect_kind(&pdf, ExternalImportPurpose::Document, "renamed.docx").unwrap(),
+            ExternalFileKind::Pdf
+        );
+        let _ = fs::remove_file(pdf);
+
+        let disguised = test_file(b"not an OOXML package");
+        let error = detect_kind(
+            &disguised,
+            ExternalImportPurpose::Document,
+            "renamed.docx",
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "unsupported_document_format");
+        let _ = fs::remove_file(disguised);
+    }
+
+    #[test]
+    fn csv_detection_uses_the_authorized_filename_hint() {
+        let csv = test_file(b"name,value\na,1\n");
+        assert_eq!(
+            detect_kind(&csv, ExternalImportPurpose::Document, "table.csv").unwrap(),
+            ExternalFileKind::Csv
+        );
+        let _ = fs::remove_file(csv);
     }
 
     #[test]
