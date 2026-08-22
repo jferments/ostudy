@@ -6,7 +6,11 @@
 //! `oxidize-pdf` backend, and registers the result with the existing prepared-
 //! export boundary. It never calls an AI provider or scrapes the React DOM.
 
-use std::{collections::HashMap, fs, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use oxidize_pdf::{Document, Font, Page};
 use rusqlite::OptionalExtension;
@@ -136,7 +140,11 @@ pub(crate) fn prepare_document_study_guide_pdf(
         });
     }
 
-    let effective = load_effective_export(database.inner(), &input.document_id, input.include_annotations)?;
+    let effective = load_effective_export(
+        database.inner(),
+        &input.document_id,
+        input.include_annotations,
+    )?;
     if effective.sections.len() > MAX_EXPORT_SECTIONS {
         return Err(CommandError::new(
             "study_guide_export_too_large",
@@ -351,7 +359,10 @@ fn generated_section_blocks(section: &DocumentStudyGuideSection) -> Vec<ExportBl
     blocks
 }
 
-fn render_study_guide_pdf(export: &EffectiveGuideExport, destination: &Path) -> Result<(), CommandError> {
+fn render_study_guide_pdf(
+    export: &EffectiveGuideExport,
+    destination: &Path,
+) -> Result<(), CommandError> {
     let mut document = Document::new();
     document.set_title(&export.document_title);
     let font_choice = install_unicode_font(&mut document)?;
@@ -406,12 +417,7 @@ fn render_study_guide_pdf(export: &EffectiveGuideExport, destination: &Path) -> 
 
     for (index, section) in export.sections.iter().enumerate() {
         writer.heading(&format!("{}. {}", index + 1, section.title), 17.0, 23.0)?;
-        writer.paragraph(
-            &source_label(&section.source_locator),
-            9.5,
-            13.0,
-            false,
-        )?;
+        writer.paragraph(&source_label(&section.source_locator), 9.5, 13.0, false)?;
         writer.spacer(5.0)?;
         for block in &section.body_lines {
             writer.block(block)?;
@@ -468,7 +474,13 @@ impl PdfFlowWriter {
             } else {
                 "• ".to_string()
             };
-            self.text(&format!("{prefix}{item}"), BODY_SIZE, BODY_LINE_HEIGHT, false, 12.0)?;
+            self.text(
+                &format!("{prefix}{item}"),
+                BODY_SIZE,
+                BODY_LINE_HEIGHT,
+                false,
+                12.0,
+            )?;
         }
         Ok(())
     }
@@ -476,7 +488,9 @@ impl PdfFlowWriter {
     fn block(&mut self, block: &ExportBlock) -> Result<(), CommandError> {
         match block {
             ExportBlock::Heading(text) => self.heading(text, 12.5, 17.5),
-            ExportBlock::Paragraph(text) => self.paragraph(text, BODY_SIZE, BODY_LINE_HEIGHT, false),
+            ExportBlock::Paragraph(text) => {
+                self.paragraph(text, BODY_SIZE, BODY_LINE_HEIGHT, false)
+            }
             ExportBlock::Bullets(items) => self.bullets(items, false),
             ExportBlock::Numbered(items) => self.bullets(items, true),
             ExportBlock::Terms(entries) => {
@@ -664,7 +678,12 @@ fn portable_filename(value: &str) -> String {
     let mut result = value
         .chars()
         .map(|character| {
-            if character.is_control() || matches!(character, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+            if character.is_control()
+                || matches!(
+                    character,
+                    '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+                )
+            {
                 '_'
             } else {
                 character
@@ -761,7 +780,9 @@ mod tests {
         ));
         let mut writer = writer;
         writer.heading(&export.document_title, 20.0, 26.0).unwrap();
-        writer.paragraph(&export.overview, BODY_SIZE, BODY_LINE_HEIGHT, false).unwrap();
+        writer
+            .paragraph(&export.overview, BODY_SIZE, BODY_LINE_HEIGHT, false)
+            .unwrap();
         writer.finish(&root).unwrap();
         let bytes = fs::read(&root).unwrap();
         assert!(bytes.starts_with(b"%PDF-"));
