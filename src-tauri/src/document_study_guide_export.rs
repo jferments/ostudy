@@ -19,7 +19,7 @@ use tauri::State;
 
 use crate::{
     database::Database,
-    document_domain::{SourceLocator, SourceUnitKind},
+    document_domain::SourceLocator,
     document_study_guides::{
         load_active_document_study_guide, DocumentStudyGuide, DocumentStudyGuideSection,
         StudyGuideOverlay, StudyGuideOverlayKind, StudyGuideOverlayState,
@@ -102,15 +102,12 @@ enum ExportBlock {
 #[derive(Clone, Debug)]
 enum PdfFontChoice {
     Custom(String),
-    Builtin,
 }
 
 impl PdfFontChoice {
-    fn font(&self, bold: bool) -> Font {
+    fn font(&self, _bold: bool) -> Font {
         match self {
             Self::Custom(name) => Font::Custom(name.clone()),
-            Self::Builtin if bold => Font::HelveticaBold,
-            Self::Builtin => Font::Helvetica,
         }
     }
 }
@@ -237,10 +234,11 @@ fn compose_effective_export(
                 .entry(topic_id.clone())
                 .or_default()
                 .push(overlay);
-        } else if include_annotations && overlay.overlay_kind == StudyGuideOverlayKind::GuideNote {
-            if !overlay.plain_text.trim().is_empty() {
-                guide_notes.push(overlay.plain_text.trim().to_string());
-            }
+        } else if include_annotations
+            && overlay.overlay_kind == StudyGuideOverlayKind::GuideNote
+            && !overlay.plain_text.trim().is_empty()
+        {
+            guide_notes.push(overlay.plain_text.trim().to_string());
         }
     }
 
@@ -728,6 +726,7 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
+    use crate::document_domain::SourceUnitKind;
     use oxidize_pdf::parser::{PdfDocument, PdfReader};
 
     fn test_export() -> EffectiveGuideExport {
@@ -769,19 +768,19 @@ mod tests {
     }
 
     #[test]
-    fn ascii_pdf_round_trips_as_selectable_text() {
+    fn unicode_pdf_round_trips_as_selectable_text() {
         let export = test_export();
         let mut document = Document::new();
         document.set_title(&export.document_title);
-        let writer = PdfFlowWriter::new(document, PdfFontChoice::Builtin);
+        let font = install_unicode_font(&mut document).unwrap();
+        let mut writer = PdfFlowWriter::new(document, font);
         let root = std::env::temp_dir().join(format!(
             "ostudy-study-guide-export-{}.pdf",
             std::process::id()
         ));
-        let mut writer = writer;
         writer.heading(&export.document_title, 20.0, 26.0).unwrap();
         writer
-            .paragraph(&export.overview, BODY_SIZE, BODY_LINE_HEIGHT, false)
+            .paragraph("β preload – naïve", BODY_SIZE, BODY_LINE_HEIGHT, false)
             .unwrap();
         writer.finish(&root).unwrap();
         let bytes = fs::read(&root).unwrap();
@@ -790,7 +789,7 @@ mod tests {
         let parsed = PdfDocument::new(reader);
         let text = parsed.extract_text_from_page(0).unwrap().text;
         assert!(text.contains("Cardiovascular Physiology"));
-        assert!(text.contains("Understand preload"));
+        assert!(text.contains("β preload – naïve"));
         fs::remove_file(root).unwrap();
     }
 }
