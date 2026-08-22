@@ -45,7 +45,8 @@ pub(crate) fn load_locator_images(
                 "A selected multimodal source asset is not an image.",
             ));
         }
-        let bytes = fs::read(paths.resolve_relative(&asset.relative_path)).map_err(CommandError::io)?;
+        let bytes =
+            fs::read(paths.resolve_relative(&asset.relative_path)).map_err(CommandError::io)?;
         if bytes.is_empty()
             || bytes.len() > MAX_VISUAL_EVIDENCE_BYTES
             || i64::try_from(bytes.len()).unwrap_or(i64::MAX) != asset.byte_size
@@ -81,7 +82,9 @@ mod tests {
             std::process::id()
         ));
         let paths = AppPaths::new(root.clone()).unwrap();
-        assert!(load_locator_images(&paths, &[], &locator, 4).unwrap().is_empty());
+        assert!(load_locator_images(&paths, &[], &locator, 4)
+            .unwrap()
+            .is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }
 }
