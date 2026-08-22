@@ -559,30 +559,41 @@ mod tests {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
-                connection.execute(
-                    "INSERT INTO documents (
+                connection
+                    .execute(
+                        "INSERT INTO documents (
                          id, title, original_filename, mime_type, byte_size, sha256,
                          source_relative_path, lifecycle_state, created_at, updated_at
                      ) VALUES (?1, 'Guide only', 'guide.pdf', 'application/pdf', 1,
                                ?2, 'documents/guide/source.pdf', 'failed', 1, 1)",
-                    params!["a".repeat(32), "b".repeat(64)],
-                ).map_err(CommandError::database)?;
-                connection.execute(
-                    "INSERT INTO document_learning_plans (
+                        params!["a".repeat(32), "b".repeat(64)],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO document_learning_plans (
                          id, document_id, revision, compiler_version, outline_fingerprint,
                          plan_fingerprint, summary_text, learning_objectives_json,
                          key_concepts_json, state, created_at, updated_at
                      ) VALUES (?1, ?2, 1, 1, ?3, ?4, 'Summary', '[]', '[]', 'active', 1, 1)",
-                    params!["c".repeat(32), "a".repeat(32), "d".repeat(64), "e".repeat(64)],
-                ).map_err(CommandError::database)?;
-                connection.execute(
-                    "INSERT INTO document_study_guides (
+                        params![
+                            "c".repeat(32),
+                            "a".repeat(32),
+                            "d".repeat(64),
+                            "e".repeat(64)
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO document_study_guides (
                          id, document_id, plan_id, revision, schema_version, prompt_version,
                          assembly_version, overview_json, overview_text, state,
                          created_at, updated_at, published_at
                      ) VALUES (?1, ?2, ?3, 1, 1, 1, 1, '{}', 'Summary', 'active', 1, 1, 1)",
-                    params!["f".repeat(32), "a".repeat(32), "c".repeat(32)],
-                ).map_err(CommandError::database)?;
+                        params!["f".repeat(32), "a".repeat(32), "c".repeat(32)],
+                    )
+                    .map_err(CommandError::database)?;
                 assert!(active_study_guide_exists(connection, &"a".repeat(32))?);
                 assert!(!active_generated_deck_exists(connection, &"a".repeat(32))?);
                 Ok(())
