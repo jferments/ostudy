@@ -5,7 +5,10 @@
 //! source containment, and assigns canonical source locators. It does not call a
 //! provider and does not use generated titles as durable topic identity.
 
-use std::{cmp::Reverse, collections::{BTreeMap, HashSet}};
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, HashSet},
+};
 
 use crate::{
     ai::document_intelligence::DocumentOutline,
@@ -90,13 +93,8 @@ pub(crate) fn learning_plan_input_from_outline(
             ));
         }
         let source_numbers = (seed.source_start..=seed.source_end).collect::<Vec<_>>();
-        let source_locator = SourceLocator::with_evidence(
-            source_unit_kind,
-            source_numbers,
-            None,
-            Vec::new(),
-            None,
-        )?;
+        let source_locator =
+            SourceLocator::with_evidence(source_unit_kind, source_numbers, None, Vec::new(), None)?;
         topics.push(LearningTopicInput {
             parent_index: parents[index],
             title: seed.title,
@@ -124,8 +122,10 @@ fn merge_duplicate_spans(seeds: Vec<OutlineTopicSeed>) -> Vec<OutlineTopicSeed> 
                 merged.insert(key, seed);
             }
             Some(existing) => {
-                if existing.summary.trim() != seed.summary.trim() && !seed.summary.trim().is_empty() {
-                    existing.summary = format!("{}\n{}", existing.summary.trim(), seed.summary.trim());
+                if existing.summary.trim() != seed.summary.trim() && !seed.summary.trim().is_empty()
+                {
+                    existing.summary =
+                        format!("{}\n{}", existing.summary.trim(), seed.summary.trim());
                 }
                 append_unique(&mut existing.learning_objectives, seed.learning_objectives);
                 append_unique(&mut existing.key_concepts, seed.key_concepts);
@@ -153,9 +153,7 @@ fn derive_containment_parents(seeds: &[OutlineTopicSeed]) -> Vec<Option<usize>> 
                             || candidate.source_end > topic.source_end)
                 })
                 .min_by_key(|(_, candidate)| {
-                    candidate
-                        .source_end
-                        .saturating_sub(candidate.source_start)
+                    candidate.source_end.saturating_sub(candidate.source_start)
                 })
                 .map(|(parent_index, _)| parent_index)
         })
@@ -215,15 +213,15 @@ mod tests {
             seed(3, 4, "Mechanism"),
             seed(11, 12, "Next section"),
         ];
-        assert_eq!(derive_containment_parents(&seeds), vec![None, Some(0), Some(1), None]);
+        assert_eq!(
+            derive_containment_parents(&seeds),
+            vec![None, Some(0), Some(1), None]
+        );
     }
 
     #[test]
     fn same_start_container_is_sorted_before_child() {
-        let mut seeds = merge_duplicate_spans(vec![
-            seed(1, 3, "Child"),
-            seed(1, 10, "Container"),
-        ]);
+        let mut seeds = merge_duplicate_spans(vec![seed(1, 3, "Child"), seed(1, 10, "Container")]);
         seeds.sort_by_key(|seed| (seed.source_start, Reverse(seed.source_end)));
         assert_eq!(seeds[0].title, "Container");
         assert_eq!(derive_containment_parents(&seeds), vec![None, Some(0)]);
