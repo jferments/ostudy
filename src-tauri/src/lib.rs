@@ -8,6 +8,7 @@
 
 mod ai;
 mod analytics;
+mod anydoc_document_adapter;
 mod asset_lifecycle;
 mod asset_protocol;
 mod assets;
@@ -261,7 +262,6 @@ pub fn run() {
             library_backup_commands::prepare_library_restore_async,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
-            practice_selection::start_card_practice,
             practice_resume::resume_practice_session,
             practice_selection::get_practice_card_window,
             practice_selection::refresh_practice_after_card_edit,
