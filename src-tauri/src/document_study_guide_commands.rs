@@ -1,4 +1,4 @@
-use rusqlite::{params, OptionalExtension};
+use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tauri::State;
@@ -31,9 +31,15 @@ use crate::{
         StudyGuideOverlay,
     },
     document_topic_links::{load_topic_card_ids, load_topic_card_projection, TopicCardProjection},
+    document_visual_evidence::load_locator_images,
     error::CommandError,
+    paths::AppPaths,
+    task_cancellation::{cancel_document_task, run_document_task},
     util::validate_entity_id,
 };
+
+const CANCELED_MESSAGE: &str =
+    "Study-guide generation was stopped. Any previously published guide remains available.";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -79,10 +85,32 @@ struct StoredGuideDocument {
 #[tauri::command]
 pub(crate) async fn generate_document_study_guide(
     database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
     runtime: State<'_, AiRuntimeState>,
     input: GenerateDocumentStudyGuideInput,
 ) -> Result<DocumentStudyGuide, CommandError> {
     validate_entity_id(&input.document_id, "document")?;
+    let document_id = input.document_id.clone();
+    let result = run_document_task(
+        &document_id,
+        generate_document_study_guide_impl(database, paths, runtime, input),
+    )
+    .await;
+    match result {
+        Err(error) if error.code == "ai_request_canceled" => Err(CommandError::new(
+            "document_study_guide_canceled",
+            CANCELED_MESSAGE,
+        )),
+        other => other,
+    }
+}
+
+async fn generate_document_study_guide_impl(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    runtime: State<'_, AiRuntimeState>,
+    input: GenerateDocumentStudyGuideInput,
+) -> Result<DocumentStudyGuide, CommandError> {
     let stored = load_guide_document(database.inner(), &input.document_id)?;
     if stored.archived {
         return Err(CommandError::new(
@@ -135,7 +163,7 @@ pub(crate) async fn generate_document_study_guide(
 
     let plan_input = learning_plan_input_from_outline(
         &outline,
-        stored.source.unit_kind.clone(),
+        stored.source.unit_kind,
         stored.source.unit_count,
     )?;
     let evidence_chunks = chunks
@@ -148,7 +176,15 @@ pub(crate) async fn generate_document_study_guide(
         plan_input,
         &evidence_chunks,
     )?;
-    let topic_evidence = build_topic_evidence(&learning_plan, &chunks)?;
+    let topic_evidence = build_topic_evidence(
+        database.inner(),
+        paths.inner(),
+        &input.document_id,
+        &task,
+        &learning_plan,
+        &chunks,
+        scale_plan.max_images_per_window,
+    )?;
 
     let provider = DocumentArtifactProviderSnapshot {
         profile_id: Some(task.profile_id.clone()),
@@ -178,6 +214,14 @@ pub(crate) async fn generate_document_study_guide(
         evidence: topic_evidence,
     })
     .await
+}
+
+#[tauri::command]
+pub(crate) fn cancel_document_study_guide_generation(
+    document_id: String,
+) -> Result<(), CommandError> {
+    validate_entity_id(&document_id, "document")?;
+    cancel_document_task(&document_id)
 }
 
 #[tauri::command]
@@ -244,7 +288,7 @@ fn load_guide_document(
         connection
             .query_row(
                 "SELECT title, extraction_backend, source_format,
-                        source_unit_kind, page_count, archived_at
+                        source_unit_kind, source_unit_count, archived_at
                  FROM documents WHERE id = ?1",
                 [document_id],
                 |row| {
@@ -288,6 +332,12 @@ fn load_guide_document(
 }
 
 fn learning_evidence_chunk(chunk: &SemanticChunk) -> Result<LearningEvidenceChunk, CommandError> {
+    let chunk_index = usize::try_from(chunk.chunk_index).map_err(|_| {
+        CommandError::new(
+            "document_learning_plan_evidence_invalid",
+            "A canonical semantic chunk had an invalid learning-evidence index.",
+        )
+    })?;
     let locator = chunk.source_locator.clone();
     let content_hash = hash_text(&format!(
         "learning-evidence-v1|locator={}|text={}",
@@ -295,49 +345,79 @@ fn learning_evidence_chunk(chunk: &SemanticChunk) -> Result<LearningEvidenceChun
         chunk.full_text,
     ));
     Ok(LearningEvidenceChunk {
-        chunk_index: chunk.chunk_index,
+        chunk_index,
         source_locator: locator,
         content_hash,
     })
 }
 
 fn build_topic_evidence(
+    database: &Database,
+    paths: &AppPaths,
+    document_id: &str,
+    task: &document_intelligence::DocumentTaskContext,
     plan: &DocumentLearningPlan,
     chunks: &[SemanticChunk],
+    maximum_images: usize,
 ) -> Result<Vec<StudyGuideTopicEvidence>, CommandError> {
+    let source_assets = if task.include_page_images {
+        document_store::load_source_assets(database, document_id)?
+    } else {
+        Vec::new()
+    };
     plan.topics
         .iter()
         .map(|topic| {
+            let wanted = topic
+                .evidence_chunk_indices
+                .iter()
+                .copied()
+                .collect::<std::collections::HashSet<_>>();
             let mut selected = chunks
                 .iter()
-                .filter(|chunk| {
-                    chunk.source_locator.first() <= topic.source_locator.last()
-                        && topic.source_locator.first() <= chunk.source_locator.last()
+                .filter_map(|chunk| {
+                    let index = usize::try_from(chunk.chunk_index).ok()?;
+                    wanted.contains(&index).then_some((index, chunk))
                 })
                 .collect::<Vec<_>>();
-            selected.sort_by_key(|chunk| chunk.chunk_index);
+            selected.sort_by_key(|(index, _)| *index);
             if selected.is_empty() {
                 return Err(CommandError::new(
                     "document_learning_topic_without_evidence",
                     format!(
-                        "Learning topic '{}' no longer overlaps canonical semantic evidence.",
+                        "Learning topic '{}' no longer has its canonical semantic evidence.",
                         topic.title
                     ),
                 ));
             }
             let source_text = selected
                 .into_iter()
-                .map(|chunk| chunk.full_text.as_str())
+                .map(|(_, chunk)| chunk.full_text.as_str())
                 .collect::<Vec<_>>()
                 .join("\n\n");
+            let images = if task.include_page_images {
+                load_locator_images(
+                    paths,
+                    &source_assets,
+                    &topic.source_locator,
+                    maximum_images,
+                )?
+            } else {
+                Vec::new()
+            };
+            if source_text.trim().is_empty()
+                && images.is_empty()
+                && !topic.source_locator.asset_ids.is_empty()
+            {
+                return Err(CommandError::new(
+                    "document_requires_image_input",
+                    "This learning topic is represented by visual source evidence. Choose a verified image-capable document-generation profile and retry.",
+                ));
+            }
             Ok(StudyGuideTopicEvidence {
                 topic_id: topic.id.clone(),
                 source_text,
-                // Visual evidence selection is added by the shared canonical
-                // asset selector before review readiness. Keeping this field in
-                // the contract prevents text-only orchestration from becoming a
-                // second architecture.
-                images: Vec::new(),
+                images,
             })
         })
         .collect()
