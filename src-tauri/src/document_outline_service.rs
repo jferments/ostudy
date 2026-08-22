@@ -266,8 +266,6 @@ fn to_i64(value: usize) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn outline_projection_accepts_only_persisted_states() {
         assert!(matches!("building", "building" | "ready" | "failed"));
