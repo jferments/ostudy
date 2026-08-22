@@ -125,19 +125,14 @@ pub(crate) fn detected_document_format(
     if bytes.starts_with(b"%PDF-") {
         return Ok(DocumentFormat::Pdf);
     }
-    let extension = Path::new(filename)
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default();
-    let format = Format::from_bytes(bytes)
-        .or_else(|| Format::from_extension(extension))
+    detect_anydoc_format(bytes, filename)
         .ok_or_else(|| {
             CommandError::new(
                 "unsupported_document_format",
                 "The selected file is not a supported document type.",
             )
-        })?;
-    map_anydoc_format(format)
+        })
+        .and_then(map_anydoc_format)
 }
 
 pub(crate) fn probe(format: DocumentFormat, source_path: &Path) -> Result<bool, CommandError> {
@@ -161,13 +156,11 @@ pub(crate) fn extract(
     ensure_not_canceled(document_id)?;
     let bytes = read_bounded_source(source_path)?;
     let anydoc_format = expected_format(format)?;
-    let detected = Format::from_bytes(&bytes).or_else(|| {
-        source_path
-            .extension()
-            .and_then(|value| value.to_str())
-            .and_then(Format::from_extension)
-    });
-    if detected != Some(anydoc_format) {
+    let filename = source_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    if detect_anydoc_format(&bytes, filename) != Some(anydoc_format) {
         return Err(CommandError::new(
             "document_source_format_mismatch",
             "The managed source bytes do not match the document format recorded by oStudy.",
@@ -369,6 +362,16 @@ pub(crate) fn extract(
     Ok(canonical)
 }
 
+fn detect_anydoc_format(bytes: &[u8], filename: &str) -> Option<Format> {
+    Format::from_bytes(bytes).or_else(|| {
+        Path::new(filename)
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("csv"))
+            .then_some(Format::Csv)
+    })
+}
+
 fn map_anydoc_format(format: Format) -> Result<DocumentFormat, CommandError> {
     match format {
         Format::Doc => Ok(DocumentFormat::Doc),
@@ -403,7 +406,10 @@ fn normalize_document_blocks(
             continue;
         }
         let mut attributes = BTreeMap::new();
-        attributes.insert("noteId".to_string(), bounded_text(&note.id, 500));
+        attributes.insert(
+            "noteId".to_string(),
+            bounded_text(&note.id, MAX_ATTRIBUTE_VALUE_CHARS),
+        );
         output.push(NormalizedBlock {
             role: match note.kind {
                 NoteKind::Footnote => CanonicalBlockRole::Footnote,
@@ -480,7 +486,7 @@ fn normalize_block(
                 attributes,
             });
         }
-        Block::List(list) => normalize_list(list, format, asset_identity, headings, output, depth),
+        Block::List(list) => normalize_list(list, asset_identity, headings, output, depth),
         Block::Table(table) => {
             let mut projection = InlineProjection::default();
             let text = table_plain_text(table, asset_identity, &mut projection);
@@ -532,7 +538,7 @@ fn normalize_block(
         Block::CodeBlock { lang, text } => {
             let mut attributes = BTreeMap::new();
             if let Some(language) = lang {
-                let language = bounded_text(language, 120);
+                let language = bounded_text(language, MAX_ATTRIBUTE_VALUE_CHARS);
                 if !language.is_empty() {
                     attributes.insert("language".to_string(), language);
                 }
@@ -562,7 +568,6 @@ fn normalize_block(
 
 fn normalize_list(
     list: &List,
-    format: DocumentFormat,
     asset_identity: &HashMap<usize, String>,
     headings: &mut Vec<String>,
     output: &mut Vec<NormalizedBlock>,
@@ -580,7 +585,10 @@ fn normalize_list(
             .clone()
             .unwrap_or_else(|| list.marker.label(ordinal));
         let mut attributes = BTreeMap::new();
-        attributes.insert("listMarker".to_string(), bounded_text(&marker, 120));
+        attributes.insert(
+            "listMarker".to_string(),
+            bounded_text(&marker, MAX_ATTRIBUTE_VALUE_CHARS),
+        );
         attributes.insert("listDepth".to_string(), depth.to_string());
         attributes.insert("ordered".to_string(), list.ordered().to_string());
         add_external_image_count(&mut attributes, projection.external_image_count);
@@ -597,7 +605,6 @@ fn normalize_list(
             if let Block::List(nested_list) = nested {
                 normalize_list(
                     nested_list,
-                    format,
                     asset_identity,
                     headings,
                     output,
@@ -1141,10 +1148,16 @@ mod tests {
     }
 
     #[test]
-    fn csv_is_extension_detected_but_pdf_is_native() {
+    fn csv_is_the_only_extension_authorized_format() {
         assert_eq!(
             detected_document_format(b"name,value\na,1\n", "table.csv").unwrap(),
             DocumentFormat::Csv
+        );
+        assert_eq!(
+            detected_document_format(b"not an OOXML package", "renamed.docx")
+                .unwrap_err()
+                .code,
+            "unsupported_document_format"
         );
         assert_eq!(
             detected_document_format(b"%PDF-1.7", "renamed.docx").unwrap(),

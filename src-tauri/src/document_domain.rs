@@ -2,8 +2,8 @@
 //!
 //! File-format adapters translate their native structure into these ostudy-owned
 //! concepts before semantic planning or AI generation. PDF pages are one source
-//! unit kind; slides, flowing sections, chapters, images, and future timed media
-//! segments use the same durable locator contract.
+//! unit kind; exact slides/chapters are used only when an adapter preserves those
+//! authored boundaries, while deterministic sections remain the safe fallback.
 
 use serde::{Deserialize, Serialize};
 
@@ -81,14 +81,16 @@ impl DocumentFormat {
     pub(crate) fn source_unit_kind(self) -> SourceUnitKind {
         match self {
             Self::Pdf => SourceUnitKind::Page,
-            Self::Ppt | Self::Pptx | Self::Odp => SourceUnitKind::Slide,
-            Self::Epub => SourceUnitKind::Chapter,
             Self::ImageBundle => SourceUnitKind::Image,
             Self::PlainText => SourceUnitKind::Segment,
             Self::Doc
             | Self::Docx
+            | Self::Ppt
+            | Self::Pptx
             | Self::Odt
+            | Self::Odp
             | Self::Rtf
+            | Self::Epub
             | Self::Excel
             | Self::Ods
             | Self::Csv
@@ -461,15 +463,15 @@ mod tests {
     }
 
     #[test]
-    fn anydoc_formats_have_stable_families_and_source_units() {
+    fn anydoc_formats_use_truthful_deterministic_sections() {
         assert!(DocumentFormat::Docx.is_anydoc());
         assert_eq!(
             DocumentFormat::Pptx.source_unit_kind(),
-            SourceUnitKind::Slide
+            SourceUnitKind::Section
         );
         assert_eq!(
             DocumentFormat::Epub.source_unit_kind(),
-            SourceUnitKind::Chapter
+            SourceUnitKind::Section
         );
         assert_eq!(
             DocumentFormat::Excel.source_unit_kind(),
