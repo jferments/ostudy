@@ -78,6 +78,8 @@ mod util;
 mod workload;
 
 #[cfg(test)]
+mod anydoc_adapter_fixture_tests;
+#[cfg(test)]
 mod canonical_migration_tests;
 #[cfg(test)]
 mod deck_folders_backup_tests;
