@@ -132,9 +132,6 @@ pub fn run() {
             let tauri::WindowEvent::CloseRequested { api, .. } = event else {
                 return;
             };
-            // A startup compatibility block intentionally exits before durable
-            // platform state is managed. Do not turn that controlled path into
-            // a second panic while Tauri processes window shutdown events.
             let Some(platform_runtime) = window.try_state::<platform::PlatformRuntime>() else {
                 return;
             };
@@ -286,6 +283,7 @@ pub fn run() {
             library_backup_commands::prepare_library_restore_async,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
+            practice_selection::start_card_practice,
             practice_resume::resume_practice_session,
             practice_selection::get_practice_card_window,
             practice_selection::refresh_practice_after_card_edit,
