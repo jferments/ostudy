@@ -479,13 +479,9 @@ mod tests {
             SourceUnitKind::Section,
             10,
         );
-        let preserved = preserve_deleted_document_citation(
-            description,
-            &citation,
-            "Chapter",
-            "chapter.docx",
-        )
-        .expect("automatic citation should fit");
+        let preserved =
+            preserve_deleted_document_citation(description, &citation, "Chapter", "chapter.docx")
+                .expect("automatic citation should fit");
         assert!(preserved.contains(
             "Source document (deleted from Documents): Chapter (chapter.docx; Word, 10 sections)."
         ));
@@ -502,13 +498,9 @@ mod tests {
             SourceUnitKind::Page,
             10,
         );
-        let preserved = preserve_deleted_document_citation(
-            &description,
-            &citation,
-            "Chapter",
-            "chapter.pdf",
-        )
-        .expect("existing text source reference is sufficient");
+        let preserved =
+            preserve_deleted_document_citation(&description, &citation, "Chapter", "chapter.pdf")
+                .expect("existing text source reference is sufficient");
         assert_eq!(preserved, description);
     }
 
