@@ -54,6 +54,9 @@ pub struct DocumentDto {
     pub byte_size: i64,
     pub sha256: String,
     pub lifecycle_state: String,
+    pub source_format: String,
+    pub source_unit_kind: String,
+    pub source_unit_count: i64,
     pub page_count: i64,
     pub extracted_page_count: i64,
     pub rendered_page_count: i64,
@@ -101,21 +104,19 @@ struct StoredDocument {
     extraction_backend: String,
     render_backend: String,
     semantic_chunk_count: i64,
-    source_format: String,
-    source_unit_kind: String,
 }
 
 impl StoredDocument {
     fn source_descriptor(&self) -> Result<DocumentSourceDescriptor, CommandError> {
-        let unit_count = usize::try_from(self.dto.page_count).map_err(|_| {
+        let unit_count = usize::try_from(self.dto.source_unit_count).map_err(|_| {
             CommandError::new(
                 "invalid_document_source",
                 "The saved document source-unit count is invalid.",
             )
         })?;
         Ok(DocumentSourceDescriptor {
-            format: DocumentFormat::from_db(&self.source_format)?,
-            unit_kind: SourceUnitKind::from_db(&self.source_unit_kind)?,
+            format: DocumentFormat::from_db(&self.dto.source_format)?,
+            unit_kind: SourceUnitKind::from_db(&self.dto.source_unit_kind)?,
             unit_count,
         })
     }
@@ -343,17 +344,17 @@ async fn process_and_generate(
         ));
     }
 
-    let format = DocumentFormat::from_db(&stored.source_format)?;
+    let format = DocumentFormat::from_db(&stored.dto.source_format)?;
     let active_adapter_backend = document_ingestion::active_adapter_backend(format)?;
     let active_extraction_backend = document_ingestion::active_extraction_backend(format)?;
     let active_render_backend = document_ingestion::active_render_backend(format)?;
     let backend_changed = stored.adapter_backend != active_adapter_backend
         || stored.extraction_backend != active_extraction_backend
         || stored.render_backend != active_render_backend;
-    let incomplete_derivatives = stored.dto.page_count == 0
-        || stored.dto.extracted_page_count != stored.dto.page_count
+    let incomplete_derivatives = stored.dto.source_unit_count == 0
+        || stored.dto.extracted_page_count != stored.dto.source_unit_count
         || (format == DocumentFormat::Pdf
-            && stored.dto.rendered_page_count != stored.dto.page_count)
+            && stored.dto.rendered_page_count != stored.dto.source_unit_count)
         || stored.semantic_chunk_count == 0;
     if backend_changed || incomplete_derivatives {
         let paths_owned = paths.inner().clone();
@@ -993,7 +994,8 @@ fn list_document_rows(
                     ) THEN documents.generated_deck_id ELSE NULL END,
                     safe_error_code, safe_error_message, created_at, updated_at,
                     completed_at, archived_at, revision,
-                    processing_duration_ms, api_token_count, api_token_usage_complete
+                    processing_duration_ms, api_token_count, api_token_usage_complete,
+                    source_format, source_unit_kind, source_unit_count
              FROM documents
              WHERE (?1 = 1 OR archived_at IS NULL)
              ORDER BY updated_at DESC, id
@@ -1035,20 +1037,19 @@ fn load_document(
                     safe_error_code, safe_error_message, created_at, updated_at,
                     completed_at, archived_at, revision,
                     processing_duration_ms, api_token_count, api_token_usage_complete,
+                    source_format, source_unit_kind, source_unit_count,
                     source_relative_path, adapter_backend, extraction_backend, render_backend,
-                    semantic_chunk_count, source_format, source_unit_kind
+                    semantic_chunk_count
              FROM documents WHERE id = ?1",
             [document_id],
             |row| {
                 Ok(StoredDocument {
                     dto: document_row(row)?,
-                    source_relative_path: row.get(33)?,
-                    adapter_backend: row.get(34)?,
-                    extraction_backend: row.get(35)?,
-                    render_backend: row.get(36)?,
-                    semantic_chunk_count: row.get(37)?,
-                    source_format: row.get(38)?,
-                    source_unit_kind: row.get(39)?,
+                    source_relative_path: row.get(36)?,
+                    adapter_backend: row.get(37)?,
+                    extraction_backend: row.get(38)?,
+                    render_backend: row.get(39)?,
+                    semantic_chunk_count: row.get(40)?,
                 })
             },
         )
@@ -1070,6 +1071,9 @@ fn document_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentDto> {
         byte_size: row.get(3)?,
         sha256: row.get(4)?,
         lifecycle_state: row.get(5)?,
+        source_format: row.get(33)?,
+        source_unit_kind: row.get(34)?,
+        source_unit_count: row.get(35)?,
         page_count: row.get(6)?,
         extracted_page_count: row.get(7)?,
         rendered_page_count: row.get(8)?,
@@ -1136,6 +1140,9 @@ mod tests {
                 byte_size: 1,
                 sha256: "0".repeat(64),
                 lifecycle_state: "processing".to_string(),
+                source_format: "pdf".to_string(),
+                source_unit_kind: "page".to_string(),
+                source_unit_count: 1,
                 page_count: 1,
                 extracted_page_count: 1,
                 rendered_page_count: 1,
@@ -1169,8 +1176,6 @@ mod tests {
             extraction_backend: "extractor".to_string(),
             render_backend: "renderer".to_string(),
             semantic_chunk_count: 1,
-            source_format: "pdf".to_string(),
-            source_unit_kind: "page".to_string(),
         };
         let payload = build_generated_import_json(
             &document,
