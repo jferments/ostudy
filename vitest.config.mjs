@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
+    execArgv: ["--no-experimental-webstorage"],
     setupFiles: ["./src/test/setup.ts"],
     restoreMocks: true,
     clearMocks: true,
