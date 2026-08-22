@@ -162,10 +162,41 @@ pub(crate) fn detect_image_bytes(
     if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
         return Ok(("image/webp", "webp"));
     }
+    if bytes.starts_with(b"BM") {
+        return Ok(("image/bmp", "bmp"));
+    }
+    if bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*") {
+        return Ok(("image/tiff", "tif"));
+    }
+    if bytes.len() >= 44 && bytes.starts_with(&[1, 0, 0, 0]) && &bytes[40..44] == b" EMF" {
+        return Ok(("image/emf", "emf"));
+    }
+    if bytes.starts_with(&[0xd7, 0xcd, 0xc6, 0x9a])
+        || (bytes.len() >= 6
+            && matches!(&bytes[..2], [1, 0] | [2, 0])
+            && bytes[2..4] == [9, 0]
+            && bytes[4..6] == [0, 3])
+    {
+        return Ok(("image/wmf", "wmf"));
+    }
+    if looks_like_svg(bytes) {
+        return Ok(("image/svg+xml", "svg"));
+    }
     Err(CommandError::new(
         "unsupported_image",
-        "Use a PNG, JPEG, GIF, or WebP image.",
+        "Use a supported image file.",
     ))
+}
+
+fn looks_like_svg(bytes: &[u8]) -> bool {
+    let prefix = &bytes[..bytes.len().min(4096)];
+    let Ok(text) = std::str::from_utf8(prefix.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(prefix))
+    else {
+        return false;
+    };
+    let trimmed = text.trim_start();
+    trimmed.starts_with("<svg")
+        || (trimmed.starts_with("<?xml") && trimmed.find("<svg").is_some_and(|index| index < 2048))
 }
 
 #[cfg(test)]
@@ -182,6 +213,30 @@ mod tests {
         assert_eq!(
             detect_image_bytes(&[0xff, 0xd8, 0xff, 0xdb]).expect("JPEG should be recognized"),
             ("image/jpeg", "jpg")
+        );
+        assert_eq!(
+            detect_image_bytes(b"BMfixture").expect("BMP should be recognized"),
+            ("image/bmp", "bmp")
+        );
+        assert_eq!(
+            detect_image_bytes(b"II*\0fixture").expect("TIFF should be recognized"),
+            ("image/tiff", "tif")
+        );
+        assert_eq!(
+            detect_image_bytes(b"<?xml version=\"1.0\"?><svg></svg>")
+                .expect("SVG should be recognized"),
+            ("image/svg+xml", "svg")
+        );
+        let mut emf = vec![0_u8; 44];
+        emf[..4].copy_from_slice(&[1, 0, 0, 0]);
+        emf[40..44].copy_from_slice(b" EMF");
+        assert_eq!(
+            detect_image_bytes(&emf).expect("EMF should be recognized"),
+            ("image/emf", "emf")
+        );
+        assert_eq!(
+            detect_image_bytes(&[0xd7, 0xcd, 0xc6, 0x9a]).expect("WMF should be recognized"),
+            ("image/wmf", "wmf")
         );
         assert!(detect_image_bytes(b"not an image").is_err());
     }

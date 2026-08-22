@@ -2,8 +2,8 @@
 //!
 //! File-format adapters translate their native structure into these ostudy-owned
 //! concepts before semantic planning or AI generation. PDF pages are one source
-//! unit kind; slides, flowing sections, chapters, images, and future timed media
-//! segments use the same durable locator contract.
+//! unit kind; exact slides/chapters are used only when an adapter preserves those
+//! authored boundaries, while deterministic sections remain the safe fallback.
 
 use serde::{Deserialize, Serialize};
 
@@ -23,9 +23,13 @@ pub(crate) enum DocumentFormat {
     Pptx,
     Odt,
     Odp,
+    Rtf,
+    Epub,
+    Excel,
+    Ods,
+    Csv,
     Html,
     PlainText,
-    Epub,
     ImageBundle,
 }
 
@@ -39,9 +43,13 @@ impl DocumentFormat {
             Self::Pptx => "pptx",
             Self::Odt => "odt",
             Self::Odp => "odp",
+            Self::Rtf => "rtf",
+            Self::Epub => "epub",
+            Self::Excel => "excel",
+            Self::Ods => "ods",
+            Self::Csv => "csv",
             Self::Html => "html",
             Self::PlainText => "plain_text",
-            Self::Epub => "epub",
             Self::ImageBundle => "image_bundle",
         }
     }
@@ -55,14 +63,93 @@ impl DocumentFormat {
             "pptx" => Ok(Self::Pptx),
             "odt" => Ok(Self::Odt),
             "odp" => Ok(Self::Odp),
+            "rtf" => Ok(Self::Rtf),
+            "epub" => Ok(Self::Epub),
+            "excel" | "xls" | "xlsx" => Ok(Self::Excel),
+            "ods" => Ok(Self::Ods),
+            "csv" => Ok(Self::Csv),
             "html" => Ok(Self::Html),
             "plain_text" | "text" => Ok(Self::PlainText),
-            "epub" => Ok(Self::Epub),
             "image_bundle" | "image" => Ok(Self::ImageBundle),
             _ => Err(CommandError::new(
                 "invalid_document_format",
                 "The saved document format is not supported by this ostudy build.",
             )),
+        }
+    }
+
+    pub(crate) fn source_unit_kind(self) -> SourceUnitKind {
+        match self {
+            Self::Pdf => SourceUnitKind::Page,
+            Self::ImageBundle => SourceUnitKind::Image,
+            Self::PlainText => SourceUnitKind::Segment,
+            Self::Doc
+            | Self::Docx
+            | Self::Ppt
+            | Self::Pptx
+            | Self::Odt
+            | Self::Odp
+            | Self::Rtf
+            | Self::Epub
+            | Self::Excel
+            | Self::Ods
+            | Self::Csv
+            | Self::Html => SourceUnitKind::Section,
+        }
+    }
+
+    pub(crate) fn is_anydoc(self) -> bool {
+        matches!(
+            self,
+            Self::Doc
+                | Self::Docx
+                | Self::Ppt
+                | Self::Pptx
+                | Self::Odt
+                | Self::Odp
+                | Self::Rtf
+                | Self::Epub
+                | Self::Excel
+                | Self::Ods
+                | Self::Csv
+        )
+    }
+
+    pub(crate) fn display_label(self) -> &'static str {
+        match self {
+            Self::Pdf => "PDF",
+            Self::Doc | Self::Docx => "Word",
+            Self::Ppt | Self::Pptx => "PowerPoint",
+            Self::Odt => "OpenDocument text",
+            Self::Odp => "OpenDocument presentation",
+            Self::Rtf => "RTF",
+            Self::Epub => "EPUB",
+            Self::Excel => "Excel",
+            Self::Ods => "OpenDocument spreadsheet",
+            Self::Csv => "CSV",
+            Self::Html => "HTML",
+            Self::PlainText => "Text",
+            Self::ImageBundle => "Notes",
+        }
+    }
+
+    pub(crate) fn default_extension(self) -> &'static str {
+        match self {
+            Self::Pdf => "pdf",
+            Self::Doc => "doc",
+            Self::Docx => "docx",
+            Self::Ppt => "ppt",
+            Self::Pptx => "pptx",
+            Self::Odt => "odt",
+            Self::Odp => "odp",
+            Self::Rtf => "rtf",
+            Self::Epub => "epub",
+            Self::Excel => "xlsx",
+            Self::Ods => "ods",
+            Self::Csv => "csv",
+            Self::Html => "html",
+            Self::PlainText => "txt",
+            Self::ImageBundle => "jpg",
         }
     }
 }
@@ -105,6 +192,18 @@ impl SourceUnitKind {
                 "invalid_document_source_unit",
                 "The saved document source-unit kind is not supported by this ostudy build.",
             )),
+        }
+    }
+
+    pub(crate) fn singular_label(self) -> &'static str {
+        match self {
+            Self::Page => "page",
+            Self::Slide => "slide",
+            Self::Chapter => "chapter",
+            Self::Section => "section",
+            Self::Segment => "segment",
+            Self::Image => "image",
+            Self::TimeSegment => "time segment",
         }
     }
 
@@ -278,12 +377,16 @@ pub(crate) struct DocumentSourceDescriptor {
 }
 
 impl DocumentSourceDescriptor {
-    pub(crate) fn pdf(page_count: usize) -> Self {
+    pub(crate) fn new(format: DocumentFormat, unit_count: usize) -> Self {
         Self {
-            format: DocumentFormat::Pdf,
-            unit_kind: SourceUnitKind::Page,
-            unit_count: page_count,
+            format,
+            unit_kind: format.source_unit_kind(),
+            unit_count,
         }
+    }
+
+    pub(crate) fn pdf(page_count: usize) -> Self {
+        Self::new(DocumentFormat::Pdf, page_count)
     }
 
     pub(crate) fn validate(&self) -> Result<(), CommandError> {
@@ -360,18 +463,25 @@ mod tests {
     }
 
     #[test]
-    fn future_formats_share_the_same_source_descriptor_contract() {
-        let pdf = DocumentSourceDescriptor::pdf(11);
-        assert_eq!(pdf.format.as_str(), "pdf");
-        assert_eq!(pdf.unit_kind.plural_label(), "pages");
+    fn anydoc_formats_use_truthful_deterministic_sections() {
+        assert!(DocumentFormat::Docx.is_anydoc());
         assert_eq!(
-            DocumentFormat::from_db("epub").unwrap(),
-            DocumentFormat::Epub
-        );
-        assert_eq!(
-            SourceUnitKind::from_db("block").unwrap(),
+            DocumentFormat::Pptx.source_unit_kind(),
             SourceUnitKind::Section
         );
+        assert_eq!(
+            DocumentFormat::Epub.source_unit_kind(),
+            SourceUnitKind::Section
+        );
+        assert_eq!(
+            DocumentFormat::Excel.source_unit_kind(),
+            SourceUnitKind::Section
+        );
+        assert_eq!(
+            DocumentFormat::from_db("xlsx").unwrap(),
+            DocumentFormat::Excel
+        );
+        assert!(!DocumentFormat::Pdf.is_anydoc());
     }
 
     #[test]

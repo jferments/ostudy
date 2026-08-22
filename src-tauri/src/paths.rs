@@ -65,8 +65,16 @@ impl AppPaths {
         &self.document_staging_dir
     }
 
+    pub fn document_directory(&self, document_id: &str) -> PathBuf {
+        self.documents_dir.join(document_id)
+    }
+
     pub fn document_pages_dir(&self, document_id: &str) -> PathBuf {
-        self.documents_dir.join(document_id).join("pages")
+        self.document_directory(document_id).join("pages")
+    }
+
+    pub fn document_assets_dir(&self, document_id: &str) -> PathBuf {
+        self.document_directory(document_id).join("assets")
     }
 
     pub fn resolve_relative(&self, relative_path: &str) -> PathBuf {
@@ -85,16 +93,45 @@ impl AppPaths {
         format!("assets/quarantine/{asset_id}-{suffix}.quarantine")
     }
 
+    /// Compatibility helper for existing PDF data and tests.
     pub fn document_source_relative_path(document_id: &str) -> String {
-        format!("documents/{document_id}/source.pdf")
+        Self::document_source_relative_path_with_extension(document_id, "pdf")
+    }
+
+    pub fn document_source_relative_path_with_extension(
+        document_id: &str,
+        extension: &str,
+    ) -> String {
+        format!(
+            "documents/{document_id}/source.{}",
+            safe_extension(extension)
+        )
+    }
+
+    pub fn document_versioned_asset_relative_path(
+        document_id: &str,
+        asset_ordinal: usize,
+        content_fingerprint: u64,
+        extension: &str,
+    ) -> String {
+        format!(
+            "documents/{document_id}/assets/asset-{asset_ordinal:06}{content_fingerprint:020}.{}",
+            safe_extension(extension)
+        )
     }
 
     pub fn document_page_relative_path(document_id: &str, page_number: i64) -> String {
         format!("documents/{document_id}/pages/page-{page_number:06}.png")
     }
 
-    pub fn staged_document_relative_path(document_id: &str) -> String {
-        format!("documents/staging/{document_id}.pdf.stage")
+    pub fn staged_document_relative_path_with_extension(
+        document_id: &str,
+        extension: &str,
+    ) -> String {
+        format!(
+            "documents/staging/{document_id}.{}.stage",
+            safe_extension(extension)
+        )
     }
 
     pub fn transfer_imports_dir(&self) -> PathBuf {
@@ -110,10 +147,42 @@ impl AppPaths {
     }
 
     pub fn staged_import_relative_path(id: &str, extension: &str) -> String {
-        format!("transfers/imports/{id}.{extension}")
+        format!("transfers/imports/{id}.{}", safe_extension(extension))
     }
 
     pub fn prepared_export_relative_path(id: &str, extension: &str) -> String {
-        format!("transfers/exports/{id}.{extension}")
+        format!("transfers/exports/{id}.{}", safe_extension(extension))
+    }
+}
+
+fn safe_extension(extension: &str) -> &str {
+    if !extension.is_empty()
+        && extension.len() <= 16
+        && extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    {
+        extension
+    } else {
+        "bin"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn managed_document_paths_preserve_safe_extensions() {
+        assert_eq!(
+            AppPaths::document_source_relative_path_with_extension("abc", "docx"),
+            "documents/abc/source.docx"
+        );
+        assert_eq!(
+            AppPaths::document_versioned_asset_relative_path("abc", 3, 42, "png"),
+            "documents/abc/assets/asset-00000300000000000000000042.png"
+        );
+        assert_eq!(
+            AppPaths::document_source_relative_path_with_extension("abc", "../exe"),
+            "documents/abc/source.bin"
+        );
     }
 }

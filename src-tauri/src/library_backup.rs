@@ -1,11 +1,12 @@
 //! Complete local-library backup and restart-safe restoration.
 //!
 //! A backup contains one coherent SQLite snapshot, every ready managed card
-//! image, and every immutable managed PDF source and rendered document page.
-//! Credentials remain outside SQLite and are never part of the package. Restore
-//! is prepared while ostudy is running and applied before the database opens on
-//! the next launch, allowing an atomic filesystem rollback if the restored
-//! library cannot be opened, migrated, or reconciled.
+//! image, and every immutable managed document source, retained document image,
+//! and PDF rendered page required by the local library. Credentials remain
+//! outside SQLite and are never part of the package. Restore is prepared while
+//! ostudy is running and applied before the database opens on the next launch,
+//! allowing an atomic filesystem rollback if the restored library cannot be
+//! opened, migrated, or reconciled.
 
 use std::{
     fs::{self, File, OpenOptions},
@@ -28,7 +29,7 @@ use crate::{
 };
 
 const BACKUP_FORMAT: &str = "ostudy-library-backup";
-const BACKUP_VERSION: i64 = 3;
+const BACKUP_VERSION: i64 = 4;
 const MIN_SUPPORTED_BACKUP_VERSION: i64 = 1;
 const MAX_BACKUP_FILE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const MAX_DATABASE_SNAPSHOT_BYTES: usize = 1_500 * 1024 * 1024;
@@ -54,13 +55,19 @@ CREATE TABLE document_files (
     file_key TEXT PRIMARY KEY,
     document_id TEXT NOT NULL CHECK(length(document_id) = 32),
     page_number INTEGER CHECK(page_number IS NULL OR page_number >= 1),
-    file_kind TEXT NOT NULL CHECK(file_kind IN ('source_pdf', 'page_render')),
+    file_kind TEXT NOT NULL CHECK(file_kind IN (
+        'source_pdf', 'source_document', 'page_render', 'source_asset'
+    )),
     relative_path TEXT NOT NULL UNIQUE,
-    mime_type TEXT NOT NULL CHECK(mime_type IN ('application/pdf', 'image/png')),
+    mime_type TEXT NOT NULL CHECK(length(mime_type) BETWEEN 3 AND 160),
     byte_size INTEGER NOT NULL CHECK(byte_size > 0),
     sha256 TEXT NOT NULL CHECK(length(sha256) = 64),
     data BLOB NOT NULL,
-    CHECK((file_kind = 'source_pdf') = (page_number IS NULL))
+    CHECK(
+        (file_kind = 'page_render' AND page_number IS NOT NULL)
+        OR
+        (file_kind IN ('source_pdf', 'source_document', 'source_asset') AND page_number IS NULL)
+    )
 ) STRICT;
 "#;
 
@@ -464,7 +471,7 @@ fn export_backup(
     if processing_documents > 0 {
         return Err(CommandError::new(
             "document_processing_active",
-            "Finish PDF extraction and flashcard generation before backing up the library.",
+            "Finish document extraction and flashcard generation before backing up the library.",
         ));
     }
 
@@ -747,7 +754,7 @@ fn validate_backup_package(
     {
         return Err(CommandError::new(
             "invalid_backup",
-            "This legacy backup version cannot contain managed PDF documents.",
+            "This legacy backup version cannot contain managed documents.",
         ));
     }
     let summary = snapshot_summary(&snapshot)?;
@@ -1212,5 +1219,45 @@ mod tests {
         let summary = validate_backup_package(&destination, None).expect("valid backup");
         assert_eq!(summary.review_count, 1);
         let _ = fs::remove_dir_all(paths.app_data_dir());
+    }
+
+    #[test]
+    fn version_four_package_schema_accepts_generic_document_files() {
+        let connection = Connection::open_in_memory().expect("package should open");
+        connection
+            .execute_batch(PACKAGE_SCHEMA)
+            .expect("package schema should initialize");
+        connection
+            .execute(
+                "INSERT INTO document_files (
+                     file_key, document_id, page_number, file_kind, relative_path,
+                     mime_type, byte_size, sha256, data
+                 ) VALUES (
+                     'source:doc', ?1, NULL, 'source_document', ?2,
+                     'text/csv', 3, ?3, x'612C62'
+                 )",
+                params![
+                    "a".repeat(32),
+                    format!("documents/{}/source.csv", "a".repeat(32)),
+                    "0".repeat(64),
+                ],
+            )
+            .expect("generic source row should be admitted");
+        connection
+            .execute(
+                "INSERT INTO document_files (
+                     file_key, document_id, page_number, file_kind, relative_path,
+                     mime_type, byte_size, sha256, data
+                 ) VALUES (
+                     'asset:doc:1', ?1, NULL, 'source_asset', ?2,
+                     'image/png', 1, ?3, x'00'
+                 )",
+                params![
+                    "a".repeat(32),
+                    format!("documents/{}/assets/asset-000001.png", "a".repeat(32)),
+                    "0".repeat(64),
+                ],
+            )
+            .expect("generic source-asset row should be admitted");
     }
 }

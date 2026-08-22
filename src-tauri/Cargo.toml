@@ -16,6 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
+anydoc = "=0.2.3"
 base64 = "=0.22.1"
 chrono = "=0.4.45"
 oxidize-pdf = { version = "=4.2.2", default-features = false, features = ["compression", "semantic"] }

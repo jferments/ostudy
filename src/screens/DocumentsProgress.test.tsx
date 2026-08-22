@@ -33,6 +33,9 @@ const document: DocumentSummary = {
   byteSize: 3_600_000,
   sha256: "a".repeat(64),
   lifecycleState: "processing",
+  sourceFormat: "pdf",
+  sourceUnitKind: "page",
+  sourceUnitCount: 55,
   pageCount: 55,
   extractedPageCount: 55,
   renderedPageCount: 55,
@@ -126,6 +129,29 @@ describe("DocumentsScreen live generation progress", () => {
     expect(await screen.findByText("Active windows 2–5 of 9 · pages 9–35.")).toBeTruthy();
     expect(screen.queryByText("Generating cards 1/9")).toBeNull();
     expect(screen.queryByText(/Current window 2\/9/u)).toBeNull();
+  });
+
+  it("uses the canonical source-unit label for non-PDF active ranges", async () => {
+    documentIpcMocks.listDocuments.mockResolvedValue([
+      {
+        ...document,
+        originalFilename: "physiology.docx",
+        sourceFormat: "docx",
+        sourceUnitKind: "section",
+        sourceUnitCount: 20,
+        pageCount: 20,
+        renderedPageCount: 0,
+      },
+    ]);
+
+    render(
+      <DocumentsScreen
+        refreshDecks={vi.fn().mockResolvedValue(undefined)}
+        showToast={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Window 4 of 10 · sections 13–18.")).toBeTruthy();
   });
 
   it("distinguishes a responsive heartbeat from recent model output", async () => {

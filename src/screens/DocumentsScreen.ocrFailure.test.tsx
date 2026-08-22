@@ -27,6 +27,9 @@ function failedOcrDocument(): documentIpc.DocumentSummary {
     byteSize: 4096,
     sha256: "0".repeat(64),
     lifecycleState: "failed",
+    sourceFormat: "pdf",
+    sourceUnitKind: "page",
+    sourceUnitCount: 138,
     pageCount: 138,
     extractedPageCount: 138,
     renderedPageCount: 138,
@@ -52,9 +55,9 @@ function failedOcrDocument(): documentIpc.DocumentSummary {
     completedAt: null,
     archivedAt: null,
     revision: 3,
-  processingDurationMs: 12_345,
-  apiTokenCount: 45_678,
-  apiTokenUsageComplete: true,
+    processingDurationMs: 12_345,
+    apiTokenCount: 45_678,
+    apiTokenUsageComplete: true,
   };
 }
 

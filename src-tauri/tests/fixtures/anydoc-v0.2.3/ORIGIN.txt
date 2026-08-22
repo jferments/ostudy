@@ -1,0 +1,40 @@
+AnyDoc v0.2.3 fixture provenance
+
+Source repository: https://github.com/firecrawl/anydoc
+Pinned tag: v0.2.3
+License: MIT (see LICENSE.anydoc)
+
+These fixtures are copied byte-for-byte from the exact parser version pinned by oStudy.
+Git blob object identity was verified before the blobs were attached to this branch.
+
+handmade-tables.docx
+  upstream: tests/fixtures/docx/handmade-tables.docx
+  git blob: 635c76b3f2c919bd25df3c672df0ecc701651431
+
+handmade-altpath.pptx
+  upstream: tests/fixtures/pptx/handmade-altpath.pptx
+  git blob: 5b2a63138792038f69d4e77d470b4a73071d6a60
+
+handmade-lists.odt
+  upstream: tests/fixtures/odt/handmade-lists.odt
+  git blob: bbeaa2ccb0e25b211abf8ce2c208f1f9258b4c14
+
+handmade-math.epub
+  upstream: tests/fixtures/epub/handmade-math.epub
+  git blob: 9df629c071c7eacea72262b6e570391e1c24765b
+
+handmade-blockstyle.rtf
+  upstream: tests/fixtures/rtf/handmade-blockstyle.rtf
+  git blob: 49542a950060e11ad0a40e6caf4212e7f230a686
+
+handmade-merged.xlsx
+  upstream: tests/fixtures/xlsx/handmade-merged.xlsx
+  git blob: 8dd24429dd48488401d51cf340db56ebdb0a606d
+
+handmade-semicolon.csv
+  upstream: tests/fixtures/csv/handmade-semicolon.csv
+  git blob: cd407d65264d408782cb8885900e1153c25a41f7
+
+encrypted--errors.odt
+  upstream: tests/fixtures/malformed/encrypted--errors.odt
+  git blob: c3361881b6a8a108ff578f4f268d94f4a29fc34f

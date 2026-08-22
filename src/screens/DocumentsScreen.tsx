@@ -107,12 +107,15 @@ export function DocumentsScreen({
     }
   }, [cancelingDocumentId, documents]);
 
-  async function uploadPdf(): Promise<void> {
+  async function uploadDocument(): Promise<void> {
     if (isUploading || busyDocumentId || deletingDocumentId) return;
-    const selected = await selectExternalImport("pdf_document");
+    const selected = await selectExternalImport("document");
     if (!selected) return;
 
-    showToast("info", "Document processing started. Live stage, page, request, and token progress will appear here.");
+    showToast(
+      "info",
+      "Document processing started. Live stage, source-unit, request, and token progress will appear here.",
+    );
     setIsUploading(true);
     setErrorMessage(null);
     try {
@@ -166,7 +169,7 @@ export function DocumentsScreen({
   async function handleGenerationFailure(error: unknown): Promise<void> {
     const code = getErrorCode(error);
     if (code === "document_generation_canceled" || code === "ai_request_canceled") {
-      showToast("info", "Generation stopped. The PDF is still available to retry.");
+      showToast("info", "Generation stopped. The document is still available to retry.");
       setErrorMessage(null);
     } else if (code === "document_no_additional_cards") {
       showToast("info", getErrorMessage(error));
@@ -195,7 +198,7 @@ export function DocumentsScreen({
     }
   }
 
-  async function openPdf(document: DocumentSummary): Promise<void> {
+  async function openSource(document: DocumentSummary): Promise<void> {
     try {
       await openDocumentSource(document.id);
     } catch (error: unknown) {
@@ -214,11 +217,11 @@ export function DocumentsScreen({
     }
     const hasSurvivingGeneratedDeck = document.generatedDeckId !== null;
     const accepted = await confirm({
-      title: "Delete this PDF permanently?",
+      title: "Delete this document permanently?",
       description: hasSurvivingGeneratedDeck
-        ? "The managed source PDF, rendered pages, extracted structure, outline, and generation history for this document will be removed. The surviving generated deck will remain and its source will be preserved as a text citation instead of a file link. This cannot be undone."
-        : "The managed source PDF, rendered pages, extracted structure, outline, and generation history for this document will be removed. No active generated deck remains, so no source citation will be preserved. This cannot be undone.",
-      confirmLabel: "Delete PDF",
+        ? "The managed source, extracted structure, local derivatives, outline, and generation history for this document will be removed. The surviving generated deck will remain and its source will be preserved as a text citation instead of a file link. This cannot be undone."
+        : "The managed source, extracted structure, local derivatives, outline, and generation history for this document will be removed. No active generated deck remains, so no source citation will be preserved. This cannot be undone.",
+      confirmLabel: "Delete document",
       destructive: true,
     });
     if (!accepted) return;
@@ -230,8 +233,8 @@ export function DocumentsScreen({
       showToast(
         "success",
         result.preservedDeckCitationCount > 0
-          ? `PDF deleted. Preserved text source citations in ${result.preservedDeckCitationCount} generated deck${result.preservedDeckCitationCount === 1 ? "" : "s"}.`
-          : "PDF deleted from Documents.",
+          ? `Document deleted. Preserved text source citations in ${result.preservedDeckCitationCount} generated deck${result.preservedDeckCitationCount === 1 ? "" : "s"}.`
+          : "Document deleted from Documents.",
       );
     } catch (error: unknown) {
       const message = getErrorMessage(error);
@@ -279,9 +282,9 @@ export function DocumentsScreen({
             type="button"
             className="primary-button"
             disabled={isUploading || busyDocumentId !== null || deletingDocumentId !== null}
-            onClick={() => void uploadPdf()}
+            onClick={() => void uploadDocument()}
           >
-            {isUploading ? "Processing PDF…" : "Upload PDF"}
+            {isUploading ? "Processing document…" : "Upload document"}
           </button>
         }
       />
@@ -314,8 +317,8 @@ export function DocumentsScreen({
         </div>
       ) : documents.length === 0 ? (
         <div className={styles.empty}>
-          <h2>No PDFs yet</h2>
-          <p>Upload a course handout, chapter, or study packet to create a deck from its contents.</p>
+          <h2>No documents yet</h2>
+          <p>Upload a course handout, chapter, presentation, or study packet to create a deck.</p>
         </div>
       ) : (
         <div className={styles.list}>
@@ -348,12 +351,14 @@ export function DocumentsScreen({
                   <p className={styles.filename}>{document.originalFilename}</p>
                   <dl className={styles.metrics}>
                     <div>
-                      <dt>File</dt>
-                      <dd>{formatBytes(document.byteSize)}</dd>
+                      <dt>Format</dt>
+                      <dd>
+                        {formatDocumentType(document.sourceFormat)} · {formatBytes(document.byteSize)}
+                      </dd>
                     </div>
                     <div>
-                      <dt>Pages</dt>
-                      <dd>{document.renderedPageCount}/{document.pageCount || "—"} rendered</dd>
+                      <dt>{sourceUnitHeading(document.sourceUnitKind)}</dt>
+                      <dd>{formatSourceUnitMetric(document)}</dd>
                     </div>
                     <div>
                       <dt>Cards</dt>
@@ -387,7 +392,7 @@ export function DocumentsScreen({
                   document.lifecycleState === "ready" ? (
                     <p className={styles.deckNote}>
                       The previous generated deck was deleted. Retry generation to create a new deck
-                      from the retained PDF.
+                      from the retained document.
                     </p>
                   ) : null}
                 </div>
@@ -396,9 +401,9 @@ export function DocumentsScreen({
                     type="button"
                     className="secondary-button"
                     disabled={busy}
-                    onClick={() => void openPdf(document)}
+                    onClick={() => void openSource(document)}
                   >
-                    Open PDF
+                    Open source
                   </button>
                   {document.lifecycleState === "processing" ? (
                     <button
@@ -445,7 +450,7 @@ export function DocumentsScreen({
                       disabled={busy || isUploading}
                       onClick={() => void deleteDocument(document)}
                     >
-                      {deletingDocumentId === document.id ? "Deleting…" : "Delete PDF"}
+                      {deletingDocumentId === document.id ? "Deleting…" : "Delete document"}
                     </button>
                   ) : null}
                 </div>
@@ -583,16 +588,20 @@ function generationStage(
   document: DocumentSummary,
   progress: DocumentGenerationProgress | null,
 ): { title: string; detail: string } {
-  if (document.pageCount === 0) {
-    return { title: "Extracting document text", detail: "Reading the PDF and building semantic source chunks." };
-  }
-  if (document.renderedPageCount < document.pageCount) {
+  if (document.sourceUnitCount === 0) {
     return {
-      title: `Rendering pages ${document.renderedPageCount}/${document.pageCount}`,
+      title: "Extracting document content",
+      detail: `Reading the ${formatDocumentType(document.sourceFormat)} source and building semantic chunks.`,
+    };
+  }
+  if (isPdf(document) && document.renderedPageCount < document.sourceUnitCount) {
+    return {
+      title: `Rendering pages ${document.renderedPageCount}/${document.sourceUnitCount}`,
       detail: "Preparing local page derivatives for document analysis.",
     };
   }
   if (
+    isPdf(document) &&
     document.extractionMode === "ocr_fallback" &&
     document.ocrPageCount > document.ocrCompletedPageCount
   ) {
@@ -601,12 +610,18 @@ function generationStage(
       detail: "Recovering text from pages whose native PDF text layer was unreliable.",
     };
   }
-  if (document.outlineWindowCount > 0 && document.outlineCompletedWindowCount < document.outlineWindowCount) {
+  if (
+    document.outlineWindowCount > 0 &&
+    document.outlineCompletedWindowCount < document.outlineWindowCount
+  ) {
     return {
       title: "Building outline",
       detail:
-        activeWindowDetail(progress, document.outlineWindowCount) ??
-        "Analyzing bounded source windows for document structure.",
+        activeWindowDetail(
+          progress,
+          document.outlineWindowCount,
+          document.sourceUnitKind,
+        ) ?? "Analyzing bounded source windows for document structure.",
     };
   }
   if (
@@ -616,8 +631,11 @@ function generationStage(
     return {
       title: "Generating cards",
       detail:
-        activeWindowDetail(progress, document.generationWindowCount) ??
-        "Generating study cards from the current bounded source window.",
+        activeWindowDetail(
+          progress,
+          document.generationWindowCount,
+          document.sourceUnitKind,
+        ) ?? "Generating study cards from the current bounded source window.",
     };
   }
   if (progress?.phase === "curating") {
@@ -635,26 +653,31 @@ function generationStage(
 function activeWindowDetail(
   progress: DocumentGenerationProgress | null,
   totalWindows: number,
+  sourceUnitKind: string,
 ): string | null {
   const start = progress?.currentWindow;
   if (start === null || start === undefined) return null;
   const end = progress?.currentWindowEnd ?? start;
-  const pages =
+  const sourceUnits =
     progress?.currentPageStart !== null && progress?.currentPageStart !== undefined
-      ? ` · pages ${progress.currentPageStart}–${progress.currentPageEnd ?? progress.currentPageStart}`
+      ? ` · ${sourceUnitPluralLabel(sourceUnitKind)} ${progress.currentPageStart}–${progress.currentPageEnd ?? progress.currentPageStart}`
       : "";
   if (end > start) {
-    return `Active windows ${start}–${end} of ${totalWindows}${pages}.`;
+    return `Active windows ${start}–${end} of ${totalWindows}${sourceUnits}.`;
   }
-  return `Window ${start} of ${totalWindows}${pages}.`;
+  return `Window ${start} of ${totalWindows}${sourceUnits}.`;
 }
 
 function generationPercent(
   document: DocumentSummary,
   progress: DocumentGenerationProgress | null,
 ): number | null {
-  if (document.pageCount > 0 && document.renderedPageCount < document.pageCount) {
-    return Math.round((document.renderedPageCount / document.pageCount) * 20);
+  if (
+    isPdf(document) &&
+    document.sourceUnitCount > 0 &&
+    document.renderedPageCount < document.sourceUnitCount
+  ) {
+    return Math.round((document.renderedPageCount / document.sourceUnitCount) * 20);
   }
   const totalWindows = document.outlineWindowCount + document.generationWindowCount;
   if (totalWindows > 0) {
@@ -667,6 +690,7 @@ function generationPercent(
 
 function hasCompletedOcrRecovery(document: DocumentSummary): boolean {
   return (
+    isPdf(document) &&
     document.extractionMode === "ocr_fallback" &&
     document.ocrPageCount > 0 &&
     document.ocrCompletedPageCount === document.ocrPageCount &&
@@ -717,8 +741,76 @@ function processingPhaseLabel(
 ): string {
   if (canceling) return "Stopping";
   if (document.generatedDeckId !== null) return "Generating additional cards";
-  const stage = generationStage(document, progress);
-  return stage.title;
+  return generationStage(document, progress).title;
+}
+
+function isPdf(document: DocumentSummary): boolean {
+  return document.sourceFormat === "pdf";
+}
+
+function formatDocumentType(sourceFormat: string): string {
+  switch (sourceFormat) {
+    case "pdf":
+      return "PDF";
+    case "doc":
+    case "docx":
+      return "Word";
+    case "ppt":
+    case "pptx":
+      return "PowerPoint";
+    case "odt":
+      return "OpenDocument text";
+    case "odp":
+      return "OpenDocument presentation";
+    case "rtf":
+      return "RTF";
+    case "epub":
+      return "EPUB";
+    case "excel":
+    case "xls":
+    case "xlsx":
+      return "Excel";
+    case "ods":
+      return "OpenDocument spreadsheet";
+    case "csv":
+      return "CSV";
+    default:
+      return sourceFormat || "Document";
+  }
+}
+
+function sourceUnitHeading(sourceUnitKind: string): string {
+  const plural = sourceUnitPluralLabel(sourceUnitKind);
+  return plural.charAt(0).toUpperCase() + plural.slice(1);
+}
+
+function sourceUnitPluralLabel(sourceUnitKind: string): string {
+  switch (sourceUnitKind) {
+    case "page":
+      return "pages";
+    case "slide":
+      return "slides";
+    case "chapter":
+      return "chapters";
+    case "section":
+      return "sections";
+    case "segment":
+      return "segments";
+    case "image":
+      return "images";
+    case "time_segment":
+      return "time segments";
+    default:
+      return "source units";
+  }
+}
+
+function formatSourceUnitMetric(document: DocumentSummary): string {
+  if (document.sourceUnitCount <= 0) return "—";
+  if (isPdf(document)) {
+    return `${document.renderedPageCount}/${document.sourceUnitCount} rendered`;
+  }
+  return document.sourceUnitCount.toLocaleString();
 }
 
 function formatBytes(bytes: number): string {

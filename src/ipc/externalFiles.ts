@@ -4,6 +4,7 @@ import { createOperationId } from "./common";
 export type ExternalImportPurpose =
   | "image"
   | "pdf_document"
+  | "document"
   | "study_content"
   | "library_backup";
 
@@ -13,6 +14,17 @@ export type ExternalFileKind =
   | "gif"
   | "webp"
   | "pdf"
+  | "doc"
+  | "docx"
+  | "ppt"
+  | "pptx"
+  | "odt"
+  | "odp"
+  | "rtf"
+  | "epub"
+  | "excel"
+  | "ods"
+  | "csv"
   | "studydeck"
   | "generated_json"
   | "ostudybackup";

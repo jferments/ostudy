@@ -31,6 +31,7 @@ const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 pub enum ExternalImportPurpose {
     Image,
     PdfDocument,
+    Document,
     StudyContent,
     LibraryBackup,
 }
@@ -40,6 +41,7 @@ impl ExternalImportPurpose {
         match self {
             Self::Image => "image",
             Self::PdfDocument => "pdf_document",
+            Self::Document => "document",
             Self::StudyContent => "study_content",
             Self::LibraryBackup => "library_backup",
         }
@@ -54,6 +56,17 @@ pub enum ExternalFileKind {
     Gif,
     Webp,
     Pdf,
+    Doc,
+    Docx,
+    Ppt,
+    Pptx,
+    Odt,
+    Odp,
+    Rtf,
+    Epub,
+    Excel,
+    Ods,
+    Csv,
     Studydeck,
     GeneratedJson,
     Ostudybackup,
@@ -67,32 +80,91 @@ impl ExternalFileKind {
             Self::Gif => "gif",
             Self::Webp => "webp",
             Self::Pdf => "pdf",
+            Self::Doc => "doc",
+            Self::Docx => "docx",
+            Self::Ppt => "ppt",
+            Self::Pptx => "pptx",
+            Self::Odt => "odt",
+            Self::Odp => "odp",
+            Self::Rtf => "rtf",
+            Self::Epub => "epub",
+            Self::Excel => "excel",
+            Self::Ods => "ods",
+            Self::Csv => "csv",
             Self::Studydeck => "studydeck",
             Self::GeneratedJson => "generated_json",
             Self::Ostudybackup => "ostudybackup",
         }
     }
 
-    fn extension(self) -> &'static str {
+    pub(crate) fn extension(self) -> &'static str {
         match self {
             Self::Png => "png",
             Self::Jpeg => "jpg",
             Self::Gif => "gif",
             Self::Webp => "webp",
             Self::Pdf => "pdf",
+            Self::Doc => "doc",
+            Self::Docx => "docx",
+            Self::Ppt => "ppt",
+            Self::Pptx => "pptx",
+            Self::Odt => "odt",
+            Self::Odp => "odp",
+            Self::Rtf => "rtf",
+            Self::Epub => "epub",
+            Self::Excel => "xlsx",
+            Self::Ods => "ods",
+            Self::Csv => "csv",
             Self::Studydeck => "studydeck",
             Self::GeneratedJson => "json",
             Self::Ostudybackup => "ostudybackup",
         }
     }
 
-    fn parse(value: &str) -> Result<Self, CommandError> {
+    pub(crate) fn media_type(self) -> &'static str {
+        match self {
+            Self::Png => "image/png",
+            Self::Jpeg => "image/jpeg",
+            Self::Gif => "image/gif",
+            Self::Webp => "image/webp",
+            Self::Pdf => "application/pdf",
+            Self::Doc => "application/msword",
+            Self::Docx => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            Self::Ppt => "application/vnd.ms-powerpoint",
+            Self::Pptx => {
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            }
+            Self::Odt => "application/vnd.oasis.opendocument.text",
+            Self::Odp => "application/vnd.oasis.opendocument.presentation",
+            Self::Rtf => "application/rtf",
+            Self::Epub => "application/epub+zip",
+            Self::Excel => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            Self::Ods => "application/vnd.oasis.opendocument.spreadsheet",
+            Self::Csv => "text/csv",
+            Self::Studydeck => "application/vnd.ostudy.studydeck",
+            Self::GeneratedJson => "application/json",
+            Self::Ostudybackup => "application/vnd.ostudy.backup",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, CommandError> {
         match value {
             "png" => Ok(Self::Png),
             "jpeg" => Ok(Self::Jpeg),
             "gif" => Ok(Self::Gif),
             "webp" => Ok(Self::Webp),
             "pdf" => Ok(Self::Pdf),
+            "doc" => Ok(Self::Doc),
+            "docx" => Ok(Self::Docx),
+            "ppt" => Ok(Self::Ppt),
+            "pptx" => Ok(Self::Pptx),
+            "odt" => Ok(Self::Odt),
+            "odp" => Ok(Self::Odp),
+            "rtf" => Ok(Self::Rtf),
+            "epub" => Ok(Self::Epub),
+            "excel" => Ok(Self::Excel),
+            "ods" => Ok(Self::Ods),
+            "csv" => Ok(Self::Csv),
             "studydeck" => Ok(Self::Studydeck),
             "generated_json" => Ok(Self::GeneratedJson),
             "ostudybackup" => Ok(Self::Ostudybackup),

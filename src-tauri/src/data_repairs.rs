@@ -14,6 +14,14 @@ pub enum RepairPhase {
     AfterMigration(i64),
 }
 
+impl RepairPhase {
+    fn is_satisfied_by(self, current: Self) -> bool {
+        match (self, current) {
+            (Self::AfterMigration(required), Self::AfterMigration(applied)) => required <= applied,
+        }
+    }
+}
+
 struct DataRepair {
     version: i64,
     name: &'static str,
@@ -52,7 +60,10 @@ pub(crate) fn apply_required_repairs(
     phase: RepairPhase,
 ) -> Result<(), String> {
     ensure_ledger_exists(connection)?;
-    for repair in REPAIRS.iter().filter(|repair| repair.phase == phase) {
+    for repair in REPAIRS
+        .iter()
+        .filter(|repair| repair.phase.is_satisfied_by(phase))
+    {
         verify_repair_definition(repair)?;
         let existing = recorded_repair(connection, repair.version)?;
         if let Some((name, checksum)) = existing {
@@ -380,6 +391,12 @@ mod tests {
         for repair in REPAIRS {
             verify_repair_definition(repair).expect("repair checksum should match its contract");
         }
+    }
+
+    #[test]
+    fn later_migration_phases_include_prerequisite_repairs() {
+        assert!(RepairPhase::AfterMigration(2).is_satisfied_by(RepairPhase::AfterMigration(3)));
+        assert!(!RepairPhase::AfterMigration(3).is_satisfied_by(RepairPhase::AfterMigration(2)));
     }
 
     #[test]
