@@ -174,8 +174,8 @@ pub(crate) fn detect_image_bytes(
     if bytes.starts_with(&[0xd7, 0xcd, 0xc6, 0x9a])
         || (bytes.len() >= 6
             && matches!(&bytes[..2], [1, 0] | [2, 0])
-            && &bytes[2..4] == [9, 0]
-            && &bytes[4..6] == [0, 3])
+            && bytes[2..4] == [9, 0]
+            && bytes[4..6] == [0, 3])
     {
         return Ok(("image/wmf", "wmf"));
     }
