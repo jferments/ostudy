@@ -168,10 +168,7 @@ pub(crate) fn detect_image_bytes(
     if bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*") {
         return Ok(("image/tiff", "tif"));
     }
-    if bytes.len() >= 44
-        && bytes.starts_with(&[1, 0, 0, 0])
-        && &bytes[40..44] == b" EMF"
-    {
+    if bytes.len() >= 44 && bytes.starts_with(&[1, 0, 0, 0]) && &bytes[40..44] == b" EMF" {
         return Ok(("image/emf", "emf"));
     }
     if bytes.starts_with(&[0xd7, 0xcd, 0xc6, 0x9a])
