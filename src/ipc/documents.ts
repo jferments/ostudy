@@ -82,7 +82,7 @@ export interface AdditionalDocumentGenerationResult {
   skippedDuplicateCount: number;
 }
 
-export interface DeletePdfDocumentResult {
+export interface DeleteDocumentResult {
   documentId: string;
   preservedDeckCitationCount: number;
 }
@@ -109,27 +109,25 @@ export async function importDocument(stagedFileId: string): Promise<ImportedDocu
   });
 }
 
-export async function importPdfAndGenerateFlashcards(
+export async function importDocumentAndGenerateFlashcards(
   stagedFileId: string,
 ): Promise<DocumentGenerationResult> {
   // Establish a durable document identity before the long-running provider
   // request begins. That lets Documents expose an exact Stop action while the
   // generation command remains in flight.
-  const imported = await invoke<ImportedDocument>("import_pdf_document", {
-    input: { stagedFileId },
-  });
-  return retryPdfFlashcardGeneration(imported.documentId);
+  const imported = await importDocument(stagedFileId);
+  return retryDocumentFlashcardGeneration(imported.documentId);
 }
 
-export async function retryPdfFlashcardGeneration(
+export async function retryDocumentFlashcardGeneration(
   documentId: string,
 ): Promise<DocumentGenerationResult> {
-  return invoke<DocumentGenerationResult>("run_pdf_flashcard_generation", {
+  return invoke<DocumentGenerationResult>("run_document_flashcard_generation", {
     input: { documentId },
   });
 }
 
-export async function generateMorePdfFlashcards(
+export async function generateMoreDocumentFlashcards(
   documentId: string,
 ): Promise<AdditionalDocumentGenerationResult> {
   return invoke<AdditionalDocumentGenerationResult>("generate_more_pdf_flashcards", {
@@ -137,19 +135,19 @@ export async function generateMorePdfFlashcards(
   });
 }
 
-export async function cancelPdfFlashcardGeneration(documentId: string): Promise<void> {
-  await invoke("cancel_pdf_flashcard_generation", { documentId });
+export async function cancelDocumentFlashcardGeneration(documentId: string): Promise<void> {
+  await invoke("cancel_document_flashcard_generation", { documentId });
 }
 
 export async function openDocumentSource(documentId: string): Promise<void> {
   await invoke("open_document_source", { documentId });
 }
 
-export async function deletePdfDocument(
+export async function deleteDocument(
   documentId: string,
   revision: number,
-): Promise<DeletePdfDocumentResult> {
-  return invoke<DeletePdfDocumentResult>("delete_pdf_document", {
+): Promise<DeleteDocumentResult> {
+  return invoke<DeleteDocumentResult>("delete_document", {
     input: { documentId, revision },
   });
 }
@@ -163,3 +161,12 @@ export async function setDocumentArchived(
     input: { documentId, revision, archived },
   });
 }
+
+// Temporary source-compatible aliases while the Documents screen and its tests
+// move from PDF-specific names to the format-neutral API above.
+export const importPdfAndGenerateFlashcards = importDocumentAndGenerateFlashcards;
+export const retryPdfFlashcardGeneration = retryDocumentFlashcardGeneration;
+export const generateMorePdfFlashcards = generateMoreDocumentFlashcards;
+export const cancelPdfFlashcardGeneration = cancelDocumentFlashcardGeneration;
+export const deletePdfDocument = deleteDocument;
+export type DeletePdfDocumentResult = DeleteDocumentResult;

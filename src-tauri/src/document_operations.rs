@@ -1,19 +1,17 @@
-//! Narrow document lifecycle commands layered around the Stage 4 document core.
+//! Format-neutral document lifecycle commands layered around the document core.
 //!
-//! This module owns the current PDF-specific acquisition/lifecycle edge: user-
-//! controlled import start, cancellable generation, operating-system opening,
-//! and permanent managed-PDF deletion. Once a PDF is acquired, format-neutral
-//! document services own extraction planning, AI execution, and persistence.
+//! Platform staging and managed import live in `document_import`. This module
+//! owns cancellable generation, operating-system opening, permanent managed
+//! document deletion, and deletion-trash reconciliation. Document intelligence
+//! remains downstream of the canonical adapter boundary.
 
 use std::{
-    fs::{self, File, OpenOptions},
-    io::{Read, Seek, Write},
+    fs::{self, File},
     path::Path,
 };
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 
@@ -21,83 +19,37 @@ use crate::{
     ai::AiRuntimeState,
     database::Database,
     document_domain::{DocumentFormat, SourceUnitKind},
-    documents::{
-        self, DocumentGenerationResultDto, ImportPdfDocumentInput, RetryPdfGenerationInput,
-    },
+    documents::{self, DocumentGenerationResultDto, RetryPdfGenerationInput},
     error::CommandError,
-    external_files::{self, ExternalFileKind, ExternalImportPurpose},
     paths::AppPaths,
     pdf_render_backend::PdfRenderRuntime,
     task_cancellation::{cancel_document_task, is_document_task_active, run_document_task},
-    util::{generate_id, unix_time_millis, validate_entity_id},
+    util::{unix_time_millis, validate_entity_id},
 };
 
-const MAX_PDF_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_DECK_DESCRIPTION_CHARS: usize = 2_000;
 const CANCELED_MESSAGE: &str =
-    "PDF flashcard generation was stopped. The PDF remains in Documents and can be retried.";
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportedPdfDocumentDto {
-    pub document_id: String,
-}
+    "Flashcard generation was stopped. The document remains in Documents and can be retried.";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct DeletePdfDocumentInput {
+pub struct DeleteDocumentInput {
     pub document_id: String,
     pub revision: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DeletePdfDocumentResultDto {
+pub struct DeleteDocumentResultDto {
     pub document_id: String,
     pub preserved_deck_citation_count: i64,
 }
 
-/// Copy a selected PDF into immutable managed storage without starting provider
-/// traffic. The frontend immediately follows this with the cancellable retry
-/// command, giving the task a stable document identity before inference.
+/// Run the format-neutral document pipeline inside a task-local cancellation
+/// scope. Provider POSTs made by the pipeline are therefore observable and can
+/// be stopped through the matching document task identity.
 #[tauri::command]
-pub fn import_pdf_document(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    input: ImportPdfDocumentInput,
-) -> Result<ImportedPdfDocumentDto, CommandError> {
-    validate_entity_id(&input.staged_file_id, "staged PDF")?;
-    if let Some(result) = database.with_connection(|connection| {
-        external_files::consumed_import_result::<ImportedPdfDocumentDto>(
-            connection,
-            &input.staged_file_id,
-        )
-    })? {
-        return Ok(result);
-    }
-    let staged = database.with_connection(|connection| {
-        external_files::resolve_staged_import(
-            connection,
-            paths.inner(),
-            &input.staged_file_id,
-            ExternalImportPurpose::PdfDocument,
-            &[ExternalFileKind::Pdf],
-        )
-    })?;
-    import_managed_pdf(
-        database.inner(),
-        paths.inner(),
-        &staged.path,
-        &staged.display_name,
-        &input.staged_file_id,
-    )
-}
-
-/// Run the existing document pipeline inside a task-local cancellation scope.
-/// Every provider POST made by the pipeline is therefore upgraded by the native
-/// gateway to an observable SSE stream with initial-activity timeout semantics.
-#[tauri::command]
-pub async fn run_pdf_flashcard_generation(
+pub async fn run_document_flashcard_generation(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     runtime: State<'_, AiRuntimeState>,
@@ -124,7 +76,7 @@ pub async fn run_pdf_flashcard_generation(
 }
 
 #[tauri::command]
-pub fn cancel_pdf_flashcard_generation(document_id: String) -> Result<(), CommandError> {
+pub fn cancel_document_flashcard_generation(document_id: String) -> Result<(), CommandError> {
     validate_entity_id(&document_id, "document")?;
     cancel_document_task(&document_id)
 }
@@ -144,21 +96,21 @@ pub fn open_document_source(
         .map_err(|error| {
             CommandError::new(
                 "document_open_failed",
-                format!("The operating system could not open the managed PDF: {error}"),
+                format!("The operating system could not open the managed document: {error}"),
             )
         })
 }
 
-/// Permanently delete one managed PDF and all rebuildable document derivatives.
-/// Generated cards/decks remain. Before the document ledger is removed, every
-/// generated deck receives (or retains) a human-readable source citation so no
-/// surviving study content depends on the deleted filesystem path.
+/// Permanently delete one managed source and all rebuildable document
+/// derivatives. Generated cards/decks remain. Before the document ledger is
+/// removed, every surviving generated deck receives (or retains) a textual
+/// source citation so it never depends on the deleted filesystem path.
 #[tauri::command]
-pub fn delete_pdf_document(
+pub fn delete_document(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
-    input: DeletePdfDocumentInput,
-) -> Result<DeletePdfDocumentResultDto, CommandError> {
+    input: DeleteDocumentInput,
+) -> Result<DeleteDocumentResultDto, CommandError> {
     validate_entity_id(&input.document_id, "document")?;
     if input.revision < 1 {
         return Err(CommandError::new(
@@ -169,25 +121,27 @@ pub fn delete_pdf_document(
     if is_document_task_active(&input.document_id) {
         return Err(CommandError::new(
             "document_generation_running",
-            "Stop flashcard generation before deleting this PDF.",
+            "Stop flashcard generation before deleting this document.",
         ));
     }
 
     let stored = database.with_connection(|connection| {
         connection
             .query_row(
-                "SELECT title, original_filename, page_count, source_relative_path,
-                        lifecycle_state, revision
+                "SELECT title, original_filename, source_format, source_unit_kind,
+                        source_unit_count, source_relative_path, lifecycle_state, revision
                  FROM documents WHERE id = ?1",
                 [input.document_id.as_str()],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
-                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(2)?,
                         row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                        row.get::<_, i64>(5)?,
+                        row.get::<_, i64>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, i64>(7)?,
                     ))
                 },
             )
@@ -196,12 +150,20 @@ pub fn delete_pdf_document(
             .ok_or_else(|| {
                 CommandError::new(
                     "document_not_found",
-                    "That PDF is no longer in the document library.",
+                    "That document is no longer in the document library.",
                 )
             })
     })?;
-    let (title, original_filename, page_count, source_relative_path, lifecycle_state, revision) =
-        stored;
+    let (
+        title,
+        original_filename,
+        source_format,
+        source_unit_kind,
+        source_unit_count,
+        source_relative_path,
+        lifecycle_state,
+        revision,
+    ) = stored;
     if revision != input.revision {
         return Err(CommandError::new(
             "document_changed",
@@ -211,15 +173,20 @@ pub fn delete_pdf_document(
     if lifecycle_state == "processing" {
         return Err(CommandError::new(
             "document_generation_running",
-            "Stop flashcard generation before deleting this PDF.",
+            "Stop flashcard generation before deleting this document.",
         ));
     }
 
-    let expected_source = AppPaths::document_source_relative_path(&input.document_id);
+    let format = DocumentFormat::from_db(&source_format)?;
+    let unit_kind = SourceUnitKind::from_db(&source_unit_kind)?;
+    let expected_source = AppPaths::document_source_relative_path_with_extension(
+        &input.document_id,
+        format.default_extension(),
+    );
     if source_relative_path != expected_source {
         return Err(CommandError::new(
             "invalid_document_path",
-            "The managed PDF path does not match its document identity.",
+            "The managed source path does not match its document identity.",
         ));
     }
     let source_path = paths.resolve_relative(&source_relative_path);
@@ -241,7 +208,13 @@ pub fn delete_pdf_document(
         false
     };
 
-    let citation = deleted_pdf_citation(&title, &original_filename, page_count);
+    let citation = deleted_document_citation(
+        &title,
+        &original_filename,
+        format,
+        unit_kind,
+        source_unit_count,
+    );
     let transaction_result = database.with_connection(|connection| {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -257,7 +230,7 @@ pub fn delete_pdf_document(
         let Some((current_state, current_revision)) = current else {
             return Err(CommandError::new(
                 "document_not_found",
-                "That PDF is no longer in the document library.",
+                "That document is no longer in the document library.",
             ));
         };
         if current_revision != input.revision || current_state == "processing" {
@@ -271,8 +244,12 @@ pub fn delete_pdf_document(
 
         let mut citation_count = 0_i64;
         for (deck_id, description) in generated_decks {
-            let preserved =
-                preserve_deleted_pdf_citation(&description, &citation, &title, &original_filename)?;
+            let preserved = preserve_deleted_document_citation(
+                &description,
+                &citation,
+                &title,
+                &original_filename,
+            )?;
             if preserved != description {
                 transaction
                     .execute(
@@ -323,7 +300,7 @@ pub fn delete_pdf_document(
         let _ = fs::remove_dir_all(&trash_directory);
         let _ = sync_directory(&trash_root);
     }
-    Ok(DeletePdfDocumentResultDto {
+    Ok(DeleteDocumentResultDto {
         document_id: input.document_id,
         preserved_deck_citation_count: citation_count,
     })
@@ -413,136 +390,36 @@ fn record_canceled_generation(database: &Database, document_id: &str) {
     });
 }
 
-fn import_managed_pdf(
-    database: &Database,
-    paths: &AppPaths,
-    source_path: &Path,
-    source_display_name: &str,
-    staged_file_id: &str,
-) -> Result<ImportedPdfDocumentDto, CommandError> {
-    let source = fs::canonicalize(source_path).map_err(CommandError::io)?;
-    if !source.is_file() {
-        return Err(CommandError::new("invalid_pdf", "Select a PDF file."));
-    }
-    let metadata = fs::metadata(&source).map_err(CommandError::io)?;
-    if metadata.len() == 0 || metadata.len() > MAX_PDF_BYTES {
-        return Err(CommandError::new(
-            "invalid_pdf_size",
-            "The PDF is empty or exceeds the 512 MB document limit.",
-        ));
-    }
-    let original_filename = validate_pdf_filename(source_display_name)?;
-    let title = validate_document_title(
-        Path::new(&original_filename)
-            .file_stem()
-            .and_then(|value| value.to_str())
-            .unwrap_or("Imported PDF"),
-    )?;
-    let document_id = database.with_connection(|connection| generate_id(connection))?;
-    let staged_relative = AppPaths::staged_document_relative_path(&document_id);
-    let staged_path = paths.resolve_relative(&staged_relative);
-    let (byte_size, sha256) = copy_pdf_with_hash(&source, &staged_path)?;
-
-    let duplicate = database.with_connection(|connection| {
-        connection
-            .query_row(
-                "SELECT id FROM documents WHERE sha256 = ?1 LIMIT 1",
-                [sha256.as_str()],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(CommandError::database)
-    })?;
-    if duplicate.is_some() {
-        let _ = fs::remove_file(&staged_path);
-        return Err(CommandError::new(
-            "document_already_imported",
-            "This exact PDF is already in the document library.",
-        ));
-    }
-
-    let source_relative = AppPaths::document_source_relative_path(&document_id);
-    let destination = paths.resolve_relative(&source_relative);
-    let directory = destination.parent().ok_or_else(|| {
-        CommandError::new(
-            "invalid_document_path",
-            "The managed document path is invalid.",
-        )
-    })?;
-    fs::create_dir_all(directory).map_err(CommandError::io)?;
-    fs::rename(&staged_path, &destination).map_err(CommandError::io)?;
-    sync_file(&destination)?;
-    sync_directory(directory)?;
-
-    let now = unix_time_millis()?;
-    let result = ImportedPdfDocumentDto {
-        document_id: document_id.clone(),
-    };
-    let insert_result = database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "INSERT INTO documents (
-                     id, title, original_filename, mime_type, byte_size, sha256,
-                     source_relative_path, staged_relative_path, lifecycle_state,
-                     source_format, source_unit_kind,
-                     extraction_backend, render_backend, outline_state,
-                     created_at, updated_at, revision
-                 ) VALUES (
-                     ?1, ?2, ?3, 'application/pdf', ?4, ?5,
-                     ?6, NULL, 'processing', ?7, ?8,
-                     'pending', 'pending', 'pending', ?9, ?9, 1
-                 )",
-                params![
-                    document_id,
-                    title,
-                    original_filename,
-                    byte_size,
-                    sha256,
-                    source_relative,
-                    DocumentFormat::Pdf.as_str(),
-                    SourceUnitKind::Page.as_str(),
-                    now,
-                ],
-            )
-            .map_err(|error| {
-                CommandError::database_at(
-                    "document_import_insert_failed",
-                    format!("document={document_id} format=pdf"),
-                    error,
-                )
-            })?;
-        external_files::mark_import_consumed(&transaction, staged_file_id, &result, now)?;
-        transaction.commit().map_err(CommandError::database)
-    });
-    if let Err(error) = insert_result {
-        let _ = fs::remove_dir_all(directory);
-        return Err(error);
-    }
-    Ok(result)
-}
-
-fn deleted_pdf_citation(title: &str, original_filename: &str, page_count: i64) -> String {
-    let pages = if page_count > 0 {
-        format!(
-            ", {page_count} PDF page{}",
-            if page_count == 1 { "" } else { "s" }
-        )
+fn deleted_document_citation(
+    title: &str,
+    original_filename: &str,
+    format: DocumentFormat,
+    unit_kind: SourceUnitKind,
+    unit_count: i64,
+) -> String {
+    let units = if unit_count > 0 {
+        let label = if unit_count == 1 {
+            unit_kind.singular_label()
+        } else {
+            unit_kind.plural_label()
+        };
+        format!(", {unit_count} {label}")
     } else {
         String::new()
     };
-    format!("Source PDF (deleted from Documents): {title} ({original_filename}){pages}.")
+    format!(
+        "Source document (deleted from Documents): {title} ({original_filename}; {}{units}).",
+        format.display_label()
+    )
 }
 
-fn preserve_deleted_pdf_citation(
+fn preserve_deleted_document_citation(
     description: &str,
     citation: &str,
     title: &str,
     original_filename: &str,
 ) -> Result<String, CommandError> {
-    if description.contains("Source PDF (deleted from Documents):") {
+    if description.contains("Source document (deleted from Documents):") {
         return Ok(description.to_string());
     }
     let automatic = format!("AI-generated flashcards from {original_filename}.");
@@ -571,89 +448,8 @@ fn preserve_deleted_pdf_citation(
     }
     Err(CommandError::new(
         "document_citation_preservation_failed",
-        "The generated deck description is too long to preserve a text citation for this PDF. Shorten that deck description, then delete the PDF again.",
+        "The generated deck description is too long to preserve a text citation for this document. Shorten that deck description, then delete the document again.",
     ))
-}
-
-fn copy_pdf_with_hash(source: &Path, destination: &Path) -> Result<(i64, String), CommandError> {
-    let mut input = File::open(source).map_err(CommandError::io)?;
-    let mut signature = [0_u8; 5];
-    input.read_exact(&mut signature).map_err(CommandError::io)?;
-    if &signature != b"%PDF-" {
-        return Err(CommandError::new(
-            "invalid_pdf",
-            "The selected file does not have a valid PDF signature.",
-        ));
-    }
-    input.rewind().map_err(CommandError::io)?;
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent).map_err(CommandError::io)?;
-    }
-    let mut output = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(destination)
-        .map_err(CommandError::io)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0_u8; 1024 * 1024];
-    let mut total = 0_u64;
-    loop {
-        let read = input.read(&mut buffer).map_err(CommandError::io)?;
-        if read == 0 {
-            break;
-        }
-        total = total.saturating_add(read as u64);
-        if total > MAX_PDF_BYTES {
-            let _ = fs::remove_file(destination);
-            return Err(CommandError::new(
-                "invalid_pdf_size",
-                "The PDF exceeds the 512 MB document limit.",
-            ));
-        }
-        hasher.update(&buffer[..read]);
-        output
-            .write_all(&buffer[..read])
-            .map_err(CommandError::io)?;
-    }
-    output.sync_all().map_err(CommandError::io)?;
-    Ok((
-        i64::try_from(total).unwrap_or(i64::MAX),
-        format!("{:x}", hasher.finalize()),
-    ))
-}
-
-fn validate_pdf_filename(value: &str) -> Result<String, CommandError> {
-    let trimmed = value.trim();
-    let valid = !trimmed.is_empty()
-        && trimmed.chars().count() <= 255
-        && !trimmed
-            .chars()
-            .any(|character| character.is_control() || matches!(character, '/' | '\\' | '\0'))
-        && trimmed.to_ascii_lowercase().ends_with(".pdf");
-    if !valid {
-        return Err(CommandError::new(
-            "invalid_pdf_name",
-            "Select a PDF with a valid filename.",
-        ));
-    }
-    Ok(trimmed.to_string())
-}
-
-fn validate_document_title(value: &str) -> Result<String, CommandError> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() || trimmed.chars().count() > 200 {
-        return Err(CommandError::new(
-            "invalid_document_title",
-            "The PDF title must contain 1 to 200 characters.",
-        ));
-    }
-    Ok(trimmed.to_string())
-}
-
-fn sync_file(path: &Path) -> Result<(), CommandError> {
-    File::open(path)
-        .and_then(|file| file.sync_all())
-        .map_err(CommandError::io)
 }
 
 #[cfg(unix)]
@@ -675,23 +471,44 @@ mod tests {
     #[test]
     fn deletion_citation_replaces_the_generated_file_reference() {
         let description =
-            "AI-generated flashcards from chapter.pdf. Edit or delete these cards through the normal deck tools.";
-        let citation = deleted_pdf_citation("Chapter", "chapter.pdf", 10);
-        let preserved =
-            preserve_deleted_pdf_citation(description, &citation, "Chapter", "chapter.pdf")
-                .expect("automatic citation should fit");
-        assert!(preserved
-            .contains("Source PDF (deleted from Documents): Chapter (chapter.pdf), 10 PDF pages."));
-        assert!(!preserved.contains("AI-generated flashcards from chapter.pdf."));
+            "AI-generated flashcards from chapter.docx. Edit or delete these cards through the normal deck tools.";
+        let citation = deleted_document_citation(
+            "Chapter",
+            "chapter.docx",
+            DocumentFormat::Docx,
+            SourceUnitKind::Section,
+            10,
+        );
+        let preserved = preserve_deleted_document_citation(
+            description,
+            &citation,
+            "Chapter",
+            "chapter.docx",
+        )
+        .expect("automatic citation should fit");
+        assert!(preserved.contains(
+            "Source document (deleted from Documents): Chapter (chapter.docx; Word, 10 sections)."
+        ));
+        assert!(!preserved.contains("AI-generated flashcards from chapter.docx."));
     }
 
     #[test]
     fn deletion_never_truncates_a_user_description_that_already_names_the_source() {
         let description = format!("{} chapter.pdf", "x".repeat(1_980));
-        let citation = deleted_pdf_citation("Chapter", "chapter.pdf", 10);
-        let preserved =
-            preserve_deleted_pdf_citation(&description, &citation, "Chapter", "chapter.pdf")
-                .expect("existing text source reference is sufficient");
+        let citation = deleted_document_citation(
+            "Chapter",
+            "chapter.pdf",
+            DocumentFormat::Pdf,
+            SourceUnitKind::Page,
+            10,
+        );
+        let preserved = preserve_deleted_document_citation(
+            &description,
+            &citation,
+            "Chapter",
+            "chapter.pdf",
+        )
+        .expect("existing text source reference is sufficient");
         assert_eq!(preserved, description);
     }
 

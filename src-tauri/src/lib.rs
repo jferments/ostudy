@@ -143,9 +143,9 @@ pub fn run() {
             window
                 .dialog()
                 .message(
-                    "There is a current PDF processing job underway. If you close ostudy now, the running request will be interrupted and any progress that has not been committed will be lost. Are you sure you want to proceed?",
+                    "There is a current document processing job underway. If you close ostudy now, the running request will be interrupted and any progress that has not been committed will be lost. Are you sure you want to proceed?",
                 )
-                .title("PDF processing is still running")
+                .title("Document processing is still running")
                 .kind(MessageDialogKind::Warning)
                 .buttons(MessageDialogButtons::OkCancelCustom(
                     "Close ostudy".to_string(),
@@ -252,13 +252,12 @@ pub fn run() {
             ai::probes::get_ai_provider_probe_result,
             documents::list_documents,
             document_import::import_document,
-            document_operations::import_pdf_document,
-            document_operations::run_pdf_flashcard_generation,
+            document_operations::run_document_flashcard_generation,
             document_more::generate_more_pdf_flashcards,
-            document_operations::cancel_pdf_flashcard_generation,
+            document_operations::cancel_document_flashcard_generation,
             document_progress::get_document_generation_progress,
             document_operations::open_document_source,
-            document_operations::delete_pdf_document,
+            document_operations::delete_document,
             documents::set_document_archived,
             library_backup_commands::prepare_library_backup_async,
             library_backup_commands::prepare_library_restore_async,
