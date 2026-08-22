@@ -1,11 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import {
   generateDocumentStudyGuide,
   getDocumentStudyGuide,
   getDocumentTopicCardIds,
   getDocumentTopicCardProjection,
+  prepareDocumentStudyGuidePdf,
   saveDocumentStudyGuideOverlay,
   type DocumentStudyGuide,
 } from "../ipc/studyGuides";
@@ -21,7 +23,19 @@ vi.mock("../ipc/studyGuides", async () => {
     getDocumentStudyGuide: vi.fn(),
     getDocumentTopicCardIds: vi.fn(),
     getDocumentTopicCardProjection: vi.fn(),
+    prepareDocumentStudyGuidePdf: vi.fn(),
     saveDocumentStudyGuideOverlay: vi.fn(),
+  };
+});
+
+vi.mock("../ipc/externalFiles", async () => {
+  const actual = await vi.importActual<typeof import("../ipc/externalFiles")>(
+    "../ipc/externalFiles",
+  );
+  return {
+    ...actual,
+    publishPreparedExport: vi.fn(),
+    releasePreparedExport: vi.fn(),
   };
 });
 
@@ -90,6 +104,9 @@ const mockedGenerate = vi.mocked(generateDocumentStudyGuide);
 const mockedProjection = vi.mocked(getDocumentTopicCardProjection);
 const mockedCardIds = vi.mocked(getDocumentTopicCardIds);
 const mockedSaveOverlay = vi.mocked(saveDocumentStudyGuideOverlay);
+const mockedPreparePdf = vi.mocked(prepareDocumentStudyGuidePdf);
+const mockedPublish = vi.mocked(publishPreparedExport);
+const mockedRelease = vi.mocked(releasePreparedExport);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -100,6 +117,7 @@ beforeEach(() => {
     studyableCardCount: 2,
   });
   mockedCardIds.mockResolvedValue(["1".repeat(32), "2".repeat(32)]);
+  mockedRelease.mockResolvedValue(undefined);
 });
 
 describe("StudyGuideDialog", () => {
@@ -125,15 +143,35 @@ describe("StudyGuideDialog", () => {
     expect(showToast).toHaveBeenCalledWith("success", "Study guide created.");
   });
 
-  it("renders structured source-grounded sections and a PDF export action", async () => {
+  it("renders structured source-grounded sections and exports through native prepared files", async () => {
     mockedGetGuide.mockResolvedValue(guide());
-    const print = vi.spyOn(window, "print").mockImplementation(() => undefined);
+    mockedPreparePdf.mockResolvedValue({
+      preparedExport: {
+        id: "8".repeat(32),
+        purpose: "study_guide_pdf",
+        suggestedFilename: "Physiology-study-guide.pdf",
+        mediaType: "application/pdf",
+        byteSize: 2048,
+        sha256: "7".repeat(64),
+        expiresAt: 999999,
+      },
+      guideRevision: 1,
+      sectionCount: 1,
+      annotationCount: 0,
+    });
+    mockedPublish.mockResolvedValue({
+      preparedExportId: "8".repeat(32),
+      displayName: "Physiology-study-guide.pdf",
+      destinationKind: "file",
+      completedAt: 123,
+    });
+    const showToast = vi.fn();
 
     render(
       <StudyGuideDialog
         documentId={documentId}
         documentTitle="Physiology"
-        showToast={vi.fn()}
+        showToast={showToast}
         onClose={vi.fn()}
       />,
     );
@@ -141,8 +179,16 @@ describe("StudyGuideDialog", () => {
     expect(await screen.findByText("Sarcomere stretch changes the force of contraction.")).toBeInTheDocument();
     expect(screen.getByText("Page 2–3")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Export PDF" }));
-    expect(print).toHaveBeenCalledOnce();
-    print.mockRestore();
+
+    await waitFor(() => {
+      expect(mockedPreparePdf).toHaveBeenCalledWith(documentId, true);
+      expect(mockedPublish).toHaveBeenCalledWith("8".repeat(32));
+      expect(mockedRelease).toHaveBeenCalledWith("8".repeat(32));
+    });
+    expect(showToast).toHaveBeenCalledWith(
+      "success",
+      "Exported study guide revision 1 with 1 section.",
+    );
   });
 
   it("saves topic notes independently of the generated guide revision", async () => {
