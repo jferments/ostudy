@@ -8,6 +8,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/versions.env"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/node-toolchain.bash"
 
 if [[ -n "${ANDROID_HOME:-}" ]]; then
   resolved_android_home="$ANDROID_HOME"
@@ -54,6 +56,10 @@ JAVA_HOME="$resolved_java_home"
 export ANDROID_HOME ANDROID_SDK_ROOT NDK_HOME JAVA_HOME
 export OSTUDY_ANDROID_JOBS OSTUDY_GRADLE_WORKERS CARGO_BUILD_JOBS VITEST_MAX_WORKERS
 export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+# Select the exact repository-pinned Node/npm pair only after the Android/JDK
+# PATH has been assembled, so a developer's ~/.local/bin symlink cannot shadow
+# the audited runtime in Android qualification or emulator entrypoints.
+ostudy_activate_node_toolchain
 
 android_write_local_properties() {
   local generated_project="$ROOT_DIR/src-tauri/gen/android"
@@ -81,6 +87,9 @@ android_emit_github_environment() {
     printf '%s\n' "$ANDROID_HOME/platform-tools"
     printf '%s\n' "$ANDROID_HOME/emulator"
     printf '%s\n' "$ANDROID_HOME/cmdline-tools/latest/bin"
+    if [[ -n "${OSTUDY_NODE_TOOLCHAIN_BIN:-}" ]]; then
+      printf '%s\n' "$OSTUDY_NODE_TOOLCHAIN_BIN"
+    fi
     printf '%s\n' "$HOME/.local/bin"
     printf '%s\n' "$HOME/.cargo/bin"
   } >> "$GITHUB_PATH"
