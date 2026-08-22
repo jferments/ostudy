@@ -135,10 +135,10 @@ describe("StudyGuideDialog", () => {
       />,
     );
 
-    expect(await screen.findByText("No study guide yet")).toBeInTheDocument();
+    expect(await screen.findByText("No study guide yet")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Create study guide" }));
 
-    expect(await screen.findByRole("heading", { name: "Preload" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Preload" })).toBeTruthy();
     expect(mockedGenerate).toHaveBeenCalledWith(documentId);
     expect(showToast).toHaveBeenCalledWith("success", "Study guide created.");
   });
@@ -176,8 +176,8 @@ describe("StudyGuideDialog", () => {
       />,
     );
 
-    expect(await screen.findByText("Sarcomere stretch changes the force of contraction.")).toBeInTheDocument();
-    expect(screen.getByText("Page 2–3")).toBeInTheDocument();
+    expect(await screen.findByText("Sarcomere stretch changes the force of contraction.")).toBeTruthy();
+    expect(screen.getByText("Page 2–3")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Export PDF" }));
 
     await waitFor(() => {
@@ -253,6 +253,6 @@ describe("StudyGuideDialog", () => {
         }),
       ),
     );
-    expect(await screen.findByText("Remember the relationship to end-diastolic volume.")).toBeInTheDocument();
+    expect(await screen.findByText("Remember the relationship to end-diastolic volume.")).toBeTruthy();
   });
 });
