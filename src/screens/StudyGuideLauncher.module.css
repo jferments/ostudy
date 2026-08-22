@@ -6,15 +6,16 @@
   }
 
   .error {
-    border: 1px solid var(--ostudy-color-danger-border);
+    border: 1px solid var(--ostudy-color-status-danger);
     border-radius: var(--ostudy-radius-medium);
-    color: var(--ostudy-color-text-danger);
+    background: var(--ostudy-color-status-danger-soft);
+    color: var(--ostudy-color-status-danger);
   }
 
   .empty {
     border: 1px solid var(--ostudy-color-border-subtle);
     border-radius: var(--ostudy-radius-medium);
-    background: var(--ostudy-color-surface-subtle);
+    background: var(--ostudy-color-surface-soft);
   }
 
   .empty h3 {
