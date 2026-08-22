@@ -45,9 +45,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "3fffc105e52e531e6907a480d3479dff02b1426a4f6fa4906253e016c6052ba9",
         sql: include_str!("../migrations/0003_anydoc_document_adapters.sql"),
     },
+    Migration {
+        version: 4,
+        name: "study_guides_and_learning_topics",
+        checksum: "b0ce6fc9cfb1d32954b41526c4c60ab143a4397a9d900de3e34d4da7cf8629dc",
+        sql: include_str!("../migrations/0004_study_guides_and_learning_topics.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 3;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 4;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -408,7 +414,7 @@ mod tests {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/public-baseline-schema.json");
         std::fs::write(path, format!("{output}\n"))
-            .expect("public schema manifest should be written");
+            .expect("public baseline objects should be written");
     }
 
     #[test]
