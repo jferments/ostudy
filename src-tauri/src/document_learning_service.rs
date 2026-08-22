@@ -15,7 +15,7 @@ use crate::{
         ensure_document_learning_plan, DocumentLearningPlan, LearningEvidenceChunk,
     },
     document_learning_plan::learning_plan_input_from_outline,
-    document_semantics::{SemanticChunk},
+    document_semantics::SemanticChunk,
     error::CommandError,
 };
 
