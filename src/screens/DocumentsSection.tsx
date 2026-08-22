@@ -12,6 +12,7 @@ import { Icon } from "../ui/icons/Icon";
 import { Surface } from "../ui/primitives/Surface";
 import { DocumentsDevelopmentStub } from "./DocumentsDevelopmentStub";
 import { DocumentsScreen } from "./DocumentsScreen";
+import { StudyGuideLauncher } from "./StudyGuideLauncher";
 import styles from "./DocumentsSection.module.css";
 
 interface DocumentsSectionProps {
@@ -68,7 +69,7 @@ export function DocumentsSection({ refreshDecks, showToast }: DocumentsSectionPr
       level={2}
       material="translucent"
       className={styles.providerPanel}
-      aria-label="Current Flashcard Generation model"
+      aria-label="Current Flashcard Generation model and document learning tools"
     >
       <span className={styles.icon} aria-hidden="true">
         <Icon name="sparkles" size={21} />
@@ -80,11 +81,14 @@ export function DocumentsSection({ refreshDecks, showToast }: DocumentsSectionPr
           {isLoading
             ? "Reading the current task default"
             : profile
-              ? "Selected in Settings"
-              : "Configure a provider before generating cards"}
+              ? "Used for document flashcards and study guides"
+              : "Configure a provider before generating document learning artifacts"}
         </small>
       </div>
-      <HelpTrigger topicId="documents.provider" label="Help with document AI profiles" />
+      <div className={styles.providerActions}>
+        <StudyGuideLauncher showToast={showToast} />
+        <HelpTrigger topicId="documents.provider" label="Help with document AI profiles" />
+      </div>
     </Surface>
   );
 
