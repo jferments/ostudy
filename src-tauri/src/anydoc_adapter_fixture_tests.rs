@@ -73,7 +73,11 @@ fn temporary_paths(label: &str) -> AppPaths {
     AppPaths::new(root).expect("temporary AnyDoc fixture paths should initialize")
 }
 
-fn managed_source_path(paths: &AppPaths, format: DocumentFormat, bytes: &[u8]) -> std::path::PathBuf {
+fn managed_source_path(
+    paths: &AppPaths,
+    format: DocumentFormat,
+    bytes: &[u8],
+) -> std::path::PathBuf {
     let relative = AppPaths::document_source_relative_path_with_extension(
         DOCUMENT_ID,
         format.default_extension(),
@@ -111,9 +115,9 @@ fn pinned_anydoc_family_fixtures_produce_deterministic_canonical_ingestion() {
             },
         )
         .unwrap_or_else(|error| panic!("{} fixture failed: {}", case.label, error.message));
-        first
-            .validate()
-            .unwrap_or_else(|error| panic!("{} canonical output invalid: {}", case.label, error.message));
+        first.validate().unwrap_or_else(|error| {
+            panic!("{} canonical output invalid: {}", case.label, error.message)
+        });
 
         assert_eq!(first.document.source.format, case.format, "{}", case.label);
         assert_eq!(
@@ -140,7 +144,9 @@ fn pinned_anydoc_family_fixtures_produce_deterministic_canonical_ingestion() {
             MAX_TEST_SOURCE_UNITS,
             |_, _| Ok(()),
         )
-        .unwrap_or_else(|error| panic!("{} second extraction failed: {}", case.label, error.message));
+        .unwrap_or_else(|error| {
+            panic!("{} second extraction failed: {}", case.label, error.message)
+        });
         assert_eq!(
             first, second,
             "{} canonical extraction must be deterministic",
