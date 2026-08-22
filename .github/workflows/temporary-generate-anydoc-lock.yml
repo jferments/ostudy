@@ -1,0 +1,38 @@
+name: Temporary AnyDoc lockfile generation
+
+on:
+  push:
+    branches: [agent/anydoc-document-adapters]
+
+concurrency:
+  group: temporary-anydoc-lock-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  generate-lock:
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact branch head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Expose pinned Rust toolchain
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Resolve the dependency graph without mutating repository history
+        run: cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 > /dev/null
+      - name: Verify AnyDoc is present in the resolved graph
+        run: grep -F 'name = "anydoc"' src-tauri/Cargo.lock
+      - name: Upload generated lockfile
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: anydoc-cargo-lock-${{ github.sha }}
+          path: src-tauri/Cargo.lock
+          if-no-files-found: error
+          retention-days: 1
