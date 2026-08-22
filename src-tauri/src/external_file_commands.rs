@@ -26,7 +26,9 @@ use tauri_plugin_ostudy_platform::OstudyPlatformExt;
 
 #[cfg(target_os = "android")]
 use crate::{
+    anydoc_document_adapter,
     assets::detect_image_bytes,
+    document_domain::DocumentFormat,
     external_files::{ExternalFileKind, ExternalImportPurpose},
 };
 use crate::{
@@ -44,7 +46,7 @@ const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 #[cfg(target_os = "android")]
 const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
 #[cfg(target_os = "android")]
-const MAX_PDF_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_DOCUMENT_BYTES: u64 = 512 * 1024 * 1024;
 #[cfg(target_os = "android")]
 const MAX_STUDY_CONTENT_BYTES: u64 = 640 * 1024 * 1024;
 #[cfg(target_os = "android")]
@@ -173,8 +175,18 @@ pub fn stage_incoming_share(
             .take_incoming_share(input.token.clone())
             .map_err(|error| plugin_error("incoming-share adoption", error))?;
         let source = PathBuf::from(incoming.path);
-        let kind = detect_kind(&source, ExternalImportPurpose::StudyContent)
-            .or_else(|_| detect_kind(&source, ExternalImportPurpose::LibraryBackup))?;
+        let kind = detect_kind(
+            &source,
+            ExternalImportPurpose::StudyContent,
+            &incoming.display_name,
+        )
+        .or_else(|_| {
+            detect_kind(
+                &source,
+                ExternalImportPurpose::LibraryBackup,
+                &incoming.display_name,
+            )
+        })?;
         let purpose = match kind {
             ExternalFileKind::Ostudybackup => ExternalImportPurpose::LibraryBackup,
             ExternalFileKind::Studydeck | ExternalFileKind::GeneratedJson => {
@@ -259,7 +271,7 @@ fn stage_private_file(
     remove_file_if_exists(&partial_path)?;
     copy_bounded(source, &partial_path, maximum)?;
     let (byte_size, sha256) = hash_bounded_file(&partial_path, maximum)?;
-    let detected_kind = detect_kind(&partial_path, purpose)?;
+    let detected_kind = detect_kind(&partial_path, purpose, &display_name)?;
     commit_staged_file(
         database,
         paths,
@@ -287,7 +299,7 @@ fn commit_staged_file(
     partial_path: &Path,
 ) -> Result<StagedExternalFileDto, CommandError> {
     let relative_path =
-        AppPaths::staged_import_relative_path(operation_id, extension(detected_kind));
+        AppPaths::staged_import_relative_path(operation_id, detected_kind.extension());
     let ready_path = paths.resolve_relative(&relative_path);
     remove_file_if_exists(&ready_path)?;
     let now = unix_time_millis()?;
@@ -302,10 +314,10 @@ fn commit_staged_file(
                  ) VALUES (?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'staging', ?9, ?9, ?10)",
                 params![
                     operation_id,
-                    purpose_str(purpose),
-                    kind_str(detected_kind),
+                    purpose.as_str(),
+                    detected_kind.as_str(),
                     display_name,
-                    media_type(detected_kind),
+                    detected_kind.media_type(),
                     byte_size,
                     sha256,
                     relative_path,
@@ -361,7 +373,7 @@ fn commit_staged_file(
         purpose,
         detected_kind,
         display_name,
-        media_type: media_type(detected_kind).to_string(),
+        media_type: detected_kind.media_type().to_string(),
         byte_size,
         sha256,
         expires_at,
@@ -418,13 +430,13 @@ fn load_import_by_operation(
         ));
     }
     verify_file(&paths.resolve_relative(&relative), byte_size, &sha256)?;
-    let detected_kind = parse_kind(&kind)?;
+    let detected_kind = ExternalFileKind::parse(&kind)?;
     Ok(Some(StagedExternalFileDto {
         id,
         purpose: parse_purpose(&purpose)?,
         detected_kind,
         display_name,
-        media_type: media_type(detected_kind).to_string(),
+        media_type: detected_kind.media_type().to_string(),
         byte_size,
         sha256,
         expires_at,
@@ -480,6 +492,7 @@ fn load_prepared_export(
 fn detect_kind(
     path: &Path,
     purpose: ExternalImportPurpose,
+    display_name: &str,
 ) -> Result<ExternalFileKind, CommandError> {
     match purpose {
         ExternalImportPurpose::Image => {
@@ -511,6 +524,7 @@ fn detect_kind(
                 ))
             }
         }
+        ExternalImportPurpose::Document => detect_document_kind(path, display_name),
         ExternalImportPurpose::StudyContent => detect_study_content(path),
         ExternalImportPurpose::LibraryBackup => {
             let format = sqlite_metadata(path, "backup_metadata", "format")?;
@@ -523,6 +537,30 @@ fn detect_kind(
                 ))
             }
         }
+    }
+}
+
+#[cfg(target_os = "android")]
+fn detect_document_kind(path: &Path, display_name: &str) -> Result<ExternalFileKind, CommandError> {
+    let bytes = fs::read(path).map_err(CommandError::io)?;
+    let format = anydoc_document_adapter::detected_document_format(&bytes, display_name)?;
+    match format {
+        DocumentFormat::Pdf => Ok(ExternalFileKind::Pdf),
+        DocumentFormat::Doc => Ok(ExternalFileKind::Doc),
+        DocumentFormat::Docx => Ok(ExternalFileKind::Docx),
+        DocumentFormat::Ppt => Ok(ExternalFileKind::Ppt),
+        DocumentFormat::Pptx => Ok(ExternalFileKind::Pptx),
+        DocumentFormat::Odt => Ok(ExternalFileKind::Odt),
+        DocumentFormat::Odp => Ok(ExternalFileKind::Odp),
+        DocumentFormat::Rtf => Ok(ExternalFileKind::Rtf),
+        DocumentFormat::Epub => Ok(ExternalFileKind::Epub),
+        DocumentFormat::Excel => Ok(ExternalFileKind::Excel),
+        DocumentFormat::Ods => Ok(ExternalFileKind::Ods),
+        DocumentFormat::Csv => Ok(ExternalFileKind::Csv),
+        _ => Err(CommandError::new(
+            "unsupported_document_format",
+            "The selected file is not a supported document type.",
+        )),
     }
 }
 
@@ -600,19 +638,9 @@ fn sqlite_metadata(path: &Path, table: &str, key: &str) -> Result<Option<String>
 fn maximum_bytes(purpose: ExternalImportPurpose) -> u64 {
     match purpose {
         ExternalImportPurpose::Image => MAX_IMAGE_BYTES,
-        ExternalImportPurpose::PdfDocument => MAX_PDF_BYTES,
+        ExternalImportPurpose::PdfDocument | ExternalImportPurpose::Document => MAX_DOCUMENT_BYTES,
         ExternalImportPurpose::StudyContent => MAX_STUDY_CONTENT_BYTES,
         ExternalImportPurpose::LibraryBackup => MAX_BACKUP_BYTES,
-    }
-}
-
-#[cfg(target_os = "android")]
-fn purpose_str(purpose: ExternalImportPurpose) -> &'static str {
-    match purpose {
-        ExternalImportPurpose::Image => "image",
-        ExternalImportPurpose::PdfDocument => "pdf_document",
-        ExternalImportPurpose::StudyContent => "study_content",
-        ExternalImportPurpose::LibraryBackup => "library_backup",
     }
 }
 
@@ -621,72 +649,13 @@ fn parse_purpose(value: &str) -> Result<ExternalImportPurpose, CommandError> {
     match value {
         "image" => Ok(ExternalImportPurpose::Image),
         "pdf_document" => Ok(ExternalImportPurpose::PdfDocument),
+        "document" => Ok(ExternalImportPurpose::Document),
         "study_content" => Ok(ExternalImportPurpose::StudyContent),
         "library_backup" => Ok(ExternalImportPurpose::LibraryBackup),
         _ => Err(CommandError::new(
             "invalid_external_file_purpose",
             "The staged file purpose is invalid.",
         )),
-    }
-}
-
-#[cfg(target_os = "android")]
-fn kind_str(kind: ExternalFileKind) -> &'static str {
-    match kind {
-        ExternalFileKind::Png => "png",
-        ExternalFileKind::Jpeg => "jpeg",
-        ExternalFileKind::Gif => "gif",
-        ExternalFileKind::Webp => "webp",
-        ExternalFileKind::Pdf => "pdf",
-        ExternalFileKind::Studydeck => "studydeck",
-        ExternalFileKind::GeneratedJson => "generated_json",
-        ExternalFileKind::Ostudybackup => "ostudybackup",
-    }
-}
-
-#[cfg(target_os = "android")]
-fn parse_kind(value: &str) -> Result<ExternalFileKind, CommandError> {
-    match value {
-        "png" => Ok(ExternalFileKind::Png),
-        "jpeg" => Ok(ExternalFileKind::Jpeg),
-        "gif" => Ok(ExternalFileKind::Gif),
-        "webp" => Ok(ExternalFileKind::Webp),
-        "pdf" => Ok(ExternalFileKind::Pdf),
-        "studydeck" => Ok(ExternalFileKind::Studydeck),
-        "generated_json" => Ok(ExternalFileKind::GeneratedJson),
-        "ostudybackup" => Ok(ExternalFileKind::Ostudybackup),
-        _ => Err(CommandError::new(
-            "invalid_external_file_kind",
-            "The staged file type is invalid.",
-        )),
-    }
-}
-
-#[cfg(target_os = "android")]
-fn extension(kind: ExternalFileKind) -> &'static str {
-    match kind {
-        ExternalFileKind::Png => "png",
-        ExternalFileKind::Jpeg => "jpg",
-        ExternalFileKind::Gif => "gif",
-        ExternalFileKind::Webp => "webp",
-        ExternalFileKind::Pdf => "pdf",
-        ExternalFileKind::Studydeck => "studydeck",
-        ExternalFileKind::GeneratedJson => "json",
-        ExternalFileKind::Ostudybackup => "ostudybackup",
-    }
-}
-
-#[cfg(target_os = "android")]
-fn media_type(kind: ExternalFileKind) -> &'static str {
-    match kind {
-        ExternalFileKind::Png => "image/png",
-        ExternalFileKind::Jpeg => "image/jpeg",
-        ExternalFileKind::Gif => "image/gif",
-        ExternalFileKind::Webp => "image/webp",
-        ExternalFileKind::Pdf => "application/pdf",
-        ExternalFileKind::Studydeck => "application/vnd.ostudy.studydeck",
-        ExternalFileKind::GeneratedJson => "application/json",
-        ExternalFileKind::Ostudybackup => "application/vnd.ostudy.backup",
     }
 }
 
