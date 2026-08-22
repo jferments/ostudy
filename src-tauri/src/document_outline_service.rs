@@ -10,8 +10,7 @@ use rusqlite::{params, TransactionBehavior};
 
 use crate::{
     ai::document_intelligence::{
-        self, DocumentOutline, DocumentTaskContext, OUTLINE_PROMPT_VERSION,
-        OUTLINE_SCHEMA_VERSION,
+        self, DocumentOutline, DocumentTaskContext, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
     },
     ai::AiRuntimeState,
     database::Database,
