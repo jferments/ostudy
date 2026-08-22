@@ -137,10 +137,38 @@ where
         let i2 = batch.get(2).copied();
         let i3 = batch.get(3).copied();
         let (r0, r1, r2, r3) = tokio::join!(
-            outline_slot(runtime, task, document_title, source_unit_count, windows, i0),
-            outline_slot(runtime, task, document_title, source_unit_count, windows, i1),
-            outline_slot(runtime, task, document_title, source_unit_count, windows, i2),
-            outline_slot(runtime, task, document_title, source_unit_count, windows, i3),
+            outline_slot(
+                runtime,
+                task,
+                document_title,
+                source_unit_count,
+                windows,
+                i0
+            ),
+            outline_slot(
+                runtime,
+                task,
+                document_title,
+                source_unit_count,
+                windows,
+                i1
+            ),
+            outline_slot(
+                runtime,
+                task,
+                document_title,
+                source_unit_count,
+                windows,
+                i2
+            ),
+            outline_slot(
+                runtime,
+                task,
+                document_title,
+                source_unit_count,
+                windows,
+                i3
+            ),
         );
 
         let mut first_error = None;
