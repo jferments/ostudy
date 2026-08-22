@@ -170,7 +170,10 @@ impl StudyGuideOverlayKind {
     }
 
     fn is_content_bound(self) -> bool {
-        matches!(self, Self::TitleOverride | Self::BodyOverride | Self::Highlight)
+        matches!(
+            self,
+            Self::TitleOverride | Self::BodyOverride | Self::Highlight
+        )
     }
 }
 
@@ -807,7 +810,10 @@ fn normalize_complete_sections(
     let mut drafts_by_topic = HashMap::with_capacity(drafts.len());
     for draft in drafts {
         validate_entity_id(&draft.topic_id, "learning topic")?;
-        if drafts_by_topic.insert(draft.topic_id, draft.content).is_some() {
+        if drafts_by_topic
+            .insert(draft.topic_id, draft.content)
+            .is_some()
+        {
             return Err(CommandError::new(
                 "document_study_guide_invalid",
                 "The generated study guide contained a duplicate topic section.",
@@ -820,7 +826,10 @@ fn normalize_complete_sections(
         let content = drafts_by_topic.remove(&topic.id).ok_or_else(|| {
             CommandError::new(
                 "document_study_guide_incomplete",
-                format!("The study guide is missing the section for topic '{}'.", topic.title),
+                format!(
+                    "The study guide is missing the section for topic '{}'.",
+                    topic.title
+                ),
             )
         })?;
         let content = normalize_section_content(content)?;
@@ -859,11 +868,7 @@ fn normalize_overview(overview: StudyGuideOverview) -> StudyGuideOverview {
             MAX_SECTION_ITEMS,
             MAX_ITEM_CHARS,
         ),
-        key_concepts: normalize_items(
-            overview.key_concepts,
-            MAX_SECTION_ITEMS,
-            MAX_ITEM_CHARS,
-        ),
+        key_concepts: normalize_items(overview.key_concepts, MAX_SECTION_ITEMS, MAX_ITEM_CHARS),
     }
 }
 
@@ -903,11 +908,7 @@ fn normalize_section_content(
             })
             .filter(|value| !value.term.is_empty() && !value.explanation.is_empty())
             .collect(),
-        process_steps: normalize_items(
-            content.process_steps,
-            MAX_SECTION_ITEMS,
-            MAX_ITEM_CHARS,
-        ),
+        process_steps: normalize_items(content.process_steps, MAX_SECTION_ITEMS, MAX_ITEM_CHARS),
         comparisons: content
             .comparisons
             .into_iter()
@@ -970,7 +971,10 @@ fn validate_overlay_contract(input: &SaveStudyGuideOverlayInput) -> Result<(), C
         kind if kind.is_content_bound() => {
             if input.topic_id.is_none()
                 || input.guide_id.is_none()
-                || input.base_content_hash.as_deref().is_none_or(|hash| !is_sha256(hash))
+                || input
+                    .base_content_hash
+                    .as_deref()
+                    .is_none_or(|hash| !is_sha256(hash))
             {
                 return Err(CommandError::new(
                     "invalid_study_guide_overlay",
@@ -983,7 +987,10 @@ fn validate_overlay_contract(input: &SaveStudyGuideOverlayInput) -> Result<(), C
     crate::cards::validate_document(&input.rich_doc).map_err(|error| {
         CommandError::new(
             "invalid_study_guide_overlay",
-            format!("The study-guide annotation is not valid rich content: {}", error.message),
+            format!(
+                "The study-guide annotation is not valid rich content: {}",
+                error.message
+            ),
         )
     })
 }
