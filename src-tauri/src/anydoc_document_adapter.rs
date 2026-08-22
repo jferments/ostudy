@@ -423,7 +423,7 @@ fn normalize_document_blocks(
 
 fn normalize_block(
     block: &Block,
-    format: DocumentFormat,
+    _format: DocumentFormat,
     asset_identity: &HashMap<usize, String>,
     headings: &mut Vec<String>,
     output: &mut Vec<NormalizedBlock>,
@@ -514,14 +514,7 @@ fn normalize_block(
                 return;
             }
             output.push(NormalizedBlock {
-                role: if matches!(
-                    format,
-                    DocumentFormat::Ppt | DocumentFormat::Pptx | DocumentFormat::Odp
-                ) {
-                    CanonicalBlockRole::SpeakerNote
-                } else {
-                    CanonicalBlockRole::Quote
-                },
+                role: CanonicalBlockRole::Quote,
                 text: bounded_text(&text, MAX_BLOCK_TEXT_CHARS),
                 heading_level: None,
                 parent_heading: headings.last().cloned(),
