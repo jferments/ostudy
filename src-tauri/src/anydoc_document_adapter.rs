@@ -21,10 +21,9 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     document_canonical::{
-        CanonicalAsset, CanonicalAssetRole, CanonicalBlock, CanonicalBlockRole,
-        CanonicalDocument, CanonicalExtractionReport, CanonicalIngestion,
-        CanonicalSemanticChunk, CanonicalSourceFile, CanonicalSourceUnit, DocumentMetadata,
-        CANONICAL_DOCUMENT_SCHEMA_VERSION,
+        CanonicalAsset, CanonicalAssetRole, CanonicalBlock, CanonicalBlockRole, CanonicalDocument,
+        CanonicalExtractionReport, CanonicalIngestion, CanonicalSemanticChunk, CanonicalSourceFile,
+        CanonicalSourceUnit, DocumentMetadata, CANONICAL_DOCUMENT_SCHEMA_VERSION,
     },
     document_domain::{DocumentFormat, DocumentSourceDescriptor, SourceLocator, SourceUnitKind},
     error::CommandError,
@@ -233,7 +232,9 @@ pub(crate) fn extract(
         ));
         for (ordinal, block) in unit.blocks.iter().enumerate() {
             for asset_id in &block.asset_ids {
-                first_asset_unit.entry(asset_id.clone()).or_insert(unit_number);
+                first_asset_unit
+                    .entry(asset_id.clone())
+                    .or_insert(unit_number);
             }
             canonical_blocks.push(CanonicalBlock::new(
                 i64::try_from(canonical_blocks.len()).unwrap_or(i64::MAX),
@@ -285,16 +286,16 @@ pub(crate) fn extract(
                 .map(|value| bounded_text(value, 1_000))
                 .filter(|value| !value.is_empty())
         });
-    let skipped_non_image_assets = parsed
-        .assets
-        .len()
-        .saturating_sub(canonical_assets.len());
+    let skipped_non_image_assets = parsed.assets.len().saturating_sub(canonical_assets.len());
     let inferred_units = matches!(
         format,
         DocumentFormat::Ppt | DocumentFormat::Pptx | DocumentFormat::Odp | DocumentFormat::Epub
     );
     let mut metadata_attributes = BTreeMap::new();
-    metadata_attributes.insert("parserBackend".to_string(), ANYDOC_EXTRACTION_BACKEND.to_string());
+    metadata_attributes.insert(
+        "parserBackend".to_string(),
+        ANYDOC_EXTRACTION_BACKEND.to_string(),
+    );
     metadata_attributes.insert(
         "sourceUnitSegmentation".to_string(),
         if inferred_units {
@@ -430,9 +431,7 @@ fn normalize_block(
                 return;
             }
             let level = (*level).clamp(1, 64);
-            let parent = headings
-                .get(usize::from(level).saturating_sub(2))
-                .cloned();
+            let parent = headings.get(usize::from(level).saturating_sub(2)).cloned();
             headings.truncate(usize::from(level).saturating_sub(1));
             if !text.is_empty() {
                 headings.push(text.clone());
@@ -476,14 +475,7 @@ fn normalize_block(
                 attributes,
             });
         }
-        Block::List(list) => normalize_list(
-            list,
-            format,
-            asset_identity,
-            headings,
-            output,
-            depth,
-        ),
+        Block::List(list) => normalize_list(list, format, asset_identity, headings, output, depth),
         Block::Table(table) => {
             let mut projection = InlineProjection::default();
             let text = table_plain_text(table, asset_identity, &mut projection);
@@ -657,7 +649,9 @@ fn project_inline_slice(
                 projection.text.push('$');
             }
             Inline::Checkbox(checked) => {
-                projection.text.push_str(if *checked { "[x]" } else { "[ ]" })
+                projection
+                    .text
+                    .push_str(if *checked { "[x]" } else { "[ ]" })
             }
         }
     }
@@ -742,8 +736,10 @@ fn segment_units(format: DocumentFormat, blocks: Vec<NormalizedBlock>) -> Vec<Un
     let mut current = UnitDraft::default();
     for block in blocks {
         let heading_boundary = block.heading_level == Some(1) && !current.is_empty();
-        let table_boundary = matches!(format, DocumentFormat::Excel | DocumentFormat::Ods | DocumentFormat::Csv)
-            && block.role == CanonicalBlockRole::Table
+        let table_boundary = matches!(
+            format,
+            DocumentFormat::Excel | DocumentFormat::Ods | DocumentFormat::Csv
+        ) && block.role == CanonicalBlockRole::Table
             && current
                 .blocks
                 .iter()
@@ -797,7 +793,8 @@ fn build_semantic_chunks(
         let mut selected = Vec::<&CanonicalBlock>::new();
         let mut selected_chars = 0_usize;
         for block in unit_blocks {
-            let heading_boundary = block.role == CanonicalBlockRole::Heading && !selected.is_empty();
+            let heading_boundary =
+                block.role == CanonicalBlockRole::Heading && !selected.is_empty();
             let capacity_boundary = !selected.is_empty()
                 && selected_chars.saturating_add(block.text.chars().count())
                     > MAX_CHUNK_TARGET_CHARS;
@@ -907,8 +904,7 @@ fn persist_image_assets(
         }
         let ordinal = assets.len() + 1;
         let extension = image_extension(&asset.media_type);
-        let relative_path =
-            AppPaths::document_asset_relative_path(document_id, ordinal, extension);
+        let relative_path = AppPaths::document_asset_relative_path(document_id, ordinal, extension);
         let destination = paths.resolve_relative(&relative_path);
         write_replacing_file(&destination, &asset.bytes)?;
         assets.push(CanonicalAsset {
@@ -1088,9 +1084,18 @@ mod tests {
 
     #[test]
     fn format_mapping_never_routes_pdf_through_anydoc() {
-        assert_eq!(map_anydoc_format(Format::Docx).unwrap(), DocumentFormat::Docx);
-        assert_eq!(map_anydoc_format(Format::Excel).unwrap(), DocumentFormat::Excel);
-        assert_eq!(expected_format(DocumentFormat::Pdf).unwrap_err().code, "document_adapter_boundary_violation");
+        assert_eq!(
+            map_anydoc_format(Format::Docx).unwrap(),
+            DocumentFormat::Docx
+        );
+        assert_eq!(
+            map_anydoc_format(Format::Excel).unwrap(),
+            DocumentFormat::Excel
+        );
+        assert_eq!(
+            expected_format(DocumentFormat::Pdf).unwrap_err().code,
+            "document_adapter_boundary_violation"
+        );
     }
 
     #[test]
