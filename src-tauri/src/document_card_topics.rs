@@ -5,13 +5,13 @@
 //! commits stable topic links after card import. Provider output never supplies a
 //! topic ID and learner-editable tags are not used as provenance.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
-use rusqlite::{params, Transaction};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::{
+    authoring::card_types_and_templates::generated_import::GeneratedImportCommitContext,
     database::Database,
     document_domain::SourceLocator,
     document_learning::DocumentLearningPlan,
@@ -139,51 +139,37 @@ pub(crate) fn retain_curated_card_provenance(
         .collect()
 }
 
-/// Resolve newly inserted note IDs in insertion order and attach their stable
-/// learning-topic links before the surrounding generated-import transaction
-/// commits.
+/// Attach stable topic links to exactly the notes that the generated importer
+/// created. `source_index` originates from the JSON card array and survives
+/// duplicate filtering, so skipped duplicates cannot shift provenance onto a
+/// different note.
 pub(crate) fn link_imported_notes_to_topics(
-    transaction: &Transaction<'_>,
+    connection: &rusqlite::Connection,
     document_id: &str,
-    deck_id: &str,
     generation_job_id: &str,
     plan: &DocumentLearningPlan,
     cards: &[SourceGroundedGeneratedCard],
+    commit_context: &GeneratedImportCommitContext,
     imported_at: i64,
 ) -> Result<(), CommandError> {
-    let mut statement = transaction
-        .prepare(
-            "SELECT DISTINCT note.rowid, note.id
-             FROM notes note
-             JOIN cards card ON card.note_id = note.id
-             WHERE card.deck_id = ?1
-               AND note.created_at = ?2
-               AND note.deleted_at IS NULL
-               AND card.deleted_at IS NULL
-             ORDER BY note.rowid",
-        )
-        .map_err(CommandError::database)?;
-    let note_ids = statement
-        .query_map(params![deck_id, imported_at], |row| row.get::<_, String>(1))
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-    if note_ids.len() != cards.len() {
-        return Err(CommandError::new(
-            "document_card_topic_commit_incomplete",
-            format!(
-                "The generated import committed {} notes for {} source-grounded candidates; topic links were not partially committed.",
-                note_ids.len(),
-                cards.len()
-            ),
-        ));
-    }
-
-    for (note_id, card) in note_ids.iter().zip(cards) {
+    let mut seen_indices = HashSet::new();
+    for created in &commit_context.created_notes {
+        if !seen_indices.insert(created.source_index) {
+            return Err(CommandError::new(
+                "document_card_topic_commit_invalid",
+                "Generated import provenance contained a duplicate source-card index.",
+            ));
+        }
+        let card = cards.get(created.source_index).ok_or_else(|| {
+            CommandError::new(
+                "document_card_topic_commit_incomplete",
+                "Generated import provenance referenced a source card outside the curated candidate set.",
+            )
+        })?;
         link_generated_note_to_learning_plan(
-            transaction,
+            connection,
             document_id,
-            note_id,
+            &created.note_id,
             Some(generation_job_id),
             plan,
             &card.source_locator,
