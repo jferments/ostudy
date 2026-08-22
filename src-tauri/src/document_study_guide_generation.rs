@@ -21,10 +21,9 @@ use crate::{
     },
     document_learning::{DocumentLearningPlan, LearningTopic},
     document_study_guides::{
-        publish_document_study_guide, validate_study_guide_section_content,
-        DocumentStudyGuide, StudyGuideOverview, StudyGuideSectionContent,
-        StudyGuideSectionDraft, STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION,
-        STUDY_GUIDE_SCHEMA_VERSION,
+        publish_document_study_guide, validate_study_guide_section_content, DocumentStudyGuide,
+        StudyGuideOverview, StudyGuideSectionContent, StudyGuideSectionDraft,
+        STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
     },
     error::CommandError,
     util::unix_time_millis,
@@ -195,12 +194,9 @@ pub(crate) async fn execute_study_guide_generation(
     };
 
     let (usage, complete) = execution.task.usage_summary();
-    if let Err(error) = complete_document_artifact_job(
-        execution.database,
-        execution.job_id,
-        usage,
-        complete,
-    ) {
+    if let Err(error) =
+        complete_document_artifact_job(execution.database, execution.job_id, usage, complete)
+    {
         // The guide publication is the durable user-visible commit. A later
         // reconciliation can repair a lagging job projection without deleting or
         // hiding the valid guide revision.
@@ -248,10 +244,7 @@ async fn generate_missing_topics(
             generate_slot(execution, i3),
         );
 
-        let mut results = [r0, r1, r2, r3]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+        let mut results = [r0, r1, r2, r3].into_iter().flatten().collect::<Vec<_>>();
         results.sort_by_key(|(index, _)| *index);
         for (index, result) in results {
             let section = result?;
@@ -336,10 +329,7 @@ fn validate_execution(execution: &StudyGuideGenerationExecution<'_>) -> Result<(
     Ok(())
 }
 
-fn study_guide_contract_key(
-    task: &DocumentTaskContext,
-    plan: &DocumentLearningPlan,
-) -> String {
+fn study_guide_contract_key(task: &DocumentTaskContext, plan: &DocumentLearningPlan) -> String {
     hash_text(&format!(
         "{STUDY_GUIDE_CHECKPOINT_CONTRACT}|plan={}|provider={}|profile={}|model={}|reasoning={}|schema={STUDY_GUIDE_SCHEMA_VERSION}|prompt={STUDY_GUIDE_PROMPT_VERSION}|assembly={STUDY_GUIDE_ASSEMBLY_VERSION}",
         plan.plan_fingerprint,
