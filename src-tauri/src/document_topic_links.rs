@@ -5,7 +5,7 @@
 //! locator and the active learning plan, validated locally, and retained across
 //! guide prose revisions.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 use serde::Serialize;
 
 use crate::{
@@ -271,11 +271,13 @@ pub(crate) fn load_topic_card_ids(
             values.push(topic_id);
         }
         let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map(values.as_slice(), |row| row.get::<_, String>(0))
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        let card_ids = rows
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)
+            .map_err(CommandError::database)?;
+        Ok(card_ids)
     })
 }
 
@@ -293,7 +295,7 @@ fn load_note_topic_links_from_connection(
                       topic_id",
         )
         .map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map([note_id], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -305,7 +307,8 @@ fn load_note_topic_links_from_connection(
                 row.get::<_, i64>(6)?,
             ))
         })
-        .map_err(CommandError::database)?
+        .map_err(CommandError::database)?;
+    let links = rows
         .map(|row| {
             let row = row.map_err(CommandError::database)?;
             Ok(DocumentNoteTopicLink {
@@ -320,7 +323,8 @@ fn load_note_topic_links_from_connection(
                 created_at: row.6,
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>, CommandError>>()?;
+    Ok(links)
 }
 
 fn to_usize(value: i64) -> Result<usize, CommandError> {
