@@ -41,6 +41,9 @@ function makeDocument(
     byteSize: 2048,
     sha256: "0".repeat(64),
     lifecycleState: "ready",
+    sourceFormat: "pdf",
+    sourceUnitKind: "page",
+    sourceUnitCount: 10,
     pageCount: 10,
     extractedPageCount: 10,
     renderedPageCount: 10,
@@ -93,15 +96,24 @@ describe("DocumentsScreen", () => {
 
   it("shows a simple upload-first empty state", async () => {
     renderDocuments();
-    expect(await screen.findByRole("heading", { name: "No PDFs yet" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Upload PDF" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "No documents yet" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Upload document" })).toBeTruthy();
     expect(screen.queryByText(/review generated/u)).toBeNull();
     expect(screen.queryByText(/JSON/u)).toBeNull();
   });
 
-  it("uploads one PDF, announces live progress, and creates a normal deck", async () => {
+  it("uploads one document, announces live progress, and creates a normal deck", async () => {
     const completed = makeDocument();
-    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32), purpose: "pdf_document", detectedKind: "pdf", displayName: "cardiac-physiology.pdf", mediaType: "application/pdf", byteSize: 128, sha256: "0".repeat(64), expiresAt: Date.now() + 60_000 });
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
+      id: "1".repeat(32),
+      purpose: "document",
+      detectedKind: "pdf",
+      displayName: "cardiac-physiology.pdf",
+      mediaType: "application/pdf",
+      byteSize: 128,
+      sha256: "0".repeat(64),
+      expiresAt: Date.now() + 60_000,
+    });
     vi.mocked(documentIpc.importPdfAndGenerateFlashcards).mockResolvedValue({
       document: completed,
       deckId: completed.generatedDeckId ?? "",
@@ -113,23 +125,45 @@ describe("DocumentsScreen", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValue([completed]);
     const { showToast, refreshDecks } = renderDocuments();
-    await screen.findByRole("heading", { name: "No PDFs yet" });
+    await screen.findByRole("heading", { name: "No documents yet" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Upload PDF" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upload document" }));
 
     await waitFor(() => {
+      expect(platformFiles.selectExternalImport).toHaveBeenCalledWith("document");
       expect(showToast).toHaveBeenCalledWith(
         "info",
-        "Document processing started. Live stage, page, request, and token progress will appear here.",
+        "Document processing started. Live stage, source-unit, request, and token progress will appear here.",
       );
       expect(documentIpc.importPdfAndGenerateFlashcards).toHaveBeenCalledWith("1".repeat(32));
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
     expect(await screen.findByRole("heading", { name: "Cardiac physiology" })).toBeTruthy();
-    expect(screen.queryByText(/normal editing, scheduling, archive, and deletion tools/u)).toBeNull();
+    expect(screen.getByText("PDF · 2.0 KB")).toBeTruthy();
     expect(screen.getByText("12 sec")).toBeTruthy();
     expect(screen.getByText("45,678")).toBeTruthy();
+  });
+
+  it("shows detected non-PDF formats with truthful canonical section counts", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([
+      makeDocument({
+        originalFilename: "cardiac-physiology.docx",
+        sourceFormat: "docx",
+        sourceUnitKind: "section",
+        sourceUnitCount: 8,
+        pageCount: 8,
+        extractedPageCount: 8,
+        renderedPageCount: 0,
+      }),
+    ]);
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    expect(screen.getByText("Word · 2.0 KB")).toBeTruthy();
+    expect(screen.getByText("Sections")).toBeTruthy();
+    expect(screen.getByText("8")).toBeTruthy();
+    expect(screen.queryByText(/rendered/u)).toBeNull();
   });
 
   it("keeps completed OCR recovery out of permanent document-list copy", async () => {
@@ -168,7 +202,7 @@ describe("DocumentsScreen", () => {
     expect((await screen.findAllByText("Recovering OCR 5/12")).length).toBeGreaterThan(0);
   });
 
-  it("keeps a failed PDF in the library and offers a direct retry", async () => {
+  it("keeps a failed document in the library and offers a direct retry", async () => {
     const failed = makeDocument({
       lifecycleState: "failed",
       generatedDeckId: null,
@@ -197,10 +231,11 @@ describe("DocumentsScreen", () => {
     });
   });
 
-  it("shows a lightweight local-processing phase before page metadata is committed", async () => {
+  it("shows a lightweight local-processing phase before source-unit metadata is committed", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([
       makeDocument({
         lifecycleState: "processing",
+        sourceUnitCount: 0,
         pageCount: 0,
         extractedPageCount: 0,
         renderedPageCount: 0,
@@ -212,13 +247,14 @@ describe("DocumentsScreen", () => {
     renderDocuments();
 
     expect((await screen.findAllByText("Processing")).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Extracting document text").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Extracting document content").length).toBeGreaterThan(0);
   });
 
-  it("shows live rendered-page progress once the total page count is known", async () => {
+  it("shows live rendered-page progress for PDFs once the total page count is known", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([
       makeDocument({
         lifecycleState: "processing",
+        sourceUnitCount: 11,
         pageCount: 11,
         extractedPageCount: 11,
         renderedPageCount: 4,
@@ -251,7 +287,7 @@ describe("DocumentsScreen", () => {
       expect(showToast).toHaveBeenCalledWith("info", "Stopping the current AI request…");
     });
     expect(screen.getByRole("button", { name: "Stopping…" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Delete PDF" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete document" })).toBeNull();
   });
 
   it("generates an additional coverage pass into the existing deck", async () => {
@@ -289,21 +325,22 @@ describe("DocumentsScreen", () => {
     expect(screen.getByRole("button", { name: "Retry generation" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
     expect(screen.getByText(/previous generated deck was deleted/u)).toBeTruthy();
+    expect(screen.getByText(/retained document/u)).toBeTruthy();
   });
 
-  it("opens the managed PDF through the native document command", async () => {
+  it("opens the managed source through the native document command", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    fireEvent.click(screen.getByRole("button", { name: "Open PDF" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open source" }));
 
     await waitFor(() => {
       expect(documentIpc.openDocumentSource).toHaveBeenCalledWith(documentId);
     });
   });
 
-  it("permanently deletes a PDF only after confirmation and preserves deck citations", async () => {
+  it("permanently deletes a document only after confirmation and preserves deck citations", async () => {
     vi.mocked(documentIpc.listDocuments)
       .mockResolvedValueOnce([makeDocument()])
       .mockResolvedValue([]);
@@ -314,18 +351,18 @@ describe("DocumentsScreen", () => {
     const { showToast, refreshDecks } = renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    fireEvent.click(screen.getByRole("button", { name: "Delete PDF" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
     const dialog = await screen.findByRole("alertdialog", {
-      name: "Delete this PDF permanently?",
+      name: "Delete this document permanently?",
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete PDF" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete document" }));
 
     await waitFor(() => {
       expect(documentIpc.deletePdfDocument).toHaveBeenCalledWith(documentId, 2);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith(
         "success",
-        "PDF deleted. Preserved text source citations in 1 generated deck.",
+        "Document deleted. Preserved text source citations in 1 generated deck.",
       );
     });
   });
@@ -346,15 +383,15 @@ describe("DocumentsScreen", () => {
     const { showToast } = renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    fireEvent.click(screen.getByRole("button", { name: "Delete PDF" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
     const dialog = await screen.findByRole("alertdialog", {
-      name: "Delete this PDF permanently?",
+      name: "Delete this document permanently?",
     });
     expect(within(dialog).getByText(/No active generated deck remains/u)).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete PDF" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete document" }));
 
     await waitFor(() => {
-      expect(showToast).toHaveBeenCalledWith("success", "PDF deleted from Documents.");
+      expect(showToast).toHaveBeenCalledWith("success", "Document deleted from Documents.");
     });
   });
 });

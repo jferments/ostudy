@@ -37,6 +37,9 @@ export interface DocumentSummary {
   byteSize: number;
   sha256: string;
   lifecycleState: DocumentLifecycleState;
+  sourceFormat: string;
+  sourceUnitKind: string;
+  sourceUnitCount: number;
   pageCount: number;
   extractedPageCount: number;
   renderedPageCount: number;
@@ -162,8 +165,8 @@ export async function setDocumentArchived(
   });
 }
 
-// Temporary source-compatible aliases while the Documents screen and its tests
-// move from PDF-specific names to the format-neutral API above.
+// Temporary source-compatible aliases while remaining call sites move from
+// PDF-specific names to the format-neutral API above.
 export const importPdfAndGenerateFlashcards = importDocumentAndGenerateFlashcards;
 export const retryPdfFlashcardGeneration = retryDocumentFlashcardGeneration;
 export const generateMorePdfFlashcards = generateMoreDocumentFlashcards;
