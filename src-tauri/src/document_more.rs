@@ -7,6 +7,7 @@
 
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use serde_json::Value;
 use tauri::State;
 
