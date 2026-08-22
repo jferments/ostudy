@@ -144,7 +144,7 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
             row.get(0)
         })
         .map_err(CommandError::database)?;
-    assert_eq!(migration_rows, 2);
+    assert_eq!(migration_rows, LATEST_SCHEMA_VERSION);
 
     let counts: (i64, i64, i64, i64, String) = connection
         .query_row(
