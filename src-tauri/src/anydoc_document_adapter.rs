@@ -169,12 +169,7 @@ pub(crate) fn extract(
     let parsed = anydoc::to_document(&bytes, anydoc_format).map_err(map_anydoc_error)?;
     ensure_not_canceled(document_id)?;
 
-    let image_assets = persist_image_assets(paths, document_id, &parsed)?;
-    let asset_identity = image_assets
-        .iter()
-        .enumerate()
-        .map(|(index, asset)| (index, asset.asset_id.clone()))
-        .collect::<HashMap<_, _>>();
+    let (image_assets, asset_identity) = persist_image_assets(paths, document_id, &parsed)?;
     let normalized = normalize_document_blocks(&parsed, format, &asset_identity);
     let mut units = segment_units(format, normalized);
     if units.is_empty() && !image_assets.is_empty() {
@@ -889,7 +884,7 @@ fn persist_image_assets(
     paths: &AppPaths,
     document_id: &str,
     document: &Document,
-) -> Result<Vec<CanonicalAsset>, CommandError> {
+) -> Result<(Vec<CanonicalAsset>, HashMap<usize, String>), CommandError> {
     let directory = paths.document_assets_dir(document_id);
     if directory.exists() {
         fs::remove_dir_all(&directory).map_err(CommandError::io)?;
@@ -897,7 +892,8 @@ fn persist_image_assets(
     fs::create_dir_all(&directory).map_err(CommandError::io)?;
     let mut total_bytes = 0_usize;
     let mut assets = Vec::new();
-    for asset in &document.assets {
+    let mut identity_by_source_index = HashMap::new();
+    for (source_index, asset) in document.assets.iter().enumerate() {
         if !asset.media_type.starts_with("image/") || asset.bytes.is_empty() {
             continue;
         }
@@ -915,12 +911,17 @@ fn persist_image_assets(
             ));
         }
         let ordinal = assets.len() + 1;
+        let asset_id = register_asset_identity(
+            &mut identity_by_source_index,
+            source_index,
+            ordinal,
+        );
         let extension = image_extension(&asset.media_type);
         let relative_path = AppPaths::document_asset_relative_path(document_id, ordinal, extension);
         let destination = paths.resolve_relative(&relative_path);
         write_replacing_file(&destination, &asset.bytes)?;
         assets.push(CanonicalAsset {
-            asset_id: format!("anydoc-asset:{ordinal:06}"),
+            asset_id,
             source_unit_number: None,
             block_index: None,
             role: CanonicalAssetRole::EmbeddedImage,
@@ -933,7 +934,17 @@ fn persist_image_assets(
             alt_text: None,
         });
     }
-    Ok(assets)
+    Ok((assets, identity_by_source_index))
+}
+
+fn register_asset_identity(
+    identity_by_source_index: &mut HashMap<usize, String>,
+    source_index: usize,
+    ordinal: usize,
+) -> String {
+    let asset_id = format!("anydoc-asset:{ordinal:06}");
+    identity_by_source_index.insert(source_index, asset_id.clone());
+    asset_id
 }
 
 fn read_bounded_source(path: &Path) -> Result<Vec<u8>, CommandError> {
@@ -1163,5 +1174,22 @@ mod tests {
             detected_document_format(b"%PDF-1.7", "renamed.docx").unwrap(),
             DocumentFormat::Pdf
         );
+    }
+
+    #[test]
+    fn asset_identity_preserves_anydoc_source_indices() {
+        let mut identity = HashMap::new();
+        assert_eq!(
+            register_asset_identity(&mut identity, 1, 1),
+            "anydoc-asset:000001"
+        );
+        assert_eq!(
+            register_asset_identity(&mut identity, 3, 2),
+            "anydoc-asset:000002"
+        );
+        assert_eq!(identity.get(&1).map(String::as_str), Some("anydoc-asset:000001"));
+        assert_eq!(identity.get(&3).map(String::as_str), Some("anydoc-asset:000002"));
+        assert!(!identity.contains_key(&0));
+        assert!(!identity.contains_key(&2));
     }
 }
