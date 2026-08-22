@@ -106,7 +106,27 @@ pub fn import_generated_flashcards(
     })
 }
 
+/// Existing internal authoring hook. Callers that do not need per-note source
+/// provenance keep the compact callback contract.
 pub(crate) fn import_generated_flashcards_bytes_with_commit<F>(
+    database: &Database,
+    bytes: &[u8],
+    before_commit: F,
+) -> Result<FlashcardImportResultDto, CommandError>
+where
+    F: FnOnce(&rusqlite::Connection, &FlashcardImportResultDto, i64) -> Result<(), CommandError>,
+{
+    import_generated_flashcards_bytes_with_commit_context(
+        database,
+        bytes,
+        |connection, result, _context, now| before_commit(connection, result, now),
+    )
+}
+
+/// Provenance-aware generated import hook used by document artifact generation.
+/// `created_notes` maps retained JSON source indices to the exact note IDs
+/// inserted by the authoring transaction after duplicate filtering.
+pub(crate) fn import_generated_flashcards_bytes_with_commit_context<F>(
     database: &Database,
     bytes: &[u8],
     before_commit: F,
@@ -338,7 +358,7 @@ mod generated_import_tests {
           ]
         }"#;
         let mut created = Vec::new();
-        let result = import_generated_flashcards_bytes_with_commit(
+        let result = import_generated_flashcards_bytes_with_commit_context(
             &database,
             payload,
             |_, _, context, _| {
@@ -361,7 +381,7 @@ mod generated_import_tests {
         let error = import_generated_flashcards_bytes_with_commit(
             &database,
             &generated_file("create", "Atomic generation", "Question", "Answer"),
-            |_, _, _, _| {
+            |_, _, _| {
                 Err(CommandError::new(
                     "test_commit_hook_failed",
                     "The test provenance write failed.",
