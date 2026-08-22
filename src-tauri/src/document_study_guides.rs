@@ -972,19 +972,19 @@ fn validate_overlay_contract(input: &SaveStudyGuideOverlayInput) -> Result<(), C
                 ));
             }
         }
-        kind if kind.is_content_bound() => {
-            if input.topic_id.is_none()
-                || input.guide_id.is_none()
-                || input
-                    .base_content_hash
-                    .as_deref()
-                    .is_none_or(|hash| !is_sha256(hash))
-            {
-                return Err(CommandError::new(
-                    "invalid_study_guide_overlay",
-                    "A content edit or highlight must reference a guide revision, topic, and valid base-content hash.",
-                ));
-            }
+        kind
+            if kind.is_content_bound()
+                && (input.topic_id.is_none()
+                    || input.guide_id.is_none()
+                    || input
+                        .base_content_hash
+                        .as_deref()
+                        .is_none_or(|hash| !is_sha256(hash))) =>
+        {
+            return Err(CommandError::new(
+                "invalid_study_guide_overlay",
+                "A content edit or highlight must reference a guide revision, topic, and valid base-content hash.",
+            ));
         }
         _ => {}
     }
