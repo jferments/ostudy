@@ -495,7 +495,7 @@ fn dropping_the_restore_guard_rolls_back_the_previous_library() {
 }
 
 #[test]
-fn backup_v3_restores_active_editor_draft_and_its_staged_image() {
+fn current_backup_restores_active_editor_draft_and_its_staged_image() {
     let source_paths = temp_paths("draft-source");
     let source = Database::open(source_paths.database_path()).expect("source database");
     let (draft_id, asset_draft_id, asset_id, staged_relative, payload_json) = source
@@ -591,15 +591,15 @@ fn backup_v3_restores_active_editor_draft_and_its_staged_image() {
         })
         .expect("persistent draft fixture");
 
-    let backup_path = source_paths.app_data_dir().join("draft-v3.ostudybackup");
-    let exported = export_backup(&source, &source_paths, &backup_path).expect("v3 backup");
+    let backup_path = source_paths.app_data_dir().join("draft-current.ostudybackup");
+    let exported = export_backup(&source, &source_paths, &backup_path).expect("current backup");
     assert_eq!(
         exported.asset_count, 0,
         "staged images are not canonical library assets"
     );
     let package = Connection::open_with_flags(&backup_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .expect("backup package");
-    assert_eq!(backup_version(&package).expect("version"), 3);
+    assert_eq!(backup_version(&package).expect("version"), BACKUP_VERSION);
     let packaged: (i64, String) = package
         .query_row(
             "SELECT COUNT(*), MIN(relative_path) FROM asset_files",
