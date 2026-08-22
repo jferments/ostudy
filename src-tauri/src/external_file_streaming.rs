@@ -330,9 +330,9 @@ fn import_request(purpose: ExternalImportPurpose) -> ExternalFileRequest {
             filters: vec![FileFilter {
                 name: "Supported documents".to_string(),
                 extensions: [
-                    "pdf", "doc", "docx", "docm", "ppt", "pps", "pot", "pptx", "pptm",
-                    "ppsx", "potx", "odt", "odp", "rtf", "epub", "xls", "xlsx", "xlsm",
-                    "xlsb", "ods", "csv",
+                    "pdf", "doc", "docx", "docm", "ppt", "pps", "pot", "pptx", "pptm", "ppsx",
+                    "potx", "odt", "odp", "rtf", "epub", "xls", "xlsx", "xlsm", "xlsb", "ods",
+                    "csv",
                 ]
                 .into_iter()
                 .map(str::to_string)
@@ -855,12 +855,8 @@ mod tests {
         let _ = fs::remove_file(pdf);
 
         let disguised = test_file(b"not an OOXML package");
-        let error = detect_kind(
-            &disguised,
-            ExternalImportPurpose::Document,
-            "renamed.docx",
-        )
-        .unwrap_err();
+        let error =
+            detect_kind(&disguised, ExternalImportPurpose::Document, "renamed.docx").unwrap_err();
         assert_eq!(error.code, "unsupported_document_format");
         let _ = fs::remove_file(disguised);
     }

@@ -131,7 +131,9 @@ impl ExternalFileKind {
             Self::Doc => "application/msword",
             Self::Docx => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             Self::Ppt => "application/vnd.ms-powerpoint",
-            Self::Pptx => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            Self::Pptx => {
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            }
             Self::Odt => "application/vnd.oasis.opendocument.text",
             Self::Odp => "application/vnd.oasis.opendocument.presentation",
             Self::Rtf => "application/rtf",
