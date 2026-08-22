@@ -50,6 +50,7 @@ mod document_scale;
 mod document_semantics;
 mod document_store;
 mod document_study_guide_commands;
+mod document_study_guide_export;
 mod document_study_guide_generation;
 mod document_study_guides;
 mod document_topic_links;
@@ -279,6 +280,7 @@ pub fn run() {
             document_study_guide_commands::discard_document_study_guide_overlay,
             document_study_guide_commands::get_document_topic_card_projection,
             document_study_guide_commands::get_document_topic_card_ids,
+            document_study_guide_export::prepare_document_study_guide_pdf,
             library_backup_commands::prepare_library_backup_async,
             library_backup_commands::prepare_library_restore_async,
             practice_selection::get_practice_workload,
