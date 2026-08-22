@@ -9,9 +9,10 @@ import styles from "./StudyGuideLauncher.module.css";
 
 interface StudyGuideLauncherProps {
   showToast: ShowToast;
+  onPracticeCards: (cardIds: string[]) => Promise<void>;
 }
 
-export function StudyGuideLauncher({ showToast }: StudyGuideLauncherProps) {
+export function StudyGuideLauncher({ showToast, onPracticeCards }: StudyGuideLauncherProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -116,6 +117,7 @@ export function StudyGuideLauncher({ showToast }: StudyGuideLauncherProps) {
           documentId={selectedDocument.id}
           documentTitle={selectedDocument.title}
           showToast={showToast}
+          onPracticeCards={onPracticeCards}
           onClose={() => setSelectedDocument(null)}
         />
       ) : null}
