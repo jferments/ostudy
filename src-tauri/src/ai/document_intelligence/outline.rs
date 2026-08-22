@@ -754,7 +754,7 @@ mod tests {
     #[test]
     fn outline_prompt_is_format_neutral_but_documents_legacy_schema_names() {
         let prompt = outline_fragment_user_prompt("Lecture", 20, &sample_window(3, 4), 3, 4);
-        assert!(prompt.contains("canonical source units"));
+        assert!(prompt.contains("Canonical source units"));
         assert!(prompt.contains("pageStart/pageEnd fields are compatibility names"));
         assert!(!prompt.contains("PDF pages"));
     }
