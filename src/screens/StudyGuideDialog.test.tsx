@@ -42,6 +42,8 @@ vi.mock("../ipc/externalFiles", async () => {
 const documentId = "a".repeat(32);
 const topicId = "b".repeat(32);
 const guideId = "c".repeat(32);
+const linkedCardIds = ["1".repeat(32), "2".repeat(32)];
+const onPracticeCards = vi.fn(async (_cardIds: string[]) => undefined);
 
 function guide(): DocumentStudyGuide {
   return {
@@ -110,13 +112,14 @@ const mockedRelease = vi.mocked(releasePreparedExport);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  onPracticeCards.mockClear();
   mockedProjection.mockResolvedValue({
     topicId,
     noteCount: 1,
     cardCount: 2,
     studyableCardCount: 2,
   });
-  mockedCardIds.mockResolvedValue(["1".repeat(32), "2".repeat(32)]);
+  mockedCardIds.mockResolvedValue(linkedCardIds);
   mockedRelease.mockResolvedValue(undefined);
 });
 
@@ -131,6 +134,7 @@ describe("StudyGuideDialog", () => {
         documentId={documentId}
         documentTitle="Physiology"
         showToast={showToast}
+        onPracticeCards={onPracticeCards}
         onClose={vi.fn()}
       />,
     );
@@ -172,6 +176,7 @@ describe("StudyGuideDialog", () => {
         documentId={documentId}
         documentTitle="Physiology"
         showToast={showToast}
+        onPracticeCards={onPracticeCards}
         onClose={vi.fn()}
       />,
     );
@@ -189,6 +194,27 @@ describe("StudyGuideDialog", () => {
       "success",
       "Exported study guide revision 1 with 1 section.",
     );
+  });
+
+  it("routes exact topic-linked cards through the app practice capability", async () => {
+    mockedGetGuide.mockResolvedValue(guide());
+
+    render(
+      <StudyGuideDialog
+        documentId={documentId}
+        documentTitle="Physiology"
+        showToast={vi.fn()}
+        onPracticeCards={onPracticeCards}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Study linked cards (2)" }));
+
+    await waitFor(() => {
+      expect(mockedCardIds).toHaveBeenCalledWith(documentId, [topicId]);
+      expect(onPracticeCards).toHaveBeenCalledWith(linkedCardIds);
+    });
   });
 
   it("saves topic notes independently of the generated guide revision", async () => {
@@ -233,6 +259,7 @@ describe("StudyGuideDialog", () => {
         documentId={documentId}
         documentTitle="Physiology"
         showToast={vi.fn()}
+        onPracticeCards={onPracticeCards}
         onClose={vi.fn()}
       />,
     );
