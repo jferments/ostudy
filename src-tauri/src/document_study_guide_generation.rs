@@ -116,14 +116,25 @@ pub(crate) async fn execute_study_guide_generation(
     )
     .await;
     if let Err(error) = generation {
-        let (usage, complete) = execution.task.usage_summary();
-        let _ = fail_document_artifact_job(
-            execution.database,
-            execution.job_id,
-            &error,
-            usage,
-            complete,
-        );
+        let completed = resolved.iter().filter(|section| section.is_some()).count();
+        if error.code == "ai_request_canceled" {
+            let _ = transition_document_artifact_job(
+                execution.database,
+                execution.job_id,
+                DocumentArtifactJobState::Generating,
+                DocumentArtifactJobState::Canceled,
+                completed,
+            );
+        } else {
+            let (usage, complete) = execution.task.usage_summary();
+            let _ = fail_document_artifact_job(
+                execution.database,
+                execution.job_id,
+                &error,
+                usage,
+                complete,
+            );
+        }
         return Err(error);
     }
 
