@@ -3,9 +3,7 @@ use rusqlite::{params, Connection};
 fn latest_schema() -> Connection {
     let connection = Connection::open_in_memory().expect("in-memory SQLite should open");
     connection
-        .execute_batch(
-            "PRAGMA foreign_keys = ON;\n",
-        )
+        .execute_batch("PRAGMA foreign_keys = ON;\n")
         .expect("foreign keys should enable");
     for migration in [
         include_str!("../migrations/0001_public_baseline.sql"),
