@@ -54,7 +54,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 5,
         name: "study_guide_pdf_exports",
-        checksum: "c98dffe452454aa3eb7f61071f7f52f5608dc54b73250983a380d2ffed5d6695",
+        checksum: "a8736b2a4e8bd0a8fcf3455b8bb20058d7531653964662496271140d7e716f33",
         sql: include_str!("../migrations/0005_study_guide_pdf_exports.sql"),
     },
 ];
