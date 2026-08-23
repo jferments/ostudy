@@ -192,7 +192,10 @@ fn regeneration_keeps_compatible_edit_active_then_surfaces_changed_base_as_confl
         .expect("compatible edit should be visible on the replacement guide");
     assert_eq!(carried.guide_id.as_deref(), Some(second.id.as_str()));
     assert_eq!(carried.state, StudyGuideOverlayState::Active);
-    assert_eq!(carried.base_content_hash.as_deref(), Some(original_hash.as_str()));
+    assert_eq!(
+        carried.base_content_hash.as_deref(),
+        Some(original_hash.as_str())
+    );
 
     let third = publish(
         &database,
@@ -207,7 +210,10 @@ fn regeneration_keeps_compatible_edit_active_then_surfaces_changed_base_as_confl
         .expect("changed-base edit should remain visible for learner review");
     assert_eq!(conflict.guide_id.as_deref(), Some(third.id.as_str()));
     assert_eq!(conflict.state, StudyGuideOverlayState::Conflicted);
-    assert_eq!(conflict.base_content_hash.as_deref(), Some(original_hash.as_str()));
+    assert_eq!(
+        conflict.base_content_hash.as_deref(),
+        Some(original_hash.as_str())
+    );
     assert_eq!(conflict.plain_text, "My learner-owned explanation.");
     assert_ne!(third.sections[0].content_hash, original_hash);
 }
