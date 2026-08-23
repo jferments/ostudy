@@ -1,8 +1,9 @@
 //! Temporary private bridge while the repository manifest moves from the retired
-//! single-file document core to the explicit `documents/` package. The final
-//! topology commit removes this file and registers every required package module.
+//! single-file document core to the explicit package. The final topology commit
+//! removes this file, restores the package at `documents/`, and registers every
+//! required package module in the repository manifest.
 
-#[path = "documents/mod.rs"]
+#[path = "document_core/mod.rs"]
 mod implementation;
 
 pub use implementation::{
