@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub(crate) const STUDY_GUIDE_SCHEMA_VERSION: i64 = 1;
-pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 2;
+pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 3;
 pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 1;
 
 const MAX_GUIDE_SECTIONS: usize = 512;
@@ -369,8 +369,6 @@ pub(crate) fn publish_document_study_guide(
         }
 
         if let Some(prior_id) = prior_active.as_deref() {
-            // Move an edit/highlight to the new revision only when its topic and
-            // exact generated base content are unchanged.
             transaction
                 .execute(
                     "UPDATE document_study_guide_overlays
@@ -386,10 +384,6 @@ pub(crate) fn publish_document_study_guide(
                     params![guide_id, now, prior_id],
                 )
                 .map_err(CommandError::database)?;
-            // Any remaining active content-bound overlay belonged to the prior
-            // revision but did not match the new generated base. Re-own it by
-            // the new guide as an explicit conflict so the learner can actually
-            // review/discard the preserved edit from the active guide UI.
             transaction
                 .execute(
                     "UPDATE document_study_guide_overlays
