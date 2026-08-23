@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub(crate) const STUDY_GUIDE_SCHEMA_VERSION: i64 = 1;
-pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 1;
+pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 2;
 pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 1;
 
 const MAX_GUIDE_SECTIONS: usize = 512;
@@ -386,9 +386,10 @@ pub(crate) fn publish_document_study_guide(
                     params![guide_id, now, prior_id],
                 )
                 .map_err(CommandError::database)?;
-            // Remaining content-bound overlays no longer match the generated
-            // base. Attach them to the newly published guide as explicit
-            // conflicts so the learner can review or discard the preserved edit.
+            // Any remaining active content-bound overlay belonged to the prior
+            // revision but did not match the new generated base. Re-own it by
+            // the new guide as an explicit conflict so the learner can actually
+            // review/discard the preserved edit from the active guide UI.
             transaction
                 .execute(
                     "UPDATE document_study_guide_overlays
@@ -602,10 +603,9 @@ pub(crate) fn save_study_guide_overlay(
             &input.document_id,
             input.guide_id.as_deref(),
             input.topic_id.as_deref(),
+            input.overlay_kind,
+            input.base_content_hash.as_deref(),
         )?;
-        if input.overlay_kind.is_content_bound() {
-            validate_content_bound_overlay_scope(connection, &input)?;
-        }
         if let Some(expected_revision) = input.expected_revision {
             if expected_revision < 1 {
                 return Err(CommandError::new(
@@ -1032,6 +1032,8 @@ fn validate_overlay_scope(
     document_id: &str,
     guide_id: Option<&str>,
     topic_id: Option<&str>,
+    overlay_kind: StudyGuideOverlayKind,
+    base_content_hash: Option<&str>,
 ) -> Result<(), CommandError> {
     if let Some(guide_id) = guide_id {
         let matches = connection
@@ -1071,54 +1073,49 @@ fn validate_overlay_scope(
             ));
         }
     }
-    Ok(())
-}
-
-fn validate_content_bound_overlay_scope(
-    connection: &rusqlite::Connection,
-    input: &SaveStudyGuideOverlayInput,
-) -> Result<(), CommandError> {
-    let Some(guide_id) = input.guide_id.as_deref() else {
-        return Err(CommandError::new(
-            "invalid_study_guide_overlay",
-            "A content edit or highlight must reference a generated guide revision.",
-        ));
-    };
-    let Some(topic_id) = input.topic_id.as_deref() else {
-        return Err(CommandError::new(
-            "invalid_study_guide_overlay",
-            "A content edit or highlight must reference a generated guide topic.",
-        ));
-    };
-    let Some(base_content_hash) = input.base_content_hash.as_deref() else {
-        return Err(CommandError::new(
-            "invalid_study_guide_overlay",
-            "A content edit or highlight must reference its generated base content.",
-        ));
-    };
-
-    let matches = connection
-        .query_row(
-            "SELECT EXISTS(
-                 SELECT 1
-                 FROM document_study_guides guide
-                 JOIN document_study_guide_sections section
-                   ON section.guide_id = guide.id
-                 WHERE guide.id = ?1 AND guide.document_id = ?2
-                   AND guide.state = 'active'
-                   AND section.topic_id = ?3
-                   AND section.content_hash = ?4
-             )",
-            params![guide_id, input.document_id, topic_id, base_content_hash],
-            |row| row.get::<_, i64>(0),
-        )
-        .map(|value| value != 0)
-        .map_err(CommandError::database)?;
-    if !matches {
-        return Err(CommandError::new(
-            "study_guide_overlay_base_changed",
-            "The generated study-guide section changed before this edit could be saved. Reload the guide and try again.",
-        ));
+    if overlay_kind.is_content_bound() {
+        let guide_id = guide_id.ok_or_else(|| {
+            CommandError::new(
+                "invalid_study_guide_overlay",
+                "A content edit must reference an active study-guide revision.",
+            )
+        })?;
+        let topic_id = topic_id.ok_or_else(|| {
+            CommandError::new(
+                "invalid_study_guide_overlay",
+                "A content edit must reference a learning topic.",
+            )
+        })?;
+        let base_content_hash = base_content_hash.ok_or_else(|| {
+            CommandError::new(
+                "invalid_study_guide_overlay",
+                "A content edit must reference its generated base content.",
+            )
+        })?;
+        let exact_base = connection
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1
+                     FROM document_study_guides guide
+                     JOIN document_study_guide_sections section
+                       ON section.guide_id = guide.id
+                     WHERE guide.id = ?1
+                       AND guide.document_id = ?2
+                       AND guide.state = 'active'
+                       AND section.topic_id = ?3
+                       AND section.content_hash = ?4
+                 )",
+                params![guide_id, document_id, topic_id, base_content_hash],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|value| value != 0)
+            .map_err(CommandError::database)?;
+        if !exact_base {
+            return Err(CommandError::new(
+                "study_guide_overlay_base_changed",
+                "The generated section changed before this edit could be saved. Reload the study guide and review the latest source-grounded content.",
+            ));
+        }
     }
     Ok(())
 }
