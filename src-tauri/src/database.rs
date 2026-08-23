@@ -307,7 +307,7 @@ fn apply_transactional_migration(
         .map_err(|error| format!("Could not set SQLite user_version: {error}"))?;
     transaction
         .commit()
-        .map_err(|error| format!("Could not commit migration {}: {error}"))?;
+        .map_err(|error| format!("Could not commit migration {}: {error}", migration.version))?;
     crate::logging::info_target(
         "database.migration",
         "database_migration_completed",
