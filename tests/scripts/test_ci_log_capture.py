@@ -1,0 +1,64 @@
+import os
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "scripts" / "run-ci-captured.sh"
+
+
+class CiLogCaptureTests(unittest.TestCase):
+    def run_capture(self, command: str) -> tuple[subprocess.CompletedProcess[str], str]:
+        with tempfile.TemporaryDirectory() as temporary:
+            log_path = Path(temporary) / "qualification.log"
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "OSTUDY_CI_SUCCESS_TAIL_BYTES": "256",
+                    "OSTUDY_CI_FAILURE_TAIL_BYTES": "384",
+                }
+            )
+            completed = subprocess.run(
+                ["bash", str(SCRIPT), str(log_path), "bash", "-c", command],
+                cwd=ROOT,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertTrue(log_path.exists())
+            return completed, log_path.read_text(encoding="utf-8")
+
+    def test_success_retains_full_log_but_bounds_live_output(self) -> None:
+        completed, raw_log = self.run_capture(
+            "printf 'EARLY_SUCCESS_MARKER\\n'; "
+            "for i in $(seq 1 200); do printf 'success-line-%03d-xxxxxxxxxxxxxxxxxxxxxxxx\\n' \"$i\"; done; "
+            "printf 'FINAL_SUCCESS_MARKER\\n'"
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("EARLY_SUCCESS_MARKER", raw_log)
+        self.assertIn("FINAL_SUCCESS_MARKER", raw_log)
+        self.assertNotIn("EARLY_SUCCESS_MARKER", completed.stdout)
+        self.assertIn("FINAL_SUCCESS_MARKER", completed.stdout)
+        self.assertLess(len(completed.stdout.encode("utf-8")), 1024)
+
+    def test_failure_preserves_exit_code_and_emits_only_bounded_tail(self) -> None:
+        completed, raw_log = self.run_capture(
+            "printf 'EARLY_FAILURE_MARKER\\n'; "
+            "for i in $(seq 1 250); do printf 'failure-line-%03d-yyyyyyyyyyyyyyyyyyyyyyyy\\n' \"$i\"; done; "
+            "printf 'FINAL_FAILURE_MARKER\\n' >&2; exit 7"
+        )
+        live_output = completed.stdout + completed.stderr
+        self.assertEqual(completed.returncode, 7)
+        self.assertIn("EARLY_FAILURE_MARKER", raw_log)
+        self.assertIn("FINAL_FAILURE_MARKER", raw_log)
+        self.assertNotIn("EARLY_FAILURE_MARKER", live_output)
+        self.assertIn("FINAL_FAILURE_MARKER", live_output)
+        self.assertIn("full output retained", live_output)
+        self.assertLess(len(live_output.encode("utf-8")), 1536)
+
+
+if __name__ == "__main__":
+    unittest.main()
