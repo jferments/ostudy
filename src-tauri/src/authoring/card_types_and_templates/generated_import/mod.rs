@@ -51,9 +51,9 @@ struct PreparedImport {
 mod apply;
 mod prepare;
 
-use apply::import_prepared_flashcards_with_commit;
 #[cfg(test)]
 use apply::import_prepared_flashcards;
+use apply::import_prepared_flashcards_with_commit;
 #[cfg(test)]
 use prepare::prepare_flashcard_import;
 use prepare::prepare_flashcard_import_bytes;
