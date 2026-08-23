@@ -20,11 +20,7 @@ interface DocumentsSectionProps {
   showToast: ShowToast;
 }
 
-export function DocumentsSection({
-  refreshDecks,
-  onPracticeCards,
-  showToast,
-}: DocumentsSectionProps) {
+export function DocumentsSection({ refreshDecks, showToast }: DocumentsSectionProps) {
   const capabilities = usePlatformCapabilities();
   const documentProcessingAvailable =
     capabilities.native === null ||
@@ -99,7 +95,6 @@ export function DocumentsSection({
     <div className={styles.section} data-tour-anchor="documents.upload">
       <DocumentsScreen
         refreshDecks={refreshDecks}
-        onPracticeCards={onPracticeCards}
         showToast={showToast}
         headerSupplement={providerPanel}
       />
