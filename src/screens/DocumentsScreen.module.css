@@ -72,7 +72,6 @@
   margin: 0.85rem 0 0;
 }
 
-
 .empty {
   border: 1px dashed var(--border);
   border-radius: 0.85rem;
@@ -86,8 +85,9 @@
 }
 
 .card {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(18rem, 1fr) minmax(20rem, 36rem);
+  align-items: start;
   gap: 1.25rem;
   border: 1px solid var(--border);
   border-radius: 0.85rem;
@@ -97,7 +97,6 @@
 
 .cardMain {
   min-width: 0;
-  flex: 1;
 }
 
 .titleRow {
@@ -175,16 +174,21 @@
 
 .actions {
   display: flex;
-  flex: 0 0 auto;
+  min-width: 0;
   align-items: flex-start;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.55rem;
 }
 
+.actions button {
+  max-width: 100%;
+}
+
 @media (max-width: 780px) {
   .header,
   .card {
+    display: flex;
     flex-direction: column;
   }
 
