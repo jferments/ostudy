@@ -36,15 +36,16 @@ bounded source context is sent through the selected profile.
 1. Open **Documents** and choose **Upload document**.
 2. Select a supported file. There is no parser/type selector; oStudy detects the
    source automatically.
-3. After local document processing is available, choose the learning artifact you
-   want to create. **Create study guide** builds the interactive guide; flashcard
-   generation creates the document's ordinary study deck. You may use either
-   workflow independently or use both for the same source.
-4. Watch progress or use the relevant **Stop generation** action to cancel the
-   active document task deliberately.
-5. Open the study guide from Documents to read, annotate, edit, export, or study
-   its topic-linked cards. Open a generated deck to manage its cards like any
-   other deck.
+3. Use the actions beside that document to create the learning artifact you want.
+   **Generate study guide** creates or regenerates the document's guide;
+   flashcard generation creates or extends its ordinary study deck. The two
+   artifacts share the same source-grounded learning plan but can be generated
+   independently.
+4. Watch progress or use the relevant stop action to cancel the active document
+   task deliberately.
+5. Open **Practice → Study guides** to read a generated guide, annotate or edit it,
+   export it, or start topic-linked card practice. Open a generated deck to manage
+   its cards like any other deck.
 
 There is no separate approval queue. Valid cards are written transactionally
 after generation and curation complete. A study guide is published only after a
@@ -136,11 +137,19 @@ not assigned topics by guessing from their text.
 
 ## Interactive study guides
 
-A study guide is a durable, source-grounded view over the document's shared
-learning plan. The guide includes a global overview, learning objectives and key
-concepts, then ordered topic sections with natural source labels such as page or
-section ranges. Use the table of contents to move through the guide and **Open
-source** to open the managed original document.
+A study guide is a durable, source-grounded **high-yield outline** over the
+document's shared learning plan. The guide begins with the document-level
+overview, learning objectives, and key concepts, then presents ordered topic
+sections with natural source labels such as page or section ranges. Newly
+generated topic sections deliberately favor a one- or two-sentence overview and
+a small set of prioritized key points over long narrative prose. Mechanism
+explanations, terms, processes, comparisons, misconceptions, and visual
+explanations are included only when they add distinct learning value rather than
+repeating the source.
+
+Open generated guides from the **Study guides** section of **Practice**. Use the
+table of contents to move through a guide and **Open source** to open the managed
+original document.
 
 The guide stores generated base content as immutable revisions. Learner-owned
 changes are separate overlays:
@@ -183,11 +192,11 @@ Document records show the major processing/generation phases, canonical source
 unit progress, request/token activity, and safe error information. PDF records
 also show page rendering/OCR progress when those stages are applicable.
 
-**Stop generation** cancels the active task without deleting already committed
-reusable source derivatives. Study-guide generation has the same bounded
-cancellation ownership: a canceled or failed regeneration leaves any previously
-published guide available, and valid per-topic checkpoints may be reused on retry
-when their versioned contract still matches.
+**Stop generation** cancels flashcard work. A running guide exposes its own
+**Stop study guide** action beside the document. Either cancellation leaves
+already committed reusable source derivatives intact. A canceled or failed guide
+regeneration leaves any previously published guide available, and valid per-topic
+checkpoints may be reused on retry when their versioned contract still matches.
 
 On Android, a user-started long-running document task acquires a foreground
 service with a visible processing notification and a bounded partial wake lock.
@@ -222,9 +231,11 @@ evidence first.
 coverage to request additional material. An unchanged source should not be
 reparsed or rerendered merely because more cards are requested.
 
-Study-guide **Regenerate** similarly reuses the shared outline/learning plan and
-compatible topic checkpoints. Publication is atomic: incomplete replacement
-content cannot supersede the active guide.
+Click **Generate study guide** again beside a document to regenerate its guide.
+Regeneration reuses the shared outline/learning plan and compatible topic
+checkpoints, while prompt/schema version changes intentionally invalidate stale
+AI derivatives. Publication is atomic: incomplete replacement content cannot
+supersede the active guide.
 
 A failed generation remains in the document library so its error and retry state
 are not lost.
@@ -271,9 +282,9 @@ supported backup versions.
 - Encrypted/protected, malformed, unsupported, or resource-limit-exceeding source
   files may fail locally before AI generation.
 - Local-model quality and structured-output reliability vary by model/server.
-- A model can return structurally valid but educationally weak study-guide prose
-  or flashcards. Native validation prevents malformed writes, not every factual
-  or pedagogical error.
+- Native study-guide generation now enforces a concise outline shape and bounded
+  section length, but a model can still produce factually weak or poorly
+  prioritized content that requires learner review.
 - Very large documents can require many bounded provider requests and substantial
   local processing time.
 - Study-guide/topic state is included in complete-library backup/restore. Peer
