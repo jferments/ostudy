@@ -54,7 +54,7 @@ describe("DocumentsSection", () => {
     vi.mocked(aiProfiles.listAiProviderProfiles).mockResolvedValue([profile()]);
   });
 
-  it("shows the generation model and study-guide entry point immediately below Documents", async () => {
+  it("keeps the provider panel focused on the selected generation model", async () => {
     render(
       <DocumentsSection
         refreshDecks={vi.fn()}
@@ -69,7 +69,7 @@ describe("DocumentsSection", () => {
       Boolean(heading.compareDocumentPosition(model) & Node.DOCUMENT_POSITION_FOLLOWING),
     ).toBe(true);
     expect(screen.getByText("unsloth/Qwen3.6-27B-MTP-GGUF")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Study guides" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Study guides" })).toBeNull();
     expect(screen.queryByText("llama.cpp / Unsloth GGUF")).toBeNull();
     expect(screen.queryByText(/stay on this computer/u)).toBeNull();
     expect(screen.queryByText(/Local computer/u)).toBeNull();
